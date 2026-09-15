@@ -117,3 +117,107 @@ cells of emitted S1 code.
 `VALUES`, closures/`FUNC`, `BREAK`/`RETURN`/`THROW`/`CATCH`, `RAW`/trapdoor,
 and the control stack — per the phase brief, phase 1 implements only the
 minimal evaluator that proves execution runs on S1.
+
+---
+
+# R0-S1 Phase 2 — Results
+
+Functions, closures, lexical capture, captured-binding mutation, recursion, and
+`VALUES` — all executing as genuine S1 machine code through `s1_run()`.
+
+## What was added
+
+- **Closure representation** `[spec, body, captured-context, func-site-id]`
+  (4 cells) in `M`, allocated at runtime via `HOST_ALLOC`.
+- **`func [args] body`** — a reader-recognised keyword (sym id 0) that evaluates
+  the spec and body blocks and builds a closure capturing the current context
+  (`RV_CTX`).
+- **Ordinary function application** entirely on S1 (`INVOKE-CLOSURE`): record
+  caller state, evaluate each argument and reduce it to one value, create a
+  child context, bind parameters, restore the argument stack, switch to the
+  body, evaluate it via `CALL BLOCK-EVAL`, restore caller `RV_CUR`/`RV_END`/
+  `RV_CTX`, and leave `[results..., tagged-N]`.
+- **Lexical parent-chain lookup / nearest-binding-update SET** (reused from
+  phase 1) now walk child → … → global.
+- **`either cond then else`** (a native) and **`values [e1 ... en]`** (a native),
+  both evaluating their block arguments via `RUN-BLOCK`, which saves/restores
+  `RV_CUR`/`RV_END` on `RP` around a nested `CALL BLOCK-EVAL`.
+- **Ordinary function completion** — reaching the end of the body is the only
+  return mechanism (no `return` word yet).
+
+## Function-call ABI actually used
+
+1. Save `RV_CLOSURE` and `RV_ARITY` on `RP` (they must survive argument eval).
+2. Evaluate `arity` arguments (each `CALL SUBEXPR` + `REDUCE`); the argument
+   loop index `RV_T4` is saved/restored on `RP` around each `CALL` because a
+   nested call clobbers it.
+3. Restore `RV_CLOSURE`/`RV_ARITY`; allocate a child context (`HOST_ALLOC`),
+   bind parameters by appending to it.
+4. Save `RV_CTX`/`RV_CUR`/`RV_END` on `RP`; set `RV_CTX = child`, point
+   `RV_CUR`/`RV_END` at the body; `CALL BLOCK-EVAL`.
+5. Restore `RV_END`/`RV_CUR`/`RV_CTX` from `RP`; return the result set.
+
+The call chain is real S1 execution state: `REG_RP` holds continuations plus
+the saved `RV_*` frames, `REG_SP` holds tagged values and the tagged arity
+marker. No C recursion, no C stack, no C status codes.
+
+## Recursion evidence
+
+```
+[factorial 5] sp 16384->16382 (min 16379)  rp 24576->24576 (min 24513)  N=1
+```
+
+`REG_RP` deepened to 24513 (63 cells) during `fact 5` and returned exactly to
+its 24576 baseline; `REG_SP` returned to baseline + result set. This is the
+genuine nested S1 activation that Phase 3 will transfer through.
+
+## Tests
+
+All phase-1 tests still pass. New phase-2 tests (all pass):
+
+| Test | Result |
+|---|---|
+| A. `add: func [a b] [+ a b]  add 2 3` == 5 | ok |
+| B. zero-arg `f` == 42 | ok |
+| C. lexical capture `outer 3` applied to 4 == 7 | ok |
+| D. `make-counter` -> 15, 16 | ok |
+| E. `fact 5` == 120 | ok |
+| F. f->g->h == 7, RP restored to baseline | ok |
+| G. repeated calls, no SP/RP leakage | ok |
+| H. argument cleanup (only result set remains) | ok |
+| I. nested application `add 1 add 2 3` == 6 | ok |
+| J. `values [10 20]` -> two results | ok |
+| K. `values []` -> zero results | ok |
+
+Full suite: **84 `ok:` checks, 0 failures, exit 0.**
+
+## Bugs found and fixed
+
+1. **`HOST_ALLOC` is not 16-aligned**, but tagged pointers require 16-alignment.
+   Fixed by allocating 16-aligned cell counts for closures and child contexts.
+2. **Tagged block used as a raw pointer** (twice): `RV_BODY` (body) and the
+   spec (arity + parameter access) were the *tagged* block value; the pointer
+   must be untagged before `@`. This made `RV_CUR`/`RV_END`/arity garbage.
+3. **Scratch-cell clobbering across nested calls** (three instances): the
+   argument-loop index `RV_T4`, the set-word target `RV_WORD`, and the native
+   id `RV_NAT` were all overwritten by nested evaluations (function calls use
+   `RV_T4`/`RV_WORD` for parameters; nested natives set `RV_NAT`). Each is now
+   saved/restored on `RP` around the nested `CALL`.
+4. **`either`'s branch evaluation didn't switch `RV_CUR`/`RV_END`** to the
+   branch block before `CALL BLOCK-EVAL` — fixed with the shared `RUN-BLOCK`
+   helper that saves/restores position around the nested block evaluation.
+
+## Deviations
+
+- `either` (arity 3) is used for the conditional (factorial needs a base case);
+  the architecture names `if` for the two-branch form but phase 2 did not
+  prescribe a conditional, so `either` was added. It is ordinary control flow
+  (conditional evaluation of a block argument), not non-local control.
+- `func-site-id` is stored as 0 (unused until the `return` word arrives in
+  phase 3).
+
+## Did anything need an eighth primitive?
+
+No. Everything added uses the frozen seven primitives + `HOST` and the derived
+`CALL`/`EXIT`/`>R`/`R>` machinery. `HOST_ALLOC` provides runtime allocation.
+Zero S1 primitive changes.

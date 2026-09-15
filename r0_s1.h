@@ -36,16 +36,23 @@ enum {
 #define word_id(v)    ((cell)((v) / 16))
 #define int_val(v)    ((cell)((v) / 16))
 
-/* --- native ids (== HOST ids for arithmetic/comparison) ----------------- */
+/* --- native ids (== HOST ids for arithmetic/comparison; specials >100) --- */
 enum {
     RN_ADD = 0, RN_SUB = 1, RN_MUL = 2, RN_DIV = 3,
     RN_EQ = 6, RN_LT = 8, RN_GT = 9, RN_LE = 10, RN_GE = 11,
-    RN_PRINT = 14
+    RN_PRINT = 14,
+    RN_VALUES = 100,
+    RN_EITHER = 101
 };
 
 /* --- memory layout ------------------------------------------------------ */
 #define R0S1_HEAP_BASE 40000L
 #define R0S1_HEAP_LIMIT 47000L
+#define R0S1_CTX_CAP   16      /* max bindings per child context */
+
+/* reserved symbol id: "func" is interned first, so mk_word(0) == the `func`
+ * keyword. The emitter compares against the literal mk_word(0). */
+#define FUNC_SYM 0
 
 /* runtime variable cells (in M) */
 enum {
@@ -53,16 +60,28 @@ enum {
     RV_CUR  = RV_BASE + 0,   /* current element address */
     RV_END  = RV_BASE + 1,   /* one-past-last element address */
     RV_CTX  = RV_BASE + 2,   /* current context (tagged CONTEXT) */
-    RV_WORD = RV_BASE + 3,   /* set-word target (persistent) */
+    RV_WORD = RV_BASE + 3,   /* set-word / param target (persistent) */
     RV_NAT  = RV_BASE + 4,   /* native id (persistent) */
     RV_HOSTCALLS = RV_BASE + 5, /* HOST-call counter */
     RV_N    = RV_BASE + 6,   /* scratch */
     RV_T1   = RV_BASE + 7, RV_T2 = RV_BASE + 8, RV_T3 = RV_BASE + 9,
-    RV_T4   = RV_BASE + 10, RV_T5 = RV_BASE + 11, RV_T6 = RV_BASE + 12
+    RV_T4   = RV_BASE + 10, RV_T5 = RV_BASE + 11, RV_T6 = RV_BASE + 12,
+    /* Phase 2: closure application frame (persistent across nested CALLs;
+     * saved on RP where noted) */
+    RV_CLOSURE  = RV_BASE + 13, /* untagged closure ptr (persistent) */
+    RV_ARITY    = RV_BASE + 14, /* arity (persistent) */
+    RV_CHILD    = RV_BASE + 15, /* child context (tagged; used in bind loop) */
+    RV_BODY     = RV_BASE + 16, /* body block (transient) */
+    RV_NVALS    = RV_BASE + 17, /* values: collected-count (persistent) */
+    RV_RPMIN    = RV_BASE + 20, /* instrumentation: min RP seen (max depth) */
+    RV_SPMIN    = RV_BASE + 21  /* instrumentation: min SP seen (max depth) */
 };
 
 /* context layout: [parent, count, cap, (word,value)...] */
 enum { CTX_PARENT = 0, CTX_COUNT = 1, CTX_CAP = 2, CTX_DATA = 3 };
+
+/* closure layout: [spec, body, captured-context, func-site-id] */
+enum { CLOSURE_SPEC = 0, CLOSURE_BODY = 1, CLOSURE_CTX = 2, CLOSURE_SITE = 3 };
 
 /* --- loader + runtime API ------------------------------------------------ */
 
@@ -84,6 +103,8 @@ cell r0_s1_result(int i, int N);
 cell r0_s1_ip_start(void), r0_s1_ip_end(void);
 cell r0_s1_sp_start(void), r0_s1_sp_end(void);
 cell r0_s1_rp_start(void), r0_s1_rp_end(void);
+cell r0_s1_rp_min(void);   /* min RP observed (max return depth) */
+cell r0_s1_sp_min(void);   /* min SP observed (max data depth) */
 cell r0_s1_host_calls(void);
 cell r0_s1_code_size(void);   /* cells of emitted S1 code */
 
