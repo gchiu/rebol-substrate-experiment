@@ -1,7 +1,7 @@
 CC      ?= cc
 CFLAGS  ?= -std=c17 -Wall -Wextra -O0 -g
 
-OBJS = s1.o tests.o adversarial.o claims.o main.o
+OBJS = s1.o tests.o adversarial.o claims.o r0.o r0_tests.o main.o
 
 all: s1
 
@@ -12,6 +12,8 @@ s1.o: s1.c s1.h
 tests.o: tests.c s1.h
 adversarial.o: adversarial.c s1.h
 claims.o: claims.c s1.h
+r0.o: r0.c r0.h s1.h
+r0_tests.o: r0_tests.c r0.h s1.h
 main.o: main.c s1.h
 
 test: s1
