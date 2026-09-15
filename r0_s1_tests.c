@@ -56,9 +56,10 @@ static void audit_no_c_evaluator(void) {
     static const char *forbidden[] = {
         "ST_BREAK", "ST_RETURN", "ST_THROW", "RESULT_RETURN",
         "ds[", "cstack[",
-        "eval_subexpr", "eval_block", "apply"
+        "eval_subexpr", "eval_block", "apply",
+        "generator", "yield", "continuation", "resume"
     };
-    int nfiles = 2, nbad = 9, violations = 0;
+    int nfiles = 2, nbad = 13, violations = 0;
     for (int f = 0; f < nfiles; f++) {
         FILE *fp = fopen(files[f], "r");
         if (!fp) { printf("  (audit: cannot open %s; skipping)\n", files[f]); continue; }
@@ -131,7 +132,6 @@ int run_r0_s1_tests(void) {
               2, v, "B: return through helper (side effect skipped)"); }
 
     { /* C/D: deep unaware chain f->g->h->do, side effects must not run */
-      cell v[2] = { mk_int(42), mk_int(0) };
       int N;
       run_src("[ counter: 0  "
               "h: func [b] [ do b  counter: + counter 1000 ]  "
@@ -187,6 +187,42 @@ int run_r0_s1_tests(void) {
 
     printf("R0-S1 phase 3A: instrumentation\n");
     instrument("[ f: func [] [ return 42 ]  f ]", "simple return");
+
+    printf("R0-S1 phase 4A: first-class RAW S1 trapdoor\n");
+    expect1("[ c42: raw [ INT 42 ARITY 1 EXIT ]  c42 ]",
+            mk_int(42), "A: raw constant 42 (zero args)");
+    expect1("[ add2: raw 2 [ LIT 16 DIV >R LIT 16 DIV R> ADD LIT 16 MUL ARITY 1 EXIT ]  add2 3 4 ]",
+            mk_int(7), "B: raw 2-arg sum 3+4 == 7");
+    { cell v[3] = { mk_int(5), mk_int(5), mk_int(5) };
+      expectN("[ c5: raw [ INT 5 ARITY 1 EXIT ]  values [ c5 c5 c5 ] ]", 3, v,
+              "C: raw invoked repeatedly via values -> 5 5 5"); }
+    expect1("[ apply: func [g] [ g ]  c5: raw [ INT 5 ARITY 1 EXIT ]  apply c5 ]",
+            mk_int(5), "D: raw passed as arg and invoked == 5");
+    expect1("[ add2: raw 2 [ LIT 16 DIV >R LIT 16 DIV R> ADD LIT 16 MUL ARITY 1 EXIT ]  "
+            "f: func [n] [ add2 n 10 ]  f 5 ]",
+            mk_int(15), "E: raw invoked from inside a func body == 15");
+    { cell v[2] = { mk_int(10), mk_int(20) };
+      expectN("[ two: raw [ INT 10 INT 20 ARITY 2 EXIT ]  two ]", 2, v,
+              "F: raw multiple results -> 10 20"); }
+    expect_arity("[ zero: raw [ ARITY 0 EXIT ]  zero ]", 0,
+                 "G: raw zero results");
+    { cell v[2] = { mk_int(1), mk_int(2) };
+      expectN("[ t: raw 1 [ LIT 16 DIV LIT 0 EQ ZBRANCH Lelse INT 1 ARITY 1 EXIT "
+              "Lelse: INT 2 ARITY 1 EXIT ]  values [ t 0  t 5 ] ]", 2, v,
+              "H: raw ZBRANCH/labels -> 1 2"); }
+    expect1("[ sw: raw [ INT 42 LIT 9000 ! LIT 9000 @ ARITY 1 EXIT ]  sw ]",
+            mk_int(42), "I: raw @/! store+fetch 42");
+    { int N; run_src("[ c42: raw [ INT 42 ARITY 1 EXIT ]  c42 ]", &N);
+      CHECK(N == 1 && r0_s1_sp_end() == r0_s1_sp_start() - 2
+            && r0_s1_rp_end() == r0_s1_rp_start(),
+            "J: raw invocation leaves exactly the result set (no SP/RP leak)"); }
+    { int N; run_src("[ c5: raw [ INT 5 ARITY 1 EXIT ]  :c5 ]", &N);
+      CHECK(N == 1 && r0_tag(r0_s1_result(0, 1)) == T_RAW,
+            "K: raw is first-class (get-word :c5 returns the raw value, tag T_RAW)"); }
+
+    printf("R0-S1 phase 4A: instrumentation\n");
+    instrument("[ add2: raw 2 [ LIT 16 DIV >R LIT 16 DIV R> ADD LIT 16 MUL ARITY 1 EXIT ]  "
+                "f: func [n] [ add2 n 10 ]  f 5 ]", "raw in func");
 
     printf("audit\n");
     audit_no_c_evaluator();

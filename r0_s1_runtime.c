@@ -111,6 +111,96 @@ static cell parse_word(parser_t *P) {
     return intern(buf);
 }
 
+static cell parse_form(parser_t *P);
+static cell emit_call_fwd(void);   /* forward decl (defined in the emitter section) */
+
+/* ==================== RAW assembler (loader/toolchain) ====================
+ * Translates symbolic S1 assembly (mnemonics + operands + labels) into S1
+ * cells. This is pure toolchain: it knows the frozen opcodes and a few
+ * derived conveniences, and knows NOTHING about R0 control constructs
+ * (break/throw or any reified control effect). */
+
+typedef struct { const char *name; cell addr; } raw_label_t;
+static raw_label_t raw_labels[64];
+static int raw_nlabels;
+typedef struct { cell patch; const char *name; } raw_ref_t;
+static raw_ref_t raw_refs[128];
+static int raw_nrefs;
+
+static cell raw_find_label(const char *name) {
+    for (int i = 0; i < raw_nlabels; i++)
+        if (strcmp(raw_labels[i].name, name) == 0) return raw_labels[i].addr;
+    return -1;
+}
+
+static cell assemble_raw(cell block) {
+    cell bp = r0_untag(block);
+    int n = (int)M[bp];
+    raw_nlabels = 0; raw_nrefs = 0;
+    cell entry = asm_here();
+    for (int i = 0; i < n; i++) {
+        cell tok = M[bp + BLK_DATA + i];
+        int t = r0_tag(tok);
+        if (t == T_SET) {                 /* label definition */
+            raw_labels[raw_nlabels].name = syms[word_id(tok)];
+            raw_labels[raw_nlabels].addr = asm_here();
+            raw_nlabels++;
+            continue;
+        }
+        if (t != T_WORD) continue;
+        const char *nm = syms[word_id(tok)];
+        if (strcmp(nm, "LIT") == 0 || strcmp(nm, "INT") == 0 || strcmp(nm, "ARITY") == 0
+            || strcmp(nm, "HOST") == 0 || strcmp(nm, "ZBRANCH") == 0
+            || strcmp(nm, "BRANCH") == 0 || strcmp(nm, "CALL") == 0) {
+            i++;
+            cell op = (i < n) ? M[bp + BLK_DATA + i] : R0_NONE;
+            if (strcmp(nm, "LIT") == 0) asm_lit(int_val(op));
+            else if (strcmp(nm, "INT") == 0) asm_lit(mk_int(int_val(op)));
+            else if (strcmp(nm, "ARITY") == 0) asm_lit(mk_int(int_val(op)));
+            else if (strcmp(nm, "HOST") == 0) asm_host((int)int_val(op));
+            else if (strcmp(nm, "ZBRANCH") == 0) {
+                if (r0_tag(op) == T_WORD) { cell q = asm_zbranch_fwd(); raw_refs[raw_nrefs].patch = q; raw_refs[raw_nrefs].name = syms[word_id(op)]; raw_nrefs++; }
+                else asm_zbranch((int)int_val(op));
+            } else if (strcmp(nm, "BRANCH") == 0) {
+                if (r0_tag(op) == T_WORD) { cell q = asm_branch_fwd(); raw_refs[raw_nrefs].patch = q; raw_refs[raw_nrefs].name = syms[word_id(op)]; raw_nrefs++; }
+                else asm_branch((int)int_val(op));
+            } else if (strcmp(nm, "CALL") == 0) {
+                if (r0_tag(op) == T_WORD) { cell q = emit_call_fwd(); raw_refs[raw_nrefs].patch = q; raw_refs[raw_nrefs].name = syms[word_id(op)]; raw_nrefs++; }
+                else asm_call((int)int_val(op));
+            }
+            continue;
+        }
+        if (strcmp(nm, "DUP") == 0) asm_dup();
+        else if (strcmp(nm, "DROP") == 0) asm_drop();
+        else if (strcmp(nm, "@") == 0) asm_fetch();
+        else if (strcmp(nm, "!") == 0) asm_store();
+        else if (strcmp(nm, "EXIT") == 0) asm_exit();
+        else if (strcmp(nm, ">R") == 0) asm_toR();
+        else if (strcmp(nm, "R>") == 0) asm_fromR();
+        else if (strcmp(nm, "NONE") == 0) asm_lit(R0_NONE);
+        else if (strcmp(nm, "ADD") == 0) asm_host(HOST_ADD);
+        else if (strcmp(nm, "SUB") == 0) asm_host(HOST_SUB);
+        else if (strcmp(nm, "MUL") == 0) asm_host(HOST_MUL);
+        else if (strcmp(nm, "DIV") == 0) asm_host(HOST_DIV);
+        else if (strcmp(nm, "MOD") == 0) asm_host(HOST_MOD);
+        else if (strcmp(nm, "EQ") == 0) asm_host(HOST_EQ);
+        else if (strcmp(nm, "NE") == 0) asm_host(HOST_NE);
+        else if (strcmp(nm, "LT") == 0) asm_host(HOST_LT);
+        else if (strcmp(nm, "GT") == 0) asm_host(HOST_GT);
+        else if (strcmp(nm, "LE") == 0) asm_host(HOST_LE);
+        else if (strcmp(nm, "GE") == 0) asm_host(HOST_GE);
+        else if (strcmp(nm, "PRINT") == 0) asm_host(HOST_PRINT);
+        else if (strcmp(nm, "ALLOC") == 0) asm_host(HOST_ALLOC);
+        else fprintf(stderr, "r0_s1: unknown RAW mnemonic '%s'\n", nm);
+    }
+    for (int i = 0; i < raw_nrefs; i++) {
+        cell a = raw_find_label(raw_refs[i].name);
+        if (a < 0) { fprintf(stderr, "r0_s1: undefined RAW label '%s'\n", raw_refs[i].name); continue; }
+        s1_set_mem(raw_refs[i].patch, a);
+    }
+    return entry;
+}
+
 static cell parse_block(parser_t *P) {
     P->pos++; /* '[' */
     cell tmp[256];
@@ -134,6 +224,23 @@ static cell parse_block(parser_t *P) {
                 site_stack[site_depth++] = sid;
                 tmp[n++] = parse_form(P);                 /* body (under sid) */
                 site_depth--;
+                continue;
+            }
+            if (len == 3 && strncmp(P->s + start, "raw", 3) == 0) {
+                int arity = 0;
+                /* optional integer arity before the assembly block */
+                int save = P->pos;
+                skip_ws(P);
+                if (P->s[P->pos] >= '0' && P->s[P->pos] <= '9')
+                    arity = (int)int_val(parse_int(P));
+                else
+                    P->pos = save;
+                cell asm_block = parse_form(P);           /* [ instr... ] */
+                cell entry = assemble_raw(asm_block);
+                cell p = lalloc(2);
+                M[p + RAW_ENTRY] = entry;
+                M[p + RAW_ARITY] = (cell)arity;
+                tmp[n++] = mk_raw(p);
                 continue;
             }
             P->pos = start;
@@ -179,6 +286,16 @@ static cell emit_call_fwd(void) {
     return callee_op;
 }
 
+/* a CALL whose callee is read at runtime from cell c (indirect CALL) */
+static void emit_call_indirect(cell c) {
+    asm_lit(0);
+    cell cont = asm_here() - 1;
+    asm_toR();
+    e_cell(c);
+    asm_lit(REG_IP); asm_store();
+    s1_set_mem(cont, asm_here());
+}
+
 /* forward-call patch lists */
 static cell to_subexpr[64];   static int n_subexpr;
 static cell to_block_eval[16]; static int n_block_eval;
@@ -186,7 +303,7 @@ static cell to_block_eval[16]; static int n_block_eval;
 /* ========================== evaluator build ============================ */
 
 static cell r_reduce, r_discard, r_lookup, r_set, r_append, r_mkctx, r_mkclosure;
-static cell r_values, r_run_block, r_native, r_invoke_closure, r_return, r_subexpr, r_block_eval;
+static cell r_values, r_run_block, r_native, r_invoke_closure, r_return, r_invoke_raw, r_subexpr, r_block_eval;
 
 /* REDUCE: [r1..rN, tagged-N] -> [r1] (or [NONE] if N==0) */
 static void emit_reduce(void) {
@@ -548,7 +665,7 @@ static void emit_invoke_closure(void) {
     e_cell(RV_T4); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T4);
     asm_branch(bind_loop);
     asm_patch_here(j_bind_done);
-    /* capture return continuation + caller RP baseline */
+    /* capture return address + caller RP baseline */
     asm_fetchR(); e_setc(RV_SIP);
     asm_lit(REG_RP); asm_fetch(); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_SRP);
     /* allocate + fill the activation frame (linked list in M) */
@@ -585,7 +702,7 @@ static void emit_invoke_closure(void) {
 /* RETURN: ( -- ) non-local definitional return. Reads the current block's
  * return-site-id, evaluates the return argument, finds the live activation
  * with that site-id, and restores its saved SP/RP/IP/RV state, jumping to its
- * return continuation. Intermediate activations' epilogues never run. */
+ * return address. Intermediate activations' epilogues never run. */
 static void emit_return(void) {
     r_return = asm_here();
     /* site_id = M[RV_BLK + BLK_SITE] */
@@ -636,10 +753,38 @@ static void emit_return(void) {
     e_cell(RV_T2); asm_lit(FRAME_BLK); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_BLK);
     e_cell(RV_T2); asm_fetch(); e_setc(RV_FRAME);     /* RV_FRAME = prev */
     e_cell(RV_T2); asm_lit(FRAME_IP); asm_host(HOST_ADD); asm_fetch(); asm_lit(REG_IP); asm_store();
-    /* (control is now at the target's return continuation) */
+    /* (control is now at the target's return address) */
     asm_patch_here(j_nomatch);
     e_cell(RV_T2); asm_fetch(); e_setc(RV_T2);         /* frame = prev */
     asm_branch(find_loop);
+}
+
+/* INVOKE-RAW: ( raw -- result-set )  call a first-class RAW S1 fragment.
+ * Evaluates `arity` ordinary R0 arguments (each reduced to one value), CALLs
+ * the fragment's entry, and returns whatever result set the fragment leaves.
+ * The fragment itself is trusted/unsafe S1 code. */
+static void emit_invoke_raw(void) {
+    r_invoke_raw = asm_here();
+    e_untag_ptr(); e_setc(RV_T1);                       /* ptr */
+    e_cell(RV_T1); asm_fetch(); e_setc(RV_T5);          /* entry */
+    e_cell(RV_T1); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T6); /* arity */
+    asm_lit(0); e_setc(RV_T4);                          /* i = 0 */
+    cell arg_loop = asm_here();
+    e_cell(RV_T4); e_cell(RV_T6); asm_host(HOST_LT);    /* i < arity? */
+    cell j_done = asm_zbranch_fwd();
+    e_cell(RV_T4); asm_toR();
+    e_cell(RV_T6); asm_toR();
+    e_cell(RV_T5); asm_toR();
+    to_subexpr[n_subexpr++] = emit_call_fwd();          /* eval one arg */
+    asm_call(r_reduce);
+    asm_fromR(); e_setc(RV_T5);
+    asm_fromR(); e_setc(RV_T6);
+    asm_fromR(); e_setc(RV_T4);
+    e_cell(RV_T4); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_T4);
+    asm_branch(arg_loop);
+    asm_patch_here(j_done);
+    emit_call_indirect(RV_T5);                          /* CALL entry */
+    asm_exit();                                         /* return the result set */
 }
 
 /* SUBEXPR: evaluate one sub-expression at RV_CUR, advancing it */
@@ -698,6 +843,13 @@ static void emit_subexpr(void) {
     asm_call(r_invoke_closure);
     asm_exit();
     asm_patch_here(j_notclosure);
+    /* raw (tag 10) */
+    asm_dup(); asm_lit(T_RAW); asm_host(HOST_EQ);
+    cell j_notraw = asm_zbranch_fwd();
+    asm_drop();
+    asm_call(r_invoke_raw);
+    asm_exit();
+    asm_patch_here(j_notraw);
     asm_drop();
     asm_lit(16);
     asm_exit();
@@ -787,6 +939,7 @@ cell r0_s1_init(void) {
     emit_native();
     emit_invoke_closure();
     emit_return();
+    emit_invoke_raw();
     emit_subexpr();
     emit_block_eval();
     emit_main();
@@ -795,9 +948,10 @@ cell r0_s1_init(void) {
     for (int i = 0; i < n_subexpr; i++) s1_set_mem(to_subexpr[i], r_subexpr);
     for (int i = 0; i < n_block_eval; i++) s1_set_mem(to_block_eval[i], r_block_eval);
 
-    /* preload the global environment ("func" and "return" first => sym 0/1) */
+    /* preload the global environment ("func"/"return"/"raw" first => sym 0/1/2) */
     intern("func");
     intern("return");
+    intern("raw");
     global_ctx = make_context(R0_NONE, 48);
     bind(global_ctx, intern("+"),  mk_native(RN_ADD));
     bind(global_ctx, intern("-"),  mk_native(RN_SUB));

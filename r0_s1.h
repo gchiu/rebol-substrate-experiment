@@ -53,9 +53,10 @@ enum {
 
 /* reserved symbol id: "func" is interned first, so mk_word(0) == the `func`
  * keyword. "return" is interned second, so mk_word(1) == the `return`
- * keyword. The emitter compares against the literal mk_word(0)/mk_word(1). */
+ * keyword. "raw" is interned third, so mk_word(2) == the `raw` keyword. */
 #define FUNC_SYM 0
 #define RETURN_SYM 1
+#define RAW_SYM 2
 
 /* runtime variable cells (in M) */
 enum {
@@ -93,6 +94,9 @@ enum { CTX_PARENT = 0, CTX_COUNT = 1, CTX_CAP = 2, CTX_DATA = 3 };
 
 /* closure layout: [spec, body, captured-context, func-site-id] */
 enum { CLOSURE_SPEC = 0, CLOSURE_BODY = 1, CLOSURE_CTX = 2, CLOSURE_SITE = 3 };
+
+/* RAW callable layout: [entry-address, arity] */
+enum { RAW_ENTRY = 0, RAW_ARITY = 1 };
 
 /* block layout: [count, return-site-id, elem0, elem1, ...] */
 enum { BLK_COUNT = 0, BLK_SITE = 1, BLK_DATA = 2 };

@@ -369,3 +369,108 @@ No. All of RETURN uses the frozen seven primitives + `HOST` + derived
 `CALL`/`EXIT`/`>R`/`R>`. The transfer is a direct restoration of `REG_SP`,
 `REG_RP`, `REG_IP` (memory-mapped) and the `RV_*` evaluator state, followed by
 a jump — no new primitive.
+
+# R0-S1 Phase 4A — First-class RAW S1 trapdoor
+
+## What was added
+
+A new R0 value type `T_RAW` and a new keyword form `raw [ ... ]` (optionally
+`raw N [ ... ]` where `N` is the argument arity). A `raw` form assembles the
+given symbolic S1 assembly into machine code at load time and yields a
+first-class callable value that, when applied, evaluates `N` ordinary R0
+arguments and then `CALL`s the fragment's entry. The fragment is arbitrary
+(and therefore unsafe/trusted) S1 machine code.
+
+This is the "trapdoor": the language is closed over its substrate but not
+sealed against it. The trapdoor is *first-class* — a raw value can be bound,
+passed as an argument, returned, and re-invoked, exactly like a closure or
+native.
+
+## Two pieces
+
+1. **A generic S1 assembler (C toolchain).** `assemble_raw` translates
+   mnemonics + operands + `label:` definitions into S1 cells. It knows the
+   frozen opcodes and a handful of derived conveniences, and knows nothing
+   about R0 control constructs. Mnemonics: `LIT INT HOST ZBRANCH BRANCH CALL`
+   (operand-taking) and `DUP DROP @ ! EXIT >R R> NONE ADD SUB MUL DIV MOD EQ NE
+   LT GT LE GE PRINT ALLOC` (bare).
+
+   - `LIT n` pushes the raw S1 cell `n` (machine-level constants: addresses,
+     opcodes, the tag mask `16`).
+   - `INT n` pushes the *tagged* R0 integer `mk_int(n)` (an R0 integer value).
+   - `ARITY n` is `INT n` with documentary intent: it is the result count the
+     fragment must leave below its final `EXIT`.
+   - `label:` marks an address; `ZBRANCH`/`BRANCH`/`CALL` take a label word or
+     an absolute address.
+
+2. **A RAW callable + `r_invoke_raw` (S1 code).** The raw value is a 16-aligned
+   heap pair `[entry, arity]` tagged `T_RAW`. `r_invoke_raw` untags it, reads
+   entry and arity, evaluates `arity` arguments (each reduced to one value by
+   `subexpr` + `r_reduce`), performs an *indirect* `CALL entry`, and `EXIT`s,
+   leaving the fragment's result set `[v1..vN, mk_int(N)]` untouched.
+
+## Result protocol
+
+A fragment receives its arguments as tagged R0 values on the data stack and
+must leave a result set `[v1..vN, mk_int(N)]` — the last cell is the tagged
+count. The `ARITY n` mnemonic exists so a fragment can emit its own count. This
+is the same result-set shape the evaluator produces everywhere else, so a raw
+call composes transparently with `values`, `return`, functions, etc.
+
+## Exact S1 code (r_invoke_raw)
+
+```
+untag raw;            entry = M[raw];  arity = M[raw+1];
+i = 0;
+loop:  if !(i < arity) goto done;
+       save i, arity, entry on RP;
+       CALL subexpr; CALL r_reduce;      // one arg -> [v]
+       restore entry, arity, i;  i++;
+       goto loop;
+done:  CALL entry (indirect); EXIT;      // fragment leaves [r.., mk_int(N)]
+```
+
+## What is NOT implemented (out of scope, documented)
+
+No `BREAK`/`THROW`/`CATCH`, no generators, no `yield`, no reified continuations,
+no resume/suspend. The assembler is a pure transliterator; it cannot express any
+of those constructs, and the audit forbids their names in the runtime sources.
+
+## Tests (all pass; full suite now 107 ok, 0 fail, exit 0)
+
+A. raw constant 42 (zero args)
+B. raw 2-arg sum (`add2 3 4` == 7) — untag/tag around `ADD`
+C. repeated invocation through `values` -> 5 5 5
+D. raw passed as an argument and invoked == 5
+E. raw invoked from inside a `func` body == 15
+F. multiple results -> 10 20
+G. zero results -> arity 0
+H. `ZBRANCH` + labels (conditional) -> 1 2
+I. `@`/`!` store + fetch through raw S1 memory (42)
+J. stack cleanliness: SP holds exactly the result set, RP back to baseline
+K. first-class value: get-word `:c5` yields the raw value itself (`T_RAW`)
+
+## Bugs found and fixed
+
+1. **`INT` vs `LIT` operand confusion.** The first `add2` fragment wrote
+   `INT 16` where it meant the raw constant 16; `INT 16` pushes the *tagged*
+   256, so the `DIV` by 256 collapsed every argument to 0. The fix was to use
+   `LIT 16` for machine-level constants and reserve `INT` for tagged R0 values.
+
+## HOST services used by Phase 4A
+
+Only those already frozen: `ADD SUB MUL DIV EQ LT ALLOC` inside fragments plus
+the evaluator's existing set. No new HOST service, no new S1 primitive, no
+change to `s1.c`/`s1.h`.
+
+## Mechanical audit
+
+Forbidden list extended with `generator yield continuation resume`; the
+runtime rewords any incidental use of "return continuation" to "return
+address" so the audit stays a clean signal. It passes (107 ok, 0 fail).
+
+## Was an eighth primitive required?
+
+No. The indirect call is a derived `CALL` whose callee operand is fetched from
+a runtime cell rather than patched at load time — still the frozen
+`LIT`/`DUP`/`DROP`/`@`/`!`/`0BRANCH`/`HOST` primitives.
