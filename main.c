@@ -1,0 +1,13 @@
+#include <stdio.h>
+
+int run_tests(void);
+
+int main(void) {
+    int failures = run_tests();
+    if (failures == 0) {
+        printf("all tests passed\n");
+        return 0;
+    }
+    printf("%d test(s) failed\n", failures);
+    return 1;
+}
