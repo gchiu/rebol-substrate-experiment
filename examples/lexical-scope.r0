@@ -1,0 +1,17 @@
+;; examples/lexical-scope.r0 -- nested lexical capture and nearest-binding
+;; mutation (distinct from counter.r0: here we show *independent* environments
+;; and mutation of a shared outer binding).
+
+[ make-adder: func [n] [ func [x] [ + x n ] ]
+
+  add2:  make-adder 2
+  add10: make-adder 10
+
+  ;; add2 and add10 captured different `n` -- their environments are independent:
+  values [ add2 3  add10 3 ] ]            ;; => 5 13
+
+;; a set-word updates the nearest enclosing binding, which outer readers see:
+[ x: 1
+  f: func [] [ x ]
+  g: func [] [ x: 2 ]
+  values [ f  g  f ] ]                    ;; => 1 2 2

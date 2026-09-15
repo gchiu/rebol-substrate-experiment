@@ -1,0 +1,46 @@
+;; examples/nested-escape.r0 -- nested with-escape invocations.
+;;
+;; The escape library (frame-here / restore / with-escape) is defined here,
+;; exactly as in escape.r0. Each with-escape invocation captures its own
+;; activation frame, so an escape value targets the invocation that made it.
+
+[ ;; -- the escape library (see escape.r0 for the full explanation) ----------
+
+  frame-here: raw [ LIT RV_FRAME @ ARITY 1 EXIT ]
+
+  restore: raw 2 [
+      LIT SCRATCH_A ! LIT SCRATCH_B !
+      LIT SCRATCH_B @ LIT FRAME_SAVED_CTX ADD @ LIT RV_CTX !
+      LIT SCRATCH_B @ LIT FRAME_SAVED_CUR ADD @ LIT RV_CUR !
+      LIT SCRATCH_B @ LIT FRAME_SAVED_END ADD @ LIT RV_END !
+      LIT SCRATCH_B @ LIT FRAME_SAVED_BLK ADD @ LIT RV_BLK !
+      LIT SCRATCH_B @ @ LIT RV_FRAME !
+      LIT SCRATCH_B @ LIT FRAME_SAVED_RP ADD @ LIT REG_RP !
+      LIT SCRATCH_B @ LIT FRAME_SAVED_IP ADD @ >R
+      LIT SCRATCH_B @ LIT FRAME_SAVED_SP ADD @ LIT REG_SP !
+      LIT SCRATCH_A @ LIT 16
+      EXIT
+  ]
+
+  with-escape: func [body] [
+      target: frame-here
+      escape: func [r] [ restore target r ]
+      body :escape
+  ]
+
+  ;; -- inner escape targets the inner invocation ----------------------------
+
+  a: with-escape func [e1] [
+      s: with-escape func [e2] [ e2 42 ]
+      s
+  ]
+
+  ;; -- outer escape crosses the inner invocation ----------------------------
+
+  b: with-escape func [e1] [
+      s: with-escape func [e2] [ e1 42 ]    ;; jumps to the OUTER invocation
+      99                                   ;; never evaluated
+  ]
+
+  values [a b]                               ;; => 42 42
+]

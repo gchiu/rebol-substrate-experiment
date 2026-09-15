@@ -1,0 +1,10 @@
+;; examples/multiple-results.r0 -- result sets: expressions can yield several
+;; values, not just one.
+
+[ values [10 20] ]                        ;; => 10 20
+
+[ f: func [] [ values [10 20] ]
+  f ]                                     ;; => 10 20  (a function yields a set)
+
+[ g: func [] [ return values [30 40] ]
+  g ]                                     ;; => 30 40  (a set survives `return`)

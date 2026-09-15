@@ -75,6 +75,65 @@ static void audit_no_c_evaluator(void) {
     CHECK(violations == 0, "no C evaluator / C stack / status-enum patterns in runtime files");
 }
 
+/* ==================== examples validation (test wiring) ===================
+ * Reads the example files under examples/, strips `;;` comments, and runs the
+ * first [ ... ] program in each, checking the documented result. This is
+ * test-only; the runtime gains no file-loading ability. */
+
+static char *read_file(const char *path) {
+    FILE *fp = fopen(path, "r");
+    if (!fp) return NULL;
+    static char buf[1 << 16];
+    size_t n = fread(buf, 1, sizeof buf - 1, fp);
+    buf[n] = 0;
+    fclose(fp);
+    return buf;
+}
+
+static void strip_comments(char *s) {
+    char *r = s, *w = s;
+    while (*r) {
+        if (r[0] == ';' && r[1] == ';') { while (*r && *r != '\n') r++; continue; }
+        *w++ = *r++;
+    }
+    *w = 0;
+}
+
+static void check_example(const char *path, int n, const cell *vals, const char *what) {
+    char *src = read_file(path);
+    if (!src) { printf("  (examples: cannot open %s; skipping)\n", path); return; }
+    strip_comments(src);
+    int err = 0;
+    cell b = r0_s1_parse(src, &err);
+    if (err) { printf("  FAIL: %s (parse error)\n", what); failures++; return; }
+    int N = r0_s1_run(b);
+    int ok = (N == n);
+    if (ok) for (int i = 0; i < n; i++) if (r0_s1_result(i, N) != vals[i]) ok = 0;
+    if (ok) printf("  ok: %s\n", what);
+    else { printf("  FAIL: %s (N=%d want %d)\n", what, N, n); failures++; }
+}
+
+static void validate_examples(void) {
+    { cell v[2] = { mk_int(42), mk_int(15) };
+      check_example("examples/higher-order.r0", 2, v, "example: higher-order"); }
+    { cell v[2] = { mk_int(10), mk_int(20) };
+      check_example("examples/multiple-results.r0", 2, v, "example: multiple-results"); }
+    { cell v[2] = { mk_int(5), mk_int(13) };
+      check_example("examples/lexical-scope.r0", 2, v, "example: lexical-scope"); }
+    { cell v[2] = { mk_int(42), mk_int(42) };
+      check_example("examples/nested-escape.r0", 2, v, "example: nested-escape"); }
+    { cell v[3] = { mk_int(-1), mk_int(0), mk_int(1) };
+      check_example("examples/raw-branch.r0", 3, v, "example: raw-branch"); }
+    { cell v[2] = { mk_int(10), mk_int(20) };
+      check_example("examples/raw-memory.r0", 2, v, "example: raw-memory"); }
+    { cell v[3] = { mk_int(5), mk_int(5), mk_int(5) };
+      check_example("examples/raw-first-class.r0", 3, v, "example: raw-first-class"); }
+    { cell v[2] = { mk_int(42), mk_int(0) };
+      check_example("examples/return-through-unaware.r0", 2, v, "example: return-through-unaware"); }
+    { cell v[5] = { mk_int(42), mk_int(42), mk_int(42), mk_int(100), mk_int(200) };
+      check_example("examples/mini-library.r0", 5, v, "example: mini-library"); }
+}
+
 /* ===================== Phase 4B: user-defined escape =====================
  * with-escape / escape are written in ordinary R0 SOURCE plus two generic
  * `raw` fragments. The evaluator knows nothing about them (it only knows RAW
@@ -320,6 +379,10 @@ int run_r0_s1_tests(void) {
 
     printf("audit\n");
     audit_no_c_evaluator();
+
+    printf("examples\n");
+    r0_s1_init();   /* reset loader heap/code for a fresh group of programs */
+    validate_examples();
 
     printf("R0-S1 code emitted: %ld cells\n", (long)r0_s1_code_size());
     if (failures == 0) printf("all R0-S1 tests passed\n");

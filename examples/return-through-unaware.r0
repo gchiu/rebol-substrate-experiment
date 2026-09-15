@@ -1,0 +1,11 @@
+;; examples/return-through-unaware.r0 -- the definitional RETURN experiment:
+;; `return` belongs to the enclosing function (here `outer`), and crosses an
+;; unaware helper (`run`) that has no idea RETURN exists.
+
+[ counter: 0
+  run: func [body] [ do body  counter: + counter 1 ]
+  outer: func [] [ run [ return 42 ]  99 ]
+
+  ;; outer yields 42; the code after `do body` inside run never ran,
+  ;; and the 99 was abandoned:
+  values [ outer  counter ] ]            ;; => 42 0

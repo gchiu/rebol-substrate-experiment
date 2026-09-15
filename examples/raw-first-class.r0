@@ -1,0 +1,16 @@
+;; examples/raw-first-class.r0 -- a RAW callable is an ordinary first-class
+;; value from R0's point of view: assign it, alias it, pass it to a function,
+;; and invoke it from inside a closure. No runtime special cases.
+
+[ c5: raw [ INT 5 ARITY 1 EXIT ]
+
+  ;; alias it (get-word copies the value without calling it):
+  alias: :c5
+
+  ;; pass it to an ordinary function, which calls it:
+  apply: func [f] [ f ]
+
+  ;; invoke it from inside a closure body:
+  call5: func [] [ c5 ]
+
+  values [ alias  apply :c5  call5 ] ]   ;; => 5 5 5

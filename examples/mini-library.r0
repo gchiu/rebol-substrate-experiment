@@ -1,0 +1,25 @@
+;; examples/mini-library.r0 -- small conveniences built entirely in ordinary
+;; R0 (no RAW). This shows ordinary library composition, not VM tricks.
+
+[ ;; apply f to one argument:
+  apply-one: func [f x] [ f x ]
+
+  ;; apply f twice:
+  twice: func [f x] [ y: f x  f y ]
+
+  ;; return a function that adds n:
+  make-adder: func [n] [ func [x] [ + x n ] ]
+
+  ;; pick a or b by a condition:
+  choose: func [c a b] [ either c [ a ] [ b ] ]
+
+  inc: func [x] [ + x 1 ]
+  add40: make-adder 40
+
+  values [
+      apply-one :inc 41          ;; => 42
+      twice :inc 40              ;; => 42
+      add40 2                    ;; => 42
+      choose > 3 2 100 200       ;; => 100
+      choose < 3 2 100 200       ;; => 200
+  ] ]                             ;; => 42 42 42 100 200

@@ -1,0 +1,14 @@
+;; examples/raw-branch.r0 -- a RAW callable that branches on an argument using
+;; 0BRANCH (the `ZBRANCH` mnemonic) and labels, returning different ordinary
+;; R0 values. No hard-wired machine addresses.
+
+[ sign: raw 1 [
+      LIT 16 DIV                       ;; untag the argument -> n
+      DUP LIT 0 EQ ZBRANCH Lnonneg     ;; n == 0 ?
+      DROP INT 0 ARITY 1 EXIT          ;; yes: return 0
+      Lnonneg: LIT 0 GT ZBRANCH Lneg   ;; n > 0 ?
+      INT 1 ARITY 1 EXIT               ;; yes: return 1
+      Lneg: INT -1 ARITY 1 EXIT        ;; no: return -1
+  ]
+
+  values [ sign -5  sign 0  sign 7 ] ]   ;; => -1 0 1

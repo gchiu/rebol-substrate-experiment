@@ -1,0 +1,18 @@
+;; examples/higher-order.r0 -- functions as ordinary values.
+;;
+;; A function is a first-class value. `:word` (get-word) yields the value bound
+;; to `word` without calling it, so it can be passed to another function.
+
+[ apply-one: func [f x] [ f x ]          ;; apply f to one argument x
+
+  inc: func [x] [ + x 1 ]
+
+  ;; a function that returns a function, then pass that closure along:
+  make-adder: func [n] [ func [x] [ + x n ] ]
+  add10: make-adder 10
+
+  values [
+      apply-one :inc 41      ;; => 42
+      apply-one :add10 5     ;; => 15
+  ]
+]

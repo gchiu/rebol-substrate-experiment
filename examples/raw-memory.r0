@@ -1,0 +1,12 @@
+;; examples/raw-memory.r0 -- generic @ (fetch) and ! (store) through RAW,
+;; using the documented symbolic scratch cells SCRATCH_A / SCRATCH_B.
+
+[ to-a: raw 1 [ LIT SCRATCH_A ! ARITY 1 EXIT ]   ;; ( v -- ) store v in A
+  to-b: raw 1 [ LIT SCRATCH_B ! ARITY 1 EXIT ]   ;; ( v -- ) store v in B
+  of-a: raw   [ LIT SCRATCH_A @ ARITY 1 EXIT ]   ;; ( -- v ) read A
+  of-b: raw   [ LIT SCRATCH_B @ ARITY 1 EXIT ]   ;; ( -- v ) read B
+
+  to-a 10
+  to-b 20
+
+  values [ of-a  of-b ] ]                        ;; => 10 20
