@@ -1,0 +1,20 @@
+;; examples/closures.r0 -- functions, lexical scope, higher-order use.
+
+[ add: func [a b] [ + a b ]
+  add 2 3 ]                          ;; => 5
+
+[ f: func [] [ 42 ]
+  f ]                                ;; => 42 (zero-argument function)
+
+;; lexical capture: the inner function closes over the outer parameter.
+[ outer: func [x] [ func [y] [ + x y ] ]
+  add3: outer 3
+  add3 4 ]                           ;; => 7
+
+;; a function that returns a function; apply it immediately.
+[ apply: func [g] [ g ]
+  c5: func [] [ 5 ]
+  apply :c5 ]                        ;; => 5   (:word passes the value, not a call)
+
+;; conditionals: either takes (cond then-block else-block).
+[ either > 3 2 [ 100 ] [ 200 ] ]     ;; => 100

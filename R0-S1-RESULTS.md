@@ -624,3 +624,79 @@ of that is done by generic RAW S1 code reading/writing memory.
 No. The escape transfer is a memory copy of the saved frame record into the
 registers and RV cells, followed by a staged `>R` + `EXIT` — all derived from
 the frozen seven primitives.
+
+# Phase 4B cleanup — symbolic RAW ABI + examples
+
+## What changed (recorded explicitly)
+
+Two previously-frozen-by-convention files were touched for this ABI/tooling
+cleanup only (no control semantics added):
+
+- `r0_s1.h`: added two generic scratch cells `RV_SCRATCH_A` (8260) and
+  `RV_SCRATCH_B` (8261) in the free region above the RV cells and below the
+  data stack.
+- `r0_s1_runtime.c`: the RAW assembler now resolves *symbolic ABI names* in
+  `LIT`/`INT`/`ARITY`/`HOST` operands, via a static name→value table. The
+  branch operands (`ZBRANCH`/`BRANCH`/`CALL`) still treat words as labels.
+
+`r0-trapdoor-v1` remains the historical Phase-4A evidence; these files are no
+longer claimed byte-identical to it. A new baseline is created below.
+
+## Symbolic ABI names added
+
+User-facing names resolved to cells/offsets at assembly time:
+
+| name | maps to | value |
+|------|---------|-------|
+| `REG_IP` | `REG_IP` | 0 |
+| `REG_SP` | `REG_SP` | 1 |
+| `REG_RP` | `REG_RP` | 2 |
+| `REG_HP` | `REG_HP` | 3 |
+| `RV_CUR` | `RV_CUR` | 8192 |
+| `RV_END` | `RV_END` | 8193 |
+| `RV_CTX` | `RV_CTX` | 8194 |
+| `RV_BLK` | `RV_BLK` | 8214 |
+| `RV_FRAME` | `RV_FRAME` | 8215 |
+| `FRAME_PREV` | `FRAME_PREV` | 0 |
+| `FRAME_SITE_ID` | `FRAME_SITE` | 1 |
+| `FRAME_SAVED_SP` | `FRAME_SP` | 2 |
+| `FRAME_SAVED_RP` | `FRAME_RP` | 3 |
+| `FRAME_SAVED_IP` | `FRAME_IP` | 4 |
+| `FRAME_SAVED_CTX` | `FRAME_CTX` | 5 |
+| `FRAME_SAVED_CUR` | `FRAME_CUR` | 6 |
+| `FRAME_SAVED_END` | `FRAME_END` | 7 |
+| `FRAME_SAVED_BLK` | `FRAME_BLK` | 8 |
+| `SCRATCH_A` | `RV_SCRATCH_A` | 8260 |
+| `SCRATCH_B` | `RV_SCRATCH_B` | 8261 |
+
+## Assurance: mapping is tooling only
+
+The assembler's name table is a pure transliteration. It has no knowledge of
+ESCAPE, RETURN, BREAK, THROW, CATCH, UPARSE, or any high-level construct; it
+maps generic names to generic cells. No S1 primitive, no HOST service, and no
+evaluator behavior changed.
+
+## Canonical RAW examples: no magic addresses
+
+`examples/escape.r0` (and `examples/raw-basics.r0`) now use only symbolic ABI
+names — no hard-wired machine addresses remain. The escape tests in
+`r0_s1_tests.c` were rewritten to the same symbolic source; their behavior is
+unchanged (same SP/RP traces, e.g. `rp 24576->24576 (min 24559)`).
+
+## Examples directory
+
+`examples/` now contains `README.md`, `basics.r0`, `closures.r0`, `counter.r0`,
+`recursion.r0`, `nonlocal-return.r0`, `raw-basics.r0`, `escape.r0`. The README
+describes the progression (ordinary R0 -> closures/recursion -> non-local
+RETURN -> RAW trapdoor -> user-defined ESCAPE) and notes that, with no file
+loader yet, each file is a canonical source listing embedded in the tests.
+
+## Test results
+
+Full suite before and after: **117 ok, 0 fail, exit 0**. S1 freeze
+`./check-frozen-s1.sh` still passes (`f90496c26dc45c7a387d8fc8639cd2781507d3d2`).
+
+## New baseline
+
+After this cleanup, the R0 trapdoor baseline is the commit recorded below
+(`Add symbolic RAW ABI and R0 examples`).

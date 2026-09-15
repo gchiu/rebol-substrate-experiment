@@ -1,0 +1,9 @@
+;; examples/counter.r0 -- mutable captured state: a closure over a set-word.
+;;
+;; Each call to make-counter returns a fresh counter with its own state.
+
+[ make-counter: func [start] [ func [delta] [ start: + start delta  start ] ]
+  c: make-counter 10
+  a: c 5
+  b: c 1
+  values [a b] ]                     ;; => 15 16

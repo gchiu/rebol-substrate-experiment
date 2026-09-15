@@ -1,0 +1,18 @@
+;; examples/nonlocal-return.r0 -- the built-in definitional RETURN experiment.
+;;
+;; `return` transfers control out of the enclosing function to its caller,
+;; bypassing any code between the return and the function's end. The target is
+;; selected by definitional scope (the enclosing function), not the call chain.
+
+[ f: func [] [ return 42  99 ]
+  f ]                                ;; => 42 (the 99 is never evaluated)
+
+;; RETURN crosses unaware helper functions:
+[ side: 0
+  helper: func [b] [ do b  side: 1 ]
+  outer: func [] [ helper [ return 42 ]  99 ]
+  values [outer side] ]              ;; => 42 0 (the side effect is skipped)
+
+;; a return carries a whole result set:
+[ f: func [] [ return values [10 20] ]
+  f ]                                ;; => 10 20

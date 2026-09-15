@@ -78,22 +78,23 @@ static void audit_no_c_evaluator(void) {
 /* ===================== Phase 4B: user-defined escape =====================
  * with-escape / escape are written in ordinary R0 SOURCE plus two generic
  * `raw` fragments. The evaluator knows nothing about them (it only knows RAW
- * values are callable, from Phase 4A). Nothing in r0_s1_runtime.c / r0_s1.h
- * is changed; the escape library is re-assembled into each test source. */
+ * values are callable, from Phase 4A). The fragments use only the symbolic
+ * RAW ABI (REG_*, RV_*, FRAME_*, SCRATCH_*), no hard-wired addresses. The
+ * escape library is re-assembled into each test source. */
 
 static const char *ESC_LIB =
-    " frame-here: raw [ LIT 8215 @ ARITY 1 EXIT ] "          /* read RV_FRAME */
+    " frame-here: raw [ LIT RV_FRAME @ ARITY 1 EXIT ] "         /* read RV_FRAME */
     " restore: raw 2 [ "
-    "   LIT 8260 ! LIT 8261 ! "                              /* save result, frame */
-    "   LIT 8261 @ LIT 5 ADD @ LIT 8194 ! "                  /* RV_CTX  <- frame.ctx  */
-    "   LIT 8261 @ LIT 6 ADD @ LIT 8192 ! "                  /* RV_CUR  <- frame.cur  */
-    "   LIT 8261 @ LIT 7 ADD @ LIT 8193 ! "                  /* RV_END  <- frame.end  */
-    "   LIT 8261 @ LIT 8 ADD @ LIT 8214 ! "                  /* RV_BLK  <- frame.blk  */
-    "   LIT 8261 @ @ LIT 8215 ! "                            /* RV_FRAME<- frame.prev */
-    "   LIT 8261 @ LIT 3 ADD @ LIT 2 ! "                     /* REG_RP  <- frame.rp   */
-    "   LIT 8261 @ LIT 4 ADD @ >R "                          /* stage frame.ip on R   */
-    "   LIT 8261 @ LIT 2 ADD @ LIT 1 ! "                     /* REG_SP  <- frame.sp   */
-    "   LIT 8260 @ LIT 16 "                                  /* push [result, count]  */
+    "   LIT SCRATCH_A ! LIT SCRATCH_B ! "                       /* save result, frame */
+    "   LIT SCRATCH_B @ LIT FRAME_SAVED_CTX ADD @ LIT RV_CTX ! "
+    "   LIT SCRATCH_B @ LIT FRAME_SAVED_CUR ADD @ LIT RV_CUR ! "
+    "   LIT SCRATCH_B @ LIT FRAME_SAVED_END ADD @ LIT RV_END ! "
+    "   LIT SCRATCH_B @ LIT FRAME_SAVED_BLK ADD @ LIT RV_BLK ! "
+    "   LIT SCRATCH_B @ @ LIT RV_FRAME ! "                      /* RV_FRAME <- frame.prev */
+    "   LIT SCRATCH_B @ LIT FRAME_SAVED_RP ADD @ LIT REG_RP ! "
+    "   LIT SCRATCH_B @ LIT FRAME_SAVED_IP ADD @ >R "           /* stage frame.ip on R */
+    "   LIT SCRATCH_B @ LIT FRAME_SAVED_SP ADD @ LIT REG_SP ! "
+    "   LIT SCRATCH_A @ LIT 16 "                                /* push [result, count] */
     "   EXIT ] "
     " with-escape: func [body] [ "
     "   target: frame-here "

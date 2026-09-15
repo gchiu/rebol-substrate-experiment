@@ -1,0 +1,14 @@
+;; examples/recursion.r0 -- recursion and the definitional `return` keyword.
+;;
+;; `fact` calls itself; the base case uses `either`.
+
+[ fact: func [n] [
+      either <= n 1 [ 1 ] [ * n fact - n 1 ]
+    ]
+  fact 5 ]                           ;; => 120
+
+;; a recursive helper that uses `return` for the base case:
+[ sum: func [n] [
+      either <= n 0 [ return 0 ] [ + n sum - n 1 ]
+    ]
+  sum 5 ]                            ;; => 15

@@ -89,6 +89,13 @@ enum {
     RV_RES_BUF  = RV_BASE + 40  /* scratch: preserved result set (16 cells) */
 };
 
+/* Generic scratch cells available to RAW fragments. They live in the free
+ * region above the RV cells and below the data stack (DS_INIT = 16384), so
+ * they never collide with evaluator state, code, or stack. RAW code may use
+ * them for temporaries that must survive across register/state writes. */
+#define RV_SCRATCH_A 8260
+#define RV_SCRATCH_B 8261
+
 /* context layout: [parent, count, cap, (word,value)...] */
 enum { CTX_PARENT = 0, CTX_COUNT = 1, CTX_CAP = 2, CTX_DATA = 3 };
 

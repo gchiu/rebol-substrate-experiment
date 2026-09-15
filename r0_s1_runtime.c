@@ -120,6 +120,38 @@ static cell emit_call_fwd(void);   /* forward decl (defined in the emitter secti
  * derived conveniences, and knows NOTHING about R0 control constructs
  * (break/throw or any reified control effect). */
 
+/* Symbolic ABI: user-facing names for memory cells and frame offsets,
+ * resolved to numbers at assembly time. This is tooling only — the assembler
+ * has no idea what ESCAPE / RETURN / BREAK / THROW / CATCH / UPARSE or any
+ * other high-level construct means; it maps generic names to generic cells.
+ * The numeric mapping lives in the frozen layout constants above. */
+typedef struct { const char *name; cell value; } raw_sym_t;
+static const raw_sym_t raw_syms[] = {
+    { "REG_IP", REG_IP }, { "REG_SP", REG_SP }, { "REG_RP", REG_RP }, { "REG_HP", REG_HP },
+    { "RV_CTX", RV_CTX }, { "RV_CUR", RV_CUR }, { "RV_END", RV_END },
+    { "RV_BLK", RV_BLK }, { "RV_FRAME", RV_FRAME },
+    { "FRAME_PREV", FRAME_PREV }, { "FRAME_SITE_ID", FRAME_SITE },
+    { "FRAME_SAVED_SP", FRAME_SP }, { "FRAME_SAVED_RP", FRAME_RP },
+    { "FRAME_SAVED_IP", FRAME_IP }, { "FRAME_SAVED_CTX", FRAME_CTX },
+    { "FRAME_SAVED_CUR", FRAME_CUR }, { "FRAME_SAVED_END", FRAME_END },
+    { "FRAME_SAVED_BLK", FRAME_BLK },
+    { "SCRATCH_A", RV_SCRATCH_A }, { "SCRATCH_B", RV_SCRATCH_B },
+};
+#define N_RAW_SYMS ((int)(sizeof raw_syms / sizeof raw_syms[0]))
+
+/* resolve an operand token to a cell/offset: an integer literal, or a
+ * symbolic ABI name. Returns 0 and sets *ok=0 if unresolved. */
+static cell raw_resolve(cell tok, int *ok) {
+    if (r0_tag(tok) == T_INT) { *ok = 1; return int_val(tok); }
+    if (r0_tag(tok) == T_WORD) {
+        const char *nm = syms[word_id(tok)];
+        for (int i = 0; i < N_RAW_SYMS; i++)
+            if (strcmp(nm, raw_syms[i].name) == 0) { *ok = 1; return raw_syms[i].value; }
+    }
+    *ok = 0;
+    return 0;
+}
+
 typedef struct { const char *name; cell addr; } raw_label_t;
 static raw_label_t raw_labels[64];
 static int raw_nlabels;
@@ -154,11 +186,18 @@ static cell assemble_raw(cell block) {
             || strcmp(nm, "BRANCH") == 0 || strcmp(nm, "CALL") == 0) {
             i++;
             cell op = (i < n) ? M[bp + BLK_DATA + i] : R0_NONE;
-            if (strcmp(nm, "LIT") == 0) asm_lit(int_val(op));
-            else if (strcmp(nm, "INT") == 0) asm_lit(mk_int(int_val(op)));
-            else if (strcmp(nm, "ARITY") == 0) asm_lit(mk_int(int_val(op)));
-            else if (strcmp(nm, "HOST") == 0) asm_host((int)int_val(op));
-            else if (strcmp(nm, "ZBRANCH") == 0) {
+            if (strcmp(nm, "LIT") == 0 || strcmp(nm, "INT") == 0
+                || strcmp(nm, "ARITY") == 0 || strcmp(nm, "HOST") == 0) {
+                int ok; cell v = raw_resolve(op, &ok);
+                if (!ok) {
+                    fprintf(stderr, "r0_s1: unresolved RAW operand in '%s'\n", nm);
+                    continue;
+                }
+                if (strcmp(nm, "LIT") == 0) asm_lit(v);
+                else if (strcmp(nm, "INT") == 0) asm_lit(mk_int(v));
+                else if (strcmp(nm, "ARITY") == 0) asm_lit(mk_int(v));
+                else asm_host((int)v);
+            } else if (strcmp(nm, "ZBRANCH") == 0) {
                 if (r0_tag(op) == T_WORD) { cell q = asm_zbranch_fwd(); raw_refs[raw_nrefs].patch = q; raw_refs[raw_nrefs].name = syms[word_id(op)]; raw_nrefs++; }
                 else asm_zbranch((int)int_val(op));
             } else if (strcmp(nm, "BRANCH") == 0) {

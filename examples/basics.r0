@@ -1,0 +1,17 @@
+;; examples/basics.r0 -- the minimal evaluator: literals, arithmetic, words.
+;;
+;; R0 is evaluated on the frozen S1 substrate. A program is a block; the value
+;; of the last expression is the result.
+
+[ + 2 3 ]             ;; => 5
+
+[ none ]              ;; => none (the NONE value)
+
+[ x: 10
+  + x 5 ]             ;; => 15   (set-word binds, word reads)
+
+[ 10 20 ]             ;; => 20   (only the last value is the result)
+
+[ print 42 ]          ;; prints 42, yields zero results
+
+[ values [10 20] ]    ;; => 10 20   (a result set of two values)

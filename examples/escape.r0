@@ -3,50 +3,48 @@
 ;; evaluator knows only that RAW values are callable (Phase 4A); it has no
 ;; WITH-ESCAPE / ESCAPE built-in, keyword, native, or status code.
 ;;
-;; This file is documentation: the harness has no file loader, so the tests in
-;; r0_s1_tests.c embed this exact source as strings.
+;; The raw fragments use the symbolic RAW ABI (REG_*, RV_*, FRAME_SAVED_*,
+;; SCRATCH_*) -- no hard-wired machine addresses.
+;;
+;; This is a canonical source listing: the harness has no file loader, so the
+;; tests in r0_s1_tests.c embed this exact source as strings.
 
-;; -- RAW fragments (low-level work R0 cannot express) -----------------------
+[ ;; -- RAW fragments (low-level work R0 cannot express) ----------------------
 
-;; frame-here : ( -- frame )  read the current activation-frame pointer.
-;; The frame is a documented heap record [prev site sp rp ip ctx cur end blk].
-frame-here: raw [ LIT 8215 @ ARITY 1 EXIT ]
+  ;; frame-here : ( -- frame )  read the current activation-frame pointer.
+  frame-here: raw [ LIT RV_FRAME @ ARITY 1 EXIT ]
 
-;; restore : ( frame result -- )  restore the caller state recorded in `frame`
-;; and jump to its return address, leaving [result, 1] as the result set.
-;; This is a generic "restore a saved machine state" operation: it copies the
-;; frame's saved SP/RP/IP and evaluator cells back into the memory-mapped
-;; registers (REG_SP=1, REG_RP=2, REG_IP=0) and the RV cells (RV_CUR=8192,
-;; RV_END=8193, RV_CTX=8194, RV_BLK=8214, RV_FRAME=8215).  Scratch cells
-;; 8260/8261 hold the result and frame across the register writes.
-restore: raw 2 [
-    LIT 8260 ! LIT 8261 !
-    LIT 8261 @ LIT 5 ADD @ LIT 8194 !
-    LIT 8261 @ LIT 6 ADD @ LIT 8192 !
-    LIT 8261 @ LIT 7 ADD @ LIT 8193 !
-    LIT 8261 @ LIT 8 ADD @ LIT 8214 !
-    LIT 8261 @ @ LIT 8215 !
-    LIT 8261 @ LIT 3 ADD @ LIT 2 !
-    LIT 8261 @ LIT 4 ADD @ >R
-    LIT 8261 @ LIT 2 ADD @ LIT 1 !
-    LIT 8260 @ LIT 16
-    EXIT
+  ;; restore : ( frame result -- )  restore the caller state recorded in
+  ;; `frame` and jump to its return address, leaving [result, 1].
+  restore: raw 2 [
+      LIT SCRATCH_A ! LIT SCRATCH_B !                     ;; save (result, frame)
+      LIT SCRATCH_B @ LIT FRAME_SAVED_CTX ADD @ LIT RV_CTX !
+      LIT SCRATCH_B @ LIT FRAME_SAVED_CUR ADD @ LIT RV_CUR !
+      LIT SCRATCH_B @ LIT FRAME_SAVED_END ADD @ LIT RV_END !
+      LIT SCRATCH_B @ LIT FRAME_SAVED_BLK ADD @ LIT RV_BLK !
+      LIT SCRATCH_B @ @ LIT RV_FRAME !                    ;; RV_FRAME <- frame.prev
+      LIT SCRATCH_B @ LIT FRAME_SAVED_RP ADD @ LIT REG_RP !
+      LIT SCRATCH_B @ LIT FRAME_SAVED_IP ADD @ >R         ;; stage frame.ip on R
+      LIT SCRATCH_B @ LIT FRAME_SAVED_SP ADD @ LIT REG_SP !
+      LIT SCRATCH_A @ LIT 16                              ;; push [result, 1]
+      EXIT
+  ]
+
+  ;; -- ordinary R0 composition ----------------------------------------------
+
+  ;; with-escape : ( body -- result )  run `body` with a first-class ESCAPE.
+  with-escape: func [body] [
+      target: frame-here
+      escape: func [r] [ restore target r ]
+      body :escape
+  ]
+
+  ;; -- usage ----------------------------------------------------------------
+
+  x: with-escape func [escape] [
+      escape 42
+      99           ;; never evaluated
+  ]
+
+  x                ;; => 42
 ]
-
-;; -- ordinary R0 composition -------------------------------------------------
-
-;; with-escape : ( body -- result )  run `body` with a first-class ESCAPE.
-;; `body` is invoked with one argument: a callable that, when called, transfers
-;; non-locally back to this with-escape invocation carrying its argument.
-with-escape: func [body] [
-    target: frame-here
-    escape: func [r] [ restore target r ]
-    body :escape
-]
-
-;; -- usage --------------------------------------------------------------------
-;;   x: with-escape func [escape] [
-;;       escape 42
-;;       99            ;; never evaluated
-;;   ]
-;;   ;; x == 42

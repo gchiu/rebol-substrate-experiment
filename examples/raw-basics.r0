@@ -1,0 +1,28 @@
+;; examples/raw-basics.r0 -- the generic RAW trapdoor (Phase 4A).
+;;
+;; `raw [ ... ]` assembles symbolic S1 assembly into a first-class callable.
+;; `raw N [ ... ]` declares that the callable takes N arguments (each reduced
+;; to one value). The fragment leaves a result set [v1 .. vN, count].
+;;
+;; Mnemonics: LIT INT ARITY HOST @ ! DUP DROP >R R> EXIT ZBRANCH BRANCH CALL
+;;            ADD SUB MUL DIV MOD EQ NE LT GT LE GE PRINT ALLOC NONE
+;; plus symbolic ABI operands: REG_*  RV_*  FRAME_SAVED_*  SCRATCH_*.
+;;
+;; LIT n = raw cell n; INT n = tagged R0 integer; ARITY n = result count.
+
+[ c42: raw [ INT 42 ARITY 1 EXIT ]
+  c42 ]                              ;; => 42 (constant, zero args)
+
+[ add2: raw 2 [ LIT 16 DIV >R LIT 16 DIV R> ADD LIT 16 MUL ARITY 1 EXIT ]
+  add2 3 4 ]                         ;; => 7 (two arguments, untag/tag around ADD)
+
+[ t: raw 1 [ LIT 16 DIV LIT 0 EQ ZBRANCH Lelse INT 1 ARITY 1 EXIT
+             Lelse: INT 2 ARITY 1 EXIT ]
+  values [ t 0  t 5 ] ]              ;; => 1 2 (conditional + labels)
+
+[ two: raw [ INT 10 INT 20 ARITY 2 EXIT ]
+  two ]                              ;; => 10 20 (multiple results)
+
+;; read/write memory through the symbolic ABI scratch cells:
+[ sw: raw [ INT 42 LIT SCRATCH_A ! LIT SCRATCH_A @ ARITY 1 EXIT ]
+  sw ]                               ;; => 42 (store then fetch)
