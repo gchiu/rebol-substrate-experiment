@@ -19,6 +19,7 @@ r0_s1_tests.o: r0_s1_tests.c r0_s1.h s1.h
 main.o: main.c s1.h
 
 test: s1
+	./check-frozen-s1.sh
 	./s1
 
 clean:
