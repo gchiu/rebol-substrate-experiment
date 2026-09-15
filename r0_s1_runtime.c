@@ -52,8 +52,9 @@ static cell lalloc(int n) {
 /* ============================= loader: objects ========================= */
 
 static cell make_block(cell cap) {
-    cell p = lalloc(1 + (int)cap);
+    cell p = lalloc(2 + (int)cap);   /* [count, site_id, elems...] */
     M[p] = 0;
+    M[p + BLK_SITE] = 0;
     return mk_block(p);
 }
 static cell make_context(cell parent, cell cap) {
@@ -74,6 +75,11 @@ static void bind(cell ctx, cell word, cell value) {
 /* ============================== parser ================================= */
 
 typedef struct { const char *s; int pos; int err; } parser_t;
+
+/* func-site-id assignment and the lexical enclosing-site stack (parse/load) */
+static int site_stack[64];
+static int site_depth;
+static int next_site;
 
 static void skip_ws(parser_t *P) {
     while (P->s[P->pos] && isspace((unsigned char)P->s[P->pos])) P->pos++;
@@ -114,13 +120,32 @@ static cell parse_block(parser_t *P) {
         char c = P->s[P->pos];
         if (c == ']') { P->pos++; break; }
         if (c == '\0') { P->err = 1; break; }
+        /* `func` keyword: assign a func-site-id; parse spec normally, parse
+         * body under the new site-id so nested blocks inherit it. */
+        if (c != '[' && c != '-' && !(c >= '0' && c <= '9')) {
+            int start = P->pos;
+            while (P->s[P->pos] && !isspace((unsigned char)P->s[P->pos])
+                   && P->s[P->pos] != '[' && P->s[P->pos] != ']') P->pos++;
+            int len = P->pos - start;
+            if (len == 4 && strncmp(P->s + start, "func", 4) == 0) {
+                int sid = next_site++;
+                tmp[n++] = intern("func");
+                tmp[n++] = parse_form(P);                 /* spec */
+                site_stack[site_depth++] = sid;
+                tmp[n++] = parse_form(P);                 /* body (under sid) */
+                site_depth--;
+                continue;
+            }
+            P->pos = start;
+        }
         tmp[n++] = parse_form(P);
         if (n >= 256) { P->err = 1; break; }
     }
     cell b = make_block((cell)n);
     cell p = r0_untag(b);
     M[p] = (cell)n;
-    for (int i = 0; i < n; i++) M[p + 1 + i] = tmp[i];
+    M[p + BLK_SITE] = site_depth > 0 ? site_stack[site_depth - 1] : 0;
+    for (int i = 0; i < n; i++) M[p + BLK_DATA + i] = tmp[i];
     return b;
 }
 
@@ -161,7 +186,7 @@ static cell to_block_eval[16]; static int n_block_eval;
 /* ========================== evaluator build ============================ */
 
 static cell r_reduce, r_discard, r_lookup, r_set, r_append, r_mkctx, r_mkclosure;
-static cell r_values, r_run_block, r_native, r_invoke_closure, r_subexpr, r_block_eval;
+static cell r_values, r_run_block, r_native, r_invoke_closure, r_return, r_subexpr, r_block_eval;
 
 /* REDUCE: [r1..rN, tagged-N] -> [r1] (or [NONE] if N==0) */
 static void emit_reduce(void) {
@@ -317,17 +342,18 @@ static void emit_mkctx(void) {
     asm_exit();
 }
 
-/* MKCLOSURE: ( spec body captured -- closure ) */
+/* MKCLOSURE: ( spec body captured site-id -- closure ) */
 static void emit_mkclosure(void) {
     r_mkclosure = asm_here();
     asm_lit(16); asm_host(HOST_ALLOC); e_setc(RV_T4);   /* 16-aligned, >= 4 cells */
+    e_pop_to(RV_T5);  /* site-id */
     e_pop_to(RV_T1);  /* captured */
     e_pop_to(RV_T2);  /* body */
     e_pop_to(RV_T3);  /* spec */
     e_cell(RV_T3); e_cell(RV_T4); asm_store();                            /* spec */
     e_cell(RV_T2); e_cell(RV_T4); asm_lit(1); asm_host(HOST_ADD); asm_store(); /* body */
     e_cell(RV_T1); e_cell(RV_T4); asm_lit(2); asm_host(HOST_ADD); asm_store(); /* captured */
-    asm_lit(0); e_cell(RV_T4); asm_lit(3); asm_host(HOST_ADD); asm_store();    /* site */
+    e_cell(RV_T5); e_cell(RV_T4); asm_lit(3); asm_host(HOST_ADD); asm_store(); /* site-id */
     e_cell(RV_T4); asm_lit(T_CLOSURE); asm_host(HOST_ADD);
     asm_exit();
 }
@@ -339,8 +365,10 @@ static void emit_values(void) {
     e_cell(RV_T1); asm_fetch(); e_setc(RV_T3);        /* count */
     e_cell(RV_CUR); asm_toR();
     e_cell(RV_END); asm_toR();
-    e_cell(RV_T1); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_CUR);
-    e_cell(RV_T1); asm_lit(1); asm_host(HOST_ADD); e_cell(RV_T3); asm_host(HOST_ADD); e_setc(RV_END);
+    e_cell(RV_BLK); asm_toR();
+    e_cell(RV_T1); asm_lit(BLK_DATA); asm_host(HOST_ADD); e_setc(RV_CUR);
+    e_cell(RV_T1); asm_lit(BLK_DATA); asm_host(HOST_ADD); e_cell(RV_T3); asm_host(HOST_ADD); e_setc(RV_END);
+    e_cell(RV_T1); e_setc(RV_BLK);
     asm_lit(0); e_setc(RV_NVALS);
     cell vloop = asm_here();
     e_cell(RV_CUR); e_cell(RV_END); asm_host(HOST_LT);
@@ -354,6 +382,7 @@ static void emit_values(void) {
     asm_patch_here(j_err);
     asm_host(HOST_DUMP); asm_halt();
     asm_patch_here(j_done);
+    asm_fromR(); e_setc(RV_BLK);
     asm_fromR(); e_setc(RV_END);
     asm_fromR(); e_setc(RV_CUR);
     e_cell(RV_NVALS); asm_lit(16); asm_host(HOST_MUL);
@@ -361,17 +390,21 @@ static void emit_values(void) {
 }
 
 /* RUN-BLOCK: ( block -- result-set )  evaluate a block argument as code.
- * Saves RV_CUR/RV_END, points them at the block, calls block-eval, restores. */
+ * Saves RV_CUR/RV_END/RV_BLK, points them at the block, calls block-eval,
+ * restores. */
 static void emit_run_block(void) {
     r_run_block = asm_here();
     e_untag_ptr(); e_setc(RV_T1);                    /* block_ptr */
     e_cell(RV_T1); asm_fetch(); e_setc(RV_T3);        /* count */
     e_cell(RV_CUR); asm_toR();
     e_cell(RV_END); asm_toR();
-    e_cell(RV_T1); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_CUR);
-    e_cell(RV_T1); asm_lit(1); asm_host(HOST_ADD);
+    e_cell(RV_BLK); asm_toR();
+    e_cell(RV_T1); asm_lit(BLK_DATA); asm_host(HOST_ADD); e_setc(RV_CUR);
+    e_cell(RV_T1); asm_lit(BLK_DATA); asm_host(HOST_ADD);
     e_cell(RV_T3); asm_host(HOST_ADD); e_setc(RV_END);
+    e_cell(RV_T1); e_setc(RV_BLK);
     to_block_eval[n_block_eval++] = emit_call_fwd();
+    asm_fromR(); e_setc(RV_BLK);
     asm_fromR(); e_setc(RV_END);
     asm_fromR(); e_setc(RV_CUR);
     asm_exit();
@@ -426,6 +459,14 @@ static void emit_native(void) {
     asm_call(r_run_block);                          /* eval else */
     asm_exit();
     asm_patch_here(j_not_either);
+    /* do (id 102): arity 1 (block) */
+    e_cell(RV_NAT); asm_lit(RN_DO); asm_host(HOST_EQ);
+    cell j_not_do = asm_zbranch_fwd();
+    to_subexpr[n_subexpr++] = emit_call_fwd();
+    asm_call(r_reduce);
+    asm_call(r_run_block);
+    asm_exit();
+    asm_patch_here(j_not_do);
     /* arithmetic: arity 2 */
     e_cell(RV_NAT); asm_toR();                 /* save native id across arg eval */
     to_subexpr[n_subexpr++] = emit_call_fwd();
@@ -500,28 +541,105 @@ static void emit_invoke_closure(void) {
     e_cell(RV_T4); asm_lit(0); asm_host(HOST_GE);
     cell j_bind_done = asm_zbranch_fwd();
     e_pop_to(RV_T6);
-    e_cell(RV_CLOSURE); asm_fetch(); e_untag_ptr(); asm_lit(1); asm_host(HOST_ADD);
+    e_cell(RV_CLOSURE); asm_fetch(); e_untag_ptr(); asm_lit(BLK_DATA); asm_host(HOST_ADD);
     e_cell(RV_T4); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_WORD);
     e_cell(RV_T6);
     asm_call(r_append);
     e_cell(RV_T4); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T4);
     asm_branch(bind_loop);
     asm_patch_here(j_bind_done);
-    /* save caller state on RP; enter body */
-    e_cell(RV_CTX); asm_toR();
-    e_cell(RV_CUR); asm_toR();
-    e_cell(RV_END); asm_toR();
+    /* capture return continuation + caller RP baseline */
+    asm_fetchR(); e_setc(RV_SIP);
+    asm_lit(REG_RP); asm_fetch(); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_SRP);
+    /* allocate + fill the activation frame (linked list in M) */
+    asm_lit(16); asm_host(HOST_ALLOC); e_setc(RV_FNEW);
+    e_cell(RV_FRAME); e_cell(RV_FNEW); asm_store();                          /* prev */
+    e_cell(RV_CLOSURE); asm_lit(CLOSURE_SITE); asm_host(HOST_ADD); asm_fetch();
+    e_cell(RV_FNEW); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_store();   /* site */
+    asm_lit(REG_SP); asm_fetch();
+    e_cell(RV_FNEW); asm_lit(FRAME_SP); asm_host(HOST_ADD); asm_store();     /* SP */
+    e_cell(RV_SRP); e_cell(RV_FNEW); asm_lit(FRAME_RP); asm_host(HOST_ADD); asm_store(); /* RP */
+    e_cell(RV_SIP); e_cell(RV_FNEW); asm_lit(FRAME_IP); asm_host(HOST_ADD); asm_store(); /* IP */
+    e_cell(RV_CTX); e_cell(RV_FNEW); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_store(); /* CTX */
+    e_cell(RV_CUR); e_cell(RV_FNEW); asm_lit(FRAME_CUR); asm_host(HOST_ADD); asm_store(); /* CUR */
+    e_cell(RV_END); e_cell(RV_FNEW); asm_lit(FRAME_END); asm_host(HOST_ADD); asm_store(); /* END */
+    e_cell(RV_BLK); e_cell(RV_FNEW); asm_lit(FRAME_BLK); asm_host(HOST_ADD); asm_store(); /* BLK */
+    e_cell(RV_FNEW); e_setc(RV_FRAME);
+    /* enter body */
     e_cell(RV_CHILD); e_setc(RV_CTX);
-    e_cell(RV_CLOSURE); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_untag_ptr(); e_setc(RV_BODY);
-    e_cell(RV_BODY); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_CUR);
-    e_cell(RV_BODY); asm_lit(1); asm_host(HOST_ADD);
+    e_cell(RV_CLOSURE); asm_lit(CLOSURE_BODY); asm_host(HOST_ADD); asm_fetch(); e_untag_ptr(); e_setc(RV_BODY);
+    e_cell(RV_BODY); asm_lit(BLK_DATA); asm_host(HOST_ADD); e_setc(RV_CUR);
+    e_cell(RV_BODY); asm_lit(BLK_DATA); asm_host(HOST_ADD);
     e_cell(RV_BODY); asm_fetch(); asm_host(HOST_ADD); e_setc(RV_END);
+    e_cell(RV_BODY); e_setc(RV_BLK);
     to_block_eval[n_block_eval++] = emit_call_fwd();
-    /* restore caller state */
-    asm_fromR(); e_setc(RV_END);
-    asm_fromR(); e_setc(RV_CUR);
-    asm_fromR(); e_setc(RV_CTX);
+    /* normal return: restore caller state from frame, pop frame */
+    e_cell(RV_FRAME); asm_lit(FRAME_END); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_END);
+    e_cell(RV_FRAME); asm_lit(FRAME_CUR); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_CUR);
+    e_cell(RV_FRAME); asm_lit(FRAME_BLK); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_BLK);
+    e_cell(RV_FRAME); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_CTX);
+    e_cell(RV_FRAME); asm_fetch(); e_setc(RV_FRAME);
     asm_exit();
+}
+
+/* RETURN: ( -- ) non-local definitional return. Reads the current block's
+ * return-site-id, evaluates the return argument, finds the live activation
+ * with that site-id, and restores its saved SP/RP/IP/RV state, jumping to its
+ * return continuation. Intermediate activations' epilogues never run. */
+static void emit_return(void) {
+    r_return = asm_here();
+    /* site_id = M[RV_BLK + BLK_SITE] */
+    e_cell(RV_BLK); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_SITE);
+    e_cell(RV_SITE); asm_lit(0); asm_host(HOST_EQ);
+    cell j_ok = asm_zbranch_fwd();
+    asm_host(HOST_DUMP); asm_halt();                 /* return outside function */
+    asm_patch_here(j_ok);
+    /* evaluate the return argument (one sub-expression) -> [r.., N] */
+    to_subexpr[n_subexpr++] = emit_call_fwd();
+    /* preserve result set into RV_RES_BUF */
+    e_pop_to(RV_T6);                                 /* RV_T6 = tagged N */
+    e_cell(RV_T6); asm_lit(16); asm_host(HOST_DIV); e_setc(RV_N); /* RV_N = count */
+    asm_lit(0); e_setc(RV_T4);
+    cell pres_loop = asm_here();
+    e_cell(RV_T4); e_cell(RV_N); asm_host(HOST_LT);
+    cell j_pres_done = asm_zbranch_fwd();
+    e_pop_to(RV_T5);
+    e_cell(RV_T5); asm_lit(RV_RES_BUF); e_cell(RV_T4); asm_host(HOST_ADD); asm_store();
+    e_cell(RV_T4); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_T4);
+    asm_branch(pres_loop);
+    asm_patch_here(j_pres_done);
+    /* find the live activation with site_id (walk RV_FRAME chain) */
+    e_cell(RV_FRAME); e_setc(RV_T2);
+    cell find_loop = asm_here();
+    e_cell(RV_T2); asm_lit(0); asm_host(HOST_EQ);
+    cell j_nonzero = asm_zbranch_fwd();
+    asm_host(HOST_DUMP); asm_halt();                 /* no matching activation */
+    asm_patch_here(j_nonzero);
+    e_cell(RV_T2); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_fetch();
+    e_cell(RV_SITE); asm_host(HOST_EQ);
+    cell j_nomatch = asm_zbranch_fwd();
+    /* match: restore target state and jump */
+    e_cell(RV_T2); asm_lit(FRAME_SP); asm_host(HOST_ADD); asm_fetch(); asm_lit(REG_SP); asm_store();
+    e_cell(RV_N); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T4);   /* re-place: i = N-1 */
+    cell repl_loop = asm_here();
+    e_cell(RV_T4); asm_lit(0); asm_host(HOST_GE);
+    cell j_repl_done = asm_zbranch_fwd();
+    asm_lit(RV_RES_BUF); e_cell(RV_T4); asm_host(HOST_ADD); asm_fetch();
+    e_cell(RV_T4); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T4);
+    asm_branch(repl_loop);
+    asm_patch_here(j_repl_done);
+    e_cell(RV_T6);                                   /* push tagged N */
+    e_cell(RV_T2); asm_lit(FRAME_RP); asm_host(HOST_ADD); asm_fetch(); asm_lit(REG_RP); asm_store();
+    e_cell(RV_T2); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_CTX);
+    e_cell(RV_T2); asm_lit(FRAME_CUR); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_CUR);
+    e_cell(RV_T2); asm_lit(FRAME_END); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_END);
+    e_cell(RV_T2); asm_lit(FRAME_BLK); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_BLK);
+    e_cell(RV_T2); asm_fetch(); e_setc(RV_FRAME);     /* RV_FRAME = prev */
+    e_cell(RV_T2); asm_lit(FRAME_IP); asm_host(HOST_ADD); asm_fetch(); asm_lit(REG_IP); asm_store();
+    /* (control is now at the target's return continuation) */
+    asm_patch_here(j_nomatch);
+    e_cell(RV_T2); asm_fetch(); e_setc(RV_T2);         /* frame = prev */
+    asm_branch(find_loop);
 }
 
 /* SUBEXPR: evaluate one sub-expression at RV_CUR, advancing it */
@@ -543,11 +661,23 @@ static void emit_subexpr(void) {
     asm_call(r_reduce);
     to_subexpr[n_subexpr++] = emit_call_fwd();  /* body */
     asm_call(r_reduce);
-    e_cell(RV_CTX);
+    e_pop_to(RV_T2);                             /* body */
+    e_pop_to(RV_T3);                             /* spec */
+    e_cell(RV_T3);                               /* spec */
+    e_cell(RV_T2);                               /* body */
+    e_cell(RV_CTX);                              /* captured */
+    e_cell(RV_T2); e_untag_ptr(); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch(); /* site-id */
     asm_call(r_mkclosure);
     asm_lit(16);
     asm_exit();
     asm_patch_here(j_notfunc);
+    /* return keyword? word == mk_word(1) */
+    asm_dup(); asm_lit(mk_word(RETURN_SYM)); asm_host(HOST_EQ);
+    cell j_notreturn = asm_zbranch_fwd();
+    asm_drop();
+    asm_call(r_return);                          /* non-local return (jumps away) */
+    asm_exit();                                  /* unreachable safety */
+    asm_patch_here(j_notreturn);
     asm_call(r_lookup);
     asm_dup(); asm_lit(-1); asm_host(HOST_EQ);
     cell j_err = asm_zbranch_fwd();
@@ -640,6 +770,8 @@ cell r0_s1_init(void) {
     hp = R0S1_HEAP_BASE;
     nsyms = 0;
     n_subexpr = 0; n_block_eval = 0;
+    next_site = 1;      /* func-site-ids start at 1; 0 = "no enclosing func" */
+    site_depth = 0;
 
     asm_reset();
     code_begin = asm_here();
@@ -654,6 +786,7 @@ cell r0_s1_init(void) {
     emit_run_block();
     emit_native();
     emit_invoke_closure();
+    emit_return();
     emit_subexpr();
     emit_block_eval();
     emit_main();
@@ -662,8 +795,9 @@ cell r0_s1_init(void) {
     for (int i = 0; i < n_subexpr; i++) s1_set_mem(to_subexpr[i], r_subexpr);
     for (int i = 0; i < n_block_eval; i++) s1_set_mem(to_block_eval[i], r_block_eval);
 
-    /* preload the global environment ("func" first => sym 0) */
+    /* preload the global environment ("func" and "return" first => sym 0/1) */
     intern("func");
+    intern("return");
     global_ctx = make_context(R0_NONE, 48);
     bind(global_ctx, intern("+"),  mk_native(RN_ADD));
     bind(global_ctx, intern("-"),  mk_native(RN_SUB));
@@ -677,6 +811,7 @@ cell r0_s1_init(void) {
     bind(global_ctx, intern("print"), mk_native(RN_PRINT));
     bind(global_ctx, intern("values"), mk_native(RN_VALUES));
     bind(global_ctx, intern("either"), mk_native(RN_EITHER));
+    bind(global_ctx, intern("do"), mk_native(RN_DO));
 
     return main_entry;
 }
@@ -684,6 +819,7 @@ cell r0_s1_init(void) {
 cell r0_s1_parse(const char *src, int *err) {
     parser_t P; P.s = src; P.pos = 0; P.err = 0;
     *err = 0;
+    site_depth = 0;
     skip_ws(&P);
     if (P.s[P.pos] == '[') { cell b = parse_block(&P); if (P.err) *err = 1; return b; }
     cell tmp[256]; int n = 0;
@@ -696,16 +832,19 @@ cell r0_s1_parse(const char *src, int *err) {
     cell b = make_block((cell)n);
     cell p = r0_untag(b);
     M[p] = (cell)n;
-    for (int i = 0; i < n; i++) M[p + 1 + i] = tmp[i];
+    M[p + BLK_SITE] = 0;
+    for (int i = 0; i < n; i++) M[p + BLK_DATA + i] = tmp[i];
     if (P.err) *err = 1;
     return b;
 }
 
 int r0_s1_run(cell block) {
     cell bp = r0_untag(block);
-    M[RV_CUR] = bp + 1;
-    M[RV_END] = bp + 1 + M[bp];
+    M[RV_CUR] = bp + BLK_DATA;
+    M[RV_END] = bp + BLK_DATA + M[bp];
+    M[RV_BLK] = bp;
     M[RV_CTX] = global_ctx;
+    M[RV_FRAME] = 0;
     M[RV_HOSTCALLS] = 0;
     M[RV_RPMIN] = 65535;
     M[RV_SPMIN] = 65535;

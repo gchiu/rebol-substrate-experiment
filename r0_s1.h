@@ -42,7 +42,8 @@ enum {
     RN_EQ = 6, RN_LT = 8, RN_GT = 9, RN_LE = 10, RN_GE = 11,
     RN_PRINT = 14,
     RN_VALUES = 100,
-    RN_EITHER = 101
+    RN_EITHER = 101,
+    RN_DO = 102
 };
 
 /* --- memory layout ------------------------------------------------------ */
@@ -51,8 +52,10 @@ enum {
 #define R0S1_CTX_CAP   16      /* max bindings per child context */
 
 /* reserved symbol id: "func" is interned first, so mk_word(0) == the `func`
- * keyword. The emitter compares against the literal mk_word(0). */
+ * keyword. "return" is interned second, so mk_word(1) == the `return`
+ * keyword. The emitter compares against the literal mk_word(0)/mk_word(1). */
 #define FUNC_SYM 0
+#define RETURN_SYM 1
 
 /* runtime variable cells (in M) */
 enum {
@@ -74,7 +77,15 @@ enum {
     RV_BODY     = RV_BASE + 16, /* body block (transient) */
     RV_NVALS    = RV_BASE + 17, /* values: collected-count (persistent) */
     RV_RPMIN    = RV_BASE + 20, /* instrumentation: min RP seen (max depth) */
-    RV_SPMIN    = RV_BASE + 21  /* instrumentation: min SP seen (max depth) */
+    RV_SPMIN    = RV_BASE + 21, /* instrumentation: min SP seen (max depth) */
+    /* Phase 3A: non-local return */
+    RV_BLK      = RV_BASE + 22, /* current block base (raw ptr; saved/restored) */
+    RV_FRAME    = RV_BASE + 23, /* current activation frame ptr (0 = none) */
+    RV_SITE     = RV_BASE + 24, /* scratch: return target site-id */
+    RV_SIP      = RV_BASE + 25, /* scratch: saved return IP */
+    RV_SRP      = RV_BASE + 26, /* scratch: saved caller RP */
+    RV_FNEW     = RV_BASE + 27, /* scratch: new frame ptr */
+    RV_RES_BUF  = RV_BASE + 40  /* scratch: preserved result set (16 cells) */
 };
 
 /* context layout: [parent, count, cap, (word,value)...] */
@@ -82,6 +93,15 @@ enum { CTX_PARENT = 0, CTX_COUNT = 1, CTX_CAP = 2, CTX_DATA = 3 };
 
 /* closure layout: [spec, body, captured-context, func-site-id] */
 enum { CLOSURE_SPEC = 0, CLOSURE_BODY = 1, CLOSURE_CTX = 2, CLOSURE_SITE = 3 };
+
+/* block layout: [count, return-site-id, elem0, elem1, ...] */
+enum { BLK_COUNT = 0, BLK_SITE = 1, BLK_DATA = 2 };
+
+/* activation frame (linked list in M): [prev, site, SP, RP, IP, CTX, CUR, END, BLK] */
+enum {
+    FRAME_PREV = 0, FRAME_SITE = 1, FRAME_SP = 2, FRAME_RP = 3, FRAME_IP = 4,
+    FRAME_CTX = 5, FRAME_CUR = 6, FRAME_END = 7, FRAME_BLK = 8
+};
 
 /* --- loader + runtime API ------------------------------------------------ */
 

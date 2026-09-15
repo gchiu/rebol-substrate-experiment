@@ -221,3 +221,151 @@ Full suite: **84 `ok:` checks, 0 failures, exit 0.**
 No. Everything added uses the frozen seven primitives + `HOST` and the derived
 `CALL`/`EXIT`/`>R`/`R>` machinery. `HOST_ALLOC` provides runtime allocation.
 Zero S1 primitive changes.
+
+---
+
+# R0-S1 Phase 3A — Non-local RETURN
+
+Definitional non-local `return` that crosses arbitrary unaware function
+activations, implemented purely as S1 code restoring saved machine state. No
+control signal travels as an R0 value.
+
+## Exact semantics of definitional RETURN
+
+A `return` expression belongs to the *function definition whose source text
+contains it* (lexical identity), not to whatever function is currently
+executing. So:
+
+```
+outer: func [] [ helper [ return 42 ]  99 ]
+```
+
+the `return` is lexically inside `outer`, so it returns from `outer`, even
+though it is executed later inside `helper` via `do`.
+
+## Return-site metadata
+
+Produced entirely by the C loader (parse time), stored **in the block header**,
+never in block elements:
+
+- block layout is `[count, return-site-id, elem0, elem1, ...]`;
+- the parser assigns each `func` a monotonically increasing **func-site-id**
+  and, while parsing that function's body, records that site-id in every block
+  it builds there (nested blocks inherit it). A block parsed outside any
+  function gets site-id 0.
+
+This is a documented per-block simplification of the architecture's
+`(block identity, element offset) -> site-id` mapping — valid because every
+`return` site in a given block shares the same innermost enclosing function.
+Block *elements* remain ordinary R0 values; the site-id is header metadata.
+
+## Activation-frame layout
+
+A linked list of frames in `M` (allocated via `HOST_ALLOC`), root pointer in
+`RV_FRAME`:
+
+```
+frame = [ prev | site-id | saved_SP | saved_RP | saved_IP
+          | saved_CTX | saved_CUR | saved_END | saved_BLK ]
+```
+
+`saved_IP`/`saved_RP` are the caller's return continuation and RP baseline,
+captured at call time from `M[RP]` and `RP+1`. `saved_SP` is the caller data
+stack baseline after arguments are bound. `saved_CTX/CUR/END/BLK` are the
+caller's evaluator state. The frame is *S1 execution state in M* — there is no
+C shadow control stack.
+
+## Exact restoration algorithm (RETURN)
+
+1. Read `site-id = M[RV_BLK + 1]` (the current block's return-site-id); 0 is an
+   error ("return outside function").
+2. Evaluate the `return` argument as one ordinary sub-expression →
+   `[r1..rN, tagged-N]`.
+3. Preserve that result set into a fixed M buffer.
+4. Walk `RV_FRAME` top-down for the frame with `site-id`; the first match is
+   the innermost live activation.
+5. Restore `REG_SP = saved_SP`, `REG_RP = saved_RP`, then re-place the result
+   set, restore `RV_CTX/CUR/END/BLK`, set `RV_FRAME = prev`, and finally
+   `REG_IP = saved_IP` — the direct jump to the target's return continuation.
+
+The intermediate activations simply disappear: their saved frames are unlinked
+and their normal epilogues never execute. `do` (a native wrapping RUN-BLOCK)
+knows nothing about `return`; it is bypassed by the register restoration.
+
+## Recursion disambiguation
+
+The frame chain is walked top-down, so the *first* frame with a matching
+site-id is the innermost live activation. Test F proves this: with several live
+activations of the same function, `return` selects the innermost (f 0 == 6,
+not 3).
+
+## Evidence that unaware calls were crossed
+
+Test D runs `outer -> f -> g -> h -> do -> return` where each of f/g/h performs
+an observable `counter += …` *after* its nested call. After the non-local
+return the counter is exactly 0 — none of the post-call epilogues ran. Test E
+runs the identical chain without `return` and observes counter == 1111, proving
+the machinery itself does not skip epilogues. Test J runs one `innocent`
+function on both a normal block and a `return` block: it increments a counter
+only in the normal case, with no `return`-recognizing branch in `innocent`.
+
+## Stack measurements (deep unaware chain)
+
+```
+rp 24576 -> 24576 (min 24558)   sp 16384 -> 16381 (min 16383)
+```
+
+Final `RP` equals the caller baseline (24576); final `SP` holds exactly the
+result set. Repeated invocation shows no SP/RP leakage.
+
+## Tests (all pass; full suite: 96 ok, 0 fail, exit 0)
+
+A. simple `return 42` (the following `99` never evaluated)
+B. return through one unaware helper (side effect skipped)
+C. deep chain f->g->h->do, all epilogues bypassed, RP restored
+D. intermediate side-effect proof (counter == 0)
+E. ordinary-call control (counter == 1111 without return)
+F. recursion targets the innermost live activation (f 0 == 6)
+G. zero-result return (`return values []`)
+H. multiple-result return (`return values [10 20]`)
+I. stack cleanliness (SP == result set, RP == baseline, no leak on repeat)
+J. control is not a value (same `innocent` function for both paths)
+
+## Bugs found and fixed
+
+1. **`e_cell(RV_RES_BUF)` vs `asm_lit(RV_RES_BUF)`.** The result-preservation
+   buffer was addressed by *fetching its contents* instead of its address,
+   causing the RETURN store to land at a garbage address and jump to address 1.
+2. (None further — the block-header site-id and the frame layout worked on the
+   first pass once the buffer bug was fixed.)
+
+## Deviations
+
+- Return-site metadata is stored per-block in the block header (a
+  `[count, site-id, elems...]` layout) rather than as a separate
+  `(block, offset)` table; documented above and equivalent for this language.
+- `return` is arity-1 (always an expression); a bare `return` is written
+  `return none`.
+
+## HOST services used by Phase 3A
+
+`ADD SUB MUL DIV MOD EQ NE LT GT LE GE PRINT ALLOC DUMP`. `DUMP` is only in the
+"return outside function" / "no matching activation" error diagnostics. None of
+these alters `REG_IP`/`REG_SP`/`REG_RP`, unwinds, inspects R0 control frames, or
+performs RETURN. The non-local transfer is performed entirely by S1 code
+writing the memory-mapped registers.
+
+## Mechanical audit
+
+The audit (forbidden: `ST_BREAK ST_RETURN ST_THROW RESULT_RETURN ds[ cstack[
+eval_subexpr eval_block apply`) passes. Manually, the new C code only: assigns
+func-site-ids and records per-block site-ids at parse time (toolchain
+metadata); emits S1 instructions. It performs no return propagation, unwind,
+control-status propagation, or caller-by-caller RETURN checking.
+
+## Was an eighth primitive required?
+
+No. All of RETURN uses the frozen seven primitives + `HOST` + derived
+`CALL`/`EXIT`/`>R`/`R>`. The transfer is a direct restoration of `REG_SP`,
+`REG_RP`, `REG_IP` (memory-mapped) and the `RV_*` evaluator state, followed by
+a jump — no new primitive.

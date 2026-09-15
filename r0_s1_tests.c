@@ -54,11 +54,11 @@ static void instrument(const char *src, const char *label) {
 static void audit_no_c_evaluator(void) {
     static const char *files[] = { "r0_s1_runtime.c", "r0_s1.h" };
     static const char *forbidden[] = {
-        "ST_BREAK", "ST_RETURN", "ST_THROW",
+        "ST_BREAK", "ST_RETURN", "ST_THROW", "RESULT_RETURN",
         "ds[", "cstack[",
         "eval_subexpr", "eval_block", "apply"
     };
-    int nfiles = 2, nbad = 8, violations = 0;
+    int nfiles = 2, nbad = 9, violations = 0;
     for (int f = 0; f < nfiles; f++) {
         FILE *fp = fopen(files[f], "r");
         if (!fp) { printf("  (audit: cannot open %s; skipping)\n", files[f]); continue; }
@@ -117,6 +117,76 @@ int run_r0_s1_tests(void) {
                "factorial 5");
     instrument("[ h: func [] [ 7 ]  g: func [] [ h ]  f: func [] [ g ]  f ]",
                "f->g->h chain");
+
+    printf("R0-S1 phase 3A: non-local definitional RETURN\n");
+    expect1("[ f: func [] [ return 42  99 ]  f ]",
+            mk_int(42), "A: simple return 42 (99 never evaluated)");
+
+    { /* B: return value through one unaware helper */
+      cell v[2] = { mk_int(42), mk_int(0) };
+      expectN("[ side: 0  "
+              "helper: func [b] [ do b  side: 1 ]  "
+              "outer: func [] [ helper [ return 42 ]  99 ]  "
+              "values [outer side] ]",
+              2, v, "B: return through helper (side effect skipped)"); }
+
+    { /* C/D: deep unaware chain f->g->h->do, side effects must not run */
+      cell v[2] = { mk_int(42), mk_int(0) };
+      int N;
+      run_src("[ counter: 0  "
+              "h: func [b] [ do b  counter: + counter 1000 ]  "
+              "g: func [b] [ h b  counter: + counter 100 ]  "
+              "f: func [b] [ g b  counter: + counter 10 ]  "
+              "outer: func [] [ f [ return 42 ]  counter: + counter 1 ]  "
+              "values [outer counter] ]", &N);
+      int ok = (N == 2 && r0_s1_result(0, 2) == mk_int(42) && r0_s1_result(1, 2) == mk_int(0));
+      CHECK(ok, "C: deep chain return, counter == 0 (all epilogues bypassed)");
+      CHECK(r0_s1_rp_end() == r0_s1_rp_start(), "C: final RP == baseline");
+      printf("    [deep chain] rp %ld->%ld (min %ld)  sp %ld->%ld (min %ld)\n",
+             (long)r0_s1_rp_start(), (long)r0_s1_rp_end(), (long)r0_s1_rp_min(),
+             (long)r0_s1_sp_start(), (long)r0_s1_sp_end(), (long)r0_s1_sp_min());
+      /* E: ordinary call control - same chain without RETURN */
+      expect1("[ counter: 0  "
+              "h: func [b] [ do b  counter: + counter 1000 ]  "
+              "g: func [b] [ h b  counter: + counter 100 ]  "
+              "f: func [b] [ g b  counter: + counter 10 ]  "
+              "outer: func [] [ f [ 42 ]  counter: + counter 1 ]  "
+              "outer  counter ]",
+              mk_int(1111), "E: same chain without RETURN -> counter == 1111"); }
+
+    { /* F: recursion selects the innermost live activation */
+      expect1("[ f: func [n] [ either >= n 3 [ return n ] [ + 1 f + n 1 ] ]  f 0 ]",
+              mk_int(6), "F: recursive return targets innermost activation (f 0 == 6)"); }
+
+    expect_arity("[ f: func [] [ return values [] ]  f ]",
+                 0, "G: zero-result return (values [])");
+
+    { cell v[2] = { mk_int(10), mk_int(20) };
+      expectN("[ f: func [] [ return values [10 20] ]  f ]", 2, v,
+              "H: multiple-result return (10 20)"); }
+
+    { /* I: stack cleanliness */
+      int N;
+      run_src("[ f: func [] [ return 42 ]  f ]", &N);
+      CHECK(N == 1 && r0_s1_sp_end() == r0_s1_sp_start() - 2,
+            "I: after return, SP holds exactly the result set");
+      CHECK(r0_s1_rp_end() == r0_s1_rp_start(), "I: RP restored to baseline");
+      for (int i = 0; i < 5; i++) run_src("[ f: func [] [ return 42 ]  f ]", &N);
+      CHECK(r0_s1_rp_end() == r0_s1_rp_start() && r0_s1_sp_end() == r0_s1_sp_start() - 2,
+            "I: repeated return does not leak SP or RP"); }
+
+    { /* J: control is not a value - the same unaware function for both paths */
+      cell v[3] = { mk_int(7), mk_int(1), mk_int(42) };
+      expectN("[ counter: 0  "
+              "innocent: func [b] [ x: do b  counter: + counter 1  x ]  "
+              "outer: func [] [ innocent [ return 42 ]  99 ]  "
+              "n: innocent [ 7 ]  "
+              "r: outer  "
+              "values [n counter r] ]",
+              3, v, "J: innocent: normal increments counter, return does not"); }
+
+    printf("R0-S1 phase 3A: instrumentation\n");
+    instrument("[ f: func [] [ return 42 ]  f ]", "simple return");
 
     printf("audit\n");
     audit_no_c_evaluator();
