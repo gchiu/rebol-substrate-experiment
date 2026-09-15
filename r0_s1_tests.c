@@ -75,6 +75,51 @@ static void audit_no_c_evaluator(void) {
     CHECK(violations == 0, "no C evaluator / C stack / status-enum patterns in runtime files");
 }
 
+/* ===================== Phase 4B: user-defined escape =====================
+ * with-escape / escape are written in ordinary R0 SOURCE plus two generic
+ * `raw` fragments. The evaluator knows nothing about them (it only knows RAW
+ * values are callable, from Phase 4A). Nothing in r0_s1_runtime.c / r0_s1.h
+ * is changed; the escape library is re-assembled into each test source. */
+
+static const char *ESC_LIB =
+    " frame-here: raw [ LIT 8215 @ ARITY 1 EXIT ] "          /* read RV_FRAME */
+    " restore: raw 2 [ "
+    "   LIT 8260 ! LIT 8261 ! "                              /* save result, frame */
+    "   LIT 8261 @ LIT 5 ADD @ LIT 8194 ! "                  /* RV_CTX  <- frame.ctx  */
+    "   LIT 8261 @ LIT 6 ADD @ LIT 8192 ! "                  /* RV_CUR  <- frame.cur  */
+    "   LIT 8261 @ LIT 7 ADD @ LIT 8193 ! "                  /* RV_END  <- frame.end  */
+    "   LIT 8261 @ LIT 8 ADD @ LIT 8214 ! "                  /* RV_BLK  <- frame.blk  */
+    "   LIT 8261 @ @ LIT 8215 ! "                            /* RV_FRAME<- frame.prev */
+    "   LIT 8261 @ LIT 3 ADD @ LIT 2 ! "                     /* REG_RP  <- frame.rp   */
+    "   LIT 8261 @ LIT 4 ADD @ >R "                          /* stage frame.ip on R   */
+    "   LIT 8261 @ LIT 2 ADD @ LIT 1 ! "                     /* REG_SP  <- frame.sp   */
+    "   LIT 8260 @ LIT 16 "                                  /* push [result, count]  */
+    "   EXIT ] "
+    " with-escape: func [body] [ "
+    "   target: frame-here "
+    "   escape: func [r] [ restore target r ] "
+    "   body :escape ] ";
+
+static char esc_buf[4096];
+static int run_esc(const char *body, int *N) {
+    snprintf(esc_buf, sizeof esc_buf, "[ %s %s ]", ESC_LIB, body);
+    return run_src(esc_buf, N);
+}
+static void esc_expect1(const char *body, cell v, const char *what) {
+    int N; run_esc(body, &N);
+    int ok = (N == 1 && r0_s1_result(0, 1) == v);
+    if (ok) printf("  ok: %s\n", what);
+    else { printf("  FAIL: %s (N=%d got %ld want %ld)\n", what, N,
+                  (long)(N == 1 ? r0_s1_result(0, 1) : -999), (long)v); failures++; }
+}
+static void esc_expectN(const char *body, int n, const cell *vals, const char *what) {
+    int N; run_esc(body, &N);
+    int ok = (N == n);
+    if (ok) for (int i = 0; i < n; i++) if (r0_s1_result(i, N) != vals[i]) ok = 0;
+    if (ok) printf("  ok: %s\n", what);
+    else { printf("  FAIL: %s (N=%d want %d)\n", what, N, n); failures++; }
+}
+
 int run_r0_s1_tests(void) {
     r0_s1_init();
 
@@ -223,6 +268,54 @@ int run_r0_s1_tests(void) {
     printf("R0-S1 phase 4A: instrumentation\n");
     instrument("[ add2: raw 2 [ LIT 16 DIV >R LIT 16 DIV R> ADD LIT 16 MUL ARITY 1 EXIT ]  "
                 "f: func [n] [ add2 n 10 ]  f 5 ]", "raw in func");
+
+    printf("R0-S1 phase 4B: user-defined first-class escape (R0 + RAW)\n");
+    esc_expect1(" x: with-escape func [escape] [ escape 42  99 ]  x ",
+                mk_int(42), "A: simple escape 42 (99 never evaluated)");
+    { cell v[2] = { mk_int(42), mk_int(0) };
+      esc_expectN(" counter: 0  "
+                  "innocent: func [e] [ deeper :e  counter: + counter 1 ]  "
+                  "deeper: func [e] [ e 42  counter: + counter 10 ]  "
+                  "x: with-escape func [e] [ innocent :e  counter: + counter 100  99 ]  "
+                  "values [x counter] ",
+                  2, v, "B: escape through unaware innocent/deeper (counter == 0)"); }
+    { cell v[2] = { mk_int(99), mk_int(111) };
+      esc_expectN(" id: func [r] [ r ]  counter: 0  "
+                  "innocent: func [e] [ deeper :e  counter: + counter 1 ]  "
+                  "deeper: func [e] [ e 42  counter: + counter 10 ]  "
+                  "x: with-escape func [e] [ innocent :id  counter: + counter 100  99 ]  "
+                  "values [x counter] ",
+                  2, v, "C: ordinary callable (no escape) runs all side effects (111)"); }
+    { cell v[2] = { mk_int(42), mk_int(0) };
+      esc_expectN(" pass2: func [g] [ g 42  counter: + counter 10 ]  "
+                  "pass1: func [g] [ pass2 :g  counter: + counter 1 ]  counter: 0  "
+                  "x: with-escape func [e] [ e2: :e  pass1 :e2 ]  "
+                  "values [x counter] ",
+                  2, v, "D: escape assigned and passed through two args (42, 0)"); }
+    esc_expect1(" r: with-escape func [e1] [ s: with-escape func [e2] [ e2 42 ]  s ]  r ",
+                mk_int(42), "E1: inner escape targets inner with-escape");
+    esc_expect1(" r: with-escape func [e1] [ s: with-escape func [e2] [ e1 42 ]  99 ]  r ",
+                mk_int(42), "E2: outer escape crosses inner with-escape");
+    { cell v[3] = { mk_int(1), mk_int(2), mk_int(3) };
+      esc_expectN(" f: func [n] [ with-escape func [e] [ e n ] ]  values [ f 1  f 2  f 3 ] ",
+                  3, v, "F: repeated with-escape invocation -> 1 2 3"); }
+    { int N; run_esc(" f: func [n] [ with-escape func [e] [ e n ] ]  values [ f 1  f 2  f 3 ] ", &N);
+      CHECK(N == 3 && r0_s1_rp_end() == r0_s1_rp_start(),
+            "F: repeated escape leaves no RP leakage"); }
+    esc_expect1(" x: with-escape func [e] [ 42 ]  x ",
+                mk_int(42), "G: with-escape body that never escapes returns normally");
+    { int N;
+      run_esc(" counter: 0  "
+              "innocent: func [e] [ deeper :e  counter: + counter 1 ]  "
+              "deeper: func [e] [ e 42  counter: + counter 10 ]  "
+              "x: with-escape func [e] [ innocent :e  counter: + counter 100  99 ]  "
+              "values [x counter] ", &N);
+      CHECK(N == 2 && r0_s1_rp_end() == r0_s1_rp_start()
+            && r0_s1_sp_end() == r0_s1_sp_start() - 3,
+            "H: escape stack evidence (SP == result set, RP == baseline)");
+      printf("    [escape chain] sp %ld->%ld (min %ld)  rp %ld->%ld (min %ld)\n",
+             (long)r0_s1_sp_start(), (long)r0_s1_sp_end(), (long)r0_s1_sp_min(),
+             (long)r0_s1_rp_start(), (long)r0_s1_rp_end(), (long)r0_s1_rp_min()); }
 
     printf("audit\n");
     audit_no_c_evaluator();

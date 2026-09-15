@@ -474,3 +474,153 @@ address" so the audit stays a clean signal. It passes (107 ok, 0 fail).
 No. The indirect call is a derived `CALL` whose callee operand is fetched from
 a runtime cell rather than patched at load time — still the frozen
 `LIT`/`DUP`/`DROP`/`@`/`!`/`0BRANCH`/`HOST` primitives.
+
+# Phase 4B — User-defined first-class control via RAW
+
+## The question answered
+
+Can an R0 programmer create genuinely new first-class control behavior using
+only ordinary R0 and generic RAW/S1 code, without changing the R0 evaluator,
+the RAW implementation, S1, or HOST semantics?
+
+**Yes.** A first-class dynamic ESCAPE facility is built entirely from R0
+source plus two generic `raw` fragments. The evaluator and trapdoor remain
+byte-for-byte unchanged:
+
+```
+git diff --exit-code r0-trapdoor-v1 -- r0_s1_runtime.c r0_s1.h   # empty
+./check-frozen-s1.sh                                              # frozen
+```
+
+## Complete R0/RAW source
+
+See `examples/escape.r0`. The essential definitions:
+
+```
+frame-here: raw [ LIT 8215 @ ARITY 1 EXIT ]
+
+restore: raw 2 [
+    LIT 8260 ! LIT 8261 !                       ; save (result, frame)
+    LIT 8261 @ LIT 5 ADD @ LIT 8194 !           ; RV_CTX   <- frame.ctx
+    LIT 8261 @ LIT 6 ADD @ LIT 8192 !           ; RV_CUR   <- frame.cur
+    LIT 8261 @ LIT 7 ADD @ LIT 8193 !           ; RV_END   <- frame.end
+    LIT 8261 @ LIT 8 ADD @ LIT 8214 !           ; RV_BLK   <- frame.blk
+    LIT 8261 @ @ LIT 8215 !                     ; RV_FRAME <- frame.prev
+    LIT 8261 @ LIT 3 ADD @ LIT 2 !              ; REG_RP   <- frame.rp
+    LIT 8261 @ LIT 4 ADD @ >R                   ; stage frame.ip on R
+    LIT 8261 @ LIT 2 ADD @ LIT 1 !              ; REG_SP   <- frame.sp
+    LIT 8260 @ LIT 16                           ; push [result, 1]
+    EXIT
+]
+
+with-escape: func [body] [
+    target: frame-here
+    escape: func [r] [ restore target r ]
+    body :escape
+]
+```
+
+## Which parts are ordinary R0, which are RAW
+
+- **Ordinary R0** (`with-escape`, `escape`): composition, closures, lexical
+  capture of `target`, argument passing, the user-facing API. `with-escape` is
+  a plain `func`; `escape` is a plain closure `func [r] [restore target r]`.
+- **RAW** (`frame-here`, `restore`): only the two operations R0 cannot express
+  on its own — reading the current activation frame, and restoring saved
+  machine/evaluator state with a jump.
+
+## Exact machine state manipulated
+
+`restore` copies the saved activation-frame record back into the
+memory-mapped registers and evaluator cells, then transfers control:
+
+- `REG_SP` (addr 1) ← `frame.sp`, `REG_RP` (addr 2) ← `frame.rp`,
+  `REG_IP` (addr 0) ← `frame.ip` (via a staged `>R` + `EXIT`).
+- `RV_CTX` (8194) ← `frame.ctx`, `RV_CUR` (8192) ← `frame.cur`,
+  `RV_END` (8193) ← `frame.end`, `RV_BLK` (8214) ← `frame.blk`,
+  `RV_FRAME` (8215) ← `frame.prev`.
+- The escape result and the count `mk_int(1)` are pushed onto the restored
+  data stack, so the caller resumes with `[result, 1]` — the same result-set
+  shape every expression produces.
+
+The frame pointer is captured at runtime by `frame-here` (reading `RV_FRAME`)
+and closed over by the `escape` closure, so each `with-escape` invocation
+yields an escape value bound to *its own* frame. `frame.ip` is the closure
+epilogue's `EXIT`, and `frame.rp` is the address of the caller continuation, so
+the staged `>R` + `EXIT` lands exactly where the definitional RETURN of Phase
+3A would — no site-id search needed, because the pointer is captured directly.
+
+## Why the evaluator is unaware of the construct
+
+Nothing is added to the evaluator. `with-escape`/`escape` are ordinary words
+bound to closures; `frame-here`/`restore` are ordinary `raw` callables. The
+evaluator dispatches `escape` exactly as it dispatches any closure (T_CLOSURE)
+and `restore` exactly as any raw (T_RAW). There is no `N_WITH_ESCAPE`,
+`N_ESCAPE`, `ST_ESCAPE`, or `RESULT_ESCAPE`.
+
+## Unaware-call evidence
+
+Tests B and D push the escape value through `innocent`/`deeper` (and
+`pass1`/`pass2`) that contain no escape-specific code — they only receive and
+call a callable, and perform an observable `counter += …` after the nested
+call. On escape, `counter` stays exactly 0; test C runs the identical chain
+with an ordinary `id` callable and observes `counter == 111`, proving the
+functions are not merely suppressing continuations.
+
+## Nested escape behavior
+
+Each `with-escape` invocation captures its own frame, so an escape value
+targets the invocation that created it. Test E1 (`e2 42` -> inner) and E2
+(`e1 42` -> outer, crossing the inner `with-escape`) both return 42.
+
+## SP/RP measurements
+
+```
+[escape chain] sp 16384->16381 (min 16383)  rp 24576->24576 (min 24559)
+```
+
+Final `RP` equals the caller baseline (24576); final `SP` holds exactly the
+result set. Repeated invocation (test F) shows no SP/RP leakage.
+
+## Tests (all pass; full suite now 117 ok, 0 fail, exit 0)
+
+A. simple escape 42 (following 99 never evaluated)
+B. escape through unaware innocent/deeper (counter == 0)
+C. ordinary callable, no escape (counter == 111)
+D. first-class: assigned and passed through two args (42, 0)
+E1. inner escape targets inner with-escape
+E2. outer escape crosses inner with-escape
+F. repeated invocation (1 2 3) + RP-cleanliness
+G. body that never escapes returns normally
+H. stack evidence (SP == result set, RP == baseline)
+
+## Bugs found and fixed
+
+1. **Callables must be quoted when passed as values.** The first attempt wrote
+   `body escape` (and `innocent escape`). Because R0 invokes a callable word
+   when it appears in expression position, this invoked `escape` with zero
+   arguments instead of passing it. The fix is `:escape` (get-word) everywhere
+   the escape value is passed as an argument; it is still written `escape 42`
+   where it is *invoked*. This is existing R0 evaluation semantics, not a new
+   evaluator behavior.
+
+## Deviations
+
+- The user interface is spelled `with-escape func [escape] [...]` with
+  `:escape` (get-word) when the escape value is passed through a function, per
+  R0's call-by-value/auto-invoke rule. Invocation remains `escape 42`.
+- `escape` is arity-1 (always an expression); there is no zero/multi-result
+  escape in this phase (the restore fragment always leaves `[result, 1]`).
+
+## C/HOST audit
+
+No C or HOST operation knows what ESCAPE means. The two fragments use only the
+frozen primitives (`LIT`, `@`, `!`, derived `>R`/`EXIT`) and the frozen `HOST
+ADD`. No HOST op captures a continuation, unwinds, or restores registers — all
+of that is done by generic RAW S1 code reading/writing memory.
+
+## Was an eighth primitive required?
+
+No. The escape transfer is a memory copy of the saved frame record into the
+registers and RV cells, followed by a staged `>R` + `EXIT` — all derived from
+the frozen seven primitives.
