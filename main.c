@@ -1,9 +1,11 @@
 #include <stdio.h>
 
 int run_tests(void);
+int run_adversarial_tests(void);
 
 int main(void) {
     int failures = run_tests();
+    failures += run_adversarial_tests();
     if (failures == 0) {
         printf("all tests passed\n");
         return 0;
