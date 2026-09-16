@@ -3728,7 +3728,7 @@ var __emscripten_stack_restore = (a0) => (__emscripten_stack_restore = wasmExpor
 var __emscripten_stack_alloc = (a0) => (__emscripten_stack_alloc = wasmExports['_emscripten_stack_alloc'])(a0);
 var _emscripten_stack_get_current = () => (_emscripten_stack_get_current = wasmExports['emscripten_stack_get_current'])();
 var dynCall_jiji = Module['dynCall_jiji'] = (a0, a1, a2, a3, a4) => (dynCall_jiji = Module['dynCall_jiji'] = wasmExports['dynCall_jiji'])(a0, a1, a2, a3, a4);
-var ___emscripten_embedded_file_data = Module['___emscripten_embedded_file_data'] = 3592;
+var ___emscripten_embedded_file_data = Module['___emscripten_embedded_file_data'] = 2996;
 
 // include: postamble.js
 // === Auto-generated postamble setup entry stuff ===

@@ -27,9 +27,9 @@ clean:
 	rm -f s1 $(OBJS)
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
-# Produces web/demo.js (Emscripten runtime + web/glue.js) and web/demo.wasm.
-# The R0 application source web/demo.r0 is embedded into the WASM filesystem
-# via --embed-file, and read at startup by web/demo.c.
+# Produces web/demo.js (Emscripten runtime + web/glue.js) and web/demo.wasm,
+# then generates the public GitHub Pages page docs/ (index.html + demo.js +
+# demo.wasm) from the single authoritative R0 source web/demo.r0.
 EMCC      ?= emcc
 WASM_FLAGS = -O1 -s ALLOW_MEMORY_GROWTH=1 \
 	-s EXPORT_KEEPALIVE=1 \
@@ -37,10 +37,15 @@ WASM_FLAGS = -O1 -s ALLOW_MEMORY_GROWTH=1 \
 	--embed-file web/demo.r0@demo.r0 \
 	-I.
 
-wasm: web/demo.js
+wasm: web/demo.js docs/index.html
 
 web/demo.js: web/demo.c web/demo.r0 web/glue.js s1.c s1.h r0_s1_runtime.c r0_s1.h
 	$(EMCC) $(WASM_FLAGS) web/demo.c s1.c r0_s1_runtime.c -o web/demo.js
+
+# generate the static source listings in docs/index.html from demo.r0/glue.js
+# (no JavaScript fetches or renders the source)
+docs/index.html: web/demo.r0 web/glue.js web/build-docs.py web/demo.js web/demo.wasm
+	python3 web/build-docs.py
 
 # headless verification under node (no browser/DOM required)
 wasm-test: web/demo.js

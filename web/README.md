@@ -3,29 +3,46 @@
 A minimal browser demonstration of the R0-on-S1 system running as WebAssembly
 and performing a visible DOM update. This is **not** a REPL.
 
+The public page is `docs/index.html` (also served by GitHub Pages). It leads
+with the R0 application source; the low-level RAW/S1 host adapter and the JS
+glue are hidden behind `<details>` sections.
+
 ## Files
 
 | file | role |
 |---|---|
-| `index.html` | the page: heading, `Counter: <span id="counter">`, `[Increment]` button |
-| `demo.r0` | the R0 application (counter state + increment logic + `web-set-int` HOST adapter) |
-| `demo.c` | the C/WASM entry: loads `demo.r0`, runs init, exports `r0_click` |
-| `glue.js` | the JS half of the boundary (prepended to `demo.js` at build time) |
-| `demo.js`, `demo.wasm` | generated Emscripten artifacts (via `make wasm`) |
-| `node_test.c` | headless node verification (`make wasm-test`) |
+| `docs/index.html` | the public page (generated — see below) |
+| `docs/demo.js`, `docs/demo.wasm` | published artifacts (copied from `web/`) |
+| `web/demo.r0` | the single authoritative R0 source (application + RAW adapter, section-marked) |
+| `web/demo.c` | the C/WASM entry: loads `demo.r0`, runs init, exports `r0_click` |
+| `web/glue.js` | the JS half of the boundary (prepended to `demo.js` at build time) |
+| `web/build-docs.py` | generates `docs/index.html` (static, HTML-escaped) from `demo.r0`/`glue.js` |
+| `web/node_test.c` | headless node verification (`make wasm-test`) |
 
 ## Build
 
 ```
 emcc   # Emscripten >= 3.1 (tested 3.1.74)
-make wasm
+make wasm       # builds demo.js/wasm AND regenerates docs/index.html
+make wasm-test  # headless node run
 ```
+
+`make wasm`:
+1. compiles `web/demo.c` + `s1.c` + `r0_s1_runtime.c` to `web/demo.js` +
+   `web/demo.wasm` (with `demo.r0` embedded via `--embed-file`);
+2. runs `web/build-docs.py`, which HTML-escapes the two `;; @section`-marked
+   regions of `web/demo.r0` (and `web/glue.js`) into static `<pre><code>`
+   listings in `docs/index.html`, and copies `demo.js`/`demo.wasm` into `docs/`.
+
+The displayed R0 source is static HTML generated at build time — **no
+JavaScript fetches or renders it** — and always matches the source the WASM
+demo actually runs.
 
 ## Serve and try it
 
 ```
 python3 -m http.server 8000
-# open http://localhost:8000/web/
+# open http://localhost:8000/docs/
 ```
 
 Click **Increment** three times; the page shows `Counter: 3`. Reloading the
@@ -33,11 +50,9 @@ page resets R0 (and therefore the counter) to `0`.
 
 ## How it works
 
-- `make wasm` compiles `web/demo.c` + `s1.c` + `r0_s1_runtime.c` to
-  `web/demo.js` + `web/demo.wasm`, embedding `demo.r0` into the WASM
-  filesystem (`--embed-file`).
+- `make wasm` embeds `demo.r0` into the WASM filesystem.
 - On startup, `r0_init` reads `demo.r0`, runs its top level
-  (`counter: 0`, bind `web-set-int` and `on-click`), and prepares the
+  (`counter: 0`, bind `on-click` and `web-set-int`), and prepares the
   `[ do on-click ]` program.
 - On each button click, the JS glue calls the exported `r0_click`, which runs
   the R0 handler: `counter: + counter 1` then `web-set-int 1 counter`.
