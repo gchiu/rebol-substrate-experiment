@@ -1,0 +1,103 @@
+;; examples/debugger-frames.r0 -- frame-chain inspection for the D1 debugger.
+;; Same RAW library as debugger-basic.r0 (mechanism); here the debugger body
+;; walks the activation-frame chain of a nested call f -> g -> h.
+
+[ ;; ---- RAW mechanism fragments (identical to debugger-basic.r0) ------------
+
+  debug-break: raw [
+      NONE LIT 16
+      LIT REG_RP @ @ LIT SCRATCH_A @ LIT 0 ADD !
+      LIT REG_SP @     LIT SCRATCH_A @ LIT 1 ADD !
+      LIT REG_RP @     LIT SCRATCH_A @ LIT 2 ADD !
+      LIT REG_HP @     LIT SCRATCH_A @ LIT 3 ADD !
+      LIT RV_CUR @     LIT SCRATCH_A @ LIT 4 ADD !
+      LIT RV_END @     LIT SCRATCH_A @ LIT 5 ADD !
+      LIT RV_CTX @     LIT SCRATCH_A @ LIT 6 ADD !
+      LIT RV_BLK @     LIT SCRATCH_A @ LIT 7 ADD !
+      LIT RV_FRAME @   LIT SCRATCH_A @ LIT 8 ADD !
+      LIT SCRATCH_B @ LIT 1 ADD @ LIT REG_SP !
+      LIT SCRATCH_B @ LIT 2 ADD @ LIT REG_RP !
+      LIT SCRATCH_B @ LIT 3 ADD @ LIT REG_HP !
+      LIT SCRATCH_B @ LIT 4 ADD @ LIT RV_CUR !
+      LIT SCRATCH_B @ LIT 5 ADD @ LIT RV_END !
+      LIT SCRATCH_B @ LIT 6 ADD @ LIT RV_CTX !
+      LIT SCRATCH_B @ LIT 7 ADD @ LIT RV_BLK !
+      LIT SCRATCH_B @ LIT 8 ADD @ LIT RV_FRAME !
+      LIT SCRATCH_A @ LIT 16 MUL
+      LIT 16
+      LIT SCRATCH_B @ LIT 0 ADD @ LIT REG_IP !
+  ]
+
+  continue: raw [
+      LIT REG_HP @ LIT SCRATCH_A @ LIT 3 ADD !
+      LIT REG_RP @ @ LIT SCRATCH_B @ LIT 0 ADD !
+      LIT REG_SP @   LIT SCRATCH_B @ LIT 1 ADD !
+      LIT REG_RP @   LIT SCRATCH_B @ LIT 2 ADD !
+      LIT REG_HP @   LIT SCRATCH_B @ LIT 3 ADD !
+      LIT RV_CUR @   LIT SCRATCH_B @ LIT 4 ADD !
+      LIT RV_END @   LIT SCRATCH_B @ LIT 5 ADD !
+      LIT RV_CTX @   LIT SCRATCH_B @ LIT 6 ADD !
+      LIT RV_BLK @   LIT SCRATCH_B @ LIT 7 ADD !
+      LIT RV_FRAME @ LIT SCRATCH_B @ LIT 8 ADD !
+      LIT SCRATCH_A @ LIT 1 ADD @ LIT REG_SP !
+      LIT SCRATCH_A @ LIT 2 ADD @ LIT REG_RP !
+      LIT SCRATCH_A @ LIT 3 ADD @ LIT REG_HP !
+      LIT SCRATCH_A @ LIT 4 ADD @ LIT RV_CUR !
+      LIT SCRATCH_A @ LIT 5 ADD @ LIT RV_END !
+      LIT SCRATCH_A @ LIT 6 ADD @ LIT RV_CTX !
+      LIT SCRATCH_A @ LIT 7 ADD @ LIT RV_BLK !
+      LIT SCRATCH_A @ LIT 8 ADD @ LIT RV_FRAME !
+      LIT SCRATCH_A @ LIT 0 ADD @ LIT REG_IP !
+  ]
+
+  state-get:   raw 2 [ LIT 16 DIV >R LIT 16 DIV R> ADD @ ARITY 1 EXIT ]
+  state-get-i: raw 2 [ LIT 16 DIV >R LIT 16 DIV R> ADD @ LIT 16 MUL ARITY 1 EXIT ]
+  frame-get:   raw 2 [ LIT 16 DIV ADD @ ARITY 1 EXIT ]
+  ctx-count:   raw 1 [ DUP LIT 16 MOD SUB LIT 1 ADD @ LIT 16 MUL ARITY 1 EXIT ]
+  ctx-word:    raw 2 [ LIT 16 DIV >R DUP LIT 16 MOD SUB LIT 3 ADD R> LIT 2 MUL ADD @ ARITY 1 EXIT ]
+  ctx-val:     raw 2 [ LIT 16 DIV >R DUP LIT 16 MOD SUB LIT 4 ADD R> LIT 2 MUL ADD @ ARITY 1 EXIT ]
+  ctx-lookup: raw 2 [
+      LIT SCRATCH_A @ >R LIT SCRATCH_B @ >R
+      LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A !
+      Lclkouter:
+      LIT SCRATCH_A @ LIT 0 EQ ZBRANCH Lclkok
+          R> LIT SCRATCH_B ! R> LIT SCRATCH_A ! LIT -1 ARITY 1 EXIT
+      Lclkok:
+      LIT 0
+      Lclkin:
+      DUP LIT SCRATCH_A @ LIT 1 ADD @ GE ZBRANCH Lclksearch
+          DROP LIT SCRATCH_A @ @ DUP LIT 16 MOD SUB LIT SCRATCH_A ! BRANCH Lclkouter
+      Lclksearch:
+      DUP LIT 2 MUL LIT SCRATCH_A @ LIT 3 ADD ADD @
+      LIT SCRATCH_B @ EQ ZBRANCH Lclknomatch
+          LIT 2 MUL LIT SCRATCH_A @ LIT 4 ADD ADD @
+          R> LIT SCRATCH_B ! R> LIT SCRATCH_A ! ARITY 1 EXIT
+      Lclknomatch:
+      LIT 1 ADD BRANCH Lclkin
+  ]
+
+  frame-depth: raw 1 [
+      LIT SCRATCH_A @ >R
+      LIT SCRATCH_A !
+      LIT 0
+      Lfdouter:
+      LIT SCRATCH_A @ LIT 0 EQ ZBRANCH Lfdok
+          R> LIT SCRATCH_A ! LIT 16 MUL ARITY 1 EXIT
+      Lfdok:
+      LIT 1 ADD LIT SCRATCH_A @ @ LIT SCRATCH_A ! BRANCH Lfdouter
+  ]
+
+  ;; ---- ordinary R0 debugger session: frame walk ----------------------------
+
+  ;; Debuggee (run by the C driver):  h: func [] [ debug-break 99 ]  g ...  f ...
+  ;; At the breakpoint the frame chain is h -> g -> f (depth 3).
+
+  st: continue                       ;; start debuggee; returns state
+  fr: state-get st 8                 ;; current (innermost) frame pointer
+  dbg-depth: frame-depth fr          ;; count the chain: 3
+  h-site: frame-get fr 1             ;; innermost frame's func-site id
+  h-ip:   frame-get fr 4             ;; saved return IP
+  h-rp:   frame-get fr 3             ;; saved caller RP
+  h-ctx:  frame-get fr 5             ;; saved lexical context
+  continue                           ;; resume; debuggee finishes with 99
+]

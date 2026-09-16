@@ -1,0 +1,238 @@
+./check-frozen-s1.sh
+OK: S1 substrate frozen at f90496c26dc45c7a387d8fc8639cd2781507d3d2; all frozen files unchanged.
+./s1
+test 1: ordinary call and return
+    ok: square(5) == 25
+test 2: conditional (7 - 3 > 0 -> 100 else 200)
+    ok: took the 'then' branch
+test 3: loop (sum 1..5 == 15)
+    ok: sum(1..5) == 15
+test 4: static break/continue (sum odds 1..10, break at 7 == 9)
+    ok: sum of odds < 7 (1+3+5) == 9
+test 5: dynamic non-local exit through nested calls
+    ok: non-local exit landed on 111 (not 999)
+test 6: CATCH/THROW exceptions
+    ok: caught error code 42
+test 7: save-and-restore suspension
+    ok: suspended with 10 on the stack
+    ok: saved the resume continuation
+    ok: resumed and pushed 20
+    ok: previous value 10 preserved below
+test 8: resumable generator
+    ok: first yield 10
+    ok: second yield 30 (state preserved)
+    ok: third yield 60 (state preserved)
+    ok: final yield 0 (done)
+test 9: new control abstractions (times, do_until)
+    ok: times(3) + do_until -> 5
+adv 1: break from 4 nested calls inside a user-defined loop
+    ok: break from 4-deep nested call exits loop with ACC=5
+adv 2: break loop + a function returning two ordinary values
+    ok: break at ACC=9 (loop also carried two values)
+adv 3: break (inner loop) + non-local return (outer function)
+    ok: break stopped at inner loop; return unwound outer -> 111
+adv 4: exception crossing three unaware functions
+    ok: throw reached handler across f1/f2/f3 (partial 13 discarded)
+adv 5: one function, four outcomes, unaware intermediaries
+    ok: sel=0 -> shape=0 r1=888 r2=888
+    ok: sel=1 -> shape=1 r1=42 r2=777
+    ok: sel=2 -> shape=2 r1=10 r2=20
+    ok: sel=3 -> shape=-1 r1=444 r2=0
+adv 6: CATCH/THROW and break active simultaneously
+    ok: break routed to the loop, not the catch
+    ok: throw routed to the catch, not the loop
+claim 1: for-both loop wrapper that breaks AND returns two values
+    ok: break at acc=10 -> two values (i=4, acc=10)
+    ok: exhaustion -> two values (i=5, acc=10)
+claim 2: a break crosses unaware code as a jump, not a value
+    ok: break moved RP/IP but not SP (no signal value was pushed)
+    ok: the value 42 in flight survived the break untouched
+claim 3: failed (throw) vs falsey return (0) are distinct
+    ok: falsey 0 is a value on the normal path
+    ok: failure 42 is a jump, not the falsey value
+claim 4: arity (0/1/several) is SP-observable, not enforced
+    ok: sel=0 -> observed arity 0
+    ok: sel=1 -> observed arity 1
+    ok: sel=2 -> observed arity 2
+A. no ordinary result
+1
+r0 error: break outside loop
+r0 error: throw without catch
+    ok: print yields arity 0
+B. one NONE result
+    ok: literal none -> NONE
+    ok: empty body -> NONE
+C. multiple results via values
+    ok: values [10 20] -> two results
+D. one literal block
+    ok: block value (tag BLOCK)
+E. BREAK crossing unaware intermediate functions
+    ok: break from h through g exits the loop (i == 1)
+F. definitional RETURN crossing an unaware helper
+    ok: return through `run` targets f, two results
+G. multiple results surviving non-local RETURN
+    ok: return values [7 8 9] survives the unwind
+H. nested loops: BREAK selects only the inner loop
+    ok: outer runs twice (x=2), inner breaks at y=5
+I. RETURN inside inner loop targets enclosing function
+    ok: return 42 from inside the loop (not 0)
+J. THROW crosses functions unaware of THROW
+    ok: throw 99 reaches catch through g
+K. user-defined control abstraction (while)
+    ok: user-defined while counts i to 3
+L. tiny dialect (sum-list folds a block as data)
+    ok: sum-list [1 2 3 4 5] -> 15 (not 5)
+M. RAW trapdoor: generator (make-gen / next) suspends and resumes
+    ok: generator yields 1,2,3 then NONE
+recursion: factorial
+    ok: fact 5 == 120
+nested closures
+    ok: outer 3 applied to 4 == 7
+captured binding mutation (make-counter)
+    ok: c 5 == 15 then c 1 == 16
+zero-argument function
+    ok: zero-arg f == 42
+argument cleanup after normal calls
+    ok: stack depth after [+ 1 2] is exactly result set
+    ok: no leftover args after f 1 2
+argument/temporary cleanup after non-local RETURN
+    ok: depth == result set only after non-local return
+repeated calls leave no stale SP/RP/control frames
+    ok: control stack empty after recursion
+    ok: csp_max does not grow on repeated calls
+missing BREAK/RETURN/THROW targets -> controlled errors
+    ok: break outside loop is an error
+    ok: throw without catch is an error
+    ok: return outside function is a parse error
+NATIVE/HOST result boundary
+42
+    ok: print produces arity 0 through the trampoline
+    ok: add produces exactly one tagged INT result
+VALUES [] -> zero results
+    ok: values [] yields arity 0
+return with explicit none
+    ok: return none -> NONE
+R0 heap used: 4339 cells; data-stack max 5; control-stack max 5; symbols 48
+R0-S1 phase 1: minimal evaluator on S1
+  ok: phase1: [ 42 ] -> one INT 42
+  ok: phase1: [ none ] -> one NONE
+  ok: phase1: [ + 2 3 ] -> one INT 5
+  ok: phase1: [ x: 10 + x 5 ] -> one INT 15
+42
+s1: bad opcode 3904 at 19988
+  ok: phase1: [ print 42 ] -> zero results
+  ok: phase1: [ 10 20 ] -> one result 20
+R0-S1 phase 2: functions, closures, recursion
+  ok: A: add 2 3 == 5
+  ok: B: zero-arg f == 42
+  ok: C: lexical capture outer 3 applied to 4 == 7
+  ok: D: make-counter -> 15 16
+  ok: E: factorial 5 == 120
+  ok: F: f->g->h == 7
+  ok: F: RP returned to baseline
+  ok: G: repeated add calls -> 11
+  ok: G: no SP/RP leakage
+  ok: H: only the result set remains after a 2-arg call
+  ok: I: nested application add 1 (add 2 3) == 6
+  ok: J: values [10 20] -> two results
+  ok: K: values [] -> zero results
+R0-S1 phase 2: instrumentation
+  [factorial 5] sp 16384->16382 (min 16379)  rp 24576->24576 (min 24521)  N=1
+  [f->g->h chain] sp 16384->16382 (min 16383)  rp 24576->24576 (min 24567)  N=1
+R0-S1 phase 3A: non-local definitional RETURN
+  ok: A: simple return 42 (99 never evaluated)
+  ok: B: return through helper (side effect skipped)
+  ok: C: deep chain return, counter == 0 (all epilogues bypassed)
+  ok: C: final RP == baseline
+    [deep chain] rp 24576->24576 (min 24558)  sp 16384->16381 (min 16383)
+  ok: E: same chain without RETURN -> counter == 1111
+  ok: F: recursive return targets innermost activation (f 0 == 6)
+  ok: G: zero-result return (values [])
+  ok: H: multiple-result return (10 20)
+  ok: I: after return, SP holds exactly the result set
+  ok: I: RP restored to baseline
+  ok: I: repeated return does not leak SP or RP
+  ok: J: innocent: normal increments counter, return does not
+R0-S1 phase 3A: instrumentation
+  [simple return] sp 16384->16382 (min 16383)  rp 24576->24576 (min 24573)  N=1
+R0-S1 phase 4A: first-class RAW S1 trapdoor
+  ok: A: raw constant 42 (zero args)
+  ok: B: raw 2-arg sum 3+4 == 7
+  ok: C: raw invoked repeatedly via values -> 5 5 5
+  ok: D: raw passed as arg and invoked == 5
+  ok: E: raw invoked from inside a func body == 15
+  ok: F: raw multiple results -> 10 20
+  ok: G: raw zero results
+  ok: H: raw ZBRANCH/labels -> 1 2
+  ok: I: raw @/! store+fetch 42
+  ok: J: raw invocation leaves exactly the result set (no SP/RP leak)
+  ok: K: raw is first-class (get-word :c5 returns the raw value, tag T_RAW)
+R0-S1 phase 4A: instrumentation
+  [raw in func] sp 16384->16382 (min 16383)  rp 24576->24576 (min 24573)  N=1
+R0-S1 phase 4B: user-defined first-class escape (R0 + RAW)
+  ok: A: simple escape 42 (99 never evaluated)
+  ok: B: escape through unaware innocent/deeper (counter == 0)
+  ok: C: ordinary callable (no escape) runs all side effects (111)
+  ok: D: escape assigned and passed through two args (42, 0)
+  ok: E1: inner escape targets inner with-escape
+  ok: E2: outer escape crosses inner with-escape
+  ok: F: repeated with-escape invocation -> 1 2 3
+  ok: F: repeated escape leaves no RP leakage
+  ok: G: with-escape body that never escapes returns normally
+  ok: H: escape stack evidence (SP == result set, RP == baseline)
+    [escape chain] sp 16384->16381 (min 16383)  rp 24576->24576 (min 24559)
+audit
+  ok: no C evaluator / C stack / status-enum patterns in runtime files
+examples
+  ok: example: higher-order
+  ok: example: multiple-results
+  ok: example: lexical-scope
+  ok: example: nested-escape
+  ok: example: raw-branch
+  ok: example: raw-memory
+  ok: example: raw-first-class
+  ok: example: return-through-unaware
+  ok: example: mini-library
+R0-S1 code emitted: 4046 cells
+all R0-S1 tests passed
+R0-S1 D1 debugger: HLL-first cooperative debugger
+debugger: A basic pause/continue
+  ok: A: result == 15 after continue
+  ok: A: at breakpoint, x == 10 (via debugger-level inspection)
+debugger: B locals / context
+  ok: B: result == 16 after continue
+  ok: B: inspected a == 5
+  ok: B: inspected b == 6
+debugger: C call frames
+  ok: C: result == 99 after continue
+  ok: C: frame depth == 3 (f,g,h)
+  ok: C: top frame has a real func site-id
+  ok: C: top frame records saved IP/RP
+debugger: D unaware callers
+  ok: D: unaware chain pauses and resumes; h == 7
+debugger: E side-effect boundary
+  ok: E: after continue, counter == 11
+  ok: E: at breakpoint, counter == 1
+debugger: F two breakpoints
+  ok: F: after two breaks, counter == 111
+  ok: F: at breakpoint 1, counter == 1
+  ok: F: at breakpoint 2, counter == 11
+debugger: G closure state
+  ok: G: after continue, closure n == 15
+  ok: G: captured environment live at breakpoint (n == 15)
+debugger: H debugged vs normal
+  ok: H: debugged (15) == normal (15) execution
+debugger: stack instrumentation (nested breakpoint)
+    debugger baselines SP=16384 RP=24576
+    debuggee baselines SP=12000 RP=20000
+    SP/RP at breakpoint = 11998 / 19987
+    deepest RP = 19991
+    final SP=11998 RP=20000 (N=1)
+  ok: stack: debuggee final RP == its baseline (no leakage)
+  ok: stack: result == 9
+debugger: I first-class debug state
+  ok: I: resume-it (ordinary R0 fn) resumes; result == 15
+  ok: I: state passed at HLL level; x == 10
+  ok: runtime/host contains no debugger semantics
+all R0-S1 debugger tests passed
+all tests passed

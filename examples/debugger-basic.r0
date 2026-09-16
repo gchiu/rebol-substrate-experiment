@@ -1,0 +1,126 @@
+;; examples/debugger-basic.r0 -- a cooperative D1 debugger, written in ordinary
+;; R0 policy plus a handful of generic RAW/S1 mechanism fragments.  The R0
+;; evaluator has no idea that debugging exists; it only knows RAW values are
+;; callable.
+;;
+;; This is a canonical source listing (the harness has no file loader); the
+;; runnable version lives in r0_s1_debug_tests.c, which embeds this library and
+;; drives a debuggee + debugger through the C "run driver".
+;;
+;; Two fixed state records (each 9 cells, addresses installed by the C driver
+;; into SCRATCH_A / SCRATCH_B) hold:
+;;   [ resume_ip, SP, RP, HP, RV_CUR, RV_END, RV_CTX, RV_BLK, RV_FRAME ]
+;;
+;;   debug-break : debuggee -> debugger  (capture A, restore B, push [handle,1])
+;;   continue    : debugger -> debuggee  (capture B, restore A, jump)
+;;
+;; All inspection is generic single-cell reads (state-get/frame-get/ctx-*) plus
+;; the chain-walk RAW ctx-lookup / frame-depth.  The debugger's presentation
+;; POLICY is the ordinary R0 body below.
+
+[ ;; ---- RAW mechanism fragments (low-level work R0 cannot express) ----------
+
+  ;; cooperative breakpoint: debuggee -> debugger.  Leaves its own result
+  ;; [NONE,1] on the debuggee stack, captures the debuggee, restores the
+  ;; debugger, and pushes [handle,1] as the value of the suspended `continue`.
+  debug-break: raw [
+      NONE LIT 16                                          ;; debug-break returns NONE
+      LIT REG_RP @ @ LIT SCRATCH_A @ LIT 0 ADD !           ;; resume_ip
+      LIT REG_SP @     LIT SCRATCH_A @ LIT 1 ADD !         ;; SP
+      LIT REG_RP @     LIT SCRATCH_A @ LIT 2 ADD !         ;; RP
+      LIT REG_HP @     LIT SCRATCH_A @ LIT 3 ADD !         ;; HP
+      LIT RV_CUR @     LIT SCRATCH_A @ LIT 4 ADD !         ;; cur
+      LIT RV_END @     LIT SCRATCH_A @ LIT 5 ADD !         ;; end
+      LIT RV_CTX @     LIT SCRATCH_A @ LIT 6 ADD !         ;; ctx
+      LIT RV_BLK @     LIT SCRATCH_A @ LIT 7 ADD !         ;; blk
+      LIT RV_FRAME @   LIT SCRATCH_A @ LIT 8 ADD !         ;; frame
+      LIT SCRATCH_B @ LIT 1 ADD @ LIT REG_SP !
+      LIT SCRATCH_B @ LIT 2 ADD @ LIT REG_RP !
+      LIT SCRATCH_B @ LIT 3 ADD @ LIT REG_HP !
+      LIT SCRATCH_B @ LIT 4 ADD @ LIT RV_CUR !
+      LIT SCRATCH_B @ LIT 5 ADD @ LIT RV_END !
+      LIT SCRATCH_B @ LIT 6 ADD @ LIT RV_CTX !
+      LIT SCRATCH_B @ LIT 7 ADD @ LIT RV_BLK !
+      LIT SCRATCH_B @ LIT 8 ADD @ LIT RV_FRAME !
+      LIT SCRATCH_A @ LIT 16 MUL                          ;; handle (tagged)
+      LIT 16                                              ;; arity 1
+      LIT SCRATCH_B @ LIT 0 ADD @ LIT REG_IP !            ;; jump to debugger
+  ]
+
+  ;; resume: debugger -> debuggee.  First copy the live HP into record A so the
+  ;; two worlds never allocate over each other (monotonic heap).
+  continue: raw [
+      LIT REG_HP @ LIT SCRATCH_A @ LIT 3 ADD !            ;; debuggee.HP = live HP
+      LIT REG_RP @ @ LIT SCRATCH_B @ LIT 0 ADD !
+      LIT REG_SP @   LIT SCRATCH_B @ LIT 1 ADD !
+      LIT REG_RP @   LIT SCRATCH_B @ LIT 2 ADD !
+      LIT REG_HP @   LIT SCRATCH_B @ LIT 3 ADD !
+      LIT RV_CUR @   LIT SCRATCH_B @ LIT 4 ADD !
+      LIT RV_END @   LIT SCRATCH_B @ LIT 5 ADD !
+      LIT RV_CTX @   LIT SCRATCH_B @ LIT 6 ADD !
+      LIT RV_BLK @   LIT SCRATCH_B @ LIT 7 ADD !
+      LIT RV_FRAME @ LIT SCRATCH_B @ LIT 8 ADD !
+      LIT SCRATCH_A @ LIT 1 ADD @ LIT REG_SP !
+      LIT SCRATCH_A @ LIT 2 ADD @ LIT REG_RP !
+      LIT SCRATCH_A @ LIT 3 ADD @ LIT REG_HP !
+      LIT SCRATCH_A @ LIT 4 ADD @ LIT RV_CUR !
+      LIT SCRATCH_A @ LIT 5 ADD @ LIT RV_END !
+      LIT SCRATCH_A @ LIT 6 ADD @ LIT RV_CTX !
+      LIT SCRATCH_A @ LIT 7 ADD @ LIT RV_BLK !
+      LIT SCRATCH_A @ LIT 8 ADD @ LIT RV_FRAME !
+      LIT SCRATCH_A @ LIT 0 ADD @ LIT REG_IP !            ;; jump to debuggee resume
+  ]
+
+  ;; inspection primitives: generic single-cell reads of the captured state
+  state-get:   raw 2 [ LIT 16 DIV >R LIT 16 DIV R> ADD @ ARITY 1 EXIT ]
+  state-get-i: raw 2 [ LIT 16 DIV >R LIT 16 DIV R> ADD @ LIT 16 MUL ARITY 1 EXIT ]
+  frame-get:   raw 2 [ LIT 16 DIV ADD @ ARITY 1 EXIT ]
+  ctx-count:   raw 1 [ DUP LIT 16 MOD SUB LIT 1 ADD @ LIT 16 MUL ARITY 1 EXIT ]
+  ctx-word:    raw 2 [ LIT 16 DIV >R DUP LIT 16 MOD SUB LIT 3 ADD R> LIT 2 MUL ADD @ ARITY 1 EXIT ]
+  ctx-val:     raw 2 [ LIT 16 DIV >R DUP LIT 16 MOD SUB LIT 4 ADD R> LIT 2 MUL ADD @ ARITY 1 EXIT ]
+
+  ;; lexical chain-walk lookup (context, word -> value | -1)
+  ctx-lookup: raw 2 [
+      LIT SCRATCH_A @ >R LIT SCRATCH_B @ >R
+      LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A !
+      Lclkouter:
+      LIT SCRATCH_A @ LIT 0 EQ ZBRANCH Lclkok
+          R> LIT SCRATCH_B ! R> LIT SCRATCH_A ! LIT -1 ARITY 1 EXIT
+      Lclkok:
+      LIT 0
+      Lclkin:
+      DUP LIT SCRATCH_A @ LIT 1 ADD @ GE ZBRANCH Lclksearch
+          DROP LIT SCRATCH_A @ @ DUP LIT 16 MOD SUB LIT SCRATCH_A ! BRANCH Lclkouter
+      Lclksearch:
+      DUP LIT 2 MUL LIT SCRATCH_A @ LIT 3 ADD ADD @
+      LIT SCRATCH_B @ EQ ZBRANCH Lclknomatch
+          LIT 2 MUL LIT SCRATCH_A @ LIT 4 ADD ADD @
+          R> LIT SCRATCH_B ! R> LIT SCRATCH_A ! ARITY 1 EXIT
+      Lclknomatch:
+      LIT 1 ADD BRANCH Lclkin
+  ]
+
+  ;; frame-chain depth counter (frame -> depth)
+  frame-depth: raw 1 [
+      LIT SCRATCH_A @ >R
+      LIT SCRATCH_A !
+      LIT 0
+      Lfdouter:
+      LIT SCRATCH_A @ LIT 0 EQ ZBRANCH Lfdok
+          R> LIT SCRATCH_A ! LIT 16 MUL ARITY 1 EXIT
+      Lfdok:
+      LIT 1 ADD LIT SCRATCH_A @ @ LIT SCRATCH_A ! BRANCH Lfdouter
+  ]
+
+  ;; ---- ordinary R0 debugger session (the POLICY layer) ---------------------
+
+  ;; The debuggee (run by the C driver) is, e.g.:
+  ;;   f: func [a] [ b: + a 1  debug-break  + b 10 ]  f 5
+  ;;
+  ;; A session inspects the suspended state, then continues:
+  st: continue                       ;; start the debuggee; returns the state at breakpoint
+  ctx: state-get st 6                ;; current lexical context
+  dbg-a: ctx-lookup ctx 'a           ;; inspect a == 5
+  dbg-b: ctx-lookup ctx 'b           ;; inspect b == 6
+  continue                           ;; resume; debuggee finishes with + b 10 == 16
+]
