@@ -1,0 +1,144 @@
+;; examples/multitasking.r0 -- M1: cooperative multitasking, written in ordinary
+;; R0 policy plus generic RAW/S1 mechanism fragments.  The R0 evaluator and the
+;; frozen S1 substrate know nothing about tasks, yields or scheduling; they only
+;; know that RAW values are callable.
+;;
+;; This is a canonical source listing (the harness has no file loader); the
+;; runnable version lives in r0_s1_m1_tests.c, which embeds this library and
+;; drives it through the C "run driver" (which only seeds the environment:
+;; evaluator entry point, round-robin cursor, task-table slots).
+;;
+;; A task is a suspended R0 execution world.  Each task record (16 cells, in a
+;; fixed task table at 60000) holds:
+;;
+;;   [ resume_ip, SP, RP, RV_CUR, RV_END, RV_CTX, RV_BLK, RV_FRAME, ..., state ]
+;;      0            1    2    3       4       5       6       7        8
+;;
+;; REG_HP is GLOBAL allocator state and is deliberately NOT saved per task: all
+;; tasks share ONE monotonically advancing heap (32768..40000).  Each task owns
+;; a private DS (top = 47000 + i*1600 + 800) and RS (top = 47000 + i*1600 + 1600),
+;; so task stacks never overlap.  See M1-MULTITASKING-RESULTS.md for the map.
+;;
+;; Scheduling policy (round-robin over the task table) lives in the RAW
+;; `run-tasks` fragment; the user-facing words `spawn` / `repeat` are ordinary
+;; R0 `func`s.  No task semantics exist in r0_s1_runtime.c / s1.c / HOST / JS.
+
+[ ;; ---- RAW mechanism fragments (the low-level context switch) ----------------
+
+  ;; mnew-task (RAW, arity 3): (body do-word finish-word -- handle)
+  ;; Finds the first empty table slot, allocates a wrapper block
+  ;; [ do body task-finish ] from the SHARED heap, seeds the task record's
+  ;; initial machine state, returns handle = mk_int(record).
+  mnew-task: raw 3 [
+      LIT 8278 !                                  ;; finish word -> scratch
+      LIT 8277 !                                  ;; do word     -> scratch
+      DUP LIT 16 MOD SUB LIT 8276 !               ;; body ptr    -> scratch
+      LIT 0 LIT 8279 !                            ;; i = 0
+      Lfind: LIT 8279 @ LIT 8 LT ZBRANCH Lfull
+      LIT 8279 @ LIT 16 MUL LIT 60000 ADD LIT 8280 !    ;; record
+      LIT 8280 @ LIT 8 ADD @ LIT 2 EQ ZBRANCH Lnext      ;; empty?
+      BRANCH Lmake
+      Lnext: LIT 8279 @ LIT 1 ADD LIT 8279 ! BRANCH Lfind
+      Lfull: LIT -1 LIT 16 MUL ARITY 1 EXIT
+      Lmake: LIT 16 ALLOC LIT 8281 !              ;; wrapper block
+      LIT 3 LIT 8281 @ LIT 0 ADD !                ;; count = 3
+      LIT 0 LIT 8281 @ LIT 1 ADD !                ;; site = 0
+      LIT 8277 @ LIT 8281 @ LIT 2 ADD !           ;; elem0 = do
+      LIT 8276 @ LIT 6 ADD LIT 8281 @ LIT 3 ADD ! ;; elem1 = body
+      LIT 8278 @ LIT 8281 @ LIT 4 ADD !           ;; elem2 = task-finish
+      LIT 8262 @ LIT 8280 @ LIT 0 ADD !           ;; resume_ip = main entry
+      LIT 8279 @ LIT 1600 MUL LIT 47000 ADD LIT 800 ADD  LIT 8280 @ LIT 1 ADD !  ;; SP
+      LIT 8279 @ LIT 1600 MUL LIT 47000 ADD LIT 1600 ADD LIT 8280 @ LIT 2 ADD !  ;; RP
+      LIT 8281 @ LIT 2 ADD LIT 8280 @ LIT 3 ADD ! ;; cur
+      LIT 8281 @ LIT 5 ADD LIT 8280 @ LIT 4 ADD ! ;; end
+      LIT RV_CTX @ LIT 8280 @ LIT 5 ADD !         ;; ctx (caller's context)
+      LIT 8281 @ LIT 8280 @ LIT 6 ADD !           ;; blk
+      LIT 0 LIT 8280 @ LIT 7 ADD !                ;; frame = 0
+      LIT 0 LIT 8280 @ LIT 8 ADD !                ;; state = runnable
+      LIT 8280 @ LIT 16 MUL ARITY 1 EXIT
+  ]
+
+  ;; yield (RAW, arity 0): task -> scheduler.  Pushes its own result [NONE,1]
+  ;; (the suspended `yield` returns NONE to the task on resume), saves the
+  ;; task's resumable state into the current record, restores the scheduler.
+  yield: raw [
+      NONE LIT 16
+      LIT REG_RP @ @ LIT 8263 @ LIT 0 ADD !       ;; resume_ip
+      LIT REG_SP @   LIT 8263 @ LIT 1 ADD !
+      LIT REG_RP @   LIT 8263 @ LIT 2 ADD !
+      LIT RV_CUR @   LIT 8263 @ LIT 3 ADD !
+      LIT RV_END @   LIT 8263 @ LIT 4 ADD !
+      LIT RV_CTX @   LIT 8263 @ LIT 5 ADD !
+      LIT RV_BLK @   LIT 8263 @ LIT 6 ADD !
+      LIT RV_FRAME @ LIT 8263 @ LIT 7 ADD !
+      LIT 8264 LIT 1 ADD @ LIT REG_SP !           ;; restore scheduler
+      LIT 8264 LIT 2 ADD @ LIT REG_RP !
+      LIT 8264 LIT 3 ADD @ LIT RV_CUR !
+      LIT 8264 LIT 4 ADD @ LIT RV_END !
+      LIT 8264 LIT 5 ADD @ LIT RV_CTX !
+      LIT 8264 LIT 6 ADD @ LIT RV_BLK !
+      LIT 8264 LIT 7 ADD @ LIT RV_FRAME !
+      LIT 8264 LIT 0 ADD @ LIT REG_IP !           ;; jump to scheduler resume
+  ]
+
+  ;; task-finish (RAW, arity 0): task -> scheduler, marking the current task
+  ;; finished.  Does not save the task's state (it will never be resumed).
+  task-finish: raw [
+      LIT 1 LIT 8263 @ LIT 8 ADD !                ;; state = finished
+      LIT 8264 LIT 1 ADD @ LIT REG_SP !
+      LIT 8264 LIT 2 ADD @ LIT REG_RP !
+      LIT 8264 LIT 3 ADD @ LIT RV_CUR !
+      LIT 8264 LIT 4 ADD @ LIT RV_END !
+      LIT 8264 LIT 5 ADD @ LIT RV_CTX !
+      LIT 8264 LIT 6 ADD @ LIT RV_BLK !
+      LIT 8264 LIT 7 ADD @ LIT RV_FRAME !
+      LIT 8264 LIT 0 ADD @ LIT REG_IP !
+  ]
+
+  ;; run-tasks (RAW, arity 0): the allocation-free round-robin scheduler loop.
+  ;; Saves the scheduler world once, then repeatedly picks the next runnable
+  ;; task and switches into it; each task yields/finishes back to the resume
+  ;; point.  When no task is runnable, returns [NONE,1] to the caller.
+  run-tasks: raw [
+      LIT REG_IP @ LIT 11 ADD LIT 8264 LIT 0 ADD !   ;; resume_ip = loop point
+      LIT REG_SP @   LIT 8264 LIT 1 ADD !            ;; save scheduler SP
+      LIT REG_RP @   LIT 8264 LIT 2 ADD !
+      LIT RV_CUR @   LIT 8264 LIT 3 ADD !
+      LIT RV_END @   LIT 8264 LIT 4 ADD !
+      LIT RV_CTX @   LIT 8264 LIT 5 ADD !
+      LIT RV_BLK @   LIT 8264 LIT 6 ADD !
+      LIT RV_FRAME @ LIT 8264 LIT 7 ADD !
+      LIT 8272 @ LIT 8283 !                          ;; SI = cursor
+      LIT 0 LIT 8284 !                               ;; SCOUNT = 0
+      Lscan: LIT 8284 @ LIT 8 LT ZBRANCH Ldone
+      LIT 8283 @ LIT 16 MUL LIT 60000 ADD LIT 8282 ! ;; record
+      LIT 8282 @ LIT 8 ADD @ LIT 0 NE ZBRANCH Lfound ;; runnable?
+      Lskip: LIT 8283 @ LIT 1 ADD LIT 8 MOD LIT 8283 !
+      LIT 8284 @ LIT 1 ADD LIT 8284 !
+      BRANCH Lscan
+      Ldone: NONE LIT 16 EXIT
+      Lfound: LIT 8282 @ LIT 8263 !                  ;; CUR_TASK = record
+      LIT 8283 @ LIT 1 ADD LIT 8 MOD LIT 8272 !      ;; cursor = next
+      LIT 8263 @ LIT 1 ADD @ LIT REG_SP !            ;; switch into task
+      LIT 8263 @ LIT 2 ADD @ LIT REG_RP !
+      LIT 8263 @ LIT 3 ADD @ LIT RV_CUR !
+      LIT 8263 @ LIT 4 ADD @ LIT RV_END !
+      LIT 8263 @ LIT 5 ADD @ LIT RV_CTX !
+      LIT 8263 @ LIT 6 ADD @ LIT RV_BLK !
+      LIT 8263 @ LIT 7 ADD @ LIT RV_FRAME !
+      LIT 8263 @ LIT 0 ADD @ LIT REG_IP !
+  ]
+
+  ;; ---- R0 policy layer (ordinary funcs) ------------------------------------
+
+  spawn: func [body] [ mnew-task body 'do 'task-finish ]
+  repeat: func [n b] [ either > n 0 [ do b  repeat - n 1 b ] [ none ] ]
+
+  ;; ---- demo: two tasks alternate, encoding their interleaving into `trace` --
+
+  trace: 0
+  task-a: spawn [ repeat 3 [ trace: + * trace 10 1  yield ] ]
+  task-b: spawn [ repeat 3 [ trace: + * trace 10 2  yield ] ]
+  run-tasks
+  trace                    ;; => 121212 (order 1,2,1,2,1,2)
+]
