@@ -1,0 +1,66 @@
+# R0 / S1 WebAssembly Demo
+
+A minimal browser demonstration of the R0-on-S1 system running as WebAssembly
+and performing a visible DOM update. This is **not** a REPL.
+
+## Files
+
+| file | role |
+|---|---|
+| `index.html` | the page: heading, `Counter: <span id="counter">`, `[Increment]` button |
+| `demo.r0` | the R0 application (counter state + increment logic + `web-set-int` HOST adapter) |
+| `demo.c` | the C/WASM entry: loads `demo.r0`, runs init, exports `r0_click` |
+| `glue.js` | the JS half of the boundary (prepended to `demo.js` at build time) |
+| `demo.js`, `demo.wasm` | generated Emscripten artifacts (via `make wasm`) |
+| `node_test.c` | headless node verification (`make wasm-test`) |
+
+## Build
+
+```
+emcc   # Emscripten >= 3.1 (tested 3.1.74)
+make wasm
+```
+
+## Serve and try it
+
+```
+python3 -m http.server 8000
+# open http://localhost:8000/web/
+```
+
+Click **Increment** three times; the page shows `Counter: 3`. Reloading the
+page resets R0 (and therefore the counter) to `0`.
+
+## How it works
+
+- `make wasm` compiles `web/demo.c` + `s1.c` + `r0_s1_runtime.c` to
+  `web/demo.js` + `web/demo.wasm`, embedding `demo.r0` into the WASM
+  filesystem (`--embed-file`).
+- On startup, `r0_init` reads `demo.r0`, runs its top level
+  (`counter: 0`, bind `web-set-int` and `on-click`), and prepares the
+  `[ do on-click ]` program.
+- On each button click, the JS glue calls the exported `r0_click`, which runs
+  the R0 handler: `counter: + counter 1` then `web-set-int 1 counter`.
+- `web-set-int` is a RAW fragment that emits `handle * 1000000 + value` on the
+  host's standard output. The JS glue overrides `Module.print`, decodes the
+  handle/value, and writes the value into the `#counter` element.
+
+The counter state and increment logic live entirely in R0; JavaScript only
+maps numeric handle `1` to the `#counter` DOM element.
+
+## Boundary
+
+- **R0:** application state, application logic, the decision of what UI update
+  to request.
+- **JS:** startup, DOM element mapping, click forwarding, the `WEB_SET_INT`
+  host service (capture stdout, decode handle/value, set `.textContent`).
+- **S1:** unchanged execution substrate.
+
+## Verify headlessly (no browser)
+
+```
+make wasm-test
+```
+
+runs the same R0 application under node and asserts three clicks emit
+`1000001`, `1000002`, `1000003` (handle 1, values 1/2/3).

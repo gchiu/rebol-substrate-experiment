@@ -1,0 +1,38 @@
+;; web/demo.r0 -- R0 application for the WASM browser demo.
+;;
+;; The counter STATE and the increment LOGIC live entirely in R0.  On each
+;; button click the JS glue calls the exported WASM entry `r0_click`, which
+;; runs `do on-click` below; that increments the counter and asks the browser
+;; to update the DOM through the small `web-set-int` HOST adapter.
+;;
+;; web-set-int is a generic RAW fragment.  It has no evaluator/control/binding
+;; semantics: it simply emits `handle * 1000000 + value` on the host's standard
+;; output (the same environmental channel `print` uses).  The JS/browser layer
+;; intercepts that line and maps handle 1 to the <span id="counter"> element.
+;;
+;; Note: `on-click` is a first-class BLOCK invoked with `do`, not a `func`
+;; closure.  R0 runtime closures are allocated in the S1 heap, which the frozen
+;; r0_s1_run resets on every call; a parsed block (loader heap) survives across
+;; calls, so it is the natural unit of per-click logic here.
+
+[
+  ;; browser HOST adapter: ( handle value -- )  ->  emit encoded DOM update
+  web-set-int: raw 2 [
+      LIT 16 DIV          ;; untag value
+      >R                  ;; stash value
+      LIT 16 DIV          ;; untag handle
+      LIT 1000000 MUL     ;; handle * 1000000
+      R> ADD              ;; + value
+      PRINT               ;; host print the encoded integer
+      ARITY 0 EXIT
+  ]
+
+  ;; application state
+  counter: 0
+
+  ;; application logic (run once per button click via `do on-click`)
+  on-click: [
+      counter: + counter 1
+      web-set-int 1 counter
+  ]
+]
