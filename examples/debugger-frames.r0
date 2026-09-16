@@ -4,6 +4,10 @@
 
 [ ;; ---- RAW mechanism fragments (identical to debugger-basic.r0) ------------
 
+  ;; the debugger runs on its OWN heap region (see debugger-basic.r0).
+  set-hp: raw [ LIT 50000 LIT REG_HP ! ARITY 0 EXIT ]
+  set-hp
+
   debug-break: raw [
       NONE LIT 16
       LIT REG_RP @ @ LIT SCRATCH_A @ LIT 0 ADD !
@@ -29,7 +33,6 @@
   ]
 
   continue: raw [
-      LIT REG_HP @ LIT SCRATCH_A @ LIT 3 ADD !
       LIT REG_RP @ @ LIT SCRATCH_B @ LIT 0 ADD !
       LIT REG_SP @   LIT SCRATCH_B @ LIT 1 ADD !
       LIT REG_RP @   LIT SCRATCH_B @ LIT 2 ADD !

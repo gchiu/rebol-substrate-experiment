@@ -20,6 +20,13 @@
 
 [ ;; ---- RAW mechanism fragments (low-level work R0 cannot express) ----------
 
+  ;; the debugger runs on its OWN heap region (>= 50000), disjoint from the
+  ;; debuggee's S1 heap (32768..40000).  Without this, ordinary R0 closures
+  ;; created here (and during inspection) would overwrite the debuggee's live
+  ;; frames/contexts.  Call set-hp before defining any closure.
+  set-hp: raw [ LIT 50000 LIT REG_HP ! ARITY 0 EXIT ]
+  set-hp
+
   ;; cooperative breakpoint: debuggee -> debugger.  Leaves its own result
   ;; [NONE,1] on the debuggee stack, captures the debuggee, restores the
   ;; debugger, and pushes [handle,1] as the value of the suspended `continue`.
@@ -47,10 +54,8 @@
       LIT SCRATCH_B @ LIT 0 ADD @ LIT REG_IP !            ;; jump to debugger
   ]
 
-  ;; resume: debugger -> debuggee.  First copy the live HP into record A so the
-  ;; two worlds never allocate over each other (monotonic heap).
+  ;; resume: debugger -> debuggee (each world keeps its own HP; see set-hp).
   continue: raw [
-      LIT REG_HP @ LIT SCRATCH_A @ LIT 3 ADD !            ;; debuggee.HP = live HP
       LIT REG_RP @ @ LIT SCRATCH_B @ LIT 0 ADD !
       LIT REG_SP @   LIT SCRATCH_B @ LIT 1 ADD !
       LIT REG_RP @   LIT SCRATCH_B @ LIT 2 ADD !

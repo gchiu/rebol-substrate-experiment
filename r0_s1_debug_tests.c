@@ -26,6 +26,8 @@
 #include "r0_s1.h"
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 static int failures = 0;
 
@@ -41,8 +43,17 @@ static int failures = 0;
 #define DBGEE_SP 12000
 #define DBGEE_RP 20000
 
+/* the debugger runs on its own heap region (>= 50000), disjoint from the
+ * debuggee's S1 heap (32768..40000) and the loader heap (40000..47000).  This
+ * is what keeps the two worlds' allocations from overwriting each other. */
+#define DBGER_HP 50000
+
 /* ---- the debugger library: RAW mechanism primitives --------------------- */
 static const char *DBG_LIB =
+    /* establish the debugger's own heap region BEFORE any closure is defined
+     * (ordinary R0 closures created during inspection allocate here, not over
+     * the debuggee's live frames/contexts) */
+    " set-hp: raw [ LIT 50000 LIT REG_HP ! ARITY 0 EXIT ] set-hp "
     /* cooperative breakpoint: debuggee -> debugger, push [handle,1], jump */
     " debug-break: raw [ "
     "   NONE LIT 16 "                                         /* debug-break's own result: [NONE,1] */
@@ -66,10 +77,8 @@ static const char *DBG_LIB =
     "   LIT SCRATCH_A @ LIT 16 MUL "
     "   LIT 16 "
     "   LIT SCRATCH_B @ LIT 0 ADD @ LIT REG_IP ! ] "
-    /* resume: debugger -> debuggee (heap kept monotonic so the debugger's
-     * inspection allocations never overwrite the debuggee's live data) */
+    /* resume: debugger -> debuggee */
     " continue: raw [ "
-    "   LIT REG_HP @ LIT SCRATCH_A @ LIT 3 ADD ! "
     "   LIT REG_RP @ @ LIT SCRATCH_B @ LIT 0 ADD ! "
     "   LIT REG_SP @ LIT SCRATCH_B @ LIT 1 ADD ! "
     "   LIT REG_RP @ LIT SCRATCH_B @ LIT 2 ADD ! "
@@ -93,7 +102,9 @@ static const char *DBG_LIB =
     " state-get: raw 2 [ LIT 16 DIV >R LIT 16 DIV R> ADD @ ARITY 1 EXIT ] "
     " state-get-i: raw 2 [ LIT 16 DIV >R LIT 16 DIV R> ADD @ LIT 16 MUL ARITY 1 EXIT ] "
     " frame-get: raw 2 [ LIT 16 DIV ADD @ ARITY 1 EXIT ] "
+    " frame-get-i: raw 2 [ LIT 16 DIV ADD @ LIT 16 MUL ARITY 1 EXIT ] "
     " ctx-count: raw 1 [ DUP LIT 16 MOD SUB LIT 1 ADD @ LIT 16 MUL ARITY 1 EXIT ] "
+    " ctx-parent: raw 1 [ DUP LIT 16 MOD SUB @ ARITY 1 EXIT ] "
     " ctx-word: raw 2 [ LIT 16 DIV >R DUP LIT 16 MOD SUB LIT 3 ADD R> LIT 2 MUL ADD @ ARITY 1 EXIT ] "
     " ctx-val: raw 2 [ LIT 16 DIV >R DUP LIT 16 MOD SUB LIT 4 ADD R> LIT 2 MUL ADD @ ARITY 1 EXIT ] "
     " ctx-lookup: raw 2 [ "
@@ -230,9 +241,9 @@ static void test_frames(void) {
         " st: continue "
         " fr: state-get st 8 "
         " dbg-depth: frame-depth fr "
-        " h-site: frame-get fr 1 "
-        " h-ip: frame-get fr 4 "
-        " h-rp: frame-get fr 3 "
+        " h-site: frame-get-i fr 1 "
+        " h-ip: frame-get-i fr 4 "
+        " h-rp: frame-get-i fr 3 "
         " h-ctx: frame-get fr 5 "
         " continue ";
     expect_session1(gee, body, mk_int(99), "C: result == 99 after continue");
@@ -366,6 +377,66 @@ static void test_stack_instrumentation(void) {
     CHECK(N == 1 && result == mk_int(9), "stack: result == 9");
 }
 
+/* ================= acceptance: ordinary R0 closures during inspection ======
+ * The HLL closure path (recursive + nested + lexical lookup) must work DURING
+ * a suspended-debuggee inspection.  These are ordinary `func` definitions, not
+ * the RAW ctx-lookup/frame-depth diagnostic workarounds. */
+static void test_hll_inspection(void) {
+    printf("debugger: HLL closure inspection (acceptance)\n");
+    const char *gee = "[ f: func [a] [ b: + a 1 debug-break + b 10 ]  f 5 ]";
+    const char *body =
+        " count: func [n] [ either = n 0 [ 0 ] [ count - n 1 ] ] "
+        " inc: func [n] [ + n 1 ] "
+        " twice: func [g x] [ g g x ] "
+        " find-in: func [ctx w i cnt] [ either >= i cnt [ lookup ctx-parent ctx w ] [ either = ctx-word ctx i w [ ctx-val ctx i ] [ find-in ctx w + i 1 cnt ] ] ] "
+        " lookup: func [ctx w] [ either = ctx none [ -1 ] [ find-in ctx w 0 ctx-count ctx ] ] "
+        " st: continue "
+        " ctx: state-get st 6 "
+        " dbg-a: lookup ctx 'a "
+        " dbg-b: lookup ctx 'b "
+        " dbg-rec: count 3 "
+        " dbg-nested: twice :inc 5 "
+        " continue ";
+    expect_session1(gee, body, mk_int(16), "HLL: result == 16 after continue");
+    CHECK(get_int("dbg-a") == mk_int(5), "HLL: lexical lookup a == 5");
+    CHECK(get_int("dbg-b") == mk_int(6), "HLL: lexical lookup b == 6");
+    CHECK(get_int("dbg-rec") == mk_int(0), "HLL: recursive count 3 == 0");
+    CHECK(get_int("dbg-nested") == mk_int(7), "HLL: nested twice inc 5 == 7");
+}
+
+/* ================= stress: many suspend / inspect / resume cycles ========= */
+static void test_stress(void) {
+    printf("debugger: stress (100 suspend/inspect/resume cycles)\n");
+    const char *gee = "[ f: func [] [ x: 10 debug-break x: + x 5 x ]  f ]";
+    const char *body =
+        " count: func [n] [ either = n 0 [ 0 ] [ count - n 1 ] ] "
+        " st: continue "
+        " dbg-r: count 10 "
+        " continue ";
+    int ok = 1;
+    for (int i = 0; i < 100; i++) {
+        int N;
+        debug_session(gee, body, &N);
+        if (N != 1 || r0_s1_result(0, 1) != mk_int(15)) { ok = 0; break; }
+        if (r0_s1_rp_end() != DBGEE_RP) { ok = 0; break; }  /* RP back to debuggee baseline */
+    }
+    CHECK(ok, "stress: 100 cycles, correct result + clean RP every time");
+}
+
+/* scan a captured stderr file for unexpected machine diagnostics */
+static void check_no_diagnostics(const char *path) {
+    FILE *fp = fopen(path, "r");
+    int bad = 0;
+    if (fp) {
+        static char buf[1 << 20];
+        size_t n = fread(buf, 1, sizeof buf - 1, fp);
+        buf[n] = 0; fclose(fp);
+        if (strstr(buf, "bad opcode")) { printf("  FAIL: unexpected 'bad opcode' diagnostic\n"); bad = 1; }
+        if (strstr(buf, "[dump]"))     { printf("  FAIL: unexpected '[dump]' (unbound/error) diagnostic\n"); bad = 1; }
+    }
+    CHECK(bad == 0, "no unexpected bad-opcode / unbound-word diagnostics");
+}
+
 /* mechanical audit: no debugger semantics were added to the frozen runtime */
 static void audit_runtime_clean(void) {
     static const char *forbidden[] = {
@@ -400,6 +471,13 @@ static void audit_runtime_clean(void) {
 
 int run_r0_s1_debug_tests(void) {
     printf("R0-S1 D1 debugger: HLL-first cooperative debugger\n");
+
+    /* capture stderr so we can prove ZERO unexpected machine diagnostics */
+    const char *capture = "/tmp/opencode_debug_stderr.txt";
+    int saved_err = dup(2);
+    int capfd = open(capture, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (capfd >= 0) { dup2(capfd, 2); close(capfd); }
+
     test_basic();
     test_locals();
     test_frames();
@@ -410,6 +488,13 @@ int run_r0_s1_debug_tests(void) {
     test_debugged_vs_normal();
     test_stack_instrumentation();
     test_first_class_state();
+    test_hll_inspection();
+    test_stress();
+
+    fflush(stderr);
+    if (capfd >= 0) { dup2(saved_err, 2); close(saved_err); }
+    check_no_diagnostics(capture);
+
     audit_runtime_clean();
     if (failures == 0) printf("all R0-S1 debugger tests passed\n");
     return failures;
