@@ -58,4 +58,31 @@ wasm-test: web/demo.js
 	 grep -q WASM_DEMO_OK /tmp/opencode_wasm_test.out && \
 	 echo "wasm-test: PASS (3 clicks -> counter 3, emitted 1000001/1000002/1000003)"
 
-.PHONY: all test clean wasm wasm-test
+# ---- Standalone WebAssembly demo (no Emscripten JS runtime) ----------------
+# Builds a raw standalone/glon.wasm with `-nostdlib` (no libc, no WASI, no
+# virtual filesystem) plus a handwritten standalone/glon.js.  The R0/GLON
+# source (standalone/app.glon) is NOT embedded in the binary; it is inlined
+# into the generated docs/standalone.html by standalone/build-docs.py and
+# passed to glon_load at runtime.
+STANDALONE_FLAGS = -O1 -nostdlib -fno-builtin \
+	-s STANDALONE_WASM=1 -s ALLOW_MEMORY_GROWTH=1 \
+	-Wl,--no-entry -Wl,--export-memory \
+	-I.
+
+wasm-standalone: standalone/glon.wasm docs/standalone.html
+
+standalone/glon.wasm: standalone/glon.c s1.c s1.h r0_s1_runtime.c r0_s1.h
+	$(EMCC) $(STANDALONE_FLAGS) standalone/glon.c s1.c r0_s1_runtime.c \
+		-o standalone/glon.wasm
+
+# generate docs/standalone.html from app.glon/glon.js and publish artifacts
+docs/standalone.html: standalone/app.glon standalone/glon.js standalone/build-docs.py standalone/glon.wasm
+	python3 standalone/build-docs.py
+
+# headless verification under node (no browser/DOM required)
+wasm-standalone-test: standalone/glon.wasm
+	node standalone/node_test.js | tee /tmp/opencode_glon_test.out
+	@grep -q "GLON_TEST PASS" /tmp/opencode_glon_test.out && \
+	 echo "wasm-standalone-test: PASS (3 clicks -> counter 3)"
+
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test

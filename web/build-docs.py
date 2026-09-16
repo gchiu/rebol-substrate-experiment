@@ -85,6 +85,9 @@ def main():
 <body>
   <h1>R0 / S1 WebAssembly Demo</h1>
 
+  <p class="muted">A standalone build (no Emscripten JS runtime, no libc/WASI)
+     lives at <a href="standalone.html">docs/standalone.html</a>.</p>
+
   <p>Counter: <span id="counter">0</span></p>
   <button id="increment">Increment</button>
 
