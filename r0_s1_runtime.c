@@ -23,6 +23,7 @@ static const char *syms[256];            /* interner: sym_id -> spelling */
 static int nsyms;
 static cell global_ctx;                  /* tagged CONTEXT value */
 static cell main_entry;                  /* top-level S1 entry point */
+static int g_seed_datatypes;             /* M3: enable bootstrap heap seeding */
 
 /* instrumentation */
 static cell ip_start, ip_end, sp_start, sp_end, rp_start, rp_end;
@@ -138,6 +139,10 @@ static const raw_sym_t raw_syms[] = {
     { "FRAME_SAVED_CUR", FRAME_CUR }, { "FRAME_SAVED_END", FRAME_END },
     { "FRAME_SAVED_BLK", FRAME_BLK },
     { "SCRATCH_A", RV_SCRATCH_A }, { "SCRATCH_B", RV_SCRATCH_B },
+    { "SCRATCH_C", RV_SCRATCH_C }, { "SCRATCH_D", RV_SCRATCH_D },
+    { "SCRATCH_E", RV_SCRATCH_E }, { "SCRATCH_F", RV_SCRATCH_F },
+    { "BUILTIN_BASE", BUILTIN_BASE }, { "GC_META", GC_META },
+    { "T_USER", T_USER }, { "GC_KIND_USER", GC_KIND_USER },
 };
 #define N_RAW_SYMS ((int)(sizeof raw_syms / sizeof raw_syms[0]))
 
@@ -354,7 +359,7 @@ static cell to_block_eval[16]; static int n_block_eval;
  * pointers and are traced. */
 
 static cell r_mark_value, r_mark_push, r_trace_ctx, r_trace_closure, r_trace_frame,
-            r_mark_frame, r_scan_values, r_scan_closures,
+            r_mark_frame, r_trace_user, r_scan_values, r_scan_closures,
             r_collect, r_alloc;
 
 /* forward-call patch lists for the mark/trace mutual recursion */
@@ -432,6 +437,46 @@ static void emit_trace_frame(void) {
     asm_exit();
 }
 
+/* TRACE-USER: ( p -- ) trace a generic user object. First verify COUNT against
+ * the allocated block extent (a COUNT that exceeds the payload capacity is
+ * fail-stop heap corruption, never silently clamped), then mark the descriptor
+ * and each tagged content cell.
+ *
+ * trace_user is reached ONLY from the collector's drain loop, never from
+ * mark_value (the mark_value T_USER case only mark_pushes). It may therefore
+ * use the GC_T6..GC_T8 scan/drain partition for its locals: mark_value and
+ * every routine it reaches (mark_push, trace_ctx, trace_closure, trace_frame)
+ * use only GC_T1..GC_T5, so GC_T6..GC_T8 survive the recursive mark_value
+ * calls and no >R/R> save/restore is needed. */
+static void emit_trace_user(void) {
+    r_trace_user = asm_here();
+    e_setc(GC_T6);                                   /* p */
+    /* count = M[p+1]; size = M[p-16]; require count <= size-18 (fail-stop) */
+    e_cell(GC_T6); asm_lit(GC_HDR_STRIDE); asm_host(HOST_SUB); asm_fetch(); e_setc(GC_T5); /* size */
+    e_cell(GC_T6); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(GC_T7);  /* count */
+    e_cell(GC_T7);                                    /* count */
+    e_cell(GC_T5); asm_lit(GC_HDR_STRIDE + 2); asm_host(HOST_SUB);              /* size-18 */
+    asm_host(HOST_GT);                                /* count > size-18 ? */
+    cell j_ok = asm_zbranch_fwd();
+    asm_host(HOST_DUMP); asm_halt();                  /* corrupt count */
+    asm_patch_here(j_ok);
+    /* mark descriptor (M[p]) */
+    e_cell(GC_T6); asm_fetch();
+    call_mark_value();
+    /* mark each content cell M[p+2+i] */
+    asm_lit(0); e_setc(GC_T8);                       /* i = 0 */
+    cell loop = asm_here();
+    e_cell(GC_T8); e_cell(GC_T7); asm_host(HOST_LT);
+    cell j_done = asm_zbranch_fwd();
+    e_cell(GC_T6); asm_lit(2); asm_host(HOST_ADD);
+    e_cell(GC_T8); asm_host(HOST_ADD); asm_fetch();
+    call_mark_value();                               /* content cell */
+    e_cell(GC_T8); asm_lit(1); asm_host(HOST_ADD); e_setc(GC_T8);
+    asm_branch(loop);
+    asm_patch_here(j_done);
+    asm_exit();
+}
+
 /* MARK-FRAME: ( p -- ) frames are always collected; mark unless 0. */
 static void emit_mark_frame(void) {
     r_mark_frame = asm_here();
@@ -481,6 +526,23 @@ static void emit_mark_value(void) {
     emit_mark_closure_inline();                              /* collected -> mark; else skip */
     asm_exit();
     asm_patch_here(j_ncl);
+    /* USER (tag 11): mark_push the collected user object, but first require the
+     * payload pointer to be inside the managed heap. There are no loader user
+     * objects (values and descriptors are always managed, allocated via r_alloc
+     * or seeded at the bottom of the managed heap), so an out-of-range payload
+     * is fail-stop heap corruption, not something to trace. */
+    e_cell(GC_T2); asm_lit(T_USER); asm_host(HOST_EQ);
+    cell j_nu = asm_zbranch_fwd();
+    asm_lit(T_USER); asm_host(HOST_SUB); e_setc(GC_T1);     /* p */
+    e_cell(GC_T1); asm_lit(GC_HEAP_BASE); asm_host(HOST_GE);
+    cell j_bad1 = asm_zbranch_fwd();                        /* p < base -> corrupt */
+    e_cell(GC_T1); asm_lit(GC_HEAP_LIMIT); asm_host(HOST_LT);
+    cell j_bad2 = asm_zbranch_fwd();                        /* p >= limit -> corrupt */
+    e_cell(GC_T1); asm_call(r_mark_push); asm_exit();       /* collected user obj */
+    asm_patch_here(j_bad2);
+    asm_patch_here(j_bad1);
+    asm_host(HOST_DUMP); asm_halt();                        /* out-of-range T_USER */
+    asm_patch_here(j_nu);
     /* else: BLOCK/RAW/int/none/word/set/get/lit/native -> no collected children */
     asm_drop();
     asm_exit();
@@ -539,6 +601,13 @@ static void emit_collect(void) {
     e_cell(RV_CHILD); asm_call(r_mark_value);
     e_cell(RV_CLOSURE); emit_mark_closure_inline();
     e_cell(RV_FRAME); asm_call(r_mark_frame);
+
+    /* bootstrap datatype descriptors (permanent roots, independent of word
+     * bindings). The fixed 16-slot BUILTIN_TYPE table is scanned every
+     * collection; the datatype! meta-descriptor is transitively rooted through
+     * every descriptor's desc field (each built-in descriptor in the table
+     * points at it), so no separate meta root is needed. */
+    asm_lit(BUILTIN_BASE); asm_lit(BUILTIN_BASE + 16); asm_call(r_scan_values);
 
     /* active world DS/RS (main world vs a running task, by SP) */
     e_cell(GC_C1); asm_lit(R0S1_DS_INIT); asm_host(HOST_GT); /* SP0 > DS_INIT? */
@@ -602,6 +671,10 @@ static void emit_collect(void) {
     cell j_nfr = asm_zbranch_fwd();
     e_cell(GC_T6); asm_call(r_trace_frame); asm_branch(drain);
     asm_patch_here(j_nfr);
+    e_cell(GC_T8); asm_lit(GC_KIND_USER); asm_host(HOST_EQ);
+    cell j_nusr = asm_zbranch_fwd();
+    e_cell(GC_T6); asm_call(r_trace_user); asm_branch(drain);
+    asm_patch_here(j_nusr);
     asm_branch(drain);
     asm_patch_here(j_drain_done);
 
@@ -726,6 +799,7 @@ static void emit_gc(void) {
     emit_trace_ctx();
     emit_trace_closure();
     emit_trace_frame();
+    emit_trace_user();
     emit_mark_frame();
     emit_mark_value();
     emit_scan_values();
@@ -1421,7 +1495,53 @@ cell r0_s1_init(void) {
     M[GC_COLLECT_CNT] = 0;
     M[GC_LAST_RECLAM] = 0;
 
+    /* M3: the BUILTIN_TYPE table and GC_META cell are always scanned as roots.
+     * Seed them NONE so non-M3 runs scan to nothing; r0_s1_seed_datatypes()
+     * fills them with the canonical descriptors for M3 runs. */
+    g_seed_datatypes = 0;
+    M[GC_META] = R0_NONE;
+    for (int i = 0; i < 16; i++) M[BUILTIN_BASE + i] = R0_NONE;
+
     return main_entry;
+}
+
+/* M3: bind the datatype! meta-descriptor word and the 11 built-in type words
+ * into the global context, and enable heap seeding on the next run. The
+ * descriptors live at fixed addresses at the bottom of the managed heap; the
+ * heap itself is seeded by seed_datatype_heap() after s1_reset(). */
+void r0_s1_seed_datatypes(void) {
+    static const char *tn[11] = {
+        "integer!", "none!", "word!", "set-word!", "get-word!", "lit-word!",
+        "block!", "context!", "closure!", "native!", "raw!"
+    };
+    g_seed_datatypes = 1;
+    bind(global_ctx, intern("datatype!"), mk_user(GC_META_PAYLOAD));
+    for (int t = 0; t < 11; t++)
+        bind(global_ctx, intern(tn[t]), mk_user(GC_META_PAYLOAD + 32 * (t + 1)));
+}
+
+/* M3: seed the 12 bootstrap descriptors (meta + 11 built-ins) at the bottom of
+ * the managed heap, fill BUILTIN_TYPE and GC_META, and advance REG_HP past
+ * them. Called from r0_s1_run after s1_reset() so REG_HP is correct. */
+static void seed_datatype_heap(void) {
+    cell base = GC_HEAP_BASE;
+    cell meta = GC_META_PAYLOAD;
+    M[base] = 32;                                   /* header size */
+    M[base + 1] = GC_FLAG_ALLOC | (GC_KIND_USER << 2);
+    M[meta] = mk_user(meta);                        /* desc = self */
+    M[meta + 1] = 0;                                /* count = 0 */
+    for (int t = 0; t < 11; t++) {
+        cell b = base + 32 + 32 * t;
+        cell p = b + 16;
+        M[b] = 32;
+        M[b + 1] = GC_FLAG_ALLOC | (GC_KIND_USER << 2);
+        M[p] = mk_user(meta);                       /* desc = datatype! */
+        M[p + 1] = 0;                               /* count = 0 */
+        M[BUILTIN_BASE + t] = mk_user(p);
+    }
+    for (int t = 11; t < 16; t++) M[BUILTIN_BASE + t] = R0_NONE;
+    M[GC_META] = mk_user(meta);
+    M[REG_HP] = base + 12 * 32;
 }
 
 cell r0_s1_parse(const char *src, int *err) {
@@ -1460,6 +1580,7 @@ int r0_s1_run(cell block) {
     M[RV_SPMIN] = 65535;
 
     s1_reset();
+    if (g_seed_datatypes) seed_datatype_heap();
     ip_start = s1_mem(REG_IP);
     sp_start = s1_mem(REG_SP);
     rp_start = s1_mem(REG_RP);
@@ -1490,6 +1611,8 @@ cell r0_s1_code_size(void) { return code_end - code_begin; }
 
 /* M2 GC diagnostics (test/audit only) */
 cell r0_s1_gc_collect_addr(void) { return r_collect; }
+cell r0_s1_alloc_addr(void)       { return r_alloc; }
+cell r0_s1_lookup_addr(void)      { return r_lookup; }
 long r0_s1_gc_count(void)        { return (long)M[GC_COLLECT_CNT]; }
 long r0_s1_gc_live_cells(void)   { return (long)M[GC_LIVE_CELLS]; }
 long r0_s1_gc_live_objs(void)    { return (long)M[GC_LIVE_OBJS]; }

@@ -35,6 +35,23 @@ disjoint.
 The collected heap is bounded below by the RS region and above by the loader
 heap; `REG_HP` is the shared, global, never-restored high-water frontier.
 
+> **M3 revision (relocated layout).** The emitted collector/evaluator grew past
+> the RV boundary (8192) once the generic user-object trace and the datatype
+> library RAW fragments were added, so the following regions moved **upward**:
+>
+> | region | M2 address | M3 address |
+> |---|---|---|
+> | RV register file (`RV_BASE`) | 8192..8247 | **8586..8641** |
+> | `RV_SCRATCH_A/B` | 8260..8261 | **8642..8643** |
+> | M1 cells | 8262..8285 | **9001..9024** |
+> | GC state | 8286..8568 | **9025..9305** |
+>
+> New M3 regions in the old free gap: `GC_META`=8567, `BUILTIN_BASE`=8568..8583,
+> `SCRATCH_C/D`=8584/8585, `SCRATCH_E/F`=8644/8645. The code region is now
+> `[256, 8567)` (base 6784 cells + datatype-library preamble ~1625 cells at
+> parse time). All tests use symbolic ABI names, so the relocation is
+> transparent to them. See `M3-DATATYPE-DESIGN.md` §10.
+
 ---
 
 ## 2. Managed allocation sites (every one)

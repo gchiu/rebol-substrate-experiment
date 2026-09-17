@@ -17,7 +17,8 @@ extern cell M[MEM_CELLS];
 /* --- R0 tags (low 4 bits; same scheme as the architecture) ------------- */
 enum {
     T_INT = 0, T_NONE = 1, T_WORD = 2, T_SET = 3, T_GET = 4, T_LIT = 5,
-    T_BLOCK = 6, T_CONTEXT = 7, T_CLOSURE = 8, T_NATIVE = 9, T_RAW = 10
+    T_BLOCK = 6, T_CONTEXT = 7, T_CLOSURE = 8, T_NATIVE = 9, T_RAW = 10,
+    T_USER = 11
 };
 
 #define R0_NONE       ((cell)0x1)
@@ -33,6 +34,7 @@ enum {
 #define mk_closure(p) ((cell)((p) + T_CLOSURE))
 #define mk_native(id) ((cell)((id) * 16 + T_NATIVE))
 #define mk_raw(p)     ((cell)((p) + T_RAW))
+#define mk_user(p)    ((cell)((p) + T_USER))
 #define word_id(v)    ((cell)((v) / 16))
 #define int_val(v)    ((cell)((v) / 16))
 
@@ -59,8 +61,13 @@ enum {
 #define RAW_SYM 2
 
 /* runtime variable cells (in M) */
+/* Relocated up (M3): the emitted collector/evaluator grew past the old RV
+ * boundary once the generic user-object trace and the datatype library RAW
+ * fragments were added. M1 (9001..9024) and the GC state (9025..9305) moved up
+ * with it, so the code region [256, 8567) is now clear. All RV_* are
+ * RV_BASE-relative. */
 enum {
-    RV_BASE = 8192,
+    RV_BASE = 8586,
     RV_CUR  = RV_BASE + 0,   /* current element address */
     RV_END  = RV_BASE + 1,   /* one-past-last element address */
     RV_CTX  = RV_BASE + 2,   /* current context (tagged CONTEXT) */
@@ -93,8 +100,21 @@ enum {
  * region above the RV cells and below the data stack (DS_INIT = 16384), so
  * they never collide with evaluator state, code, or stack. RAW code may use
  * them for temporaries that must survive across register/state writes. */
-#define RV_SCRATCH_A 8260
-#define RV_SCRATCH_B 8261
+#define RV_SCRATCH_A 8642
+#define RV_SCRATCH_B 8643
+#define RV_SCRATCH_E 8644
+#define RV_SCRATCH_F 8645
+
+/* M3 datatype-library state (free region above the GC state, below the D1
+ * state records). BUILTIN_BASE is the fixed 16-slot BUILTIN_TYPE table; the
+ * meta-descriptor payload and the built-in descriptor payloads are at fixed
+ * addresses at the bottom of the managed heap (seeded by the M3 harness). */
+#define GC_META         8567    /* cell holding the datatype! meta-descriptor  */
+#define BUILTIN_BASE    8568    /* BUILTIN_TYPE[0..15]                         */
+#define RV_SCRATCH_C    8584    /* datatype-library RAW scratch                */
+#define RV_SCRATCH_D    8585    /* datatype-library RAW scratch                */
+#define GC_META_PAYLOAD 32784   /* payload of the datatype! meta-descriptor    */
+#define BUILTIN0_PAYLOAD 32816  /* payload of the integer! built-in descriptor */
 
 /* --- M2 GC: managed heap + collector state (above the frozen S1) -----------
  * A non-moving, stop-the-world, exact mark/sweep collector over the ONE shared
@@ -119,6 +139,7 @@ enum {
 #define GC_KIND_CLOSURE 2
 #define GC_KIND_RAW     3
 #define GC_KIND_FRAME   4
+#define GC_KIND_USER    5
 
 /* collector state cells (fixed, disjoint from every other region).  These are
  * plain integer literals (not expressions) so both the C emitter and the RAW
@@ -131,33 +152,33 @@ enum {
  *   GC_T6..GC_T8  scan functions + drain + sweep (scan_values, scan_closures)
  *   GC_C1..GC_C6  collect()'s own persistent state (SP0, RP0, task index,
  *                 record, arena base, prev_free) */
-#define GC_BASE         8286
-#define GC_GLOBAL_CTX   8286    /* mirror of global context */
-#define GC_LOADER_HP    8287    /* loader-heap bump (shared lalloc) */
-#define GC_LIVE_CELLS   8288
-#define GC_LIVE_OBJS    8289
-#define GC_FREE_BLOCKS  8290
-#define GC_FREE_CELLS   8291
-#define GC_COLLECT_CNT  8292
-#define GC_LAST_RECLAM  8293
-#define GC_T1           8294
-#define GC_T2           8295
-#define GC_T3           8296
-#define GC_T4           8297
-#define GC_T5           8298
-#define GC_T6           8299
-#define GC_T7           8300
-#define GC_T8           8301
-#define GC_C1           8302
-#define GC_C2           8303
-#define GC_C3           8304
-#define GC_C4           8305
-#define GC_C5           8306
-#define GC_C6           8307
-#define GC_WL_SP        8308
-#define GC_WORKLIST     8309    /* 256 entries -> ..8564 */
-#define GC_A1           8565    /* alloc()'s persistent extent */
-#define GC_A2           8566    /* alloc()'s persistent kind */
+#define GC_BASE         9025
+#define GC_GLOBAL_CTX   9025    /* mirror of global context */
+#define GC_LOADER_HP    9026    /* loader-heap bump (shared lalloc) */
+#define GC_LIVE_CELLS   9027
+#define GC_LIVE_OBJS    9028
+#define GC_FREE_BLOCKS  9029
+#define GC_FREE_CELLS   9030
+#define GC_COLLECT_CNT  9031
+#define GC_LAST_RECLAM  9032
+#define GC_T1           9033
+#define GC_T2           9034
+#define GC_T3           9035
+#define GC_T4           9036
+#define GC_T5           9037
+#define GC_T6           9038
+#define GC_T7           9039
+#define GC_T8           9040
+#define GC_C1           9041
+#define GC_C2           9042
+#define GC_C3           9043
+#define GC_C4           9044
+#define GC_C5           9045
+#define GC_C6           9046
+#define GC_WL_SP        9047
+#define GC_WORKLIST     9048    /* 256 entries -> ..9303 */
+#define GC_A1           9304    /* alloc()'s persistent extent */
+#define GC_A2           9305    /* alloc()'s persistent kind */
 
 /* context layout: [parent, count, cap, (word,value)...] */
 enum { CTX_PARENT = 0, CTX_COUNT = 1, CTX_CAP = 2, CTX_DATA = 3 };
@@ -204,6 +225,9 @@ cell r0_s1_code_size(void);   /* cells of emitted S1 code */
 
 /* M2 GC diagnostics (test/audit only; not GLON language features) */
 cell r0_s1_gc_collect_addr(void);  /* S1 address of the collector entry */
+cell r0_s1_alloc_addr(void);       /* M3: S1 address of the managed allocator  */
+cell r0_s1_lookup_addr(void);      /* M3: S1 address of the context-lookup      */
+void r0_s1_seed_datatypes(void);   /* M3: bind built-in type words + seed heap */
 long r0_s1_gc_count(void);         /* collection count */
 long r0_s1_gc_live_cells(void);    /* live cells after last collection */
 long r0_s1_gc_live_objs(void);     /* live objects after last collection */
