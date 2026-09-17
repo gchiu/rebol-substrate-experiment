@@ -1144,13 +1144,21 @@ static void emit_invoke_closure(void) {
     e_cell(RV_CLOSURE); asm_fetch(); e_untag_ptr(); asm_fetch(); e_setc(RV_ARITY);
     e_cell(RV_CLOSURE); asm_toR();
     e_cell(RV_ARITY); asm_toR();
-    /* evaluate arity arguments */
+    /* Evaluate the arity arguments.  The loop counter (RV_T4) and the loop
+     * bound (RV_ARITY) are invocation-local, but they live in global cells that
+     * a nested closure invocation during argument evaluation will itself
+     * overwrite.  Both must therefore be saved on the return stack around each
+     * argument's evaluation and restored before the loop condition is re-tested
+     * -- otherwise a nested closure clobbers RV_ARITY, the outer loop sees the
+     * wrong bound and terminates early, and the argument values shift. */
     asm_lit(0); e_setc(RV_T4);
     cell arg_loop = asm_here();
     e_cell(RV_T4); e_cell(RV_ARITY); asm_host(HOST_LT);
     cell j_args_done = asm_zbranch_fwd();
     e_cell(RV_T4); asm_toR();
+    e_cell(RV_ARITY); asm_toR();
     to_subexpr[n_subexpr++] = emit_call_fwd();
+    asm_fromR(); e_setc(RV_ARITY);
     asm_fromR(); e_setc(RV_T4);
     asm_call(r_reduce);
     e_cell(RV_T4); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_T4);

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <line x1="130" y1="115" x2="330" y2="115" stroke="black"/>
+  <line x1="130" y1="115" x2="230" y2="265" stroke="black"/>
+  <line x1="330" y1="115" x2="230" y2="265" stroke="black"/>
+  <rect x="100" y="100" width="60" height="30" fill="white" stroke="black"/>
+  <text x="108" y="121">Alice</text>
+  <rect x="300" y="100" width="60" height="30" fill="white" stroke="black"/>
+  <text x="308" y="121">Bob</text>
+  <rect x="200" y="250" width="60" height="30" fill="white" stroke="black"/>
+  <text x="208" y="271">Charlie</text>
+</svg>
