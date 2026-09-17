@@ -13,6 +13,7 @@
  * No generated Emscripten JS runtime, no virtual filesystem, no --embed-file.
  */
 #include "r0_s1.h"
+#include "m1_layout.h"
 #include <stdarg.h>
 
 /* ---- host imports (provided by the handwritten glon.js) ------------------ */
@@ -180,7 +181,19 @@ int glon_alloc(unsigned int len) { return (int)(intptr_t)malloc(len + 1); }
 
 __attribute__((export_name("glon_init")))
 int glon_init(void) {
-    if (!inited) { r0_s1_init(); inited = 1; }
+    if (!inited) {
+        cell main_entry = r0_s1_init();
+        /* Seed the M1 multitasking environment (same cells the native test
+         * driver seeds).  This is host/run-driver setup only; no scheduling
+         * policy lives here.  The cells are unused when the loaded program is
+         * not a multitasking program. */
+        M[M1_MAIN_ENTRY_CELL] = main_entry;
+        M[M1_CURSOR] = 0;
+        M[M1_STRESS_CNT] = 0;
+        for (int i = 0; i < M1_MAX_TASKS; i++)
+            M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
+        inited = 1;
+    }
     return 0;
 }
 

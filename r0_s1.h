@@ -96,6 +96,69 @@ enum {
 #define RV_SCRATCH_A 8260
 #define RV_SCRATCH_B 8261
 
+/* --- M2 GC: managed heap + collector state (above the frozen S1) -----------
+ * A non-moving, stop-the-world, exact mark/sweep collector over the ONE shared
+ * GLON heap [GC_HEAP_BASE, GC_HEAP_LIMIT).  The loader heap (40000..47000) is
+ * traced but never swept.  See M2-GC-DESIGN.md. */
+
+#define GC_HEAP_BASE   32768L   /* == s1.c HEAP_BASE (managed runtime heap) */
+#define GC_HEAP_LIMIT  40000L   /* == R0S1_HEAP_BASE (loader heap start)   */
+
+/* standard S1 stack tops (also used to locate the scheduler/main world) */
+#define R0S1_DS_INIT   16384L
+#define R0S1_RS_INIT   24576L
+
+/* allocation header: 16-cell stride before each 16-aligned payload. */
+#define GC_HDR_SIZE     0
+#define GC_HDR_FLAGS    1
+#define GC_HDR_STRIDE   16
+#define GC_FLAG_ALLOC   1
+#define GC_FLAG_MARK    2
+#define GC_KIND_BLOCK   0
+#define GC_KIND_CTX     1
+#define GC_KIND_CLOSURE 2
+#define GC_KIND_RAW     3
+#define GC_KIND_FRAME   4
+
+/* collector state cells (fixed, disjoint from every other region).  These are
+ * plain integer literals (not expressions) so both the C emitter and the RAW
+ * assembler (which stringifies them via XSTR) can use them.
+ *
+ * Scratch discipline (the collector calls itself recursively, so nested calls
+ * must not clobber the caller's live cells):
+ *   GC_T1..GC_T5  mark/trace leaf functions (mark_value, mark_push, trace_*,
+ *                 mark_frame, mark_closure_inline)
+ *   GC_T6..GC_T8  scan functions + drain + sweep (scan_values, scan_closures)
+ *   GC_C1..GC_C6  collect()'s own persistent state (SP0, RP0, task index,
+ *                 record, arena base, prev_free) */
+#define GC_BASE         8286
+#define GC_GLOBAL_CTX   8286    /* mirror of global context */
+#define GC_LOADER_HP    8287    /* loader-heap bump (shared lalloc) */
+#define GC_LIVE_CELLS   8288
+#define GC_LIVE_OBJS    8289
+#define GC_FREE_BLOCKS  8290
+#define GC_FREE_CELLS   8291
+#define GC_COLLECT_CNT  8292
+#define GC_LAST_RECLAM  8293
+#define GC_T1           8294
+#define GC_T2           8295
+#define GC_T3           8296
+#define GC_T4           8297
+#define GC_T5           8298
+#define GC_T6           8299
+#define GC_T7           8300
+#define GC_T8           8301
+#define GC_C1           8302
+#define GC_C2           8303
+#define GC_C3           8304
+#define GC_C4           8305
+#define GC_C5           8306
+#define GC_C6           8307
+#define GC_WL_SP        8308
+#define GC_WORKLIST     8309    /* 256 entries -> ..8564 */
+#define GC_A1           8565    /* alloc()'s persistent extent */
+#define GC_A2           8566    /* alloc()'s persistent kind */
+
 /* context layout: [parent, count, cap, (word,value)...] */
 enum { CTX_PARENT = 0, CTX_COUNT = 1, CTX_CAP = 2, CTX_DATA = 3 };
 
@@ -138,5 +201,15 @@ cell r0_s1_rp_min(void);   /* min RP observed (max return depth) */
 cell r0_s1_sp_min(void);   /* min SP observed (max data depth) */
 cell r0_s1_host_calls(void);
 cell r0_s1_code_size(void);   /* cells of emitted S1 code */
+
+/* M2 GC diagnostics (test/audit only; not GLON language features) */
+cell r0_s1_gc_collect_addr(void);  /* S1 address of the collector entry */
+long r0_s1_gc_count(void);         /* collection count */
+long r0_s1_gc_live_cells(void);    /* live cells after last collection */
+long r0_s1_gc_live_objs(void);     /* live objects after last collection */
+long r0_s1_gc_free_cells(void);    /* free (reusable) cells after last collection */
+long r0_s1_gc_free_blocks(void);   /* free block count after last collection */
+long r0_s1_gc_reclaimed(void);     /* cells reclaimed by last collection */
+long r0_s1_heap_high(void);        /* REG_HP (heap frontier / high water) */
 
 #endif /* R0_S1_H */

@@ -162,6 +162,7 @@ static const char *ESC_LIB =
 
 static char esc_buf[4096];
 static int run_esc(const char *body, int *N) {
+    r0_s1_init();   /* fresh code region + global context per escape program */
     snprintf(esc_buf, sizeof esc_buf, "[ %s %s ]", ESC_LIB, body);
     return run_src(esc_buf, N);
 }

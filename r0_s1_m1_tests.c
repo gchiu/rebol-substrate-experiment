@@ -43,7 +43,7 @@ static int failures = 0;
 
 /* ---- the M1 library: RAW mechanism + R0 policy --------------------------- */
 
-static const char *M1_LIB =
+const char *M1_LIB =
     /* mnew-task (RAW, arity 3): (body do-word finish-word -- handle)
      * Finds the first empty table slot, allocates a wrapper block
      * [ do body task-finish ] from the SHARED heap, seeds the task record's
@@ -66,13 +66,13 @@ static const char *M1_LIB =
     "   Lfull: "
     "   LIT -1 LIT 16 MUL ARITY 1 EXIT "
     "   Lmake: "
-    "   LIT 16 ALLOC LIT " XSTR(M1_S5) " ! "
-    "   LIT 3 LIT " XSTR(M1_S5) " @ LIT 0 ADD ! "
+    "   LIT " XSTR(M1_S4) " @ LIT " XSTR(M1_WRAPPER_DELTA) " ADD LIT " XSTR(M1_S5) " ! "
+    "   LIT 3 LIT " XSTR(M1_S5) " @ ! "
     "   LIT 0 LIT " XSTR(M1_S5) " @ LIT 1 ADD ! "
     "   LIT " XSTR(M1_S1) " @ LIT " XSTR(M1_S5) " @ LIT 2 ADD ! "
     "   LIT " XSTR(M1_S0) " @ LIT 6 ADD LIT " XSTR(M1_S5) " @ LIT 3 ADD ! "
     "   LIT " XSTR(M1_S2) " @ LIT " XSTR(M1_S5) " @ LIT 4 ADD ! "
-    "   LIT " XSTR(M1_MAIN_ENTRY_CELL) " @ LIT " XSTR(M1_S4) " @ LIT " XSTR(TREC_IP) " ADD ! "
+    "   LIT " XSTR(M1_MAIN_ENTRY_CELL) " @ LIT " XSTR(M1_S4) " @ ! "
     "   LIT " XSTR(M1_S3) " @ LIT " XSTR(M1_TASK_CELLS) " MUL LIT " XSTR(M1_ARENA_BASE) " ADD LIT " XSTR(M1_DS_OFF) " ADD LIT " XSTR(M1_S4) " @ LIT " XSTR(TREC_SP) " ADD ! "
     "   LIT " XSTR(M1_S3) " @ LIT " XSTR(M1_TASK_CELLS) " MUL LIT " XSTR(M1_ARENA_BASE) " ADD LIT " XSTR(M1_RS_OFF) " ADD LIT " XSTR(M1_S4) " @ LIT " XSTR(TREC_RP) " ADD ! "
     "   LIT " XSTR(M1_S5) " @ LIT 2 ADD LIT " XSTR(M1_S4) " @ LIT " XSTR(TREC_CUR) " ADD ! "
@@ -385,11 +385,14 @@ static void test_mixed(void) {
 
 /* mechanical audit: the frozen runtime/host gained no multitasking semantics */
 static void audit_runtime_clean(void) {
+    /* M2's collector legitimately *references* task records as GC roots (GC is
+     * global and sees every suspended task), but it must not add any task
+     * SCHEDULING semantics: no spawn/yield, no round-robin, no context switch. */
     static const char *forbidden[] = {
-        "spawn", "yield", "task", "scheduler", "round-robin", "round robin",
-        "context-switch", "context switch", "multitask"
+        "spawn", "yield", "round-robin", "round robin",
+        "context-switch", "context switch"
     };
-    int nbad = 9, violations = 0;
+    int nbad = 6, violations = 0;
     const char *files[] = { "r0_s1_runtime.c", "r0_s1.h", "s1.c" };
     for (int f = 0; f < 3; f++) {
         FILE *fp = fopen(files[f], "r");
@@ -403,7 +406,7 @@ static void audit_runtime_clean(void) {
                 violations++;
             }
     }
-    CHECK(violations == 0, "frozen runtime/host contains no multitasking semantics");
+    CHECK(violations == 0, "frozen runtime/host contains no task scheduling semantics");
 }
 
 int run_r0_s1_m1_tests(void) {

@@ -35,6 +35,9 @@
 #define M1_TASK_TABLE      60000  /* task records                                 */
 #define M1_TASK_REC_SIZE   16     /* cells per task record                        */
 #define M1_MAX_TASKS       8      /* fixed task count for M1                      */
+#define M1_WRAPPER_DELTA   128    /* wrapper block base = task table base + delta */
+                                   /* (task records occupy 60000..60128; wrappers
+                                    * live at 60128 + slot*16, in the free region) */
 
 #define M1_ARENA_BASE      47000  /* per-task stack arena                         */
 #define M1_TASK_CELLS      1600   /* cells per task (800 DS + 800 RS)             */

@@ -11,6 +11,7 @@
  * S1 is FROZEN. See R0-S1-PHASE1.md.
  */
 #include "r0_s1.h"
+#include "m1_layout.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -18,7 +19,6 @@
 
 /* ============================= loader state ============================ */
 
-static cell hp;                          /* loader heap bump pointer */
 static const char *syms[256];            /* interner: sym_id -> spelling */
 static int nsyms;
 static cell global_ctx;                  /* tagged CONTEXT value */
@@ -43,10 +43,11 @@ static cell intern(const char *name) {
 }
 
 static cell lalloc(int n) {
-    int a = (int)((hp + 15) & ~15L);
+    cell hp = M[GC_LOADER_HP];
+    cell a = (hp + 15) & ~15L;
     if (a + n > R0S1_HEAP_LIMIT) { fprintf(stderr, "r0_s1: heap exhausted\n"); return -1; }
-    hp = a + n;
-    return (cell)a;
+    M[GC_LOADER_HP] = a + n;
+    return a;
 }
 
 /* ============================= loader: objects ========================= */
@@ -130,6 +131,7 @@ static const raw_sym_t raw_syms[] = {
     { "REG_IP", REG_IP }, { "REG_SP", REG_SP }, { "REG_RP", REG_RP }, { "REG_HP", REG_HP },
     { "RV_CTX", RV_CTX }, { "RV_CUR", RV_CUR }, { "RV_END", RV_END },
     { "RV_BLK", RV_BLK }, { "RV_FRAME", RV_FRAME },
+    { "RV_CLOSURE", RV_CLOSURE }, { "RV_CHILD", RV_CHILD },
     { "FRAME_PREV", FRAME_PREV }, { "FRAME_SITE_ID", FRAME_SITE },
     { "FRAME_SAVED_SP", FRAME_SP }, { "FRAME_SAVED_RP", FRAME_RP },
     { "FRAME_SAVED_IP", FRAME_IP }, { "FRAME_SAVED_CTX", FRAME_CTX },
@@ -339,6 +341,401 @@ static void emit_call_indirect(cell c) {
 static cell to_subexpr[64];   static int n_subexpr;
 static cell to_block_eval[16]; static int n_block_eval;
 
+/* ========================== M2 GC build ==================================
+ * A non-moving, stop-the-world, exact mark/sweep collector + first-fit
+ * allocator, emitted as S1 code (above the frozen substrate).  See
+ * M2-GC-DESIGN.md for the object layout, root set and invariants.
+ *
+ * Simplification relied on (audited): the collected heap contains ONLY
+ * closures, child contexts and frames.  Blocks, the global context and RAW
+ * callables live in the loader heap and are permanent.  Loader BLOCKS never
+ * contain a collected pointer (they hold parse-time values), so they are not
+ * traced at all.  Loader CONTEXTS (the global context) may hold collected
+ * pointers and are traced. */
+
+static cell r_mark_value, r_mark_push, r_trace_ctx, r_trace_closure, r_trace_frame,
+            r_mark_frame, r_scan_values, r_scan_closures,
+            r_collect, r_alloc;
+
+/* forward-call patch lists for the mark/trace mutual recursion */
+static cell fw_mark_value[128]; static int n_fw_mv;
+static cell fw_mark_frame[32];  static int n_fw_mf;
+
+static cell call_mark_value(void) { cell c = emit_call_fwd(); fw_mark_value[n_fw_mv++] = c; return c; }
+static cell call_mark_frame(void) { cell c = emit_call_fwd(); fw_mark_frame[n_fw_mf++] = c; return c; }
+
+/* MARK-PUSH: ( p -- ) mark collected object p (payload ptr) if unmarked, push
+ * it on the explicit mark worklist. */
+static void emit_mark_push(void) {
+    r_mark_push = asm_here();
+    e_setc(GC_T1);                                   /* p */
+    e_cell(GC_T1); asm_lit(GC_HDR_STRIDE - GC_HDR_FLAGS); asm_host(HOST_SUB); e_setc(GC_T2); /* flags addr */
+    e_cell(GC_T2); asm_fetch(); e_setc(GC_T3);       /* flags */
+    e_cell(GC_T3); asm_lit(2); asm_host(HOST_DIV); asm_lit(2); asm_host(HOST_MOD); /* mark bit */
+    cell j_cont = asm_zbranch_fwd();                 /* not marked -> continue */
+    asm_exit();                                      /* already marked */
+    asm_patch_here(j_cont);
+    e_cell(GC_T3); asm_lit(GC_FLAG_MARK); asm_host(HOST_ADD); e_cell(GC_T2); asm_store(); /* set mark */
+    e_cell(GC_T1);                                    /* value p */
+    e_cell(GC_WL_SP); asm_lit(GC_WORKLIST); asm_host(HOST_ADD);  /* address */
+    asm_store();                                      /* worklist[sp] = p */
+    e_cell(GC_WL_SP); asm_lit(1); asm_host(HOST_ADD); e_setc(GC_WL_SP);
+    asm_exit();
+}
+
+/* TRACE-CTX: ( p -- ) trace context parent + value cells. */
+static void emit_trace_ctx(void) {
+    r_trace_ctx = asm_here();
+    e_setc(GC_T1);                                   /* p */
+    e_cell(GC_T1); asm_toR();                        /* save p across parent mark */
+    e_cell(GC_T1); asm_lit(CTX_PARENT); asm_host(HOST_ADD); asm_fetch();
+    call_mark_value();                               /* parent */
+    asm_fromR(); e_setc(GC_T1);                      /* restore p */
+    e_cell(GC_T1); asm_lit(CTX_COUNT); asm_host(HOST_ADD); asm_fetch(); e_setc(GC_T4); /* count */
+    asm_lit(0); e_setc(GC_T5);                       /* i = 0 */
+    cell loop = asm_here();
+    e_cell(GC_T5); e_cell(GC_T4); asm_host(HOST_LT);
+    cell j_done = asm_zbranch_fwd();
+    e_cell(GC_T1); asm_toR();                        /* save p */
+    e_cell(GC_T4); asm_toR();                        /* save count */
+    e_cell(GC_T5); asm_toR();                        /* save i */
+    e_cell(GC_T1); asm_lit(CTX_DATA + 1); asm_host(HOST_ADD);
+    e_cell(GC_T5); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD); asm_fetch();
+    call_mark_value();                               /* value cell */
+    asm_fromR(); e_setc(GC_T5);                      /* restore i */
+    asm_fromR(); e_setc(GC_T4);                      /* restore count */
+    asm_fromR(); e_setc(GC_T1);                      /* restore p */
+    e_cell(GC_T5); asm_lit(1); asm_host(HOST_ADD); e_setc(GC_T5);
+    asm_branch(loop);
+    asm_patch_here(j_done);
+    asm_exit();
+}
+
+/* TRACE-CLOSURE: ( p -- ) trace spec/body/captured-context. */
+static void emit_trace_closure(void) {
+    r_trace_closure = asm_here();
+    e_setc(GC_T1);
+    e_cell(GC_T1); asm_lit(CLOSURE_SPEC); asm_host(HOST_ADD); asm_fetch(); call_mark_value();
+    e_cell(GC_T1); asm_lit(CLOSURE_BODY); asm_host(HOST_ADD); asm_fetch(); call_mark_value();
+    e_cell(GC_T1); asm_lit(CLOSURE_CTX);  asm_host(HOST_ADD); asm_fetch(); call_mark_value();
+    asm_exit();
+}
+
+/* TRACE-FRAME: ( p -- ) trace prev/CTX (BLK is a permanent loader block). */
+static void emit_trace_frame(void) {
+    r_trace_frame = asm_here();
+    e_setc(GC_T1);
+    e_cell(GC_T1); asm_toR();                        /* save p across prev mark */
+    e_cell(GC_T1); asm_lit(FRAME_PREV); asm_host(HOST_ADD); asm_fetch(); call_mark_frame();
+    asm_fromR(); e_setc(GC_T1);                      /* restore p */
+    e_cell(GC_T1); asm_lit(FRAME_CTX);  asm_host(HOST_ADD); asm_fetch(); call_mark_value();
+    asm_exit();
+}
+
+/* MARK-FRAME: ( p -- ) frames are always collected; mark unless 0. */
+static void emit_mark_frame(void) {
+    r_mark_frame = asm_here();
+    e_setc(GC_T1);
+    e_cell(GC_T1); asm_lit(0); asm_host(HOST_EQ);
+    cell j_zero = asm_zbranch_fwd();
+    asm_exit();                                       /* p == 0 */
+    asm_patch_here(j_zero);
+    e_cell(GC_T1); asm_call(r_mark_push);
+    asm_exit();
+}
+
+/* mark a collected closure pointer (or skip if not in the collected heap);
+ * emitted inline at the RV_CLOSURE root and in the return-stack scan. */
+static void emit_mark_closure_inline(void) {
+    e_setc(GC_T1);                                   /* p */
+    e_cell(GC_T1); asm_lit(GC_HEAP_BASE); asm_host(HOST_GE);
+    cell j1 = asm_zbranch_fwd();
+    e_cell(GC_T1); asm_lit(GC_HEAP_LIMIT); asm_host(HOST_LT);
+    cell j2 = asm_zbranch_fwd();
+    e_cell(GC_T1); asm_call(r_mark_push);
+    asm_patch_here(j2);
+    asm_patch_here(j1);
+}
+
+/* MARK-VALUE: ( v -- ) dispatch on the R0 tag. */
+static void emit_mark_value(void) {
+    r_mark_value = asm_here();
+    asm_dup(); asm_lit(16); asm_host(HOST_MOD); e_setc(GC_T2); /* tag (v left on stack) */
+    /* CONTEXT (tag 7) */
+    e_cell(GC_T2); asm_lit(T_CONTEXT); asm_host(HOST_EQ);
+    cell j_nc = asm_zbranch_fwd();
+    asm_lit(T_CONTEXT); asm_host(HOST_SUB); e_setc(GC_T1);   /* p */
+    e_cell(GC_T1); asm_lit(GC_HEAP_BASE); asm_host(HOST_GE);
+    cell j_loader1 = asm_zbranch_fwd();
+    e_cell(GC_T1); asm_lit(GC_HEAP_LIMIT); asm_host(HOST_LT);
+    cell j_loader2 = asm_zbranch_fwd();
+    e_cell(GC_T1); asm_call(r_mark_push); asm_exit();        /* collected ctx */
+    asm_patch_here(j_loader2);
+    asm_patch_here(j_loader1);
+    e_cell(GC_T1); asm_call(r_trace_ctx); asm_exit();        /* loader ctx (global) */
+    asm_patch_here(j_nc);
+    /* CLOSURE (tag 8) */
+    e_cell(GC_T2); asm_lit(T_CLOSURE); asm_host(HOST_EQ);
+    cell j_ncl = asm_zbranch_fwd();
+    asm_lit(T_CLOSURE); asm_host(HOST_SUB);                  /* p = v-8 */
+    emit_mark_closure_inline();                              /* collected -> mark; else skip */
+    asm_exit();
+    asm_patch_here(j_ncl);
+    /* else: BLOCK/RAW/int/none/word/set/get/lit/native -> no collected children */
+    asm_drop();
+    asm_exit();
+}
+
+/* SCAN-VALUES: ( lo hi -- ) scan [lo,hi) as tagged values. */
+static void emit_scan_values(void) {
+    r_scan_values = asm_here();
+    e_setc(GC_T7);                                   /* hi */
+    e_setc(GC_T6);                                   /* lo */
+    cell loop = asm_here();
+    e_cell(GC_T6); e_cell(GC_T7); asm_host(HOST_LT);
+    cell j_done = asm_zbranch_fwd();
+    e_cell(GC_T6); asm_fetch(); asm_call(r_mark_value);
+    e_cell(GC_T6); asm_lit(1); asm_host(HOST_ADD); e_setc(GC_T6);
+    asm_branch(loop);
+    asm_patch_here(j_done);
+    asm_exit();
+}
+
+/* SCAN-CLOSURES: ( lo hi -- ) scan [lo,hi); cells in the collected heap are
+ * closure pointers (the exact structural invariant of the return stack). */
+static void emit_scan_closures(void) {
+    r_scan_closures = asm_here();
+    e_setc(GC_T7);                                   /* hi */
+    e_setc(GC_T6);                                   /* lo */
+    cell loop = asm_here();
+    e_cell(GC_T6); e_cell(GC_T7); asm_host(HOST_LT);
+    cell j_done = asm_zbranch_fwd();
+    e_cell(GC_T6); asm_fetch();                       /* c */
+    emit_mark_closure_inline();
+    e_cell(GC_T6); asm_lit(1); asm_host(HOST_ADD); e_setc(GC_T6);
+    asm_branch(loop);
+    asm_patch_here(j_done);
+    asm_exit();
+}
+
+/* COALESCE-FREE was inlined into the sweep (see emit_collect). */
+
+/* COLLECT: ( -- ) global stop-the-world mark/sweep. */
+static void emit_collect(void) {
+    r_collect = asm_here();
+    /* capture SP/RP before any temporary pushes */
+    asm_lit(REG_SP); asm_fetch(); e_setc(GC_C1);     /* SP0 */
+    asm_lit(REG_RP); asm_fetch(); e_setc(GC_C2);     /* RP0 */
+    e_cell(GC_COLLECT_CNT); asm_lit(1); asm_host(HOST_ADD); e_setc(GC_COLLECT_CNT);
+    asm_lit(0); e_setc(GC_LIVE_CELLS);
+    asm_lit(0); e_setc(GC_LIVE_OBJS);
+    asm_lit(0); e_setc(GC_FREE_BLOCKS);
+    asm_lit(0); e_setc(GC_FREE_CELLS);
+    asm_lit(0); e_setc(GC_WL_SP);
+
+    /* roots: global context + active evaluator state */
+    e_cell(GC_GLOBAL_CTX); asm_call(r_mark_value);
+    e_cell(RV_CTX);  asm_call(r_mark_value);
+    e_cell(RV_CHILD); asm_call(r_mark_value);
+    e_cell(RV_CLOSURE); emit_mark_closure_inline();
+    e_cell(RV_FRAME); asm_call(r_mark_frame);
+
+    /* active world DS/RS (main world vs a running task, by SP) */
+    e_cell(GC_C1); asm_lit(R0S1_DS_INIT); asm_host(HOST_GT); /* SP0 > DS_INIT? */
+    cell j_main_world = asm_zbranch_fwd();
+    /* a task is running: its DS/RS (index derived from SP) + scheduler world */
+    e_cell(GC_C1); asm_lit(M1_ARENA_BASE); asm_host(HOST_SUB);
+    asm_lit(M1_TASK_CELLS); asm_host(HOST_DIV); e_setc(GC_C3);       /* i */
+    e_cell(GC_C3); asm_lit(M1_TASK_CELLS); asm_host(HOST_MUL);
+    asm_lit(M1_ARENA_BASE); asm_host(HOST_ADD); e_setc(GC_C4);       /* arena base */
+    e_cell(GC_C1); e_cell(GC_C4); asm_lit(M1_DS_OFF); asm_host(HOST_ADD); asm_call(r_scan_values);
+    e_cell(GC_C2); e_cell(GC_C4); asm_lit(M1_RS_OFF); asm_host(HOST_ADD); asm_call(r_scan_closures);
+    e_cell(M1_SCHED_REC + 1); asm_lit(R0S1_DS_INIT); asm_call(r_scan_values);
+    e_cell(M1_SCHED_REC + 2); asm_lit(R0S1_RS_INIT); asm_call(r_scan_closures);
+    cell fw_active_done = asm_branch_fwd();
+    asm_patch_here(j_main_world);
+    /* main world: standard DS/RS */
+    e_cell(GC_C1); asm_lit(R0S1_DS_INIT); asm_call(r_scan_values);
+    e_cell(GC_C2); asm_lit(R0S1_RS_INIT); asm_call(r_scan_closures);
+    asm_patch_here(fw_active_done);
+
+    /* every task record (saved tasks are roots) */
+    asm_lit(0); e_setc(GC_C3);
+    cell tloop = asm_here();
+    e_cell(GC_C3); asm_lit(M1_MAX_TASKS); asm_host(HOST_LT);
+    cell j_tdone = asm_zbranch_fwd();
+    e_cell(GC_C3); asm_lit(M1_TASK_REC_SIZE); asm_host(HOST_MUL);
+    asm_lit(M1_TASK_TABLE); asm_host(HOST_ADD); e_setc(GC_C4);       /* rec */
+    e_cell(GC_C4); asm_lit(TREC_STATE); asm_host(HOST_ADD); asm_fetch();
+    asm_lit(TASK_RUNNABLE); asm_host(HOST_EQ);
+    cell j_skip = asm_zbranch_fwd();
+    e_cell(GC_C4); asm_lit(TREC_CTX); asm_host(HOST_ADD); asm_fetch(); asm_call(r_mark_value);
+    e_cell(GC_C4); asm_lit(TREC_FRAME); asm_host(HOST_ADD); asm_fetch(); asm_call(r_mark_frame);
+    e_cell(GC_C3); asm_lit(M1_TASK_CELLS); asm_host(HOST_MUL);
+    asm_lit(M1_ARENA_BASE); asm_host(HOST_ADD); e_setc(GC_C5);       /* top base */
+    e_cell(GC_C4); asm_lit(TREC_SP); asm_host(HOST_ADD); asm_fetch();
+    e_cell(GC_C5); asm_lit(M1_DS_OFF); asm_host(HOST_ADD); asm_call(r_scan_values);
+    e_cell(GC_C4); asm_lit(TREC_RP); asm_host(HOST_ADD); asm_fetch();
+    e_cell(GC_C5); asm_lit(M1_RS_OFF); asm_host(HOST_ADD); asm_call(r_scan_closures);
+    asm_patch_here(j_skip);
+    e_cell(GC_C3); asm_lit(1); asm_host(HOST_ADD); e_setc(GC_C3);
+    asm_branch(tloop);
+    asm_patch_here(j_tdone);
+
+    /* drain the mark worklist */
+    cell drain = asm_here();
+    e_cell(GC_WL_SP); asm_lit(0); asm_host(HOST_GT);
+    cell j_drain_done = asm_zbranch_fwd();
+    e_cell(GC_WL_SP); asm_lit(1); asm_host(HOST_SUB); e_setc(GC_WL_SP);
+    e_cell(GC_WL_SP); asm_lit(GC_WORKLIST); asm_host(HOST_ADD); asm_fetch(); e_setc(GC_T6); /* p */
+    e_cell(GC_T6); asm_lit(GC_HDR_STRIDE - GC_HDR_FLAGS); asm_host(HOST_SUB); asm_fetch(); e_setc(GC_T7); /* flags */
+    e_cell(GC_T7); asm_lit(4); asm_host(HOST_DIV); asm_lit(8); asm_host(HOST_MOD); e_setc(GC_T8); /* kind */
+    e_cell(GC_T8); asm_lit(GC_KIND_CTX); asm_host(HOST_EQ);
+    cell j_nctx = asm_zbranch_fwd();
+    e_cell(GC_T6); asm_call(r_trace_ctx); asm_branch(drain);
+    asm_patch_here(j_nctx);
+    e_cell(GC_T8); asm_lit(GC_KIND_CLOSURE); asm_host(HOST_EQ);
+    cell j_ncl = asm_zbranch_fwd();
+    e_cell(GC_T6); asm_call(r_trace_closure); asm_branch(drain);
+    asm_patch_here(j_ncl);
+    e_cell(GC_T8); asm_lit(GC_KIND_FRAME); asm_host(HOST_EQ);
+    cell j_nfr = asm_zbranch_fwd();
+    e_cell(GC_T6); asm_call(r_trace_frame); asm_branch(drain);
+    asm_patch_here(j_nfr);
+    asm_branch(drain);
+    asm_patch_here(j_drain_done);
+
+    /* sweep [GC_HEAP_BASE, REG_HP) */
+    asm_lit(GC_HEAP_BASE); e_setc(GC_T6);            /* addr */
+    asm_lit(0); e_setc(GC_C6);                       /* prev_free */
+    cell sloop = asm_here();
+    e_cell(GC_T6); asm_lit(REG_HP); asm_fetch(); asm_host(HOST_LT);
+    cell j_sdone = asm_zbranch_fwd();
+    e_cell(GC_T6); asm_fetch(); e_setc(GC_T7);       /* size */
+    e_cell(GC_T6); asm_lit(GC_HDR_FLAGS); asm_host(HOST_ADD); asm_fetch(); e_setc(GC_T8); /* flags */
+    e_cell(GC_T8); asm_lit(2); asm_host(HOST_MOD);   /* alloc bit */
+    cell j_free = asm_zbranch_fwd();                 /* 0 -> free */
+    /* allocated: mark bit */
+    e_cell(GC_T8); asm_lit(2); asm_host(HOST_DIV); asm_lit(2); asm_host(HOST_MOD);
+    cell j_dead = asm_zbranch_fwd();                 /* 0 -> dead */
+    /* live: clear mark, count */
+    e_cell(GC_T8); asm_lit(GC_FLAG_MARK); asm_host(HOST_SUB);
+    e_cell(GC_T6); asm_lit(GC_HDR_FLAGS); asm_host(HOST_ADD); asm_store();
+    e_cell(GC_LIVE_CELLS); e_cell(GC_T7); asm_host(HOST_ADD); e_setc(GC_LIVE_CELLS);
+    e_cell(GC_LIVE_OBJS); asm_lit(1); asm_host(HOST_ADD); e_setc(GC_LIVE_OBJS);
+    asm_lit(0); e_setc(GC_C6);
+    cell fw_live_next = asm_branch_fwd();
+    asm_patch_here(j_dead);
+    /* dead: free it (fall through to shared free/coalesce) */
+    asm_lit(0); e_cell(GC_T6); asm_lit(GC_HDR_FLAGS); asm_host(HOST_ADD); asm_store();
+    asm_patch_here(j_free);
+    /* free (or dead): count + coalesce with previous run */
+    e_cell(GC_FREE_CELLS); e_cell(GC_T7); asm_host(HOST_ADD); e_setc(GC_FREE_CELLS);
+    e_cell(GC_C6); asm_lit(0); asm_host(HOST_NE);   /* prev_free != 0 -> coalesce */
+    cell j_new = asm_zbranch_fwd();
+    e_cell(GC_C6); asm_fetch(); e_cell(GC_T7); asm_host(HOST_ADD); e_cell(GC_C6); asm_store();
+    cell fw_coal_next = asm_branch_fwd();
+    asm_patch_here(j_new);
+    e_cell(GC_T6); e_setc(GC_C6);                    /* prev_free = addr */
+    e_cell(GC_FREE_BLOCKS); asm_lit(1); asm_host(HOST_ADD); e_setc(GC_FREE_BLOCKS);
+    asm_patch_here(fw_live_next);
+    asm_patch_here(fw_coal_next);
+    e_cell(GC_T6); e_cell(GC_T7); asm_host(HOST_ADD); e_setc(GC_T6);
+    asm_branch(sloop);
+    asm_patch_here(j_sdone);
+
+    e_cell(GC_FREE_CELLS); e_setc(GC_LAST_RECLAM);
+    asm_exit();
+}
+
+/* ALLOC: ( n kind -- payload-addr ) first-fit + bump + collect. */
+static void emit_alloc(void) {
+    r_alloc = asm_here();
+    e_setc(GC_A2);                                   /* kind */
+    e_setc(GC_T7);                                   /* n */
+    e_cell(GC_T7); asm_lit(GC_HDR_STRIDE); asm_host(HOST_ADD); e_setc(GC_A1); /* extent */
+    /* tooling-heap escape: if REG_HP >= GC_HEAP_LIMIT, plain bump (historical tooling) */
+    asm_lit(REG_HP); asm_fetch(); asm_lit(GC_HEAP_LIMIT); asm_host(HOST_GT);
+    cell j_tool = asm_zbranch_fwd();
+    asm_lit(REG_HP); asm_fetch();                    /* a */
+    asm_dup();                                       /* a a */
+    e_cell(GC_T7); asm_host(HOST_ADD); asm_lit(REG_HP); asm_store(); /* HP = a+n; a */
+    asm_exit();
+    asm_patch_here(j_tool);
+
+    asm_lit(0); e_setc(GC_T6);                       /* attempt = 0 */
+    cell rtry = asm_here();
+    asm_lit(GC_HEAP_BASE); e_setc(GC_T2);            /* addr */
+    cell rscan = asm_here();
+    e_cell(GC_T2); asm_lit(REG_HP); asm_fetch(); asm_host(HOST_LT);
+    cell j_noscan = asm_zbranch_fwd();
+    e_cell(GC_T2); asm_lit(GC_HDR_FLAGS); asm_host(HOST_ADD); asm_fetch(); e_setc(GC_T3);
+    e_cell(GC_T2); asm_fetch(); e_setc(GC_T4);       /* size */
+    e_cell(GC_T3); asm_lit(0); asm_host(HOST_EQ);    /* free? */
+    cell j_nf = asm_zbranch_fwd();
+    e_cell(GC_T4); e_cell(GC_A1); asm_host(HOST_GE); /* size >= extent? */
+    cell j_nb = asm_zbranch_fwd();
+    cell fw_found = asm_branch_fwd();
+    asm_patch_here(j_nb);
+    asm_patch_here(j_nf);
+    e_cell(GC_T2); e_cell(GC_T4); asm_host(HOST_ADD); e_setc(GC_T2);
+    asm_branch(rscan);
+    asm_patch_here(j_noscan);
+    /* bump */
+    asm_lit(REG_HP); asm_fetch(); e_cell(GC_A1); asm_host(HOST_ADD);
+    asm_lit(GC_HEAP_LIMIT); asm_host(HOST_LE);
+    cell j_nobump = asm_zbranch_fwd();
+    asm_lit(REG_HP); asm_fetch(); e_setc(GC_T2);     /* addr = HP */
+    asm_lit(REG_HP); asm_fetch(); e_cell(GC_A1); asm_host(HOST_ADD); asm_lit(REG_HP); asm_store();
+    e_cell(GC_A1); e_cell(GC_T2); asm_store();       /* header size */
+    e_cell(GC_A2); asm_lit(4); asm_host(HOST_MUL); asm_lit(GC_FLAG_ALLOC); asm_host(HOST_ADD);
+    e_cell(GC_T2); asm_lit(GC_HDR_FLAGS); asm_host(HOST_ADD); asm_store(); /* flags */
+    e_cell(GC_T2); asm_lit(GC_HDR_STRIDE); asm_host(HOST_ADD);
+    asm_exit();
+    asm_patch_here(j_nobump);
+    /* collect once, then retry */
+    e_cell(GC_T6); asm_lit(0); asm_host(HOST_EQ);
+    cell j_oom = asm_zbranch_fwd();                  /* attempt != 0 -> OOM */
+    asm_call(r_collect);
+    asm_lit(1); e_setc(GC_T6);
+    asm_branch(rtry);
+    asm_patch_here(j_oom);
+    /* genuine out-of-memory */
+    asm_host(HOST_DUMP); asm_halt();
+
+    asm_patch_here(fw_found);
+    /* split if remainder >= 32 */
+    e_cell(GC_T4); e_cell(GC_A1); asm_host(HOST_SUB); e_setc(GC_T5); /* remainder */
+    e_cell(GC_T5); asm_lit(2 * GC_HDR_STRIDE); asm_host(HOST_GE);
+    cell j_nosplit = asm_zbranch_fwd();
+    e_cell(GC_A1); e_cell(GC_T2); asm_store();       /* shrink */
+    e_cell(GC_T5);
+    e_cell(GC_T2); e_cell(GC_A1); asm_host(HOST_ADD); asm_store(); /* remainder header size */
+    asm_lit(0);
+    e_cell(GC_T2); e_cell(GC_A1); asm_host(HOST_ADD); asm_lit(GC_HDR_FLAGS); asm_host(HOST_ADD); asm_store();
+    asm_patch_here(j_nosplit);
+    /* commit: flags = ALLOC | kind<<2 */
+    e_cell(GC_A2); asm_lit(4); asm_host(HOST_MUL); asm_lit(GC_FLAG_ALLOC); asm_host(HOST_ADD);
+    e_cell(GC_T2); asm_lit(GC_HDR_FLAGS); asm_host(HOST_ADD); asm_store();
+    e_cell(GC_T2); asm_lit(GC_HDR_STRIDE); asm_host(HOST_ADD);
+    asm_exit();
+}
+
+static void emit_gc(void) {
+    emit_mark_push();
+    emit_trace_ctx();
+    emit_trace_closure();
+    emit_trace_frame();
+    emit_mark_frame();
+    emit_mark_value();
+    emit_scan_values();
+    emit_scan_closures();
+    emit_collect();
+    emit_alloc();
+    for (int i = 0; i < n_fw_mv; i++) s1_set_mem(fw_mark_value[i], r_mark_value);
+    for (int i = 0; i < n_fw_mf; i++) s1_set_mem(fw_mark_frame[i], r_mark_frame);
+}
+
 /* ========================== evaluator build ============================ */
 
 static cell r_reduce, r_discard, r_lookup, r_set, r_append, r_mkctx, r_mkclosure;
@@ -488,9 +885,8 @@ static void emit_append(void) {
 /* MKCTX: ( parent -- child-ctx )  allocate a fresh context */
 static void emit_mkctx(void) {
     r_mkctx = asm_here();
-    /* HOST_ALLOC does not align; allocate a 16-aligned cell count so the
-     * tagged pointer (addr | T_CONTEXT) stays well-formed. */
-    asm_lit((CTX_DATA + 2 * R0S1_CTX_CAP + 15) & ~15); asm_host(HOST_ALLOC); e_setc(RV_T4);
+    /* allocate a 16-aligned cell count so the tagged pointer stays well-formed */
+    asm_lit((CTX_DATA + 2 * R0S1_CTX_CAP + 15) & ~15); asm_lit(GC_KIND_CTX); asm_call(r_alloc); e_setc(RV_T4);
     e_cell(RV_T4); asm_store();                    /* M[addr] = parent */
     asm_lit(0); e_cell(RV_T4); asm_lit(1); asm_host(HOST_ADD); asm_store();
     asm_lit(R0S1_CTX_CAP); e_cell(RV_T4); asm_lit(2); asm_host(HOST_ADD); asm_store();
@@ -501,7 +897,7 @@ static void emit_mkctx(void) {
 /* MKCLOSURE: ( spec body captured site-id -- closure ) */
 static void emit_mkclosure(void) {
     r_mkclosure = asm_here();
-    asm_lit(16); asm_host(HOST_ALLOC); e_setc(RV_T4);   /* 16-aligned, >= 4 cells */
+    asm_lit(16); asm_lit(GC_KIND_CLOSURE); asm_call(r_alloc); e_setc(RV_T4);   /* 16-aligned, >= 4 cells */
     e_pop_to(RV_T5);  /* site-id */
     e_pop_to(RV_T1);  /* captured */
     e_pop_to(RV_T2);  /* body */
@@ -657,6 +1053,7 @@ static void emit_native(void) {
 /* INVOKE-CLOSURE: ( closure -- result-set )  real S1 activation */
 static void emit_invoke_closure(void) {
     r_invoke_closure = asm_here();
+    asm_lit(0); e_setc(RV_CHILD);                    /* M2: transient roots stay 0-or-live */
     /* instrumentation: track max return/data depth */
     asm_lit(REG_RP); asm_fetch();
     e_cell(RV_RPMIN); asm_host(HOST_LT);
@@ -708,7 +1105,7 @@ static void emit_invoke_closure(void) {
     asm_fetchR(); e_setc(RV_SIP);
     asm_lit(REG_RP); asm_fetch(); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_SRP);
     /* allocate + fill the activation frame (linked list in M) */
-    asm_lit(16); asm_host(HOST_ALLOC); e_setc(RV_FNEW);
+    asm_lit(16); asm_lit(GC_KIND_FRAME); asm_call(r_alloc); e_setc(RV_FNEW);
     e_cell(RV_FRAME); e_cell(RV_FNEW); asm_store();                          /* prev */
     e_cell(RV_CLOSURE); asm_lit(CLOSURE_SITE); asm_host(HOST_ADD); asm_fetch();
     e_cell(RV_FNEW); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_store();   /* site */
@@ -735,6 +1132,8 @@ static void emit_invoke_closure(void) {
     e_cell(RV_FRAME); asm_lit(FRAME_BLK); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_BLK);
     e_cell(RV_FRAME); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_CTX);
     e_cell(RV_FRAME); asm_fetch(); e_setc(RV_FRAME);
+    asm_lit(0); e_setc(RV_CHILD);                    /* M2: child context now dead */
+    asm_lit(0); e_setc(RV_CLOSURE);                  /* M2: closure now dead */
     asm_exit();
 }
 
@@ -791,6 +1190,8 @@ static void emit_return(void) {
     e_cell(RV_T2); asm_lit(FRAME_END); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_END);
     e_cell(RV_T2); asm_lit(FRAME_BLK); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_BLK);
     e_cell(RV_T2); asm_fetch(); e_setc(RV_FRAME);     /* RV_FRAME = prev */
+    asm_lit(0); e_setc(RV_CHILD);                    /* M2: abandoned invocation's child dead */
+    asm_lit(0); e_setc(RV_CLOSURE);                  /* M2: abandoned closure dead */
     e_cell(RV_T2); asm_lit(FRAME_IP); asm_host(HOST_ADD); asm_fetch(); asm_lit(REG_IP); asm_store();
     /* (control is now at the target's return address) */
     asm_patch_here(j_nomatch);
@@ -958,14 +1359,16 @@ static void emit_main(void) {
 /* ============================ public API =============================== */
 
 cell r0_s1_init(void) {
-    hp = R0S1_HEAP_BASE;
+    M[GC_LOADER_HP] = R0S1_HEAP_BASE;
     nsyms = 0;
     n_subexpr = 0; n_block_eval = 0;
+    n_fw_mv = 0; n_fw_mf = 0;
     next_site = 1;      /* func-site-ids start at 1; 0 = "no enclosing func" */
     site_depth = 0;
 
     asm_reset();
     code_begin = asm_here();
+    emit_gc();                      /* M2: mark/sweep collector + allocator */
     emit_reduce();
     emit_discard();
     emit_lookup();
@@ -1006,6 +1409,18 @@ cell r0_s1_init(void) {
     bind(global_ctx, intern("either"), mk_native(RN_EITHER));
     bind(global_ctx, intern("do"), mk_native(RN_DO));
 
+    /* M2: seed GC roots and world state.  The collector scans the global
+     * context, the (empty) M1 task table, and the (empty) scheduler-world DS/RS
+     * unconditionally, so seed every slot EMPTY and the scheduler stacks empty
+     * so plain (non-multitasking) runs scan to nothing. */
+    M[GC_GLOBAL_CTX] = global_ctx;
+    for (int i = 0; i < M1_MAX_TASKS; i++)
+        M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
+    M[M1_SCHED_REC + 1] = R0S1_DS_INIT;   /* scheduler DS: empty range */
+    M[M1_SCHED_REC + 2] = R0S1_RS_INIT;   /* scheduler RS: empty range */
+    M[GC_COLLECT_CNT] = 0;
+    M[GC_LAST_RECLAM] = 0;
+
     return main_entry;
 }
 
@@ -1038,6 +1453,8 @@ int r0_s1_run(cell block) {
     M[RV_BLK] = bp;
     M[RV_CTX] = global_ctx;
     M[RV_FRAME] = 0;
+    M[RV_CHILD] = 0;          /* M2: keep transient roots 0-or-live */
+    M[RV_CLOSURE] = 0;
     M[RV_HOSTCALLS] = 0;
     M[RV_RPMIN] = 65535;
     M[RV_SPMIN] = 65535;
@@ -1070,3 +1487,13 @@ cell r0_s1_rp_min(void)   { return M[RV_RPMIN]; }
 cell r0_s1_sp_min(void)   { return M[RV_SPMIN]; }
 cell r0_s1_host_calls(void){ return M[RV_HOSTCALLS]; }
 cell r0_s1_code_size(void) { return code_end - code_begin; }
+
+/* M2 GC diagnostics (test/audit only) */
+cell r0_s1_gc_collect_addr(void) { return r_collect; }
+long r0_s1_gc_count(void)        { return (long)M[GC_COLLECT_CNT]; }
+long r0_s1_gc_live_cells(void)   { return (long)M[GC_LIVE_CELLS]; }
+long r0_s1_gc_live_objs(void)    { return (long)M[GC_LIVE_OBJS]; }
+long r0_s1_gc_free_cells(void)   { return (long)M[GC_FREE_CELLS]; }
+long r0_s1_gc_free_blocks(void)  { return (long)M[GC_FREE_BLOCKS]; }
+long r0_s1_gc_reclaimed(void)    { return (long)M[GC_LAST_RECLAM]; }
+long r0_s1_heap_high(void)       { return (long)s1_mem(REG_HP); }
