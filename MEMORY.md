@@ -80,11 +80,19 @@ Fibonacci (`fib: func [n] [ either <= n 1 [ n ] [ + fib - n 1 fib - n 2 ] ]`):
 | fib 20 wall-clock (median) | ~0.91 s | ~0.82 s | ~0.71 s |
 
 P4 removed static lexical scanning (`T_BOUND` depth/slot). P5 removed dynamic
-name scanning: each context now carries a fixed hash index (word id → slot,
-open addressing, linear probing); `r_lookup` probes it when `count < cap` and
-falls back to the ordered scan when the index is full. The 11M slot examinations
-are gone (0); ~2.2M O(1) probes remain, and dispatch/arithmetic is now the
-leading cost rather than name resolution.
+name scanning: profiling showed every remaining `fib 25` dynamic lookup was a
+global (`either`, `<=`, `+`, `-`, `fib`), and the ~11M slot examinations were
+entirely linear scans of the global context plus the child-context miss. Each
+context now carries a fixed hash index over the interned word id (word id →
+slot; open addressing, linear probing, no tombstones); `r_lookup` probes it when
+`count < cap` and falls back to the ordered scan when the index is full. The
+ordered `(word,value)` pairs remain authoritative for storage, rebinding,
+introspection, the debugger and RAW; the hash is only an index. Dynamic
+rebinding, closures, promotion, multitasking, RAW and the debugger are all
+unchanged. 326 regressions pass and the frozen-S1 guard passes; P5 is retained.
+Name resolution is no longer the dominant cost — the leading candidates are now
+evaluator dispatch, argument/subexpression evaluation and native/HOST
+arithmetic.
 
 ## 5. Milestones (branch / tag → commit)
 
@@ -106,7 +114,7 @@ In order:
 | P2 frames | `fib-opt-p2` | `6861194` |
 | P3 contexts | `fib-opt-p3` | `67bb997` |
 | P4 lexical | `fib-opt-p4` | `d8161b0` |
-| P5 hash lookup | `fib-opt-p5` | *(this phase)* |
+| P5 hash lookup | `fib-opt-p5` | `6a41848` |
 
 ## 6. Lessons learned
 
@@ -125,23 +133,39 @@ In order:
 
 ## 7. Roadmap
 
-1. P4 and P5 are complete and retained; `fib-opt-p5` is the current optimisation
-   baseline.
-2. Consolidate profiling after P5.
-3. Select P6 from measured remaining costs.
-4. Name resolution (lexical + dynamic) is now gone; the leading candidate is
-   evaluator dispatch / native arithmetic — but do not assume P6 until profiling
-   confirms it.
-5. Do **not** assume a performance phase without profiling support.
-6. Continue the rule: **one architectural performance hypothesis per phase.**
-7. After the optimisation sequence, establish the broader benchmark suite:
-   Fibonacci (recursion/call overhead), tight loop (evaluator/branch overhead),
-   counter closure (captured mutation), block/list traversal (managed data),
-   parser workload (parsing/backtracking/lookup), task ping-pong
-   (context-switch cost).
-8. Then begin the minimal browser/runtime work needed for Glon Shop (§9).
-9. Later, use FBP/dataflow/etc. as experiments in programming-model
-   extensibility (§8).
+```text
+P5 complete
+    ↓
+profile current runtime
+    ↓
+choose next optimisation from evidence
+    ↓
+broader benchmark suite
+    ↓
+minimal browser/runtime surface
+    ↓
+Glon Shop
+    ↓
+programming-model experiments
+       ├─ objects
+       ├─ reactive/dataflow
+       ├─ FBP
+       ├─ actors
+       └─ tuple-space / distributed Glon
+```
+
+- P4 and P5 are complete and retained; `fib-opt-p5` is the current optimisation
+  baseline.
+- Do **not** assume a further performance phase until current profiling is
+  reviewed; name resolution is no longer the dominant Fibonacci cost (dispatch,
+  argument evaluation and native/HOST arithmetic are the leading candidates).
+- Continue the rule: **one architectural performance hypothesis per phase.**
+- The broader benchmark suite is: Fibonacci (recursion/call overhead), tight
+  loop (evaluator/branch overhead), counter closure (captured mutation),
+  block/list traversal (managed data), parser workload
+  (parsing/backtracking/lookup), task ping-pong (context-switch cost).
+- Distributed Glon is an architectural/research target, not a replacement for
+  the nearer Glon Shop work.
 
 ## 8. Architectural headroom — multiple computational models
 
@@ -149,21 +173,44 @@ Glon need not commit to a single programming model. Different models may suit
 different classes of problem and should be constructible **above the same frozen
 substrate**.
 
-Candidate models: ordinary procedural/functional Glon; object/prototype systems;
-flow-based programming (FBP); dataflow; reactive programming;
-actors/message-passing; CSP/channel-style concurrency; domain-specific
-dialects. These may coexist in one application.
+Candidate models: ordinary procedural/functional Glon; objects/prototypes/
+structured data; reactive programming; dataflow; flow-based programming (FBP);
+actors/message passing; CSP/channel-style systems; tuple-space/blackboard
+coordination; distributed agent systems; domain-specific dialects. These are not
+mutually exclusive and may coexist in one application.
 
-Likely fits: ordinary Glon for algorithms/glue; structured objects/datatypes
-for domain state; reactive/dataflow for GUI dependencies; FBP for pipelines and
-component networks; green tasks/actors for independent asynchronous activities;
-parsing dialects for grammars/protocols.
+Likely fits: ordinary Glon for algorithms/glue; objects for domain state;
+reactive/dataflow for GUI state; FBP for pipelines; green tasks for local
+asynchronous work; the tuple space for distributed coordination; contracts for
+subsystem boundaries; HOST for external machinery.
 
 Principle: **choose the computational model to fit the problem, not one model
 imposed by the language designer.** An open research goal is to test how many
 such models express cleanly without modifying S1.
 
-## 9. Glon Shop application target
+Related principles (see `docs/distributed-glon-agents.md`):
+
+- **A shared space without contracts permits coordination but not reliable
+  governance. Contracts define what may be exchanged, who may act, what
+  completion means, and what authority is granted.**
+- **Distributed Glon separates computational semantics from transport topology:
+  a Glon program expresses the work and its contract; HOST determines whether
+  the participant is local, remote, CPU, GPU, Jetson or another machine.**
+- **The BBS was the naturally evolved prototype; structured tuple-space
+  coordination is the deliberate design.**
+
+## 9. Distributed Glon (design direction)
+
+The same philosophy that permits several computational models above one frozen
+local substrate can permit many Glon instances to cooperate above an abstract
+distributed coordination space. The minimal shared-space operations are
+`put`/`take`/`read`/`watch` (publish, atomically claim, observe, react), with
+claim/lease semantics for failure recovery, capability-limited federation rather
+than unrestricted trust, and contracts (data/behavioural/security) as the
+mandatory boundary between otherwise-independent computational models. Not yet
+implemented — see `docs/distributed-glon-agents.md` for the full design.
+
+## 10. Glon Shop application target
 
 Post-optimisation application target: **Glon Shop**, a small browser shop
 demonstrating a persistent Glon/S1 WASM interpreter.
@@ -200,7 +247,7 @@ history/navigation.
 Principle: **let the shop reveal what Glon actually needs rather than adding
 language facilities speculatively.** Full specification: `docs/glon-shop-product-spec.md`.
 
-## 10. Detailed documents
+## 11. Detailed documents
 
 - `README.md` — project intro.
 - `R0-S1-PHASE1.md`, `R0-S1-RESULTS.md`, `R0-ARCHITECTURE.md` — R0-on-S1.
@@ -211,4 +258,5 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
   optimisation phases.
 - `FIB-OPT-P4-LEX.md`, `FIB-OPT-P4-RESULTS.md` — P4.
 - `FIB-OPT-P5-HASH-LOOKUP.md`, `FIB-OPT-P5-RESULTS.md` — P5 (current baseline).
-- `docs/glon-shop-product-spec.md` — Glon Shop specification.
+- `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
+- `docs/distributed-glon-agents.md` — distributed/federated agent architecture.
