@@ -322,6 +322,52 @@ static void e_peek(void)   { asm_lit(REG_SP); asm_fetch(); asm_fetch(); }
 static void e_pop_to(cell c) { e_peek(); asm_lit(c); asm_store(); asm_drop(); }
 static void e_untag_ptr(void) { asm_dup(); asm_lit(16); asm_host(HOST_MOD); asm_host(HOST_SUB); }
 
+/* --- FIB-PROFILE-P1 profiler emitters (compiled only under -DR0_S1_PROFILE).
+ * Each helper emits pure S1 code above the frozen substrate; none changes GLON
+ * semantics. In a baseline build the helpers emit nothing. */
+#ifdef R0_S1_PROFILE
+static void pf_incr(cell c)            { e_cell(c); asm_lit(1); asm_host(HOST_ADD); e_setc(c); }
+static void pf_incr_by(cell c, cell s) { e_cell(c); e_cell(s); asm_host(HOST_ADD); e_setc(c); }
+static void pf_putc(int ch)            { asm_lit(ch); asm_host(HOST_PUTCHAR); }
+/* emit a runtime-gated (PF_TRACE != 0) trace-block prologue; returns a label
+ * patched at the end of the block by pf_trace_end() */
+static cell pf_trace_begin(void) {
+    e_cell(PF_TRACE); asm_lit(0); asm_host(HOST_NE);
+    cell skip = asm_zbranch_fwd();   /* PF_TRACE == 0 -> skip */
+    return skip;
+}
+static void pf_trace_end(cell skip) { asm_patch_here(skip); }
+/* increment PF_NATIVE and the per-native counter matching RV_NAT */
+static void pf_native_count(void) {
+    pf_incr(PF_NATIVE);
+    e_cell(RV_NAT); asm_lit(RN_LE); asm_host(HOST_EQ);
+    cell j1 = asm_zbranch_fwd();
+    pf_incr(PF_NAT_LE);
+    cell d1 = asm_branch_fwd();
+    asm_patch_here(j1);
+    e_cell(RV_NAT); asm_lit(RN_SUB); asm_host(HOST_EQ);
+    cell j2 = asm_zbranch_fwd();
+    pf_incr(PF_NAT_SUB);
+    cell d2 = asm_branch_fwd();
+    asm_patch_here(j2);
+    e_cell(RV_NAT); asm_lit(RN_ADD); asm_host(HOST_EQ);
+    cell j3 = asm_zbranch_fwd();
+    pf_incr(PF_NAT_ADD);
+    cell d3 = asm_branch_fwd();
+    asm_patch_here(j3);
+    e_cell(RV_NAT); asm_lit(RN_EITHER); asm_host(HOST_EQ);
+    cell j4 = asm_zbranch_fwd();
+    pf_incr(PF_NAT_EITHER);
+    cell d4 = asm_branch_fwd();
+    asm_patch_here(j4);
+    pf_incr(PF_NAT_OTHER);
+    asm_patch_here(d1);
+    asm_patch_here(d2);
+    asm_patch_here(d3);
+    asm_patch_here(d4);
+}
+#endif
+
 /* a CALL whose callee will be patched later; returns the operand cell */
 static cell emit_call_fwd(void) {
     asm_lit(0);
@@ -856,6 +902,10 @@ static void emit_alloc(void) {
     e_setc(GC_A2);                                   /* kind */
     e_setc(GC_T7);                                   /* n */
     e_cell(GC_T7); asm_lit(GC_HDR_STRIDE); asm_host(HOST_ADD); e_setc(GC_A1); /* extent */
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_ALLOCS);                              /* one allocation call */
+    pf_incr_by(PF_ALLOC_CELLS, GC_A1);               /* cells = header+payload */
+#endif
     /* tooling-heap escape: if REG_HP >= GC_HEAP_LIMIT, plain bump (historical tooling) */
     asm_lit(REG_HP); asm_fetch(); asm_lit(GC_HEAP_LIMIT); asm_host(HOST_GT);
     cell j_tool = asm_zbranch_fwd();
@@ -985,6 +1035,9 @@ static void emit_discard(void) {
 /* LOOKUP: (word -- value | -1 if unbound) via RV_CTX */
 static void emit_lookup(void) {
     r_lookup = asm_here();
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_LOOKUP);          /* one logical word lookup */
+#endif
     e_pop_to(RV_T1);
     e_cell(RV_CTX);
     cell outer = asm_here();
@@ -996,10 +1049,16 @@ static void emit_lookup(void) {
     e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T3);
     asm_lit(0); e_setc(RV_T4);
     cell inner = asm_here();
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_LK_SLOTS);        /* examine one binding slot per iteration */
+#endif
     e_cell(RV_T4); e_cell(RV_T3); asm_host(HOST_GE);
     cell j_search = asm_zbranch_fwd();
     asm_drop();
     e_cell(RV_T2); asm_fetch();
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_LK_PARENT);       /* move to parent context */
+#endif
     asm_branch(outer);
     asm_patch_here(j_search);
     e_cell(RV_T2); asm_lit(3); asm_host(HOST_ADD);
@@ -1090,6 +1149,9 @@ static void emit_append(void) {
 /* MKCTX: ( parent -- child-ctx )  allocate a fresh context */
 static void emit_mkctx(void) {
     r_mkctx = asm_here();
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_ALLOC_CTX);
+#endif
     /* allocate a 16-aligned cell count so the tagged pointer stays well-formed */
     asm_lit((CTX_DATA + 2 * R0S1_CTX_CAP + 15) & ~15); asm_lit(GC_KIND_CTX); asm_call(r_alloc); e_setc(RV_T4);
     e_cell(RV_T4); asm_store();                    /* M[addr] = parent */
@@ -1190,6 +1252,9 @@ static void emit_native(void) {
     r_native = asm_here();
     asm_dup(); asm_lit(16); asm_host(HOST_DIV); e_setc(RV_NAT);
     asm_drop();
+#ifdef R0_S1_PROFILE
+    pf_native_count();
+#endif
     /* print (id 14) */
     e_cell(RV_NAT); asm_lit(RN_PRINT); asm_host(HOST_EQ);
     cell j_not_print = asm_zbranch_fwd();
@@ -1267,6 +1332,20 @@ static void emit_native(void) {
         }
         for (int k = 0; k < 9; k++) asm_patch_here(done[k]);
     }
+#ifdef R0_S1_PROFILE
+    /* trace: base-case decision at `<=`. Print 'B' + (0|1); the comparison
+     * result is raw on the stack top. Skipped when PF_TRACE == 0 or when this
+     * native is not `<=`. */
+    {
+        cell j_tr = pf_trace_begin();
+        e_cell(RV_NAT); asm_lit(RN_LE); asm_host(HOST_EQ);
+        cell j_not_le = asm_zbranch_fwd();
+        pf_putc('B');
+        e_peek(); asm_host(HOST_PRINT);
+        asm_patch_here(j_not_le);
+        pf_trace_end(j_tr);
+    }
+#endif
     asm_lit(16); asm_host(HOST_MUL);
     e_cell(RV_HOSTCALLS); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_HOSTCALLS);
     asm_lit(16);
@@ -1276,6 +1355,14 @@ static void emit_native(void) {
 /* INVOKE-CLOSURE: ( closure -- result-set )  real S1 activation */
 static void emit_invoke_closure(void) {
     r_invoke_closure = asm_here();
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_CLOSURE);                             /* one closure activation */
+    pf_incr(PF_DEPTH);                               /* nest depth +1 */
+    e_cell(PF_DEPTH); e_cell(PF_MAXDEPTH); asm_host(HOST_GT);
+    cell j_max = asm_zbranch_fwd();
+    e_cell(PF_DEPTH); e_setc(PF_MAXDEPTH);
+    asm_patch_here(j_max);
+#endif
     asm_lit(0); e_setc(RV_CHILD);                    /* M2: transient roots stay 0-or-live */
     /* instrumentation: track max return/data depth */
     asm_lit(REG_RP); asm_fetch();
@@ -1315,6 +1402,20 @@ static void emit_invoke_closure(void) {
     asm_patch_here(j_args_done);
     asm_fromR(); e_setc(RV_ARITY);
     asm_fromR(); e_setc(RV_CLOSURE);
+#ifdef R0_S1_PROFILE
+    /* trace: closure entry. Print 'E' + (depth*100 + arg). Assumes arity>=1
+     * (fib's only closure is arity 1); the arg is the top-of-stack at this
+     * point. This block is skipped entirely when PF_TRACE == 0. */
+    {
+        cell j_tr = pf_trace_begin();
+        pf_putc('E');
+        e_peek(); asm_lit(16); asm_host(HOST_DIV);            /* arg/16 (arg on top) */
+        e_cell(PF_DEPTH); asm_lit(100); asm_host(HOST_MUL);   /* depth*100 */
+        asm_host(HOST_ADD);                                    /* depth*100 + arg */
+        asm_host(HOST_PRINT);                                  /* leaves [arg] */
+        pf_trace_end(j_tr);
+    }
+#endif
     /* child context (parent = captured) */
     e_cell(RV_CLOSURE); asm_lit(2); asm_host(HOST_ADD); asm_fetch();
     asm_call(r_mkctx);
@@ -1336,6 +1437,9 @@ static void emit_invoke_closure(void) {
     asm_fetchR(); e_setc(RV_SIP);
     asm_lit(REG_RP); asm_fetch(); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_SRP);
     /* allocate + fill the activation frame (linked list in M) */
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_ALLOC_FRAME);
+#endif
     asm_lit(16); asm_lit(GC_KIND_FRAME); asm_call(r_alloc); e_setc(RV_FNEW);
     e_cell(RV_FRAME); e_cell(RV_FNEW); asm_store();                          /* prev */
     e_cell(RV_CLOSURE); asm_lit(CLOSURE_SITE); asm_host(HOST_ADD); asm_fetch();
@@ -1365,6 +1469,20 @@ static void emit_invoke_closure(void) {
     e_cell(RV_FRAME); asm_fetch(); e_setc(RV_FRAME);
     asm_lit(0); e_setc(RV_CHILD);                    /* M2: child context now dead */
     asm_lit(0); e_setc(RV_CLOSURE);                  /* M2: closure now dead */
+#ifdef R0_S1_PROFILE
+    /* trace: closure exit. Print 'R' + result. The result set is [result,
+     * tagged-N] on the data stack, so the result is at M[SP+1]. Skipped when
+     * PF_TRACE == 0. */
+    {
+        cell j_tr = pf_trace_begin();
+        pf_putc('R');
+        asm_lit(REG_SP); asm_fetch(); asm_lit(1); asm_host(HOST_ADD); asm_fetch();
+        asm_lit(16); asm_host(HOST_DIV);
+        asm_host(HOST_PRINT);
+        pf_trace_end(j_tr);
+    }
+    e_cell(PF_DEPTH); asm_lit(1); asm_host(HOST_SUB); e_setc(PF_DEPTH);  /* nest depth -1 */
+#endif
     asm_exit();
 }
 
@@ -1436,6 +1554,9 @@ static void emit_return(void) {
  * The fragment itself is trusted/unsafe S1 code. */
 static void emit_invoke_raw(void) {
     r_invoke_raw = asm_here();
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_RAW);
+#endif
     e_untag_ptr(); e_setc(RV_T1);                       /* ptr */
     e_cell(RV_T1); asm_fetch(); e_setc(RV_T5);          /* entry */
     e_cell(RV_T1); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T6); /* arity */
@@ -1461,6 +1582,9 @@ static void emit_invoke_raw(void) {
 /* SUBEXPR: evaluate one sub-expression at RV_CUR, advancing it */
 static void emit_subexpr(void) {
     r_subexpr = asm_here();
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_SUBEXPR);
+#endif
     e_cell(RV_CUR); asm_fetch();
     e_cell(RV_CUR); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_CUR);
     asm_dup(); asm_lit(16); asm_host(HOST_MOD);
@@ -1568,6 +1692,9 @@ static void emit_block_eval(void) {
     e_cell(RV_CUR); e_cell(RV_END); asm_host(HOST_LT);
     cell j_empty = asm_zbranch_fwd();
     cell ltop = asm_here();
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_BLKEVAL);         /* one block-evaluator iteration */
+#endif
     asm_call(r_subexpr);
     e_cell(RV_CUR); e_cell(RV_END); asm_host(HOST_LT);
     cell j_done = asm_zbranch_fwd();
@@ -1751,6 +1878,10 @@ int r0_s1_run(cell block) {
     M[RV_HOSTCALLS] = 0;
     M[RV_RPMIN] = 65535;
     M[RV_SPMIN] = 65535;
+#ifdef R0_S1_PROFILE
+    for (cell c = PF_BASE; c <= PF_MAXDEPTH; c++)
+        if (c != PF_TRACE) M[c] = 0;   /* PF_TRACE is a persistent mode flag */
+#endif
 
     s1_reset();
     if (g_seed_datatypes) seed_datatype_heap();
@@ -1793,3 +1924,25 @@ long r0_s1_gc_free_cells(void)   { return (long)M[GC_FREE_CELLS]; }
 long r0_s1_gc_free_blocks(void)  { return (long)M[GC_FREE_BLOCKS]; }
 long r0_s1_gc_reclaimed(void)    { return (long)M[GC_LAST_RECLAM]; }
 long r0_s1_heap_high(void)       { return (long)s1_mem(REG_HP); }
+
+/* FIB-PROFILE-P1: read the profiler counters into a struct. */
+void r0_s1_pf_read(r0_s1_pf_stats *out) {
+    out->closure    = (long)M[PF_CLOSURE];
+    out->subexpr    = (long)M[PF_SUBEXPR];
+    out->blkeval    = (long)M[PF_BLKEVAL];
+    out->lookup     = (long)M[PF_LOOKUP];
+    out->lk_slots   = (long)M[PF_LK_SLOTS];
+    out->lk_parent  = (long)M[PF_LK_PARENT];
+    out->native     = (long)M[PF_NATIVE];
+    out->nat_le     = (long)M[PF_NAT_LE];
+    out->nat_sub    = (long)M[PF_NAT_SUB];
+    out->nat_add    = (long)M[PF_NAT_ADD];
+    out->nat_either = (long)M[PF_NAT_EITHER];
+    out->nat_other  = (long)M[PF_NAT_OTHER];
+    out->allocs     = (long)M[PF_ALLOCS];
+    out->alloc_cells= (long)M[PF_ALLOC_CELLS];
+    out->alloc_ctx  = (long)M[PF_ALLOC_CTX];
+    out->alloc_frame= (long)M[PF_ALLOC_FRAME];
+    out->raw        = (long)M[PF_RAW];
+    out->max_depth  = (long)M[PF_MAXDEPTH];
+}

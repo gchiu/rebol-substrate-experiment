@@ -30,8 +30,28 @@ test: s1
 	./check-frozen-s1.sh
 	./s1
 
+# ---- FIB-PROFILE-P1: Fibonacci profiler (instrumented + baseline builds) ---
+# fib-profiler : counters + trace (compiles runtime AND driver with -DR0_S1_PROFILE)
+# fib-timing   : baseline timing only (no instrumentation, zero added overhead)
+PROFILE_FLAGS = $(CFLAGS) -DR0_S1_PROFILE
+
+fib-profiler: r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o s1.o
+	$(CC) $(PROFILE_FLAGS) -o $@ r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o s1.o
+
+fib-timing: r0_s1_fib_profiler.o r0_s1_runtime.o s1.o
+	$(CC) $(CFLAGS) -o $@ r0_s1_fib_profiler.o r0_s1_runtime.o s1.o
+
+r0_s1_fib_profiler.o: r0_s1_fib_profiler.c r0_s1.h s1.h
+	$(CC) $(CFLAGS) -c -o $@ r0_s1_fib_profiler.c
+
+r0_s1_fib_profiler_prof.o: r0_s1_fib_profiler.c r0_s1.h s1.h
+	$(CC) $(PROFILE_FLAGS) -c -o $@ r0_s1_fib_profiler.c
+
+r0_s1_runtime_prof.o: r0_s1_runtime.c r0_s1.h s1.h
+	$(CC) $(PROFILE_FLAGS) -c -o $@ r0_s1_runtime.c
+
 clean:
-	rm -f s1 $(OBJS)
+	rm -f s1 fib-profiler fib-timing $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
 # Produces web/demo.js (Emscripten runtime + web/glue.js) and web/demo.wasm,

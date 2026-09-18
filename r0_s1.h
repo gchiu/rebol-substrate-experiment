@@ -184,6 +184,35 @@ enum {
 #define GC_A1           25313    /* alloc()'s persistent extent */
 #define GC_A2           25314    /* alloc()'s persistent kind */
 
+/* --- FIB-PROFILE-P1: profiler counters (free region 24655..24858) -----------
+ * Diagnostic-only counters, reset per r0_s1_run and read by the profiler
+ * driver. They are NEVER read or written by GLON semantics; they exist purely
+ * for instrumentation. The emitted increments are compiled only under
+ * -DR0_S1_PROFILE, so a baseline build has zero added overhead (the cells are
+ * simply never written). They sit in the free gap above the RV scratch cells
+ * and below the D1 buffers (DBGEE_BUF=24859). */
+#define PF_BASE         24655
+#define PF_CLOSURE      24655   /* closure invocations (r_invoke_closure)       */
+#define PF_SUBEXPR      24656   /* sub-expression dispatches (r_subexpr)         */
+#define PF_BLKEVAL      24657   /* block-evaluator loop iterations (r_block_eval) */
+#define PF_LOOKUP       24658   /* logical word lookups (r_lookup)               */
+#define PF_LK_SLOTS     24659   /* binding slots examined (lookup inner loop)    */
+#define PF_LK_PARENT    24660   /* parent-context hops (lookup outer loop)       */
+#define PF_NATIVE       24661   /* native invocations total                      */
+#define PF_NAT_LE       24662   /* <=                                            */
+#define PF_NAT_SUB      24663   /* -                                             */
+#define PF_NAT_ADD      24664   /* +                                             */
+#define PF_NAT_EITHER   24665   /* either                                        */
+#define PF_NAT_OTHER    24666   /* any other native                              */
+#define PF_ALLOCS       24667   /* r_alloc calls                                 */
+#define PF_ALLOC_CELLS  24668   /* cells consumed (extent sum)                   */
+#define PF_ALLOC_CTX    24669   /* context allocations                           */
+#define PF_ALLOC_FRAME  24670   /* frame allocations                             */
+#define PF_RAW          24671   /* RAW invocations                               */
+#define PF_TRACE        24672   /* runtime trace-enable flag (0/1)               */
+#define PF_DEPTH        24673   /* current closure nesting depth (trace/depth)   */
+#define PF_MAXDEPTH     24674   /* max closure nesting depth seen                */
+
 /* context layout: [parent, count, cap, (word,value)...] */
 enum { CTX_PARENT = 0, CTX_COUNT = 1, CTX_CAP = 2, CTX_DATA = 3 };
 
@@ -239,5 +268,15 @@ long r0_s1_gc_free_cells(void);    /* free (reusable) cells after last collectio
 long r0_s1_gc_free_blocks(void);   /* free block count after last collection */
 long r0_s1_gc_reclaimed(void);     /* cells reclaimed by last collection */
 long r0_s1_heap_high(void);        /* REG_HP (heap frontier / high water) */
+
+/* FIB-PROFILE-P1: profiler statistics (read the PF_* counter cells). Only
+ * meaningful in a -DR0_S1_PROFILE build; reads 0 otherwise. */
+typedef struct {
+    long closure, subexpr, blkeval, lookup, lk_slots, lk_parent;
+    long native, nat_le, nat_sub, nat_add, nat_either, nat_other;
+    long allocs, alloc_cells, alloc_ctx, alloc_frame, raw;
+    long max_depth;
+} r0_s1_pf_stats;
+void r0_s1_pf_read(r0_s1_pf_stats *out);
 
 #endif /* R0_S1_H */
