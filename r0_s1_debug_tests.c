@@ -34,10 +34,11 @@ static int failures = 0;
 #define CHECK(c, m) do { if (c) printf("  ok: %s\n", m); \
                          else { printf("  FAIL: %s\n", m); failures++; } } while (0)
 
-/* fixed free-region state buffers (above the M2 GC state ~8814, below the
- * debuggee's data-stack region 12000 down) */
-#define DBGEE_BUF 8850
-#define DBGER_BUF 8870
+/* fixed free-region state buffers (in the M3C-relocated state region
+ * [24576, 25315), just above the return-stack top RS_INIT=24576; the debuggee's
+ * stacks live below that, at DBGEE_SP=12000 / DBGEE_RP=20000) */
+#define DBGEE_BUF 24859
+#define DBGER_BUF 24879
 
 /* the debuggee runs on a reserved lower stack region so its return stack can
  * never overwrite the debugger's live return stack (24576 downward). */

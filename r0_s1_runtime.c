@@ -143,6 +143,7 @@ static const raw_sym_t raw_syms[] = {
     { "SCRATCH_E", RV_SCRATCH_E }, { "SCRATCH_F", RV_SCRATCH_F },
     { "BUILTIN_BASE", BUILTIN_BASE }, { "GC_META", GC_META },
     { "T_USER", T_USER }, { "GC_KIND_USER", GC_KIND_USER },
+    { "T_STRING", T_STRING }, { "GC_KIND_STRING", GC_KIND_STRING },
 };
 #define N_RAW_SYMS ((int)(sizeof raw_syms / sizeof raw_syms[0]))
 
@@ -359,7 +360,7 @@ static cell to_block_eval[16]; static int n_block_eval;
  * pointers and are traced. */
 
 static cell r_mark_value, r_mark_push, r_trace_ctx, r_trace_closure, r_trace_frame,
-            r_mark_frame, r_trace_user, r_scan_values, r_scan_closures,
+            r_mark_frame, r_trace_user, r_trace_string, r_scan_values, r_scan_closures,
             r_collect, r_alloc;
 
 /* forward-call patch lists for the mark/trace mutual recursion */
@@ -477,6 +478,29 @@ static void emit_trace_user(void) {
     asm_exit();
 }
 
+/* TRACE-STRING: ( p -- ) trace a managed STRING (a leaf object). First verify
+ * the byte length against the allocated block extent (a length that exceeds
+ * the payload capacity is fail-stop heap corruption, never silently clamped),
+ * then trace NO children -- the bytes are raw, non-pointer data.
+ *
+ * trace_string is reached ONLY from the collector's drain loop, so like
+ * trace_user it may use the GC_T6..GC_T8 scan/drain partition for its locals. */
+static void emit_trace_string(void) {
+    r_trace_string = asm_here();
+    e_setc(GC_T6);                                   /* p */
+    /* length = M[p]; size = M[p-16]; require length <= size-17 (fail-stop) */
+    e_cell(GC_T6); asm_lit(GC_HDR_STRIDE); asm_host(HOST_SUB); asm_fetch(); e_setc(GC_T5); /* size */
+    e_cell(GC_T6); asm_fetch(); e_setc(GC_T7);        /* length */
+    e_cell(GC_T7);                                    /* length */
+    e_cell(GC_T5); asm_lit(GC_HDR_STRIDE + 1); asm_host(HOST_SUB);   /* size-17 */
+    asm_host(HOST_GT);                                /* length > size-17 ? */
+    cell j_ok = asm_zbranch_fwd();
+    asm_host(HOST_DUMP); asm_halt();                  /* corrupt length */
+    asm_patch_here(j_ok);
+    /* no children to trace */
+    asm_exit();
+}
+
 /* MARK-FRAME: ( p -- ) frames are always collected; mark unless 0. */
 static void emit_mark_frame(void) {
     r_mark_frame = asm_here();
@@ -543,6 +567,22 @@ static void emit_mark_value(void) {
     asm_patch_here(j_bad1);
     asm_host(HOST_DUMP); asm_halt();                        /* out-of-range T_USER */
     asm_patch_here(j_nu);
+    /* STRING (tag 12): like USER, mark_push the managed string, but first
+     * require the payload pointer to be inside the managed heap. Strings are
+     * leaf objects (no pointer-bearing fields), so mark_value only mark_pushes;
+     * trace_string (from the drain loop) validates length and traces nothing. */
+    e_cell(GC_T2); asm_lit(T_STRING); asm_host(HOST_EQ);
+    cell j_ns = asm_zbranch_fwd();
+    asm_lit(T_STRING); asm_host(HOST_SUB); e_setc(GC_T1);   /* p */
+    e_cell(GC_T1); asm_lit(GC_HEAP_BASE); asm_host(HOST_GE);
+    cell j_sbad1 = asm_zbranch_fwd();                       /* p < base -> corrupt */
+    e_cell(GC_T1); asm_lit(GC_HEAP_LIMIT); asm_host(HOST_LT);
+    cell j_sbad2 = asm_zbranch_fwd();                       /* p >= limit -> corrupt */
+    e_cell(GC_T1); asm_call(r_mark_push); asm_exit();       /* collected string */
+    asm_patch_here(j_sbad2);
+    asm_patch_here(j_sbad1);
+    asm_host(HOST_DUMP); asm_halt();                        /* out-of-range T_STRING */
+    asm_patch_here(j_ns);
     /* else: BLOCK/RAW/int/none/word/set/get/lit/native -> no collected children */
     asm_drop();
     asm_exit();
@@ -675,6 +715,10 @@ static void emit_collect(void) {
     cell j_nusr = asm_zbranch_fwd();
     e_cell(GC_T6); asm_call(r_trace_user); asm_branch(drain);
     asm_patch_here(j_nusr);
+    e_cell(GC_T8); asm_lit(GC_KIND_STRING); asm_host(HOST_EQ);
+    cell j_nstr = asm_zbranch_fwd();
+    e_cell(GC_T6); asm_call(r_trace_string); asm_branch(drain);
+    asm_patch_here(j_nstr);
     asm_branch(drain);
     asm_patch_here(j_drain_done);
 
@@ -800,6 +844,7 @@ static void emit_gc(void) {
     emit_trace_closure();
     emit_trace_frame();
     emit_trace_user();
+    emit_trace_string();
     emit_mark_frame();
     emit_mark_value();
     emit_scan_values();
@@ -1526,6 +1571,9 @@ void r0_s1_seed_datatypes(void) {
     bind(global_ctx, intern("datatype!"), mk_user(GC_META_PAYLOAD));
     for (int t = 0; t < 11; t++)
         bind(global_ctx, intern(tn[t]), mk_user(GC_META_PAYLOAD + 32 * (t + 1)));
+    /* M3C: STRING! is an intrinsic tag (12) whose canonical descriptor lives in
+     * BUILTIN_TYPE slot 12 (seeded by seed_datatype_heap). */
+    bind(global_ctx, intern("string!"), mk_user(BUILTIN_STRING_PAYLOAD));
 }
 
 /* M3: seed the 12 bootstrap descriptors (meta + 11 built-ins) at the bottom of
@@ -1548,8 +1596,21 @@ static void seed_datatype_heap(void) {
         M[BUILTIN_BASE + t] = mk_user(p);
     }
     for (int t = 11; t < 16; t++) M[BUILTIN_BASE + t] = R0_NONE;
+    /* M3C: STRING! built-in descriptor (BUILTIN_TYPE slot 12). Slot 11 (T_USER)
+     * stays NONE because type? special-cases tag 11 to read the object's own
+     * descriptor. The string! descriptor is seeded contiguously after the 11
+     * built-ins at header 33152 / payload 33168. */
+    {
+        cell b = base + 12 * 32;
+        cell p = b + 16;
+        M[b] = 32;
+        M[b + 1] = GC_FLAG_ALLOC | (GC_KIND_USER << 2);
+        M[p] = mk_user(meta);                       /* desc = datatype! */
+        M[p + 1] = 0;                               /* count = 0 */
+        M[BUILTIN_BASE + 12] = mk_user(p);
+    }
     M[GC_META] = mk_user(meta);
-    M[REG_HP] = base + 12 * 32;
+    M[REG_HP] = base + 13 * 32;
 }
 
 cell r0_s1_parse(const char *src, int *err) {

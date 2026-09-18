@@ -13,17 +13,17 @@
  * about vector!/person!/relationship!/graph-node!/graph-edge! or genealogy
  * semantics.
  *
- * Display labels are BLOCK! values of character codes (deliberately temporary
- * presentation text; M3B does not add STRING!). WORD spellings live in the
- * C-side interner and are not visible to GLON, so symbol ids are never
- * rendered.
+ * Display labels are managed STRING! values (M3C): a string is a byte series
+ * whose bytes carry UTF-8 text. WORD spellings live in the C-side interner and
+ * are not visible to GLON, so symbol ids are never rendered.
  *
  * GC acceptance tests A-G exercise the planned lifetime/composition cases; H
  * (M3A A-Q and earlier suites unchanged) is verified by the full native suite.
- * See M3B-GENEALOGY-GRAPH-DESIGN.md.
+ * See M3B-GENEALOGY-GRAPH-DESIGN.md and M3C-STRING-SERIES-DESIGN.md.
  */
 
 #include "r0_s1.h"
+#include "r0_s1_m3c_lib.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -37,6 +37,7 @@ static int failures = 0;
 
 static cell alloc_addr, lookup_addr, collect_addr;
 static char lib_buf[12288];
+static char strlib_buf[4096];
 static char prog_buf[32768];
 
 /* M3 datatype library: generic RAW mechanics + ordinary GLON policy.
@@ -136,18 +137,19 @@ static char *m3_lib(void) {
         " datatype?: func [x] [ = type? x datatype! ] "
         " make: func [D args] [ "
         "   either = D datatype! [ mk-datatype args ] [ "
-        "     either datatype? D [ mk-value D args ] [ reject ] ] ] ",
+        "     either = D string! [ mk-string args ] [ "
+        "       either datatype? D [ mk-value D args ] [ reject ] ] ] ] ",
         (long)collect_addr, (long)alloc_addr, (long)lookup_addr, (long)alloc_addr,
         (long)lookup_addr);
     return lib_buf;
 }
 
 /* M3B datatype definitions: totally ordered (each field type is already
- * defined above it). `name` is a BLOCK! of character codes, NOT a word!, so a
- * display label is GLON-visible presentation text without adding STRING!. */
+ * defined above it). `name` is a managed STRING! (M3C), so a display label is
+ * GLON-visible presentation text. */
 #define M3B_TYPES \
     " vector!: make datatype! [x: integer! y: integer!] " \
-    " person!: make datatype! [id: integer! name: block!] " \
+    " person!: make datatype! [id: integer! name: string!] " \
     " relationship!: make datatype! [kind: word! from: person! to: person!] " \
     " graph-node!: make datatype! [person: person! position: vector!] " \
     " graph-edge!: make datatype! [relationship: relationship! from-node: graph-node! to-node: graph-node!] "
@@ -155,20 +157,18 @@ static char *m3_lib(void) {
 /* M3B rendering library: generic surface-command emitters over the frozen
  * `print` path. These know about the surface protocol only (opcodes 0..4 with
  * integer arguments); they read coordinates from graph values and never
- * hardcode genealogy. The coordinate helpers (node-x/node-y/node-name) are
- * ordinary closures invoked inside other closures' argument lists, which
- * exercises the corrected nested-closure argument evaluation (see
- * r0_s1_nested_closure_tests.c). */
+ * hardcode genealogy. Text bytes come from STRING! via length?/string-byte.
+ * The coordinate helpers (node-x/node-y/node-name) are ordinary closures
+ * invoked inside other closures' argument lists, which exercises the corrected
+ * nested-closure argument evaluation (see r0_s1_nested_closure_tests.c). */
 #define M3B_RENDER \
-    " tag-int: raw 1 [ LIT 16 MUL ARITY 1 EXIT ] " \
-    " div16: raw 1 [ LIT 16 DIV ARITY 1 EXIT ] " \
     " node-x: func [n] [ field field n 'position 'x ] " \
     " node-y: func [n] [ field field n 'position 'y ] " \
     " node-name: func [n] [ field field n 'person 'name ] " \
-    " emit-chars: func [b i n] [ either < i n [ print block-pick b div16 i emit-chars b + i 1 n ] [ none ] ] " \
+    " emit-chars: func [b i n] [ either < i n [ print string-byte b i emit-chars b + i 1 n ] [ none ] ] " \
     " draw-clear: func [] [ print 0 ] " \
     " draw-line: func [x1 y1 x2 y2] [ print 1 print x1 print y1 print x2 print y2 ] " \
-    " draw-text: func [x y name] [ print 2 print x print y print tag-int block-len name emit-chars name 0 tag-int block-len name ] " \
+    " draw-text: func [x y name] [ print 2 print x print y print length? name emit-chars name 0 length? name ] " \
     " draw-rect: func [x y w h] [ print 3 print x print y print w print h ] " \
     " draw-present: func [] [ print 4 ] " \
     " draw-node: func [n] [ " \
@@ -180,11 +180,11 @@ static char *m3_lib(void) {
 
 /* The fixed family dataset: Alice (id 0), Bob (id 1), Charlie (id 2), with
  * spouse(Alice,Bob), parent(Alice,Charlie), parent(Bob,Charlie) and explicit
- * VECTOR positions. */
+ * VECTOR positions. Names are STRING! values built from byte codes. */
 #define M3B_GRAPH \
-    " alice: make person! [0 [65 108 105 99 101]] " \
-    " bob: make person! [1 [66 111 98]] " \
-    " charlie: make person! [2 [67 104 97 114 108 105 101]] " \
+    " alice-name: make string! [65 108 105 99 101] alice: make person! [0 :alice-name] " \
+    " bob-name: make string! [66 111 98] bob: make person! [1 :bob-name] " \
+    " charlie-name: make string! [67 104 97 114 108 105 101] charlie: make person! [2 :charlie-name] " \
     " spouse: make relationship! [spouse :alice :bob] " \
     " parent1: make relationship! [parent :alice :charlie] " \
     " parent2: make relationship! [parent :bob :charlie] " \
@@ -210,7 +210,8 @@ static int m3b_run(const char *program, int *N) {
     alloc_addr = r0_s1_alloc_addr();
     lookup_addr = r0_s1_lookup_addr();
     collect_addr = r0_s1_gc_collect_addr();
-    snprintf(prog_buf, sizeof prog_buf, "[ %s %s ]", m3_lib(), program);
+    const char *sl = m3c_string_lib(strlib_buf, sizeof strlib_buf, alloc_addr);
+    snprintf(prog_buf, sizeof prog_buf, "[ %s %s %s ]", m3_lib(), sl, program);
     cell block = r0_s1_parse(prog_buf, &err);
     if (err) { *N = -1; return 0; }
     *N = r0_s1_run(block);
@@ -230,7 +231,7 @@ static void expect1(const char *program, cell want, const char *what) {
 static void test_A(void) {
     printf("m3b: A VECTOR nested in GRAPH-NODE survives GC\n");
     expect1(M3B_TYPES
-            " alice: make person! [0 [65 108 105 99 101]] "
+            " alice-name: make string! [65 108 105 99 101] alice: make person! [0 :alice-name] "
             " pos-a: make vector! [100 100] "
             " node-a: make graph-node! [:alice :pos-a] "
             " collect "
@@ -241,7 +242,7 @@ static void test_A(void) {
 static void test_B(void) {
     printf("m3b: B PERSON reachable only through GRAPH-NODE survives GC\n");
     expect1(M3B_TYPES
-            " alice: make person! [0 [65 108 105 99 101]] "
+            " alice-name: make string! [65 108 105 99 101] alice: make person! [0 :alice-name] "
             " pos-a: make vector! [100 100] "
             " node-a: make graph-node! [:alice :pos-a] "
             " alice: none pos-a: none collect "
@@ -252,15 +253,15 @@ static void test_B(void) {
 static void test_C(void) {
     printf("m3b: C RELATIONSHIP keeps both PERSON values alive\n");
     expect1(M3B_TYPES
-            " alice: make person! [0 [65 108 105 99 101]] "
-            " bob: make person! [1 [66 111 98]] "
+            " alice-name: make string! [65 108 105 99 101] alice: make person! [0 :alice-name] "
+            " bob-name: make string! [66 111 98] bob: make person! [1 :bob-name] "
             " spouse: make relationship! [spouse :alice :bob] "
             " alice: none bob: none collect "
             " field field spouse 'from 'id ", mk_int(0),
             "C: relationship.from.id == 0 after GC");
     expect1(M3B_TYPES
-            " alice: make person! [0 [65 108 105 99 101]] "
-            " bob: make person! [1 [66 111 98]] "
+            " alice-name: make string! [65 108 105 99 101] alice: make person! [0 :alice-name] "
+            " bob-name: make string! [66 111 98] bob: make person! [1 :bob-name] "
             " spouse: make relationship! [spouse :alice :bob] "
             " alice: none bob: none collect "
             " field field spouse 'to 'id ", mk_int(1),
@@ -270,8 +271,8 @@ static void test_C(void) {
 static void test_D(void) {
     printf("m3b: D GRAPH-EDGE keeps RELATIONSHIP + two GRAPH-NODEs alive\n");
     expect1(M3B_TYPES
-            " alice: make person! [0 [65 108 105 99 101]] "
-            " bob: make person! [1 [66 111 98]] "
+            " alice-name: make string! [65 108 105 99 101] alice: make person! [0 :alice-name] "
+            " bob-name: make string! [66 111 98] bob: make person! [1 :bob-name] "
             " spouse: make relationship! [spouse :alice :bob] "
             " pos-a: make vector! [100 100] "
             " pos-b: make vector! [300 100] "
@@ -283,8 +284,8 @@ static void test_D(void) {
             " field field field edge-ab 'relationship 'from 'id ", mk_int(0),
             "D: edge.relationship.from.id == 0 after GC");
     expect1(M3B_TYPES
-            " alice: make person! [0 [65 108 105 99 101]] "
-            " bob: make person! [1 [66 111 98]] "
+            " alice-name: make string! [65 108 105 99 101] alice: make person! [0 :alice-name] "
+            " bob-name: make string! [66 111 98] bob: make person! [1 :bob-name] "
             " spouse: make relationship! [spouse :alice :bob] "
             " pos-a: make vector! [100 100] "
             " pos-b: make vector! [300 100] "
@@ -312,21 +313,21 @@ static void test_E(void) {
 static void test_F(void) {
     printf("m3b: F two diagrams share a PERSON with different VECTORs\n");
     expect1(M3B_TYPES
-            " alice: make person! [0 [65 108 105 99 101]] "
+            " alice-name: make string! [65 108 105 99 101] alice: make person! [0 :alice-name] "
             " pos-a: make vector! [100 100] pos-b: make vector! [300 100] "
             " n1: make graph-node! [:alice :pos-a] n2: make graph-node! [:alice :pos-b] "
             " collect "
             " field field n1 'position 'x ", mk_int(100),
             "F: n1.position.x == 100");
     expect1(M3B_TYPES
-            " alice: make person! [0 [65 108 105 99 101]] "
+            " alice-name: make string! [65 108 105 99 101] alice: make person! [0 :alice-name] "
             " pos-a: make vector! [100 100] pos-b: make vector! [300 100] "
             " n1: make graph-node! [:alice :pos-a] n2: make graph-node! [:alice :pos-b] "
             " collect "
             " field field n2 'position 'x ", mk_int(300),
             "F: n2.position.x == 300");
     expect1(M3B_TYPES
-            " alice: make person! [0 [65 108 105 99 101]] "
+            " alice-name: make string! [65 108 105 99 101] alice: make person! [0 :alice-name] "
             " pos-a: make vector! [100 100] pos-b: make vector! [300 100] "
             " n1: make graph-node! [:alice :pos-a] n2: make graph-node! [:alice :pos-b] "
             " collect "
@@ -337,7 +338,7 @@ static void test_F(void) {
 static void test_G(void) {
     printf("m3b: G dropping one diagram preserves a shared PERSON\n");
     expect1(M3B_TYPES
-            " alice: make person! [0 [65 108 105 99 101]] "
+            " alice-name: make string! [65 108 105 99 101] alice: make person! [0 :alice-name] "
             " pos-a: make vector! [100 100] pos-b: make vector! [300 100] "
             " n1: make graph-node! [:alice :pos-a] n2: make graph-node! [:alice :pos-b] "
             " n1: none pos-a: none collect "
@@ -345,7 +346,7 @@ static void test_G(void) {
             "G: Alice survives via n2 after n1 is dropped");
     int N;
     m3b_run(M3B_TYPES
-            " alice: make person! [0 [65 108 105 99 101]] "
+            " alice-name: make string! [65 108 105 99 101] alice: make person! [0 :alice-name] "
             " pos-a: make vector! [100 100] pos-b: make vector! [300 100] "
             " n1: make graph-node! [:alice :pos-a] n2: make graph-node! [:alice :pos-b] "
             " n1: none pos-a: none collect ", &N);

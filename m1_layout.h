@@ -2,10 +2,10 @@
  *
  * These are the ONLY addresses M1 uses above the frozen R0/S1 substrate.  They
  * are chosen to be disjoint from: the emitted evaluator/collector code
- * (256..~8400), the RV register file (8586..8641), the datatype-library
- * scratch (8642..8645), the standard DS/RS (16384/24576 down), the shared S1
- * heap (32768..40000), the loader heap (40000..47000) and the D1 debugger
- * buffers (8850..8878).  See M1-MULTITASKING-RESULTS.md.
+ * (256..~24576), the RV register file + datatype-library scratch + GC state
+ * (relocated by M3C to ~24576..25315), the standard DS/RS (16384/24576 down),
+ * the shared S1 heap (32768..40000), the loader heap (40000..47000) and the D1
+ * debugger buffers.  See M1-MULTITASKING-RESULTS.md.
  *
  * This header is NOT part of the frozen substrate; it is M1's own driver-level
  * configuration, shared by the native test driver and the standalone WASM host.
@@ -15,23 +15,23 @@
 
 #include "s1.h"
 
-#define M1_MAIN_ENTRY_CELL 9001   /* seeded by driver: evaluator main entry       */
-#define M1_CUR_TASK        9002   /* current task record pointer (raw)            */
-#define M1_SCHED_REC       9003   /* scheduler state record (8 cells)             */
-#define M1_CURSOR          9011   /* round-robin cursor (slot index)              */
-#define M1_STRESS_CNT      9012   /* stress counter (shared, raw)                 */
-#define M1_SCRATCH         9015   /* RAW scratch base                             */
+#define M1_MAIN_ENTRY_CELL 25010   /* seeded by driver: evaluator main entry       */
+#define M1_CUR_TASK        25011   /* current task record pointer (raw)            */
+#define M1_SCHED_REC       25012   /* scheduler state record (8 cells)             */
+#define M1_CURSOR          25020   /* round-robin cursor (slot index)              */
+#define M1_STRESS_CNT      25021   /* stress counter (shared, raw)                 */
+#define M1_SCRATCH         25024   /* RAW scratch base                             */
 
-#define M1_S0 9015                /* mnew-task: body ptr                          */
-#define M1_S1 9016                /* mnew-task: `do` word                         */
-#define M1_S2 9017                /* mnew-task: `task-finish` word                */
-#define M1_S3 9018                /* mnew-task: slot index i                      */
-#define M1_S4 9019                /* mnew-task: record address                    */
-#define M1_S5 9020                /* mnew-task: wrapper block ptr                 */
-#define M1_S6 9021                /* scheduler: scan record address               */
-#define M1_S7 9022                /* scheduler: scan index                        */
-#define M1_S8 9023                /* scheduler: scan count                        */
-#define M1_S9 9024                /* spin: loop-top address                       */
+#define M1_S0 25024                /* mnew-task: body ptr                          */
+#define M1_S1 25025                /* mnew-task: `do` word                         */
+#define M1_S2 25026                /* mnew-task: `task-finish` word                */
+#define M1_S3 25027                /* mnew-task: slot index i                      */
+#define M1_S4 25028                /* mnew-task: record address                    */
+#define M1_S5 25029                /* mnew-task: wrapper block ptr                 */
+#define M1_S6 25030                /* scheduler: scan record address               */
+#define M1_S7 25031                /* scheduler: scan index                        */
+#define M1_S8 25032                /* scheduler: scan count                        */
+#define M1_S9 25033                /* spin: loop-top address                       */
 
 #define M1_TASK_TABLE      60000  /* task records                                 */
 #define M1_TASK_REC_SIZE   16     /* cells per task record                        */

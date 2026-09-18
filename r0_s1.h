@@ -18,7 +18,7 @@ extern cell M[MEM_CELLS];
 enum {
     T_INT = 0, T_NONE = 1, T_WORD = 2, T_SET = 3, T_GET = 4, T_LIT = 5,
     T_BLOCK = 6, T_CONTEXT = 7, T_CLOSURE = 8, T_NATIVE = 9, T_RAW = 10,
-    T_USER = 11
+    T_USER = 11, T_STRING = 12
 };
 
 #define R0_NONE       ((cell)0x1)
@@ -35,6 +35,7 @@ enum {
 #define mk_native(id) ((cell)((id) * 16 + T_NATIVE))
 #define mk_raw(p)     ((cell)((p) + T_RAW))
 #define mk_user(p)    ((cell)((p) + T_USER))
+#define mk_string(p)  ((cell)((p) + T_STRING))
 #define word_id(v)    ((cell)((v) / 16))
 #define int_val(v)    ((cell)((v) / 16))
 
@@ -61,13 +62,13 @@ enum {
 #define RAW_SYM 2
 
 /* runtime variable cells (in M) */
-/* Relocated up (M3): the emitted collector/evaluator grew past the old RV
- * boundary once the generic user-object trace and the datatype library RAW
- * fragments were added. M1 (9001..9024) and the GC state (9025..9305) moved up
- * with it, so the code region [256, 8567) is now clear. All RV_* are
- * RV_BASE-relative. */
+/* Relocated up (M3, then M3C): the emitted collector/evaluator grew past the
+ * old RV boundary. M3 moved the runtime state to ~8567; M3C moved it again to
+ * [24576, ~25315) (the free gap between the return-stack top RS_INIT=24576 and
+ * the managed heap GC_HEAP_BASE=32768) so the code region [256, 24576) is now
+ * clear. All RV_* are RV_BASE-relative. */
 enum {
-    RV_BASE = 8586,
+    RV_BASE = 24595,
     RV_CUR  = RV_BASE + 0,   /* current element address */
     RV_END  = RV_BASE + 1,   /* one-past-last element address */
     RV_CTX  = RV_BASE + 2,   /* current context (tagged CONTEXT) */
@@ -97,24 +98,26 @@ enum {
 };
 
 /* Generic scratch cells available to RAW fragments. They live in the free
- * region above the RV cells and below the data stack (DS_INIT = 16384), so
- * they never collide with evaluator state, code, or stack. RAW code may use
- * them for temporaries that must survive across register/state writes. */
-#define RV_SCRATCH_A 8642
-#define RV_SCRATCH_B 8643
-#define RV_SCRATCH_E 8644
-#define RV_SCRATCH_F 8645
+ * region above the RV cells and (since M3C) above the return-stack top
+ * (RS_INIT = 24576), so they never collide with evaluator state, code, or
+ * stacks. RAW code may use them for temporaries that must survive across
+ * register/state writes. */
+#define RV_SCRATCH_A 24651
+#define RV_SCRATCH_B 24652
+#define RV_SCRATCH_E 24653
+#define RV_SCRATCH_F 24654
 
 /* M3 datatype-library state (free region above the GC state, below the D1
  * state records). BUILTIN_BASE is the fixed 16-slot BUILTIN_TYPE table; the
  * meta-descriptor payload and the built-in descriptor payloads are at fixed
  * addresses at the bottom of the managed heap (seeded by the M3 harness). */
-#define GC_META         8567    /* cell holding the datatype! meta-descriptor  */
-#define BUILTIN_BASE    8568    /* BUILTIN_TYPE[0..15]                         */
-#define RV_SCRATCH_C    8584    /* datatype-library RAW scratch                */
-#define RV_SCRATCH_D    8585    /* datatype-library RAW scratch                */
+#define GC_META         24576    /* cell holding the datatype! meta-descriptor  */
+#define BUILTIN_BASE    24577    /* BUILTIN_TYPE[0..15]                         */
+#define RV_SCRATCH_C    24593    /* datatype-library RAW scratch                */
+#define RV_SCRATCH_D    24594    /* datatype-library RAW scratch                */
 #define GC_META_PAYLOAD 32784   /* payload of the datatype! meta-descriptor    */
 #define BUILTIN0_PAYLOAD 32816  /* payload of the integer! built-in descriptor */
+#define BUILTIN_STRING_PAYLOAD 33168 /* payload of the string! built-in descriptor (slot 12) */
 
 /* --- M2 GC: managed heap + collector state (above the frozen S1) -----------
  * A non-moving, stop-the-world, exact mark/sweep collector over the ONE shared
@@ -140,6 +143,7 @@ enum {
 #define GC_KIND_RAW     3
 #define GC_KIND_FRAME   4
 #define GC_KIND_USER    5
+#define GC_KIND_STRING  6
 
 /* collector state cells (fixed, disjoint from every other region).  These are
  * plain integer literals (not expressions) so both the C emitter and the RAW
@@ -152,33 +156,33 @@ enum {
  *   GC_T6..GC_T8  scan functions + drain + sweep (scan_values, scan_closures)
  *   GC_C1..GC_C6  collect()'s own persistent state (SP0, RP0, task index,
  *                 record, arena base, prev_free) */
-#define GC_BASE         9025
-#define GC_GLOBAL_CTX   9025    /* mirror of global context */
-#define GC_LOADER_HP    9026    /* loader-heap bump (shared lalloc) */
-#define GC_LIVE_CELLS   9027
-#define GC_LIVE_OBJS    9028
-#define GC_FREE_BLOCKS  9029
-#define GC_FREE_CELLS   9030
-#define GC_COLLECT_CNT  9031
-#define GC_LAST_RECLAM  9032
-#define GC_T1           9033
-#define GC_T2           9034
-#define GC_T3           9035
-#define GC_T4           9036
-#define GC_T5           9037
-#define GC_T6           9038
-#define GC_T7           9039
-#define GC_T8           9040
-#define GC_C1           9041
-#define GC_C2           9042
-#define GC_C3           9043
-#define GC_C4           9044
-#define GC_C5           9045
-#define GC_C6           9046
-#define GC_WL_SP        9047
-#define GC_WORKLIST     9048    /* 256 entries -> ..9303 */
-#define GC_A1           9304    /* alloc()'s persistent extent */
-#define GC_A2           9305    /* alloc()'s persistent kind */
+#define GC_BASE         25034
+#define GC_GLOBAL_CTX   25034    /* mirror of global context */
+#define GC_LOADER_HP    25035    /* loader-heap bump (shared lalloc) */
+#define GC_LIVE_CELLS   25036
+#define GC_LIVE_OBJS    25037
+#define GC_FREE_BLOCKS  25038
+#define GC_FREE_CELLS   25039
+#define GC_COLLECT_CNT  25040
+#define GC_LAST_RECLAM  25041
+#define GC_T1           25042
+#define GC_T2           25043
+#define GC_T3           25044
+#define GC_T4           25045
+#define GC_T5           25046
+#define GC_T6           25047
+#define GC_T7           25048
+#define GC_T8           25049
+#define GC_C1           25050
+#define GC_C2           25051
+#define GC_C3           25052
+#define GC_C4           25053
+#define GC_C5           25054
+#define GC_C6           25055
+#define GC_WL_SP        25056
+#define GC_WORKLIST     25057    /* 256 entries -> ..25312 */
+#define GC_A1           25313    /* alloc()'s persistent extent */
+#define GC_A2           25314    /* alloc()'s persistent kind */
 
 /* context layout: [parent, count, cap, (word,value)...] */
 enum { CTX_PARENT = 0, CTX_COUNT = 1, CTX_CAP = 2, CTX_DATA = 3 };
