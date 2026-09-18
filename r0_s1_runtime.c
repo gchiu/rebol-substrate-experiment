@@ -605,9 +605,11 @@ static void emit_mark_frame(void) {
 
 /* mark a collected closure pointer (or skip if not in the collected heap);
  * emitted inline at the RV_CLOSURE root and in the return-stack scan. The
- * pointer must also be 16-aligned: since FIB-OPT-P2 the return stack carries
- * activation frames whose saved-CTX field is a TAGGED context (p+7), which the
- * conservative return-stack scan must skip, not misread as a closure. */
+ * pointer must be 16-aligned AND carry a GC_KIND_CLOSURE header: since
+ * FIB-OPT-P2/P3 the return stack carries activation frames (whose saved-CTX
+ * field is a TAGGED context, p+7) and stack-local contexts (whose value cells
+ * are tagged, but whose integer values are mk_int = n*16, 16-aligned), so the
+ * conservative scan must skip both rather than misread them as closures. */
 static void emit_mark_closure_inline(void) {
     e_setc(GC_T1);                                   /* p */
     e_cell(GC_T1); asm_lit(GC_HEAP_BASE); asm_host(HOST_GE);
@@ -616,7 +618,12 @@ static void emit_mark_closure_inline(void) {
     cell j2 = asm_zbranch_fwd();
     e_cell(GC_T1); asm_lit(16); asm_host(HOST_MOD); asm_lit(0); asm_host(HOST_EQ);
     cell j3 = asm_zbranch_fwd();                     /* misaligned -> skip */
+    e_cell(GC_T1); asm_lit(GC_HDR_STRIDE - GC_HDR_FLAGS); asm_host(HOST_SUB); asm_fetch(); /* flags */
+    asm_lit(4); asm_host(HOST_DIV); asm_lit(8); asm_host(HOST_MOD);                     /* kind */
+    asm_lit(GC_KIND_CLOSURE); asm_host(HOST_EQ);
+    cell j4 = asm_zbranch_fwd();                     /* not a closure -> skip */
     e_cell(GC_T1); asm_call(r_mark_push);
+    asm_patch_here(j4);
     asm_patch_here(j3);
     asm_patch_here(j2);
     asm_patch_here(j1);
@@ -626,18 +633,47 @@ static void emit_mark_closure_inline(void) {
 static void emit_mark_value(void) {
     r_mark_value = asm_here();
     asm_dup(); asm_lit(16); asm_host(HOST_MOD); e_setc(GC_T2); /* tag (v left on stack) */
-    /* CONTEXT (tag 7) */
+    /* CONTEXT (tag 7): classification. A managed context (payload in the managed
+     * heap) is mark_pushed; a task-local stack context (main return stack
+     * [16384,24576) or an M1 task's arena [47000,59800)) is traced as root
+     * storage, never mark_pushed; a permanent loader context (global) is traced.
+     * Anything else is fail-stop corruption. */
     e_cell(GC_T2); asm_lit(T_CONTEXT); asm_host(HOST_EQ);
     cell j_nc = asm_zbranch_fwd();
     asm_lit(T_CONTEXT); asm_host(HOST_SUB); e_setc(GC_T1);   /* p */
+    /* managed [32768,40000) */
     e_cell(GC_T1); asm_lit(GC_HEAP_BASE); asm_host(HOST_GE);
-    cell j_loader1 = asm_zbranch_fwd();
+    cell j_not_mg = asm_zbranch_fwd();
     e_cell(GC_T1); asm_lit(GC_HEAP_LIMIT); asm_host(HOST_LT);
-    cell j_loader2 = asm_zbranch_fwd();
+    cell j_not_mg2 = asm_zbranch_fwd();
     e_cell(GC_T1); asm_call(r_mark_push); asm_exit();        /* collected ctx */
-    asm_patch_here(j_loader2);
-    asm_patch_here(j_loader1);
+    asm_patch_here(j_not_mg2);
+    asm_patch_here(j_not_mg);
+    /* main stack [16384,24576) */
+    e_cell(GC_T1); asm_lit(R0S1_DS_INIT); asm_host(HOST_GE);
+    cell j_not_stk = asm_zbranch_fwd();
+    e_cell(GC_T1); asm_lit(R0S1_RS_INIT); asm_host(HOST_LT);
+    cell j_not_stk2 = asm_zbranch_fwd();
+    e_cell(GC_T1); asm_call(r_trace_ctx); asm_exit();        /* stack ctx (root) */
+    asm_patch_here(j_not_stk2);
+    asm_patch_here(j_not_stk);
+    /* M1 task arena [47000,59800) */
+    e_cell(GC_T1); asm_lit(M1_ARENA_BASE); asm_host(HOST_GE);
+    cell j_not_m1 = asm_zbranch_fwd();
+    e_cell(GC_T1); asm_lit(M1_ARENA_BASE + M1_MAX_TASKS * M1_TASK_CELLS); asm_host(HOST_LT);
+    cell j_not_m12 = asm_zbranch_fwd();
+    e_cell(GC_T1); asm_call(r_trace_ctx); asm_exit();        /* M1 stack ctx (root) */
+    asm_patch_here(j_not_m12);
+    asm_patch_here(j_not_m1);
+    /* loader [40000,47000) */
+    e_cell(GC_T1); asm_lit(R0S1_HEAP_BASE); asm_host(HOST_GE);
+    cell j_ldr1 = asm_zbranch_fwd();
+    e_cell(GC_T1); asm_lit(R0S1_HEAP_LIMIT); asm_host(HOST_LT);
+    cell j_ldr2 = asm_zbranch_fwd();
     e_cell(GC_T1); asm_call(r_trace_ctx); asm_exit();        /* loader ctx (global) */
+    asm_patch_here(j_ldr2);
+    asm_patch_here(j_ldr1);
+    asm_host(HOST_DUMP); asm_halt();                        /* out-of-range T_CONTEXT */
     asm_patch_here(j_nc);
     /* CLOSURE (tag 8) */
     e_cell(GC_T2); asm_lit(T_CLOSURE); asm_host(HOST_EQ);
@@ -1149,27 +1185,84 @@ static void emit_append(void) {
     asm_exit();
 }
 
-/* MKCTX: ( parent -- child-ctx )  allocate a fresh context */
+/* MKCTX: ( parent -- child-ctx )  allocate a fresh context.
+ * Since FIB-OPT-P3 an ordinary (non-escaping) child context lives in task-local
+ * storage on the return stack (16-aligned, same 48-cell layout as a managed
+ * context); it is promoted to the managed heap only if a closure captures it
+ * (see emit_promote_ctx / emit_mkclosure). */
 static void emit_mkctx(void) {
     r_mkctx = asm_here();
 #ifdef R0_S1_PROFILE
     pf_incr(PF_ALLOC_CTX);
 #endif
-    /* allocate a 16-aligned cell count so the tagged pointer stays well-formed */
-    asm_lit((CTX_DATA + 2 * R0S1_CTX_CAP + 15) & ~15); asm_lit(GC_KIND_CTX); asm_call(r_alloc); e_setc(RV_T4);
-    e_cell(RV_T4); asm_store();                    /* M[addr] = parent */
-    asm_lit(0); e_cell(RV_T4); asm_lit(1); asm_host(HOST_ADD); asm_store();
-    asm_lit(R0S1_CTX_CAP); e_cell(RV_T4); asm_lit(2); asm_host(HOST_ADD); asm_store();
+    e_pop_to(RV_T6);                                   /* parent */
+    /* padding = (RP - 48) mod 16  (48 = CTX_DATA + 2*R0S1_CTX_CAP rounded up) */
+    asm_lit(REG_RP); asm_fetch(); asm_lit(48); asm_host(HOST_SUB); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T5);
+    /* RP -= padding + 48  (base is now 16-aligned) */
+    asm_lit(REG_RP); asm_fetch(); e_cell(RV_T5); asm_host(HOST_SUB); asm_lit(48); asm_host(HOST_SUB); asm_lit(REG_RP); asm_store();
+    asm_lit(REG_RP); asm_fetch(); e_setc(RV_T4);       /* base */
+    e_cell(RV_T6); e_cell(RV_T4); asm_store();          /* M[base] = parent */
+    asm_lit(0); e_cell(RV_T4); asm_lit(1); asm_host(HOST_ADD); asm_store(); /* count = 0 */
+    asm_lit(R0S1_CTX_CAP); e_cell(RV_T4); asm_lit(2); asm_host(HOST_ADD); asm_store(); /* cap */
     e_cell(RV_T4); asm_lit(T_CONTEXT); asm_host(HOST_ADD);
+    /* Move the CALL return address from above the context (base+padding+48) to
+     * just below it (base-1), and leave RP at base-1. asm_exit then pops the
+     * moved return address and RP becomes base, so the 48+padding-cell context
+     * reservation stays in place for the caller (the frame is allocated below
+     * it, never overlapping). */
+    e_cell(RV_T4); e_cell(RV_T5); asm_host(HOST_ADD); asm_lit(48); asm_host(HOST_ADD); asm_fetch();
+    e_cell(RV_T4); asm_lit(1); asm_host(HOST_SUB); asm_store();
+    e_cell(RV_T4); asm_lit(1); asm_host(HOST_SUB); asm_lit(REG_RP); asm_store();
     asm_exit();
 }
 
-/* MKCLOSURE: ( spec body captured site-id -- closure ) */
+/* MKCLOSURE: ( spec body captured site-id -- closure ).
+ * Promotes the captured context to the managed heap when it is stack-local
+ * (escaping), so the closure always captures a managed/loader context. */
 static void emit_mkclosure(void) {
     r_mkclosure = asm_here();
     asm_lit(16); asm_lit(GC_KIND_CLOSURE); asm_call(r_alloc); e_setc(RV_T4);   /* 16-aligned, >= 4 cells */
     e_pop_to(RV_T5);  /* site-id */
     e_pop_to(RV_T1);  /* captured */
+    /* promote captured (RV_T1) if it is a stack-local context */
+    {
+        e_cell(RV_T1); asm_lit(T_CONTEXT); asm_host(HOST_SUB); e_setc(RV_T2);  /* p */
+        e_cell(RV_T2); asm_lit(R0S1_DS_INIT); asm_host(HOST_GE);
+        cell j_m1 = asm_zbranch_fwd();
+        e_cell(RV_T2); asm_lit(R0S1_RS_INIT); asm_host(HOST_LT);
+        cell j_m1b = asm_zbranch_fwd();
+        cell b_prom = asm_branch_fwd();
+        asm_patch_here(j_m1b);
+        asm_patch_here(j_m1);
+        e_cell(RV_T2); asm_lit(M1_ARENA_BASE); asm_host(HOST_GE);
+        cell j_no1 = asm_zbranch_fwd();
+        e_cell(RV_T2); asm_lit(M1_ARENA_BASE + M1_MAX_TASKS * M1_TASK_CELLS); asm_host(HOST_LT);
+        cell j_no2 = asm_zbranch_fwd();
+        asm_patch_here(b_prom);
+#ifdef R0_S1_PROFILE
+        pf_incr(PF_PROMOTE);
+#endif
+        asm_lit(48); asm_lit(GC_KIND_CTX); asm_call(r_alloc); e_setc(RV_T3);   /* managed dst */
+        e_cell(RV_T2); asm_fetch(); e_cell(RV_T3); asm_store();                /* parent */
+        e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T6); /* count */
+        e_cell(RV_T6); e_cell(RV_T3); asm_lit(1); asm_host(HOST_ADD); asm_store();
+        e_cell(RV_T2); asm_lit(2); asm_host(HOST_ADD); asm_fetch(); e_cell(RV_T3); asm_lit(2); asm_host(HOST_ADD); asm_store();
+        asm_lit(0); e_setc(RV_N);                       /* i = 0 */
+        cell loop = asm_here();
+        e_cell(RV_N); e_cell(RV_T6); asm_host(HOST_LT);
+        cell j_done = asm_zbranch_fwd();
+        e_cell(RV_T2); asm_lit(3); asm_host(HOST_ADD); e_cell(RV_N); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD); asm_fetch();
+        e_cell(RV_T3); asm_lit(3); asm_host(HOST_ADD); e_cell(RV_N); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD); asm_store();
+        e_cell(RV_T2); asm_lit(4); asm_host(HOST_ADD); e_cell(RV_N); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD); asm_fetch();
+        e_cell(RV_T3); asm_lit(4); asm_host(HOST_ADD); e_cell(RV_N); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD); asm_store();
+        e_cell(RV_N); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_N);
+        asm_branch(loop);
+        asm_patch_here(j_done);
+        e_cell(RV_T3); asm_lit(T_CONTEXT); asm_host(HOST_ADD); e_setc(RV_T1);  /* captured = managed */
+        e_cell(RV_T1); e_setc(RV_CTX);                  /* current context promoted */
+        asm_patch_here(j_no2);
+        asm_patch_here(j_no1);
+    }
     e_pop_to(RV_T2);  /* body */
     e_pop_to(RV_T3);  /* spec */
     e_cell(RV_T3); e_cell(RV_T4); asm_store();                            /* spec */
@@ -1366,6 +1459,28 @@ static void emit_invoke_closure(void) {
     e_cell(PF_DEPTH); e_setc(PF_MAXDEPTH);
     asm_patch_here(j_max);
 #endif
+    /* return-stack guard: one invocation's context (48) + frame (9) + 16-align
+     * padding must fit above the owning stack's data-stack top; fail-stop (not
+     * corrupt) on deep recursion.  The bottom is DS_INIT for the main world, or
+     * the running task's data-stack top (arena base + DS_OFF) for an M1 task,
+     * detected by SP > DS_INIT (the same probe the collector uses). */
+    asm_lit(REG_SP); asm_fetch(); e_setc(RV_T5);     /* SP0 */
+    e_cell(RV_T5); asm_lit(R0S1_DS_INIT); asm_host(HOST_GT);
+    cell j_main = asm_zbranch_fwd();                  /* task? fall through */
+    e_cell(RV_T5); asm_lit(M1_ARENA_BASE); asm_host(HOST_SUB);
+    asm_lit(M1_TASK_CELLS); asm_host(HOST_DIV);
+    asm_lit(M1_TASK_CELLS); asm_host(HOST_MUL);
+    asm_lit(M1_ARENA_BASE); asm_host(HOST_ADD);
+    asm_lit(M1_DS_OFF); asm_host(HOST_ADD); e_setc(RV_T6);   /* task DS top */
+    cell j_guard = asm_branch_fwd();
+    asm_patch_here(j_main);
+    asm_lit(R0S1_DS_INIT); e_setc(RV_T6);             /* main DS top */
+    asm_patch_here(j_guard);
+    asm_lit(REG_RP); asm_fetch(); asm_lit(96); asm_host(HOST_SUB);   /* RP-96 */
+    e_cell(RV_T6); asm_host(HOST_LT);                 /* RP-96 < DS top? */
+    cell j_room = asm_zbranch_fwd();
+    asm_host(HOST_DUMP); asm_halt();                 /* return-stack exhaustion */
+    asm_patch_here(j_room);
     asm_lit(0); e_setc(RV_CHILD);                    /* M2: transient roots stay 0-or-live */
     /* instrumentation: track max return/data depth */
     asm_lit(REG_RP); asm_fetch();
@@ -1419,10 +1534,19 @@ static void emit_invoke_closure(void) {
         pf_trace_end(j_tr);
     }
 #endif
+    /* capture return address + caller RP baseline BEFORE the context/frame are
+     * allocated on the return stack (they shift RP), so RV_SIP/RV_SRP still
+     * denote the closure-invocation return address. */
+    asm_fetchR(); e_setc(RV_SIP);
+    asm_lit(REG_RP); asm_fetch(); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_SRP);
     /* child context (parent = captured) */
     e_cell(RV_CLOSURE); asm_lit(2); asm_host(HOST_ADD); asm_fetch();
     asm_call(r_mkctx);
     e_setc(RV_CHILD);
+    /* The r_mkctx CALL pushed its own return target at the caller's RP top,
+     * overwriting this invocation's return address (saved in RV_SIP). Restore
+     * it so the normal-return epilogue's trailing EXIT pops the right address. */
+    e_cell(RV_SIP); e_cell(RV_SRP); asm_lit(1); asm_host(HOST_SUB); asm_store();
     /* bind params (i = arity-1 .. 0) */
     e_cell(RV_ARITY); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T4);
     cell bind_loop = asm_here();
@@ -1436,9 +1560,6 @@ static void emit_invoke_closure(void) {
     e_cell(RV_T4); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T4);
     asm_branch(bind_loop);
     asm_patch_here(j_bind_done);
-    /* capture return address + caller RP baseline */
-    asm_fetchR(); e_setc(RV_SIP);
-    asm_lit(REG_RP); asm_fetch(); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_SRP);
     /* Allocate the activation frame ON the return stack (task-local storage).
      * The frame pointer must be 16-aligned so its R0 tag is T_INT (0) and it is
      * never mistaken for a callable (the old heap frame was naturally 16-aligned).
@@ -1895,7 +2016,7 @@ int r0_s1_run(cell block) {
     M[RV_RPMIN] = 65535;
     M[RV_SPMIN] = 65535;
 #ifdef R0_S1_PROFILE
-    for (cell c = PF_BASE; c <= PF_MAXDEPTH; c++)
+    for (cell c = PF_BASE; c <= PF_PROMOTE; c++)
         if (c != PF_TRACE) M[c] = 0;   /* PF_TRACE is a persistent mode flag */
 #endif
 
@@ -1961,4 +2082,5 @@ void r0_s1_pf_read(r0_s1_pf_stats *out) {
     out->alloc_frame= (long)M[PF_ALLOC_FRAME];
     out->raw        = (long)M[PF_RAW];
     out->max_depth  = (long)M[PF_MAXDEPTH];
+    out->promote    = (long)M[PF_PROMOTE];
 }

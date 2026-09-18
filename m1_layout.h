@@ -33,17 +33,26 @@
 #define M1_S8 25032                /* scheduler: scan count                        */
 #define M1_S9 25033                /* spin: loop-top address                       */
 
-#define M1_TASK_TABLE      60000  /* task records                                 */
+/* FIB-OPT-P3: the activation footprint moved from ~16 cells (frame only) to
+ * ~73 cells (frame + 48-cell context + 16-align padding) per invocation, so the
+ * old 800-cell task RS overflowed well before the repeat-20 stress depth
+ * (~1460 cells).  The arena is enlarged to [47000, 65000) and the task count
+ * deliberately lowered from 8 to 5 so each task gets 3200 RS cells (>= 2x the
+ * repeat-20 requirement) and 400 DS cells (>= 40x the observed ~10).  This is a
+ * memory-limit tradeoff: 65536 cells total and the fixed loader-heap boundary at
+ * 47000 leave at most ~18.5k cells above the arena; 8 tasks x 3200 RS would not
+ * fit.  5 tasks still gives headroom over the <=3 tasks the tests use. */
+#define M1_TASK_TABLE      65000  /* task records                                 */
 #define M1_TASK_REC_SIZE   16     /* cells per task record                        */
-#define M1_MAX_TASKS       8      /* fixed task count for M1                      */
-#define M1_WRAPPER_DELTA   128    /* wrapper block base = task table base + delta */
-                                   /* (task records occupy 60000..60128; wrappers
-                                    * live at 60128 + slot*16, in the free region) */
+#define M1_MAX_TASKS       5      /* fixed task count for M1                      */
+#define M1_WRAPPER_DELTA   80     /* wrapper block base = task table base + delta */
+                                   /* (task records occupy 65000..65080; wrappers
+                                    * live at 65080 + slot*16, in the free region) */
 
 #define M1_ARENA_BASE      47000  /* per-task stack arena                         */
-#define M1_TASK_CELLS      1600   /* cells per task (800 DS + 800 RS)             */
-#define M1_DS_OFF          800    /* DS top offset within a task's region         */
-#define M1_RS_OFF          1600   /* RS top offset within a task's region         */
+#define M1_TASK_CELLS      3600   /* cells per task (400 DS + 3200 RS)            */
+#define M1_DS_OFF          400    /* DS top offset within a task's region         */
+#define M1_RS_OFF          3600   /* RS top offset within a task's region         */
 
 /* task record field offsets */
 #define TREC_IP    0

@@ -188,6 +188,83 @@ static void test_N(void) {
     else { printf("  FAIL: N (N=%d got %ld)\n", N, (long)(N == 1 ? r0_s1_result(0, 1) : -999)); failures++; }
 }
 
+/* N2: recursion that comfortably exceeds the OLD 800-cell task RS but stays
+ * below the enlarged 3200-cell RS must succeed (P3 stack contexts). */
+static void test_N2(void) {
+    printf("m2: N2 task recursion below the enlarged RS limit succeeds\n");
+    int N;
+    m2_m1_run(" deep: func [n] [ either <= n 0 [ spin 1 ] [ deep - n 1 ] ] "
+              " task-a: spawn [ deep 30 ] "
+              " task-b: spawn [ deep 30 ] "
+              " run-tasks  read-stress ", &N);
+    int ok = (N == 1 && r0_s1_result(0, 1) == mk_int(2));
+    if (ok) printf("  ok: N2: two tasks recurse 30 deep (past the old 800-cell RS) and complete\n");
+    else { printf("  FAIL: N2 (N=%d got %ld)\n", N, (long)(N == 1 ? r0_s1_result(0, 1) : -999)); failures++; }
+}
+
+/* N3: recursion well past the RS limit must fail-stop cleanly (return-stack
+ * guard), never overwrite a task's saved IP and later surface as bad opcode. */
+static void test_N3(void) {
+    printf("m2: N3 deliberate task RS overflow fails cleanly\n");
+    const char *capture = "/tmp/opencode_m2_rsovf.txt";
+    int saved_err = dup(2);
+    int capfd = open(capture, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (capfd >= 0) { dup2(capfd, 2); close(capfd); }
+    int N;
+    m2_m1_run(" deep: func [n] [ either <= n 0 [ 0 ] [ deep - n 1 ] ] "
+              " task-a: spawn [ deep 60 ] "
+              " run-tasks ", &N);
+    fflush(stderr);
+    if (capfd >= 0) { dup2(saved_err, 2); close(saved_err); }
+    FILE *fp = fopen(capture, "r");
+    int bad = 0, dump = 0;
+    if (fp) {
+        static char buf[1 << 20];
+        size_t n = fread(buf, 1, sizeof buf - 1, fp);
+        buf[n] = 0; fclose(fp);
+        if (strstr(buf, "bad opcode")) bad = 1;
+        if (strstr(buf, "[dump]")) dump = 1;
+    }
+    CHECK(bad == 0, "N3: overflow fails cleanly (no bad opcode / no saved-IP corruption)");
+    CHECK(dump == 1, "N3: overflow guard triggered (fail-stop, not silent corruption)");
+}
+
+/* N4: a neighbouring suspended task's saved state must survive an overflow in
+ * another task (the guard halts before the arena is written). */
+static void test_N4(void) {
+    printf("m2: N4 neighbour task state intact across an overflow\n");
+    int N;
+    m2_m1_run(" deep: func [n] [ either <= n 0 [ 0 ] [ deep - n 1 ] ] "
+              " task-b: spawn [ spin 10 ] "
+              " task-a: spawn [ deep 60 ] "
+              " run-tasks ", &N);
+    /* task-b (slot 0) yields once, then task-a (slot 1) overflows and halts.
+     * task-b's record must still be RUNNABLE with its SP/RP inside its arena. */
+    int ok = 1;
+    if (s1_mem(M1_TASK_TABLE + 0 * M1_TASK_REC_SIZE + TREC_STATE) != TASK_RUNNABLE) ok = 0;
+    cell b_sp = s1_mem(M1_TASK_TABLE + 0 * M1_TASK_REC_SIZE + TREC_SP);
+    cell b_rp = s1_mem(M1_TASK_TABLE + 0 * M1_TASK_REC_SIZE + TREC_RP);
+    if (b_sp < M1_ARENA_BASE || b_sp >= M1_ARENA_BASE + M1_TASK_CELLS) ok = 0;
+    if (b_rp < M1_ARENA_BASE || b_rp >= M1_ARENA_BASE + M1_TASK_CELLS) ok = 0;
+    if (ok) printf("  ok: N4: suspended neighbour's record + arena intact after the other task overflowed\n");
+    else { printf("  FAIL: N4 (state=%ld sp=%ld rp=%ld)\n",
+                  (long)s1_mem(M1_TASK_TABLE + TREC_STATE), (long)b_sp, (long)b_rp); failures++; }
+}
+
+/* N5: suspending and resuming at substantial recursion depth stays correct. */
+static void test_N5(void) {
+    printf("m2: N5 suspend/resume at substantial recursion depth\n");
+    int N;
+    m2_m1_run(" deep: func [n] [ either <= n 0 [ spin 3 ] [ spin 1  deep - n 1 ] ] "
+              " task-a: spawn [ deep 30 ] "
+              " task-b: spawn [ spin 20 ] "
+              " run-tasks  read-stress ", &N);
+    /* task-a yields once per level (30) + 3 at the base; task-b yields 20. */
+    int ok = (N == 1 && r0_s1_result(0, 1) == mk_int(53));
+    if (ok) printf("  ok: N5: 30-deep recursion suspends/resumes across switches (counter 53)\n");
+    else { printf("  FAIL: N5 (N=%d got %ld)\n", N, (long)(N == 1 ? r0_s1_result(0, 1) : -999)); failures++; }
+}
+
 /* O: no heap growth into adjacent reserved regions. */
 static void test_O(void) {
     printf("m2: O no growth into reserved regions\n");
@@ -322,6 +399,10 @@ int run_r0_s1_m2_tests(void) {
     test_L();
     test_M();
     test_N();
+    test_N2();
+    test_N3();
+    test_N4();
+    test_N5();
     test_O();
     test_P();
     test_Q();

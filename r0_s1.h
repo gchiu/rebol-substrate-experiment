@@ -212,6 +212,7 @@ enum {
 #define PF_TRACE        24672   /* runtime trace-enable flag (0/1)               */
 #define PF_DEPTH        24673   /* current closure nesting depth (trace/depth)   */
 #define PF_MAXDEPTH     24674   /* max closure nesting depth seen                */
+#define PF_PROMOTE      24675   /* stack->managed context promotions             */
 
 /* context layout: [parent, count, cap, (word,value)...] */
 enum { CTX_PARENT = 0, CTX_COUNT = 1, CTX_CAP = 2, CTX_DATA = 3 };
@@ -275,7 +276,7 @@ typedef struct {
     long closure, subexpr, blkeval, lookup, lk_slots, lk_parent;
     long native, nat_le, nat_sub, nat_add, nat_either, nat_other;
     long allocs, alloc_cells, alloc_ctx, alloc_frame, raw;
-    long max_depth;
+    long max_depth, promote;
 } r0_s1_pf_stats;
 void r0_s1_pf_read(r0_s1_pf_stats *out);
 
