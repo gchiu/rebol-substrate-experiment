@@ -285,6 +285,26 @@ static void test_K(void) {
           "K: after the last reference dropped, shared closure was reclaimed");
 }
 
+/* S: a managed value reachable only through a live non-GC activation frame's
+ * saved context survives GC (the frame chain is traced as root storage), and is
+ * reclaimed once the activation returns and the last reference drops. This is
+ * the adversarial proof that stack frames are proper GC roots, not survivors. */
+static void test_S(void) {
+    printf("m2: S live frame is a GC root\n");
+    /* outer binds v (a closure) in its child context and then calls the global
+     * gc-now; during that collect v is reachable ONLY via outer's frame CTX. */
+    expect1(" gc-now: func [] [ collect ] "
+            " outer: func [] [ v: func [] [ 42 ]  gc-now  v ] "
+            " outer ", mk_int(42),
+            "S: value reachable only via a live frame survives GC");
+    int N;
+    m2_run(" gc-now: func [] [ collect ] "
+           " outer: func [] [ v: func [] [ 42 ]  gc-now  v ] "
+           " outer  collect ", &N);
+    CHECK(r0_s1_gc_free_cells() >= 32,
+          "S: value reclaimed once the frame is popped and the reference drops");
+}
+
 int run_r0_s1_m2_tests(void) {
     printf("R0-S1 M2: shared-heap garbage collection above frozen S1\n");
 
@@ -306,6 +326,7 @@ int run_r0_s1_m2_tests(void) {
     test_P();
     test_Q();
     test_R();
+    test_S();
 
     if (failures == 0) printf("all R0-S1 M2 GC tests passed\n");
     return failures;

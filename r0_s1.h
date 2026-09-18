@@ -140,7 +140,7 @@ enum {
 #define GC_KIND_CTX     1
 #define GC_KIND_CLOSURE 2
 #define GC_KIND_RAW     3
-#define GC_KIND_FRAME   4
+#define GC_KIND_FRAME   4   /* unused: activation frames live on the return stack (FIB-OPT-P2) */
 #define GC_KIND_USER    5
 #define GC_KIND_STRING  6
 #define GC_KIND_BLOCK   7

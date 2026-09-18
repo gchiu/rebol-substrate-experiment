@@ -406,7 +406,7 @@ static cell to_block_eval[16]; static int n_block_eval;
  * traced at all.  Loader CONTEXTS (the global context) may hold collected
  * pointers and are traced. */
 
-static cell r_mark_value, r_mark_push, r_trace_ctx, r_trace_closure, r_trace_frame,
+static cell r_mark_value, r_mark_push, r_trace_ctx, r_trace_closure,
             r_mark_frame, r_trace_user, r_trace_string, r_trace_block, r_scan_values, r_scan_closures,
             r_collect, r_alloc;
 
@@ -478,17 +478,6 @@ static void emit_trace_closure(void) {
     e_cell(GC_T1); asm_lit(CLOSURE_BODY); asm_host(HOST_ADD); asm_fetch(); call_mark_value();
     asm_fromR(); e_setc(GC_T1);                      /* restore p */
     e_cell(GC_T1); asm_lit(CLOSURE_CTX);  asm_host(HOST_ADD); asm_fetch(); call_mark_value();
-    asm_exit();
-}
-
-/* TRACE-FRAME: ( p -- ) trace prev/CTX (BLK is a permanent loader block). */
-static void emit_trace_frame(void) {
-    r_trace_frame = asm_here();
-    e_setc(GC_T1);
-    e_cell(GC_T1); asm_toR();                        /* save p across prev mark */
-    e_cell(GC_T1); asm_lit(FRAME_PREV); asm_host(HOST_ADD); asm_fetch(); call_mark_frame();
-    asm_fromR(); e_setc(GC_T1);                      /* restore p */
-    e_cell(GC_T1); asm_lit(FRAME_CTX);  asm_host(HOST_ADD); asm_fetch(); call_mark_value();
     asm_exit();
 }
 
@@ -589,27 +578,46 @@ static void emit_trace_block(void) {
     asm_exit();
 }
 
-/* MARK-FRAME: ( p -- ) frames are always collected; mark unless 0. */
+/* MARK-FRAME: ( p -- ) trace a live activation frame as GC ROOT STORAGE.
+ *
+ * Since FIB-OPT-P2 frames are no longer managed heap objects (they live on the
+ * task-local return stack), the collector must NOT mark the frame record
+ * itself. It must instead trace the frame's pointer-bearing contents -- its
+ * `prev` link (the previous frame, recursively) and its `CTX` field (the saved
+ * caller context, a tagged managed value). BLK is a permanent loader block and
+ * CUR/END are raw loader-block addresses, so they are never traced.
+ *
+ * This is the old trace_frame logic plus the old mark_frame's zero check; the
+ * frame chain is walked directly instead of going through the mark worklist. */
 static void emit_mark_frame(void) {
     r_mark_frame = asm_here();
-    e_setc(GC_T1);
+    e_setc(GC_T1);                                   /* p */
     e_cell(GC_T1); asm_lit(0); asm_host(HOST_EQ);
     cell j_zero = asm_zbranch_fwd();
-    asm_exit();                                       /* p == 0 */
+    asm_exit();                                      /* p == 0 */
     asm_patch_here(j_zero);
-    e_cell(GC_T1); asm_call(r_mark_push);
+    e_cell(GC_T1); asm_toR();                        /* save p across prev mark */
+    e_cell(GC_T1); asm_lit(FRAME_PREV); asm_host(HOST_ADD); asm_fetch(); call_mark_frame();
+    asm_fromR(); e_setc(GC_T1);                      /* restore p */
+    e_cell(GC_T1); asm_lit(FRAME_CTX);  asm_host(HOST_ADD); asm_fetch(); call_mark_value();
     asm_exit();
 }
 
 /* mark a collected closure pointer (or skip if not in the collected heap);
- * emitted inline at the RV_CLOSURE root and in the return-stack scan. */
+ * emitted inline at the RV_CLOSURE root and in the return-stack scan. The
+ * pointer must also be 16-aligned: since FIB-OPT-P2 the return stack carries
+ * activation frames whose saved-CTX field is a TAGGED context (p+7), which the
+ * conservative return-stack scan must skip, not misread as a closure. */
 static void emit_mark_closure_inline(void) {
     e_setc(GC_T1);                                   /* p */
     e_cell(GC_T1); asm_lit(GC_HEAP_BASE); asm_host(HOST_GE);
     cell j1 = asm_zbranch_fwd();
     e_cell(GC_T1); asm_lit(GC_HEAP_LIMIT); asm_host(HOST_LT);
     cell j2 = asm_zbranch_fwd();
+    e_cell(GC_T1); asm_lit(16); asm_host(HOST_MOD); asm_lit(0); asm_host(HOST_EQ);
+    cell j3 = asm_zbranch_fwd();                     /* misaligned -> skip */
     e_cell(GC_T1); asm_call(r_mark_push);
+    asm_patch_here(j3);
     asm_patch_here(j2);
     asm_patch_here(j1);
 }
@@ -834,10 +842,6 @@ static void emit_collect(void) {
     cell j_ncl = asm_zbranch_fwd();
     e_cell(GC_T6); asm_call(r_trace_closure); asm_branch(drain);
     asm_patch_here(j_ncl);
-    e_cell(GC_T8); asm_lit(GC_KIND_FRAME); asm_host(HOST_EQ);
-    cell j_nfr = asm_zbranch_fwd();
-    e_cell(GC_T6); asm_call(r_trace_frame); asm_branch(drain);
-    asm_patch_here(j_nfr);
     e_cell(GC_T8); asm_lit(GC_KIND_USER); asm_host(HOST_EQ);
     cell j_nusr = asm_zbranch_fwd();
     e_cell(GC_T6); asm_call(r_trace_user); asm_branch(drain);
@@ -977,7 +981,6 @@ static void emit_gc(void) {
     emit_mark_push();
     emit_trace_ctx();
     emit_trace_closure();
-    emit_trace_frame();
     emit_trace_user();
     emit_trace_string();
     emit_trace_block();
@@ -1436,23 +1439,31 @@ static void emit_invoke_closure(void) {
     /* capture return address + caller RP baseline */
     asm_fetchR(); e_setc(RV_SIP);
     asm_lit(REG_RP); asm_fetch(); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_SRP);
-    /* allocate + fill the activation frame (linked list in M) */
-#ifdef R0_S1_PROFILE
-    pf_incr(PF_ALLOC_FRAME);
-#endif
-    asm_lit(16); asm_lit(GC_KIND_FRAME); asm_call(r_alloc); e_setc(RV_FNEW);
-    e_cell(RV_FRAME); e_cell(RV_FNEW); asm_store();                          /* prev */
-    e_cell(RV_CLOSURE); asm_lit(CLOSURE_SITE); asm_host(HOST_ADD); asm_fetch();
-    e_cell(RV_FNEW); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_store();   /* site */
-    asm_lit(REG_SP); asm_fetch();
-    e_cell(RV_FNEW); asm_lit(FRAME_SP); asm_host(HOST_ADD); asm_store();     /* SP */
-    e_cell(RV_SRP); e_cell(RV_FNEW); asm_lit(FRAME_RP); asm_host(HOST_ADD); asm_store(); /* RP */
-    e_cell(RV_SIP); e_cell(RV_FNEW); asm_lit(FRAME_IP); asm_host(HOST_ADD); asm_store(); /* IP */
-    e_cell(RV_CTX); e_cell(RV_FNEW); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_store(); /* CTX */
-    e_cell(RV_CUR); e_cell(RV_FNEW); asm_lit(FRAME_CUR); asm_host(HOST_ADD); asm_store(); /* CUR */
-    e_cell(RV_END); e_cell(RV_FNEW); asm_lit(FRAME_END); asm_host(HOST_ADD); asm_store(); /* END */
-    e_cell(RV_BLK); e_cell(RV_FNEW); asm_lit(FRAME_BLK); asm_host(HOST_ADD); asm_store(); /* BLK */
-    e_cell(RV_FNEW); e_setc(RV_FRAME);
+    /* Allocate the activation frame ON the return stack (task-local storage).
+     * The frame pointer must be 16-aligned so its R0 tag is T_INT (0) and it is
+     * never mistaken for a callable (the old heap frame was naturally 16-aligned).
+     * Push `padding = (RP-9) mod 16` dummy cells, then the 9 fields in REVERSE so
+     * they land contiguously at [frame .. frame+8] with the standard FRAME_*
+     * layout (prev at +0 .. BLK at +8), with `frame` 16-aligned. The frame is
+     * released on return/unwind by restoring RP -- no managed allocation. */
+    asm_lit(REG_RP); asm_fetch(); asm_lit(9); asm_host(HOST_SUB); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T6);
+    cell pad_loop = asm_here();
+    e_cell(RV_T6); asm_lit(0); asm_host(HOST_GT);
+    cell j_pad_done = asm_zbranch_fwd();
+    e_cell(RV_T6); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T6);
+    asm_lit(0); asm_toR();
+    asm_branch(pad_loop);
+    asm_patch_here(j_pad_done);
+    e_cell(RV_BLK); asm_toR();                        /* frame+8 = BLK */
+    e_cell(RV_END); asm_toR();                        /* frame+7 = END */
+    e_cell(RV_CUR); asm_toR();                        /* frame+6 = CUR */
+    e_cell(RV_CTX); asm_toR();                        /* frame+5 = CTX */
+    e_cell(RV_SIP); asm_toR();                        /* frame+4 = IP  */
+    e_cell(RV_SRP); asm_toR();                        /* frame+3 = RP  */
+    asm_lit(REG_SP); asm_fetch(); asm_toR();          /* frame+2 = SP  */
+    e_cell(RV_CLOSURE); asm_lit(CLOSURE_SITE); asm_host(HOST_ADD); asm_fetch(); asm_toR(); /* frame+1 = site */
+    e_cell(RV_FRAME); asm_toR();                      /* frame+0 = prev */
+    asm_lit(REG_RP); asm_fetch(); e_setc(RV_FRAME);   /* RV_FRAME = frame base (16-aligned) */
     /* enter body */
     e_cell(RV_CHILD); e_setc(RV_CTX);
     e_cell(RV_CLOSURE); asm_lit(CLOSURE_BODY); asm_host(HOST_ADD); asm_fetch(); e_untag_ptr(); e_setc(RV_BODY);
@@ -1466,6 +1477,12 @@ static void emit_invoke_closure(void) {
     e_cell(RV_FRAME); asm_lit(FRAME_CUR); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_CUR);
     e_cell(RV_FRAME); asm_lit(FRAME_BLK); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_BLK);
     e_cell(RV_FRAME); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_CTX);
+    /* release the frame (9 fields + 16-align padding): pop (frame.RP - 1 - frame)
+     * return-stack cells so RP returns to the invocation return address, which
+     * the trailing asm_exit then pops. */
+    e_cell(RV_FRAME); asm_lit(FRAME_RP); asm_host(HOST_ADD); asm_fetch(); asm_lit(1); asm_host(HOST_SUB);
+    e_cell(RV_FRAME); asm_host(HOST_SUB);
+    asm_lit(REG_RP); asm_fetch(); asm_host(HOST_ADD); asm_lit(REG_RP); asm_store();
     e_cell(RV_FRAME); asm_fetch(); e_setc(RV_FRAME);
     asm_lit(0); e_setc(RV_CHILD);                    /* M2: child context now dead */
     asm_lit(0); e_setc(RV_CLOSURE);                  /* M2: closure now dead */
@@ -1588,7 +1605,6 @@ static void emit_subexpr(void) {
     e_cell(RV_CUR); asm_fetch();
     e_cell(RV_CUR); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_CUR);
     asm_dup(); asm_lit(16); asm_host(HOST_MOD);
-
     /* WORD (tag 2) */
     asm_dup(); asm_lit(T_WORD); asm_host(HOST_EQ);
     cell j2 = asm_zbranch_fwd();
