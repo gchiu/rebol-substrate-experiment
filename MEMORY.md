@@ -94,6 +94,15 @@ Name resolution is no longer the dominant cost — the leading candidates are no
 evaluator dispatch, argument/subexpression evaluation and native/HOST
 arithmetic.
 
+### Rebol3 comparison (measured, same PC)
+
+On the same PC, using the same naïve recursive Fibonacci workload, local
+**Rebol3** (Oldes' `Rebol/Bulk 3.22.1`, Windows-native) measured `fib 20`
+~0.0089 s and `fib 25` ~0.099 s, while **Glon P5** measured ~0.806 s and ~9.01 s
+— about **~90× faster** on fib 20/25. This is one workload/one PC/one timing
+method, not a general claim. Full method and caveats (cross-environment
+Windows-vs-WSL2, ms timer resolution): `R3-FIB-COMPARISON.md`.
+
 ## 5. Milestones (branch / tag → commit)
 
 In order:
@@ -258,5 +267,6 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
   optimisation phases.
 - `FIB-OPT-P4-LEX.md`, `FIB-OPT-P4-RESULTS.md` — P4.
 - `FIB-OPT-P5-HASH-LOOKUP.md`, `FIB-OPT-P5-RESULTS.md` — P5 (current baseline).
+- `R3-FIB-COMPARISON.md` — local Rebol3 vs Glon P5 Fibonacci benchmark.
 - `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
 - `docs/distributed-glon-agents.md` — distributed/federated agent architecture.
