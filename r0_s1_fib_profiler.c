@@ -83,6 +83,9 @@ static void profile_fib(int n) {
            s.lookup ? (double)s.lk_slots / (double)s.lookup : 0.0);
     printf("  lex-direct=%ld (local=%ld parent=%ld)\n",
            (long)s.lex_direct, (long)s.lex_local, (long)s.lex_parent);
+    printf("  hash-probes=%ld hits=%ld misses=%ld collisions=%ld fallback=%ld fallback-slots=%ld\n",
+           (long)s.hash_probes, (long)s.hash_hits, (long)s.hash_misses,
+           (long)s.hash_collisions, (long)s.hash_fallback, (long)s.hash_fallback_slots);
     printf("  natives=%ld (<=%ld -%ld +%ld either%ld other%ld)\n",
            (long)s.native, (long)s.nat_le, (long)s.nat_sub, (long)s.nat_add,
            (long)s.nat_either, (long)s.nat_other);

@@ -226,9 +226,21 @@ enum {
 #define PF_LEX_DIRECT   24676   /* lexical references resolved directly by slot  */
 #define PF_LEX_LOCAL    24677   /* direct depth-0 lexical accesses               */
 #define PF_LEX_PARENT   24678   /* direct parent lexical accesses (depth > 0)    */
+#define PF_HASH_PROBES  24679   /* P5 hash-index probes (per bucket examined)    */
+#define PF_HASH_HITS    24680   /* P5 hash-index hits                            */
+#define PF_HASH_MISSES  24681   /* P5 hash-index misses (empty bucket)           */
+#define PF_HASH_COLLISIONS 24682/* P5 collision probes (probe past the first)    */
+#define PF_HASH_FALLBACK 24683  /* P5 fallback linear scans (index full/overflow) */
+#define PF_HASH_FALLBACK_SLOTS 24684 /* P5 slots examined by fallback linear scan  */
 
-/* context layout: [parent, count, cap, (word,value)...] */
+/* context layout: [parent, count, cap, (word,value)*cap, hash[cap]].
+ * FIB-OPT-P5: the hash index maps word_id -> slot. hash[i] = word_id*256 + slot
+ * (occupied) or -1 (empty); h(word_id) = word_id % cap. The index is a fast
+ * path only; the ordered (word,value) pairs remain authoritative. */
 enum { CTX_PARENT = 0, CTX_COUNT = 1, CTX_CAP = 2, CTX_DATA = 3 };
+#define CTX_HASH      (CTX_DATA + 2 * R0S1_CTX_CAP)  /* hash index offset (35) */
+#define R0S1_CTX_CELLS 64    /* 16-aligned stack-context size (3+32+16=51 -> 64) */
+#define HASH_EMPTY    (-1)   /* empty hash bucket sentinel */
 
 /* closure layout: [spec, body, captured-context, func-site-id] */
 enum { CLOSURE_SPEC = 0, CLOSURE_BODY = 1, CLOSURE_CTX = 2, CLOSURE_SITE = 3 };
@@ -291,6 +303,7 @@ typedef struct {
     long allocs, alloc_cells, alloc_ctx, alloc_frame, raw;
     long max_depth, promote;
     long lex_direct, lex_local, lex_parent;
+    long hash_probes, hash_hits, hash_misses, hash_collisions, hash_fallback, hash_fallback_slots;
 } r0_s1_pf_stats;
 void r0_s1_pf_read(r0_s1_pf_stats *out);
 

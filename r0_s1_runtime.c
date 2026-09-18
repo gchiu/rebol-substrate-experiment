@@ -60,10 +60,12 @@ static cell make_block(cell cap) {
     return mk_block(p);
 }
 static cell make_context(cell parent, cell cap) {
-    cell p = lalloc(CTX_DATA + 2 * (int)cap);
+    cell p = lalloc(CTX_DATA + 3 * (int)cap);   /* data(2*cap) + hash(cap) */
     M[p + CTX_PARENT] = parent;
     M[p + CTX_COUNT] = 0;
     M[p + CTX_CAP] = cap;
+    cell ho = CTX_DATA + 2 * (int)cap;
+    for (cell i = 0; i < cap; i++) M[p + ho + i] = HASH_EMPTY;
     return mk_context(p);
 }
 static void bind(cell ctx, cell word, cell value) {
@@ -72,6 +74,18 @@ static void bind(cell ctx, cell word, cell value) {
     M[p + CTX_DATA + 2 * n] = word;
     M[p + CTX_DATA + 2 * n + 1] = value;
     M[p + CTX_COUNT] = n + 1;
+    /* P5: maintain the hash index (linear probe; index is skipped once full) */
+    cell cap = M[p + CTX_CAP];
+    cell ho = CTX_DATA + 2 * cap;
+    if (n < cap) {
+        cell id = word_id(word);
+        cell h = id % cap;
+        for (cell k = 0; k < cap; k++) {
+            cell idx = (h + k) % cap;
+            cell e = M[p + ho + idx];
+            if (e == HASH_EMPTY || e / 256 == id) { M[p + ho + idx] = id * 256 + n; break; }
+        }
+    }
 }
 
 /* ============================== parser ================================= */
@@ -1086,7 +1100,7 @@ static void emit_gc(void) {
 /* ========================== evaluator build ============================ */
 
 static cell r_reduce, r_discard, r_lookup, r_set, r_append, r_mkctx, r_mkclosure;
-static cell r_load_lex;
+static cell r_load_lex, r_hash_insert;
 static cell r_values, r_run_block, r_native, r_invoke_closure, r_return, r_invoke_raw, r_subexpr, r_block_eval;
 
 /* REDUCE: [r1..rN, tagged-N] -> [r1] (or [NONE] if N==0) */
@@ -1125,7 +1139,9 @@ static void emit_discard(void) {
     asm_exit();
 }
 
-/* LOOKUP: (word -- value | -1 if unbound) via RV_CTX */
+/* LOOKUP: (word -- value | -1 if unbound) via RV_CTX.
+ * FIB-OPT-P5: when a context's binding count is below its cap, resolve via the
+ * hash index (O(1) average); otherwise fall back to the ordered linear scan. */
 static void emit_lookup(void) {
     r_lookup = asm_here();
 #ifdef R0_S1_PROFILE
@@ -1139,14 +1155,70 @@ static void emit_lookup(void) {
     asm_drop(); asm_lit(-1); asm_exit();
     asm_patch_here(j_continue);
     e_dup(); e_untag_ptr(); e_setc(RV_T2);
-    e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T3);
+    e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T3);   /* count */
+    /* hash lookup when count < cap */
+    e_cell(RV_T2); asm_lit(CTX_CAP); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T5);  /* cap */
+    e_cell(RV_T3); e_cell(RV_T5); asm_host(HOST_LT);
+    cell j_linear = asm_zbranch_fwd();
+    e_cell(RV_T1); asm_lit(16); asm_host(HOST_DIV); e_setc(RV_T4);               /* id */
+    e_cell(RV_T4); e_cell(RV_T5); asm_host(HOST_MOD); e_setc(RV_T6);             /* idx */
+    asm_lit(0); e_setc(RV_N);
+    cell hloop = asm_here();
+    e_cell(RV_N); e_cell(RV_T5); asm_host(HOST_LT);
+    cell j_hmiss = asm_zbranch_fwd();
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_HASH_PROBES);
+#endif
+    e_cell(RV_T2); asm_lit(CTX_DATA); asm_host(HOST_ADD);
+    e_cell(RV_T5); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);
+    e_cell(RV_T6); asm_host(HOST_ADD); asm_fetch();                             /* [ctx, e] */
+    asm_dup(); asm_lit(HASH_EMPTY); asm_host(HOST_EQ);                          /* [ctx, e, empty?] */
+    cell j_notempty = asm_zbranch_fwd();
+    asm_drop();                                                                 /* [ctx] */
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_HASH_MISSES);
+#endif
+    cell fw_miss = asm_branch_fwd();
+    asm_patch_here(j_notempty);
+    asm_dup(); asm_lit(256); asm_host(HOST_DIV);                                /* [ctx, e, key] */
+    e_cell(RV_T4); asm_host(HOST_EQ);                                           /* [ctx, e, key==id] */
+    cell j_hcollide = asm_zbranch_fwd();
+    asm_lit(256); asm_host(HOST_MOD);                                           /* [ctx, slot] (slot = e % 256) */
+    e_setc(RV_T5);                                                              /* [ctx] */
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_HASH_HITS);
+#endif
+    e_cell(RV_T2); asm_lit(CTX_DATA + 1); asm_host(HOST_ADD);
+    e_cell(RV_T5); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);
+    asm_fetch();                                                                /* [ctx, value] */
+    e_setc(RV_T5); asm_drop(); e_cell(RV_T5);                                   /* [value] */
+    asm_exit();
+    asm_patch_here(j_hcollide);
+    asm_drop();                                                                 /* [ctx, e] -> [ctx] */
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_HASH_COLLISIONS);
+#endif
+    e_cell(RV_T6); asm_lit(1); asm_host(HOST_ADD); e_cell(RV_T5); asm_host(HOST_MOD); e_setc(RV_T6);
+    e_cell(RV_N); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_N);
+    asm_branch(hloop);
+    asm_patch_here(j_hmiss);
+    asm_patch_here(fw_miss);
+    cell fw_parent = asm_branch_fwd();
+    /* linear fallback (count >= cap) */
+    asm_patch_here(j_linear);
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_HASH_FALLBACK);
+#endif
     asm_lit(0); e_setc(RV_T4);
     cell inner = asm_here();
 #ifdef R0_S1_PROFILE
     pf_incr(PF_LK_SLOTS);        /* examine one binding slot per iteration */
+    pf_incr(PF_HASH_FALLBACK_SLOTS);
 #endif
     e_cell(RV_T4); e_cell(RV_T3); asm_host(HOST_GE);
     cell j_search = asm_zbranch_fwd();
+    /* move to parent (shared by hash miss + linear exhaustion) */
+    asm_patch_here(fw_parent);
     asm_drop();
     e_cell(RV_T2); asm_fetch();
 #ifdef R0_S1_PROFILE
@@ -1207,6 +1279,44 @@ static void emit_load_lex(void) {
     asm_exit();
 }
 
+/* HASH-INSERT (P5): insert (RV_WORD -> RV_T3 slot) into the hash index of the
+ * context whose payload is RV_T2. Skipped when slot >= cap (index full/overflow;
+ * the linear fallback then stays correct). Uses RV_T1/RV_T5/RV_T6/RV_N (NOT
+ * RV_T4: the callers -- the bind loop and r_set -- keep their loop counter
+ * there). */
+static void emit_hash_insert(void) {
+    r_hash_insert = asm_here();
+    e_cell(RV_T2); asm_lit(CTX_CAP); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T1);  /* cap */
+    e_cell(RV_WORD); asm_lit(16); asm_host(HOST_DIV); e_setc(RV_T5);                  /* id */
+    e_cell(RV_T3); e_cell(RV_T1); asm_host(HOST_LT);                                  /* slot < cap? */
+    cell j_skip = asm_zbranch_fwd();
+    e_cell(RV_T5); e_cell(RV_T1); asm_host(HOST_MOD); e_setc(RV_T6);                  /* idx = id%cap */
+    asm_lit(0); e_setc(RV_N);
+    cell hloop = asm_here();
+    e_cell(RV_N); e_cell(RV_T1); asm_host(HOST_LT);                                   /* k < cap? */
+    cell j_hdone = asm_zbranch_fwd();
+    e_cell(RV_T2); asm_lit(CTX_DATA); asm_host(HOST_ADD);
+    e_cell(RV_T1); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);
+    e_cell(RV_T6); asm_host(HOST_ADD); asm_fetch();                                   /* [e] */
+    asm_dup(); asm_lit(HASH_EMPTY); asm_host(HOST_EQ);                                /* [e, empty?] */
+    cell j_notempty = asm_zbranch_fwd();
+    asm_drop();                                                                       /* [] */
+    e_cell(RV_T5); asm_lit(256); asm_host(HOST_MUL); e_cell(RV_T3); asm_host(HOST_ADD); /* id*256+slot */
+    e_cell(RV_T2); asm_lit(CTX_DATA); asm_host(HOST_ADD);
+    e_cell(RV_T1); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);
+    e_cell(RV_T6); asm_host(HOST_ADD); asm_store();                                   /* M[ho+idx] = entry */
+    cell j_inserted = asm_branch_fwd();
+    asm_patch_here(j_notempty);
+    asm_drop();                                                                       /* drop e */
+    e_cell(RV_T6); asm_lit(1); asm_host(HOST_ADD); e_cell(RV_T1); asm_host(HOST_MOD); e_setc(RV_T6);
+    e_cell(RV_N); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_N);
+    asm_branch(hloop);
+    asm_patch_here(j_inserted);
+    asm_patch_here(j_hdone);
+    asm_patch_here(j_skip);
+    asm_exit();
+}
+
 /* SET: (value -- value)  bind word (RV_WORD) to value, nearest-update */
 static void emit_set(void) {
     r_set = asm_here();
@@ -1229,6 +1339,7 @@ static void emit_set(void) {
     e_cell(RV_T3); asm_lit(1); asm_host(HOST_ADD);
     e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD);
     asm_store();
+    asm_call(r_hash_insert);                 /* P5: index (RV_WORD -> RV_T3 slot) */
     asm_exit();
     asm_patch_here(j_continue);
     e_dup(); e_untag_ptr(); e_setc(RV_T2);
@@ -1272,35 +1383,48 @@ static void emit_append(void) {
     e_cell(RV_T3); asm_lit(1); asm_host(HOST_ADD);
     e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD);
     asm_store();
+    asm_call(r_hash_insert);                 /* P5: index (RV_WORD -> RV_T3 slot) */
     asm_exit();
 }
 
 /* MKCTX: ( parent -- child-ctx )  allocate a fresh context.
  * Since FIB-OPT-P3 an ordinary (non-escaping) child context lives in task-local
- * storage on the return stack (16-aligned, same 48-cell layout as a managed
- * context); it is promoted to the managed heap only if a closure captures it
- * (see emit_promote_ctx / emit_mkclosure). */
+ * storage on the return stack (16-aligned, same layout as a managed context);
+ * it is promoted to the managed heap only if a closure captures it
+ * (see emit_promote_ctx / emit_mkclosure). FIB-OPT-P5 adds the hash index
+ * (cap entries after the data) and zeroes it to HASH_EMPTY. */
 static void emit_mkctx(void) {
     r_mkctx = asm_here();
 #ifdef R0_S1_PROFILE
     pf_incr(PF_ALLOC_CTX);
 #endif
     e_pop_to(RV_T6);                                   /* parent */
-    /* padding = (RP - 48) mod 16  (48 = CTX_DATA + 2*R0S1_CTX_CAP rounded up) */
-    asm_lit(REG_RP); asm_fetch(); asm_lit(48); asm_host(HOST_SUB); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T5);
-    /* RP -= padding + 48  (base is now 16-aligned) */
-    asm_lit(REG_RP); asm_fetch(); e_cell(RV_T5); asm_host(HOST_SUB); asm_lit(48); asm_host(HOST_SUB); asm_lit(REG_RP); asm_store();
+    /* padding = (RP - R0S1_CTX_CELLS) mod 16 */
+    asm_lit(REG_RP); asm_fetch(); asm_lit(R0S1_CTX_CELLS); asm_host(HOST_SUB); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T5);
+    /* RP -= padding + R0S1_CTX_CELLS  (base is now 16-aligned) */
+    asm_lit(REG_RP); asm_fetch(); e_cell(RV_T5); asm_host(HOST_SUB); asm_lit(R0S1_CTX_CELLS); asm_host(HOST_SUB); asm_lit(REG_RP); asm_store();
     asm_lit(REG_RP); asm_fetch(); e_setc(RV_T4);       /* base */
     e_cell(RV_T6); e_cell(RV_T4); asm_store();          /* M[base] = parent */
     asm_lit(0); e_cell(RV_T4); asm_lit(1); asm_host(HOST_ADD); asm_store(); /* count = 0 */
     asm_lit(R0S1_CTX_CAP); e_cell(RV_T4); asm_lit(2); asm_host(HOST_ADD); asm_store(); /* cap */
+    /* zero the hash index: M[base+CTX_HASH+i] = HASH_EMPTY for i < cap */
+    asm_lit(0); e_setc(RV_N);
+    cell hloop = asm_here();
+    e_cell(RV_N); asm_lit(R0S1_CTX_CAP); asm_host(HOST_LT);
+    cell j_hdone = asm_zbranch_fwd();
+    asm_lit(HASH_EMPTY);
+    e_cell(RV_T4); asm_lit(CTX_HASH); asm_host(HOST_ADD); e_cell(RV_N); asm_host(HOST_ADD);
+    asm_store();
+    e_cell(RV_N); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_N);
+    asm_branch(hloop);
+    asm_patch_here(j_hdone);
     e_cell(RV_T4); asm_lit(T_CONTEXT); asm_host(HOST_ADD);
-    /* Move the CALL return address from above the context (base+padding+48) to
-     * just below it (base-1), and leave RP at base-1. asm_exit then pops the
-     * moved return address and RP becomes base, so the 48+padding-cell context
-     * reservation stays in place for the caller (the frame is allocated below
-     * it, never overlapping). */
-    e_cell(RV_T4); e_cell(RV_T5); asm_host(HOST_ADD); asm_lit(48); asm_host(HOST_ADD); asm_fetch();
+    /* Move the CALL return address from above the context (base+padding+CELLS)
+     * to just below it (base-1), and leave RP at base-1. asm_exit then pops the
+     * moved return address and RP becomes base, so the CELLS+padding-cell
+     * context reservation stays in place for the caller (the frame is allocated
+     * below it, never overlapping). */
+    e_cell(RV_T4); e_cell(RV_T5); asm_host(HOST_ADD); asm_lit(R0S1_CTX_CELLS); asm_host(HOST_ADD); asm_fetch();
     e_cell(RV_T4); asm_lit(1); asm_host(HOST_SUB); asm_store();
     e_cell(RV_T4); asm_lit(1); asm_host(HOST_SUB); asm_lit(REG_RP); asm_store();
     asm_exit();
@@ -1332,7 +1456,7 @@ static void emit_mkclosure(void) {
 #ifdef R0_S1_PROFILE
         pf_incr(PF_PROMOTE);
 #endif
-        asm_lit(48); asm_lit(GC_KIND_CTX); asm_call(r_alloc); e_setc(RV_T3);   /* managed dst */
+        asm_lit(R0S1_CTX_CELLS); asm_lit(GC_KIND_CTX); asm_call(r_alloc); e_setc(RV_T3);   /* managed dst */
         e_cell(RV_T2); asm_fetch(); e_cell(RV_T3); asm_store();                /* parent */
         e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T6); /* count */
         e_cell(RV_T6); e_cell(RV_T3); asm_lit(1); asm_host(HOST_ADD); asm_store();
@@ -1348,6 +1472,16 @@ static void emit_mkclosure(void) {
         e_cell(RV_N); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_N);
         asm_branch(loop);
         asm_patch_here(j_done);
+        /* P5: copy the hash index (cap entries) */
+        asm_lit(0); e_setc(RV_N);
+        cell hloop = asm_here();
+        e_cell(RV_N); asm_lit(R0S1_CTX_CAP); asm_host(HOST_LT);
+        cell j_hdone = asm_zbranch_fwd();
+        e_cell(RV_T2); asm_lit(CTX_HASH); asm_host(HOST_ADD); e_cell(RV_N); asm_host(HOST_ADD); asm_fetch();
+        e_cell(RV_T3); asm_lit(CTX_HASH); asm_host(HOST_ADD); e_cell(RV_N); asm_host(HOST_ADD); asm_store();
+        e_cell(RV_N); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_N);
+        asm_branch(hloop);
+        asm_patch_here(j_hdone);
         e_cell(RV_T3); asm_lit(T_CONTEXT); asm_host(HOST_ADD); e_setc(RV_T1);  /* captured = managed */
         e_cell(RV_T1); e_setc(RV_CTX);                  /* current context promoted */
         asm_patch_here(j_no2);
@@ -1972,6 +2106,7 @@ cell r0_s1_init(void) {
     emit_discard();
     emit_lookup();
     emit_load_lex();
+    emit_hash_insert();
     emit_set();
     emit_append();
     emit_mkctx();
@@ -2122,7 +2257,7 @@ int r0_s1_run(cell block) {
     M[RV_RPMIN] = 65535;
     M[RV_SPMIN] = 65535;
 #ifdef R0_S1_PROFILE
-    for (cell c = PF_BASE; c <= PF_LEX_PARENT; c++)
+    for (cell c = PF_BASE; c <= PF_HASH_FALLBACK_SLOTS; c++)
         if (c != PF_TRACE) M[c] = 0;   /* PF_TRACE is a persistent mode flag */
 #endif
 
@@ -2192,4 +2327,10 @@ void r0_s1_pf_read(r0_s1_pf_stats *out) {
     out->lex_direct = (long)M[PF_LEX_DIRECT];
     out->lex_local  = (long)M[PF_LEX_LOCAL];
     out->lex_parent = (long)M[PF_LEX_PARENT];
+    out->hash_probes = (long)M[PF_HASH_PROBES];
+    out->hash_hits   = (long)M[PF_HASH_HITS];
+    out->hash_misses = (long)M[PF_HASH_MISSES];
+    out->hash_collisions = (long)M[PF_HASH_COLLISIONS];
+    out->hash_fallback = (long)M[PF_HASH_FALLBACK];
+    out->hash_fallback_slots = (long)M[PF_HASH_FALLBACK_SLOTS];
 }

@@ -62,30 +62,29 @@ already built and tested:
 - task return-stack overflow protection;
 - a standalone WebAssembly build with a tiny handwritten JS host.
 
-## 4. Current benchmark baseline (P4)
+## 4. Current benchmark baseline (P5)
 
-P4 (`fib-opt-p4` → `d8161b0`) is the current optimisation baseline. Naive
-recursive Fibonacci (`fib: func [n] [ either <= n 1 [ n ] [ + fib - n 1 fib - n 2 ] ]`):
+P5 (`fib-opt-p5`) is the current optimisation baseline. Naive recursive
+Fibonacci (`fib: func [n] [ either <= n 1 [ n ] [ + fib - n 1 fib - n 2 ] ]`):
 
-| metric | P3 | P4 |
-|---|---|---|
-| fib 25 result / calls | 75025 / 242785 | 75025 / 242785 |
-| logical lookups | 1 699 493 | 1 092 531 |
-| direct lexical-slot accesses | — | 606 962 |
-| slots examined | 11 653 672 | 11 046 710 |
-| parent hops | 1 092 530 | 1 092 530 |
-| managed allocs / GC cycles | 1 / 0 | 1 / 0 |
-| fib 25 wall-clock (median) | ~10.2 s | ~10.0 s |
-| fib 20 wall-clock (median) | ~0.91 s | ~0.82 s |
+| metric | P3 | P4 | P5 |
+|---|---|---|---|
+| fib 25 result / calls | 75025 / 242785 | 75025 / 242785 | 75025 / 242785 |
+| logical lookups | 1 699 493 | 1 092 531 | 1 092 531 |
+| direct lexical-slot accesses | — | 606 962 | 606 962 |
+| slots examined (linear) | 11 653 672 | 11 046 710 | **0** |
+| hash probes | — | — | 2 185 061 |
+| parent hops | 1 092 530 | 1 092 530 | 1 092 530 |
+| managed allocs / GC cycles | 1 / 0 | 1 / 0 | 1 / 0 |
+| fib 25 wall-clock (median) | ~10.2 s | ~10.0 s | ~8.0 s |
+| fib 20 wall-clock (median) | ~0.91 s | ~0.82 s | ~0.71 s |
 
-P4 moved statically-resolvable lexical references (parameters) to a new
-`T_BOUND` (13) value that encodes `(depth, slot)` and is resolved at load time,
-so execution reads the slot directly with no name scan. Performance is
-essentially neutral (see §7 lesson): the direct access removes the scan but adds
-fixed decode work that is not cheaper than a one-binding scan.
-
-The remaining dynamic/global lookup path still accounts for roughly **11
-million slot examinations** and now dominates lookup cost.
+P4 removed static lexical scanning (`T_BOUND` depth/slot). P5 removed dynamic
+name scanning: each context now carries a fixed hash index (word id → slot,
+open addressing, linear probing); `r_lookup` probes it when `count < cap` and
+falls back to the ordered scan when the index is full. The 11M slot examinations
+are gone (0); ~2.2M O(1) probes remain, and dispatch/arithmetic is now the
+leading cost rather than name resolution.
 
 ## 5. Milestones (branch / tag → commit)
 
@@ -107,31 +106,33 @@ In order:
 | P2 frames | `fib-opt-p2` | `6861194` |
 | P3 contexts | `fib-opt-p3` | `67bb997` |
 | P4 lexical | `fib-opt-p4` | `d8161b0` |
-
-P4 commits: `a58c48a` (implementation), `d8161b0` (results documentation).
+| P5 hash lookup | `fib-opt-p5` | *(this phase)* |
 
 ## 6. Lessons learned
 
 - The frozen substrate keeps proving sufficient: every milestone (debugger,
-  tasks, GC, datatypes, three optimisation phases) landed with **zero** new S1
+  tasks, GC, datatypes, four optimisation phases) landed with **zero** new S1
   primitives.
-- Allocation/GC was removable from Fibonacci first (P2/P3); name resolution is
-  the remaining cost and is harder to remove (P4 was architecturally successful
-  but timing-neutral).
+- Allocation/GC was removable from Fibonacci first (P2/P3); name resolution was
+  next — lexical (P4, `T_BOUND`) and dynamic (P5, per-context hash index) are now
+  both gone from the hot path.
 - Fib is a microscope, not a specification: tiny one-binding contexts hide the
-  win from lexical-slot access; the global scan now dominates.
+  win from lexical-slot access; a fixed cap-sized hash index is O(1) for the
+  global scan but costs 33–43% more context memory.
 - Stack sizing is real infrastructure: P3's context-on-return-stack forced the
-  M1 task arena to be enlarged (see `FIB-OPT-P3-CONTEXTS.md`).
+  M1 task arena to be enlarged (see `FIB-OPT-P3-CONTEXTS.md`); P5's 64-cell
+  context still fits the 30-deep multitasking regression.
 
 ## 7. Roadmap
 
-1. P4 is complete and retained; `fib-opt-p4` is the current optimisation
+1. P4 and P5 are complete and retained; `fib-opt-p5` is the current optimisation
    baseline.
-2. Consolidate profiling after P4.
-3. Select P5 from measured remaining costs.
-4. The remaining dynamic/global name scan is the leading candidate (≈11M slot
-   examinations remain).
-5. Do **not** assume P5 is evaluator dispatch unless profiling supports it.
+2. Consolidate profiling after P5.
+3. Select P6 from measured remaining costs.
+4. Name resolution (lexical + dynamic) is now gone; the leading candidate is
+   evaluator dispatch / native arithmetic — but do not assume P6 until profiling
+   confirms it.
+5. Do **not** assume a performance phase without profiling support.
 6. Continue the rule: **one architectural performance hypothesis per phase.**
 7. After the optimisation sequence, establish the broader benchmark suite:
    Fibonacci (recursion/call overhead), tight loop (evaluator/branch overhead),
@@ -208,5 +209,6 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
   — milestone design/results.
 - `FIB-PROFILE-P1.md`, `FIB-OPT-P2-FRAMES.md`, `FIB-OPT-P3-CONTEXTS.md` —
   optimisation phases.
-- `FIB-OPT-P4-LEX.md`, `FIB-OPT-P4-RESULTS.md` — P4 (current baseline).
+- `FIB-OPT-P4-LEX.md`, `FIB-OPT-P4-RESULTS.md` — P4.
+- `FIB-OPT-P5-HASH-LOOKUP.md`, `FIB-OPT-P5-RESULTS.md` — P5 (current baseline).
 - `docs/glon-shop-product-spec.md` — Glon Shop specification.
