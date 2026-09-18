@@ -13,6 +13,7 @@ int run_r0_s1_m3b_tests(void);
 int run_r0_s1_m3c_tests(void);
 int run_r0_s1_m3d_tests(void);
 int run_r0_s1_nested_closure_tests(void);
+int run_r0_s1_p4_tests(void);
 
 int main(void) {
     int failures = run_tests();
@@ -28,6 +29,7 @@ int main(void) {
     failures += run_r0_s1_m3c_tests();
     failures += run_r0_s1_m3d_tests();
     failures += run_r0_s1_nested_closure_tests();
+    failures += run_r0_s1_p4_tests();
     if (failures == 0) {
         printf("all tests passed\n");
         return 0;

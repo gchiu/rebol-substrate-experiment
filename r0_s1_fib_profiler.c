@@ -81,12 +81,14 @@ static void profile_fib(int n) {
     printf("  lookups=%ld  slots-examined=%ld  parent-hops=%ld  (avg slots/lookup=%.2f)\n",
            (long)s.lookup, (long)s.lk_slots, (long)s.lk_parent,
            s.lookup ? (double)s.lk_slots / (double)s.lookup : 0.0);
+    printf("  lex-direct=%ld (local=%ld parent=%ld)\n",
+           (long)s.lex_direct, (long)s.lex_local, (long)s.lex_parent);
     printf("  natives=%ld (<=%ld -%ld +%ld either%ld other%ld)\n",
            (long)s.native, (long)s.nat_le, (long)s.nat_sub, (long)s.nat_add,
            (long)s.nat_either, (long)s.nat_other);
-    printf("  allocs=%ld cells=%ld (ctx=%ld frame=%ld)  raw=%ld\n",
+    printf("  allocs=%ld cells=%ld (ctx-created=%ld heap-ctx=%ld frame=%ld)  raw=%ld\n",
            (long)s.allocs, (long)s.alloc_cells, (long)s.alloc_ctx,
-           (long)s.alloc_frame, (long)s.raw);
+           (long)s.promote, (long)s.alloc_frame, (long)s.raw);
     printf("  GC: cycles=%ld live-objs=%ld free-blocks=%ld free-cells=%ld reclaimed=%ld\n",
            (long)r0_s1_gc_count(), (long)r0_s1_gc_live_objs(),
            (long)r0_s1_gc_free_blocks(), (long)r0_s1_gc_free_cells(),

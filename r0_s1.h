@@ -18,7 +18,8 @@ extern cell M[MEM_CELLS];
 enum {
     T_INT = 0, T_NONE = 1, T_WORD = 2, T_SET = 3, T_GET = 4, T_LIT = 5,
     T_BLOCK = 6, T_CONTEXT = 7, T_CLOSURE = 8, T_NATIVE = 9, T_RAW = 10,
-    T_USER = 11, T_STRING = 12
+    T_USER = 11, T_STRING = 12,
+    T_BOUND = 13   /* FIB-OPT-P4: pre-resolved lexical (depth, slot) reference */
 };
 
 #define R0_NONE       ((cell)0x1)
@@ -38,6 +39,15 @@ enum {
 #define mk_string(p)  ((cell)((p) + T_STRING))
 #define word_id(v)    ((cell)((v) / 16))
 #define int_val(v)    ((cell)((v) / 16))
+
+/* FIB-OPT-P4: a pre-resolved lexical reference encodes (depth, slot) in the
+ * payload. depth = CTX_PARENT hops from the current context; slot = binding
+ * index (value cell at p + 4 + 2*slot). The word symbol stays in the context
+ * for dynamic lookup and introspection. */
+#define mk_bound(depth, slot) ((cell)((((depth) * 16 + (slot)) * 16) + T_BOUND))
+#define bound_payload(v)      ((cell)((v) / 16))
+#define bound_slot(v)         ((cell)(bound_payload(v) % 16))
+#define bound_depth(v)        ((cell)(bound_payload(v) / 16))
 
 /* --- native ids (== HOST ids for arithmetic/comparison; specials >100) --- */
 enum {
@@ -213,6 +223,9 @@ enum {
 #define PF_DEPTH        24673   /* current closure nesting depth (trace/depth)   */
 #define PF_MAXDEPTH     24674   /* max closure nesting depth seen                */
 #define PF_PROMOTE      24675   /* stack->managed context promotions             */
+#define PF_LEX_DIRECT   24676   /* lexical references resolved directly by slot  */
+#define PF_LEX_LOCAL    24677   /* direct depth-0 lexical accesses               */
+#define PF_LEX_PARENT   24678   /* direct parent lexical accesses (depth > 0)    */
 
 /* context layout: [parent, count, cap, (word,value)...] */
 enum { CTX_PARENT = 0, CTX_COUNT = 1, CTX_CAP = 2, CTX_DATA = 3 };
@@ -277,6 +290,7 @@ typedef struct {
     long native, nat_le, nat_sub, nat_add, nat_either, nat_other;
     long allocs, alloc_cells, alloc_ctx, alloc_frame, raw;
     long max_depth, promote;
+    long lex_direct, lex_local, lex_parent;
 } r0_s1_pf_stats;
 void r0_s1_pf_read(r0_s1_pf_stats *out);
 

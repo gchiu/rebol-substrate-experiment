@@ -83,6 +83,34 @@ static int site_stack[64];
 static int site_depth;
 static int next_site;
 
+/* FIB-OPT-P4: lexical binding scope stack (parse/load). Each scope holds the
+ * word ids of the enclosing function's PARAMETERS, stored in slot order (the
+ * runtime bind loop appends params in reverse spec order, so slot 0 is the
+ * last spec word). Locals are deliberately NOT tracked: r_set assigns local
+ * slots in execution order, so their slots are not statically sound (see
+ * FIB-OPT-P4-LEX.md). References resolve innermost-first; depth = index from
+ * the top. */
+#define MAX_LEX_DEPTH 64
+static cell lex_names[MAX_LEX_DEPTH][R0S1_CTX_CAP];
+static int  lex_count[MAX_LEX_DEPTH];
+static int  lex_depth;
+
+static void lex_push(void) { if (lex_depth < MAX_LEX_DEPTH) lex_count[lex_depth++] = 0; }
+static void lex_pop(void)  { if (lex_depth > 0) lex_depth--; }
+static void lex_add(cell id) {
+    int d = lex_depth - 1;
+    if (d < 0 || lex_count[d] >= R0S1_CTX_CAP) return;
+    lex_names[d][lex_count[d]++] = id;
+}
+static int lex_resolve(cell id, int *depth, int *slot) {
+    for (int d = 0; d < lex_depth; d++) {
+        int si = lex_depth - 1 - d;
+        for (int s = 0; s < lex_count[si]; s++)
+            if (lex_names[si][s] == id) { *depth = d; *slot = s; return 1; }
+    }
+    return 0;
+}
+
 static void skip_ws(parser_t *P) {
     while (P->s[P->pos] && isspace((unsigned char)P->s[P->pos])) P->pos++;
 }
@@ -110,7 +138,18 @@ static cell parse_word(parser_t *P) {
     if (buf[len - 1] == ':') { buf[len - 1] = 0; return mk_set((cell)word_id(intern(buf))); }
     if (buf[0] == ':')       { return mk_get((cell)word_id(intern(buf + 1))); }
     if (buf[0] == '\'')      { return mk_lit((cell)word_id(intern(buf + 1))); }
-    return intern(buf);
+    {
+        cell id = word_id(intern(buf));
+        /* FIB-OPT-P4: resolve a plain reference to an enclosing parameter.
+         * Reserved keywords (func/return/raw = ids 0/1/2) are never resolved,
+         * and only parameters are tracked, so this can only fast-path a name
+         * whose slot is statically sound. */
+        if (id >= 3 && lex_depth > 0) {
+            int depth, slot;
+            if (lex_resolve(id, &depth, &slot)) return mk_bound(depth, slot);
+        }
+        return mk_word(id);
+    }
 }
 
 static cell parse_form(parser_t *P);
@@ -268,10 +307,24 @@ static cell parse_block(parser_t *P) {
             if (len == 4 && strncmp(P->s + start, "func", 4) == 0) {
                 int sid = next_site++;
                 tmp[n++] = intern("func");
-                tmp[n++] = parse_form(P);                 /* spec */
+                cell spec = parse_form(P);                /* spec (param block) */
+                lex_push();                               /* new lexical scope */
+                {   /* collect the spec's parameter words.  The bind loop in
+                     * invoke_closure appends params in REVERSE spec order
+                     * (slot 0 = spec[arity-1], ...), so add them in reverse
+                     * order here so the slot indices match the runtime. */
+                    cell sp = r0_untag(spec);
+                    int cnt = (int)M[sp];
+                    for (int i = cnt - 1; i >= 0; i--) {
+                        cell e = M[sp + BLK_DATA + i];
+                        if (r0_tag(e) == T_WORD) lex_add(word_id(e));
+                    }
+                }
+                tmp[n++] = spec;
                 site_stack[site_depth++] = sid;
-                tmp[n++] = parse_form(P);                 /* body (under sid) */
+                tmp[n++] = parse_form(P);                 /* body (under scope) */
                 site_depth--;
+                lex_pop();
                 continue;
             }
             if (len == 3 && strncmp(P->s + start, "raw", 3) == 0) {
@@ -1033,6 +1086,7 @@ static void emit_gc(void) {
 /* ========================== evaluator build ============================ */
 
 static cell r_reduce, r_discard, r_lookup, r_set, r_append, r_mkctx, r_mkclosure;
+static cell r_load_lex;
 static cell r_values, r_run_block, r_native, r_invoke_closure, r_return, r_invoke_raw, r_subexpr, r_block_eval;
 
 /* REDUCE: [r1..rN, tagged-N] -> [r1] (or [NONE] if N==0) */
@@ -1115,6 +1169,42 @@ static void emit_lookup(void) {
     asm_patch_here(j_nomatch);
     e_cell(RV_T4); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_T4);
     asm_branch(inner);
+}
+
+/* LOAD-LEX: ( bound -- value )  direct lexical slot access via RV_CTX.
+ * A bound word encodes (depth, slot); this walks `depth` CTX_PARENT hops from
+ * the current context and reads the value cell at the slot offset, with no
+ * name comparison. Only parameter references are emitted as bound words, so
+ * the slot is always live and the address is always sound. */
+static void emit_load_lex(void) {
+    r_load_lex = asm_here();
+#ifdef R0_S1_PROFILE
+    pf_incr(PF_LEX_DIRECT);                  /* one direct lexical access */
+#endif
+    asm_lit(16); asm_host(HOST_DIV);         /* payload = depth*16+slot (tag drops out) */
+    asm_dup(); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T2);  /* slot  */
+    asm_lit(16); asm_host(HOST_DIV); e_setc(RV_T3);             /* depth */
+#ifdef R0_S1_PROFILE
+    e_cell(RV_T3); asm_lit(0); asm_host(HOST_EQ);
+    cell j_parent = asm_zbranch_fwd();
+    pf_incr(PF_LEX_LOCAL);                   /* depth 0 (own parameter) */
+    cell j_lex = asm_branch_fwd();
+    asm_patch_here(j_parent);
+    pf_incr(PF_LEX_PARENT);                  /* depth > 0 (captured) */
+    asm_patch_here(j_lex);
+#endif
+    e_cell(RV_CTX);                          /* ctx (tagged) */
+    cell walk = asm_here();
+    e_cell(RV_T3); asm_lit(0); asm_host(HOST_GT);
+    cell j_walk_done = asm_zbranch_fwd();
+    e_untag_ptr(); asm_lit(CTX_PARENT); asm_host(HOST_ADD); asm_fetch(); /* [ctx] -> [parent] */
+    e_cell(RV_T3); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T3);
+    asm_branch(walk);
+    asm_patch_here(j_walk_done);
+    e_untag_ptr(); asm_lit(CTX_DATA + 1); asm_host(HOST_ADD);            /* [ctx] -> [p+4] */
+    e_cell(RV_T2); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);   /* +2*slot */
+    asm_fetch();                              /* [value] */
+    asm_exit();
 }
 
 /* SET: (value -- value)  bind word (RV_WORD) to value, nearest-update */
@@ -1720,6 +1810,7 @@ static void emit_invoke_raw(void) {
 /* SUBEXPR: evaluate one sub-expression at RV_CUR, advancing it */
 static void emit_subexpr(void) {
     r_subexpr = asm_here();
+    cell fw_disp_word, fw_disp_bound;   /* forward branches to the shared value dispatch */
 #ifdef R0_S1_PROFILE
     pf_incr(PF_SUBEXPR);
 #endif
@@ -1760,31 +1851,7 @@ static void emit_subexpr(void) {
     cell j_err = asm_zbranch_fwd();
     asm_drop(); asm_host(HOST_DUMP); asm_halt();
     asm_patch_here(j_err);
-    asm_dup(); asm_lit(16); asm_host(HOST_MOD);
-    /* native (tag 9) */
-    asm_dup(); asm_lit(T_NATIVE); asm_host(HOST_EQ);
-    cell j_notnat = asm_zbranch_fwd();
-    asm_drop();
-    asm_call(r_native);
-    asm_exit();
-    asm_patch_here(j_notnat);
-    /* closure (tag 8) */
-    asm_dup(); asm_lit(T_CLOSURE); asm_host(HOST_EQ);
-    cell j_notclosure = asm_zbranch_fwd();
-    asm_drop();
-    asm_call(r_invoke_closure);
-    asm_exit();
-    asm_patch_here(j_notclosure);
-    /* raw (tag 10) */
-    asm_dup(); asm_lit(T_RAW); asm_host(HOST_EQ);
-    cell j_notraw = asm_zbranch_fwd();
-    asm_drop();
-    asm_call(r_invoke_raw);
-    asm_exit();
-    asm_patch_here(j_notraw);
-    asm_drop();
-    asm_lit(16);
-    asm_exit();
+    fw_disp_word = asm_branch_fwd();             /* -> shared value dispatch */
     asm_patch_here(j2);
 
     /* SET (tag 3) */
@@ -1817,7 +1884,44 @@ static void emit_subexpr(void) {
     asm_exit();
     asm_patch_here(j5);
 
+    /* BOUND (tag 13): pre-resolved lexical (depth, slot) reference */
+    asm_dup(); asm_lit(T_BOUND); asm_host(HOST_EQ);
+    cell j_bound = asm_zbranch_fwd();
+    asm_drop();
+    asm_call(r_load_lex);                        /* [value] */
+    fw_disp_bound = asm_branch_fwd();            /* -> shared value dispatch */
+    asm_patch_here(j_bound);
+
     /* self-evaluating literals */
+    asm_drop();
+    asm_lit(16);
+    asm_exit();
+
+    /* shared value dispatch: [value] -> [result, 16] (word + bound refs) */
+    asm_patch_here(fw_disp_word);
+    asm_patch_here(fw_disp_bound);
+    asm_dup(); asm_lit(16); asm_host(HOST_MOD);
+    /* native (tag 9) */
+    asm_dup(); asm_lit(T_NATIVE); asm_host(HOST_EQ);
+    cell j_notnat = asm_zbranch_fwd();
+    asm_drop();
+    asm_call(r_native);
+    asm_exit();
+    asm_patch_here(j_notnat);
+    /* closure (tag 8) */
+    asm_dup(); asm_lit(T_CLOSURE); asm_host(HOST_EQ);
+    cell j_notclosure = asm_zbranch_fwd();
+    asm_drop();
+    asm_call(r_invoke_closure);
+    asm_exit();
+    asm_patch_here(j_notclosure);
+    /* raw (tag 10) */
+    asm_dup(); asm_lit(T_RAW); asm_host(HOST_EQ);
+    cell j_notraw = asm_zbranch_fwd();
+    asm_drop();
+    asm_call(r_invoke_raw);
+    asm_exit();
+    asm_patch_here(j_notraw);
     asm_drop();
     asm_lit(16);
     asm_exit();
@@ -1867,6 +1971,7 @@ cell r0_s1_init(void) {
     emit_reduce();
     emit_discard();
     emit_lookup();
+    emit_load_lex();
     emit_set();
     emit_append();
     emit_mkctx();
@@ -1985,6 +2090,7 @@ cell r0_s1_parse(const char *src, int *err) {
     parser_t P; P.s = src; P.pos = 0; P.err = 0;
     *err = 0;
     site_depth = 0;
+    lex_depth = 0;
     skip_ws(&P);
     if (P.s[P.pos] == '[') { cell b = parse_block(&P); if (P.err) *err = 1; return b; }
     cell tmp[256]; int n = 0;
@@ -2016,7 +2122,7 @@ int r0_s1_run(cell block) {
     M[RV_RPMIN] = 65535;
     M[RV_SPMIN] = 65535;
 #ifdef R0_S1_PROFILE
-    for (cell c = PF_BASE; c <= PF_PROMOTE; c++)
+    for (cell c = PF_BASE; c <= PF_LEX_PARENT; c++)
         if (c != PF_TRACE) M[c] = 0;   /* PF_TRACE is a persistent mode flag */
 #endif
 
@@ -2083,4 +2189,7 @@ void r0_s1_pf_read(r0_s1_pf_stats *out) {
     out->raw        = (long)M[PF_RAW];
     out->max_depth  = (long)M[PF_MAXDEPTH];
     out->promote    = (long)M[PF_PROMOTE];
+    out->lex_direct = (long)M[PF_LEX_DIRECT];
+    out->lex_local  = (long)M[PF_LEX_LOCAL];
+    out->lex_parent = (long)M[PF_LEX_PARENT];
 }
