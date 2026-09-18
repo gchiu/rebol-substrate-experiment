@@ -137,13 +137,13 @@ enum {
 #define GC_HDR_STRIDE   16
 #define GC_FLAG_ALLOC   1
 #define GC_FLAG_MARK    2
-#define GC_KIND_BLOCK   0
 #define GC_KIND_CTX     1
 #define GC_KIND_CLOSURE 2
 #define GC_KIND_RAW     3
 #define GC_KIND_FRAME   4
 #define GC_KIND_USER    5
 #define GC_KIND_STRING  6
+#define GC_KIND_BLOCK   7
 
 /* collector state cells (fixed, disjoint from every other region).  These are
  * plain integer literals (not expressions) so both the C emitter and the RAW

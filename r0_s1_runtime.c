@@ -144,6 +144,7 @@ static const raw_sym_t raw_syms[] = {
     { "BUILTIN_BASE", BUILTIN_BASE }, { "GC_META", GC_META },
     { "T_USER", T_USER }, { "GC_KIND_USER", GC_KIND_USER },
     { "T_STRING", T_STRING }, { "GC_KIND_STRING", GC_KIND_STRING },
+    { "T_BLOCK", T_BLOCK }, { "GC_KIND_BLOCK", GC_KIND_BLOCK },
 };
 #define N_RAW_SYMS ((int)(sizeof raw_syms / sizeof raw_syms[0]))
 
@@ -360,7 +361,7 @@ static cell to_block_eval[16]; static int n_block_eval;
  * pointers and are traced. */
 
 static cell r_mark_value, r_mark_push, r_trace_ctx, r_trace_closure, r_trace_frame,
-            r_mark_frame, r_trace_user, r_trace_string, r_scan_values, r_scan_closures,
+            r_mark_frame, r_trace_user, r_trace_string, r_trace_block, r_scan_values, r_scan_closures,
             r_collect, r_alloc;
 
 /* forward-call patch lists for the mark/trace mutual recursion */
@@ -417,12 +418,19 @@ static void emit_trace_ctx(void) {
     asm_exit();
 }
 
-/* TRACE-CLOSURE: ( p -- ) trace spec/body/captured-context. */
+/* TRACE-CLOSURE: ( p -- ) trace spec/body/captured-context.
+ * GC_T1 (the closure pointer) must be saved across each mark_value call: the
+ * T_BLOCK/T_CONTEXT/T_USER/T_STRING cases in mark_value use GC_T1 as their own
+ * scratch (p = v - tag), so an untraced spec/body block would clobber it. */
 static void emit_trace_closure(void) {
     r_trace_closure = asm_here();
     e_setc(GC_T1);
+    e_cell(GC_T1); asm_toR();                        /* save p */
     e_cell(GC_T1); asm_lit(CLOSURE_SPEC); asm_host(HOST_ADD); asm_fetch(); call_mark_value();
+    asm_fromR(); e_setc(GC_T1);                      /* restore p */
+    e_cell(GC_T1); asm_toR();                        /* save p */
     e_cell(GC_T1); asm_lit(CLOSURE_BODY); asm_host(HOST_ADD); asm_fetch(); call_mark_value();
+    asm_fromR(); e_setc(GC_T1);                      /* restore p */
     e_cell(GC_T1); asm_lit(CLOSURE_CTX);  asm_host(HOST_ADD); asm_fetch(); call_mark_value();
     asm_exit();
 }
@@ -498,6 +506,40 @@ static void emit_trace_string(void) {
     asm_host(HOST_DUMP); asm_halt();                  /* corrupt length */
     asm_patch_here(j_ok);
     /* no children to trace */
+    asm_exit();
+}
+
+/* TRACE-BLOCK: ( p -- ) trace a managed BLOCK (a tagged-value series). First
+ * verify length against the allocated block extent (fail-stop, never clamp),
+ * then mark_value each tagged element. The alignment padding is never traced.
+ *
+ * trace_block is reached ONLY from the collector's drain loop, so like
+ * trace_user/trace_string it may use the GC_T6..GC_T8 scan/drain partition for
+ * its locals; mark_value (GC_T1..GC_T5) is called per element and the loop
+ * state (GC_T6/GC_T7/GC_T8) survives those calls. */
+static void emit_trace_block(void) {
+    r_trace_block = asm_here();
+    e_setc(GC_T6);                                   /* p */
+    /* length = M[p]; size = M[p-16]; require length <= size-17 (fail-stop) */
+    e_cell(GC_T6); asm_lit(GC_HDR_STRIDE); asm_host(HOST_SUB); asm_fetch(); e_setc(GC_T5); /* size */
+    e_cell(GC_T6); asm_fetch(); e_setc(GC_T7);        /* length */
+    e_cell(GC_T7);                                    /* length */
+    e_cell(GC_T5); asm_lit(GC_HDR_STRIDE + 1); asm_host(HOST_SUB);   /* size-17 */
+    asm_host(HOST_GT);                                /* length > size-17 ? */
+    cell j_ok = asm_zbranch_fwd();
+    asm_host(HOST_DUMP); asm_halt();                  /* corrupt length */
+    asm_patch_here(j_ok);
+    /* mark each element M[p+1+i] */
+    asm_lit(0); e_setc(GC_T8);                        /* i = 0 */
+    cell loop = asm_here();
+    e_cell(GC_T8); e_cell(GC_T7); asm_host(HOST_LT);
+    cell j_done = asm_zbranch_fwd();
+    e_cell(GC_T6); asm_lit(1); asm_host(HOST_ADD);
+    e_cell(GC_T8); asm_host(HOST_ADD); asm_fetch();
+    call_mark_value();                                /* element */
+    e_cell(GC_T8); asm_lit(1); asm_host(HOST_ADD); e_setc(GC_T8);
+    asm_branch(loop);
+    asm_patch_here(j_done);
     asm_exit();
 }
 
@@ -583,7 +625,46 @@ static void emit_mark_value(void) {
     asm_patch_here(j_sbad1);
     asm_host(HOST_DUMP); asm_halt();                        /* out-of-range T_STRING */
     asm_patch_here(j_ns);
-    /* else: BLOCK/RAW/int/none/word/set/get/lit/native -> no collected children */
+    /* BLOCK (tag 6): three-way classification. A managed block (payload in the
+     * managed heap) must be an allocated GC_KIND_BLOCK payload start; a
+     * permanent loader block (payload in the loader heap) has no children;
+     * anything else (below heap, interior, unallocated, wrong kind, above the
+     * loader heap) is fail-stop corruption. */
+    e_cell(GC_T2); asm_lit(T_BLOCK); asm_host(HOST_EQ);
+    cell j_nb = asm_zbranch_fwd();                        /* not BLOCK -> skip */
+    asm_lit(T_BLOCK); asm_host(HOST_SUB); e_setc(GC_T1);   /* p = v - T_BLOCK */
+    /* p < GC_HEAP_BASE -> corrupt */
+    e_cell(GC_T1); asm_lit(GC_HEAP_BASE); asm_host(HOST_GE);
+    cell j_below = asm_zbranch_fwd();
+    /* p < GC_HEAP_LIMIT -> managed range */
+    e_cell(GC_T1); asm_lit(GC_HEAP_LIMIT); asm_host(HOST_LT);
+    cell j_not_managed = asm_zbranch_fwd();
+    /* validate header h = p - 16: allocated GC_KIND_BLOCK payload start */
+    e_cell(GC_T1); asm_lit(GC_HDR_STRIDE); asm_host(HOST_SUB); e_setc(GC_T3); /* h */
+    e_cell(GC_T3); asm_lit(GC_HEAP_BASE); asm_host(HOST_GE);
+    cell j_h = asm_zbranch_fwd();                          /* h < base -> corrupt */
+    e_cell(GC_T3); asm_lit(GC_HDR_FLAGS); asm_host(HOST_ADD); asm_fetch(); e_setc(GC_T4); /* flags */
+    e_cell(GC_T4); asm_lit(2); asm_host(HOST_MOD);          /* alloc bit */
+    asm_lit(1); asm_host(HOST_EQ);
+    cell j_a = asm_zbranch_fwd();                          /* unallocated -> corrupt */
+    e_cell(GC_T4); asm_lit(4); asm_host(HOST_DIV); asm_lit(8); asm_host(HOST_MOD); /* kind */
+    asm_lit(GC_KIND_BLOCK); asm_host(HOST_EQ);
+    cell j_k = asm_zbranch_fwd();                          /* wrong kind -> corrupt */
+    e_cell(GC_T1); asm_call(r_mark_push); asm_exit();      /* valid managed block */
+    asm_patch_here(j_k);
+    asm_patch_here(j_a);
+    asm_patch_here(j_h);
+    asm_host(HOST_DUMP); asm_halt();                        /* corrupt managed pointer */
+    /* p >= GC_HEAP_LIMIT: permanent loader block? */
+    asm_patch_here(j_not_managed);
+    e_cell(GC_T1); asm_lit(R0S1_HEAP_LIMIT); asm_host(HOST_LT);
+    cell j_not_loader = asm_zbranch_fwd();                  /* p >= 47000 -> corrupt */
+    asm_exit();                                             /* loader block: no children */
+    asm_patch_here(j_not_loader);
+    asm_patch_here(j_below);
+    asm_host(HOST_DUMP); asm_halt();                        /* out-of-range T_BLOCK */
+    asm_patch_here(j_nb);
+    /* else: RAW/int/none/word/set/get/lit/native -> no collected children */
     asm_drop();
     asm_exit();
 }
@@ -719,6 +800,10 @@ static void emit_collect(void) {
     cell j_nstr = asm_zbranch_fwd();
     e_cell(GC_T6); asm_call(r_trace_string); asm_branch(drain);
     asm_patch_here(j_nstr);
+    e_cell(GC_T8); asm_lit(GC_KIND_BLOCK); asm_host(HOST_EQ);
+    cell j_nblk = asm_zbranch_fwd();
+    e_cell(GC_T6); asm_call(r_trace_block); asm_branch(drain);
+    asm_patch_here(j_nblk);
     asm_branch(drain);
     asm_patch_here(j_drain_done);
 
@@ -845,6 +930,7 @@ static void emit_gc(void) {
     emit_trace_frame();
     emit_trace_user();
     emit_trace_string();
+    emit_trace_block();
     emit_mark_frame();
     emit_mark_value();
     emit_scan_values();
@@ -1033,6 +1119,16 @@ static void emit_mkclosure(void) {
 static void emit_values(void) {
     r_values = asm_here();
     e_untag_ptr(); e_setc(RV_T1);                    /* block_ptr */
+    /* M3D execution guard: a managed block (payload in the managed heap) must
+     * not be executed as code; fail-stop before any evaluator pointer is
+     * installed or any element executes. */
+    e_cell(RV_T1); asm_lit(GC_HEAP_BASE); asm_host(HOST_GE);
+    cell j_g1 = asm_zbranch_fwd();
+    e_cell(RV_T1); asm_lit(GC_HEAP_LIMIT); asm_host(HOST_LT);
+    cell j_g2 = asm_zbranch_fwd();
+    asm_host(HOST_DUMP); asm_halt();                  /* managed block: not executable */
+    asm_patch_here(j_g2);
+    asm_patch_here(j_g1);
     e_cell(RV_T1); asm_fetch(); e_setc(RV_T3);        /* count */
     e_cell(RV_CUR); asm_toR();
     e_cell(RV_END); asm_toR();
@@ -1066,6 +1162,14 @@ static void emit_values(void) {
 static void emit_run_block(void) {
     r_run_block = asm_here();
     e_untag_ptr(); e_setc(RV_T1);                    /* block_ptr */
+    /* M3D execution guard: a managed block must not be executed as code. */
+    e_cell(RV_T1); asm_lit(GC_HEAP_BASE); asm_host(HOST_GE);
+    cell j_g1 = asm_zbranch_fwd();
+    e_cell(RV_T1); asm_lit(GC_HEAP_LIMIT); asm_host(HOST_LT);
+    cell j_g2 = asm_zbranch_fwd();
+    asm_host(HOST_DUMP); asm_halt();                  /* managed block: not executable */
+    asm_patch_here(j_g2);
+    asm_patch_here(j_g1);
     e_cell(RV_T1); asm_fetch(); e_setc(RV_T3);        /* count */
     e_cell(RV_CUR); asm_toR();
     e_cell(RV_END); asm_toR();
