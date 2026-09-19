@@ -1,0 +1,79 @@
+# Deploy the GitHub Pages site from CI.
+#
+# The existing R0/S1 counter demo (docs/index.html + demo.js/demo.wasm) and the
+# W2 standalone demo (docs/standalone.html + glon.js/glon.wasm) are copied
+# through unchanged. The G1E shop is added under /shop/:
+#
+#   demo/shop/app.html  ->  _site/shop/index.html
+#   demo/shop/host.js   ->  _site/shop/host.js
+#   demo/shop/glon.wasm ->  _site/shop/glon.wasm   (built here by Emscripten)
+#
+# Emscripten builds the shop WASM in CI, so no local emcc is required and no
+# WASM binary is committed. Native tests + the frozen-S1 check run first and
+# gate the build.
+#
+# NOTE: this uses the modern Actions-based Pages deployment, so the repository's
+# Pages source must be set to "GitHub Actions" (Settings -> Pages -> Source).
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [glon-shop-g1a, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags so check-frozen-s1.sh resolves s1-frozen-v1
+      - name: Frozen-S1 check + native tests
+        run: |
+          ./check-frozen-s1.sh
+          make test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+      - name: Build shop WASM
+        run: make demo/shop/glon.wasm
+      - name: Assemble Pages site
+        run: |
+          mkdir -p _site
+          cp -r docs/. _site/
+          mkdir -p _site/shop
+          cp demo/shop/app.html _site/shop/index.html
+          cp demo/shop/host.js demo/shop/glon.wasm _site/shop/
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
