@@ -58,6 +58,7 @@ li-close:  [60 47 108 105 62]
 btn-open:  [60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 39]
 btn-mid:   [39 62]
 btn-close: [60 47 98 117 116 116 111 110 62]
+event-open: [60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 101 118 101 110 116 61 39]
 
 
 
@@ -65,6 +66,10 @@ heading: func [content] [ emit-text h1-open do content emit-text h1-close ]
 text:    func [content] [ emit-text p-open  do content emit-text p-close ]
 link:    func [content route] [
     emit-text btn-open emit-text route emit-text btn-mid do content emit-text btn-close
+]
+
+button:  func [content event] [
+    emit-text event-open emit-text event emit-text btn-mid do content emit-text btn-close
 ]
 
 
@@ -93,6 +98,7 @@ emit-product-at: func [items i n] [
 
 
 visit-count: 0
+cart-count: 0
 
 
 catalog: [ [84 101 97] [82 105 99 101] ]
@@ -107,6 +113,8 @@ products-view: [
     heading [ emit-text [80 114 111 100 117 99 116 115] ]
     list    catalog
     text    [ emit-text [80 114 111 100 117 99 116 115 32 112 97 103 101 32 118 105 115 105 116 115 58 32] emit-int visit-count ]
+    text    [ emit-text [67 97 114 116 58 32] emit-int cart-count ]
+    button  [ emit-text [65 100 100] ] [97 100 100 45 111 110 101]
     link    [ emit-text [66 97 99 107 32 104 111 109 101] ] [104 111 109 101]
 ]
 
@@ -116,12 +124,29 @@ not-found-view: [
 ]
 
 
-go-home:      func [] [ emit-clear do home-view emit-finish ]
-go-products:  func [] [ visit-count: + visit-count 1 emit-clear do products-view emit-finish ]
-go-not-found: func [] [ emit-clear do not-found-view emit-finish ]
+render-home:      func [] [ emit-clear do home-view emit-finish ]
+render-products:  func [] [ emit-clear do products-view emit-finish ]
+render-not-found: func [] [ emit-clear do not-found-view emit-finish ]
 
+render-current: func [] [
+    either = current-route 'products [ render-products ]
+    [ either = current-route 'home [ render-home ] [ render-not-found ] ]
+]
+
+
+go-home:      func [] [ render-current ]
+go-products:  func [] [ visit-count: + visit-count 1 render-current ]
+go-not-found: func [] [ render-current ]
 
 route: [
     either = current-route 'products [ go-products ]
     [ either = current-route 'home [ go-home ] [ go-not-found ] ]
+]
+
+
+add-one: func [] [ cart-count: + cart-count 1 render-current ]
+
+
+do-event: [
+    either = current-event 'add-one [ add-one ] [ render-current ]
 ] ]

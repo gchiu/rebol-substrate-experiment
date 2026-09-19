@@ -1,12 +1,14 @@
-// demo/shop/node_test.js -- headless verification of the Glon Shop G1B demo
+// demo/shop/node_test.js -- headless verification of the Glon Shop G1C demo
 // (no DOM, no browser, no Emscripten runtime).
 //
 // Instantiates demo/shop/glon.wasm with the three host imports, loads the
 // bundled GLON source (demo/shop/bundle.glon, produced by build.py), then
-// drives the router exactly as the browser does and asserts the rendered HTML.
+// drives the router AND the event bridge exactly as the browser does and
+// asserts the rendered HTML.
 //
-// This exercises the real WASM module + the G1B view dialect + host bridge; the
-// only thing stubbed is the DOM (host_set_html is captured instead of innerHTML).
+// This exercises the real WASM module + the G1C view dialect + generic event
+// path + host bridge; the only thing stubbed is the DOM (host_set_html is
+// captured instead of writing innerHTML).
 "use strict";
 
 const fs = require("fs");
@@ -25,7 +27,7 @@ const imports = {
     host_print(ptr, len) {
       logs.push(new TextDecoder().decode(new Uint8Array(mem.buffer, ptr, len)));
     },
-    host_set_text(handle, value) { /* retained; unused by G1B */ },
+    host_set_text(handle, value) { /* retained; unused */ },
     host_set_html(handle, ptr, len) {
       rendered.push(new TextDecoder().decode(new Uint8Array(mem.buffer, ptr, len)));
     }
@@ -33,7 +35,7 @@ const imports = {
 };
 
 function fail(msg) {
-  console.error("GLON_G1B_TEST FAIL: " + msg);
+  console.error("GLON_G1C_TEST FAIL: " + msg);
   process.exit(1);
 }
 
@@ -56,6 +58,14 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
     return rendered.join("");
   };
 
+  const event = (token) => {
+    rendered.length = 0;
+    const [p, n] = put(token);
+    const rc = e.glon_event(p, n);
+    if (rc !== 0) fail("glon_event('" + token + "') rc=" + rc);
+    return rendered.join("");
+  };
+
   if (e.glon_init() !== 0) fail("glon_init");
 
   const [p, n] = put(SRC);
@@ -66,22 +76,31 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   if (!/Glon Shop/.test(home) || !/data-glon-route='products'/.test(home))
     fail("home route: expected 'Glon Shop' + products button, got: " + home);
 
-  // 2..4. products route increments visit-count across entries
+  // 2. products route shows visit 1 and cart 0
   const v1 = route("products");
-  if (!/Products page visits: 1/.test(v1) || !/Tea/.test(v1) || !/Rice/.test(v1))
+  if (!/Products page visits: 1/.test(v1) || !/Cart: 0/.test(v1) || !/Tea/.test(v1) || !/Rice/.test(v1))
     fail("products visit 1: got: " + v1);
 
-  route("home"); // back home (state must survive)
+  // 3. add-one event increments cart (no re-render via route)
+  const c1 = event("add-one");
+  if (!/Cart: 1/.test(c1) || !/Products page visits: 1/.test(c1))
+    fail("add-one -> cart 1: got: " + c1);
 
+  const c2 = event("add-one");
+  if (!/Cart: 2/.test(c2))
+    fail("add-one -> cart 2: got: " + c2);
+
+  // 4. navigate away and back; cart persists
+  route("home");
   const v2 = route("products");
-  if (!/Products page visits: 2/.test(v2))
-    fail("products visit 2: got: " + v2);
+  if (!/Products page visits: 2/.test(v2) || !/Cart: 2/.test(v2))
+    fail("products again: expected visits 2 cart 2, got: " + v2);
 
-  // 5. unknown route renders not-found
+  // 5. unknown route -> not-found; unknown event -> current view (safe fallback)
   const nf = route("definitely-unknown");
   if (!/Not found/.test(nf))
     fail("unknown route: expected 'Not found', got: " + nf);
 
-  console.log("GLON_G1B_TEST PASS (home / products x2 visits / unknown -> not found)");
+  console.log("GLON_G1C_TEST PASS (home / products / add-one x2 / persist / unknown)");
   process.exit(0);
 }).catch((e) => fail(e.message || e));

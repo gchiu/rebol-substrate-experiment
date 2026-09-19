@@ -11,7 +11,8 @@
  *                     [data-glon-id="<handle>"];
  *   - feed the GLON source (inlined as <script type="application/glon">) into
  *     glon_load exactly once at startup;
- *   - forward [data-glon-route] clicks and the initial location to glon_route.
+ *   - forward [data-glon-route] clicks and the initial location to glon_route;
+ *   - forward [data-glon-event] clicks to glon_event.
  *
  * No routing decision, application state, or page logic lives here. Glon is
  * the application controller; this file is only the host bridge.
@@ -56,6 +57,12 @@
     ex.glon_route(pair[0], pair[1]);
   }
 
+  function glonEvent(token) {
+    if (typeof ex.glon_event !== "function") return;
+    var pair = alloc(token);
+    ex.glon_event(pair[0], pair[1]);
+  }
+
   function initialToken() {
     var path = window.location.pathname.replace(/^\/+/, "");
     if (path === "index.html") path = "";
@@ -79,13 +86,17 @@
       return;
     }
 
-    // Event delegation: any [data-glon-route] click (including buttons the
-    // router just rendered) is forwarded to Glon. No per-render re-binding.
+    // Event delegation: [data-glon-route] clicks navigate; [data-glon-event]
+    // clicks forward a generic application event. JS only forwards the token;
+    // it never interprets what the route or event means.
     document.addEventListener("click", function (e) {
-      var el = e.target && e.target.closest ? e.target.closest("[data-glon-route]") : null;
-      if (el) {
-        e.preventDefault();
+      var el = e.target && e.target.closest ? e.target.closest("[data-glon-route], [data-glon-event]") : null;
+      if (!el) return;
+      e.preventDefault();
+      if (el.hasAttribute("data-glon-route")) {
         route(el.getAttribute("data-glon-route"));
+      } else if (el.hasAttribute("data-glon-event")) {
+        glonEvent(el.getAttribute("data-glon-event"));
       }
     });
 

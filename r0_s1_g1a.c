@@ -108,11 +108,25 @@ int r0_s1_g1a_render_fragment(cell fragment, char *out, int cap, int *out_len) {
     return 0;
 }
 
+static int g1a_dispatch(const char *var, const char *dispatcher, const char *token,
+                        char *out, int cap, int *out_len);
+
 int r0_s1_g1a_route(const char *token, char *out, int cap, int *out_len) {
+    return g1a_dispatch("current-route", "route", token, out, cap, out_len);
+}
+
+int r0_s1_g1a_event(const char *token, char *out, int cap, int *out_len) {
+    return g1a_dispatch("current-event", "do-event", token, out, cap, out_len);
+}
+
+/* Shared primitive: bind `var` to the token word, `do` the named dispatcher
+ * block, then render the HTML it produced. */
+static int g1a_dispatch(const char *var, const char *dispatcher, const char *token,
+                        char *out, int cap, int *out_len) {
     if (out_len) *out_len = 0;
 
     /* validate the token is a single safe word (no delimiters that would
-     * break the `[ current-route: 'TOKEN do route ]` source construction) */
+     * break the source construction) */
     int tlen = 0;
     for (const char *c = token; *c; c++) {
         if (*c == '[' || *c == ']' || *c == '\'' || *c == ':' ||
@@ -122,15 +136,19 @@ int r0_s1_g1a_route(const char *token, char *out, int cap, int *out_len) {
     }
     if (tlen == 0) return -1;
 
-    /* build "[ current-route: 'TOKEN do route ]" */
+    /* build "[ VAR: 'TOKEN do DISPATCHER ]" */
     char src[320];
     int n = 0;
     src[n++] = '['; src[n++] = ' ';
-    const char *pre = "current-route: '";
+    for (const char *c = var; *c && n < 318; c++) src[n++] = *c;
+    const char *pre = ": '";
     for (; *pre && n < 318; pre++) src[n++] = *pre;
     for (const char *c = token; *c && n < 318; c++) src[n++] = *c;
-    const char *post = " do route ]";
+    const char *post = " do ";
     for (; *post && n < 318; post++) src[n++] = *post;
+    for (const char *c = dispatcher; *c && n < 318; c++) src[n++] = *c;
+    const char *post2 = " ]";
+    for (; *post2 && n < 318; post2++) src[n++] = *post2;
     src[n] = 0;
 
     int err = 0;
@@ -138,7 +156,7 @@ int r0_s1_g1a_route(const char *token, char *out, int cap, int *out_len) {
     if (err) return -1;
 
     int N = r0_s1_run(blk);
-    if (N < 1) return -1;               /* no fragment selected */
+    if (N < 1) return -1;               /* no fragment produced */
 
     cell frag = r0_s1_result(0, N);
     return r0_s1_g1a_render_fragment(frag, out, cap, out_len);

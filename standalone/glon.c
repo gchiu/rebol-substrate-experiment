@@ -268,6 +268,27 @@ int glon_route(const unsigned char *token, unsigned int len) {
     return 0;
 }
 
+/* G1C: forward a generic application event into Glon.  A [data-glon-event]
+ * click carries a single event token; JS forwards it here without knowing what
+ * it means.  Glon's `do-event` block interprets the token, mutates persistent
+ * state, and re-renders the current view, which is written to the DOM via
+ * host_set_html.  JS holds no application semantics. */
+__attribute__((export_name("glon_event")))
+int glon_event(const unsigned char *token, unsigned int len) {
+    if (len == 0 || len > 63) return -1;
+    unsigned char tok[64];
+    unsigned int i;
+    for (i = 0; i < len; i++) tok[i] = token[i];
+    tok[i] = 0;
+
+    int out_len = 0;
+    if (r0_s1_g1a_event((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len) != 0)
+        return -2;
+
+    host_set_html(1u, htmlbuf, (unsigned int)out_len);
+    return 0;
+}
+
 /* Emscripten standalone-CRT stack shims: exported by the CRT even under
  * -nostdlib, but never called by our handwritten host.  No-op is fine. */
 void *emscripten_stack_get_current(void) { return (void *)0; }

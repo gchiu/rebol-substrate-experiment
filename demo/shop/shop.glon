@@ -1,21 +1,22 @@
-;; demo/shop/shop.glon -- the Glon Shop G1B application (authoritative source).
+;; demo/shop/shop.glon -- the Glon Shop G1C application (authoritative source).
 ;;
-;; G1B reframes the shop from "HTML fragments with embedded code" (G1A) to a
-;; small persistent-SPA dialect. The application now reads as:
+;; G1C adds a generic browser->Glon application event path on top of G1B:
 ;;
-;;   state        -> a plain GLON set-word (visit-count)
+;;   state        -> plain GLON set-words (visit-count, cart-count)
 ;;   product data -> a GLON block (catalog)
-;;   views        -> composable GLON blocks of heading/text/list/link
-;;   routes       -> ordinary GLON functions (go-home / go-products / …)
-;;   router       -> a GLON block dispatching on current-route
+;;   views        -> composable GLON blocks (heading/text/list/link/button)
+;;   routes       -> entry side effects + render-current
+;;   events       -> a generic dispatcher (do-event) + handlers (add-one)
 ;;
-;; Rendering a view is `do view-block`; each term emits HTML into the fixed
-;; output block (see g1b.glon). String literals here are converted to byte-lists
-;; by demo/shop/build.py (GLON has no string literals yet). The browser host
-;; (host.js) and the WASM host (standalone/glon.c) are unchanged from G1A.
+;; A view is a block of ordinary GLON calls; rendering is `do view-block`.
+;; Clicking a [data-glon-route] button enters Glon through glon_route; clicking
+;; a [data-glon-event] button enters Glon through glon_event as an application
+;; event (a token). JavaScript remains generic: it forwards the token, never
+;; interpreting it.
 
 ;; ---- application state -----------------------------------------------------
 visit-count: 0
+cart-count: 0
 
 ;; ---- product data ---------------------------------------------------------
 catalog: [ "Tea" "Rice" ]
@@ -30,6 +31,8 @@ products-view: [
     heading [ emit-text "Products" ]
     list    catalog
     text    [ emit-text "Products page visits: " emit-int visit-count ]
+    text    [ emit-text "Cart: " emit-int cart-count ]
+    button  [ emit-text "Add" ] "add-one"
     link    [ emit-text "Back home" ] "home"
 ]
 
@@ -38,13 +41,30 @@ not-found-view: [
     link    [ emit-text "Back home" ] "home"
 ]
 
-;; ---- routes ----------------------------------------------------------------
-go-home:      func [] [ emit-clear do home-view emit-finish ]
-go-products:  func [] [ visit-count: + visit-count 1 emit-clear do products-view emit-finish ]
-go-not-found: func [] [ emit-clear do not-found-view emit-finish ]
+;; ---- rendering -------------------------------------------------------------
+render-home:      func [] [ emit-clear do home-view emit-finish ]
+render-products:  func [] [ emit-clear do products-view emit-finish ]
+render-not-found: func [] [ emit-clear do not-found-view emit-finish ]
 
-;; ---- router ----------------------------------------------------------------
+render-current: func [] [
+    either = current-route 'products [ render-products ]
+    [ either = current-route 'home [ render-home ] [ render-not-found ] ]
+]
+
+;; ---- routes (entry side effects, then render) -----------------------------
+go-home:      func [] [ render-current ]
+go-products:  func [] [ visit-count: + visit-count 1 render-current ]
+go-not-found: func [] [ render-current ]
+
 route: [
     either = current-route 'products [ go-products ]
     [ either = current-route 'home [ go-home ] [ go-not-found ] ]
+]
+
+;; ---- events (mutate state, rerender current view) -------------------------
+add-one: func [] [ cart-count: + cart-count 1 render-current ]
+
+;; Unknown events fall back to re-rendering the current view (no state change).
+do-event: [
+    either = current-event 'add-one [ add-one ] [ render-current ]
 ]

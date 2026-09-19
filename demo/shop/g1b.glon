@@ -58,6 +58,7 @@ li-close:  "</li>"
 btn-open:  "<button data-glon-route='"
 btn-mid:   "'>"
 btn-close: "</button>"
+event-open: "<button data-glon-event='"
 
 ;; ---- view vocabulary ------------------------------------------------------
 ;; Each term wraps its CONTENT (a block of emit-* calls) in an HTML element.
@@ -65,6 +66,10 @@ heading: func [content] [ emit-text h1-open do content emit-text h1-close ]
 text:    func [content] [ emit-text p-open  do content emit-text p-close ]
 link:    func [content route] [
     emit-text btn-open emit-text route emit-text btn-mid do content emit-text btn-close
+]
+;; G1C: a button that carries a generic application-event token (not a route).
+button:  func [content event] [
+    emit-text event-open emit-text event emit-text btn-mid do content emit-text btn-close
 ]
 
 ;; ---- iteration (a tiny product catalogue) ---------------------------------

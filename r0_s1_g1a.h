@@ -48,4 +48,10 @@ int r0_s1_g1a_render_fragment(cell fragment, char *out, int cap, int *out_len);
  * the renderer. */
 int r0_s1_g1a_route(const char *token, char *out, int cap, int *out_len);
 
+/* Route an application EVENT token (G1C). Binds `current-event` to the token
+ * word, runs the GLON `do-event` block (the *application's* event dispatch),
+ * then renders the HTML that block produced. Returns 0 on success, -1 on error.
+ * The host knows only that "an event happened"; the meaning lives in GLON. */
+int r0_s1_g1a_event(const char *token, char *out, int cap, int *out_len);
+
 #endif /* R0_S1_G1A_H */
