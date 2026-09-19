@@ -198,6 +198,7 @@ static const raw_sym_t raw_syms[] = {
     { "T_USER", T_USER }, { "GC_KIND_USER", GC_KIND_USER },
     { "T_STRING", T_STRING }, { "GC_KIND_STRING", GC_KIND_STRING },
     { "T_BLOCK", T_BLOCK }, { "GC_KIND_BLOCK", GC_KIND_BLOCK },
+    { "G1_OUT", G1_OUT }, { "G1_OUT_DATA", G1_OUT_DATA },
 };
 #define N_RAW_SYMS ((int)(sizeof raw_syms / sizeof raw_syms[0]))
 

@@ -1,12 +1,12 @@
-// demo/shop/node_test.js -- headless verification of the Glon Shop G1A demo
+// demo/shop/node_test.js -- headless verification of the Glon Shop G1B demo
 // (no DOM, no browser, no Emscripten runtime).
 //
 // Instantiates demo/shop/glon.wasm with the three host imports, loads the
 // bundled GLON source (demo/shop/bundle.glon, produced by build.py), then
 // drives the router exactly as the browser does and asserts the rendered HTML.
 //
-// This exercises the real WASM module + the G1A host bridge; the only thing
-// stubbed is the DOM (host_set_html is captured instead of writing innerHTML).
+// This exercises the real WASM module + the G1B view dialect + host bridge; the
+// only thing stubbed is the DOM (host_set_html is captured instead of innerHTML).
 "use strict";
 
 const fs = require("fs");
@@ -25,7 +25,7 @@ const imports = {
     host_print(ptr, len) {
       logs.push(new TextDecoder().decode(new Uint8Array(mem.buffer, ptr, len)));
     },
-    host_set_text(handle, value) { /* retained; unused by G1A */ },
+    host_set_text(handle, value) { /* retained; unused by G1B */ },
     host_set_html(handle, ptr, len) {
       rendered.push(new TextDecoder().decode(new Uint8Array(mem.buffer, ptr, len)));
     }
@@ -33,7 +33,7 @@ const imports = {
 };
 
 function fail(msg) {
-  console.error("GLON_G1A_TEST FAIL: " + msg);
+  console.error("GLON_G1B_TEST FAIL: " + msg);
   process.exit(1);
 }
 
@@ -61,9 +61,9 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   const [p, n] = put(SRC);
   if (e.glon_load(p, n) !== 0) fail("glon_load");
 
-  // 1. home route selects the home fragment
+  // 1. home route selects the home view
   const home = route("home");
-  if (!/Glon Shop/.test(home) || !/data-glon-route="products"/.test(home))
+  if (!/Glon Shop/.test(home) || !/data-glon-route='products'/.test(home))
     fail("home route: expected 'Glon Shop' + products button, got: " + home);
 
   // 2..4. products route increments visit-count across entries
@@ -82,6 +82,6 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   if (!/Not found/.test(nf))
     fail("unknown route: expected 'Not found', got: " + nf);
 
-  console.log("GLON_G1A_TEST PASS (home / products x2 visits / unknown -> not found)");
+  console.log("GLON_G1B_TEST PASS (home / products x2 visits / unknown -> not found)");
   process.exit(0);
 }).catch((e) => fail(e.message || e));

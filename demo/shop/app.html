@@ -13,58 +13,133 @@
 <body>
 <h1>Glon Shop</h1>
 <div id="app" data-glon-id="1"></div>
-<script type="application/glon">;; demo/shop/shop.glon -- the Glon Shop G1A application (authoritative source).
-;;
-;; This is the FIRST real Glon application: a browser-hosted, WASM-executed
-;; shopping-front demo. It proves the G1A runtime model:
-;;
-;;   * a persistent Glon runtime (WASM) acting as the application engine;
-;;   * browser events forwarded to Glon through the host bridge;
-;;   * application state that survives route changes;
-;;   * routes that select bundled HTML fragments;
-;;   * fragments that contain embedded Glon (&lt;% ... %&gt;), evaluated at render.
-;;
-;; ROUTING, STATE and the FRAGMENT SELECTION all live in this source. The
-;; browser host (host.js) and the WASM host (standalone/glon.c) only forward
-;; events, render HTML into the DOM, and expose the two imports/exports; they
-;; contain no application logic.
-;;
-;; The three fragments (home-fragment, products-fragment, not-found-fragment)
-;; are INJECTED by demo/shop/build.py at the `home-fragment: [ 60 104 49 62 71 108 111 110 32 83 104 111 112 60 47 104 49 62 10 60 112 62 60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 34 112 114 111 100 117 99 116 115 34 62 86 105 101 119 32 112 114 111 100 117 99 116 115 60 47 98 117 116 116 111 110 62 60 47 112 62 10 ]
-products-fragment: [ 60 104 49 62 80 114 111 100 117 99 116 115 60 47 104 49 62 10 60 37 32 118 105 115 105 116 45 99 111 117 110 116 58 32 43 32 118 105 115 105 116 45 99 111 117 110 116 32 49 32 110 111 110 101 32 37 62 10 60 117 108 62 60 108 105 62 84 101 97 32 38 109 100 97 115 104 59 32 36 49 50 46 48 48 60 47 108 105 62 60 108 105 62 82 105 99 101 32 38 109 100 97 115 104 59 32 36 56 46 53 48 60 47 108 105 62 60 47 117 108 62 10 60 112 62 80 114 111 100 117 99 116 115 32 112 97 103 101 32 118 105 115 105 116 115 58 32 60 37 32 118 105 115 105 116 45 99 111 117 110 116 32 37 62 60 47 112 62 10 60 112 62 60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 34 104 111 109 101 34 62 66 97 99 107 32 104 111 109 101 60 47 98 117 116 116 111 110 62 60 47 112 62 10 ]
-not-found-fragment: [ 60 104 49 62 78 111 116 32 102 111 117 110 100 60 47 104 49 62 10 60 112 62 60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 34 104 111 109 101 34 62 66 97 99 107 32 104 111 109 101 60 47 98 117 116 116 111 110 62 60 47 112 62 10 ]` marker below, as
-;; byte lists generated from demo/shop/fragments/*.html. GLON has no string
-;; literals, so a bundled fragment is a loader-heap BLOCK of integer byte
-;; codes (0..255) -- permanent across runs, and the shape a future compressed
-;; fragment would decompress into.
+<script type="application/glon">[ 
 
-[
-;; ---- application state -----------------------------------------------------
-;; An integer in the global context. It persists across every route change and
-;; proves the runtime is alive and not reconstructed per route.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+emit-clear: raw [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
+emit-byte: raw 1 [
+    LIT SCRATCH_E @ LIT G1_OUT_DATA ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    ARITY 0 EXIT
+]
+emit-finish: raw [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
+
+
+block-len: raw 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
+block-at: raw 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ]
+
+
+emit-int: func [n] [ either &lt; n 0 [ emit-byte 45 emit-digits - 0 n ] [ emit-digits n ] ]
+emit-digits: func [n] [
+    either &gt; n 9 [ emit-digits / n 10 ] [ none ]
+    emit-byte + 48 - n * 10 / n 10
+]
+emit-text: func [blk] [ emit-text-at blk 0 block-len blk ]
+emit-text-at: func [blk i n] [
+    either &lt; i n [ emit-byte block-at blk i emit-text-at blk + i 1 n ] [ none ]
+]
+
+
+h1-open:   [60 104 49 62]
+h1-close:  [60 47 104 49 62]
+p-open:    [60 112 62]
+p-close:   [60 47 112 62]
+ul-open:   [60 117 108 62]
+ul-close:  [60 47 117 108 62]
+li-open:   [60 108 105 62]
+li-close:  [60 47 108 105 62]
+btn-open:  [60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 39]
+btn-mid:   [39 62]
+btn-close: [60 47 98 117 116 116 111 110 62]
+
+
+
+heading: func [content] [ emit-text h1-open do content emit-text h1-close ]
+text:    func [content] [ emit-text p-open  do content emit-text p-close ]
+link:    func [content route] [
+    emit-text btn-open emit-text route emit-text btn-mid do content emit-text btn-close
+]
+
+
+list: func [items] [ emit-text ul-open each-product items emit-text ul-close ]
+each-product: func [items] [ emit-product-at items 0 block-len items ]
+emit-product-at: func [items i n] [
+    either &lt; i n [
+        emit-text li-open emit-text block-at items i emit-text li-close
+        emit-product-at items + i 1 n
+    ] [ none ]
+] 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 visit-count: 0
 
-;; ---- fragments (injected by demo/shop/build.py) ---------------------------
-home-fragment: [ 60 104 49 62 71 108 111 110 32 83 104 111 112 60 47 104 49 62 10 60 112 62 60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 34 112 114 111 100 117 99 116 115 34 62 86 105 101 119 32 112 114 111 100 117 99 116 115 60 47 98 117 116 116 111 110 62 60 47 112 62 10 ]
-products-fragment: [ 60 104 49 62 80 114 111 100 117 99 116 115 60 47 104 49 62 10 60 37 32 118 105 115 105 116 45 99 111 117 110 116 58 32 43 32 118 105 115 105 116 45 99 111 117 110 116 32 49 32 110 111 110 101 32 37 62 10 60 117 108 62 60 108 105 62 84 101 97 32 38 109 100 97 115 104 59 32 36 49 50 46 48 48 60 47 108 105 62 60 108 105 62 82 105 99 101 32 38 109 100 97 115 104 59 32 36 56 46 53 48 60 47 108 105 62 60 47 117 108 62 10 60 112 62 80 114 111 100 117 99 116 115 32 112 97 103 101 32 118 105 115 105 116 115 58 32 60 37 32 118 105 115 105 116 45 99 111 117 110 116 32 37 62 60 47 112 62 10 60 112 62 60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 34 104 111 109 101 34 62 66 97 99 107 32 104 111 109 101 60 47 98 117 116 116 111 110 62 60 47 112 62 10 ]
-not-found-fragment: [ 60 104 49 62 78 111 116 32 102 111 117 110 100 60 47 104 49 62 10 60 112 62 60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 34 104 111 109 101 34 62 66 97 99 107 32 104 111 109 101 60 47 98 117 116 116 111 110 62 60 47 112 62 10 ]
 
-;; ---- routing --------------------------------------------------------------
-;; `current-route` holds the token for the requested route (bound by the host&#x27;s
-;; glon_route before `do route`). The ROUTE DECISION lives here in GLON: the
-;; route block maps a token to the fragment that page should render.
-current-route: none
+catalog: [ [84 101 97] [82 105 99 101] ]
 
-home-page: [ home-fragment ]
-products-page: [ products-fragment ]
-not-found-page: [ not-found-fragment ]
+
+home-view: [
+    heading [ emit-text [71 108 111 110 32 83 104 111 112] ]
+    link    [ emit-text [86 105 101 119 32 112 114 111 100 117 99 116 115] ] [112 114 111 100 117 99 116 115]
+]
+
+products-view: [
+    heading [ emit-text [80 114 111 100 117 99 116 115] ]
+    list    catalog
+    text    [ emit-text [80 114 111 100 117 99 116 115 32 112 97 103 101 32 118 105 115 105 116 115 58 32] emit-int visit-count ]
+    link    [ emit-text [66 97 99 107 32 104 111 109 101] ] [104 111 109 101]
+]
+
+not-found-view: [
+    heading [ emit-text [78 111 116 32 102 111 117 110 100] ]
+    link    [ emit-text [66 97 99 107 32 104 111 109 101] ] [104 111 109 101]
+]
+
+
+go-home:      func [] [ emit-clear do home-view emit-finish ]
+go-products:  func [] [ visit-count: + visit-count 1 emit-clear do products-view emit-finish ]
+go-not-found: func [] [ emit-clear do not-found-view emit-finish ]
+
 
 route: [
-    either = current-route &#x27;products [ do products-page ]
-    [ either = current-route &#x27;home [ do home-page ] [ do not-found-page ] ]
-]
-]
-</script>
+    either = current-route &#x27;products [ go-products ]
+    [ either = current-route &#x27;home [ go-home ] [ go-not-found ] ]
+] ]</script>
 <script src="host.js"></script>
 </body>
 </html>

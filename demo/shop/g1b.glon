@@ -1,0 +1,78 @@
+;; demo/shop/g1b.glon -- the G1B SPA view dialect (library).
+;;
+;; This is the smallest dialect that makes a persistent SPA read as a Rebol
+;; application rather than as HTML templates. It provides:
+;;
+;;   * a byte-output trapdoor (RAW helpers writing into a fixed output block);
+;;   * text emission (emit-int / emit-text);
+;;   * a small composable view vocabulary (heading / text / list / link);
+;;   * a raw HTML escape (a view may emit arbitrary bytes via emit-text).
+;;
+;; The dialect LOWERS onto the existing G1A machinery: a view is an ordinary
+;; GLON block of function calls; rendering a view is `do view-block`; the result
+;; is a loader-style byte-list block at a fixed address that the unchanged G1A
+;; renderer (r0_s1_g1a_render_fragment) writes to the DOM via host_set_html.
+;;
+;; Output buffer layout (fixed M[] cells, chosen free in [25315, 32768)):
+;;   M[G1_OUT]     = byte count        (set by emit-finish)
+;;   M[G1_OUT + 1] = site (unused)
+;;   M[G1_OUT + 2 + i] = byte i as a tagged int (mk_int)
+;;   SCRATCH_E    = live length during emission
+;; The returned value is mk_block(G1_OUT), exactly what the renderer expects.
+;; This is TEMPORARY scratch/output storage (see r0_s1.h G1_OUT); it uses no
+;; new S1 primitive, no native id, and no evaluator change.
+
+;; ---- byte output (RAW trapdoor) -------------------------------------------
+emit-clear: raw [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
+emit-byte: raw 1 [
+    LIT SCRATCH_E @ LIT G1_OUT_DATA ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    ARITY 0 EXIT
+]
+emit-finish: raw [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
+
+;; ---- loader-block primitives (RAW) ----------------------------------------
+block-len: raw 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
+block-at: raw 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ]
+
+;; ---- text emission (GLON policy over RAW mechanics) -----------------------
+emit-int: func [n] [ either < n 0 [ emit-byte 45 emit-digits - 0 n ] [ emit-digits n ] ]
+emit-digits: func [n] [
+    either > n 9 [ emit-digits / n 10 ] [ none ]
+    emit-byte + 48 - n * 10 / n 10
+]
+emit-text: func [blk] [ emit-text-at blk 0 block-len blk ]
+emit-text-at: func [blk i n] [
+    either < i n [ emit-byte block-at blk i emit-text-at blk + i 1 n ] [ none ]
+]
+
+;; ---- HTML tag atoms (single-quoted attributes keep the source simple) ------
+h1-open:   "<h1>"
+h1-close:  "</h1>"
+p-open:    "<p>"
+p-close:   "</p>"
+ul-open:   "<ul>"
+ul-close:  "</ul>"
+li-open:   "<li>"
+li-close:  "</li>"
+btn-open:  "<button data-glon-route='"
+btn-mid:   "'>"
+btn-close: "</button>"
+
+;; ---- view vocabulary ------------------------------------------------------
+;; Each term wraps its CONTENT (a block of emit-* calls) in an HTML element.
+heading: func [content] [ emit-text h1-open do content emit-text h1-close ]
+text:    func [content] [ emit-text p-open  do content emit-text p-close ]
+link:    func [content route] [
+    emit-text btn-open emit-text route emit-text btn-mid do content emit-text btn-close
+]
+
+;; ---- iteration (a tiny product catalogue) ---------------------------------
+list: func [items] [ emit-text ul-open each-product items emit-text ul-close ]
+each-product: func [items] [ emit-product-at items 0 block-len items ]
+emit-product-at: func [items i n] [
+    either < i n [
+        emit-text li-open emit-text block-at items i emit-text li-close
+        emit-product-at items + i 1 n
+    ] [ none ]
+]

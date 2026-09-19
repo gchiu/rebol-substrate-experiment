@@ -1,45 +1,47 @@
 #!/usr/bin/env python3
-"""demo/shop/build.py -- bundle the Glon Shop G1A application.
+"""demo/shop/build.py -- bundle the Glon Shop G1B application.
 
-Reads the authoritative GLON source (shop.glon) and the three readable HTML
-fragments (fragments/*.html), converts each fragment into a GLON byte-list
-definition, and writes the fully-bundled page demo/shop/app.html with:
+Reads the view-dialect library (g1b.glon) and the application source
+(shop.glon), and writes the fully-bundled page demo/shop/app.html plus a
+headless-test source demo/shop/bundle.glon.
 
-  * the combined GLON source inlined as <script type="application/glon">;
-  * the <div id="app" data-glon-id="1"> render target;
-  * a <script src="host.js"> and <script src="glon.wasm"> are referenced by
-    host.js/instantiateStreaming at runtime (host.js fetches glon.wasm).
+The one build-time translation is string literals -> GLON byte-lists (GLON has
+no string literal syntax yet): `"Products"` becomes `[ 80 114 111 ... ]`. This
+keeps the source readable while staying within the existing language. Everything
+else (views, routes, state) is ordinary GLON interpreted at runtime.
 
-No fragment is fetched over the network at runtime: fragments are byte-lists
-bundled inside the inlined GLON source. This is the "compressed fragment ->
-decompress -> scan/evaluate -> render" pipeline with the decompress step still
-the identity (fragments are stored uncompressed); a future build step can
-compress the bytes before emitting the list without changing the GLON source
-or the renderer.
+The browser page inlines the combined source in a
+<script type="application/glon"> block and references host.js / glon.wasm; no
+fragment is fetched over the network at runtime.
 """
 
 import html
 import pathlib
+import re
 
 HERE = pathlib.Path(__file__).resolve().parent
-FRAGMENTS = ["home", "products", "not-found"]
 
 
-def fragment_to_glon(name: str) -> str:
-    raw = (HERE / "fragments" / f"{name}.html").read_text(encoding="utf-8")
-    codes = [str(b) for b in raw.encode("utf-8")]
-    return f"{name}-fragment: [ {' '.join(codes)} ]"
+def to_byte_list(s: str) -> str:
+    return "[" + " ".join(str(b) for b in s.encode("utf-8")) + "]"
+
+
+def strip_comments(text: str) -> str:
+    return "\n".join(line.split(";;", 1)[0] for line in text.splitlines())
+
+
+def convert_strings(text: str) -> str:
+    return re.sub(r'"([^"]*)"', lambda m: to_byte_list(m.group(1)), text)
 
 
 def main() -> None:
-    shop = (HERE / "shop.glon").read_text(encoding="utf-8")
+    library = strip_comments((HERE / "g1b.glon").read_text(encoding="utf-8"))
+    app = strip_comments((HERE / "shop.glon").read_text(encoding="utf-8"))
+    combined = "[ " + library + " " + app + " ]"
+    combined = convert_strings(combined)
 
-    frag_lines = "\n".join(fragment_to_glon(n) for n in FRAGMENTS)
-    if ";; @fragments" not in shop:
-        raise SystemExit("shop.glon is missing the ';; @fragments' marker")
-    combined = shop.replace(";; @fragments", frag_lines)
+    (HERE / "bundle.glon").write_text(combined, encoding="utf-8")
 
-    host_js = (HERE / "host.js").read_text(encoding="utf-8")
     page = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -61,7 +63,6 @@ def main() -> None:
 </html>
 """
     (HERE / "app.html").write_text(page, encoding="utf-8")
-    (HERE / "bundle.glon").write_text(combined, encoding="utf-8")
     print(f"wrote {HERE / 'app.html'} and {HERE / 'bundle.glon'} "
           f"({len(combined)} bytes of GLON source)")
 

@@ -1,47 +1,50 @@
-;; demo/shop/shop.glon -- the Glon Shop G1A application (authoritative source).
+;; demo/shop/shop.glon -- the Glon Shop G1B application (authoritative source).
 ;;
-;; This is the FIRST real Glon application: a browser-hosted, WASM-executed
-;; shopping-front demo. It proves the G1A runtime model:
+;; G1B reframes the shop from "HTML fragments with embedded code" (G1A) to a
+;; small persistent-SPA dialect. The application now reads as:
 ;;
-;;   * a persistent Glon runtime (WASM) acting as the application engine;
-;;   * browser events forwarded to Glon through the host bridge;
-;;   * application state that survives route changes;
-;;   * routes that select bundled HTML fragments;
-;;   * fragments that contain embedded Glon (<% ... %>), evaluated at render.
+;;   state        -> a plain GLON set-word (visit-count)
+;;   product data -> a GLON block (catalog)
+;;   views        -> composable GLON blocks of heading/text/list/link
+;;   routes       -> ordinary GLON functions (go-home / go-products / …)
+;;   router       -> a GLON block dispatching on current-route
 ;;
-;; ROUTING, STATE and the FRAGMENT SELECTION all live in this source. The
-;; browser host (host.js) and the WASM host (standalone/glon.c) only forward
-;; events, render HTML into the DOM, and expose the two imports/exports; they
-;; contain no application logic.
-;;
-;; The three fragments (home-fragment, products-fragment, not-found-fragment)
-;; are INJECTED by demo/shop/build.py at the `;; @fragments` marker below, as
-;; byte lists generated from demo/shop/fragments/*.html. GLON has no string
-;; literals, so a bundled fragment is a loader-heap BLOCK of integer byte
-;; codes (0..255) -- permanent across runs, and the shape a future compressed
-;; fragment would decompress into.
+;; Rendering a view is `do view-block`; each term emits HTML into the fixed
+;; output block (see g1b.glon). String literals here are converted to byte-lists
+;; by demo/shop/build.py (GLON has no string literals yet). The browser host
+;; (host.js) and the WASM host (standalone/glon.c) are unchanged from G1A.
 
-[
 ;; ---- application state -----------------------------------------------------
-;; An integer in the global context. It persists across every route change and
-;; proves the runtime is alive and not reconstructed per route.
 visit-count: 0
 
-;; ---- fragments (injected by demo/shop/build.py) ---------------------------
-;; @fragments
+;; ---- product data ---------------------------------------------------------
+catalog: [ "Tea" "Rice" ]
 
-;; ---- routing --------------------------------------------------------------
-;; `current-route` holds the token for the requested route (bound by the host's
-;; glon_route before `do route`). The ROUTE DECISION lives here in GLON: the
-;; route block maps a token to the fragment that page should render.
-current-route: none
-
-home-page: [ home-fragment ]
-products-page: [ products-fragment ]
-not-found-page: [ not-found-fragment ]
-
-route: [
-    either = current-route 'products [ do products-page ]
-    [ either = current-route 'home [ do home-page ] [ do not-found-page ] ]
+;; ---- views -----------------------------------------------------------------
+home-view: [
+    heading [ emit-text "Glon Shop" ]
+    link    [ emit-text "View products" ] "products"
 ]
+
+products-view: [
+    heading [ emit-text "Products" ]
+    list    catalog
+    text    [ emit-text "Products page visits: " emit-int visit-count ]
+    link    [ emit-text "Back home" ] "home"
+]
+
+not-found-view: [
+    heading [ emit-text "Not found" ]
+    link    [ emit-text "Back home" ] "home"
+]
+
+;; ---- routes ----------------------------------------------------------------
+go-home:      func [] [ emit-clear do home-view emit-finish ]
+go-products:  func [] [ visit-count: + visit-count 1 emit-clear do products-view emit-finish ]
+go-not-found: func [] [ emit-clear do not-found-view emit-finish ]
+
+;; ---- router ----------------------------------------------------------------
+route: [
+    either = current-route 'products [ go-products ]
+    [ either = current-route 'home [ go-home ] [ go-not-found ] ]
 ]

@@ -122,6 +122,19 @@ enum {
 #define RV_SCRATCH_E 24653
 #define RV_SCRATCH_F 24654
 
+/* G1B/G1C SPA-dialect output buffer. This is TEMPORARY scratch/output storage,
+ * not part of the permanent GUI architecture: the view dialect emits rendered
+ * HTML bytes into a fixed, otherwise-unused region just above the GC state
+ * (GC_A2 = 25314) and below the managed heap (32768). The layout is a loader-
+ * style byte-list block so the unchanged G1A renderer can read it:
+ *   M[G1_OUT]      = byte count        (set by emit-finish)
+ *   M[G1_OUT + 1]  = site (unused)
+ *   M[G1_OUT + 2 + i] = byte i as a tagged int (mk_int)
+ * G1_OUT is 16-aligned so mk_block(G1_OUT) is a valid T_BLOCK. */
+#define G1_OUT      25344
+#define G1_OUT_DATA (G1_OUT + 2)
+#define G1_OUT_CAP  4096
+
 /* M3 datatype-library state (free region above the GC state, below the D1
  * state records). BUILTIN_BASE is the fixed 16-slot BUILTIN_TYPE table; the
  * meta-descriptor payload and the built-in descriptor payloads are at fixed
