@@ -15,7 +15,6 @@ The browser page inlines the combined source in a
 fragment is fetched over the network at runtime.
 """
 
-import html
 import pathlib
 import re
 
@@ -42,6 +41,11 @@ def main() -> None:
 
     (HERE / "bundle.glon").write_text(combined, encoding="utf-8")
 
+    # The GLON source is embedded in a <script> element, whose content is raw
+    # text: the HTML parser does NOT decode character references there, so
+    # html.escape() would corrupt the source ('home -> &#x27;home, < -> &lt;,
+    # etc.).  GLON contains no "</script" sequence, so the source can be inlined
+    # verbatim and reaches glon_load byte-for-byte as bundle.glon.
     page = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -57,7 +61,7 @@ def main() -> None:
 <body>
 <h1>Glon Shop</h1>
 <div id="app" data-glon-id="1"></div>
-<script type="application/glon">{html.escape(combined)}</script>
+<script type="application/glon">{combined}</script>
 <script src="host.js"></script>
 </body>
 </html>

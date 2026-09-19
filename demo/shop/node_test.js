@@ -1,10 +1,11 @@
 // demo/shop/node_test.js -- headless verification of the Glon Shop G1E demo
 // (no DOM, no browser, no Emscripten runtime).
 //
-// Instantiates demo/shop/glon.wasm with the three host imports, loads the
-// bundled GLON source (demo/shop/bundle.glon, produced by build.py), then
-// drives the router AND the event bridge (token and token+value) exactly as
-// the browser does and asserts the rendered HTML.
+// Instantiates demo/shop/glon.wasm with the three host imports, extracts the
+// GLON source from the generated demo/shop/app.html <script type="application/glon">
+// block (exactly as the browser's script.textContent would, with no character
+// reference decoding), then drives the router AND the event bridge (token and
+// token+value) exactly as the browser does and asserts the rendered HTML.
 //
 // This exercises the real WASM module + the G1E view dialect + repeated interactive composition
 // path (with values) + host bridge; the only thing stubbed is the DOM
@@ -16,7 +17,26 @@ const path = require("path");
 
 const HERE = __dirname;
 const WASM = path.join(HERE, "glon.wasm");
-const SRC = fs.readFileSync(path.join(HERE, "bundle.glon"), "utf8");
+const APP_HTML = fs.readFileSync(path.join(HERE, "app.html"), "utf8");
+const BUNDLE = fs.readFileSync(path.join(HERE, "bundle.glon"), "utf8");
+
+// Regression guard for the build.py -> <script> boundary.  A <script> element's
+// content is raw text: the HTML parser does not decode character references,
+// and the browser's script.textContent is exactly the bytes between the tags.
+// The source glon_load receives in the browser must therefore be byte-identical
+// to bundle.glon (any html.escape() here would corrupt it: 'home -> &#x27;home,
+// < -> &lt;, etc.).  Extract the raw text exactly as textContent would.
+const scriptMatch = /<script type="application\/glon">([\s\S]*?)<\/script>/.exec(APP_HTML);
+if (!scriptMatch) {
+  console.error("GLON_G1E_TEST FAIL: app.html has no <script type=\"application/glon\"> block");
+  process.exit(1);
+}
+const SRC = scriptMatch[1];
+if (SRC !== BUNDLE) {
+  console.error("GLON_G1E_TEST FAIL: app.html script textContent differs from bundle.glon " +
+    "(script " + SRC.length + " bytes vs bundle " + BUNDLE.length + " bytes)");
+  process.exit(1);
+}
 
 const rendered = [];       // host_set_html(handle, html) captures
 const logs = [];

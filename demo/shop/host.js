@@ -55,20 +55,23 @@
   function route(token) {
     if (typeof ex.glon_route !== "function") return;
     var pair = alloc(token);
-    ex.glon_route(pair[0], pair[1]);
+    var rc = ex.glon_route(pair[0], pair[1]);
+    if (rc !== 0) console.error("host.js: glon_route('" + token + "') returned " + rc);
   }
 
   function glonEvent(token) {
     if (typeof ex.glon_event !== "function") return;
     var pair = alloc(token);
-    ex.glon_event(pair[0], pair[1]);
+    var rc = ex.glon_event(pair[0], pair[1]);
+    if (rc !== 0) console.error("host.js: glon_event('" + token + "') returned " + rc);
   }
 
   function glonEventValue(token, value) {
     if (typeof ex.glon_event_value !== "function") return;
     var t = alloc(token);
     var v = alloc(value);
-    ex.glon_event_value(t[0], t[1], v[0], v[1]);
+    var rc = ex.glon_event_value(t[0], t[1], v[0], v[1]);
+    if (rc !== 0) console.error("host.js: glon_event_value('" + token + "', ...) returned " + rc);
   }
 
   function initialToken() {
