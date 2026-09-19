@@ -32,10 +32,10 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Fetch tags (for check-frozen-s1.sh)
+      - name: Fetch and verify frozen-S1 tag
         run: |
-          git fetch --tags origin
-          echo "s1-frozen-v1 -> $(git rev-parse 's1-frozen-v1^{commit}')"
+          git fetch origin '+refs/tags/s1-frozen-v1:refs/tags/s1-frozen-v1'
+          test "$(git rev-parse 's1-frozen-v1^{commit}')" = "f90496c26dc45c7a387d8fc8639cd2781507d3d2"
 
       - name: Frozen-S1 check
         run: ./check-frozen-s1.sh
