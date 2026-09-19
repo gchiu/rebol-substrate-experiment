@@ -37,7 +37,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # full history + tags so check-frozen-s1.sh resolves s1-frozen-v1
+          fetch-depth: 0  # full history so check-frozen-s1.sh can diff against the freeze
+          fetch-tags: true  # fetch the s1-frozen-v1 tag referenced by check-frozen-s1.sh
       - name: Frozen-S1 check + native tests
         run: |
           ./check-frozen-s1.sh
