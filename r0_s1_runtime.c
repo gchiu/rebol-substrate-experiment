@@ -2342,6 +2342,41 @@ int r0_s1_run(cell block) {
     return (int)(arity / 16);
 }
 
+/* FIB-OPT-P10A: identical setup/result-reading to r0_s1_run, but execute the
+ * already-assembled S1 stream via the caller's compiled executor `run_fn`
+ * (which receives the shared M[] and the EVAL_LOOP entry) instead of the
+ * interpreted s1_run(). */
+int r0_s1_run_compiled(cell block, void (*run_fn)(cell *, cell)) {
+    cell bp = r0_untag(block);
+    M[RV_CUR] = bp + BLK_DATA;
+    M[RV_END] = bp + BLK_DATA + M[bp];
+    M[RV_BLK] = bp;
+    M[RV_CTX] = global_ctx;
+    M[RV_FRAME] = 0;
+    M[RV_CHILD] = 0;
+    M[RV_CLOSURE] = 0;
+    M[RV_HOSTCALLS] = 0;
+    M[RV_RPMIN] = 65535;
+    M[RV_SPMIN] = 65535;
+#ifdef R0_S1_PROFILE
+    for (cell c = PF_BASE; c <= PF_HASH_FALLBACK_SLOTS; c++)
+        if (c != PF_TRACE) M[c] = 0;
+#endif
+
+    s1_reset();
+    if (g_seed_datatypes) seed_datatype_heap();
+    ip_start = s1_mem(REG_IP);
+    sp_start = s1_mem(REG_SP);
+    rp_start = s1_mem(REG_RP);
+    run_fn(M, main_entry);
+    ip_end = s1_mem(REG_IP);
+    sp_end = s1_mem(REG_SP);
+    rp_end = s1_mem(REG_RP);
+
+    cell arity = s1_top();
+    return (int)(arity / 16);
+}
+
 cell r0_s1_result(int i, int N) {
     cell sp = s1_mem(REG_SP);
     return s1_mem(sp + N - i);

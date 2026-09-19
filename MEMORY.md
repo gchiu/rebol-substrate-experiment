@@ -181,6 +181,23 @@ overhead (tagged dispatch, memory-mapped registers, call convention). Next
 experiment should **compile the frozen S1 stream** instead of interpreting it.
 Full detail: `FIB-OPT-P9-FRAMES.md`, `FIB-OPT-P9-RESULTS.md`.
 
+### P10A compiled-S1 baseline (what does interpretation itself cost?)
+
+P10A (`fib-opt-p10a-compiled-s1`) answered the controlled question by
+mechanically compiling the frozen S1 stream: a driver emits a literal
+computed-goto C transcription of `M[256..asm_here())` (one label per
+instruction, operands as constants, a verbatim copy of the frozen `host()`
+switch, `goto *table[IP-256]` dispatch), compiles it `-O2 -shared -fPIC`, and
+runs it through a new `r0_s1_run_compiled` (same setup, different executor).
+`IP/SP/RP/HP` stay memory-mapped; HOST unchanged. **Result: the interpreted
+layer (opcode fetch + decode + switch dispatch) costs ~2.4×.** `fib 25` fell
+from ~4.3 s (interpreted, same session) to ~1.8 s; compiled is ~18× slower than
+R3 (was ~32×). Correctness: fib/tree/raw all MATCH; 326/326 interpreted tests
+pass; frozen-S1 guard passes. The remaining ~18× is the memory-mapped-register
+access + HOST dispatch + the ~3.8k-op/activation S1 stream itself — the P10B
+targets. Next experiment: **P10B register promotion / HOST intrinsic expansion**.
+Full detail: `FIB-OPT-P10A-COMPILED-S1.md`, `FIB-OPT-P10A-RESULTS.md`.
+
 ## 5. Milestones (branch / tag → commit)
 
 In order:
@@ -206,7 +223,8 @@ In order:
 | P6B compiler control | `fib-p6b-compiler-results` | `81b7d6d` |
 | P7 density | `fib-p7-density-results` | `79a1be6` |
 | P8 lazy hash | `fib-p8-lazy-hash-results` | `d40e6c8` |
-| P9 dense frame | `fib-p9-frame-results` | *(this phase)* |
+| P9 dense frame | `fib-p9-frame-results` | `1282f0b` |
+| P10A compiled S1 | `fib-p10a-compiled-s1-results` | *(this phase)* |
 
 ## 6. Lessons learned
 
@@ -268,6 +286,13 @@ programming-model experiments
   passes will not change the performance class; the next experiment should
   compile the frozen S1 stream** (eliminate the `s1_run` switch dispatch and
   lower the memory-mapped registers to native code).
+- P10A (`fib-opt-p10a-compiled-s1`) then measured that exact cost: a mechanical
+  computed-goto compilation of the frozen S1 stream (memory-mapped registers
+  and HOST untouched) is **~2.4× faster** — the interpreted layer (opcode fetch
+  + decode + switch) costs ~2.4×. Compiled `fib 25` ≈ 1.8 s ≈ 18× R3. The
+  remaining ~18× is the memory-mapped-register access + HOST dispatch +
+  evaluator amplification, so the next experiment is **P10B register promotion
+  + HOST intrinsic expansion** on top of the compiled-S1 baseline.
 - Continue the rule: **one architectural performance hypothesis per phase.**
 - The broader benchmark suite is: Fibonacci (recursion/call overhead), tight
   loop (evaluator/branch overhead), counter closure (captured mutation),
@@ -372,6 +397,7 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `FIB-OPT-P7-DENSITY.md`, `FIB-OPT-P7-RESULTS.md` — P7 evaluator-density pass.
 - `FIB-OPT-P8-LAZY-HASH.md`, `FIB-OPT-P8-RESULTS.md` — P8 lazy activation hash.
 - `FIB-OPT-P9-FRAMES.md`, `FIB-OPT-P9-RESULTS.md` — P9 dense activation frame.
+- `FIB-OPT-P10A-COMPILED-S1.md`, `FIB-OPT-P10A-RESULTS.md` — P10A compiled-S1 baseline.
 - `R3-FIB-COMPARISON.md` — local Rebol3 vs Glon P5 Fibonacci benchmark.
 - `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
 - `docs/distributed-glon-agents.md` — distributed/federated agent architecture.

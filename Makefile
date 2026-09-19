@@ -70,8 +70,14 @@ r0_s1_p6_prof.o: r0_s1_p6_prof.c r0_s1.h s1.h s1_prof.h
 fib-p6b-bench: r0_s1_p6b_bench.c r0_s1_runtime.c s1.c
 	$(CC) $(CFLAGS) -o $@ r0_s1_p6b_bench.c r0_s1_runtime.c s1.c
 
+# ---- FIB-OPT-P10A: compiled-S1 baseline (mechanical S1 -> C, then -O2) ----
+# Generates + compiles the S1 stream at runtime and compares interpreted vs
+# compiled fib 25. Needs libdl. The generated C is gcc -O2 -shared -fPIC.
+fib-p10a-bench: r0_s1_p10a_bench.c r0_s1_runtime.c s1.c
+	$(CC) $(CFLAGS) -o $@ r0_s1_p10a_bench.c r0_s1_runtime.c s1.c -ldl
+
 clean:
-	rm -f s1 fib-profiler fib-timing fib-p6b-bench $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
+	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
 # Produces web/demo.js (Emscripten runtime + web/glue.js) and web/demo.wasm,

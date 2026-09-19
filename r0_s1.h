@@ -275,6 +275,11 @@ cell r0_s1_parse(const char *src, int *err);
  * Returns result arity N (>= 0), or -1 on error. */
 int r0_s1_run(cell block);
 
+/* FIB-OPT-P10A: run a block exactly like r0_s1_run, but invoke the compiled
+ * S1 executor `run_fn` (signature void fn(cell *M, cell start)) instead of the
+ * interpreted s1_run(). Used only by the compiled-S1 benchmark driver. */
+int r0_s1_run_compiled(cell block, void (*run_fn)(cell *, cell));
+
 /* i-th result (0-based) after r0_s1_run returned N */
 cell r0_s1_result(int i, int N);
 
