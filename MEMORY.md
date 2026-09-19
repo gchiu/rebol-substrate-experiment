@@ -249,6 +249,20 @@ passes. Next experiment: **computed-goto dispatch elimination** (direct
 fall-through for sequential S1).
 Full detail: `FIB-OPT-P10E-NOS.md`, `FIB-OPT-P10E-RESULTS.md`.
 
+### P10F sequential fall-through / dispatch elimination
+
+P10F (`fib-opt-p10f-fallthrough`) removed the per-instruction `goto *T[ip-256]`
+for sequential S1 flow (fall-through in generated C; only `0BRANCH`, the
+`LIT 0 !` branch idiom, `HALT` and error paths dispatch). Result: **near-negative
+~1.05×** over P10E — `fib 25` ≈ 0.29 s, ≈ **2.9× R3**. Static dispatch sites
+collapse 4,519 → 354 (~92%), but the CPU branch predictor was already absorbing
+the indirect jumps for sequential flow, so runtime barely moves. The remaining
+~2.9× is the work inside the operations and the remaining `M[sp]`/`M[rp]`
+memory traffic — no single dominant lever remains. Correctness: 8 workloads
+MATCH; 326/326 tests pass; frozen-S1 guard passes. Next: measured re-profiling
+rather than another micro-optimisation.
+Full detail: `FIB-OPT-P10F-FALLTHROUGH.md`, `FIB-OPT-P10F-RESULTS.md`.
+
 ## 5. Milestones (branch / tag → commit)
 
 In order:
@@ -279,7 +293,8 @@ In order:
 | P10B registers | `fib-p10b-register-results` | `0ac3c46` |
 | P10C HOST intrinsics | `fib-p10c-host-results` | `d1d0921` |
 | P10D TOS cache | `fib-p10d-tos-results` | `c93e5db` |
-| P10E TOS+NOS cache | `fib-p10e-nos-results` | *(this phase)* |
+| P10E TOS+NOS cache | `fib-p10e-nos-results` | `7bd42cb` |
+| P10F fall-through | `fib-p10f-fallthrough-results` | *(this phase)* |
 
 ## 6. Lessons learned
 
@@ -363,8 +378,10 @@ programming-model experiments
 - Compiled-S1 performance path: interpreted ~4.3 s → P10A ~2.0 s (dispatch
   removal 2.4×) → P10B ~0.43 s (register promotion ~5×) → P10C ~0.41 s
   (HOST inlining ~1.0×, negative) → P10D ~0.31 s (TOS cache 1.32×) → P10E
-  ~0.29 s (TOS+NOS 1.08×). Remaining ~2.9× R3 is dominated by the
-  per-instruction computed-goto dispatch; next experiment targets that.
+  ~0.29 s (TOS+NOS 1.08×) → P10F ~0.29 s (fall-through 1.05×, near-negative).
+  Remaining ~2.9× R3 is spread across the operations themselves and the
+  remaining `M[sp]`/`M[rp]` memory traffic — no single dominant lever; the
+  compiled-S1 backend has reached diminishing returns on each isolated axis.
 - The broader benchmark suite is: Fibonacci (recursion/call overhead), tight
   loop (evaluator/branch overhead), counter closure (captured mutation),
   block/list traversal (managed data), parser workload
@@ -473,6 +490,7 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `FIB-OPT-P10C-HOST.md`, `FIB-OPT-P10C-RESULTS.md` — P10C HOST intrinsic expansion.
 - `FIB-OPT-P10D-TOS.md`, `FIB-OPT-P10D-RESULTS.md` — P10D single TOS cache.
 - `FIB-OPT-P10E-NOS.md`, `FIB-OPT-P10E-RESULTS.md` — P10E two-cell TOS+NOS cache.
+- `FIB-OPT-P10F-FALLTHROUGH.md`, `FIB-OPT-P10F-RESULTS.md` — P10F sequential fall-through.
 - `R3-FIB-COMPARISON.md` — local Rebol3 vs Glon P5 Fibonacci benchmark.
 - `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
 - `docs/distributed-glon-agents.md` — distributed/federated agent architecture.

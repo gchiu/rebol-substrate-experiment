@@ -76,10 +76,10 @@ fib-p6b-bench: r0_s1_p6b_bench.c r0_s1_runtime.c s1.c
 fib-p10a-bench: r0_s1_p10a_bench.c r0_s1_runtime.c s1.c
 	$(CC) $(CFLAGS) -o $@ r0_s1_p10a_bench.c r0_s1_runtime.c s1.c -ldl
 
-# ---- FIB-OPT-P10B/P10C/P10D/P10E: compiled-S1 variants ----
+# ---- FIB-OPT-P10B..P10F: compiled-S1 variants ----
 # P10B (promoted IP/SP/RP), P10C (+ inline pure HOST), P10D (+ single TOS
-# cache), P10E (+ NOS cache). Generates + compiles the S1 stream at runtime and
-# compares. libdl.
+# cache), P10E (+ NOS cache), P10F (+ sequential fall-through). Generates +
+# compiles the S1 stream at runtime and compares. libdl.
 fib-p10b-bench: r0_s1_p10b_bench.c r0_s1_runtime.c s1.c
 	$(CC) $(CFLAGS) -o $@ r0_s1_p10b_bench.c r0_s1_runtime.c s1.c -ldl
 
