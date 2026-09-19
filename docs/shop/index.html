@@ -51,14 +51,14 @@ block-len: raw 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
 block-at: raw 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ]
 
 
-emit-int: func [n] [ either &lt; n 0 [ emit-byte 45 emit-digits - 0 n ] [ emit-digits n ] ]
+emit-int: func [n] [ either < n 0 [ emit-byte 45 emit-digits - 0 n ] [ emit-digits n ] ]
 emit-digits: func [n] [
-    either &gt; n 9 [ emit-digits / n 10 ] [ none ]
+    either > n 9 [ emit-digits / n 10 ] [ none ]
     emit-byte + 48 - n * 10 / n 10
 ]
 emit-text: func [blk] [ emit-text-at blk 0 block-len blk ]
 emit-text-at: func [blk i n] [
-    either &lt; i n [ emit-byte block-at blk i emit-text-at blk + i 1 n ] [ none ]
+    either < i n [ emit-byte block-at blk i emit-text-at blk + i 1 n ] [ none ]
 ]
 
 
@@ -109,7 +109,7 @@ input:   func [name] [
 products: func [items] [ emit-text ul-open each-product items emit-text ul-close ]
 each-product: func [items] [ emit-product-at items 0 block-len items ]
 emit-product-at: func [items i n] [
-    either &lt; i n [
+    either < i n [
         emit-text li-open
         emit-text block-at items i
         emit-byte 32
@@ -172,8 +172,8 @@ render-products:  func [] [ emit-clear do products-view emit-finish ]
 render-not-found: func [] [ emit-clear do not-found-view emit-finish ]
 
 render-current: func [] [
-    either = current-route &#x27;products [ render-products ]
-    [ either = current-route &#x27;home [ render-home ] [ render-not-found ] ]
+    either = current-route 'products [ render-products ]
+    [ either = current-route 'home [ render-home ] [ render-not-found ] ]
 ]
 
 
@@ -182,8 +182,8 @@ go-products:  func [] [ visit-count: + visit-count 1 render-current ]
 go-not-found: func [] [ render-current ]
 
 route: [
-    either = current-route &#x27;products [ go-products ]
-    [ either = current-route &#x27;home [ go-home ] [ go-not-found ] ]
+    either = current-route 'products [ go-products ]
+    [ either = current-route 'home [ go-home ] [ go-not-found ] ]
 ]
 
 
@@ -198,8 +198,8 @@ search: func [] [ search-term: current-value render-current ]
 
 
 do-event: [
-    either = current-event &#x27;add-product [ add-product ]
-    [ either = current-event &#x27;search [ search ] [ render-current ] ]
+    either = current-event 'add-product [ add-product ]
+    [ either = current-event 'search [ search ] [ render-current ] ]
 ] ]</script>
 <script src="host.js"></script>
 </body>
