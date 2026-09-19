@@ -1099,21 +1099,26 @@ static void emit_gc(void) {
 
 /* ========================== evaluator build ============================ */
 
-static cell r_reduce, r_discard, r_lookup, r_set, r_append, r_mkctx, r_mkclosure;
+static cell r_reduce, r_lookup, r_set, r_append, r_mkctx, r_mkclosure;
 static cell r_load_lex, r_hash_insert;
 static cell r_values, r_run_block, r_native, r_invoke_closure, r_return, r_invoke_raw, r_subexpr, r_block_eval;
 
 /* REDUCE: [r1..rN, tagged-N] -> [r1] (or [NONE] if N==0) */
 static void emit_reduce(void) {
     r_reduce = asm_here();
-    e_pop_to(RV_T1);
-    e_cell(RV_T1); asm_lit(16); asm_host(HOST_DIV); e_setc(RV_N);
-    e_cell(RV_N); asm_lit(0); asm_host(HOST_EQ);
-    cell jz = asm_zbranch_fwd();
-    asm_lit(R0_NONE);
-    asm_exit();
-    asm_patch_here(jz);
-    e_cell(RV_N); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_N);
+    /* [v1..vN, taggedN] -> single value (or NONE if N == 0). Keep N in RV_N and
+     * use a fast path for the overwhelmingly common N == 1 case. */
+    asm_lit(16); asm_host(HOST_DIV);            /* [v1..vN, N] */
+    e_setc(RV_N);                               /* [v1..vN] */
+    e_cell(RV_N); asm_lit(1); asm_host(HOST_EQ); /* (N == 1) */
+    cell j_not1 = asm_zbranch_fwd();
+    asm_exit();                                 /* [v1] */
+    asm_patch_here(j_not1);
+    e_cell(RV_N); asm_lit(0); asm_host(HOST_EQ); /* (N == 0) */
+    cell j_not0 = asm_zbranch_fwd();
+    asm_lit(R0_NONE); asm_exit();               /* N == 0 -> NONE */
+    asm_patch_here(j_not0);
+    e_cell(RV_N); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_N); /* N-1 */
     cell rloop = asm_here();
     e_cell(RV_N); asm_lit(0); asm_host(HOST_GT);
     cell jdone = asm_zbranch_fwd();
@@ -1124,20 +1129,7 @@ static void emit_reduce(void) {
     asm_exit();
 }
 
-/* DISCARD: [r1..rN, tagged-N] -> (nothing) */
-static void emit_discard(void) {
-    r_discard = asm_here();
-    e_pop_to(RV_T1);
-    e_cell(RV_T1); asm_lit(16); asm_host(HOST_DIV); e_setc(RV_N);
-    cell dloop = asm_here();
-    e_cell(RV_N); asm_lit(0); asm_host(HOST_GT);
-    cell jdone = asm_zbranch_fwd();
-    asm_drop();
-    e_cell(RV_N); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_N);
-    asm_branch(dloop);
-    asm_patch_here(jdone);
-    asm_exit();
-}
+/* DISCARD is now emitted inline in block-eval (denser than a subroutine call). */
 
 /* LOOKUP: (word -- value | -1 if unbound) via RV_CTX.
  * FIB-OPT-P5: when a context's binding count is below its cap, resolve via the
@@ -1591,8 +1583,7 @@ static void emit_native(void) {
     cell j_not_values = asm_zbranch_fwd();
     to_subexpr[n_subexpr++] = emit_call_fwd();
     asm_call(r_reduce);
-    asm_call(r_values);
-    asm_exit();
+    asm_branch(r_values);                          /* tail */
     asm_patch_here(j_not_values);
     /* either (id 101): arity 3 (cond then else) */
     e_cell(RV_NAT); asm_lit(RN_EITHER); asm_host(HOST_EQ);
@@ -1612,20 +1603,17 @@ static void emit_native(void) {
     e_cell(RV_T1); asm_host(HOST_MUL);
     cell j_false = asm_zbranch_fwd();
     e_cell(RV_T5);
-    asm_call(r_run_block);                          /* eval then */
-    asm_exit();
+    asm_branch(r_run_block);                          /* eval then (tail) */
     asm_patch_here(j_false);
     e_cell(RV_T6);
-    asm_call(r_run_block);                          /* eval else */
-    asm_exit();
+    asm_branch(r_run_block);                          /* eval else (tail) */
     asm_patch_here(j_not_either);
     /* do (id 102): arity 1 (block) */
     e_cell(RV_NAT); asm_lit(RN_DO); asm_host(HOST_EQ);
     cell j_not_do = asm_zbranch_fwd();
     to_subexpr[n_subexpr++] = emit_call_fwd();
     asm_call(r_reduce);
-    asm_call(r_run_block);
-    asm_exit();
+    asm_branch(r_run_block);                          /* tail */
     asm_patch_here(j_not_do);
     /* arithmetic: arity 2 */
     e_cell(RV_NAT); asm_toR();                 /* save native id across arg eval */
@@ -1639,9 +1627,12 @@ static void emit_native(void) {
     e_cell(RV_T1);
     asm_fromR(); e_setc(RV_NAT);               /* restore native id */
     {
-        static const int op[9] = { HOST_ADD, HOST_SUB, HOST_MUL, HOST_DIV,
-                                   HOST_EQ, HOST_LT, HOST_GT, HOST_LE, HOST_GE };
-        static const int id[9] = { 0, 1, 2, 3, 6, 8, 9, 10, 11 };
+        /* FIB-OPT-P7: dispatch in fib's observed frequency order (<= then +/-
+         * are the hot arithmetic natives), so the common case exits the chain
+         * after one or two comparisons. Ordering only; semantics unchanged. */
+        static const int op[9] = { HOST_LE, HOST_ADD, HOST_SUB, HOST_MUL, HOST_DIV,
+                                   HOST_EQ, HOST_LT, HOST_GT, HOST_GE };
+        static const int id[9] = { 10, 0, 1, 2, 3, 6, 8, 9, 11 };
         cell done[9];
         for (int k = 0; k < 9; k++) {
             e_cell(RV_NAT); asm_lit(id[k]); asm_host(HOST_EQ);
@@ -1977,8 +1968,7 @@ static void emit_subexpr(void) {
     asm_dup(); asm_lit(mk_word(RETURN_SYM)); asm_host(HOST_EQ);
     cell j_notreturn = asm_zbranch_fwd();
     asm_drop();
-    asm_call(r_return);                          /* non-local return (jumps away) */
-    asm_exit();                                  /* unreachable safety */
+    asm_branch(r_return);                        /* non-local return (jumps away) */
     asm_patch_here(j_notreturn);
     asm_call(r_lookup);
     asm_dup(); asm_lit(-1); asm_host(HOST_EQ);
@@ -1987,6 +1977,17 @@ static void emit_subexpr(void) {
     asm_patch_here(j_err);
     fw_disp_word = asm_branch_fwd();             /* -> shared value dispatch */
     asm_patch_here(j2);
+
+    /* BOUND (tag 13): pre-resolved lexical (depth, slot) reference. Checked
+     * immediately after WORD: parameter references are as common as words in
+     * the hot path, so testing this before the rare SET/GET/LIT tags saves
+     * several failed comparisons per reference. */
+    asm_dup(); asm_lit(T_BOUND); asm_host(HOST_EQ);
+    cell j_bound = asm_zbranch_fwd();
+    asm_drop();
+    asm_call(r_load_lex);                        /* [value] */
+    fw_disp_bound = asm_branch_fwd();            /* -> shared value dispatch */
+    asm_patch_here(j_bound);
 
     /* SET (tag 3) */
     asm_dup(); asm_lit(T_SET); asm_host(HOST_EQ);
@@ -2018,14 +2019,6 @@ static void emit_subexpr(void) {
     asm_exit();
     asm_patch_here(j5);
 
-    /* BOUND (tag 13): pre-resolved lexical (depth, slot) reference */
-    asm_dup(); asm_lit(T_BOUND); asm_host(HOST_EQ);
-    cell j_bound = asm_zbranch_fwd();
-    asm_drop();
-    asm_call(r_load_lex);                        /* [value] */
-    fw_disp_bound = asm_branch_fwd();            /* -> shared value dispatch */
-    asm_patch_here(j_bound);
-
     /* self-evaluating literals */
     asm_drop();
     asm_lit(16);
@@ -2039,22 +2032,19 @@ static void emit_subexpr(void) {
     asm_dup(); asm_lit(T_NATIVE); asm_host(HOST_EQ);
     cell j_notnat = asm_zbranch_fwd();
     asm_drop();
-    asm_call(r_native);
-    asm_exit();
+    asm_branch(r_native);          /* tail call: native's EXIT returns to our caller */
     asm_patch_here(j_notnat);
     /* closure (tag 8) */
     asm_dup(); asm_lit(T_CLOSURE); asm_host(HOST_EQ);
     cell j_notclosure = asm_zbranch_fwd();
     asm_drop();
-    asm_call(r_invoke_closure);
-    asm_exit();
+    asm_branch(r_invoke_closure);  /* tail call */
     asm_patch_here(j_notclosure);
     /* raw (tag 10) */
     asm_dup(); asm_lit(T_RAW); asm_host(HOST_EQ);
     cell j_notraw = asm_zbranch_fwd();
     asm_drop();
-    asm_call(r_invoke_raw);
-    asm_exit();
+    asm_branch(r_invoke_raw);      /* tail call */
     asm_patch_here(j_notraw);
     asm_drop();
     asm_lit(16);
@@ -2073,7 +2063,16 @@ static void emit_block_eval(void) {
     asm_call(r_subexpr);
     e_cell(RV_CUR); e_cell(RV_END); asm_host(HOST_LT);
     cell j_done = asm_zbranch_fwd();
-    asm_call(r_discard);
+    /* discard the non-final result set inline (denser: no CALL+EXIT per element) */
+    asm_lit(16); asm_host(HOST_DIV);
+    e_setc(RV_N);
+    cell dloop = asm_here();
+    e_cell(RV_N); asm_lit(0); asm_host(HOST_GT);
+    cell jd = asm_zbranch_fwd();
+    asm_drop();
+    e_cell(RV_N); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_N);
+    asm_branch(dloop);
+    asm_patch_here(jd);
     asm_branch(ltop);
     asm_patch_here(j_done);
     asm_exit();
@@ -2103,7 +2102,6 @@ cell r0_s1_init(void) {
     code_begin = asm_here();
     emit_gc();                      /* M2: mark/sweep collector + allocator */
     emit_reduce();
-    emit_discard();
     emit_lookup();
     emit_load_lex();
     emit_hash_insert();

@@ -14,6 +14,10 @@ extern long s1_prof_op_count[8];
 /* dynamic HOST service counts, indexed by the frozen HOST ids (0..15) */
 extern long s1_prof_host_count[16];
 
+/* dynamic code-location histogram: count of opcode executions per 256-cell
+ * code bucket (IP>>8). Used to attribute execution to emitter functions. */
+extern long s1_prof_ip_hist[256];
+
 /* aggregate cycle accumulators (rdtsc) for coarse time attribution: total
  * inside s1_run, and inside the host() dispatch. Aggregate, not per-op. */
 extern unsigned long long s1_prof_run_cycles;

@@ -132,6 +132,22 @@ promotion + HOST inlining, not a dispatch change. Normal compilation removes
 now measured from a ~4.0 s `-O2` baseline. Full detail:
 `FIB-OPT-P6B-COMPILER.md`.
 
+### P7 evaluator density (say the same thing in fewer S1 words)
+
+P7 (`fib-opt-p7-density`) is the first emitted-evaluator-code density pass: no
+S1 change, no opcode change, no HOST semantics. It found the hot path dominated
+by call/return overhead + `reduce` round-trips (the `subexpr` value-dispatch
+tail, `reduce` after every argument) and removed them: tail-call elimination
+(`CALL X; EXIT` → `BRANCH X`), a dense `reduce` with an `N == 1` fast path,
+`discard` inlined into `block_eval`, and `BOUND`/arithmetic-native dispatch
+reorders. Result: `fib 25` S1 instructions **1,107,100,190 → 1,023,582,152
+(−7.54%)**; amplification 4560 → 4216 ops/call, 414.6 → 383.3 ops/subexpr,
+698 → 656 HOST/call; every evaluator event counter unchanged (same work, denser).
+Wall-clock `-O2` ≈ 4.9 s → 3.6 s (~1.37×), cutting the R3 gap to ~36×. 326/326
+tests pass; frozen-S1 guard passes. Next target is the activation/binding path
+(`invoke_closure` + `mkctx` + `append` ≈ 28%). Full detail:
+`FIB-OPT-P7-DENSITY.md`, `FIB-OPT-P7-RESULTS.md`.
+
 ## 5. Milestones (branch / tag → commit)
 
 In order:
@@ -154,7 +170,8 @@ In order:
 | P4 lexical | `fib-opt-p4` | `d8161b0` |
 | P5 hash lookup | `fib-opt-p5` | `6a41848` |
 | P6 profile | `fib-profile-p6` | `3219e42` |
-| P6B compiler control | `fib-p6b-compiler-results` | *(this phase)* |
+| P6B compiler control | `fib-p6b-compiler-results` | `81b7d6d` |
+| P7 density | `fib-p7-density-results` | *(this phase)* |
 
 ## 6. Lessons learned
 
@@ -196,14 +213,18 @@ programming-model experiments
 
 - P4 and P5 are complete and retained; `fib-opt-p5` is the current optimisation
   baseline. P6 (`fib-profile-p6`) is a completed diagnostic phase; P6B
-  (`fib-profile-p6b-compiler`) is a completed compiler-control phase.
+  (`fib-profile-p6b-compiler`) is a completed compiler-control phase; P7
+  (`fib-opt-p7-density`) is a completed evaluator-density phase.
 - P6 profiled the remaining cost: 1.1B S1 opcode dispatches / 4560 per fib call,
   dominated by the memory-mapped register-access idiom (LIT/`@`/`!` = 76%) and
   HOST arithmetic (15%). P6B then measured the C-compiler factor alone: normal
   `-O2` removes ~2.1× (8.54 s → 4.00 s) — the opcode switch was already a jump
-  table at `-O0`, so the win is register promotion + HOST inlining. Instruction
-  amplification is the dominant remaining cost; P7 hypothesis = reduce emitted
-  S1 instruction count, measured from a ~4.0 s `-O2` baseline.
+  table at `-O0`, so the win is register promotion + HOST inlining. P7 then
+  densified the evaluator itself (tail-calls, dense `reduce`, dispatch
+  reordering): −7.5% instructions (1.107B → 1.024B, 4560 → 4216 ops/call) and
+  ~1.37× faster at `-O2`, with no S1 change. Remaining dominant cost is the
+  activation/binding path (`invoke_closure` + `mkctx` + `append` ≈ 28%); P8
+  hypothesis = cheaper child-context creation + parameter binding.
 - Continue the rule: **one architectural performance hypothesis per phase.**
 - The broader benchmark suite is: Fibonacci (recursion/call overhead), tight
   loop (evaluator/branch overhead), counter closure (captured mutation),
@@ -305,6 +326,7 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `FIB-OPT-P5-HASH-LOOKUP.md`, `FIB-OPT-P5-RESULTS.md` — P5 (current baseline).
 - `FIB-OPT-P6-PROFILE.md` — P6 diagnostic profile (where the ~9 s goes).
 - `FIB-OPT-P6B-COMPILER.md` — P6B compiler-optimisation control (the `-O` factor).
+- `FIB-OPT-P7-DENSITY.md`, `FIB-OPT-P7-RESULTS.md` — P7 evaluator-density pass.
 - `R3-FIB-COMPARISON.md` — local Rebol3 vs Glon P5 Fibonacci benchmark.
 - `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
 - `docs/distributed-glon-agents.md` — distributed/federated agent architecture.

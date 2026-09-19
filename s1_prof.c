@@ -11,6 +11,7 @@ cell M[MEM_CELLS];
 
 long s1_prof_op_count[8];
 long s1_prof_host_count[16];
+long s1_prof_ip_hist[256];
 unsigned long long s1_prof_run_cycles;
 unsigned long long s1_prof_host_cycles;
 
@@ -23,6 +24,7 @@ static inline unsigned long long rdtsc(void) {
 void s1_prof_reset(void) {
     for (int i = 0; i < 8; i++) s1_prof_op_count[i] = 0;
     for (int i = 0; i < 16; i++) s1_prof_host_count[i] = 0;
+    for (int i = 0; i < 256; i++) s1_prof_ip_hist[i] = 0;
     s1_prof_run_cycles = 0;
     s1_prof_host_cycles = 0;
 }
@@ -198,6 +200,7 @@ void s1_run(cell start) {
     for (;;) {
         cell op = M[IP++];
         s1_prof_op_count[op]++;
+        s1_prof_ip_hist[(IP - 1) >> 8]++;
         switch (op) {
         case OP_LIT:     push(M[IP++]); break;
         case OP_DUP:    { cell v = M[SP]; push(v); break; }

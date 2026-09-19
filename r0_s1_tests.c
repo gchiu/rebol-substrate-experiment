@@ -316,7 +316,7 @@ int run_r0_s1_tests(void) {
       expectN("[ t: raw 1 [ LIT 16 DIV LIT 0 EQ ZBRANCH Lelse INT 1 ARITY 1 EXIT "
               "Lelse: INT 2 ARITY 1 EXIT ]  values [ t 0  t 5 ] ]", 2, v,
               "H: raw ZBRANCH/labels -> 1 2"); }
-    expect1("[ sw: raw [ INT 42 LIT 9000 ! LIT 9000 @ ARITY 1 EXIT ]  sw ]",
+    expect1("[ sw: raw [ INT 42 LIT SCRATCH_A ! LIT SCRATCH_A @ ARITY 1 EXIT ]  sw ]",
             mk_int(42), "I: raw @/! store+fetch 42");
     { int N; run_src("[ c42: raw [ INT 42 ARITY 1 EXIT ]  c42 ]", &N);
       CHECK(N == 1 && r0_s1_sp_end() == r0_s1_sp_start() - 2
