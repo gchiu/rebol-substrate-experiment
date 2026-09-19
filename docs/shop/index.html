@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glon Shop</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; }
+  button { font-size: 1rem; padding: 0.35rem 0.8rem; cursor: pointer; }
+  #app { max-width: 40rem; }
+</style>
+</head>
+<body>
+<h1>Glon Shop</h1>
+<div id="app" data-glon-id="1"></div>
+<script type="application/glon">[ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+emit-clear: raw [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
+emit-byte: raw 1 [
+    LIT SCRATCH_E @ LIT G1_OUT_DATA ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    ARITY 0 EXIT
+]
+emit-finish: raw [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
+
+
+block-len: raw 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
+block-at: raw 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ]
+
+
+emit-int: func [n] [ either &lt; n 0 [ emit-byte 45 emit-digits - 0 n ] [ emit-digits n ] ]
+emit-digits: func [n] [
+    either &gt; n 9 [ emit-digits / n 10 ] [ none ]
+    emit-byte + 48 - n * 10 / n 10
+]
+emit-text: func [blk] [ emit-text-at blk 0 block-len blk ]
+emit-text-at: func [blk i n] [
+    either &lt; i n [ emit-byte block-at blk i emit-text-at blk + i 1 n ] [ none ]
+]
+
+
+h1-open:   [60 104 49 62]
+h1-close:  [60 47 104 49 62]
+p-open:    [60 112 62]
+p-close:   [60 47 112 62]
+ul-open:   [60 117 108 62]
+ul-close:  [60 47 117 108 62]
+li-open:   [60 108 105 62]
+li-close:  [60 47 108 105 62]
+btn-open:  [60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 39]
+btn-mid:   [39 62]
+btn-close: [60 47 98 117 116 116 111 110 62]
+event-open: [60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 101 118 101 110 116 61 39]
+input-open: [60 105 110 112 117 116 32 100 97 116 97 45 103 108 111 110 45 105 110 112 117 116 61 39]
+value-mid:  [39 32 100 97 116 97 45 103 108 111 110 45 118 97 108 117 101 61 39]
+
+
+
+heading: func [content] [ emit-text h1-open do content emit-text h1-close ]
+text:    func [content] [ emit-text p-open  do content emit-text p-close ]
+link:    func [content route] [
+    emit-text btn-open emit-text route emit-text btn-mid do content emit-text btn-close
+]
+
+button:  func [content event] [
+    emit-text event-open emit-text event emit-text btn-mid do content emit-text btn-close
+]
+
+
+value-button: func [content event value] [
+    emit-text event-open emit-text event emit-text value-mid emit-text value emit-text btn-mid
+    do content emit-text btn-close
+]
+
+
+
+input:   func [name] [
+    emit-text input-open emit-text name emit-text btn-mid
+]
+
+
+
+
+
+
+products: func [items] [ emit-text ul-open each-product items emit-text ul-close ]
+each-product: func [items] [ emit-product-at items 0 block-len items ]
+emit-product-at: func [items i n] [
+    either &lt; i n [
+        emit-text li-open
+        emit-text block-at items i
+        emit-byte 32
+        value-button [ emit-text [65 100 100] ] [97 100 100 45 112 114 111 100 117 99 116] block-at items i
+        emit-text li-close
+        emit-product-at items + i 1 n
+    ] [ none ]
+] 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+visit-count: 0
+cart-count: 0
+last-added: []
+search-term: []
+
+
+catalog: [ [84 101 97] [82 105 99 101] ]
+
+
+home-view: [
+    heading [ emit-text [71 108 111 110 32 83 104 111 112] ]
+    link    [ emit-text [86 105 101 119 32 112 114 111 100 117 99 116 115] ] [112 114 111 100 117 99 116 115]
+]
+
+products-view: [
+    heading [ emit-text [80 114 111 100 117 99 116 115] ]
+    products catalog
+    text    [ emit-text [80 114 111 100 117 99 116 115 32 112 97 103 101 32 118 105 115 105 116 115 58 32] emit-int visit-count ]
+    text    [ emit-text [83 101 97 114 99 104 58 32] emit-text search-term ]
+    input   [115 101 97 114 99 104]
+    button  [ emit-text [83 101 97 114 99 104] ] [115 101 97 114 99 104]
+    text    [ emit-text [67 97 114 116 58 32] emit-int cart-count ]
+    text    [ emit-text [76 97 115 116 32 97 100 100 101 100 58 32] emit-text last-added ]
+    link    [ emit-text [66 97 99 107 32 104 111 109 101] ] [104 111 109 101]
+]
+
+not-found-view: [
+    heading [ emit-text [78 111 116 32 102 111 117 110 100] ]
+    link    [ emit-text [66 97 99 107 32 104 111 109 101] ] [104 111 109 101]
+]
+
+
+render-home:      func [] [ emit-clear do home-view emit-finish ]
+render-products:  func [] [ emit-clear do products-view emit-finish ]
+render-not-found: func [] [ emit-clear do not-found-view emit-finish ]
+
+render-current: func [] [
+    either = current-route &#x27;products [ render-products ]
+    [ either = current-route &#x27;home [ render-home ] [ render-not-found ] ]
+]
+
+
+go-home:      func [] [ render-current ]
+go-products:  func [] [ visit-count: + visit-count 1 render-current ]
+go-not-found: func [] [ render-current ]
+
+route: [
+    either = current-route &#x27;products [ go-products ]
+    [ either = current-route &#x27;home [ go-home ] [ go-not-found ] ]
+]
+
+
+
+
+add-product: func [] [
+    cart-count: + cart-count 1
+    last-added: current-value
+    render-current
+]
+search: func [] [ search-term: current-value render-current ]
+
+
+do-event: [
+    either = current-event &#x27;add-product [ add-product ]
+    [ either = current-event &#x27;search [ search ] [ render-current ] ]
+] ]</script>
+<script src="host.js"></script>
+</body>
+</html>
