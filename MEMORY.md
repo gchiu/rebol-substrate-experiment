@@ -224,6 +224,18 @@ pass; frozen-S1 guard passes. Next target: **P10D data/return-stack cell traffic
 or computed-goto elimination**.
 Full detail: `FIB-OPT-P10C-HOST.md`, `FIB-OPT-P10C-RESULTS.md`.
 
+### P10D single TOS cache (is the top stack cell traffic the cost?)
+
+P10D (`fib-opt-p10d-tos`) cached the top data-stack element in a C local `tos`
+(`sp` shifts to point at the second-from-top; flush `M[--sp]=tos`, reload
+`tos=M[sp++]`; the SP register idiom is virtualised). Result: **modest positive
+~1.32×** over P10C — `fib 25` ≈ 0.31 s, ≈ **3.1× R3**; ~28% fewer `M[sp]`
+references. The remaining cost is the second-from-top cell, the return stack,
+and the per-instruction computed-goto (~917M indirect jumps). Correctness: 8
+workloads MATCH; 326/326 tests pass; frozen-S1 guard passes. Next candidates:
+**P10E two-cell TOS/NOS caching** and/or **computed-goto elimination**.
+Full detail: `FIB-OPT-P10D-TOS.md`, `FIB-OPT-P10D-RESULTS.md`.
+
 ## 5. Milestones (branch / tag → commit)
 
 In order:
@@ -252,7 +264,8 @@ In order:
 | P9 dense frame | `fib-p9-frame-results` | `1282f0b` |
 | P10A compiled S1 | `fib-p10a-compiled-s1-results` | `bf1edeb` |
 | P10B registers | `fib-p10b-register-results` | `0ac3c46` |
-| P10C HOST intrinsics | `fib-p10c-host-results` | *(this phase)* |
+| P10C HOST intrinsics | `fib-p10c-host-results` | `d1d0921` |
+| P10D TOS cache | `fib-p10d-tos-results` | *(this phase)* |
 
 ## 6. Lessons learned
 
@@ -329,8 +342,9 @@ programming-model experiments
 - P10C (`fib-opt-p10c-host`) then lowered the pure arithmetic HOST ops inline:
   **no speedup (~1.0×)** — HOST dispatch was not the bottleneck; the remaining
   ~3.8× R3 gap is the data/return-stack cell memory traffic and the
-  per-instruction computed-goto. Next experiment: **P10D stack-cell traffic or
-  computed-goto elimination**.
+  per-instruction computed-goto. P10D (`fib-opt-p10d-tos`) then cached the top
+  data-stack cell: **~1.32×** (0.31 s, ~3.1× R3), a modest win. Next experiment:
+  **P10E two-cell TOS/NOS caching** and/or **computed-goto elimination**.
 - Continue the rule: **one architectural performance hypothesis per phase.**
 - The broader benchmark suite is: Fibonacci (recursion/call overhead), tight
   loop (evaluator/branch overhead), counter closure (captured mutation),
@@ -438,6 +452,7 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `FIB-OPT-P10A-COMPILED-S1.md`, `FIB-OPT-P10A-RESULTS.md` — P10A compiled-S1 baseline.
 - `FIB-OPT-P10B-REGISTERS.md`, `FIB-OPT-P10B-RESULTS.md` — P10B register promotion.
 - `FIB-OPT-P10C-HOST.md`, `FIB-OPT-P10C-RESULTS.md` — P10C HOST intrinsic expansion.
+- `FIB-OPT-P10D-TOS.md`, `FIB-OPT-P10D-RESULTS.md` — P10D single TOS cache.
 - `R3-FIB-COMPARISON.md` — local Rebol3 vs Glon P5 Fibonacci benchmark.
 - `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
 - `docs/distributed-glon-agents.md` — distributed/federated agent architecture.
