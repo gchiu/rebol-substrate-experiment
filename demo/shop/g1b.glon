@@ -41,40 +41,95 @@ emit-digits: func [n] [
     either > n 9 [ emit-digits / n 10 ] [ none ]
     emit-byte + 48 - n * 10 / n 10
 ]
-emit-text: func [blk] [ emit-text-at blk 0 block-len blk ]
-emit-text-at: func [blk i n] [
-    either < i n [ emit-byte block-at blk i emit-text-at blk + i 1 n ] [ none ]
+;; emit-text is a RAW loop (not per-byte GLON recursion): the frozen return
+;; stack is small, and recursive emit-text-at exhausted it once the view atoms
+;; grew beyond a few dozen bytes. Iterating in S1 keeps the render depth flat.
+;; Scratch cells: A (index), B (block ptr), F (length) are all above RS_INIT;
+;; E is the shared output length. (SCRATCH_C/D live inside the return-stack
+;; region and would be clobbered mid-loop, so they are avoided here.)
+emit-text: raw 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_A !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  emit-text-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH emit-text-done
+    LIT SCRATCH_B @ LIT 2 ADD LIT SCRATCH_A @ ADD @
+    LIT G1_OUT_DATA LIT SCRATCH_E @ ADD
+    !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH emit-text-loop
+  emit-text-done:
+    ARITY 0 EXIT
+]
+;; ---- byte-list equality (structural equality of loader blocks) ------------
+;; The basket must decide which product an add-product VALUE refers to.
+;; current-value arrives as a fresh byte-list each event, so pointer equality
+;; (=) cannot distinguish it from a catalogue entry; compare element-by-element.
+blk-eq: func [a b] [ blk-eq-at a b 0 ]
+blk-eq-at: func [a b i] [
+    either = block-len a block-len b [
+        either < i block-len a [
+            either = block-at a i block-at b i [ blk-eq-at a b + i 1 ] [ 0 ]
+        ] [ 1 ]
+    ] [ 0 ]
 ]
 
 ;; ---- HTML tag atoms (single-quoted attributes keep the source simple) ------
 h1-open:   "<h1>"
 h1-close:  "</h1>"
+h2-open:   "<h2>"
+h2-close:  "</h2>"
 p-open:    "<p>"
 p-close:   "</p>"
-ul-open:   "<ul>"
-ul-close:  "</ul>"
+catalog-open:  "<ul class='catalog'>"
+catalog-close: "</ul>"
+basket-list-open:  "<ul class='basket-list'>"
+basket-list-close: "</ul>"
 li-open:   "<li>"
 li-close:  "</li>"
-btn-open:  "<button data-glon-route='"
+span-open:  "<span class='item'>"
+span-close: "</span>"
+qty-open:  "<span class='qty'>"
+qty-close: "</span>"
+btn-open:  "<button class='btn' data-glon-route='"
 btn-mid:   "'>"
 btn-close: "</button>"
-event-open: "<button data-glon-event='"
-input-open: "<input data-glon-input='"
+event-open: "<button class='btn' data-glon-event='"
+input-open: "<input class='search-input' type='text' placeholder='Search' data-glon-input='"
 value-mid:  "' data-glon-value='"
+panel-open:  "<div class='panel'>"
+panel-close: "</div>"
+search-open:  "<div class='search-row'>"
+search-close: "</div>"
+basket-open:  "<div class='basket'>"
+basket-close: "</div>"
+total-open:  "<p class='total'>"
+total-close: "</p>"
+meta-open:   "<p class='meta'>"
+meta-close:  "</p>"
+tagline-open:  "<p class='tagline'>"
+tagline-close: "</p>"
+nav-open:   "<p class='nav'>"
+nav-close:  "</p>"
 
 ;; ---- view vocabulary ------------------------------------------------------
 ;; Each term wraps its CONTENT (a block of emit-* calls) in an HTML element.
 heading: func [content] [ emit-text h1-open do content emit-text h1-close ]
+subhead: func [content] [ emit-text h2-open do content emit-text h2-close ]
 text:    func [content] [ emit-text p-open  do content emit-text p-close ]
+tagline: func [content] [ emit-text tagline-open do content emit-text tagline-close ]
+meta:    func [content] [ emit-text meta-open do content emit-text meta-close ]
 link:    func [content route] [
+    emit-text nav-open
     emit-text btn-open emit-text route emit-text btn-mid do content emit-text btn-close
+    emit-text nav-close
 ]
 ;; G1C: a button that carries a generic application-event token (not a route).
 button:  func [content event] [
     emit-text event-open emit-text event emit-text btn-mid do content emit-text btn-close
 ]
 ;; G1E: a button carrying an event token AND a static value (e.g. a product id).
-;; JS forwards the token+value opaquely; Glon interprets both.
 value-button: func [content event value] [
     emit-text event-open emit-text event emit-text value-mid emit-text value emit-text btn-mid
     do content emit-text btn-close
@@ -91,13 +146,12 @@ input:   func [name] [
 ;; controls. Each product renders as its name plus an "Add" button that carries
 ;; the product's identity as the event value — the same event semantic
 ;; instantiated repeatedly with distinct application data.
-products: func [items] [ emit-text ul-open each-product items emit-text ul-close ]
+products: func [items] [ emit-text catalog-open each-product items emit-text catalog-close ]
 each-product: func [items] [ emit-product-at items 0 block-len items ]
 emit-product-at: func [items i n] [
     either < i n [
         emit-text li-open
-        emit-text block-at items i
-        emit-byte 32
+        emit-text span-open emit-text block-at items i emit-text span-close
         value-button [ emit-text "Add" ] "add-product" block-at items i
         emit-text li-close
         emit-product-at items + i 1 n

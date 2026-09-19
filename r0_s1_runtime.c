@@ -2197,7 +2197,12 @@ cell r0_s1_init(void) {
     intern("func");
     intern("return");
     intern("raw");
-    global_ctx = make_context(R0_NONE, 48);
+    /* The global context holds every top-level definition (natives, view
+ * vocabulary atoms, application state/views/routes). The shop demo has
+ * ~90 such bindings; cap 48 only holds 48 data + 24 hash-overflow = 72
+ * safely, so a larger cap is required to avoid bind() overrunning the
+ * context. 128 holds 128 data + 64 hash-overflow = 192 safely. */
+    global_ctx = make_context(R0_NONE, 128);
     bind(global_ctx, intern("+"),  mk_native(RN_ADD));
     bind(global_ctx, intern("-"),  mk_native(RN_SUB));
     bind(global_ctx, intern("*"),  mk_native(RN_MUL));

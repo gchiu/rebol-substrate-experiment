@@ -105,41 +105,45 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   if (!/Glon Shop/.test(home) || !/data-glon-route='products'/.test(home))
     fail("home route: expected 'Glon Shop' + products button, got: " + home);
 
-  // 2. products route shows visit 1, cart 0, and a repeated product list
+  // 2. products route shows visit 1, an empty basket, and the repeated list
   const v1 = route("products");
-  if (!/Products page visits: 1/.test(v1) || !/Cart: 0/.test(v1) ||
+  if (!/Products page visits: 1/.test(v1) || !v1.includes("0 items") ||
       !/data-glon-value='Tea'/.test(v1) || !/data-glon-value='Rice'/.test(v1))
     fail("products visit 1: got: " + v1);
 
-  // 3. add-product for Tea / Rice / Tea (repeated interactive composition)
+  // 3. add-product for Tea / Rice / Tea (per-product basket quantities)
   const c1 = eventValue("add-product", "Tea");
-  if (!/Cart: 1/.test(c1) || !/Last added: Tea/.test(c1))
-    fail("add Tea -> cart 1, last-added Tea: got: " + c1);
+  if (!c1.includes("Tea</span><span class='qty'>× 1</span>") || !c1.includes("1 item"))
+    fail("add Tea -> Tea x1: got: " + c1);
 
   const c2 = eventValue("add-product", "Rice");
-  if (!/Cart: 2/.test(c2) || !/Last added: Rice/.test(c2))
-    fail("add Rice -> cart 2, last-added Rice: got: " + c2);
+  if (!c2.includes("Tea</span><span class='qty'>× 1</span>") ||
+      !c2.includes("Rice</span><span class='qty'>× 1</span>") || !c2.includes("2 items"))
+    fail("add Rice -> Tea x1, Rice x1: got: " + c2);
 
   const c3 = eventValue("add-product", "Tea");
-  if (!/Cart: 3/.test(c3) || !/Last added: Tea/.test(c3))
-    fail("add Tea again -> cart 3, last-added Tea: got: " + c3);
+  if (!c3.includes("Tea</span><span class='qty'>× 2</span>") ||
+      !c3.includes("Rice</span><span class='qty'>× 1</span>") || !c3.includes("3 items"))
+    fail("add Tea again -> Tea x2, Rice x1, 3 items: got: " + c3);
 
   // 3b. search event with a value (G1D)
   const s1 = eventValue("search", "green tea");
   if (!/Search: green tea/.test(s1))
     fail("search 'green tea': got: " + s1);
 
-  // 4. navigate away and back; cart persists
+  // 4. navigate away and back; basket persists
   route("home");
   const v2 = route("products");
-  if (!/Products page visits: 2/.test(v2) || !/Cart: 3/.test(v2) || !/Last added: Tea/.test(v2))
-    fail("products again: expected visits 2 cart 3 last-added Tea, got: " + v2);
+  if (!/Products page visits: 2/.test(v2) ||
+      !v2.includes("Tea</span><span class='qty'>× 2</span>") ||
+      !v2.includes("Rice</span><span class='qty'>× 1</span>") || !v2.includes("3 items"))
+    fail("products again: expected visits 2, Tea x2, Rice x1, 3 items: got: " + v2);
 
-  // 5. unknown route -> not-found; unknown event -> current view (safe fallback)
+  // 5. unknown route -> not-found (safe fallback)
   const nf = route("definitely-unknown");
   if (!/Not found/.test(nf))
     fail("unknown route: expected 'Not found', got: " + nf);
 
-  console.log("GLON_G1E_TEST PASS (home / products / add-product x3 / search / persist / unknown)");
+  console.log("GLON_G1E_TEST PASS (home / products / add-product x3 / basket quantities / search / persist / unknown)");
   process.exit(0);
 }).catch((e) => fail(e.message || e));

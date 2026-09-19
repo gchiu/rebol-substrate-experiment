@@ -6,40 +6,73 @@
 ;; ("add-product") is instantiated repeatedly with DISTINCT application data
 ;; ("tea" vs "rice"), and Glon — not JavaScript — decides what each value means.
 ;;
-;;   state        -> plain GLON set-words (visit-count, cart-count, last-added)
+;;   state        -> plain GLON set-words (visit-count, tea-count, rice-count, search-term)
 ;;   product data -> a GLON block (catalog)
-;;   views        -> composable GLON blocks (heading/text/products/input/button/link)
+;;   views        -> composable GLON blocks (heading/text/products/input/button/link/basket)
 ;;   routes       -> entry side effects + render-current
 ;;   events       -> a generic dispatcher (do-event) + handlers
 ;;
+;; The basket holds per-product quantities as explicit Glon state. It is
+;; regenerated from that state on every render, so the visible basket reflects
+;; real quantities (Tea x2, Rice x1, ...) rather than an aggregate counter.
 ;; The browser host remains generic: it forwards route tokens and event
 ;; token/value pairs opaquely; Glon owns all application meaning.
 
 ;; ---- application state -----------------------------------------------------
 visit-count: 0
-cart-count: 0
-last-added: []
+tea-count: 0
+rice-count: 0
 search-term: []
 
 ;; ---- product data ---------------------------------------------------------
 catalog: [ "Tea" "Rice" ]
 
+;; ---- basket rendering ------------------------------------------------------
+;; A basket row is emitted only when its quantity is non-zero (empty basket =
+;; no rows). The total is derived from the two counts, so it cannot drift.
+basket-row: func [name count] [
+    either > count 0 [
+        emit-text li-open
+        emit-text span-open emit-text name emit-text span-close
+        emit-text qty-open emit-text "× " emit-int count emit-text qty-close
+        emit-text li-close
+    ] [ none ]
+]
+basket: func [] [
+    emit-text basket-open
+    subhead [ emit-text "Your basket" ]
+    emit-text basket-list-open
+    basket-row "Tea" tea-count
+    basket-row "Rice" rice-count
+    emit-text basket-list-close
+    emit-text total-open
+    emit-int + tea-count rice-count
+    emit-text " "
+    either = + tea-count rice-count 1 [ emit-text "item" ] [ emit-text "items" ]
+    emit-text total-close
+    emit-text basket-close
+]
+
 ;; ---- views -----------------------------------------------------------------
 home-view: [
     heading [ emit-text "Glon Shop" ]
+    tagline [ emit-text "A tiny GLON storefront" ]
     link    [ emit-text "View products" ] "products"
 ]
 
 products-view: [
     heading [ emit-text "Products" ]
     products catalog
-    text    [ emit-text "Products page visits: " emit-int visit-count ]
-    text    [ emit-text "Search: " emit-text search-term ]
-    input   "search"
-    button  [ emit-text "Search" ] "search"
-    text    [ emit-text "Cart: " emit-int cart-count ]
-    text    [ emit-text "Last added: " emit-text last-added ]
-    link    [ emit-text "Back home" ] "home"
+    emit-text panel-open
+    emit-text search-open
+    input "search"
+    button [ emit-text "Search" ] "search"
+    emit-text search-close
+    meta [ emit-text "Search: " emit-text search-term ]
+    meta [ emit-text "Products page visits: " emit-int visit-count ]
+    emit-text panel-close
+    basket
+    link [ emit-text "Back home" ] "home"
 ]
 
 not-found-view: [
@@ -68,11 +101,12 @@ route: [
 ]
 
 ;; ---- events (mutate state, rerender current view) -------------------------
-;; The product identity arrives as the event VALUE (a byte-list); Glon records
-;; it, so repeated "Add" clicks on different products produce distinct state.
+;; The product identity arrives as the event VALUE (a byte-list). Glon matches
+;; it against the catalogue and increments the matching quantity, so repeated
+;; "Add" clicks on different products produce distinct basket state.
 add-product: func [] [
-    cart-count: + cart-count 1
-    last-added: current-value
+    either blk-eq current-value "Tea" [ tea-count: + tea-count 1 ]
+    [ either blk-eq current-value "Rice" [ rice-count: + rice-count 1 ] [ none ] ]
     render-current
 ]
 search: func [] [ search-term: current-value render-current ]
