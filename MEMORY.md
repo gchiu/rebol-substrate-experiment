@@ -27,6 +27,11 @@ Central principle: **Forth optimises transparency of execution; Glon optimises
 transparency of intention.** RAW remains the generic low-level trapdoor; the
 shorthand is "stay in GLON unless you genuinely need to descend".
 
+Design decision: **Glon abstractions are permeable.** High-level language and
+GUI dialects must retain a defined trap door to the underlying host substrate
+(raw HTML/CSS/DOM/browser APIs, and the RAW/S1/HOST runtime substrate). This is
+formalised as the **Substrate Principle** in `DESIGN.md`.
+
 ## 2. Frozen invariants
 
 - **S1 has exactly seven irreducible primitives** and no eighth:
@@ -472,6 +477,8 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 ## 11. Detailed documents
 
 - `README.md` — project intro.
+- `DESIGN.md` — normative design principles (the Substrate Principle; the
+  persistent interpreter/application model).
 - `R0-S1-PHASE1.md`, `R0-S1-RESULTS.md`, `R0-ARCHITECTURE.md` — R0-on-S1.
 - `M1-MULTITASKING-RESULTS.md`, `M2-GC-DESIGN.md`, `M3-DATATYPE-DESIGN.md`,
   `M3D-MANAGED-BLOCK-DESIGN.md`, `DEBUGGER-D1-*.md`, `W2-STANDALONE-WASM-RESULTS.md`

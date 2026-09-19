@@ -32,6 +32,13 @@ A useful shorthand is:
 
 > stay in GLON unless you genuinely need to descend.
 
+The same principle extends to the intended GUI layer and to the browser host:
+GLON is a persistent REBOL-style machine hosted by the browser, JavaScript
+provides host and GUI services rather than the application model, and GLON
+abstractions are deliberately permeable — high-level facilities retain a
+defined path down to the underlying substrate. See `DESIGN.md` ("The Substrate
+Principle").
+
 ## S1
 
 S1 is a frozen cell-addressed machine with only seven primitive operations:

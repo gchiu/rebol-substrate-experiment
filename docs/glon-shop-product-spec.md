@@ -58,6 +58,11 @@ on ".add-cart" 'click [
 
 The JavaScript bridge performs the corresponding browser operations.
 
+This principle is one instance of the **Substrate Principle** — see `DESIGN.md`.
+Any future Glon UI dialect must preserve a defined path to raw HTML, CSS, DOM
+and host functionality; concise, composable interface construction must never
+become a sealed boundary that hides those facilities irreversibly.
+
 ---
 
 ## Primary demonstration
