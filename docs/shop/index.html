@@ -5,13 +5,121 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Glon Shop</title>
 <style>
-  body { font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; }
-  button { font-size: 1rem; padding: 0.35rem 0.8rem; cursor: pointer; }
-  #app { max-width: 40rem; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1f2937;
+    background: #f7f8fa;
+    line-height: 1.5;
+  }
+  #app {
+    max-width: 42rem;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 3rem;
+  }
+  #app h1 {
+    font-size: 1.75rem;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.5rem;
+  }
+  #app h2 {
+    font-size: 1.05rem;
+    margin: 0 0 0.75rem;
+  }
+  .tagline { color: #6b7280; margin: 0 0 1.5rem; }
+
+  /* product catalogue */
+  .catalog {
+    list-style: none;
+    margin: 0 0 1.25rem;
+    padding: 0;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    background: #ffffff;
+  }
+  .catalog li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+  }
+  .catalog li + li { border-top: 1px solid #e5e7eb; }
+  .item { font-weight: 500; }
+
+  /* buttons */
+  .btn {
+    font: inherit;
+    font-weight: 500;
+    color: #1f2937;
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    padding: 0.4rem 0.9rem;
+    cursor: pointer;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+  }
+  .btn:hover { background: #f3f4f6; border-color: #9ca3af; }
+  .btn:active { background: #e5e7eb; }
+  .btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+
+  /* status panel (search + metrics) */
+  .panel {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin: 0 0 1.25rem;
+  }
+  .search-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  .search-input {
+    font: inherit;
+    flex: 1;
+    min-width: 0;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+  }
+  .search-input:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+  .meta { color: #6b7280; font-size: 0.9rem; margin: 0.25rem 0; }
+
+  /* basket */
+  .basket {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin: 0 0 1.25rem;
+  }
+  .basket-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .basket-list li {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.4rem 0;
+  }
+  .basket-list li + li { border-top: 1px solid #f3f4f6; }
+  .qty { color: #6b7280; font-variant-numeric: tabular-nums; }
+  .total {
+    font-weight: 600;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 0.6rem;
+    margin: 0.5rem 0 0;
+  }
+
+  .nav { margin: 0; }
 </style>
 </head>
 <body>
-<h1>Glon Shop</h1>
 <div id="app" data-glon-id="1"></div>
 <script type="application/glon">[ 
 
@@ -56,39 +164,94 @@ emit-digits: func [n] [
     either > n 9 [ emit-digits / n 10 ] [ none ]
     emit-byte + 48 - n * 10 / n 10
 ]
-emit-text: func [blk] [ emit-text-at blk 0 block-len blk ]
-emit-text-at: func [blk i n] [
-    either < i n [ emit-byte block-at blk i emit-text-at blk + i 1 n ] [ none ]
+
+
+
+
+
+
+emit-text: raw 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_A !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  emit-text-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH emit-text-done
+    LIT SCRATCH_B @ LIT 2 ADD LIT SCRATCH_A @ ADD @
+    LIT G1_OUT_DATA LIT SCRATCH_E @ ADD
+    !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH emit-text-loop
+  emit-text-done:
+    ARITY 0 EXIT
+]
+
+
+
+
+blk-eq: func [a b] [ blk-eq-at a b 0 ]
+blk-eq-at: func [a b i] [
+    either = block-len a block-len b [
+        either < i block-len a [
+            either = block-at a i block-at b i [ blk-eq-at a b + i 1 ] [ 0 ]
+        ] [ 1 ]
+    ] [ 0 ]
 ]
 
 
 h1-open:   [60 104 49 62]
 h1-close:  [60 47 104 49 62]
+h2-open:   [60 104 50 62]
+h2-close:  [60 47 104 50 62]
 p-open:    [60 112 62]
 p-close:   [60 47 112 62]
-ul-open:   [60 117 108 62]
-ul-close:  [60 47 117 108 62]
+catalog-open:  [60 117 108 32 99 108 97 115 115 61 39 99 97 116 97 108 111 103 39 62]
+catalog-close: [60 47 117 108 62]
+basket-list-open:  [60 117 108 32 99 108 97 115 115 61 39 98 97 115 107 101 116 45 108 105 115 116 39 62]
+basket-list-close: [60 47 117 108 62]
 li-open:   [60 108 105 62]
 li-close:  [60 47 108 105 62]
-btn-open:  [60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 39]
+span-open:  [60 115 112 97 110 32 99 108 97 115 115 61 39 105 116 101 109 39 62]
+span-close: [60 47 115 112 97 110 62]
+qty-open:  [60 115 112 97 110 32 99 108 97 115 115 61 39 113 116 121 39 62]
+qty-close: [60 47 115 112 97 110 62]
+btn-open:  [60 98 117 116 116 111 110 32 99 108 97 115 115 61 39 98 116 110 39 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 39]
 btn-mid:   [39 62]
 btn-close: [60 47 98 117 116 116 111 110 62]
-event-open: [60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 101 118 101 110 116 61 39]
-input-open: [60 105 110 112 117 116 32 100 97 116 97 45 103 108 111 110 45 105 110 112 117 116 61 39]
+event-open: [60 98 117 116 116 111 110 32 99 108 97 115 115 61 39 98 116 110 39 32 100 97 116 97 45 103 108 111 110 45 101 118 101 110 116 61 39]
+input-open: [60 105 110 112 117 116 32 99 108 97 115 115 61 39 115 101 97 114 99 104 45 105 110 112 117 116 39 32 116 121 112 101 61 39 116 101 120 116 39 32 112 108 97 99 101 104 111 108 100 101 114 61 39 83 101 97 114 99 104 39 32 100 97 116 97 45 103 108 111 110 45 105 110 112 117 116 61 39]
 value-mid:  [39 32 100 97 116 97 45 103 108 111 110 45 118 97 108 117 101 61 39]
+panel-open:  [60 100 105 118 32 99 108 97 115 115 61 39 112 97 110 101 108 39 62]
+panel-close: [60 47 100 105 118 62]
+search-open:  [60 100 105 118 32 99 108 97 115 115 61 39 115 101 97 114 99 104 45 114 111 119 39 62]
+search-close: [60 47 100 105 118 62]
+basket-open:  [60 100 105 118 32 99 108 97 115 115 61 39 98 97 115 107 101 116 39 62]
+basket-close: [60 47 100 105 118 62]
+total-open:  [60 112 32 99 108 97 115 115 61 39 116 111 116 97 108 39 62]
+total-close: [60 47 112 62]
+meta-open:   [60 112 32 99 108 97 115 115 61 39 109 101 116 97 39 62]
+meta-close:  [60 47 112 62]
+tagline-open:  [60 112 32 99 108 97 115 115 61 39 116 97 103 108 105 110 101 39 62]
+tagline-close: [60 47 112 62]
+nav-open:   [60 112 32 99 108 97 115 115 61 39 110 97 118 39 62]
+nav-close:  [60 47 112 62]
 
 
 
 heading: func [content] [ emit-text h1-open do content emit-text h1-close ]
+subhead: func [content] [ emit-text h2-open do content emit-text h2-close ]
 text:    func [content] [ emit-text p-open  do content emit-text p-close ]
+tagline: func [content] [ emit-text tagline-open do content emit-text tagline-close ]
+meta:    func [content] [ emit-text meta-open do content emit-text meta-close ]
 link:    func [content route] [
+    emit-text nav-open
     emit-text btn-open emit-text route emit-text btn-mid do content emit-text btn-close
+    emit-text nav-close
 ]
 
 button:  func [content event] [
     emit-text event-open emit-text event emit-text btn-mid do content emit-text btn-close
 ]
-
 
 value-button: func [content event value] [
     emit-text event-open emit-text event emit-text value-mid emit-text value emit-text btn-mid
@@ -106,13 +269,12 @@ input:   func [name] [
 
 
 
-products: func [items] [ emit-text ul-open each-product items emit-text ul-close ]
+products: func [items] [ emit-text catalog-open each-product items emit-text catalog-close ]
 each-product: func [items] [ emit-product-at items 0 block-len items ]
 emit-product-at: func [items i n] [
     either < i n [
         emit-text li-open
-        emit-text block-at items i
-        emit-byte 32
+        emit-text span-open emit-text block-at items i emit-text span-close
         value-button [ emit-text [65 100 100] ] [97 100 100 45 112 114 111 100 117 99 116] block-at items i
         emit-text li-close
         emit-product-at items + i 1 n
@@ -135,30 +297,63 @@ emit-product-at: func [items i n] [
 
 
 
+
+
+
 visit-count: 0
-cart-count: 0
-last-added: []
+tea-count: 0
+rice-count: 0
 search-term: []
 
 
 catalog: [ [84 101 97] [82 105 99 101] ]
 
 
+
+
+basket-row: func [name count] [
+    either > count 0 [
+        emit-text li-open
+        emit-text span-open emit-text name emit-text span-close
+        emit-text qty-open emit-text [195 151 32] emit-int count emit-text qty-close
+        emit-text li-close
+    ] [ none ]
+]
+basket: func [] [
+    emit-text basket-open
+    subhead [ emit-text [89 111 117 114 32 98 97 115 107 101 116] ]
+    emit-text basket-list-open
+    basket-row [84 101 97] tea-count
+    basket-row [82 105 99 101] rice-count
+    emit-text basket-list-close
+    emit-text total-open
+    emit-int + tea-count rice-count
+    emit-text [32]
+    either = + tea-count rice-count 1 [ emit-text [105 116 101 109] ] [ emit-text [105 116 101 109 115] ]
+    emit-text total-close
+    emit-text basket-close
+]
+
+
 home-view: [
     heading [ emit-text [71 108 111 110 32 83 104 111 112] ]
+    tagline [ emit-text [65 32 116 105 110 121 32 71 76 79 78 32 115 116 111 114 101 102 114 111 110 116] ]
     link    [ emit-text [86 105 101 119 32 112 114 111 100 117 99 116 115] ] [112 114 111 100 117 99 116 115]
 ]
 
 products-view: [
     heading [ emit-text [80 114 111 100 117 99 116 115] ]
     products catalog
-    text    [ emit-text [80 114 111 100 117 99 116 115 32 112 97 103 101 32 118 105 115 105 116 115 58 32] emit-int visit-count ]
-    text    [ emit-text [83 101 97 114 99 104 58 32] emit-text search-term ]
-    input   [115 101 97 114 99 104]
-    button  [ emit-text [83 101 97 114 99 104] ] [115 101 97 114 99 104]
-    text    [ emit-text [67 97 114 116 58 32] emit-int cart-count ]
-    text    [ emit-text [76 97 115 116 32 97 100 100 101 100 58 32] emit-text last-added ]
-    link    [ emit-text [66 97 99 107 32 104 111 109 101] ] [104 111 109 101]
+    emit-text panel-open
+    emit-text search-open
+    input [115 101 97 114 99 104]
+    button [ emit-text [83 101 97 114 99 104] ] [115 101 97 114 99 104]
+    emit-text search-close
+    meta [ emit-text [83 101 97 114 99 104 58 32] emit-text search-term ]
+    meta [ emit-text [80 114 111 100 117 99 116 115 32 112 97 103 101 32 118 105 115 105 116 115 58 32] emit-int visit-count ]
+    emit-text panel-close
+    basket
+    link [ emit-text [66 97 99 107 32 104 111 109 101] ] [104 111 109 101]
 ]
 
 not-found-view: [
@@ -189,9 +384,10 @@ route: [
 
 
 
+
 add-product: func [] [
-    cart-count: + cart-count 1
-    last-added: current-value
+    either blk-eq current-value [84 101 97] [ tea-count: + tea-count 1 ]
+    [ either blk-eq current-value [82 105 99 101] [ rice-count: + rice-count 1 ] [ none ] ]
     render-current
 ]
 search: func [] [ search-term: current-value render-current ]
