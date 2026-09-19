@@ -103,6 +103,23 @@ On the same PC, using the same naïve recursive Fibonacci workload, local
 method, not a general claim. Full method and caveats (cross-environment
 Windows-vs-WSL2, ms timer resolution): `R3-FIB-COMPARISON.md`.
 
+### P6 diagnostic conclusion (where the ~9 s goes)
+
+P6 (`fib-profile-p6`) counted the interpreter's work for `fib 25`: **1.1 billion
+S1 opcode dispatches** — ~4560 per fib call, and **169 million HOST calls**
+(~698 per call, ~279× the fib's own 606 961 arithmetic natives). The opcode mix
+is dominated by the memory-mapped register-access idiom: LIT 43.8%, `@` 19.3%,
+`!` 12.8% (76% total), HOST 15.3%, `0BRANCH` 4.6%. At the `-O0` baseline that is
+~8.8 s ≈ ~24 CPU cycles per opcode.
+
+Conclusion: the cost is **instruction amplification** (the Glon evaluator
+expressed in S1 expands each fib call into thousands of LIT/`@`/`!`/HOST cells,
+because IP/SP/RP/HP are memory-mapped), compounded by an **unoptimised `switch`
+dispatch** (`-O0`). Hash lookup is now immaterial (0.2% of opcodes). Leading P7
+candidates, in order: (1) reduce emitted S1 instruction count; (2) cheaper
+dispatch (`-O2` / computed goto) — a separate experiment. Full detail:
+`FIB-OPT-P6-PROFILE.md`.
+
 ## 5. Milestones (branch / tag → commit)
 
 In order:
@@ -124,6 +141,7 @@ In order:
 | P3 contexts | `fib-opt-p3` | `67bb997` |
 | P4 lexical | `fib-opt-p4` | `d8161b0` |
 | P5 hash lookup | `fib-opt-p5` | `6a41848` |
+| P6 profile | `fib-profile-p6` | *(this phase)* |
 
 ## 6. Lessons learned
 
@@ -164,10 +182,11 @@ programming-model experiments
 ```
 
 - P4 and P5 are complete and retained; `fib-opt-p5` is the current optimisation
-  baseline.
-- Do **not** assume a further performance phase until current profiling is
-  reviewed; name resolution is no longer the dominant Fibonacci cost (dispatch,
-  argument evaluation and native/HOST arithmetic are the leading candidates).
+  baseline. P6 (`fib-profile-p6`) is a completed diagnostic phase.
+- P6 profiled the remaining cost: 1.1B S1 opcode dispatches / 4560 per fib call,
+  dominated by the memory-mapped register-access idiom (LIT/`@`/`!` = 76%) and
+  HOST arithmetic (15%). The leading P7 candidates are (1) reducing emitted S1
+  instruction count, (2) cheaper dispatch — select from evidence, not assumption.
 - Continue the rule: **one architectural performance hypothesis per phase.**
 - The broader benchmark suite is: Fibonacci (recursion/call overhead), tight
   loop (evaluator/branch overhead), counter closure (captured mutation),
@@ -267,6 +286,7 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
   optimisation phases.
 - `FIB-OPT-P4-LEX.md`, `FIB-OPT-P4-RESULTS.md` — P4.
 - `FIB-OPT-P5-HASH-LOOKUP.md`, `FIB-OPT-P5-RESULTS.md` — P5 (current baseline).
+- `FIB-OPT-P6-PROFILE.md` — P6 diagnostic profile (where the ~9 s goes).
 - `R3-FIB-COMPARISON.md` — local Rebol3 vs Glon P5 Fibonacci benchmark.
 - `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
 - `docs/distributed-glon-agents.md` — distributed/federated agent architecture.

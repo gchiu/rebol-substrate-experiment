@@ -52,6 +52,18 @@ r0_s1_fib_profiler_prof.o: r0_s1_fib_profiler.c r0_s1.h s1.h
 r0_s1_runtime_prof.o: r0_s1_runtime.c r0_s1.h s1.h
 	$(CC) $(PROFILE_FLAGS) -c -o $@ r0_s1_runtime.c
 
+# ---- FIB-OPT-P6: diagnostic profiler (S1 opcode/HOST event counters) ----
+# Links an instrumented COPY of the S1 machine (s1_prof.c); the frozen s1.c is
+# untouched and the ordinary `s1` binary is unaffected.
+fib-p6-prof: r0_s1_p6_prof.o s1_prof.o r0_s1_runtime_prof.o
+	$(CC) $(PROFILE_FLAGS) -o $@ r0_s1_p6_prof.o s1_prof.o r0_s1_runtime_prof.o
+
+s1_prof.o: s1_prof.c s1.h s1_prof.h
+	$(CC) $(CFLAGS) -c -o $@ s1_prof.c
+
+r0_s1_p6_prof.o: r0_s1_p6_prof.c r0_s1.h s1.h s1_prof.h
+	$(CC) $(PROFILE_FLAGS) -c -o $@ r0_s1_p6_prof.c
+
 clean:
 	rm -f s1 fib-profiler fib-timing $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
 
