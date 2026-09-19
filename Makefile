@@ -1,7 +1,7 @@
 CC      ?= cc
 CFLAGS  ?= -std=c17 -Wall -Wextra -O0 -g
 
-OBJS = s1.o tests.o adversarial.o claims.o r0.o r0_tests.o r0_s1_runtime.o r0_s1_g1a.o r0_s1_tests.o r0_s1_debug_tests.o r0_s1_m1_tests.o r0_s1_m2_tests.o r0_s1_m3_tests.o r0_s1_m3b_tests.o r0_s1_m3c_tests.o r0_s1_m3d_tests.o r0_s1_nested_closure_tests.o r0_s1_p4_tests.o r0_s1_p5_tests.o r0_s1_g1a_tests.o r0_s1_g1b_tests.o r0_s1_g1c_tests.o r0_s1_g1d_tests.o main.o
+OBJS = s1.o tests.o adversarial.o claims.o r0.o r0_tests.o r0_s1_runtime.o r0_s1_g1a.o r0_s1_tests.o r0_s1_debug_tests.o r0_s1_m1_tests.o r0_s1_m2_tests.o r0_s1_m3_tests.o r0_s1_m3b_tests.o r0_s1_m3c_tests.o r0_s1_m3d_tests.o r0_s1_nested_closure_tests.o r0_s1_p4_tests.o r0_s1_p5_tests.o r0_s1_g1a_tests.o r0_s1_g1b_tests.o r0_s1_g1c_tests.o r0_s1_g1d_tests.o r0_s1_g1e_tests.o main.o
 
 all: s1
 
@@ -20,6 +20,7 @@ r0_s1_g1a_tests.o: r0_s1_g1a_tests.c r0_s1_g1a.h r0_s1.h s1.h
 r0_s1_g1b_tests.o: r0_s1_g1b_tests.c r0_s1_g1a.h r0_s1.h s1.h
 r0_s1_g1c_tests.o: r0_s1_g1c_tests.c r0_s1_g1a.h r0_s1.h s1.h
 r0_s1_g1d_tests.o: r0_s1_g1d_tests.c r0_s1_g1a.h r0_s1.h s1.h
+r0_s1_g1e_tests.o: r0_s1_g1e_tests.c r0_s1_g1a.h r0_s1.h s1.h
 r0_s1_tests.o: r0_s1_tests.c r0_s1.h s1.h
 r0_s1_debug_tests.o: r0_s1_debug_tests.c r0_s1.h s1.h
 r0_s1_m1_tests.o: r0_s1_m1_tests.c r0_s1.h m1_layout.h s1.h
@@ -170,7 +171,7 @@ demo/shop/app.html: demo/shop/shop.glon demo/shop/fragments/home.html \
 # headless verification under node (the real WASM module + host bridge)
 wasm-g1a-test: demo/shop/glon.wasm demo/shop/app.html
 	node demo/shop/node_test.js | tee /tmp/opencode_g1a_test.out
-	@grep -q "GLON_G1A_TEST PASS" /tmp/opencode_g1a_test.out && \
-	 echo "wasm-g1a-test: PASS (home / products x2 visits / unknown -> not found)"
+	@grep -q "GLON_G1E_TEST PASS" /tmp/opencode_g1a_test.out && \
+	 echo "wasm-g1a-test: PASS (home / products / add-product x3 / search / persist / unknown)"
 
 .PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test

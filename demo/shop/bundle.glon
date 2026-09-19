@@ -60,6 +60,7 @@ btn-mid:   [39 62]
 btn-close: [60 47 98 117 116 116 111 110 62]
 event-open: [60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 101 118 101 110 116 61 39]
 input-open: [60 105 110 112 117 116 32 100 97 116 97 45 103 108 111 110 45 105 110 112 117 116 61 39]
+value-mid:  [39 32 100 97 116 97 45 103 108 111 110 45 118 97 108 117 101 61 39]
 
 
 
@@ -74,17 +75,31 @@ button:  func [content event] [
 ]
 
 
+value-button: func [content event value] [
+    emit-text event-open emit-text event emit-text value-mid emit-text value emit-text btn-mid
+    do content emit-text btn-close
+]
+
+
 
 input:   func [name] [
     emit-text input-open emit-text name emit-text btn-mid
 ]
 
 
-list: func [items] [ emit-text ul-open each-product items emit-text ul-close ]
+
+
+
+
+products: func [items] [ emit-text ul-open each-product items emit-text ul-close ]
 each-product: func [items] [ emit-product-at items 0 block-len items ]
 emit-product-at: func [items i n] [
     either < i n [
-        emit-text li-open emit-text block-at items i emit-text li-close
+        emit-text li-open
+        emit-text block-at items i
+        emit-byte 32
+        value-button [ emit-text [65 100 100] ] [97 100 100 45 112 114 111 100 117 99 116] block-at items i
+        emit-text li-close
         emit-product-at items + i 1 n
     ] [ none ]
 ] 
@@ -104,8 +119,10 @@ emit-product-at: func [items i n] [
 
 
 
+
 visit-count: 0
 cart-count: 0
+last-added: []
 search-term: []
 
 
@@ -119,13 +136,13 @@ home-view: [
 
 products-view: [
     heading [ emit-text [80 114 111 100 117 99 116 115] ]
-    list    catalog
+    products catalog
     text    [ emit-text [80 114 111 100 117 99 116 115 32 112 97 103 101 32 118 105 115 105 116 115 58 32] emit-int visit-count ]
     text    [ emit-text [83 101 97 114 99 104 58 32] emit-text search-term ]
     input   [115 101 97 114 99 104]
     button  [ emit-text [83 101 97 114 99 104] ] [115 101 97 114 99 104]
     text    [ emit-text [67 97 114 116 58 32] emit-int cart-count ]
-    button  [ emit-text [65 100 100] ] [97 100 100 45 111 110 101]
+    text    [ emit-text [76 97 115 116 32 97 100 100 101 100 58 32] emit-text last-added ]
     link    [ emit-text [66 97 99 107 32 104 111 109 101] ] [104 111 109 101]
 ]
 
@@ -155,11 +172,17 @@ route: [
 ]
 
 
-add-one: func [] [ cart-count: + cart-count 1 render-current ]
-search:  func [] [ search-term: current-value render-current ]
+
+
+add-product: func [] [
+    cart-count: + cart-count 1
+    last-added: current-value
+    render-current
+]
+search: func [] [ search-term: current-value render-current ]
 
 
 do-event: [
-    either = current-event 'add-one [ add-one ]
+    either = current-event 'add-product [ add-product ]
     [ either = current-event 'search [ search ] [ render-current ] ]
 ] ]

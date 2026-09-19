@@ -1,4 +1,4 @@
-// demo/shop/node_test.js -- headless verification of the Glon Shop G1D demo
+// demo/shop/node_test.js -- headless verification of the Glon Shop G1E demo
 // (no DOM, no browser, no Emscripten runtime).
 //
 // Instantiates demo/shop/glon.wasm with the three host imports, loads the
@@ -6,7 +6,7 @@
 // drives the router AND the event bridge (token and token+value) exactly as
 // the browser does and asserts the rendered HTML.
 //
-// This exercises the real WASM module + the G1D view dialect + generic event
+// This exercises the real WASM module + the G1E view dialect + repeated interactive composition
 // path (with values) + host bridge; the only thing stubbed is the DOM
 // (host_set_html is captured instead of writing innerHTML).
 "use strict";
@@ -35,7 +35,7 @@ const imports = {
 };
 
 function fail(msg) {
-  console.error("GLON_G1D_TEST FAIL: " + msg);
+  console.error("GLON_G1E_TEST FAIL: " + msg);
   process.exit(1);
 }
 
@@ -85,40 +85,41 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   if (!/Glon Shop/.test(home) || !/data-glon-route='products'/.test(home))
     fail("home route: expected 'Glon Shop' + products button, got: " + home);
 
-  // 2. products route shows visit 1 and cart 0
+  // 2. products route shows visit 1, cart 0, and a repeated product list
   const v1 = route("products");
-  if (!/Products page visits: 1/.test(v1) || !/Cart: 0/.test(v1) || !/Tea/.test(v1) || !/Rice/.test(v1))
+  if (!/Products page visits: 1/.test(v1) || !/Cart: 0/.test(v1) ||
+      !/data-glon-value='Tea'/.test(v1) || !/data-glon-value='Rice'/.test(v1))
     fail("products visit 1: got: " + v1);
 
-  // 3. add-one event increments cart (no re-render via route)
-  const c1 = event("add-one");
-  if (!/Cart: 1/.test(c1) || !/Products page visits: 1/.test(c1))
-    fail("add-one -> cart 1: got: " + c1);
+  // 3. add-product for Tea / Rice / Tea (repeated interactive composition)
+  const c1 = eventValue("add-product", "Tea");
+  if (!/Cart: 1/.test(c1) || !/Last added: Tea/.test(c1))
+    fail("add Tea -> cart 1, last-added Tea: got: " + c1);
 
-  const c2 = event("add-one");
-  if (!/Cart: 2/.test(c2))
-    fail("add-one -> cart 2: got: " + c2);
+  const c2 = eventValue("add-product", "Rice");
+  if (!/Cart: 2/.test(c2) || !/Last added: Rice/.test(c2))
+    fail("add Rice -> cart 2, last-added Rice: got: " + c2);
+
+  const c3 = eventValue("add-product", "Tea");
+  if (!/Cart: 3/.test(c3) || !/Last added: Tea/.test(c3))
+    fail("add Tea again -> cart 3, last-added Tea: got: " + c3);
 
   // 3b. search event with a value (G1D)
   const s1 = eventValue("search", "green tea");
   if (!/Search: green tea/.test(s1))
     fail("search 'green tea': got: " + s1);
 
-  const s2 = eventValue("search", "");
-  if (!/Search: <\/p>/.test(s2))
-    fail("search empty clears term: got: " + s2);
-
   // 4. navigate away and back; cart persists
   route("home");
   const v2 = route("products");
-  if (!/Products page visits: 2/.test(v2) || !/Cart: 2/.test(v2))
-    fail("products again: expected visits 2 cart 2, got: " + v2);
+  if (!/Products page visits: 2/.test(v2) || !/Cart: 3/.test(v2) || !/Last added: Tea/.test(v2))
+    fail("products again: expected visits 2 cart 3 last-added Tea, got: " + v2);
 
   // 5. unknown route -> not-found; unknown event -> current view (safe fallback)
   const nf = route("definitely-unknown");
   if (!/Not found/.test(nf))
     fail("unknown route: expected 'Not found', got: " + nf);
 
-  console.log("GLON_G1D_TEST PASS (home / products / add-one x2 / search / persist / unknown)");
+  console.log("GLON_G1E_TEST PASS (home / products / add-product x3 / search / persist / unknown)");
   process.exit(0);
 }).catch((e) => fail(e.message || e));

@@ -95,9 +95,9 @@
     }
 
     // Event delegation: [data-glon-route] clicks navigate; [data-glon-event]
-    // clicks forward a generic application event. An event may carry a value:
-    // if a [data-glon-input] element shares the event token's name, its value
-    // is forwarded alongside the token. JS only forwards the token/value pair;
+    // clicks forward a generic application event. An event may carry a value
+    // from a static [data-glon-value] attribute, or from a [data-glon-input]
+    // element sharing the token name. JS only forwards the token/value pair;
     // it never interprets what either means.
     document.addEventListener("click", function (e) {
       var el = e.target && e.target.closest ? e.target.closest("[data-glon-route], [data-glon-event]") : null;
@@ -107,8 +107,14 @@
         route(el.getAttribute("data-glon-route"));
       } else if (el.hasAttribute("data-glon-event")) {
         var token = el.getAttribute("data-glon-event");
-        var input = document.querySelector('[data-glon-input="' + token + '"]');
-        if (input && input.value !== undefined) glonEventValue(token, input.value);
+        var value = null;
+        if (el.hasAttribute("data-glon-value")) {
+          value = el.getAttribute("data-glon-value");
+        } else {
+          var input = document.querySelector('[data-glon-input="' + token + '"]');
+          if (input && input.value !== undefined) value = input.value;
+        }
+        if (value !== null) glonEventValue(token, value);
         else glonEvent(token);
       }
     });

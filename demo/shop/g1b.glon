@@ -60,6 +60,7 @@ btn-mid:   "'>"
 btn-close: "</button>"
 event-open: "<button data-glon-event='"
 input-open: "<input data-glon-input='"
+value-mid:  "' data-glon-value='"
 
 ;; ---- view vocabulary ------------------------------------------------------
 ;; Each term wraps its CONTENT (a block of emit-* calls) in an HTML element.
@@ -72,6 +73,12 @@ link:    func [content route] [
 button:  func [content event] [
     emit-text event-open emit-text event emit-text btn-mid do content emit-text btn-close
 ]
+;; G1E: a button carrying an event token AND a static value (e.g. a product id).
+;; JS forwards the token+value opaquely; Glon interprets both.
+value-button: func [content event value] [
+    emit-text event-open emit-text event emit-text value-mid emit-text value emit-text btn-mid
+    do content emit-text btn-close
+]
 ;; G1D: a named text input. An event button whose token matches the name will
 ;; forward this input's value (see host.js) — the event token doubles as the
 ;; input's name.
@@ -79,12 +86,20 @@ input:   func [name] [
     emit-text input-open emit-text name emit-text btn-mid
 ]
 
-;; ---- iteration (a tiny product catalogue) ---------------------------------
-list: func [items] [ emit-text ul-open each-product items emit-text ul-close ]
+;; ---- iteration (a repeated interactive catalogue) -------------------------
+;; G1E: ordinary GLON iteration generates a repeated family of interactive
+;; controls. Each product renders as its name plus an "Add" button that carries
+;; the product's identity as the event value — the same event semantic
+;; instantiated repeatedly with distinct application data.
+products: func [items] [ emit-text ul-open each-product items emit-text ul-close ]
 each-product: func [items] [ emit-product-at items 0 block-len items ]
 emit-product-at: func [items i n] [
     either < i n [
-        emit-text li-open emit-text block-at items i emit-text li-close
+        emit-text li-open
+        emit-text block-at items i
+        emit-byte 32
+        value-button [ emit-text "Add" ] "add-product" block-at items i
+        emit-text li-close
         emit-product-at items + i 1 n
     ] [ none ]
 ]

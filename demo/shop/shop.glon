@@ -1,22 +1,24 @@
-;; demo/shop/shop.glon -- the Glon Shop G1C application (authoritative source).
+;; demo/shop/shop.glon -- the Glon Shop G1E application (authoritative source).
 ;;
-;; G1C adds a generic browser->Glon application event path on top of G1B:
+;; G1E combines the G1B/G1C/G1D capabilities into repeated interactive
+;; composition: the catalogue renders a dynamic family of "Add" buttons, each
+;; carrying its product's identity as the event value. The SAME event semantic
+;; ("add-product") is instantiated repeatedly with DISTINCT application data
+;; ("tea" vs "rice"), and Glon — not JavaScript — decides what each value means.
 ;;
-;;   state        -> plain GLON set-words (visit-count, cart-count)
+;;   state        -> plain GLON set-words (visit-count, cart-count, last-added)
 ;;   product data -> a GLON block (catalog)
-;;   views        -> composable GLON blocks (heading/text/list/link/button)
+;;   views        -> composable GLON blocks (heading/text/products/input/button/link)
 ;;   routes       -> entry side effects + render-current
-;;   events       -> a generic dispatcher (do-event) + handlers (add-one)
+;;   events       -> a generic dispatcher (do-event) + handlers
 ;;
-;; A view is a block of ordinary GLON calls; rendering is `do view-block`.
-;; Clicking a [data-glon-route] button enters Glon through glon_route; clicking
-;; a [data-glon-event] button enters Glon through glon_event as an application
-;; event (a token). JavaScript remains generic: it forwards the token, never
-;; interpreting it.
+;; The browser host remains generic: it forwards route tokens and event
+;; token/value pairs opaquely; Glon owns all application meaning.
 
 ;; ---- application state -----------------------------------------------------
 visit-count: 0
 cart-count: 0
+last-added: []
 search-term: []
 
 ;; ---- product data ---------------------------------------------------------
@@ -30,13 +32,13 @@ home-view: [
 
 products-view: [
     heading [ emit-text "Products" ]
-    list    catalog
+    products catalog
     text    [ emit-text "Products page visits: " emit-int visit-count ]
     text    [ emit-text "Search: " emit-text search-term ]
     input   "search"
     button  [ emit-text "Search" ] "search"
     text    [ emit-text "Cart: " emit-int cart-count ]
-    button  [ emit-text "Add" ] "add-one"
+    text    [ emit-text "Last added: " emit-text last-added ]
     link    [ emit-text "Back home" ] "home"
 ]
 
@@ -66,11 +68,17 @@ route: [
 ]
 
 ;; ---- events (mutate state, rerender current view) -------------------------
-add-one: func [] [ cart-count: + cart-count 1 render-current ]
-search:  func [] [ search-term: current-value render-current ]
+;; The product identity arrives as the event VALUE (a byte-list); Glon records
+;; it, so repeated "Add" clicks on different products produce distinct state.
+add-product: func [] [
+    cart-count: + cart-count 1
+    last-added: current-value
+    render-current
+]
+search: func [] [ search-term: current-value render-current ]
 
 ;; Unknown events fall back to re-rendering the current view (no state change).
 do-event: [
-    either = current-event 'add-one [ add-one ]
+    either = current-event 'add-product [ add-product ]
     [ either = current-event 'search [ search ] [ render-current ] ]
 ]

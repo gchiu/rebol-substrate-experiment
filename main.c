@@ -19,6 +19,7 @@ int run_r0_s1_g1a_tests(void);
 int run_r0_s1_g1b_tests(void);
 int run_r0_s1_g1c_tests(void);
 int run_r0_s1_g1d_tests(void);
+int run_r0_s1_g1e_tests(void);
 
 int main(void) {
     int failures = run_tests();
@@ -40,6 +41,7 @@ int main(void) {
     failures += run_r0_s1_g1b_tests();
     failures += run_r0_s1_g1c_tests();
     failures += run_r0_s1_g1d_tests();
+    failures += run_r0_s1_g1e_tests();
     if (failures == 0) {
         printf("all tests passed\n");
         return 0;
