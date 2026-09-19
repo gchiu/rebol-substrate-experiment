@@ -211,6 +211,19 @@ HOST calls are unchanged (142.9M) and now dominate. Correctness: 5 workloads
 frozen-S1 guard passes. Next target: **P10C HOST intrinsic expansion**.
 Full detail: `FIB-OPT-P10B-REGISTERS.md`, `FIB-OPT-P10B-RESULTS.md`.
 
+### P10C HOST intrinsic expansion (is HOST dispatch the remaining cost?)
+
+P10C (`fib-opt-p10c-host`) lowered the 12 pure arithmetic/comparison HOST
+operations inline into the compiled-S1 path (the S1 stream still says `HOST`;
+`ALLOC`/`PUTCHAR`/`PRINT`/`DUMP` stay generic). Result: **no speedup (~1.0×)** —
+`fib 25` ≈ 0.38 s (P10B ≈ 0.38 s), ~3.8× R3. The generic HOST dispatcher was not
+the bottleneck: the remaining cost is the data/return-stack cell memory traffic
+(`M[sp]`/`M[rp]`) and the per-instruction computed-goto, not the HOST switch.
+Correctness: 7 workloads (incl. arithmetic edge cases) MATCH; 326/326 tests
+pass; frozen-S1 guard passes. Next target: **P10D data/return-stack cell traffic
+or computed-goto elimination**.
+Full detail: `FIB-OPT-P10C-HOST.md`, `FIB-OPT-P10C-RESULTS.md`.
+
 ## 5. Milestones (branch / tag → commit)
 
 In order:
@@ -238,7 +251,8 @@ In order:
 | P8 lazy hash | `fib-p8-lazy-hash-results` | `d40e6c8` |
 | P9 dense frame | `fib-p9-frame-results` | `1282f0b` |
 | P10A compiled S1 | `fib-p10a-compiled-s1-results` | `bf1edeb` |
-| P10B registers | `fib-p10b-register-results` | *(this phase)* |
+| P10B registers | `fib-p10b-register-results` | `0ac3c46` |
+| P10C HOST intrinsics | `fib-p10c-host-results` | *(this phase)* |
 
 ## 6. Lessons learned
 
@@ -310,8 +324,13 @@ programming-model experiments
 - P10B (`fib-opt-p10b-registers`) then promoted `IP`/`SP`/`RP` to C locals in
   the compiled path: **~5× faster than P10A**, `fib 25` ≈ 0.43 s ≈ **4.3× R3**.
   The memory-mapped register traffic was the dominant remaining cost after
-  dispatch removal. HOST (142.9M dispatches, unchanged) now dominates — the
+  dispatch removal.   HOST (142.9M dispatches, unchanged) now dominates — the
   next experiment is **P10C HOST intrinsic expansion**.
+- P10C (`fib-opt-p10c-host`) then lowered the pure arithmetic HOST ops inline:
+  **no speedup (~1.0×)** — HOST dispatch was not the bottleneck; the remaining
+  ~3.8× R3 gap is the data/return-stack cell memory traffic and the
+  per-instruction computed-goto. Next experiment: **P10D stack-cell traffic or
+  computed-goto elimination**.
 - Continue the rule: **one architectural performance hypothesis per phase.**
 - The broader benchmark suite is: Fibonacci (recursion/call overhead), tight
   loop (evaluator/branch overhead), counter closure (captured mutation),
@@ -418,6 +437,7 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `FIB-OPT-P9-FRAMES.md`, `FIB-OPT-P9-RESULTS.md` — P9 dense activation frame.
 - `FIB-OPT-P10A-COMPILED-S1.md`, `FIB-OPT-P10A-RESULTS.md` — P10A compiled-S1 baseline.
 - `FIB-OPT-P10B-REGISTERS.md`, `FIB-OPT-P10B-RESULTS.md` — P10B register promotion.
+- `FIB-OPT-P10C-HOST.md`, `FIB-OPT-P10C-RESULTS.md` — P10C HOST intrinsic expansion.
 - `R3-FIB-COMPARISON.md` — local Rebol3 vs Glon P5 Fibonacci benchmark.
 - `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
 - `docs/distributed-glon-agents.md` — distributed/federated agent architecture.

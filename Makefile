@@ -76,7 +76,9 @@ fib-p6b-bench: r0_s1_p6b_bench.c r0_s1_runtime.c s1.c
 fib-p10a-bench: r0_s1_p10a_bench.c r0_s1_runtime.c s1.c
 	$(CC) $(CFLAGS) -o $@ r0_s1_p10a_bench.c r0_s1_runtime.c s1.c -ldl
 
-# ---- FIB-OPT-P10B: register promotion in compiled-S1 (P10A vs P10B) ----
+# ---- FIB-OPT-P10B/P10C: register promotion + HOST intrinsic expansion ----
+# P10B (promoted IP/SP/RP) vs P10C (P10B + inline pure HOST). Generates +
+# compiles the S1 stream at runtime and compares. Needs libdl.
 fib-p10b-bench: r0_s1_p10b_bench.c r0_s1_runtime.c s1.c
 	$(CC) $(CFLAGS) -o $@ r0_s1_p10b_bench.c r0_s1_runtime.c s1.c -ldl
 
