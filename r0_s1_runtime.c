@@ -1838,29 +1838,36 @@ static void emit_invoke_closure(void) {
     asm_patch_here(j_bind_done);
     /* Allocate the activation frame ON the return stack (task-local storage).
      * The frame pointer must be 16-aligned so its R0 tag is T_INT (0) and it is
-     * never mistaken for a callable (the old heap frame was naturally 16-aligned).
-     * Push `padding = (RP-9) mod 16` dummy cells, then the 9 fields in REVERSE so
-     * they land contiguously at [frame .. frame+8] with the standard FRAME_*
-     * layout (prev at +0 .. BLK at +8), with `frame` 16-aligned. The frame is
-     * released on return/unwind by restoring RP -- no managed allocation. */
-    asm_lit(REG_RP); asm_fetch(); asm_lit(9); asm_host(HOST_SUB); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T6);
+     * never mistaken for a callable. FIB-OPT-P9: compute the 16-aligned frame
+     * base once, adjust RP once, then store the 9 fields at their fixed symbolic
+     * FRAME_* offsets and zero the padding -- instead of nine derived >R pushes
+     * (each re-reads and re-writes the memory-mapped RP). The physical layout
+     * and RAW-visible offsets are unchanged. */
+    asm_lit(REG_RP); asm_fetch(); asm_lit(9); asm_host(HOST_SUB); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T5);  /* padding */
+    asm_lit(REG_RP); asm_fetch(); asm_lit(9); asm_host(HOST_SUB); e_cell(RV_T5); asm_host(HOST_SUB); e_setc(RV_T6);  /* frame base */
+    e_cell(RV_T6); asm_lit(REG_RP); asm_store();          /* RP = frame base (one adjustment) */
+    e_cell(RV_FRAME); e_cell(RV_T6); asm_lit(FRAME_PREV); asm_host(HOST_ADD); asm_store();   /* +0 = prev (old frame) */
+    e_cell(RV_T6); e_setc(RV_FRAME);                       /* RV_FRAME = frame base (16-aligned) */
+    e_cell(RV_CLOSURE); asm_lit(CLOSURE_SITE); asm_host(HOST_ADD); asm_fetch();
+        e_cell(RV_T6); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_store();               /* +1 = site */
+    asm_lit(REG_SP); asm_fetch(); e_cell(RV_T6); asm_lit(FRAME_SP); asm_host(HOST_ADD); asm_store();   /* +2 = SP */
+    e_cell(RV_SRP); e_cell(RV_T6); asm_lit(FRAME_RP); asm_host(HOST_ADD); asm_store();     /* +3 = RP */
+    e_cell(RV_SIP); e_cell(RV_T6); asm_lit(FRAME_IP); asm_host(HOST_ADD); asm_store();     /* +4 = IP */
+    e_cell(RV_CTX); e_cell(RV_T6); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_store();    /* +5 = CTX */
+    e_cell(RV_CUR); e_cell(RV_T6); asm_lit(FRAME_CUR); asm_host(HOST_ADD); asm_store();    /* +6 = CUR */
+    e_cell(RV_END); e_cell(RV_T6); asm_lit(FRAME_END); asm_host(HOST_ADD); asm_store();    /* +7 = END */
+    e_cell(RV_BLK); e_cell(RV_T6); asm_lit(FRAME_BLK); asm_host(HOST_ADD); asm_store();    /* +8 = BLK */
+    /* zero the padding cells (frame+9 .. frame+8+padding) so the GC never
+     * mistakes them for closures. */
     cell pad_loop = asm_here();
-    e_cell(RV_T6); asm_lit(0); asm_host(HOST_GT);
+    e_cell(RV_T5); asm_lit(0); asm_host(HOST_GT);
     cell j_pad_done = asm_zbranch_fwd();
-    e_cell(RV_T6); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T6);
-    asm_lit(0); asm_toR();
+    e_cell(RV_T5); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T5);
+    asm_lit(0);
+    e_cell(RV_T6); asm_lit(9); asm_host(HOST_ADD); e_cell(RV_T5); asm_host(HOST_ADD);
+    asm_store();
     asm_branch(pad_loop);
     asm_patch_here(j_pad_done);
-    e_cell(RV_BLK); asm_toR();                        /* frame+8 = BLK */
-    e_cell(RV_END); asm_toR();                        /* frame+7 = END */
-    e_cell(RV_CUR); asm_toR();                        /* frame+6 = CUR */
-    e_cell(RV_CTX); asm_toR();                        /* frame+5 = CTX */
-    e_cell(RV_SIP); asm_toR();                        /* frame+4 = IP  */
-    e_cell(RV_SRP); asm_toR();                        /* frame+3 = RP  */
-    asm_lit(REG_SP); asm_fetch(); asm_toR();          /* frame+2 = SP  */
-    e_cell(RV_CLOSURE); asm_lit(CLOSURE_SITE); asm_host(HOST_ADD); asm_fetch(); asm_toR(); /* frame+1 = site */
-    e_cell(RV_FRAME); asm_toR();                      /* frame+0 = prev */
-    asm_lit(REG_RP); asm_fetch(); e_setc(RV_FRAME);   /* RV_FRAME = frame base (16-aligned) */
     /* enter body */
     e_cell(RV_CHILD); e_setc(RV_CTX);
     e_cell(RV_CLOSURE); asm_lit(CLOSURE_BODY); asm_host(HOST_ADD); asm_fetch(); e_untag_ptr(); e_setc(RV_BODY);
@@ -1874,12 +1881,12 @@ static void emit_invoke_closure(void) {
     e_cell(RV_FRAME); asm_lit(FRAME_CUR); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_CUR);
     e_cell(RV_FRAME); asm_lit(FRAME_BLK); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_BLK);
     e_cell(RV_FRAME); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_CTX);
-    /* release the frame (9 fields + 16-align padding): pop (frame.RP - 1 - frame)
-     * return-stack cells so RP returns to the invocation return address, which
-     * the trailing asm_exit then pops. */
+    /* release the frame (9 fields + 16-align padding): RP = frame.RP - 1, the
+     * invocation's return-stack baseline (equivalent to the old
+     * RP += (frame.RP - 1 - frame) because RP == frame base here). The trailing
+     * asm_exit then pops the return address at that position. */
     e_cell(RV_FRAME); asm_lit(FRAME_RP); asm_host(HOST_ADD); asm_fetch(); asm_lit(1); asm_host(HOST_SUB);
-    e_cell(RV_FRAME); asm_host(HOST_SUB);
-    asm_lit(REG_RP); asm_fetch(); asm_host(HOST_ADD); asm_lit(REG_RP); asm_store();
+    asm_lit(REG_RP); asm_store();
     e_cell(RV_FRAME); asm_fetch(); e_setc(RV_FRAME);
     asm_lit(0); e_setc(RV_CHILD);                    /* M2: child context now dead */
     asm_lit(0); e_setc(RV_CLOSURE);                  /* M2: closure now dead */

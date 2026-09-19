@@ -164,6 +164,23 @@ hash-probes halved (2.19M → 1.09M, all global hits). Wall-clock `-O2` ≈ 3.7 
 Remaining activation cost is the 9-field frame save/restore + parameter `append`.
 Full detail: `FIB-OPT-P8-LAZY-HASH.md`, `FIB-OPT-P8-RESULTS.md`.
 
+### P9 dense frame (allocate once, store at fixed offsets)
+
+P9 (`fib-opt-p9-frames`) tested whether the activation frame could be densified
+by reserving the frame base once and storing the 9 fields at fixed symbolic
+`FRAME_*` offsets instead of nine derived `>R` pushes (each re-reads/rewrites the
+memory-mapped RP). Result: **essentially a negative result** — `fib 25`
+instructions fell only **−0.94%** (925,982,568 → 917,242,308; 3814 → 3778
+ops/call), and wall-clock is a wash (~3.2 s), because the `>R` RP traffic is
+cheap LIT/`@`/`!` while the fixed-offset stores add `HOST ADD` address
+arithmetic. Layout, RAW ABI, alignment and semantics are unchanged; 326/326
+tests pass; frozen-S1 guard passes. P9 is retained (small, correct) but the
+finding is that **no further interpreter-density pass is likely to change the
+performance class** — the remaining ~917M ops are fundamental interpretation
+overhead (tagged dispatch, memory-mapped registers, call convention). Next
+experiment should **compile the frozen S1 stream** instead of interpreting it.
+Full detail: `FIB-OPT-P9-FRAMES.md`, `FIB-OPT-P9-RESULTS.md`.
+
 ## 5. Milestones (branch / tag → commit)
 
 In order:
@@ -188,7 +205,8 @@ In order:
 | P6 profile | `fib-profile-p6` | `3219e42` |
 | P6B compiler control | `fib-p6b-compiler-results` | `81b7d6d` |
 | P7 density | `fib-p7-density-results` | `79a1be6` |
-| P8 lazy hash | `fib-p8-lazy-hash-results` | *(this phase)* |
+| P8 lazy hash | `fib-p8-lazy-hash-results` | `d40e6c8` |
+| P9 dense frame | `fib-p9-frame-results` | *(this phase)* |
 
 ## 6. Lessons learned
 
@@ -243,8 +261,13 @@ programming-model experiments
   ~1.37× faster at `-O2`, with no S1 change. P8 then made the activation hash
   index threshold-lazy (`HASH_MIN = 4`): −9.5% instructions (1.024B → 926M,
   4216 → 3814 ops/call) by eliminating per-activation hash zeroing/insert for
-  small contexts. Remaining dominant activation cost is the 9-field frame
-  save/restore + parameter `append`; P9 hypothesis = cheaper frame save/restore.
+  small contexts. P9 then densified the frame save/restore (fixed-offset field
+  stores + one RP adjustment): −0.94% instructions (926M → 917M, 3814 → 3778
+  ops/call) with no timing change — a negative result showing the `>R` RP
+  traffic was not the bottleneck. **Conclusion: further interpreter-density
+  passes will not change the performance class; the next experiment should
+  compile the frozen S1 stream** (eliminate the `s1_run` switch dispatch and
+  lower the memory-mapped registers to native code).
 - Continue the rule: **one architectural performance hypothesis per phase.**
 - The broader benchmark suite is: Fibonacci (recursion/call overhead), tight
   loop (evaluator/branch overhead), counter closure (captured mutation),
@@ -348,6 +371,7 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `FIB-OPT-P6B-COMPILER.md` — P6B compiler-optimisation control (the `-O` factor).
 - `FIB-OPT-P7-DENSITY.md`, `FIB-OPT-P7-RESULTS.md` — P7 evaluator-density pass.
 - `FIB-OPT-P8-LAZY-HASH.md`, `FIB-OPT-P8-RESULTS.md` — P8 lazy activation hash.
+- `FIB-OPT-P9-FRAMES.md`, `FIB-OPT-P9-RESULTS.md` — P9 dense activation frame.
 - `R3-FIB-COMPARISON.md` — local Rebol3 vs Glon P5 Fibonacci benchmark.
 - `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
 - `docs/distributed-glon-agents.md` — distributed/federated agent architecture.
