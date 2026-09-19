@@ -13,15 +13,20 @@
  * No generated Emscripten JS runtime, no virtual filesystem, no --embed-file.
  */
 #include "r0_s1.h"
+#include "r0_s1_g1a.h"
 #include "m1_layout.h"
 #include <stdarg.h>
 
-/* ---- host imports (provided by the handwritten glon.js) ------------------ */
+/* ---- host imports (provided by the handwritten host.js) ------------------ */
 __attribute__((import_module("env"), import_name("host_print")))
 void host_print(const unsigned char *ptr, unsigned int len);
 
 __attribute__((import_module("env"), import_name("host_set_text")))
 void host_set_text(unsigned int handle, unsigned int value);
+
+/* G1A: write rendered HTML into the DOM element tagged data-glon-id="handle" */
+__attribute__((import_module("env"), import_name("host_set_html")))
+void host_set_html(unsigned int handle, const unsigned char *ptr, unsigned int len);
 
 /* ---- minimal libc surface (no libc linked) ------------------------------- */
 
@@ -238,6 +243,29 @@ int glon_call(const unsigned char *name, unsigned int len) {
     if (err) return -2;
     int N = r0_s1_run(b);
     return (N < 0) ? -3 : 0;
+}
+
+/* G1A: route a token into Glon.  The host bridge forwards a browser event
+ * (a [data-glon-route] click or the initial location) as a single word token;
+ * Glon's `route` block selects the fragment, mutates state, and the renderer
+ * assembles the HTML, which is written to the DOM via host_set_html.  JS holds
+ * no routing/application logic. */
+static unsigned char htmlbuf[16384];
+
+__attribute__((export_name("glon_route")))
+int glon_route(const unsigned char *token, unsigned int len) {
+    if (len == 0 || len > 63) return -1;
+    unsigned char tok[64];
+    unsigned int i;
+    for (i = 0; i < len; i++) tok[i] = token[i];
+    tok[i] = 0;
+
+    int out_len = 0;
+    if (r0_s1_g1a_route((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len) != 0)
+        return -2;
+
+    host_set_html(1u, htmlbuf, (unsigned int)out_len);
+    return 0;
 }
 
 /* Emscripten standalone-CRT stack shims: exported by the CRT even under

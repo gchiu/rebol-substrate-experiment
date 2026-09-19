@@ -1,7 +1,7 @@
 CC      ?= cc
 CFLAGS  ?= -std=c17 -Wall -Wextra -O0 -g
 
-OBJS = s1.o tests.o adversarial.o claims.o r0.o r0_tests.o r0_s1_runtime.o r0_s1_tests.o r0_s1_debug_tests.o r0_s1_m1_tests.o r0_s1_m2_tests.o r0_s1_m3_tests.o r0_s1_m3b_tests.o r0_s1_m3c_tests.o r0_s1_m3d_tests.o r0_s1_nested_closure_tests.o r0_s1_p4_tests.o r0_s1_p5_tests.o main.o
+OBJS = s1.o tests.o adversarial.o claims.o r0.o r0_tests.o r0_s1_runtime.o r0_s1_g1a.o r0_s1_tests.o r0_s1_debug_tests.o r0_s1_m1_tests.o r0_s1_m2_tests.o r0_s1_m3_tests.o r0_s1_m3b_tests.o r0_s1_m3c_tests.o r0_s1_m3d_tests.o r0_s1_nested_closure_tests.o r0_s1_p4_tests.o r0_s1_p5_tests.o r0_s1_g1a_tests.o main.o
 
 all: s1
 
@@ -15,6 +15,8 @@ claims.o: claims.c s1.h
 r0.o: r0.c r0.h s1.h
 r0_tests.o: r0_tests.c r0.h s1.h
 r0_s1_runtime.o: r0_s1_runtime.c r0_s1.h s1.h
+r0_s1_g1a.o: r0_s1_g1a.c r0_s1_g1a.h r0_s1.h s1.h
+r0_s1_g1a_tests.o: r0_s1_g1a_tests.c r0_s1_g1a.h r0_s1.h s1.h
 r0_s1_tests.o: r0_s1_tests.c r0_s1.h s1.h
 r0_s1_debug_tests.o: r0_s1_debug_tests.c r0_s1.h s1.h
 r0_s1_m1_tests.o: r0_s1_m1_tests.c r0_s1.h m1_layout.h s1.h
@@ -145,4 +147,27 @@ wasm-standalone-test: standalone/glon.wasm
 	@grep -q "GLON_TEST PASS" /tmp/opencode_glon_test.out && \
 	 echo "wasm-standalone-test: PASS (3 clicks -> counter 3)"
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test
+# ---- G1A: browser-hosted Glon/WASM application skeleton --------------------
+# Builds demo/shop/glon.wasm (the standalone WASM runtime + the G1A template
+# engine + routing primitive) and bundles the application into
+# demo/shop/app.html (fragments inlined as GLON byte-lists).  No Emscripten JS
+# runtime, no libc, no WASI, no virtual filesystem.
+wasm-g1a: demo/shop/glon.wasm demo/shop/app.html
+
+demo/shop/glon.wasm: standalone/glon.c r0_s1_g1a.c r0_s1_g1a.h s1.c s1.h r0_s1_runtime.c r0_s1.h
+	$(EMCC) $(STANDALONE_FLAGS) standalone/glon.c r0_s1_g1a.c s1.c r0_s1_runtime.c \
+		-o demo/shop/glon.wasm
+
+# bundle fragments into demo/shop/app.html (+ demo/shop/bundle.glon for tests)
+demo/shop/app.html: demo/shop/shop.glon demo/shop/fragments/home.html \
+		demo/shop/fragments/products.html demo/shop/fragments/not-found.html \
+		demo/shop/build.py
+	python3 demo/shop/build.py
+
+# headless verification under node (the real WASM module + host bridge)
+wasm-g1a-test: demo/shop/glon.wasm demo/shop/app.html
+	node demo/shop/node_test.js | tee /tmp/opencode_g1a_test.out
+	@grep -q "GLON_G1A_TEST PASS" /tmp/opencode_g1a_test.out && \
+	 echo "wasm-g1a-test: PASS (home / products x2 visits / unknown -> not found)"
+
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test

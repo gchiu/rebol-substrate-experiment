@@ -1,0 +1,51 @@
+;; demo/shop/shop.glon -- the Glon Shop G1A application (authoritative source).
+;;
+;; This is the FIRST real Glon application: a browser-hosted, WASM-executed
+;; shopping-front demo. It proves the G1A runtime model:
+;;
+;;   * a persistent Glon runtime (WASM) acting as the application engine;
+;;   * browser events forwarded to Glon through the host bridge;
+;;   * application state that survives route changes;
+;;   * routes that select bundled HTML fragments;
+;;   * fragments that contain embedded Glon (<% ... %>), evaluated at render.
+;;
+;; ROUTING, STATE and the FRAGMENT SELECTION all live in this source. The
+;; browser host (host.js) and the WASM host (standalone/glon.c) only forward
+;; events, render HTML into the DOM, and expose the two imports/exports; they
+;; contain no application logic.
+;;
+;; The three fragments (home-fragment, products-fragment, not-found-fragment)
+;; are INJECTED by demo/shop/build.py at the `home-fragment: [ 60 104 49 62 71 108 111 110 32 83 104 111 112 60 47 104 49 62 10 60 112 62 60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 34 112 114 111 100 117 99 116 115 34 62 86 105 101 119 32 112 114 111 100 117 99 116 115 60 47 98 117 116 116 111 110 62 60 47 112 62 10 ]
+products-fragment: [ 60 104 49 62 80 114 111 100 117 99 116 115 60 47 104 49 62 10 60 37 32 118 105 115 105 116 45 99 111 117 110 116 58 32 43 32 118 105 115 105 116 45 99 111 117 110 116 32 49 32 110 111 110 101 32 37 62 10 60 117 108 62 60 108 105 62 84 101 97 32 38 109 100 97 115 104 59 32 36 49 50 46 48 48 60 47 108 105 62 60 108 105 62 82 105 99 101 32 38 109 100 97 115 104 59 32 36 56 46 53 48 60 47 108 105 62 60 47 117 108 62 10 60 112 62 80 114 111 100 117 99 116 115 32 112 97 103 101 32 118 105 115 105 116 115 58 32 60 37 32 118 105 115 105 116 45 99 111 117 110 116 32 37 62 60 47 112 62 10 60 112 62 60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 34 104 111 109 101 34 62 66 97 99 107 32 104 111 109 101 60 47 98 117 116 116 111 110 62 60 47 112 62 10 ]
+not-found-fragment: [ 60 104 49 62 78 111 116 32 102 111 117 110 100 60 47 104 49 62 10 60 112 62 60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 34 104 111 109 101 34 62 66 97 99 107 32 104 111 109 101 60 47 98 117 116 116 111 110 62 60 47 112 62 10 ]` marker below, as
+;; byte lists generated from demo/shop/fragments/*.html. GLON has no string
+;; literals, so a bundled fragment is a loader-heap BLOCK of integer byte
+;; codes (0..255) -- permanent across runs, and the shape a future compressed
+;; fragment would decompress into.
+
+[
+;; ---- application state -----------------------------------------------------
+;; An integer in the global context. It persists across every route change and
+;; proves the runtime is alive and not reconstructed per route.
+visit-count: 0
+
+;; ---- fragments (injected by demo/shop/build.py) ---------------------------
+home-fragment: [ 60 104 49 62 71 108 111 110 32 83 104 111 112 60 47 104 49 62 10 60 112 62 60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 34 112 114 111 100 117 99 116 115 34 62 86 105 101 119 32 112 114 111 100 117 99 116 115 60 47 98 117 116 116 111 110 62 60 47 112 62 10 ]
+products-fragment: [ 60 104 49 62 80 114 111 100 117 99 116 115 60 47 104 49 62 10 60 37 32 118 105 115 105 116 45 99 111 117 110 116 58 32 43 32 118 105 115 105 116 45 99 111 117 110 116 32 49 32 110 111 110 101 32 37 62 10 60 117 108 62 60 108 105 62 84 101 97 32 38 109 100 97 115 104 59 32 36 49 50 46 48 48 60 47 108 105 62 60 108 105 62 82 105 99 101 32 38 109 100 97 115 104 59 32 36 56 46 53 48 60 47 108 105 62 60 47 117 108 62 10 60 112 62 80 114 111 100 117 99 116 115 32 112 97 103 101 32 118 105 115 105 116 115 58 32 60 37 32 118 105 115 105 116 45 99 111 117 110 116 32 37 62 60 47 112 62 10 60 112 62 60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 34 104 111 109 101 34 62 66 97 99 107 32 104 111 109 101 60 47 98 117 116 116 111 110 62 60 47 112 62 10 ]
+not-found-fragment: [ 60 104 49 62 78 111 116 32 102 111 117 110 100 60 47 104 49 62 10 60 112 62 60 98 117 116 116 111 110 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 34 104 111 109 101 34 62 66 97 99 107 32 104 111 109 101 60 47 98 117 116 116 111 110 62 60 47 112 62 10 ]
+
+;; ---- routing --------------------------------------------------------------
+;; `current-route` holds the token for the requested route (bound by the host's
+;; glon_route before `do route`). The ROUTE DECISION lives here in GLON: the
+;; route block maps a token to the fragment that page should render.
+current-route: none
+
+home-page: [ home-fragment ]
+products-page: [ products-fragment ]
+not-found-page: [ not-found-fragment ]
+
+route: [
+    either = current-route 'products [ do products-page ]
+    [ either = current-route 'home [ do home-page ] [ do not-found-page ] ]
+]
+]
