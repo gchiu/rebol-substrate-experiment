@@ -179,7 +179,12 @@ int isdigit(int c) { return c >= '0' && c <= '9'; }
 /* ---- GLON runtime ABI ---------------------------------------------------- */
 
 static int inited = 0;
-static unsigned char srcbuf[4096];
+/* GLON source buffer for glon_load().  The shop bundle (demo/shop/bundle.glon,
+ * inlined as <script type="application/glon"> in app.html) grows with the
+ * application; the G1E bundle is ~4.7 KiB and outgrew the old 4 KiB limit.
+ * 16 KiB leaves comfortable headroom while staying well below the 64 KiB bump
+ * heap (static buffers live in linear memory, not the bump heap). */
+static unsigned char srcbuf[16384];
 
 __attribute__((export_name("glon_alloc")))
 int glon_alloc(unsigned int len) { return (int)(intptr_t)malloc(len + 1); }

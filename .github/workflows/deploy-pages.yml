@@ -48,9 +48,12 @@ jobs:
         with:
           version: latest
 
-      - name: Build shop WASM and assemble site files
+      - name: Build shop WASM and run G1E flow test
         run: |
-          make demo/shop/glon.wasm
+          make wasm-g1a-test
+
+      - name: Assemble site files
+        run: |
           rm -rf /tmp/shop && mkdir -p /tmp/shop
           cp demo/shop/app.html /tmp/shop/index.html
           cp demo/shop/host.js demo/shop/glon.wasm /tmp/shop/
