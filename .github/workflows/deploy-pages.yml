@@ -1,80 +1,75 @@
-# Deploy the GitHub Pages site from CI.
+# Build the G1E shop WASM with Emscripten and publish it under the existing
+# GitHub Pages site (branch-mode: docs/ served from `main`).
 #
 # The existing R0/S1 counter demo (docs/index.html + demo.js/demo.wasm) and the
-# W2 standalone demo (docs/standalone.html + glon.js/glon.wasm) are copied
-# through unchanged. The G1E shop is added under /shop/:
+# W2 standalone demo (docs/standalone.html + glon.js/glon.wasm) are left
+# untouched. The shop is added under docs/shop/:
 #
-#   demo/shop/app.html  ->  _site/shop/index.html
-#   demo/shop/host.js   ->  _site/shop/host.js
-#   demo/shop/glon.wasm ->  _site/shop/glon.wasm   (built here by Emscripten)
+#   demo/shop/app.html  ->  docs/shop/index.html
+#   demo/shop/host.js   ->  docs/shop/host.js
+#   demo/shop/glon.wasm ->  docs/shop/glon.wasm   (built here by Emscripten)
 #
-# Emscripten builds the shop WASM in CI, so no local emcc is required and no
-# WASM binary is committed. Native tests + the frozen-S1 check run first and
-# gate the build.
-#
-# NOTE: this uses the modern Actions-based Pages deployment, so the repository's
-# Pages source must be set to "GitHub Actions" (Settings -> Pages -> Source).
-name: Deploy GitHub Pages
+# The WASM is built fresh on every run (no committed stale binary); the built
+# binary is committed back to main's docs/shop/ so the existing branch-mode
+# Pages deployment picks it up.
+name: Build and publish shop to Pages
 
 on:
   push:
-    branches: [glon-shop-g1a, main]
+    branches: [glon-shop-g1a]
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
+  contents: write
 
 jobs:
-  test:
+  publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # full history so check-frozen-s1.sh can diff against the freeze
-          fetch-tags: true  # fetch the s1-frozen-v1 tag referenced by check-frozen-s1.sh
-      - name: Frozen-S1 check + native tests
-        run: |
-          ./check-frozen-s1.sh
-          make test
+          fetch-depth: 0
+          fetch-tags: true
 
-  build:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Fetch frozen-S1 tag
+        run: git fetch --depth=1 origin 'refs/tags/s1-frozen-v1:refs/tags/s1-frozen-v1' || true
+
+      - name: Frozen-S1 check
+        run: ./check-frozen-s1.sh
+
+      - name: Native tests
+        run: make test
+
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
           version: latest
-      - name: Build shop WASM
-        run: make demo/shop/glon.wasm
-      - name: Assemble Pages site
-        run: |
-          mkdir -p _site
-          cp -r docs/. _site/
-          mkdir -p _site/shop
-          cp demo/shop/app.html _site/shop/index.html
-          cp demo/shop/host.js demo/shop/glon.wasm _site/shop/
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Build shop WASM and assemble site files
+        run: |
+          make demo/shop/glon.wasm
+          rm -rf /tmp/shop && mkdir -p /tmp/shop
+          cp demo/shop/app.html /tmp/shop/index.html
+          cp demo/shop/host.js demo/shop/glon.wasm /tmp/shop/
+
+      - name: Checkout main (Pages source)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: pages
+
+      - name: Publish docs/shop/ to main
+        run: |
+          cd pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir -p docs/shop
+          cp /tmp/shop/* docs/shop/
+          git add docs/shop
+          if git diff --cached --quiet; then
+            echo "docs/shop unchanged; nothing to commit"
+          else
+            git commit -m "Publish G1E shop (built WASM) to docs/shop"
+            git push origin HEAD:main
+          fi
