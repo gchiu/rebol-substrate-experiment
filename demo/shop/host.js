@@ -12,7 +12,8 @@
  *   - feed the GLON source (inlined as <script type="application/glon">) into
  *     glon_load exactly once at startup;
  *   - forward [data-glon-route] clicks and the initial location to glon_route;
- *   - forward [data-glon-event] clicks to glon_event.
+ *   - forward [data-glon-event] clicks to glon_event (or glon_event_value when
+ *     a [data-glon-input] element shares the token name).
  *
  * No routing decision, application state, or page logic lives here. Glon is
  * the application controller; this file is only the host bridge.
@@ -63,6 +64,13 @@
     ex.glon_event(pair[0], pair[1]);
   }
 
+  function glonEventValue(token, value) {
+    if (typeof ex.glon_event_value !== "function") return;
+    var t = alloc(token);
+    var v = alloc(value);
+    ex.glon_event_value(t[0], t[1], v[0], v[1]);
+  }
+
   function initialToken() {
     var path = window.location.pathname.replace(/^\/+/, "");
     if (path === "index.html") path = "";
@@ -87,8 +95,10 @@
     }
 
     // Event delegation: [data-glon-route] clicks navigate; [data-glon-event]
-    // clicks forward a generic application event. JS only forwards the token;
-    // it never interprets what the route or event means.
+    // clicks forward a generic application event. An event may carry a value:
+    // if a [data-glon-input] element shares the event token's name, its value
+    // is forwarded alongside the token. JS only forwards the token/value pair;
+    // it never interprets what either means.
     document.addEventListener("click", function (e) {
       var el = e.target && e.target.closest ? e.target.closest("[data-glon-route], [data-glon-event]") : null;
       if (!el) return;
@@ -96,7 +106,10 @@
       if (el.hasAttribute("data-glon-route")) {
         route(el.getAttribute("data-glon-route"));
       } else if (el.hasAttribute("data-glon-event")) {
-        glonEvent(el.getAttribute("data-glon-event"));
+        var token = el.getAttribute("data-glon-event");
+        var input = document.querySelector('[data-glon-input="' + token + '"]');
+        if (input && input.value !== undefined) glonEventValue(token, input.value);
+        else glonEvent(token);
       }
     });
 

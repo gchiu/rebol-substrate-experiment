@@ -289,6 +289,33 @@ int glon_event(const unsigned char *token, unsigned int len) {
     return 0;
 }
 
+/* G1D: forward a generic application event with an opaque VALUE into Glon.
+ * A [data-glon-event] click may carry a value (read from a [data-glon-input]
+ * element sharing the token name); JS forwards the token and value here
+ * without knowing what either means.  Glon interprets both, mutates state, and
+ * re-renders the current view.  JS holds no application semantics. */
+__attribute__((export_name("glon_event_value")))
+int glon_event_value(const unsigned char *token, unsigned int tlen,
+                     const unsigned char *value, unsigned int vlen) {
+    if (tlen == 0 || tlen > 63) return -1;
+    if (vlen > 200) return -1;
+    unsigned char tok[64];
+    unsigned char val[201];
+    unsigned int i;
+    for (i = 0; i < tlen; i++) tok[i] = token[i];
+    tok[i] = 0;
+    for (i = 0; i < vlen; i++) val[i] = value[i];
+    val[i] = 0;
+
+    int out_len = 0;
+    if (r0_s1_g1a_event_value((const char *)tok, (const char *)val,
+                              (char *)htmlbuf, (int)sizeof htmlbuf, &out_len) != 0)
+        return -2;
+
+    host_set_html(1u, htmlbuf, (unsigned int)out_len);
+    return 0;
+}
+
 /* Emscripten standalone-CRT stack shims: exported by the CRT even under
  * -nostdlib, but never called by our handwritten host.  No-op is fine. */
 void *emscripten_stack_get_current(void) { return (void *)0; }

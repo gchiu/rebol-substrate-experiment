@@ -59,6 +59,7 @@ btn-open:  "<button data-glon-route='"
 btn-mid:   "'>"
 btn-close: "</button>"
 event-open: "<button data-glon-event='"
+input-open: "<input data-glon-input='"
 
 ;; ---- view vocabulary ------------------------------------------------------
 ;; Each term wraps its CONTENT (a block of emit-* calls) in an HTML element.
@@ -70,6 +71,12 @@ link:    func [content route] [
 ;; G1C: a button that carries a generic application-event token (not a route).
 button:  func [content event] [
     emit-text event-open emit-text event emit-text btn-mid do content emit-text btn-close
+]
+;; G1D: a named text input. An event button whose token matches the name will
+;; forward this input's value (see host.js) — the event token doubles as the
+;; input's name.
+input:   func [name] [
+    emit-text input-open emit-text name emit-text btn-mid
 ]
 
 ;; ---- iteration (a tiny product catalogue) ---------------------------------

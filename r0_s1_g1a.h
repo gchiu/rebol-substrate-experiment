@@ -54,4 +54,11 @@ int r0_s1_g1a_route(const char *token, char *out, int cap, int *out_len);
  * The host knows only that "an event happened"; the meaning lives in GLON. */
 int r0_s1_g1a_event(const char *token, char *out, int cap, int *out_len);
 
+/* Route an application EVENT with a VALUE (G1D). Binds `current-event` to the
+ * token word AND `current-value` to the value as a byte-list block, then runs
+ * the GLON `do-event` block and renders the result. `value` is arbitrary text;
+ * the host forwards it opaquely and GLON interprets it. Returns 0 / -1. */
+int r0_s1_g1a_event_value(const char *token, const char *value,
+                          char *out, int cap, int *out_len);
+
 #endif /* R0_S1_G1A_H */

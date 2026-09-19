@@ -109,20 +109,38 @@ int r0_s1_g1a_render_fragment(cell fragment, char *out, int cap, int *out_len) {
 }
 
 static int g1a_dispatch(const char *var, const char *dispatcher, const char *token,
-                        char *out, int cap, int *out_len);
+                        const char *value, char *out, int cap, int *out_len);
 
 int r0_s1_g1a_route(const char *token, char *out, int cap, int *out_len) {
-    return g1a_dispatch("current-route", "route", token, out, cap, out_len);
+    return g1a_dispatch("current-route", "route", token, 0, out, cap, out_len);
 }
 
 int r0_s1_g1a_event(const char *token, char *out, int cap, int *out_len) {
-    return g1a_dispatch("current-event", "do-event", token, out, cap, out_len);
+    /* token-only events still bind current-value to an empty byte-list so the
+     * dispatcher may always reference it safely. */
+    return g1a_dispatch("current-event", "do-event", token, "", out, cap, out_len);
 }
 
-/* Shared primitive: bind `var` to the token word, `do` the named dispatcher
- * block, then render the HTML it produced. */
+int r0_s1_g1a_event_value(const char *token, const char *value,
+                          char *out, int cap, int *out_len) {
+    return g1a_dispatch("current-event", "do-event", token, value, out, cap, out_len);
+}
+
+/* append one byte of the value as a decimal token (avoid libc) */
+static int g1a_src_byte(char *src, int n, int cap, int b) {
+    char d[4]; int k = 0;
+    if (b == 0) { d[k++] = '0'; }
+    else { while (b > 0) { d[k++] = (char)('0' + (b % 10)); b /= 10; } }
+    if (n < cap) src[n++] = ' ';
+    while (k > 0 && n < cap) src[n++] = d[--k];
+    return n;
+}
+
+/* Shared primitive: bind `var` to the token word, optionally bind
+ * `current-value` to a byte-list (when `value` != NULL), `do` the named
+ * dispatcher block, then render the HTML it produced. */
 static int g1a_dispatch(const char *var, const char *dispatcher, const char *token,
-                        char *out, int cap, int *out_len) {
+                        const char *value, char *out, int cap, int *out_len) {
     if (out_len) *out_len = 0;
 
     /* validate the token is a single safe word (no delimiters that would
@@ -136,19 +154,27 @@ static int g1a_dispatch(const char *var, const char *dispatcher, const char *tok
     }
     if (tlen == 0) return -1;
 
-    /* build "[ VAR: 'TOKEN do DISPATCHER ]" */
-    char src[320];
-    int n = 0;
+    /* build "[ VAR: 'TOKEN[ current-value: [BYTES]] do DISPATCHER ]" */
+    char src[1200];
+    int n = 0, cap_src = (int)sizeof src - 1;
     src[n++] = '['; src[n++] = ' ';
-    for (const char *c = var; *c && n < 318; c++) src[n++] = *c;
+    for (const char *c = var; *c && n < cap_src; c++) src[n++] = *c;
     const char *pre = ": '";
-    for (; *pre && n < 318; pre++) src[n++] = *pre;
-    for (const char *c = token; *c && n < 318; c++) src[n++] = *c;
+    for (; *pre && n < cap_src; pre++) src[n++] = *pre;
+    for (const char *c = token; *c && n < cap_src; c++) src[n++] = *c;
+    if (value != 0) {
+        const char *vp = " current-value: [";
+        for (; *vp && n < cap_src; vp++) src[n++] = *vp;
+        for (const char *c = value; *c && n < cap_src - 4; c++)
+            n = g1a_src_byte(src, n, cap_src, (unsigned char)*c);
+        const char *ve = " ]";
+        for (; *ve && n < cap_src; ve++) src[n++] = *ve;
+    }
     const char *post = " do ";
-    for (; *post && n < 318; post++) src[n++] = *post;
-    for (const char *c = dispatcher; *c && n < 318; c++) src[n++] = *c;
+    for (; *post && n < cap_src; post++) src[n++] = *post;
+    for (const char *c = dispatcher; *c && n < cap_src; c++) src[n++] = *c;
     const char *post2 = " ]";
-    for (; *post2 && n < 318; post2++) src[n++] = *post2;
+    for (; *post2 && n < cap_src; post2++) src[n++] = *post2;
     src[n] = 0;
 
     int err = 0;

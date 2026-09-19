@@ -17,6 +17,7 @@
 ;; ---- application state -----------------------------------------------------
 visit-count: 0
 cart-count: 0
+search-term: []
 
 ;; ---- product data ---------------------------------------------------------
 catalog: [ "Tea" "Rice" ]
@@ -31,6 +32,9 @@ products-view: [
     heading [ emit-text "Products" ]
     list    catalog
     text    [ emit-text "Products page visits: " emit-int visit-count ]
+    text    [ emit-text "Search: " emit-text search-term ]
+    input   "search"
+    button  [ emit-text "Search" ] "search"
     text    [ emit-text "Cart: " emit-int cart-count ]
     button  [ emit-text "Add" ] "add-one"
     link    [ emit-text "Back home" ] "home"
@@ -63,8 +67,10 @@ route: [
 
 ;; ---- events (mutate state, rerender current view) -------------------------
 add-one: func [] [ cart-count: + cart-count 1 render-current ]
+search:  func [] [ search-term: current-value render-current ]
 
 ;; Unknown events fall back to re-rendering the current view (no state change).
 do-event: [
-    either = current-event 'add-one [ add-one ] [ render-current ]
+    either = current-event 'add-one [ add-one ]
+    [ either = current-event 'search [ search ] [ render-current ] ]
 ]

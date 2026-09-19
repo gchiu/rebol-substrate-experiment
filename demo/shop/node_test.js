@@ -1,14 +1,14 @@
-// demo/shop/node_test.js -- headless verification of the Glon Shop G1C demo
+// demo/shop/node_test.js -- headless verification of the Glon Shop G1D demo
 // (no DOM, no browser, no Emscripten runtime).
 //
 // Instantiates demo/shop/glon.wasm with the three host imports, loads the
 // bundled GLON source (demo/shop/bundle.glon, produced by build.py), then
-// drives the router AND the event bridge exactly as the browser does and
-// asserts the rendered HTML.
+// drives the router AND the event bridge (token and token+value) exactly as
+// the browser does and asserts the rendered HTML.
 //
-// This exercises the real WASM module + the G1C view dialect + generic event
-// path + host bridge; the only thing stubbed is the DOM (host_set_html is
-// captured instead of writing innerHTML).
+// This exercises the real WASM module + the G1D view dialect + generic event
+// path (with values) + host bridge; the only thing stubbed is the DOM
+// (host_set_html is captured instead of writing innerHTML).
 "use strict";
 
 const fs = require("fs");
@@ -35,7 +35,7 @@ const imports = {
 };
 
 function fail(msg) {
-  console.error("GLON_G1C_TEST FAIL: " + msg);
+  console.error("GLON_G1D_TEST FAIL: " + msg);
   process.exit(1);
 }
 
@@ -66,6 +66,15 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
     return rendered.join("");
   };
 
+  const eventValue = (token, value) => {
+    rendered.length = 0;
+    const [tp, tn] = put(token);
+    const [vp, vn] = put(value);
+    const rc = e.glon_event_value(tp, tn, vp, vn);
+    if (rc !== 0) fail("glon_event_value('" + token + "', '" + value + "') rc=" + rc);
+    return rendered.join("");
+  };
+
   if (e.glon_init() !== 0) fail("glon_init");
 
   const [p, n] = put(SRC);
@@ -90,6 +99,15 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   if (!/Cart: 2/.test(c2))
     fail("add-one -> cart 2: got: " + c2);
 
+  // 3b. search event with a value (G1D)
+  const s1 = eventValue("search", "green tea");
+  if (!/Search: green tea/.test(s1))
+    fail("search 'green tea': got: " + s1);
+
+  const s2 = eventValue("search", "");
+  if (!/Search: <\/p>/.test(s2))
+    fail("search empty clears term: got: " + s2);
+
   // 4. navigate away and back; cart persists
   route("home");
   const v2 = route("products");
@@ -101,6 +119,6 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   if (!/Not found/.test(nf))
     fail("unknown route: expected 'Not found', got: " + nf);
 
-  console.log("GLON_G1C_TEST PASS (home / products / add-one x2 / persist / unknown)");
+  console.log("GLON_G1D_TEST PASS (home / products / add-one x2 / search / persist / unknown)");
   process.exit(0);
 }).catch((e) => fail(e.message || e));
