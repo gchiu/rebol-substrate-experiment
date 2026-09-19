@@ -120,6 +120,18 @@ candidates, in order: (1) reduce emitted S1 instruction count; (2) cheaper
 dispatch (`-O2` / computed goto) — a separate experiment. Full detail:
 `FIB-OPT-P6-PROFILE.md`.
 
+### P6B compiler control (how much is the unoptimised C build?)
+
+P6B (`fib-profile-p6b-compiler`) changed only the C optimisation level, not the
+S1/Glon source. `fib 25` (1.1071B opcodes fixed): `-O0` 8.54 s → `-O1` 4.99 s
+(1.71×) → `-O2` 4.00 s (2.13×) → `-O3` 4.05 s (2.11×, tied with `-O2`). The
+opcode switch was already a jump table even at `-O0`; the `-O2` win is register
+promotion + HOST inlining, not a dispatch change. Normal compilation removes
+~half the time, cutting the R3 gap from ~86× to ~40× — a modest speedup
+(Outcome B). Instruction amplification remains dominant; P7 stays justified,
+now measured from a ~4.0 s `-O2` baseline. Full detail:
+`FIB-OPT-P6B-COMPILER.md`.
+
 ## 5. Milestones (branch / tag → commit)
 
 In order:
@@ -141,7 +153,8 @@ In order:
 | P3 contexts | `fib-opt-p3` | `67bb997` |
 | P4 lexical | `fib-opt-p4` | `d8161b0` |
 | P5 hash lookup | `fib-opt-p5` | `6a41848` |
-| P6 profile | `fib-profile-p6` | *(this phase)* |
+| P6 profile | `fib-profile-p6` | `3219e42` |
+| P6B compiler control | `fib-p6b-compiler-results` | *(this phase)* |
 
 ## 6. Lessons learned
 
@@ -182,11 +195,15 @@ programming-model experiments
 ```
 
 - P4 and P5 are complete and retained; `fib-opt-p5` is the current optimisation
-  baseline. P6 (`fib-profile-p6`) is a completed diagnostic phase.
+  baseline. P6 (`fib-profile-p6`) is a completed diagnostic phase; P6B
+  (`fib-profile-p6b-compiler`) is a completed compiler-control phase.
 - P6 profiled the remaining cost: 1.1B S1 opcode dispatches / 4560 per fib call,
   dominated by the memory-mapped register-access idiom (LIT/`@`/`!` = 76%) and
-  HOST arithmetic (15%). The leading P7 candidates are (1) reducing emitted S1
-  instruction count, (2) cheaper dispatch — select from evidence, not assumption.
+  HOST arithmetic (15%). P6B then measured the C-compiler factor alone: normal
+  `-O2` removes ~2.1× (8.54 s → 4.00 s) — the opcode switch was already a jump
+  table at `-O0`, so the win is register promotion + HOST inlining. Instruction
+  amplification is the dominant remaining cost; P7 hypothesis = reduce emitted
+  S1 instruction count, measured from a ~4.0 s `-O2` baseline.
 - Continue the rule: **one architectural performance hypothesis per phase.**
 - The broader benchmark suite is: Fibonacci (recursion/call overhead), tight
   loop (evaluator/branch overhead), counter closure (captured mutation),
@@ -287,6 +304,7 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `FIB-OPT-P4-LEX.md`, `FIB-OPT-P4-RESULTS.md` — P4.
 - `FIB-OPT-P5-HASH-LOOKUP.md`, `FIB-OPT-P5-RESULTS.md` — P5 (current baseline).
 - `FIB-OPT-P6-PROFILE.md` — P6 diagnostic profile (where the ~9 s goes).
+- `FIB-OPT-P6B-COMPILER.md` — P6B compiler-optimisation control (the `-O` factor).
 - `R3-FIB-COMPARISON.md` — local Rebol3 vs Glon P5 Fibonacci benchmark.
 - `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
 - `docs/distributed-glon-agents.md` — distributed/federated agent architecture.

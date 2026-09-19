@@ -64,8 +64,14 @@ s1_prof.o: s1_prof.c s1.h s1_prof.h
 r0_s1_p6_prof.o: r0_s1_p6_prof.c r0_s1.h s1.h s1_prof.h
 	$(CC) $(PROFILE_FLAGS) -c -o $@ r0_s1_p6_prof.c
 
+# ---- FIB-OPT-P6B: compiler-optimisation control (one variable: -O level) ----
+# Non-counting runtime. Build once per level, e.g.:
+#   make CFLAGS="-std=c17 -Wall -Wextra -O2" fib-p6b-bench
+fib-p6b-bench: r0_s1_p6b_bench.c r0_s1_runtime.c s1.c
+	$(CC) $(CFLAGS) -o $@ r0_s1_p6b_bench.c r0_s1_runtime.c s1.c
+
 clean:
-	rm -f s1 fib-profiler fib-timing $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
+	rm -f s1 fib-profiler fib-timing fib-p6b-bench $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
 # Produces web/demo.js (Emscripten runtime + web/glue.js) and web/demo.wasm,
