@@ -1100,7 +1100,7 @@ static void emit_gc(void) {
 /* ========================== evaluator build ============================ */
 
 static cell r_reduce, r_lookup, r_set, r_append, r_mkctx, r_mkclosure;
-static cell r_load_lex, r_hash_insert;
+static cell r_load_lex, r_hash_insert, r_build_hash;
 static cell r_values, r_run_block, r_native, r_invoke_closure, r_return, r_invoke_raw, r_subexpr, r_block_eval;
 
 /* REDUCE: [r1..rN, tagged-N] -> [r1] (or [NONE] if N==0) */
@@ -1148,10 +1148,14 @@ static void emit_lookup(void) {
     asm_patch_here(j_continue);
     e_dup(); e_untag_ptr(); e_setc(RV_T2);
     e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T3);   /* count */
-    /* hash lookup when count < cap */
+    /* FIB-OPT-P8: hash lookup only when HASH_MIN <= count < cap; small contexts
+     * (fib's arity-1 activations) use the ordered linear scan and never build
+     * the hash index. */
     e_cell(RV_T2); asm_lit(CTX_CAP); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T5);  /* cap */
-    e_cell(RV_T3); e_cell(RV_T5); asm_host(HOST_LT);
+    e_cell(RV_T3); asm_lit(HASH_MIN); asm_host(HOST_GE);
     cell j_linear = asm_zbranch_fwd();
+    e_cell(RV_T3); e_cell(RV_T5); asm_host(HOST_LT);
+    cell j_linear2 = asm_zbranch_fwd();
     e_cell(RV_T1); asm_lit(16); asm_host(HOST_DIV); e_setc(RV_T4);               /* id */
     e_cell(RV_T4); e_cell(RV_T5); asm_host(HOST_MOD); e_setc(RV_T6);             /* idx */
     asm_lit(0); e_setc(RV_N);
@@ -1196,8 +1200,9 @@ static void emit_lookup(void) {
     asm_patch_here(j_hmiss);
     asm_patch_here(fw_miss);
     cell fw_parent = asm_branch_fwd();
-    /* linear fallback (count >= cap) */
+    /* linear fallback (count < HASH_MIN or count >= cap) */
     asm_patch_here(j_linear);
+    asm_patch_here(j_linear2);
 #ifdef R0_S1_PROFILE
     pf_incr(PF_HASH_FALLBACK);
 #endif
@@ -1309,6 +1314,46 @@ static void emit_hash_insert(void) {
     asm_exit();
 }
 
+/* BUILD-HASH: build the P5 hash index for context payload RV_T2 with count
+ * RV_T3. Zeroes `cap` buckets, then inserts each of the `count` (word,value)
+ * pairs via r_hash_insert. Called once when a context's binding count reaches
+ * HASH_MIN (the hash is otherwise never materialised). */
+static void emit_build_hash(void) {
+    r_build_hash = asm_here();
+    e_cell(RV_T2); asm_lit(CTX_CAP); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T1);  /* cap */
+    /* zero cap buckets: M[ctx + CTX_DATA + 2*cap + i] = HASH_EMPTY */
+    asm_lit(0); e_setc(RV_N);
+    cell zloop = asm_here();
+    e_cell(RV_N); e_cell(RV_T1); asm_host(HOST_LT);
+    cell j_zdone = asm_zbranch_fwd();
+    asm_lit(HASH_EMPTY);
+    e_cell(RV_T2); asm_lit(CTX_DATA); asm_host(HOST_ADD);
+    e_cell(RV_T1); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);
+    e_cell(RV_N); asm_host(HOST_ADD);
+    asm_store();
+    e_cell(RV_N); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_N);
+    asm_branch(zloop);
+    asm_patch_here(j_zdone);
+    /* insert each pair: for i in [0, count), RV_WORD = data[2i], slot = i.
+     * RV_SITE is the loop counter: it is written only by r_return and is never
+     * live during binding, so using it here preserves the caller's RV_T4. */
+    e_cell(RV_T3); asm_toR();                    /* save count on R (hash_insert clobbers RV_T3's role) */
+    asm_lit(0); e_setc(RV_SITE);                 /* i = 0 */
+    cell iloop = asm_here();
+    e_cell(RV_SITE); asm_fetchR(); asm_host(HOST_LT);  /* i < count? */
+    cell j_idone = asm_zbranch_fwd();
+    e_cell(RV_T2); asm_lit(CTX_DATA); asm_host(HOST_ADD);
+    e_cell(RV_SITE); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);
+    asm_fetch(); e_setc(RV_WORD);                /* RV_WORD = data[2i] */
+    e_cell(RV_SITE); e_setc(RV_T3);              /* slot = i */
+    asm_call(r_hash_insert);
+    e_cell(RV_SITE); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_SITE);   /* i++ */
+    asm_branch(iloop);
+    asm_patch_here(j_idone);
+    asm_fromR(); asm_drop();                     /* pop saved count */
+    asm_exit();
+}
+
 /* SET: (value -- value)  bind word (RV_WORD) to value, nearest-update */
 static void emit_set(void) {
     r_set = asm_here();
@@ -1331,7 +1376,19 @@ static void emit_set(void) {
     e_cell(RV_T3); asm_lit(1); asm_host(HOST_ADD);
     e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD);
     asm_store();
-    asm_call(r_hash_insert);                 /* P5: index (RV_WORD -> RV_T3 slot) */
+    /* FIB-OPT-P8: maintain the hash index only once count >= HASH_MIN */
+    e_cell(RV_T3); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_T5);   /* new count */
+    e_cell(RV_T5); asm_lit(HASH_MIN); asm_host(HOST_GE);
+    cell j_nohash = asm_zbranch_fwd();
+    e_cell(RV_T5); asm_lit(HASH_MIN); asm_host(HOST_EQ);
+    cell j_insert = asm_zbranch_fwd();
+    e_cell(RV_T5); e_setc(RV_T3);            /* RV_T3 = count (for build_hash) */
+    asm_call(r_build_hash);
+    cell j_done = asm_branch_fwd();
+    asm_patch_here(j_insert);
+    asm_call(r_hash_insert);                 /* RV_T3 still = slot */
+    asm_patch_here(j_done);
+    asm_patch_here(j_nohash);
     asm_exit();
     asm_patch_here(j_continue);
     e_dup(); e_untag_ptr(); e_setc(RV_T2);
@@ -1375,7 +1432,19 @@ static void emit_append(void) {
     e_cell(RV_T3); asm_lit(1); asm_host(HOST_ADD);
     e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD);
     asm_store();
-    asm_call(r_hash_insert);                 /* P5: index (RV_WORD -> RV_T3 slot) */
+    /* FIB-OPT-P8: maintain the hash index only once count >= HASH_MIN */
+    e_cell(RV_T3); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_T5);   /* new count = RV_T3+1 */
+    e_cell(RV_T5); asm_lit(HASH_MIN); asm_host(HOST_GE);
+    cell j_nohash = asm_zbranch_fwd();
+    e_cell(RV_T5); asm_lit(HASH_MIN); asm_host(HOST_EQ);
+    cell j_insert = asm_zbranch_fwd();
+    e_cell(RV_T5); e_setc(RV_T3);            /* RV_T3 = count (for build_hash) */
+    asm_call(r_build_hash);
+    cell j_done = asm_branch_fwd();
+    asm_patch_here(j_insert);
+    asm_call(r_hash_insert);                 /* RV_T3 still = slot */
+    asm_patch_here(j_done);
+    asm_patch_here(j_nohash);
     asm_exit();
 }
 
@@ -1399,17 +1468,9 @@ static void emit_mkctx(void) {
     e_cell(RV_T6); e_cell(RV_T4); asm_store();          /* M[base] = parent */
     asm_lit(0); e_cell(RV_T4); asm_lit(1); asm_host(HOST_ADD); asm_store(); /* count = 0 */
     asm_lit(R0S1_CTX_CAP); e_cell(RV_T4); asm_lit(2); asm_host(HOST_ADD); asm_store(); /* cap */
-    /* zero the hash index: M[base+CTX_HASH+i] = HASH_EMPTY for i < cap */
-    asm_lit(0); e_setc(RV_N);
-    cell hloop = asm_here();
-    e_cell(RV_N); asm_lit(R0S1_CTX_CAP); asm_host(HOST_LT);
-    cell j_hdone = asm_zbranch_fwd();
-    asm_lit(HASH_EMPTY);
-    e_cell(RV_T4); asm_lit(CTX_HASH); asm_host(HOST_ADD); e_cell(RV_N); asm_host(HOST_ADD);
-    asm_store();
-    e_cell(RV_N); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_N);
-    asm_branch(hloop);
-    asm_patch_here(j_hdone);
+    /* FIB-OPT-P8: the hash index is NOT zeroed here. It is built lazily by
+     * r_build_hash when the context's binding count reaches HASH_MIN. Until
+     * then lookups use the ordered linear scan. */
     e_cell(RV_T4); asm_lit(T_CONTEXT); asm_host(HOST_ADD);
     /* Move the CALL return address from above the context (base+padding+CELLS)
      * to just below it (base-1), and leave RP at base-1. asm_exit then pops the
@@ -2105,6 +2166,7 @@ cell r0_s1_init(void) {
     emit_lookup();
     emit_load_lex();
     emit_hash_insert();
+    emit_build_hash();
     emit_set();
     emit_append();
     emit_mkctx();

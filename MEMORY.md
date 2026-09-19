@@ -148,6 +148,22 @@ tests pass; frozen-S1 guard passes. Next target is the activation/binding path
 (`invoke_closure` + `mkctx` + `append` ≈ 28%). Full detail:
 `FIB-OPT-P7-DENSITY.md`, `FIB-OPT-P7-RESULTS.md`.
 
+### P8 lazy context hash (activations don't need a full hash index)
+
+P8 (`fib-opt-p8-lazy-ctx`) targets the activation path. It found that every one
+of fib's 242,785 arity-1 activations eagerly zeroed a 16-slot P5 hash index and
+`hash_insert`ed its parameter, yet the child-context hash was **never hit** —
+all ~1.09M probes were misses for global words, and parameters resolve via P4
+`T_BOUND`/`load_lex`. P8 makes the hash threshold-lazy (`HASH_MIN = 4`): `mkctx`
+no longer zeroes it, `append`/`set` materialise it (via a new `build_hash`) only
+when count reaches `HASH_MIN`, and `lookup` uses the linear scan below that.
+Result: `fib 25` **1,023,582,152 → 925,982,568 (−9.5%)**; amplification
+4216 → 3814 ops/call, 383.3 → 346.7 ops/subexpr, 656 → 588.5 HOST/call;
+hash-probes halved (2.19M → 1.09M, all global hits). Wall-clock `-O2` ≈ 3.7 s
+→ 3.2 s (~1.16×), R3 gap ~32×. 326/326 tests pass; frozen-S1 guard passes.
+Remaining activation cost is the 9-field frame save/restore + parameter `append`.
+Full detail: `FIB-OPT-P8-LAZY-HASH.md`, `FIB-OPT-P8-RESULTS.md`.
+
 ## 5. Milestones (branch / tag → commit)
 
 In order:
@@ -171,7 +187,8 @@ In order:
 | P5 hash lookup | `fib-opt-p5` | `6a41848` |
 | P6 profile | `fib-profile-p6` | `3219e42` |
 | P6B compiler control | `fib-p6b-compiler-results` | `81b7d6d` |
-| P7 density | `fib-p7-density-results` | *(this phase)* |
+| P7 density | `fib-p7-density-results` | `79a1be6` |
+| P8 lazy hash | `fib-p8-lazy-hash-results` | *(this phase)* |
 
 ## 6. Lessons learned
 
@@ -214,7 +231,8 @@ programming-model experiments
 - P4 and P5 are complete and retained; `fib-opt-p5` is the current optimisation
   baseline. P6 (`fib-profile-p6`) is a completed diagnostic phase; P6B
   (`fib-profile-p6b-compiler`) is a completed compiler-control phase; P7
-  (`fib-opt-p7-density`) is a completed evaluator-density phase.
+  (`fib-opt-p7-density`) and P8 (`fib-opt-p8-lazy-ctx`) are completed evaluator-
+  density phases.
 - P6 profiled the remaining cost: 1.1B S1 opcode dispatches / 4560 per fib call,
   dominated by the memory-mapped register-access idiom (LIT/`@`/`!` = 76%) and
   HOST arithmetic (15%). P6B then measured the C-compiler factor alone: normal
@@ -222,9 +240,11 @@ programming-model experiments
   table at `-O0`, so the win is register promotion + HOST inlining. P7 then
   densified the evaluator itself (tail-calls, dense `reduce`, dispatch
   reordering): −7.5% instructions (1.107B → 1.024B, 4560 → 4216 ops/call) and
-  ~1.37× faster at `-O2`, with no S1 change. Remaining dominant cost is the
-  activation/binding path (`invoke_closure` + `mkctx` + `append` ≈ 28%); P8
-  hypothesis = cheaper child-context creation + parameter binding.
+  ~1.37× faster at `-O2`, with no S1 change. P8 then made the activation hash
+  index threshold-lazy (`HASH_MIN = 4`): −9.5% instructions (1.024B → 926M,
+  4216 → 3814 ops/call) by eliminating per-activation hash zeroing/insert for
+  small contexts. Remaining dominant activation cost is the 9-field frame
+  save/restore + parameter `append`; P9 hypothesis = cheaper frame save/restore.
 - Continue the rule: **one architectural performance hypothesis per phase.**
 - The broader benchmark suite is: Fibonacci (recursion/call overhead), tight
   loop (evaluator/branch overhead), counter closure (captured mutation),
@@ -327,6 +347,7 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `FIB-OPT-P6-PROFILE.md` — P6 diagnostic profile (where the ~9 s goes).
 - `FIB-OPT-P6B-COMPILER.md` — P6B compiler-optimisation control (the `-O` factor).
 - `FIB-OPT-P7-DENSITY.md`, `FIB-OPT-P7-RESULTS.md` — P7 evaluator-density pass.
+- `FIB-OPT-P8-LAZY-HASH.md`, `FIB-OPT-P8-RESULTS.md` — P8 lazy activation hash.
 - `R3-FIB-COMPARISON.md` — local Rebol3 vs Glon P5 Fibonacci benchmark.
 - `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
 - `docs/distributed-glon-agents.md` — distributed/federated agent architecture.

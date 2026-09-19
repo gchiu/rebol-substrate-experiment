@@ -64,6 +64,11 @@ enum {
 #define R0S1_HEAP_LIMIT 47000L
 #define R0S1_CTX_CAP   16      /* max bindings per child context */
 
+/* FIB-OPT-P8: contexts with fewer than this many bindings are resolved by the
+ * ordered linear scan and do NOT build/maintain the P5 hash index. The hash is
+ * built lazily when a context's binding count reaches HASH_MIN. */
+#define HASH_MIN       4
+
 /* reserved symbol id: "func" is interned first, so mk_word(0) == the `func`
  * keyword. "return" is interned second, so mk_word(1) == the `return`
  * keyword. "raw" is interned third, so mk_word(2) == the `raw` keyword. */
