@@ -76,8 +76,12 @@ fib-p6b-bench: r0_s1_p6b_bench.c r0_s1_runtime.c s1.c
 fib-p10a-bench: r0_s1_p10a_bench.c r0_s1_runtime.c s1.c
 	$(CC) $(CFLAGS) -o $@ r0_s1_p10a_bench.c r0_s1_runtime.c s1.c -ldl
 
+# ---- FIB-OPT-P10B: register promotion in compiled-S1 (P10A vs P10B) ----
+fib-p10b-bench: r0_s1_p10b_bench.c r0_s1_runtime.c s1.c
+	$(CC) $(CFLAGS) -o $@ r0_s1_p10b_bench.c r0_s1_runtime.c s1.c -ldl
+
 clean:
-	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
+	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench fib-p10b-bench $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
 # Produces web/demo.js (Emscripten runtime + web/glue.js) and web/demo.wasm,

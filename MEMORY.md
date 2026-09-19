@@ -198,6 +198,19 @@ access + HOST dispatch + the ~3.8k-op/activation S1 stream itself — the P10B
 targets. Next experiment: **P10B register promotion / HOST intrinsic expansion**.
 Full detail: `FIB-OPT-P10A-COMPILED-S1.md`, `FIB-OPT-P10A-RESULTS.md`.
 
+### P10B register promotion (what does memory-mapped register traffic cost?)
+
+P10B (`fib-opt-p10b-registers`) held `IP`/`SP`/`RP` in C locals during
+compiled-S1 execution (HP stays memory-mapped), lowering the frozen `LIT 0/1/2
+@`/`!` idiom to direct local access and passing `sp` by value through HOST, with
+explicit synchronisation only at entry/`HALT`/`HOST_DUMP`. **Result: ~5× faster
+than P10A.** `fib 25` ≈ 0.43 s (was ~2.0 s P10A, ~4.3 s interpreted); the R3 gap
+falls to **~4.3×**. Static register-cell accesses drop from ~17,000 to ~160.
+HOST calls are unchanged (142.9M) and now dominate. Correctness: 5 workloads
+(fib/tree/raw/non-local-return/closure) MATCH; 326/326 interpreted tests pass;
+frozen-S1 guard passes. Next target: **P10C HOST intrinsic expansion**.
+Full detail: `FIB-OPT-P10B-REGISTERS.md`, `FIB-OPT-P10B-RESULTS.md`.
+
 ## 5. Milestones (branch / tag → commit)
 
 In order:
@@ -224,7 +237,8 @@ In order:
 | P7 density | `fib-p7-density-results` | `79a1be6` |
 | P8 lazy hash | `fib-p8-lazy-hash-results` | `d40e6c8` |
 | P9 dense frame | `fib-p9-frame-results` | `1282f0b` |
-| P10A compiled S1 | `fib-p10a-compiled-s1-results` | *(this phase)* |
+| P10A compiled S1 | `fib-p10a-compiled-s1-results` | `bf1edeb` |
+| P10B registers | `fib-p10b-register-results` | *(this phase)* |
 
 ## 6. Lessons learned
 
@@ -293,6 +307,11 @@ programming-model experiments
   remaining ~18× is the memory-mapped-register access + HOST dispatch +
   evaluator amplification, so the next experiment is **P10B register promotion
   + HOST intrinsic expansion** on top of the compiled-S1 baseline.
+- P10B (`fib-opt-p10b-registers`) then promoted `IP`/`SP`/`RP` to C locals in
+  the compiled path: **~5× faster than P10A**, `fib 25` ≈ 0.43 s ≈ **4.3× R3**.
+  The memory-mapped register traffic was the dominant remaining cost after
+  dispatch removal. HOST (142.9M dispatches, unchanged) now dominates — the
+  next experiment is **P10C HOST intrinsic expansion**.
 - Continue the rule: **one architectural performance hypothesis per phase.**
 - The broader benchmark suite is: Fibonacci (recursion/call overhead), tight
   loop (evaluator/branch overhead), counter closure (captured mutation),
@@ -398,6 +417,7 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `FIB-OPT-P8-LAZY-HASH.md`, `FIB-OPT-P8-RESULTS.md` — P8 lazy activation hash.
 - `FIB-OPT-P9-FRAMES.md`, `FIB-OPT-P9-RESULTS.md` — P9 dense activation frame.
 - `FIB-OPT-P10A-COMPILED-S1.md`, `FIB-OPT-P10A-RESULTS.md` — P10A compiled-S1 baseline.
+- `FIB-OPT-P10B-REGISTERS.md`, `FIB-OPT-P10B-RESULTS.md` — P10B register promotion.
 - `R3-FIB-COMPARISON.md` — local Rebol3 vs Glon P5 Fibonacci benchmark.
 - `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
 - `docs/distributed-glon-agents.md` — distributed/federated agent architecture.
