@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Glon Shop</title>
+<title>Glon Demos</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -168,6 +168,8 @@ tagline-open:  "<p class='tagline'>"
 tagline-close: "</p>"
 nav-open:   "<p class='nav'>"
 nav-close:  "</p>"
+pre-open:   "<pre>"
+pre-close:  "</pre>"
 
 
 
@@ -183,6 +185,7 @@ subhead: wrap h2-open h2-close
 text:    wrap p-open p-close
 tagline: wrap tagline-open tagline-close
 meta:    wrap meta-open meta-close
+pre:     wrap pre-open pre-close
 link:    func [content route] [
     emit-text nav-open
     emit-text btn-open emit-text route emit-text btn-mid do content emit-text btn-close
@@ -220,6 +223,12 @@ emit-product-at: func [items i n] [
         emit-product-at items + i 1 n
     ] [ none ]
 ] 
+
+
+
+
+
+
 
 
 
@@ -278,10 +287,18 @@ basket: func [] [
 
 
 home-view: [
+    heading [ emit-text "Glon Demos" ]
+    tagline [ emit-text "Small applications running in Glon" ]
+    link [ emit-text "Shop SPA" ] "shop"
+    link [ emit-text "Julia merchant flow" ] "merchant-flow"
+    link [ emit-text "Programmer's guide" ] "guide"
+]
+
+shop-view: [
     heading [ emit-text "Glon Shop" ]
     tagline [ emit-text "A tiny GLON storefront" ]
-    link    [ emit-text "View products" ] "products"
-    link    [ emit-text "Programmer's guide" ] "guide"
+    link [ emit-text "View products" ] "products"
+    link [ emit-text "Back to demos" ] "home"
 ]
 
 products-view: [
@@ -296,12 +313,12 @@ products-view: [
     meta [ emit-text "Products page visits: " emit-int visit-count ]
     emit-text panel-close
     basket
-    link [ emit-text "Back home" ] "home"
+    link [ emit-text "Back to shop" ] "shop"
 ]
 
 not-found-view: [
     heading [ emit-text "Not found" ]
-    link    [ emit-text "Back home" ] "home"
+    link [ emit-text "Back to demos" ] "home"
 ]
 
 guide-view: [
@@ -329,31 +346,62 @@ guide-view: [
         emit-text "<a href='https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/demo/shop/README.md'>demo/shop/README.md</a>"
     ]
 
-    link [ emit-text "Back home" ] "home"
+    link [ emit-text "Back to demos" ] "home"
+]
+
+merchant-flow-view: [
+    heading [ emit-text "Julia merchant flow" ]
+    tagline [ emit-text "A Julia Tasks + Channels dataflow demonstration" ]
+    pre [ emit-text "Transaction pool
+      ↓
+anonymous workers
+      ↓
+    router
+    / | \
+stock cash sales" ]
+    subhead [ emit-text "How it works" ]
+    text [ emit-text "Four anonymous workers compete for transactions from a single shared pool; each transaction is consumed exactly once." ]
+    text [ emit-text "One router fans each consequence out to three typed channels — stock, cash, and sales." ]
+    text [ emit-text "Three reducer tasks own the only mutable state, one concern each; they return immutable final totals when their channel closes." ]
+    text [ emit-text "Bounded channels give back-pressure: a slow consumer pauses the whole pipeline, making the flow visible." ]
+    text [ emit-text "Money is integer cents, so the final totals are exact and independent of processing order." ]
+    text [
+        emit-text "Runs under Julia, not the browser. Source: "
+        emit-text "<a href='https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/julia/merchant_flow.jl'>julia/merchant_flow.jl</a>"
+    ]
+    link [ emit-text "Back to demos" ] "home"
 ]
 
 
 render-home:      func [] [ emit-clear do home-view emit-finish ]
+render-shop:      func [] [ emit-clear do shop-view emit-finish ]
 render-products:  func [] [ emit-clear do products-view emit-finish ]
-render-not-found: func [] [ emit-clear do not-found-view emit-finish ]
 render-guide:     func [] [ emit-clear do guide-view emit-finish ]
+render-merchant-flow: func [] [ emit-clear do merchant-flow-view emit-finish ]
+render-not-found: func [] [ emit-clear do not-found-view emit-finish ]
 
 render-current: func [] [
-    either = current-route 'products [ render-products ]
-    [ either = current-route 'home [ render-home ]
-      [ either = current-route 'guide [ render-guide ] [ render-not-found ] ] ]
+    either = current-route 'shop [ render-shop ]
+    [ either = current-route 'products [ render-products ]
+      [ either = current-route 'guide [ render-guide ]
+        [ either = current-route 'merchant-flow [ render-merchant-flow ]
+          [ either = current-route 'home [ render-home ] [ render-not-found ] ] ] ] ]
 ]
 
 
 go-home:      func [] [ render-current ]
+go-shop:      func [] [ render-current ]
 go-products:  func [] [ visit-count: + visit-count 1 render-current ]
-go-not-found: func [] [ render-current ]
 go-guide:     func [] [ render-current ]
+go-merchant-flow: func [] [ render-current ]
+go-not-found: func [] [ render-current ]
 
 route: [
-    either = current-route 'products [ go-products ]
-    [ either = current-route 'home [ go-home ]
-      [ either = current-route 'guide [ go-guide ] [ go-not-found ] ] ]
+    either = current-route 'shop [ go-shop ]
+    [ either = current-route 'products [ go-products ]
+      [ either = current-route 'guide [ go-guide ]
+        [ either = current-route 'merchant-flow [ go-merchant-flow ]
+          [ either = current-route 'home [ go-home ] [ go-not-found ] ] ] ] ]
 ]
 
 

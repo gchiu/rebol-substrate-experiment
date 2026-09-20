@@ -75,10 +75,10 @@
   }
 
   function initialToken() {
-    // The shop is a single-page app served from a stable path (e.g. /shop/).
-    // Its URL never changes during a session (clicks call route(token) directly
-    // and there is no history.pushState), so the initial route is always "home"
-    // regardless of the hosting path prefix.
+    // The demo launcher is a single-page app served from a stable path
+    // (e.g. /shop/). Its URL never changes during a session (clicks call
+    // route(token) directly and there is no history.pushState), so the initial
+    // route is always "home" regardless of the hosting path prefix.
     return "home";
   }
 
