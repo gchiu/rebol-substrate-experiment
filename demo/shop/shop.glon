@@ -25,7 +25,9 @@ rice-count: 0
 search-term: []
 
 ;; ---- product data ---------------------------------------------------------
-catalog: [ "Tea" "Rice" ]
+tea: "Tea"
+rice: "Rice"
+catalog: [ tea rice ]
 
 ;; ---- basket rendering ------------------------------------------------------
 ;; A basket row is emitted only when its quantity is non-zero (empty basket =

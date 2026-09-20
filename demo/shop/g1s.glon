@@ -7,23 +7,24 @@
 ;; No new datatype, no GC change, no frozen-S1 change.
 
 ;; mk-string: ( block-of-bytes -> string! ). Allocates an exact managed string
-;; and copies the bytes. Uses only the safe scratch cells (A/B/E/F), which live
-;; above RS_INIT so they are never clobbered by the return stack.
+;; and copies the bytes. Uses the safe scratch cells (A/B/C/F) so it never
+;; collides with SCRATCH_E (the live output length used by emit-byte/emit-text),
+;; which lets quoted literals build strings inline during a render.
 mk-string: raw 1 [
     DUP LIT 16 MOD SUB LIT SCRATCH_B !
     LIT SCRATCH_B @ @ LIT SCRATCH_F !
-    LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_E !
-    LIT SCRATCH_F @ LIT SCRATCH_E @ !
+    LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT SCRATCH_C @ !
     LIT 0 LIT SCRATCH_A !
   mk-loop:
     LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH mk-done
     LIT SCRATCH_B @ LIT 2 ADD LIT SCRATCH_A @ ADD @ LIT 16 DIV
-    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_A @ ADD
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_A @ ADD
     !
     LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
     BRANCH mk-loop
   mk-done:
-    LIT SCRATCH_E @ LIT T_STRING ADD ARITY 1 EXIT
+    LIT SCRATCH_C @ LIT T_STRING ADD ARITY 1 EXIT
 ]
 
 ;; str-eq: ( string! string! -> 1|0 ). Content equality as a flat RAW loop

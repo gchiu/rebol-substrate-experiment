@@ -57,7 +57,7 @@ jobs:
         run: |
           rm -rf /tmp/shop && mkdir -p /tmp/shop
           cp demo/shop/app.html /tmp/shop/index.html
-          cp demo/shop/host.js demo/shop/glon.wasm /tmp/shop/
+          cp demo/shop/style.css demo/shop/host.js demo/shop/glon.wasm /tmp/shop/
 
       - name: Checkout main (Pages source)
         uses: actions/checkout@v4

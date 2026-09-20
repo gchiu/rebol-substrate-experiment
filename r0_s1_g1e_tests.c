@@ -42,7 +42,28 @@ static int has(const char *html, const char *needle) {
     return html != NULL && strstr(html, needle) != NULL;
 }
 
+static int file_contains(const char *path, const char *needle) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    static char buf[131072];
+    size_t n = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    return strstr(buf, needle) != NULL;
+}
+
 int run_r0_s1_g1e_tests(void) {
+    printf("g1e: generated page shows readable quoted Glon source\n");
+    CHECK(file_contains("demo/shop/app.html", "\"Glon Shop\"") &&
+          file_contains("demo/shop/app.html", "\"Tea\"") &&
+          file_contains("demo/shop/app.html", "\"Rice\""),
+          "A: view source keeps quoted string literals");
+    CHECK(!file_contains("demo/shop/app.html", "str-31: mk-string [84 101 97]") &&
+          !file_contains("demo/shop/app.html", ": mk-string [8"),
+          "B: view source has no str-N byte lowering");
+    CHECK(file_contains("demo/shop/app.html", "style.css"),
+          "C: view source references external style.css");
+
     printf("g1e: shop bundle renders the basket with per-product quantities\n");
 
     FILE *f = fopen("demo/shop/bundle.glon", "rb");

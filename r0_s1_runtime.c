@@ -315,6 +315,27 @@ static cell assemble_raw(cell block) {
     return entry;
 }
 
+/* String literal: read `"..."` and produce the byte-list block [ b0 b1 ... ]
+ * (one mk_int per UTF-8 byte).  The enclosing form loop pairs this with the
+ * `mk-string` word so a quoted source literal becomes the runtime form
+ * `mk-string [bytes]`, which evaluates to the existing managed STRING!. */
+static cell parse_string_literal(parser_t *P) {
+    P->pos++;                            /* opening '"' */
+    cell bytes[512]; int n = 0;
+    while (P->s[P->pos] && P->s[P->pos] != '"') {
+        if (n >= 512) { P->err = 1; break; }
+        bytes[n++] = mk_int((cell)(unsigned char)P->s[P->pos]);
+        P->pos++;
+    }
+    if (P->s[P->pos] == '"') P->pos++; else P->err = 1;
+    cell b = make_block((cell)n);
+    cell p = r0_untag(b);
+    M[p] = (cell)n;
+    M[p + BLK_SITE] = 0;
+    for (int i = 0; i < n; i++) M[p + BLK_DATA + i] = bytes[i];
+    return b;
+}
+
 static cell parse_block(parser_t *P) {
     P->pos++; /* '[' */
     cell tmp[512];
@@ -324,6 +345,13 @@ static cell parse_block(parser_t *P) {
         char c = P->s[P->pos];
         if (c == ']') { P->pos++; break; }
         if (c == '\0') { P->err = 1; break; }
+        /* quoted string literal: expand to `mk-string [bytes]` (two forms). */
+        if (c == '"') {
+            tmp[n++] = intern("mk-string");
+            tmp[n++] = parse_string_literal(P);
+            if (n >= 512) { P->err = 1; break; }
+            continue;
+        }
         /* `func` keyword: assign a func-site-id; parse spec normally, parse
          * body under the new site-id so nested blocks inherit it. */
         if (c != '[' && c != '-' && !(c >= '0' && c <= '9')) {
@@ -2316,6 +2344,12 @@ cell r0_s1_parse(const char *src, int *err) {
     while (P.s[P.pos] && !P.err) {
         skip_ws(&P);
         if (!P.s[P.pos]) break;
+        if (P.s[P.pos] == '"') {
+            tmp[n++] = intern("mk-string");
+            tmp[n++] = parse_string_literal(&P);
+            if (n >= 512) { P.err = 1; break; }
+            continue;
+        }
         tmp[n++] = parse_form(&P);
         if (n >= 512) { P.err = 1; break; }
     }

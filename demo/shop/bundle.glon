@@ -9,21 +9,22 @@
 
 
 
+
 mk-string: raw 1 [
     DUP LIT 16 MOD SUB LIT SCRATCH_B !
     LIT SCRATCH_B @ @ LIT SCRATCH_F !
-    LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_E !
-    LIT SCRATCH_F @ LIT SCRATCH_E @ !
+    LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT SCRATCH_C @ !
     LIT 0 LIT SCRATCH_A !
   mk-loop:
     LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH mk-done
     LIT SCRATCH_B @ LIT 2 ADD LIT SCRATCH_A @ ADD @ LIT 16 DIV
-    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_A @ ADD
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_A @ ADD
     !
     LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
     BRANCH mk-loop
   mk-done:
-    LIT SCRATCH_E @ LIT T_STRING ADD ARITY 1 EXIT
+    LIT SCRATCH_C @ LIT T_STRING ADD ARITY 1 EXIT
 ]
 
 
@@ -51,7 +52,7 @@ str-eq: raw 2 [
 ]
 
 
-get: raw 1 [ CALL lookup ARITY 1 EXIT ] str-1: mk-string [60 104 49 62] str-2: mk-string [60 47 104 49 62] str-3: mk-string [60 104 50 62] str-4: mk-string [60 47 104 50 62] str-5: mk-string [60 112 62] str-6: mk-string [60 47 112 62] str-7: mk-string [60 117 108 32 99 108 97 115 115 61 39 99 97 116 97 108 111 103 39 62] str-8: mk-string [60 47 117 108 62] str-9: mk-string [60 117 108 32 99 108 97 115 115 61 39 98 97 115 107 101 116 45 108 105 115 116 39 62] str-10: mk-string [60 108 105 62] str-11: mk-string [60 47 108 105 62] str-12: mk-string [60 115 112 97 110 32 99 108 97 115 115 61 39 105 116 101 109 39 62] str-13: mk-string [60 47 115 112 97 110 62] str-14: mk-string [60 115 112 97 110 32 99 108 97 115 115 61 39 113 116 121 39 62] str-15: mk-string [60 98 117 116 116 111 110 32 99 108 97 115 115 61 39 98 116 110 39 32 100 97 116 97 45 103 108 111 110 45 114 111 117 116 101 61 39] str-16: mk-string [39 62] str-17: mk-string [60 47 98 117 116 116 111 110 62] str-18: mk-string [60 98 117 116 116 111 110 32 99 108 97 115 115 61 39 98 116 110 39 32 100 97 116 97 45 103 108 111 110 45 101 118 101 110 116 61 39] str-19: mk-string [60 105 110 112 117 116 32 99 108 97 115 115 61 39 115 101 97 114 99 104 45 105 110 112 117 116 39 32 116 121 112 101 61 39 116 101 120 116 39 32 112 108 97 99 101 104 111 108 100 101 114 61 39 83 101 97 114 99 104 39 32 100 97 116 97 45 103 108 111 110 45 105 110 112 117 116 61 39] str-20: mk-string [39 32 100 97 116 97 45 103 108 111 110 45 118 97 108 117 101 61 39] str-21: mk-string [60 100 105 118 32 99 108 97 115 115 61 39 112 97 110 101 108 39 62] str-22: mk-string [60 47 100 105 118 62] str-23: mk-string [60 100 105 118 32 99 108 97 115 115 61 39 115 101 97 114 99 104 45 114 111 119 39 62] str-24: mk-string [60 100 105 118 32 99 108 97 115 115 61 39 98 97 115 107 101 116 39 62] str-25: mk-string [60 112 32 99 108 97 115 115 61 39 116 111 116 97 108 39 62] str-26: mk-string [60 112 32 99 108 97 115 115 61 39 109 101 116 97 39 62] str-27: mk-string [60 112 32 99 108 97 115 115 61 39 116 97 103 108 105 110 101 39 62] str-28: mk-string [60 112 32 99 108 97 115 115 61 39 110 97 118 39 62] str-29: mk-string [65 100 100] str-30: mk-string [97 100 100 45 112 114 111 100 117 99 116] str-31: mk-string [84 101 97] str-32: mk-string [82 105 99 101] str-33: mk-string [195 151 32] str-34: mk-string [89 111 117 114 32 98 97 115 107 101 116] str-35: mk-string [32] str-36: mk-string [105 116 101 109] str-37: mk-string [105 116 101 109 115] str-38: mk-string [71 108 111 110 32 83 104 111 112] str-39: mk-string [65 32 116 105 110 121 32 71 76 79 78 32 115 116 111 114 101 102 114 111 110 116] str-40: mk-string [86 105 101 119 32 112 114 111 100 117 99 116 115] str-41: mk-string [112 114 111 100 117 99 116 115] str-42: mk-string [80 114 111 100 117 99 116 115] str-43: mk-string [115 101 97 114 99 104] str-44: mk-string [83 101 97 114 99 104] str-45: mk-string [83 101 97 114 99 104 58 32] str-46: mk-string [80 114 111 100 117 99 116 115 32 112 97 103 101 32 118 105 115 105 116 115 58 32] str-47: mk-string [66 97 99 107 32 104 111 109 101] str-48: mk-string [104 111 109 101] str-49: mk-string [78 111 116 32 102 111 117 110 100] 
+get: raw 1 [ CALL lookup ARITY 1 EXIT ] 
 
 
 
@@ -121,42 +122,42 @@ emit-text: raw 1 [
 
 
 
-h1-open:   str-1
-h1-close:  str-2
-h2-open:   str-3
-h2-close:  str-4
-p-open:    str-5
-p-close:   str-6
-catalog-open:  str-7
-catalog-close: str-8
-basket-list-open:  str-9
-basket-list-close: str-8
-li-open:   str-10
-li-close:  str-11
-span-open:  str-12
-span-close: str-13
-qty-open:  str-14
-qty-close: str-13
-btn-open:  str-15
-btn-mid:   str-16
-btn-close: str-17
-event-open: str-18
-input-open: str-19
-value-mid:  str-20
-panel-open:  str-21
-panel-close: str-22
-search-open:  str-23
-search-close: str-22
-basket-open:  str-24
-basket-close: str-22
-total-open:  str-25
-total-close: str-6
-meta-open:   str-26
-meta-close:  str-6
-tagline-open:  str-27
-tagline-close: str-6
-nav-open:   str-28
-nav-close:  str-6
+h1-open:   "<h1>"
+h1-close:  "</h1>"
+h2-open:   "<h2>"
+h2-close:  "</h2>"
+p-open:    "<p>"
+p-close:   "</p>"
+catalog-open:  "<ul class='catalog'>"
+catalog-close: "</ul>"
+basket-list-open:  "<ul class='basket-list'>"
+basket-list-close: "</ul>"
+li-open:   "<li>"
+li-close:  "</li>"
+span-open:  "<span class='item'>"
+span-close: "</span>"
+qty-open:  "<span class='qty'>"
+qty-close: "</span>"
+btn-open:  "<button class='btn' data-glon-route='"
+btn-mid:   "'>"
+btn-close: "</button>"
+event-open: "<button class='btn' data-glon-event='"
+input-open: "<input class='search-input' type='text' placeholder='Search' data-glon-input='"
+value-mid:  "' data-glon-value='"
+panel-open:  "<div class='panel'>"
+panel-close: "</div>"
+search-open:  "<div class='search-row'>"
+search-close: "</div>"
+basket-open:  "<div class='basket'>"
+basket-close: "</div>"
+total-open:  "<p class='total'>"
+total-close: "</p>"
+meta-open:   "<p class='meta'>"
+meta-close:  "</p>"
+tagline-open:  "<p class='tagline'>"
+tagline-close: "</p>"
+nav-open:   "<p class='nav'>"
+nav-close:  "</p>"
 
 
 
@@ -204,12 +205,11 @@ emit-product-at: func [items i n] [
     either < i n [
         emit-text li-open
         emit-text span-open emit-text get block-at items i emit-text span-close
-        value-button [ emit-text str-29 ] str-30 get block-at items i
+        value-button [ emit-text "Add" ] "add-product" get block-at items i
         emit-text li-close
         emit-product-at items + i 1 n
     ] [ none ]
-]
-
+] 
 
 
 
@@ -236,7 +236,9 @@ rice-count: 0
 search-term: []
 
 
-catalog: [ str-31 str-32 ]
+tea: "Tea"
+rice: "Rice"
+catalog: [ tea rice ]
 
 
 
@@ -245,50 +247,50 @@ basket-row: func [name count] [
     either > count 0 [
         emit-text li-open
         emit-text span-open emit-text name emit-text span-close
-        emit-text qty-open emit-text str-33 emit-int count emit-text qty-close
+        emit-text qty-open emit-text "× " emit-int count emit-text qty-close
         emit-text li-close
     ] [ none ]
 ]
 basket: func [] [
     emit-text basket-open
-    subhead [ emit-text str-34 ]
+    subhead [ emit-text "Your basket" ]
     emit-text basket-list-open
-    basket-row str-31 tea-count
-    basket-row str-32 rice-count
+    basket-row "Tea" tea-count
+    basket-row "Rice" rice-count
     emit-text basket-list-close
     emit-text total-open
     emit-int + tea-count rice-count
-    emit-text str-35
-    either = + tea-count rice-count 1 [ emit-text str-36 ] [ emit-text str-37 ]
+    emit-text " "
+    either = + tea-count rice-count 1 [ emit-text "item" ] [ emit-text "items" ]
     emit-text total-close
     emit-text basket-close
 ]
 
 
 home-view: [
-    heading [ emit-text str-38 ]
-    tagline [ emit-text str-39 ]
-    link    [ emit-text str-40 ] str-41
+    heading [ emit-text "Glon Shop" ]
+    tagline [ emit-text "A tiny GLON storefront" ]
+    link    [ emit-text "View products" ] "products"
 ]
 
 products-view: [
-    heading [ emit-text str-42 ]
+    heading [ emit-text "Products" ]
     products catalog
     emit-text panel-open
     emit-text search-open
-    input str-43
-    button [ emit-text str-44 ] str-43
+    input "search"
+    button [ emit-text "Search" ] "search"
     emit-text search-close
-    meta [ emit-text str-45 emit-text search-term ]
-    meta [ emit-text str-46 emit-int visit-count ]
+    meta [ emit-text "Search: " emit-text search-term ]
+    meta [ emit-text "Products page visits: " emit-int visit-count ]
     emit-text panel-close
     basket
-    link [ emit-text str-47 ] str-48
+    link [ emit-text "Back home" ] "home"
 ]
 
 not-found-view: [
-    heading [ emit-text str-49 ]
-    link    [ emit-text str-47 ] str-48
+    heading [ emit-text "Not found" ]
+    link    [ emit-text "Back home" ] "home"
 ]
 
 
@@ -316,8 +318,8 @@ route: [
 
 
 add-product: func [] [
-    either str-eq current-value str-31 [ tea-count: + tea-count 1 ]
-    [ either str-eq current-value str-32 [ rice-count: + rice-count 1 ] [ none ] ]
+    either str-eq current-value "Tea" [ tea-count: + tea-count 1 ]
+    [ either str-eq current-value "Rice" [ rice-count: + rice-count 1 ] [ none ] ]
     render-current
 ]
 search: func [] [ search-term: current-value render-current ]
