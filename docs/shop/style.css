@@ -1,0 +1,112 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #1f2937;
+  background: #f7f8fa;
+  line-height: 1.5;
+}
+#app {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3rem;
+}
+#app h1 {
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.5rem;
+}
+#app h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.75rem;
+}
+.tagline { color: #6b7280; margin: 0 0 1.5rem; }
+
+/* product catalogue */
+.catalog {
+  list-style: none;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: #ffffff;
+}
+.catalog li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+}
+.catalog li + li { border-top: 1px solid #e5e7eb; }
+.item { font-weight: 500; }
+
+/* buttons */
+.btn {
+  font: inherit;
+  font-weight: 500;
+  color: #1f2937;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.btn:hover { background: #f3f4f6; border-color: #9ca3af; }
+.btn:active { background: #e5e7eb; }
+.btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+
+/* status panel (search + metrics) */
+.panel {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 0 0 1.25rem;
+}
+.search-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.search-input {
+  font: inherit;
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+}
+.search-input:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.meta { color: #6b7280; font-size: 0.9rem; margin: 0.25rem 0; }
+
+/* basket */
+.basket {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 0 0 1.25rem;
+}
+.basket-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.basket-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.4rem 0;
+}
+.basket-list li + li { border-top: 1px solid #f3f4f6; }
+.qty { color: #6b7280; font-variant-numeric: tabular-nums; }
+.total {
+  font-weight: 600;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 0.6rem;
+  margin: 0.5rem 0 0;
+}
+
+.nav { margin: 0; }
