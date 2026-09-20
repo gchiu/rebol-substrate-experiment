@@ -1,4 +1,63 @@
-;; demo/shop/g1b.glon -- the G1B SPA view dialect (library).
+;; demo/shop/common.glon -- the shared Glon Demos machinery (STRING! primitives
+;; + the SPA view dialect + the load-on-demand link term).
+;;
+;; Loaded ONCE at bootstrap, before any demo. It is the only code shared by the
+;; launcher and every demo. The demos (demos/*.glon) are loaded on first use.
+;;
+;; STRING! is an intrinsic tag (T_STRING = 12) over a managed, immutable byte
+;; series (GC_KIND_STRING = 6): payload [length, byte0..byteN-1] with one raw
+;; byte (0..255) per cell. `alloc`/`lookup` are the managed-heap entry points,
+;; exposed symbolically by the RAW assembler (see r0_s1_runtime.c assemble_raw).
+;; No new datatype, no GC change, no frozen-S1 change.
+
+;; mk-string: ( block-of-bytes -> string! ). Allocates an exact managed string
+;; and copies the bytes. Uses the safe scratch cells (A/B/C/F) so it never
+;; collides with SCRATCH_E (the live output length used by emit-byte/emit-text),
+;; which lets quoted literals build strings inline during a render.
+mk-string: raw 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT SCRATCH_C @ !
+    LIT 0 LIT SCRATCH_A !
+  mk-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH mk-done
+    LIT SCRATCH_B @ LIT 2 ADD LIT SCRATCH_A @ ADD @ LIT 16 DIV
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_A @ ADD
+    !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH mk-loop
+  mk-done:
+    LIT SCRATCH_C @ LIT T_STRING ADD ARITY 1 EXIT
+]
+
+;; str-eq: ( string! string! -> 1|0 ). Content equality as a flat RAW loop
+;; (avoids per-byte GLON recursion).
+str-eq: raw 2 [
+    LIT SCRATCH_B !
+    DUP LIT 16 MOD SUB LIT SCRATCH_A !
+    DROP
+    LIT SCRATCH_B @ DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    DROP
+    LIT SCRATCH_A @ @ LIT SCRATCH_B @ @ EQ ZBRANCH str-eq-neq
+    LIT SCRATCH_A @ @ LIT SCRATCH_F !
+    LIT 0 LIT SCRATCH_E !
+  str-eq-loop:
+    LIT SCRATCH_E @ LIT SCRATCH_F @ LT ZBRANCH str-eq-yes
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_E @ ADD @
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_E @ ADD @
+    EQ ZBRANCH str-eq-neq
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    BRANCH str-eq-loop
+  str-eq-yes:
+    INT 1 ARITY 1 EXIT
+  str-eq-neq:
+    INT 0 ARITY 1 EXIT
+]
+
+;; get: ( word -> value ). Look up a word in the current context.
+get: raw 1 [ CALL lookup ARITY 1 EXIT ]
+;; demo/shop/common.glon (was g1b.glon) -- the G1B SPA view dialect (library).
 ;;
 ;; This is the smallest dialect that makes a persistent SPA read as a Rebol
 ;; application rather than as HTML templates. It provides:
@@ -22,7 +81,7 @@
 ;; This is TEMPORARY scratch/output storage (see r0_s1.h G1_OUT); it uses no
 ;; new S1 primitive, no native id, and no evaluator change.
 
-;; ---- byte output (RAW trapdoor) -------------------------------------------
+;; ---- view dialect (was g1b.glon) -----------------------------------------
 emit-clear: raw [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
 emit-byte: raw 1 [
     LIT SCRATCH_E @ LIT G1_OUT_DATA ADD !
@@ -106,6 +165,8 @@ nav-open:   "<p class='nav'>"
 nav-close:  "</p>"
 pre-open:   "<pre>"
 pre-close:  "</pre>"
+load-btn-open: "<button class='btn' data-glon-route='"
+load-btn-mid:  "' data-glon-load='"
 
 ;; ---- view vocabulary ------------------------------------------------------
 ;; Each term wraps its CONTENT (a block of emit-* calls) in an HTML element.
@@ -125,6 +186,15 @@ pre:     wrap pre-open pre-close
 link:    func [content route] [
     emit-text nav-open
     emit-text btn-open emit-text route emit-text btn-mid do content emit-text btn-close
+    emit-text nav-close
+]
+;; G1E load-on-demand: a link that ALSO names the resource the host must fetch
+;; before the route is dispatched. Glon decides the resource path; host.js only
+;; fetches whatever [data-glon-load] names and then re-dispatches the route.
+load-link: func [content route path] [
+    emit-text nav-open
+    emit-text load-btn-open emit-text route emit-text load-btn-mid emit-text path emit-text btn-mid
+    do content emit-text btn-close
     emit-text nav-close
 ]
 ;; G1C: a button that carries a generic application-event token (not a route).

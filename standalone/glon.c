@@ -227,7 +227,13 @@ int glon_load(const unsigned char *src, unsigned int len) {
     int err = 0;
     cell prog = r0_s1_parse((const char *)srcbuf, &err);
     if (err) return -2;
-    int N = r0_s1_run(prog);
+    /* G1E load-on-demand: glon_load may be called repeatedly (bootstrap, then
+     * each demo on first selection). Each call must EXTEND the persistent
+     * machine (managed heap + loader heap + global context), not reset it, so
+     * use the persistent-run entry point exactly as the route/event bridge does.
+     * The parsed block lives in the loader heap and copies everything out of
+     * srcbuf, so srcbuf is safe to overwrite on the next load. */
+    int N = r0_s1_run_persistent(prog);
     return (N < 0) ? -3 : 0;
 }
 

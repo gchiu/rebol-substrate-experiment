@@ -1,14 +1,4 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Glon Demos</title>
-<link rel="stylesheet" href="style.css">
-</head>
-<body>
-<div id="app" data-glon-id="1"></div>
-<script type="application/glon">[ 
+[ 
 
 
 
@@ -345,7 +335,4 @@ route: [
 do-event: [
     either = current-event 'load-failed [ render-error ]
     [ either shop-loaded [ do-shop-event ] [ render-current ] ]
-] ]</script>
-<script src="host.js"></script>
-</body>
-</html>
+] ]

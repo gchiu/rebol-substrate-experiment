@@ -1,15 +1,18 @@
-// demo/shop/node_test.js -- headless verification of the Glon Shop G1E demo
-// (no DOM, no browser, no Emscripten runtime).
+// demo/shop/node_test.js -- headless verification of the Glon Demos launcher
+// + load-on-demand demos (no DOM, no browser, no Emscripten runtime).
 //
 // Instantiates demo/shop/glon.wasm with the three host imports, extracts the
-// GLON source from the generated demo/shop/app.html <script type="application/glon">
-// block (exactly as the browser's script.textContent would, with no character
-// reference decoding), then drives the router AND the event bridge (token and
-// token+value) exactly as the browser does and asserts the rendered HTML.
+// bootstrap source from demo/shop/app.html <script type="application/glon">
+// (exactly as the browser's script.textContent would), then loads each demo
+// demo/shop/demos/*.glon via glon_load on first selection -- the same path the
+// browser host's [data-glon-load] fetch + glon_load + re-route performs -- and
+// asserts the rendered HTML.
 //
-// This exercises the real WASM module + the G1E view dialect + repeated interactive composition
-// path (with values) + host bridge; the only thing stubbed is the DOM
-// (host_set_html is captured instead of writing innerHTML).
+// This exercises the real WASM module + the view dialect + the event bridge +
+// load-on-demand composition; the only thing stubbed is the DOM (host_set_html
+// is captured instead of writing innerHTML) and the network fetch (the demo
+// file is read from disk and handed to glon_load, exactly as the fetched text
+// would be).
 "use strict";
 
 const fs = require("fs");
@@ -18,23 +21,22 @@ const path = require("path");
 const HERE = __dirname;
 const WASM = path.join(HERE, "glon.wasm");
 const APP_HTML = fs.readFileSync(path.join(HERE, "app.html"), "utf8");
-const BUNDLE = fs.readFileSync(path.join(HERE, "bundle.glon"), "utf8");
+const BOOTSTRAP = fs.readFileSync(path.join(HERE, "bootstrap.glon"), "utf8");
 
 // Regression guard for the build.py -> <script> boundary.  A <script> element's
 // content is raw text: the HTML parser does not decode character references,
 // and the browser's script.textContent is exactly the bytes between the tags.
 // The source glon_load receives in the browser must therefore be byte-identical
-// to bundle.glon (any html.escape() here would corrupt it: 'home -> &#x27;home,
-// < -> &lt;, etc.).  Extract the raw text exactly as textContent would.
+// to bootstrap.glon (any html.escape() here would corrupt it).
 const scriptMatch = /<script type="application\/glon">([\s\S]*?)<\/script>/.exec(APP_HTML);
 if (!scriptMatch) {
   console.error("GLON_G1E_TEST FAIL: app.html has no <script type=\"application/glon\"> block");
   process.exit(1);
 }
 const SRC = scriptMatch[1];
-if (SRC !== BUNDLE) {
-  console.error("GLON_G1E_TEST FAIL: app.html script textContent differs from bundle.glon " +
-    "(script " + SRC.length + " bytes vs bundle " + BUNDLE.length + " bytes)");
+if (SRC !== BOOTSTRAP) {
+  console.error("GLON_G1E_TEST FAIL: app.html script textContent differs from bootstrap.glon " +
+    "(script " + SRC.length + " bytes vs bootstrap " + BOOTSTRAP.length + " bytes)");
   process.exit(1);
 }
 
@@ -70,6 +72,16 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
     return [p, bytes.length];
   };
 
+  const load = (src) => {
+    const [p, n] = put(src);
+    const rc = e.glon_load(p, n);
+    if (rc !== 0) fail("glon_load rc=" + rc + " for source:\n" + src.slice(0, 200));
+  };
+
+  const loadDemo = (name) => {
+    load(fs.readFileSync(path.join(HERE, "demos", name + ".glon"), "utf8"));
+  };
+
   const route = (token) => {
     rendered.length = 0;
     const [p, n] = put(token);
@@ -97,36 +109,40 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
 
   if (e.glon_init() !== 0) fail("glon_init");
 
-  const [p, n] = put(SRC);
-  if (e.glon_load(p, n) !== 0) fail("glon_load");
+  load(SRC);
 
-  // 1. home route selects the launcher view, offering all three demos
+  // 1. home route selects the launcher, offering all three demos via
+  //    load-on-demand links (the demos are not yet loaded)
   const home = route("home");
   if (!/Glon Demos/.test(home) ||
-      !/data-glon-route='shop'/.test(home) ||
-      !/data-glon-route='guide'/.test(home) ||
-      !/data-glon-route='merchant-flow'/.test(home))
-    fail("home route: expected 'Glon Demos' launcher + three links, got: " + home);
+      !/data-glon-load='demos\/shop\.glon'/.test(home) ||
+      !/data-glon-load='demos\/guide\.glon'/.test(home) ||
+      !/data-glon-load='demos\/merchant-flow\.glon'/.test(home))
+    fail("home route: expected 'Glon Demos' launcher + three load-links, got: " + home);
 
-  // 2. shop route renders the shop landing
+  // 2. selecting Shop loads shop.glon and renders the shop landing
+  loadDemo("shop");
   const shop = route("shop");
   if (!/Glon Shop/.test(shop) || !/data-glon-route='products'/.test(shop))
     fail("shop route: expected 'Glon Shop' + products button, got: " + shop);
 
-  // 3. guide route renders the programmer's guide
+  // 3. already-loaded demo is a plain link (no reload)
+  const home2 = route("home");
+  if (!/data-glon-route='shop'/.test(home2) ||
+      /data-glon-load='demos\/shop\.glon'/.test(home2))
+    fail("home after shop: expected shop to be a plain link, got: " + home2);
+
+  // 4. selecting Guide loads guide.glon and renders it
+  loadDemo("guide");
   const guide = route("guide");
   if (!/Programmer's guide/.test(guide))
     fail("guide route: expected 'Programmer's guide', got: " + guide);
 
-  // 4. merchant-flow route renders the Julia page + source link
+  // 5. selecting Merchant flow loads merchant-flow.glon and renders it
+  loadDemo("merchant-flow");
   const mf = route("merchant-flow");
   if (!/Julia merchant flow/.test(mf) || !/merchant_flow\.jl/.test(mf))
     fail("merchant-flow route: expected 'Julia merchant flow' + source link, got: " + mf);
-
-  // 5. back to home returns to the launcher
-  const back = route("home");
-  if (!/Glon Demos/.test(back))
-    fail("back home: expected 'Glon Demos', got: " + back);
 
   // 6. products route shows visit 1, an empty basket, and the repeated list
   const v1 = route("products");
@@ -154,7 +170,7 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   if (!/Search: green tea/.test(s1))
     fail("search 'green tea': got: " + s1);
 
-  // 9. navigate away and back; basket persists
+  // 9. navigate away and back; basket persists (across loaded demos)
   route("home");
   const v2 = route("products");
   if (!/Products page visits: 2/.test(v2) ||
@@ -167,6 +183,11 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   if (!/Not found/.test(nf))
     fail("unknown route: expected 'Not found', got: " + nf);
 
-  console.log("GLON_G1E_TEST PASS (launcher / shop / guide / merchant-flow / back / add-product x3 / basket quantities / search / persist / unknown)");
+  // 11. load-failed event -> controlled error (not a hung machine)
+  const err = event("load-failed");
+  if (!/Load failed/.test(err))
+    fail("load-failed event: expected 'Load failed', got: " + err);
+
+  console.log("GLON_G1E_TEST PASS (launcher / lazy shop / lazy guide / lazy merchant-flow / basket / search / persist / unknown / load-failed)");
   process.exit(0);
 }).catch((e) => fail(e.message || e));

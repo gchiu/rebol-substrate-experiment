@@ -2267,6 +2267,11 @@ cell r0_s1_init(void) {
     M[M1_SCHED_REC + 2] = R0S1_RS_INIT;   /* scheduler RS: empty range */
     M[GC_COLLECT_CNT] = 0;
     M[GC_LAST_RECLAM] = 0;
+    /* Seed the managed-heap frontier. The non-persistent r0_s1_run path resets
+     * REG_HP via s1_reset(), but the G1E load-on-demand path calls
+     * r0_s1_run_persistent FIRST (bootstrap), which preserves REG_HP as-is; it
+     * must therefore start at the empty-heap base, not an uninitialised cell. */
+    M[REG_HP] = GC_HEAP_BASE;
 
     /* M3: the BUILTIN_TYPE table and GC_META cell are always scanned as roots.
      * Seed them NONE so non-M3 runs scan to nothing; r0_s1_seed_datatypes()

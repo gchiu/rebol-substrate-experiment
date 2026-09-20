@@ -1,0 +1,108 @@
+;; demo/shop/app.glon -- the Glon Demos launcher (bootstrap).
+;;
+;; This is the WHOLE initial Glon application. It contains no demo content: the
+;; shop, the programmer's guide, and the merchant-flow page each live in their
+;; own demos/<name>.glon file, loaded on first selection.
+;;
+;;   bootstrap (common.glon + app.glon)
+;;       |
+;;       +-- Shop ------------> load demos/shop.glon when selected
+;;       +-- Guide -----------> load demos/guide.glon when selected
+;;       +-- Merchant flow ---> load demos/merchant-flow.glon when selected
+;;
+;; The launcher owns routing and event dispatch. Each demo, once loaded, sets
+;; its <name>-loaded flag and defines its own views, renderers, and (for the
+;; shop) event handlers. The dispatch references those definitions only under
+;; the matching loaded flag, so an unloaded demo is never dereferenced.
+;;
+;; The browser host stays generic: it fetches whatever [data-glon-load] names,
+;; injects it via glon_load, and re-dispatches the route. It never knows what
+;; "shop", "guide", or "merchant-flow" mean.
+
+;; ---- which demos are resident (load-on-demand state) -----------------------
+shop-loaded: 0
+guide-loaded: 0
+merchant-flow-loaded: 0
+
+;; ---- launcher view ---------------------------------------------------------
+home-view: [
+    heading [ emit-text "Glon Demos" ]
+    tagline [ emit-text "Small applications running in Glon" ]
+    either shop-loaded [
+        link [ emit-text "Shop SPA" ] "shop"
+    ] [
+        load-link [ emit-text "Shop SPA" ] "shop" "demos/shop.glon"
+    ]
+    either guide-loaded [
+        link [ emit-text "Programmer's guide" ] "guide"
+    ] [
+        load-link [ emit-text "Programmer's guide" ] "guide" "demos/guide.glon"
+    ]
+    either merchant-flow-loaded [
+        link [ emit-text "Julia merchant flow" ] "merchant-flow"
+    ] [
+        load-link [ emit-text "Julia merchant flow" ] "merchant-flow" "demos/merchant-flow.glon"
+    ]
+]
+
+;; ---- fallback views --------------------------------------------------------
+not-found-view: [
+    heading [ emit-text "Not found" ]
+    link [ emit-text "Back to demos" ] "home"
+]
+
+loading-view: [
+    heading [ emit-text "Loading…" ]
+    text [ emit-text "Loading the selected demo…" ]
+    link [ emit-text "Back to demos" ] "home"
+]
+
+error-view: [
+    heading [ emit-text "Load failed" ]
+    text [ emit-text "The selected demo could not be loaded." ]
+    link [ emit-text "Back to demos" ] "home"
+]
+
+;; ---- rendering -------------------------------------------------------------
+;; render-home / render-not-found / render-loading / render-error live here;
+;; the demo renderers (render-shop, render-products, render-guide,
+;; render-merchant-flow) are defined by their demos and referenced only under
+;; the matching loaded flag below.
+render-home:      func [] [ emit-clear do home-view emit-finish ]
+render-not-found: func [] [ emit-clear do not-found-view emit-finish ]
+render-loading:   func [] [ emit-clear do loading-view emit-finish ]
+render-error:     func [] [ emit-clear do error-view emit-finish ]
+
+render-current: func [] [
+    either = current-route 'shop [
+        either shop-loaded [ render-shop ] [ render-loading ]
+    ] [
+    either = current-route 'products [
+        either shop-loaded [ render-products ] [ render-loading ]
+    ] [
+    either = current-route 'guide [
+        either guide-loaded [ render-guide ] [ render-loading ]
+    ] [
+    either = current-route 'merchant-flow [
+        either merchant-flow-loaded [ render-merchant-flow ] [ render-loading ]
+    ] [
+    either = current-route 'home [ render-home ] [ render-not-found ]
+    ]]]]
+]
+
+;; ---- routes (entry side effects, then render) -----------------------------
+route: [
+    either = current-route 'products [
+        either shop-loaded [ visit-count: + visit-count 1 ] [ none ]
+    ] [ none ]
+    render-current
+]
+
+;; ---- events (delegate to the loaded demo, or fall back) --------------------
+;; The shop owns add-product/search (see demos/shop.glon do-shop-event). A
+;; generic load-failed event lets the host report a fetch failure without
+;; knowing anything about the application.
+do-event: [
+    either = current-event 'load-failed [ render-error ]
+    [ either shop-loaded [ do-shop-event ] [ render-current ] ]
+]

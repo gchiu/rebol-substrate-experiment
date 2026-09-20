@@ -58,6 +58,7 @@ jobs:
           rm -rf /tmp/shop && mkdir -p /tmp/shop
           cp demo/shop/app.html /tmp/shop/index.html
           cp demo/shop/style.css demo/shop/host.js demo/shop/glon.wasm /tmp/shop/
+          cp -r demo/shop/demos /tmp/shop/demos
 
       - name: Checkout main (Pages source)
         uses: actions/checkout@v4
@@ -71,11 +72,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           mkdir -p docs/shop
-          cp /tmp/shop/* docs/shop/
+          cp -r /tmp/shop/. docs/shop/
           git add docs/shop
           if git diff --cached --quiet; then
             echo "docs/shop unchanged; nothing to commit"
           else
-            git commit -m "Publish G1E shop (built WASM) to docs/shop"
+            git commit -m "Publish G1E demo launcher (built WASM) to docs/shop"
             git push origin HEAD:main
           fi

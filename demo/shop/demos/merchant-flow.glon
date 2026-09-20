@@ -1,0 +1,33 @@
+;; demo/shop/demos/merchant-flow.glon -- the Julia merchant-flow page.
+;;
+;; Loaded on first selection of "Julia merchant flow". Describes (does not run)
+;; the Julia Tasks + Channels dataflow demo in julia/merchant_flow.jl. The
+;; launcher's dispatch references render-merchant-flow under the
+;; merchant-flow-loaded flag.
+
+merchant-flow-loaded: 1
+
+merchant-flow-view: [
+    heading [ emit-text "Julia merchant flow" ]
+    tagline [ emit-text "A Julia Tasks + Channels dataflow demonstration" ]
+    pre [ emit-text "Transaction pool
+      ↓
+anonymous workers
+      ↓
+    router
+    / | \
+stock cash sales" ]
+    subhead [ emit-text "How it works" ]
+    text [ emit-text "Four anonymous workers compete for transactions from a single shared pool; each transaction is consumed exactly once." ]
+    text [ emit-text "One router fans each consequence out to three typed channels — stock, cash, and sales." ]
+    text [ emit-text "Three reducer tasks own the only mutable state, one concern each; they return immutable final totals when their channel closes." ]
+    text [ emit-text "Bounded channels give back-pressure: a slow consumer pauses the whole pipeline, making the flow visible." ]
+    text [ emit-text "Money is integer cents, so the final totals are exact and independent of processing order." ]
+    text [
+        emit-text "Runs under Julia, not the browser. Source: "
+        emit-text "<a href='https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/julia/merchant_flow.jl'>julia/merchant_flow.jl</a>"
+    ]
+    link [ emit-text "Back to demos" ] "home"
+]
+
+render-merchant-flow: func [] [ emit-clear do merchant-flow-view emit-finish ]

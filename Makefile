@@ -162,10 +162,9 @@ demo/shop/glon.wasm: standalone/glon.c r0_s1_g1a.c r0_s1_g1a.h s1.c s1.h r0_s1_r
 	$(EMCC) $(STANDALONE_FLAGS) standalone/glon.c r0_s1_g1a.c s1.c r0_s1_runtime.c \
 		-o demo/shop/glon.wasm
 
-# bundle fragments into demo/shop/app.html (+ demo/shop/bundle.glon for tests)
-demo/shop/app.html: demo/shop/shop.glon demo/shop/fragments/home.html \
-		demo/shop/fragments/products.html demo/shop/fragments/not-found.html \
-		demo/shop/build.py
+# bundle the bootstrap (common.glon + app.glon) into demo/shop/app.html
+# (+ demo/shop/bootstrap.glon for tests). Demos stay separate (demos/*.glon).
+demo/shop/app.html: demo/shop/common.glon demo/shop/app.glon demo/shop/build.py
 	python3 demo/shop/build.py
 
 # headless verification under node (the real WASM module + host bridge)
