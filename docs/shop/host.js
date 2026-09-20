@@ -9,14 +9,18 @@
  *   - host_set_html : write rendered HTML into [data-glon-id="<handle>"];
  *   - host_set_text : (retained for the W2 counter demo) write a number into
  *                     [data-glon-id="<handle>"];
- *   - feed the GLON source (inlined as <script type="application/glon">) into
- *     glon_load exactly once at startup;
+ *   - feed the GLON bootstrap source (inlined as
+ *     <script type="application/glon">) into glon_load at startup, and feed
+ *     each on-demand demo source into glon_load when first selected;
+ *   - fetch a [data-glon-load] resource (a generic path) and re-dispatch its
+ *     [data-glon-route] after the fetch completes (async resume);
  *   - forward [data-glon-route] clicks and the initial location to glon_route;
  *   - forward [data-glon-event] clicks to glon_event (or glon_event_value when
  *     a [data-glon-input] element shares the token name).
  *
- * No routing decision, application state, or page logic lives here. Glon is
- * the application controller; this file is only the host bridge.
+ * No routing decision, application state, or page logic lives here. JavaScript
+ * knows how to fetch bytes and inject them; Glon decides WHICH resource to load
+ * and what it means. This file is only the host bridge.
  */
 (function () {
   "use strict";
@@ -66,6 +70,31 @@
     if (rc !== 0) console.error("host.js: glon_event('" + token + "') returned " + rc);
   }
 
+  // Generic load-on-demand: fetch a resource path, inject its source into the
+  // persistent machine via glon_load, then re-dispatch the route that asked for
+  // it. JavaScript only knows "fetch bytes and hand them back"; the resource
+  // path and route token come from Glon-rendered attributes.
+  function loadResource(path, token) {
+    fetch(path)
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        return resp.text();
+      })
+      .then(function (src) {
+        var pair = alloc(src);
+        if (ex.glon_load(pair[0], pair[1]) !== 0) {
+          console.error("host.js: glon_load('" + path + "') failed");
+          glonEvent("load-failed");
+          return;
+        }
+        route(token);
+      })
+      .catch(function (err) {
+        console.error("host.js: fetch('" + path + "') failed", err);
+        glonEvent("load-failed");
+      });
+  }
+
   function glonEventValue(token, value) {
     if (typeof ex.glon_event_value !== "function") return;
     var t = alloc(token);
@@ -109,7 +138,12 @@
       if (!el) return;
       e.preventDefault();
       if (el.hasAttribute("data-glon-route")) {
-        route(el.getAttribute("data-glon-route"));
+        var token = el.getAttribute("data-glon-route");
+        if (el.hasAttribute("data-glon-load")) {
+          loadResource(el.getAttribute("data-glon-load"), token);
+        } else {
+          route(token);
+        }
       } else if (el.hasAttribute("data-glon-event")) {
         var token = el.getAttribute("data-glon-event");
         var value = null;

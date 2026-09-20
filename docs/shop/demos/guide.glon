@@ -1,0 +1,37 @@
+;; demo/shop/demos/guide.glon -- the Glon Demos programmer's guide.
+;;
+;; Loaded on first selection of "Programmer's guide". Defines the guide view and
+;; its renderer; the launcher's dispatch references render-guide under the
+;; guide-loaded flag.
+
+guide-loaded: 1
+
+guide-view: [
+    heading [ emit-text "Programmer's guide" ]
+
+    text [ emit-text "Glon owns the application: state, routing, and page logic. JavaScript only loads the WASM and source, writes rendered HTML into the page, and forwards route, event, and value messages. It never interprets a product, a basket, or a route." ]
+
+    subhead [ emit-text "The three paths" ]
+    text [ emit-text "route -> current-route -> route logic" ]
+    text [ emit-text "event -> current-event -> event logic" ]
+    text [ emit-text "event + value -> current-event + current-value -> application logic" ]
+
+    subhead [ emit-text "Where to extend" ]
+    text [ emit-text "New page: add a view, a renderer, a route branch, and a link." ]
+    text [ emit-text "New action: add a button or value-button, then a do-event branch." ]
+    text [ emit-text "New state: add a value, mutate it in a handler, call render-current." ]
+    text [ emit-text "New repeated UI: put the data in a block and write a function that renders each value." ]
+    text [ emit-text "New appearance: edit style.css, not the application logic." ]
+
+    subhead [ emit-text "Not yet production" ]
+    text [ emit-text "Products and basket state are written explicitly, not data-driven. Search shows a term but does not filter the catalogue. Routes are internal, with no history and no persistence across reloads. Rendered HTML is installed with innerHTML and is not escaped." ]
+
+    text [
+        emit-text "Full guide: "
+        emit-text "<a href='https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/demo/shop/README.md'>demo/shop/README.md</a>"
+    ]
+
+    link [ emit-text "Back to demos" ] "home"
+]
+
+render-guide: func [] [ emit-clear do guide-view emit-finish ]

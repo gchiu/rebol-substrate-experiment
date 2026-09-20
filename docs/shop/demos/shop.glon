@@ -1,0 +1,85 @@
+;; demo/shop/demos/shop.glon -- the G1E shop/products demonstration.
+;;
+;; Loaded on first selection of "Shop SPA". Sets shop-loaded so the launcher
+;; renders it directly next time, then defines the shop state, product data,
+;; basket, views, renderers, and event handlers. The launcher's dispatch already
+;; references render-shop / render-products / do-shop-event under the
+;; shop-loaded flag, so defining them here completes the application.
+
+;; ---- load-on-demand state --------------------------------------------------
+shop-loaded: 1
+
+;; ---- application state -----------------------------------------------------
+visit-count: 0
+tea-count: 0
+rice-count: 0
+search-term: []
+
+;; ---- product data ---------------------------------------------------------
+tea: "Tea"
+rice: "Rice"
+catalog: [ tea rice ]
+
+;; ---- basket rendering ------------------------------------------------------
+basket-row: func [name count] [
+    either > count 0 [
+        emit-text li-open
+        emit-text span-open emit-text name emit-text span-close
+        emit-text qty-open emit-text "× " emit-int count emit-text qty-close
+        emit-text li-close
+    ] [ none ]
+]
+basket: func [] [
+    emit-text basket-open
+    subhead [ emit-text "Your basket" ]
+    emit-text basket-list-open
+    basket-row "Tea" tea-count
+    basket-row "Rice" rice-count
+    emit-text basket-list-close
+    emit-text total-open
+    emit-int + tea-count rice-count
+    emit-text " "
+    either = + tea-count rice-count 1 [ emit-text "item" ] [ emit-text "items" ]
+    emit-text total-close
+    emit-text basket-close
+]
+
+;; ---- views -----------------------------------------------------------------
+shop-view: [
+    heading [ emit-text "Glon Shop" ]
+    tagline [ emit-text "A tiny GLON storefront" ]
+    link [ emit-text "View products" ] "products"
+    link [ emit-text "Back to demos" ] "home"
+]
+
+products-view: [
+    heading [ emit-text "Products" ]
+    products catalog
+    emit-text panel-open
+    emit-text search-open
+    input "search"
+    button [ emit-text "Search" ] "search"
+    emit-text search-close
+    meta [ emit-text "Search: " emit-text search-term ]
+    meta [ emit-text "Products page visits: " emit-int visit-count ]
+    emit-text panel-close
+    basket
+    link [ emit-text "Back to shop" ] "shop"
+]
+
+;; ---- rendering -------------------------------------------------------------
+render-shop:      func [] [ emit-clear do shop-view emit-finish ]
+render-products:  func [] [ emit-clear do products-view emit-finish ]
+
+;; ---- events (mutate state, rerender current view) -------------------------
+add-product: func [] [
+    either str-eq current-value "Tea" [ tea-count: + tea-count 1 ]
+    [ either str-eq current-value "Rice" [ rice-count: + rice-count 1 ] [ none ] ]
+    render-current
+]
+search: func [] [ search-term: current-value render-current ]
+
+do-shop-event: func [] [
+    either = current-event 'add-product [ add-product ]
+    [ either = current-event 'search [ search ] [ render-current ] ]
+]
