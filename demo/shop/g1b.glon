@@ -104,6 +104,8 @@ tagline-open:  "<p class='tagline'>"
 tagline-close: "</p>"
 nav-open:   "<p class='nav'>"
 nav-close:  "</p>"
+pre-open:   "<pre>"
+pre-close:  "</pre>"
 
 ;; ---- view vocabulary ------------------------------------------------------
 ;; Each term wraps its CONTENT (a block of emit-* calls) in an HTML element.
@@ -119,6 +121,7 @@ subhead: wrap h2-open h2-close
 text:    wrap p-open p-close
 tagline: wrap tagline-open tagline-close
 meta:    wrap meta-open meta-close
+pre:     wrap pre-open pre-close
 link:    func [content route] [
     emit-text nav-open
     emit-text btn-open emit-text route emit-text btn-mid do content emit-text btn-close

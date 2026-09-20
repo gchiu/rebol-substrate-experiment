@@ -100,18 +100,41 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   const [p, n] = put(SRC);
   if (e.glon_load(p, n) !== 0) fail("glon_load");
 
-  // 1. home route selects the home view
+  // 1. home route selects the launcher view, offering all three demos
   const home = route("home");
-  if (!/Glon Shop/.test(home) || !/data-glon-route='products'/.test(home))
-    fail("home route: expected 'Glon Shop' + products button, got: " + home);
+  if (!/Glon Demos/.test(home) ||
+      !/data-glon-route='shop'/.test(home) ||
+      !/data-glon-route='guide'/.test(home) ||
+      !/data-glon-route='merchant-flow'/.test(home))
+    fail("home route: expected 'Glon Demos' launcher + three links, got: " + home);
 
-  // 2. products route shows visit 1, an empty basket, and the repeated list
+  // 2. shop route renders the shop landing
+  const shop = route("shop");
+  if (!/Glon Shop/.test(shop) || !/data-glon-route='products'/.test(shop))
+    fail("shop route: expected 'Glon Shop' + products button, got: " + shop);
+
+  // 3. guide route renders the programmer's guide
+  const guide = route("guide");
+  if (!/Programmer's guide/.test(guide))
+    fail("guide route: expected 'Programmer's guide', got: " + guide);
+
+  // 4. merchant-flow route renders the Julia page + source link
+  const mf = route("merchant-flow");
+  if (!/Julia merchant flow/.test(mf) || !/merchant_flow\.jl/.test(mf))
+    fail("merchant-flow route: expected 'Julia merchant flow' + source link, got: " + mf);
+
+  // 5. back to home returns to the launcher
+  const back = route("home");
+  if (!/Glon Demos/.test(back))
+    fail("back home: expected 'Glon Demos', got: " + back);
+
+  // 6. products route shows visit 1, an empty basket, and the repeated list
   const v1 = route("products");
   if (!/Products page visits: 1/.test(v1) || !v1.includes("0 items") ||
       !/data-glon-value='Tea'/.test(v1) || !/data-glon-value='Rice'/.test(v1))
     fail("products visit 1: got: " + v1);
 
-  // 3. add-product for Tea / Rice / Tea (per-product basket quantities)
+  // 7. add-product for Tea / Rice / Tea (per-product basket quantities)
   const c1 = eventValue("add-product", "Tea");
   if (!c1.includes("Tea</span><span class='qty'>× 1</span>") || !c1.includes("1 item"))
     fail("add Tea -> Tea x1: got: " + c1);
@@ -126,12 +149,12 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
       !c3.includes("Rice</span><span class='qty'>× 1</span>") || !c3.includes("3 items"))
     fail("add Tea again -> Tea x2, Rice x1, 3 items: got: " + c3);
 
-  // 3b. search event with a value (G1D)
+  // 8. search event with a value (G1D)
   const s1 = eventValue("search", "green tea");
   if (!/Search: green tea/.test(s1))
     fail("search 'green tea': got: " + s1);
 
-  // 4. navigate away and back; basket persists
+  // 9. navigate away and back; basket persists
   route("home");
   const v2 = route("products");
   if (!/Products page visits: 2/.test(v2) ||
@@ -139,11 +162,11 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
       !v2.includes("Rice</span><span class='qty'>× 1</span>") || !v2.includes("3 items"))
     fail("products again: expected visits 2, Tea x2, Rice x1, 3 items: got: " + v2);
 
-  // 5. unknown route -> not-found (safe fallback)
+  // 10. unknown route -> not-found (safe fallback)
   const nf = route("definitely-unknown");
   if (!/Not found/.test(nf))
     fail("unknown route: expected 'Not found', got: " + nf);
 
-  console.log("GLON_G1E_TEST PASS (home / products / add-product x3 / basket quantities / search / persist / unknown)");
+  console.log("GLON_G1E_TEST PASS (launcher / shop / guide / merchant-flow / back / add-product x3 / basket quantities / search / persist / unknown)");
   process.exit(0);
 }).catch((e) => fail(e.message || e));

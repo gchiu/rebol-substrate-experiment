@@ -4,7 +4,7 @@
  * are chosen to be disjoint from: the emitted evaluator/collector code
  * (256..~24576), the RV register file + datatype-library scratch + GC state
  * (relocated by M3C to ~24576..25315), the standard DS/RS (16384/24576 down),
- * the shared S1 heap (32768..40000), the loader heap (40000..47000) and the D1
+ * the shared S1 heap (32768..40000), the loader heap (40000..50600) and the D1
  * debugger buffers.  See M1-MULTITASKING-RESULTS.md.
  *
  * This header is NOT part of the frozen substrate; it is M1's own driver-level
@@ -36,20 +36,24 @@
 /* FIB-OPT-P3: the activation footprint moved from ~16 cells (frame only) to
  * ~73 cells (frame + 48-cell context + 16-align padding) per invocation, so the
  * old 800-cell task RS overflowed well before the repeat-20 stress depth
- * (~1460 cells).  The arena is enlarged to [47000, 65000) and the task count
- * deliberately lowered from 8 to 5 so each task gets 3200 RS cells (>= 2x the
- * repeat-20 requirement) and 400 DS cells (>= 40x the observed ~10).  This is a
- * memory-limit tradeoff: 65536 cells total and the fixed loader-heap boundary at
- * 47000 leave at most ~18.5k cells above the arena; 8 tasks x 3200 RS would not
- * fit.  5 tasks still gives headroom over the <=3 tasks the tests use. */
+ * (~1460 cells).  The arena uses 3200 RS cells per task (>= 2x the repeat-20
+ * requirement) and 400 DS cells (>= 40x the observed ~10).
+ *
+ * The loader-heap boundary moved from 47000 to 50600 (see r0_s1.h): the G1E
+ * demo launcher (launcher + shop + guide + merchant-flow) plus the G1A
+ * route/event bridge's per-dispatch re-parse overhead outgrew the original
+ * 7000-cell loader arena. The task count was lowered from 5 to 4 (the M1/M2
+ * tests use at most 3 tasks, so 4 keeps a full task of headroom) and the arena
+ * base moved up to 50600, keeping the arena end at 65000 (where the task table
+ * lives). This is a memory-limit tradeoff: 65536 cells total. */
 #define M1_TASK_TABLE      65000  /* task records                                 */
 #define M1_TASK_REC_SIZE   16     /* cells per task record                        */
-#define M1_MAX_TASKS       5      /* fixed task count for M1                      */
+#define M1_MAX_TASKS       4      /* fixed task count for M1                      */
 #define M1_WRAPPER_DELTA   80     /* wrapper block base = task table base + delta */
-                                   /* (task records occupy 65000..65080; wrappers
+                                   /* (task records occupy 65000..65064; wrappers
                                     * live at 65080 + slot*16, in the free region) */
 
-#define M1_ARENA_BASE      47000  /* per-task stack arena                         */
+#define M1_ARENA_BASE      50600  /* per-task stack arena                         */
 #define M1_TASK_CELLS      3600   /* cells per task (400 DS + 3200 RS)            */
 #define M1_DS_OFF          400    /* DS top offset within a task's region         */
 #define M1_RS_OFF          3600   /* RS top offset within a task's region         */

@@ -61,7 +61,13 @@ enum {
 
 /* --- memory layout ------------------------------------------------------ */
 #define R0S1_HEAP_BASE 40000L
-#define R0S1_HEAP_LIMIT 47000L
+/* The loader heap grows upward to M1_ARENA_BASE (m1_layout.h). The G1E demo
+ * launcher (launcher + shop + guide + merchant-flow) plus the per-dispatch
+ * re-parse overhead from the G1A route/event bridge outgrew the original
+ * 7000-cell arena [40000, 47000). The M1 arena was shrunk from 5 to 4 tasks
+ * (tests use <=3) and its base moved up to 50600, giving the loader heap
+ * [40000, 50600) = 10600 cells. */
+#define R0S1_HEAP_LIMIT 50600L
 #define R0S1_CTX_CAP   16      /* max bindings per child context */
 
 /* FIB-OPT-P8: contexts with fewer than this many bindings are resolved by the
@@ -149,8 +155,9 @@ enum {
 
 /* --- M2 GC: managed heap + collector state (above the frozen S1) -----------
  * A non-moving, stop-the-world, exact mark/sweep collector over the ONE shared
- * GLON heap [GC_HEAP_BASE, GC_HEAP_LIMIT).  The loader heap (40000..47000) is
- * traced but never swept.  See M2-GC-DESIGN.md. */
+ * GLON heap [GC_HEAP_BASE, GC_HEAP_LIMIT).  The loader heap
+ * [R0S1_HEAP_BASE, R0S1_HEAP_LIMIT) is traced but never swept.  See
+ * M2-GC-DESIGN.md. */
 
 #define GC_HEAP_BASE   32768L   /* == s1.c HEAP_BASE (managed runtime heap) */
 #define GC_HEAP_LIMIT  40000L   /* == R0S1_HEAP_BASE (loader heap start)   */

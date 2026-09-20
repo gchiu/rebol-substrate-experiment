@@ -54,17 +54,18 @@ static int file_contains(const char *path, const char *needle) {
 
 int run_r0_s1_g1e_tests(void) {
     printf("g1e: generated page shows readable quoted Glon source\n");
-    CHECK(file_contains("demo/shop/app.html", "\"Glon Shop\"") &&
-          file_contains("demo/shop/app.html", "\"Tea\"") &&
-          file_contains("demo/shop/app.html", "\"Rice\""),
-          "A: view source keeps quoted string literals");
+    CHECK(file_contains("demo/shop/app.html", "\"Glon Demos\"") &&
+          file_contains("demo/shop/app.html", "\"Glon Shop\"") &&
+          file_contains("demo/shop/app.html", "\"Programmer's guide\"") &&
+          file_contains("demo/shop/app.html", "\"Julia merchant flow\""),
+          "A: view source keeps readable quoted string literals");
     CHECK(!file_contains("demo/shop/app.html", "str-31: mk-string [84 101 97]") &&
           !file_contains("demo/shop/app.html", ": mk-string [8"),
           "B: view source has no str-N byte lowering");
     CHECK(file_contains("demo/shop/app.html", "style.css"),
           "C: view source references external style.css");
 
-    printf("g1e: shop bundle renders the basket with per-product quantities\n");
+    printf("g1e: launcher routes to each demo and back\n");
 
     FILE *f = fopen("demo/shop/bundle.glon", "rb");
     if (!f) { printf("  FAIL: cannot open demo/shop/bundle.glon (run demo/shop/build.py first)\n"); failures++; return failures; }
@@ -80,36 +81,59 @@ int run_r0_s1_g1e_tests(void) {
 
     const char *r;
 
-    CHECK(has(route("home"), "Glon Shop"), "1: home renders the brand heading");
+    r = route("home");
+    CHECK(has(r, "Glon Demos") &&
+          has(r, "data-glon-route='shop'") &&
+          has(r, "data-glon-route='guide'") &&
+          has(r, "data-glon-route='merchant-flow'"),
+          "1: home renders the demo launcher with three links");
+
+    r = route("shop");
+    CHECK(has(r, "Glon Shop") && has(r, "data-glon-route='products'"),
+          "2: home -> shop renders the shop landing");
+
+    r = route("guide");
+    CHECK(has(r, "Programmer's guide"),
+          "3: home -> guide renders the programmer's guide");
+
+    r = route("merchant-flow");
+    CHECK(has(r, "Julia merchant flow") && has(r, "merchant_flow.jl"),
+          "4: home -> merchant-flow renders the Julia page + source link");
+
+    r = route("home");
+    CHECK(has(r, "Glon Demos"),
+          "5: back -> home returns to the launcher");
+
+    printf("g1e: shop bundle renders the basket with per-product quantities\n");
 
     r = route("products");
     CHECK(has(r, "0 items") && has(r, "data-glon-value='Tea'") && has(r, "data-glon-value='Rice'"),
-          "2: products renders catalogue + empty basket");
+          "6: products renders catalogue + empty basket");
 
     r = event_value("add-product", "Tea");
     CHECK(has(r, "Tea</span><span class='qty'>× 1</span>") && has(r, "1 item"),
-          "3: Add Tea once => Tea x1");
+          "7: Add Tea once => Tea x1");
 
     r = event_value("add-product", "Rice");
     CHECK(has(r, "Tea</span><span class='qty'>× 1</span>") &&
           has(r, "Rice</span><span class='qty'>× 1</span>") && has(r, "2 items"),
-          "4: Add Rice once => Tea x1, Rice x1");
+          "8: Add Rice once => Tea x1, Rice x1");
 
     r = event_value("add-product", "Tea");
     CHECK(has(r, "Tea</span><span class='qty'>× 2</span>") &&
           has(r, "Rice</span><span class='qty'>× 1</span>") && has(r, "3 items"),
-          "5: Add Tea again => Tea x2, Rice x1, 3 items");
+          "9: Add Tea again => Tea x2, Rice x1, 3 items");
 
     route("home");
     r = route("products");
     CHECK(has(r, "Tea</span><span class='qty'>× 2</span>") &&
           has(r, "Rice</span><span class='qty'>× 1</span>") && has(r, "3 items"),
-          "6: basket survives navigation away and back");
+          "10: basket survives navigation away and back");
 
     r = event_value("search", "green tea");
-    CHECK(has(r, "Search: green tea"), "7: search still works");
+    CHECK(has(r, "Search: green tea"), "11: search still works");
 
-    CHECK(has(route("definitely-unknown"), "Not found"), "8: unknown route still works");
+    CHECK(has(route("definitely-unknown"), "Not found"), "12: unknown route still works");
 
     return failures;
 }

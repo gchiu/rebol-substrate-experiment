@@ -1,8 +1,14 @@
-;; demo/shop/shop.glon -- the Glon Shop G1E application (authoritative source).
+;; demo/shop/shop.glon -- the Glon Demos launcher application (authoritative source).
 ;;
-;; G1E combines the G1B/G1C/G1D capabilities into repeated interactive
-;; composition: the catalogue renders a dynamic family of "Add" buttons, each
-;; carrying its product's identity as the event value. The SAME event semantic
+;; The root view is a demo launcher ("home"). It routes to three demonstrations:
+;;
+;;   shop          -- the G1E shop/products demonstration ("Glon Shop")
+;;   guide         -- the G1E programmer's guide
+;;   merchant-flow -- a page describing the Julia merchant_flow.jl demo
+;;
+;; The shop itself remains the G1E repeated-interactive-composition demo: the
+;; catalogue renders a dynamic family of "Add" buttons, each carrying its
+;; product's identity as the event value. The SAME event semantic
 ;; ("add-product") is instantiated repeatedly with DISTINCT application data
 ;; ("tea" vs "rice"), and Glon — not JavaScript — decides what each value means.
 ;;
@@ -57,10 +63,18 @@ basket: func [] [
 
 ;; ---- views -----------------------------------------------------------------
 home-view: [
+    heading [ emit-text "Glon Demos" ]
+    tagline [ emit-text "Small applications running in Glon" ]
+    link [ emit-text "Shop SPA" ] "shop"
+    link [ emit-text "Julia merchant flow" ] "merchant-flow"
+    link [ emit-text "Programmer's guide" ] "guide"
+]
+
+shop-view: [
     heading [ emit-text "Glon Shop" ]
     tagline [ emit-text "A tiny GLON storefront" ]
-    link    [ emit-text "View products" ] "products"
-    link    [ emit-text "Programmer's guide" ] "guide"
+    link [ emit-text "View products" ] "products"
+    link [ emit-text "Back to demos" ] "home"
 ]
 
 products-view: [
@@ -75,12 +89,12 @@ products-view: [
     meta [ emit-text "Products page visits: " emit-int visit-count ]
     emit-text panel-close
     basket
-    link [ emit-text "Back home" ] "home"
+    link [ emit-text "Back to shop" ] "shop"
 ]
 
 not-found-view: [
     heading [ emit-text "Not found" ]
-    link    [ emit-text "Back home" ] "home"
+    link [ emit-text "Back to demos" ] "home"
 ]
 
 guide-view: [
@@ -108,31 +122,62 @@ guide-view: [
         emit-text "<a href='https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/demo/shop/README.md'>demo/shop/README.md</a>"
     ]
 
-    link [ emit-text "Back home" ] "home"
+    link [ emit-text "Back to demos" ] "home"
+]
+
+merchant-flow-view: [
+    heading [ emit-text "Julia merchant flow" ]
+    tagline [ emit-text "A Julia Tasks + Channels dataflow demonstration" ]
+    pre [ emit-text "Transaction pool
+      ↓
+anonymous workers
+      ↓
+    router
+    / | \
+stock cash sales" ]
+    subhead [ emit-text "How it works" ]
+    text [ emit-text "Four anonymous workers compete for transactions from a single shared pool; each transaction is consumed exactly once." ]
+    text [ emit-text "One router fans each consequence out to three typed channels — stock, cash, and sales." ]
+    text [ emit-text "Three reducer tasks own the only mutable state, one concern each; they return immutable final totals when their channel closes." ]
+    text [ emit-text "Bounded channels give back-pressure: a slow consumer pauses the whole pipeline, making the flow visible." ]
+    text [ emit-text "Money is integer cents, so the final totals are exact and independent of processing order." ]
+    text [
+        emit-text "Runs under Julia, not the browser. Source: "
+        emit-text "<a href='https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/julia/merchant_flow.jl'>julia/merchant_flow.jl</a>"
+    ]
+    link [ emit-text "Back to demos" ] "home"
 ]
 
 ;; ---- rendering -------------------------------------------------------------
 render-home:      func [] [ emit-clear do home-view emit-finish ]
+render-shop:      func [] [ emit-clear do shop-view emit-finish ]
 render-products:  func [] [ emit-clear do products-view emit-finish ]
-render-not-found: func [] [ emit-clear do not-found-view emit-finish ]
 render-guide:     func [] [ emit-clear do guide-view emit-finish ]
+render-merchant-flow: func [] [ emit-clear do merchant-flow-view emit-finish ]
+render-not-found: func [] [ emit-clear do not-found-view emit-finish ]
 
 render-current: func [] [
-    either = current-route 'products [ render-products ]
-    [ either = current-route 'home [ render-home ]
-      [ either = current-route 'guide [ render-guide ] [ render-not-found ] ] ]
+    either = current-route 'shop [ render-shop ]
+    [ either = current-route 'products [ render-products ]
+      [ either = current-route 'guide [ render-guide ]
+        [ either = current-route 'merchant-flow [ render-merchant-flow ]
+          [ either = current-route 'home [ render-home ] [ render-not-found ] ] ] ] ]
 ]
 
 ;; ---- routes (entry side effects, then render) -----------------------------
 go-home:      func [] [ render-current ]
+go-shop:      func [] [ render-current ]
 go-products:  func [] [ visit-count: + visit-count 1 render-current ]
-go-not-found: func [] [ render-current ]
 go-guide:     func [] [ render-current ]
+go-merchant-flow: func [] [ render-current ]
+go-not-found: func [] [ render-current ]
 
 route: [
-    either = current-route 'products [ go-products ]
-    [ either = current-route 'home [ go-home ]
-      [ either = current-route 'guide [ go-guide ] [ go-not-found ] ] ]
+    either = current-route 'shop [ go-shop ]
+    [ either = current-route 'products [ go-products ]
+      [ either = current-route 'guide [ go-guide ]
+        [ either = current-route 'merchant-flow [ go-merchant-flow ]
+          [ either = current-route 'home [ go-home ] [ go-not-found ] ] ] ] ]
 ]
 
 ;; ---- events (mutate state, rerender current view) -------------------------

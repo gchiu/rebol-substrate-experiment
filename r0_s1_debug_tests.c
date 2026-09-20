@@ -46,8 +46,10 @@ static int failures = 0;
 #define DBGEE_RP 20000
 
 /* the debugger runs on its own heap region (>= 50000), disjoint from the
- * debuggee's S1 heap (32768..40000) and the loader heap (40000..47000).  This
- * is what keeps the two worlds' allocations from overwriting each other. */
+ * debuggee's S1 heap (32768..40000) and the loader heap (40000..50600).  This
+ * is what keeps the two worlds' allocations from overwriting each other; the
+ * small debuggee programs never push the loader heap into the debugger's
+ * 50000+ region. */
 #define DBGER_HP 50000
 
 /* ---- the debugger library: RAW mechanism primitives --------------------- */

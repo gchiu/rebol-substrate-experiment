@@ -742,7 +742,7 @@ static void emit_mark_value(void) {
     asm_dup(); asm_lit(16); asm_host(HOST_MOD); e_setc(GC_T2); /* tag (v left on stack) */
     /* CONTEXT (tag 7): classification. A managed context (payload in the managed
      * heap) is mark_pushed; a task-local stack context (main return stack
-     * [16384,24576) or an M1 task's arena [47000,59800)) is traced as root
+     * [16384,24576) or an M1 task's arena) is traced as root
      * storage, never mark_pushed; a permanent loader context (global) is traced.
      * Anything else is fail-stop corruption. */
     e_cell(GC_T2); asm_lit(T_CONTEXT); asm_host(HOST_EQ);
@@ -764,7 +764,7 @@ static void emit_mark_value(void) {
     e_cell(GC_T1); asm_call(r_trace_ctx); asm_exit();        /* stack ctx (root) */
     asm_patch_here(j_not_stk2);
     asm_patch_here(j_not_stk);
-    /* M1 task arena [47000,59800) */
+    /* M1 task arena */
     e_cell(GC_T1); asm_lit(M1_ARENA_BASE); asm_host(HOST_GE);
     cell j_not_m1 = asm_zbranch_fwd();
     e_cell(GC_T1); asm_lit(M1_ARENA_BASE + M1_MAX_TASKS * M1_TASK_CELLS); asm_host(HOST_LT);
@@ -772,7 +772,7 @@ static void emit_mark_value(void) {
     e_cell(GC_T1); asm_call(r_trace_ctx); asm_exit();        /* M1 stack ctx (root) */
     asm_patch_here(j_not_m12);
     asm_patch_here(j_not_m1);
-    /* loader [40000,47000) */
+    /* loader [R0S1_HEAP_BASE, R0S1_HEAP_LIMIT) */
     e_cell(GC_T1); asm_lit(R0S1_HEAP_BASE); asm_host(HOST_GE);
     cell j_ldr1 = asm_zbranch_fwd();
     e_cell(GC_T1); asm_lit(R0S1_HEAP_LIMIT); asm_host(HOST_LT);
@@ -855,7 +855,7 @@ static void emit_mark_value(void) {
     /* p >= GC_HEAP_LIMIT: permanent loader block? */
     asm_patch_here(j_not_managed);
     e_cell(GC_T1); asm_lit(R0S1_HEAP_LIMIT); asm_host(HOST_LT);
-    cell j_not_loader = asm_zbranch_fwd();                  /* p >= 47000 -> corrupt */
+    cell j_not_loader = asm_zbranch_fwd();                  /* p >= R0S1_HEAP_LIMIT -> corrupt */
     asm_exit();                                             /* loader block: no children */
     asm_patch_here(j_not_loader);
     asm_patch_here(j_below);

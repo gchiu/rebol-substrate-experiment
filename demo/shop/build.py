@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""demo/shop/build.py -- bundle the Glon Shop G1B application.
+"""demo/shop/build.py -- bundle the Glon Demos launcher application.
 
 Reads the STRING! primitives (g1s.glon), the view-dialect library (g1b.glon)
 and the application source (shop.glon), and writes the fully-bundled page
@@ -41,7 +41,7 @@ def main() -> None:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Glon Shop</title>
+<title>Glon Demos</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
