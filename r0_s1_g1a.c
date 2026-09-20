@@ -116,9 +116,10 @@ int r0_s1_g1a_route(const char *token, char *out, int cap, int *out_len) {
 }
 
 int r0_s1_g1a_event(const char *token, char *out, int cap, int *out_len) {
-    /* token-only events still bind current-value to an empty byte-list so the
-     * dispatcher may always reference it safely. */
-    return g1a_dispatch("current-event", "do-event", token, "", out, cap, out_len);
+    /* Token-only event: binds current-event only. It must NOT assign
+     * current-value, so the loaded program is not required to define
+     * mk-string. */
+    return g1a_dispatch("current-event", "do-event", token, 0, out, cap, out_len);
 }
 
 int r0_s1_g1a_event_value(const char *token, const char *value,
@@ -136,9 +137,9 @@ static int g1a_src_byte(char *src, int n, int cap, int b) {
     return n;
 }
 
-/* Shared primitive: bind `var` to the token word, optionally bind
- * `current-value` to a byte-list (when `value` != NULL), `do` the named
- * dispatcher block, then render the HTML it produced. */
+/* Shared primitive: bind `var` to the token word, optionally (when `value` is
+ * non-NULL) bind `current-value` to a managed STRING! built from the value
+ * bytes, `do` the named dispatcher block, then render the HTML it produced. */
 static int g1a_dispatch(const char *var, const char *dispatcher, const char *token,
                         const char *value, char *out, int cap, int *out_len) {
     if (out_len) *out_len = 0;
@@ -154,7 +155,7 @@ static int g1a_dispatch(const char *var, const char *dispatcher, const char *tok
     }
     if (tlen == 0) return -1;
 
-    /* build "[ VAR: 'TOKEN[ current-value: [BYTES]] do DISPATCHER ]" */
+    /* build "[ VAR: 'TOKEN current-value: mk-string [BYTES] do DISPATCHER ]" */
     char src[1200];
     int n = 0, cap_src = (int)sizeof src - 1;
     src[n++] = '['; src[n++] = ' ';
@@ -163,7 +164,9 @@ static int g1a_dispatch(const char *var, const char *dispatcher, const char *tok
     for (; *pre && n < cap_src; pre++) src[n++] = *pre;
     for (const char *c = token; *c && n < cap_src; c++) src[n++] = *c;
     if (value != 0) {
-        const char *vp = " current-value: [";
+        /* G1E: the event value is textual transport, so bind current-value to a
+         * managed STRING! (mk-string is defined by the loaded view dialect). */
+        const char *vp = " current-value: mk-string [";
         for (; *vp && n < cap_src; vp++) src[n++] = *vp;
         for (const char *c = value; *c && n < cap_src - 4; c++)
             n = g1a_src_byte(src, n, cap_src, (unsigned char)*c);
@@ -181,7 +184,10 @@ static int g1a_dispatch(const char *var, const char *dispatcher, const char *tok
     cell blk = r0_s1_parse(src, &err);
     if (err) return -1;
 
-    int N = r0_s1_run(blk);
+    /* G1 is a persistent interactive machine: the dispatch runs the loaded
+     * program's `route`/`do-event` block against persistent managed state, so
+     * use the persistent-run entry (resets transient stacks, preserves HP). */
+    int N = r0_s1_run_persistent(blk);
     if (N < 1) return -1;               /* no fragment produced */
 
     cell frag = r0_s1_result(0, N);

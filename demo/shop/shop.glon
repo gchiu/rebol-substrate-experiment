@@ -105,8 +105,8 @@ route: [
 ;; it against the catalogue and increments the matching quantity, so repeated
 ;; "Add" clicks on different products produce distinct basket state.
 add-product: func [] [
-    either blk-eq current-value "Tea" [ tea-count: + tea-count 1 ]
-    [ either blk-eq current-value "Rice" [ rice-count: + rice-count 1 ] [ none ] ]
+    either str-eq current-value "Tea" [ tea-count: + tea-count 1 ]
+    [ either str-eq current-value "Rice" [ rice-count: + rice-count 1 ] [ none ] ]
     render-current
 ]
 search: func [] [ search-term: current-value render-current ]

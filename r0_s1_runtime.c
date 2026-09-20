@@ -29,6 +29,11 @@ static int g_seed_datatypes;             /* M3: enable bootstrap heap seeding */
 static cell ip_start, ip_end, sp_start, sp_end, rp_start, rp_end;
 static cell code_begin, code_end;
 
+/* G1: forward declarations for the managed-heap entry points referenced by the
+ * RAW assembler's symbolic CALL targets (alloc/collect/lookup). Defined later
+ * by emit_gc/emit_alloc/emit_lookup. */
+static cell r_alloc, r_collect, r_lookup;
+
 static char *dup_str(const char *s) {
     size_t n = strlen(s) + 1;
     char *p = malloc(n);
@@ -267,7 +272,14 @@ static cell assemble_raw(cell block) {
                 if (r0_tag(op) == T_WORD) { cell q = asm_branch_fwd(); raw_refs[raw_nrefs].patch = q; raw_refs[raw_nrefs].name = syms[word_id(op)]; raw_nrefs++; }
                 else asm_branch((int)int_val(op));
             } else if (strcmp(nm, "CALL") == 0) {
-                if (r0_tag(op) == T_WORD) { cell q = emit_call_fwd(); raw_refs[raw_nrefs].patch = q; raw_refs[raw_nrefs].name = syms[word_id(op)]; raw_nrefs++; }
+                if (r0_tag(op) == T_WORD) {
+                    const char *cn = syms[word_id(op)];
+                    /* symbolic managed-heap entry points (G1 STRING! primitives) */
+                    if (strcmp(cn, "alloc") == 0) asm_call(r_alloc);
+                    else if (strcmp(cn, "collect") == 0) asm_call(r_collect);
+                    else if (strcmp(cn, "lookup") == 0) asm_call(r_lookup);
+                    else { cell q = emit_call_fwd(); raw_refs[raw_nrefs].patch = q; raw_refs[raw_nrefs].name = cn; raw_nrefs++; }
+                }
                 else asm_call((int)int_val(op));
             }
             continue;
@@ -305,7 +317,7 @@ static cell assemble_raw(cell block) {
 
 static cell parse_block(parser_t *P) {
     P->pos++; /* '[' */
-    cell tmp[256];
+    cell tmp[512];
     int n = 0;
     for (;;) {
         skip_ws(P);
@@ -362,7 +374,7 @@ static cell parse_block(parser_t *P) {
             P->pos = start;
         }
         tmp[n++] = parse_form(P);
-        if (n >= 256) { P->err = 1; break; }
+        if (n >= 512) { P->err = 1; break; }
     }
     cell b = make_block((cell)n);
     cell p = r0_untag(b);
@@ -475,8 +487,7 @@ static cell to_block_eval[16]; static int n_block_eval;
  * pointers and are traced. */
 
 static cell r_mark_value, r_mark_push, r_trace_ctx, r_trace_closure,
-            r_mark_frame, r_trace_user, r_trace_string, r_trace_block, r_scan_values, r_scan_closures,
-            r_collect, r_alloc;
+            r_mark_frame, r_trace_user, r_trace_string, r_trace_block, r_scan_values, r_scan_closures;
 
 /* forward-call patch lists for the mark/trace mutual recursion */
 static cell fw_mark_value[128]; static int n_fw_mv;
@@ -1100,7 +1111,7 @@ static void emit_gc(void) {
 
 /* ========================== evaluator build ============================ */
 
-static cell r_reduce, r_lookup, r_set, r_append, r_mkctx, r_mkclosure;
+static cell r_reduce, r_set, r_append, r_mkctx, r_mkclosure;
 static cell r_load_lex, r_hash_insert, r_build_hash;
 static cell r_values, r_run_block, r_native, r_invoke_closure, r_return, r_invoke_raw, r_subexpr, r_block_eval;
 
@@ -2197,12 +2208,12 @@ cell r0_s1_init(void) {
     intern("func");
     intern("return");
     intern("raw");
-    /* The global context holds every top-level definition (natives, view
- * vocabulary atoms, application state/views/routes). The shop demo has
- * ~90 such bindings; cap 48 only holds 48 data + 24 hash-overflow = 72
- * safely, so a larger cap is required to avoid bind() overrunning the
- * context. 128 holds 128 data + 64 hash-overflow = 192 safely. */
-    global_ctx = make_context(R0_NONE, 128);
+    /* G1E + STRING! integration: the global context holds every top-level
+     * definition (natives, view vocabulary atoms, application state/views/
+     * routes, and the hoisted str-N string bindings). The regenerated shop
+     * bundle has 129 top-level set-words + 13 natives = 142 bindings, so the
+     * cap must exceed 142. */
+    global_ctx = make_context(R0_NONE, 256);
     bind(global_ctx, intern("+"),  mk_native(RN_ADD));
     bind(global_ctx, intern("-"),  mk_native(RN_SUB));
     bind(global_ctx, intern("*"),  mk_native(RN_MUL));
@@ -2301,12 +2312,12 @@ cell r0_s1_parse(const char *src, int *err) {
     lex_depth = 0;
     skip_ws(&P);
     if (P.s[P.pos] == '[') { cell b = parse_block(&P); if (P.err) *err = 1; return b; }
-    cell tmp[256]; int n = 0;
+    cell tmp[512]; int n = 0;
     while (P.s[P.pos] && !P.err) {
         skip_ws(&P);
         if (!P.s[P.pos]) break;
         tmp[n++] = parse_form(&P);
-        if (n >= 256) { P.err = 1; break; }
+        if (n >= 512) { P.err = 1; break; }
     }
     cell b = make_block((cell)n);
     cell p = r0_untag(b);
@@ -2317,7 +2328,7 @@ cell r0_s1_parse(const char *src, int *err) {
     return b;
 }
 
-int r0_s1_run(cell block) {
+int r0_s1_run_ex(cell block, int preserve_hp) {
     cell bp = r0_untag(block);
     M[RV_CUR] = bp + BLK_DATA;
     M[RV_END] = bp + BLK_DATA + M[bp];
@@ -2334,7 +2345,14 @@ int r0_s1_run(cell block) {
         if (c != PF_TRACE) M[c] = 0;   /* PF_TRACE is a persistent mode flag */
 #endif
 
+    /* G1 persistent machine: reset transient stacks/registers but PRESERVE the
+     * managed-heap frontier (REG_HP) so load-time and earlier-interaction
+     * managed values survive across route/event calls instead of being
+     * overwritten by s1_reset()'s heap re-base. */
+    cell saved_hp = 0;
+    if (preserve_hp) saved_hp = s1_mem(REG_HP);
     s1_reset();
+    if (preserve_hp) s1_set_mem(REG_HP, saved_hp);
     if (g_seed_datatypes) seed_datatype_heap();
     ip_start = s1_mem(REG_IP);
     sp_start = s1_mem(REG_SP);
@@ -2346,6 +2364,14 @@ int r0_s1_run(cell block) {
 
     cell arity = s1_top();
     return (int)(arity / 16);
+}
+
+int r0_s1_run(cell block) {
+    return r0_s1_run_ex(block, 0);
+}
+
+int r0_s1_run_persistent(cell block) {
+    return r0_s1_run_ex(block, 1);
 }
 
 /* FIB-OPT-P10A: identical setup/result-reading to r0_s1_run, but execute the

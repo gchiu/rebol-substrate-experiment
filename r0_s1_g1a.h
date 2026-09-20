@@ -49,15 +49,19 @@ int r0_s1_g1a_render_fragment(cell fragment, char *out, int cap, int *out_len);
 int r0_s1_g1a_route(const char *token, char *out, int cap, int *out_len);
 
 /* Route an application EVENT token (G1C). Binds `current-event` to the token
- * word, runs the GLON `do-event` block (the *application's* event dispatch),
- * then renders the HTML that block produced. Returns 0 on success, -1 on error.
- * The host knows only that "an event happened"; the meaning lives in GLON. */
+ * word only (it does NOT assign `current-value` and does not require the
+ * loaded program to define `mk-string`), runs the GLON `do-event` block (the
+ * *application's* event dispatch), then renders the HTML that block produced.
+ * Returns 0 on success, -1 on error. The host knows only that "an event
+ * happened"; the meaning lives in GLON. */
 int r0_s1_g1a_event(const char *token, char *out, int cap, int *out_len);
 
 /* Route an application EVENT with a VALUE (G1D). Binds `current-event` to the
- * token word AND `current-value` to the value as a byte-list block, then runs
- * the GLON `do-event` block and renders the result. `value` is arbitrary text;
- * the host forwards it opaquely and GLON interprets it. Returns 0 / -1. */
+ * token word AND `current-value` to the value as the canonical managed STRING!
+ * (built with the loaded program's `mk-string`), then runs the GLON `do-event`
+ * block and renders the result. `value` is arbitrary text; the host forwards it
+ * opaquely and GLON interprets it. This is the ONE value representation for
+ * value-bearing events (no byte-list fallback). Returns 0 / -1. */
 int r0_s1_g1a_event_value(const char *token, const char *value,
                           char *out, int cap, int *out_len);
 

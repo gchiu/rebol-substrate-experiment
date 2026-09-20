@@ -22,38 +22,66 @@ static int failures = 0;
 #define CHECK(c, m) do { if (c) printf("  ok: %s\n", m); \
                          else { printf("  FAIL: %s\n", m); failures++; } } while (0)
 
-static char prog_buf[65536];
+static char prog_buf[16384];   /* atoms + view vocabulary + application */
+static char prim_buf[4096];    /* RAW primitives (including mk-string) */
+static char defs_buf[8192];    /* hoisted str-N: mk-string [ ... ] definitions */
 static char out_buf[8192];
-static size_t pn;
+static size_t pn, prim_pn, defs_pn;
 
-static void put(const char *s) { pn += (size_t)snprintf(prog_buf + pn, sizeof prog_buf - pn, "%s", s); }
-static void bytes(const char *s) {
-    put("[");
-    for (const char *c = s; *c; c++)
-        pn += (size_t)snprintf(prog_buf + pn, sizeof prog_buf - pn, " %d", (int)(unsigned char)*c);
-    put(" ]");
+static void put(const char *s)  { pn      += (size_t)snprintf(prog_buf + pn, sizeof prog_buf - pn, "%s", s); }
+static void pput(const char *s) { prim_pn += (size_t)snprintf(prim_buf + prim_pn, sizeof prim_buf - prim_pn, "%s", s); }
+static void dput(const char *s) { defs_pn += (size_t)snprintf(defs_buf + defs_pn, sizeof defs_buf - defs_pn, "%s", s); }
+
+/* Hoist a string literal to a top-level `str-N: mk-string [ b0 b1 ... ]` so the
+ * string is built ONCE at load (not per-render, which would clobber the shared
+ * SCRATCH_E output length mid-render). Returns the `str-N` reference. */
+#define MAX_HOIST 64
+static const char *hoist_strs[MAX_HOIST];
+static int n_hoist;
+static const char *hoist(const char *s) {
+    static char ref[16];
+    for (int i = 0; i < n_hoist; i++) {
+        if (strcmp(hoist_strs[i], s) == 0) {
+            snprintf(ref, sizeof ref, "str-%d", i + 1);
+            return ref;
+        }
+    }
+    int idx = n_hoist++;
+    hoist_strs[idx] = s;
+    snprintf(ref, sizeof ref, "str-%d", idx + 1);
+    dput(" "); dput(ref); dput(": mk-string [");
+    for (const char *c = s; *c; c++) {
+        char num[8];
+        snprintf(num, sizeof num, " %d", (int)(unsigned char)*c);
+        dput(num);
+    }
+    dput(" ]");
+    return ref;
 }
 
 static char *build_program(void) {
-    pn = 0;
-    put("[");
-    put(" emit-clear: raw [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ] ");
-    put(" emit-byte: raw 1 [ LIT SCRATCH_E @ LIT G1_OUT_DATA ADD ! LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E ! ARITY 0 EXIT ] ");
-    put(" emit-finish: raw [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ] ");
-    put(" block-len: raw 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ] ");
-    put(" block-at: raw 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ] ");
-    put(" emit-int: func [n] [ either < n 0 [ emit-byte 45 emit-digits - 0 n ] [ emit-digits n ] ] ");
-    put(" emit-digits: func [n] [ either > n 9 [ emit-digits / n 10 ] [ none ] emit-byte + 48 - n * 10 / n 10 ] ");
-    put(" emit-text: func [blk] [ emit-text-at blk 0 block-len blk ] ");
-    put(" emit-text-at: func [blk i n] [ either < i n [ emit-byte block-at blk i emit-text-at blk + i 1 n ] [ none ] ] ");
-    put(" h1-open: "); bytes("<h1>"); put(" h1-close: "); bytes("</h1>");
-    put(" p-open: "); bytes("<p>"); put(" p-close: "); bytes("</p>");
-    put(" ul-open: "); bytes("<ul>"); put(" ul-close: "); bytes("</ul>");
-    put(" li-open: "); bytes("<li>"); put(" li-close: "); bytes("</li>");
-    put(" link-open: "); bytes("<button data-glon-route='");
-    put(" btn-mid: "); bytes("'>"); put(" btn-close: "); bytes("</button>");
-    put(" event-open: "); bytes("<button data-glon-event='");
-    put(" input-open: "); bytes("<input data-glon-input='");
+    pn = prim_pn = defs_pn = 0;
+    n_hoist = 0;
+
+    pput(" emit-clear: raw [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ] ");
+    pput(" emit-byte: raw 1 [ LIT SCRATCH_E @ LIT G1_OUT_DATA ADD ! LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E ! ARITY 0 EXIT ] ");
+    pput(" emit-finish: raw [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ] ");
+    pput(" block-len: raw 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ] ");
+    pput(" block-at: raw 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ] ");
+    pput(" mk-string: raw 1 [ DUP LIT 16 MOD SUB LIT SCRATCH_B ! LIT SCRATCH_B @ @ LIT SCRATCH_F ! LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_E ! LIT SCRATCH_F @ LIT SCRATCH_E @ ! LIT 0 LIT SCRATCH_A ! mk-loop: LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH mk-done LIT SCRATCH_B @ LIT 2 ADD LIT SCRATCH_A @ ADD @ LIT 16 DIV LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_A @ ADD ! LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A ! BRANCH mk-loop mk-done: LIT SCRATCH_E @ LIT T_STRING ADD ARITY 1 EXIT ] ");
+    pput(" get: raw 1 [ CALL lookup ARITY 1 EXIT ] ");
+    pput(" emit-int: func [n] [ either < n 0 [ emit-byte 45 emit-digits - 0 n ] [ emit-digits n ] ] ");
+    pput(" emit-digits: func [n] [ either > n 9 [ emit-digits / n 10 ] [ none ] emit-byte + 48 - n * 10 / n 10 ] ");
+    pput(" emit-text: raw 1 [ DUP LIT 16 MOD SUB LIT SCRATCH_B ! LIT 0 LIT SCRATCH_A ! LIT SCRATCH_B @ @ LIT SCRATCH_F ! emit-text-loop: LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH emit-text-done LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL LIT G1_OUT_DATA LIT SCRATCH_E @ ADD ! LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E ! LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A ! BRANCH emit-text-loop emit-text-done: ARITY 0 EXIT ] ");
+
+    put(" h1-open: "); put(hoist("<h1>")); put(" h1-close: "); put(hoist("</h1>"));
+    put(" p-open: "); put(hoist("<p>")); put(" p-close: "); put(hoist("</p>"));
+    put(" ul-open: "); put(hoist("<ul>")); put(" ul-close: "); put(hoist("</ul>"));
+    put(" li-open: "); put(hoist("<li>")); put(" li-close: "); put(hoist("</li>"));
+    put(" link-open: "); put(hoist("<button data-glon-route='"));
+    put(" btn-mid: "); put(hoist("'>")); put(" btn-close: "); put(hoist("</button>"));
+    put(" event-open: "); put(hoist("<button data-glon-event='"));
+    put(" input-open: "); put(hoist("<input data-glon-input='"));
     put(" heading: func [content] [ emit-text h1-open do content emit-text h1-close ] ");
     put(" text: func [content] [ emit-text p-open do content emit-text p-close ] ");
     put(" link: func [content route] [ emit-text link-open emit-text route emit-text btn-mid do content emit-text btn-close ] ");
@@ -61,22 +89,22 @@ static char *build_program(void) {
     put(" input: func [name] [ emit-text input-open emit-text name emit-text btn-mid ] ");
     put(" list: func [items] [ emit-text ul-open each-product items emit-text ul-close ] ");
     put(" each-product: func [items] [ emit-product-at items 0 block-len items ] ");
-    put(" emit-product-at: func [items i n] [ either < i n [ emit-text li-open emit-text block-at items i emit-text li-close emit-product-at items + i 1 n ] [ none ] ] ");
+    put(" emit-product-at: func [items i n] [ either < i n [ emit-text li-open emit-text get block-at items i emit-text li-close emit-product-at items + i 1 n ] [ none ] ] ");
     /* application */
     put(" visit-count: 0 cart-count: 0 search-term: [] ");
-    put(" catalog: ["); bytes("Tea"); bytes("Rice"); put(" ] ");
-    put(" home-view: [ heading [ emit-text "); bytes("Glon Shop");
-    put(" ] link [ emit-text "); bytes("View products"); put(" ] "); bytes("products"); put(" ] ");
-    put(" products-view: [ heading [ emit-text "); bytes("Products");
-    put(" ] list catalog text [ emit-text "); bytes("Products page visits: ");
-    put(" emit-int visit-count ] text [ emit-text "); bytes("Search: ");
-    put(" emit-text search-term ] input "); bytes("search");
-    put(" button [ emit-text "); bytes("Search"); put(" ] "); bytes("search");
-    put(" text [ emit-text "); bytes("Cart: ");
-    put(" emit-int cart-count ] button [ emit-text "); bytes("Add"); put(" ] "); bytes("add-one");
-    put(" link [ emit-text "); bytes("Back home"); put(" ] "); bytes("home"); put(" ] ");
-    put(" not-found-view: [ heading [ emit-text "); bytes("Not found");
-    put(" ] link [ emit-text "); bytes("Back home"); put(" ] "); bytes("home"); put(" ] ");
+    put(" catalog: [ "); put(hoist("Tea")); put(" "); put(hoist("Rice")); put(" ] ");
+    put(" home-view: [ heading [ emit-text "); put(hoist("Glon Shop"));
+    put(" ] link [ emit-text "); put(hoist("View products")); put(" ] "); put(hoist("products")); put(" ] ");
+    put(" products-view: [ heading [ emit-text "); put(hoist("Products"));
+    put(" ] list catalog text [ emit-text "); put(hoist("Products page visits: "));
+    put(" emit-int visit-count ] text [ emit-text "); put(hoist("Search: "));
+    put(" emit-text search-term ] input "); put(hoist("search"));
+    put(" button [ emit-text "); put(hoist("Search")); put(" ] "); put(hoist("search"));
+    put(" text [ emit-text "); put(hoist("Cart: "));
+    put(" emit-int cart-count ] button [ emit-text "); put(hoist("Add")); put(" ] "); put(hoist("add-one"));
+    put(" link [ emit-text "); put(hoist("Back home")); put(" ] "); put(hoist("home")); put(" ] ");
+    put(" not-found-view: [ heading [ emit-text "); put(hoist("Not found"));
+    put(" ] link [ emit-text "); put(hoist("Back home")); put(" ] "); put(hoist("home")); put(" ] ");
     put(" render-home: func [] [ emit-clear do home-view emit-finish ] ");
     put(" render-products: func [] [ emit-clear do products-view emit-finish ] ");
     put(" render-not-found: func [] [ emit-clear do not-found-view emit-finish ] ");
@@ -88,8 +116,10 @@ static char *build_program(void) {
     put(" add-one: func [] [ cart-count: + cart-count 1 render-current ] ");
     put(" search: func [] [ search-term: current-value render-current ] ");
     put(" do-event: [ either = current-event 'add-one [ add-one ] [ either = current-event 'search [ search ] [ render-current ] ] ] ");
-    put("]");
-    return prog_buf;
+
+    static char final_buf[65536];
+    snprintf(final_buf, sizeof final_buf, "[ %s %s %s ]", prim_buf, defs_buf, prog_buf);
+    return final_buf;
 }
 
 static const char *route(const char *token) {

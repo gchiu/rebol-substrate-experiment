@@ -288,6 +288,13 @@ cell r0_s1_parse(const char *src, int *err);
  * Returns result arity N (>= 0), or -1 on error. */
 int r0_s1_run(cell block);
 
+/* Persistent-machine variant (G1).  Like r0_s1_run but resets only transient
+ * execution state (SP/RP/IP and the runtime scratch cells) and PRESERVES the
+ * managed-heap frontier (REG_HP), so managed STRING!/closure values allocated
+ * by the loaded program (or an earlier interaction) survive across route/event
+ * calls instead of being overwritten by s1_reset's heap re-base. */
+int r0_s1_run_persistent(cell block);
+
 /* FIB-OPT-P10A: run a block exactly like r0_s1_run, but invoke the compiled
  * S1 executor `run_fn` (signature void fn(cell *M, cell start)) instead of the
  * interpreted s1_run(). Used only by the compiled-S1 benchmark driver. */

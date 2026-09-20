@@ -5,10 +5,12 @@ Reads the view-dialect library (g1b.glon) and the application source
 (shop.glon), and writes the fully-bundled page demo/shop/app.html plus a
 headless-test source demo/shop/bundle.glon.
 
-The one build-time translation is string literals -> GLON byte-lists (GLON has
-no string literal syntax yet): `"Products"` becomes `[ 80 114 111 ... ]`. This
-keeps the source readable while staying within the existing language. Everything
-else (views, routes, state) is ordinary GLON interpreted at runtime.
+The build-time translation is string literals -> STRING! construction (GLON
+has no `"..."` literal syntax, so `"Products"` is hoisted to
+`str-N: mk-string [ 80 114 111 ... ]` at the top of the bundle and referenced
+as `str-N`). This keeps the source readable while using the existing managed
+STRING! datatype. Everything else (views, routes, state) is ordinary GLON
+interpreted at runtime.
 
 The browser page inlines the combined source in a
 <script type="application/glon"> block and references host.js / glon.wasm; no
@@ -29,15 +31,34 @@ def strip_comments(text: str) -> str:
     return "\n".join(line.split(";;", 1)[0] for line in text.splitlines())
 
 
-def convert_strings(text: str) -> str:
-    return re.sub(r'"([^"]*)"', lambda m: to_byte_list(m.group(1)), text)
+def hoist_strings(text: str) -> tuple[str, str]:
+    """Extract each unique `"..."` literal, return (definitions, converted text).
+
+    Returns a GLON source fragment `str-1: mk-string [...] str-2: ...` defining
+    the strings (created once at load) and the input text with every literal
+    replaced by its `str-N` reference."""
+    names: dict[str, str] = {}
+    defs: list[tuple[str, str]] = []
+
+    def repl(m: re.Match) -> str:
+        s = m.group(1)
+        if s not in names:
+            name = "str-" + str(len(names) + 1)
+            names[s] = name
+            defs.append((name, s))
+        return names[s]
+
+    converted = re.sub(r'"([^"]*)"', repl, text)
+    def_text = " ".join(f"{name}: mk-string {to_byte_list(s)}" for name, s in defs)
+    return def_text, converted
 
 
 def main() -> None:
+    string_lib = strip_comments((HERE / "g1s.glon").read_text(encoding="utf-8"))
     library = strip_comments((HERE / "g1b.glon").read_text(encoding="utf-8"))
     app = strip_comments((HERE / "shop.glon").read_text(encoding="utf-8"))
-    combined = "[ " + library + " " + app + " ]"
-    combined = convert_strings(combined)
+    defs, lib_app = hoist_strings(library + "\n" + app)
+    combined = "[ " + string_lib + " " + defs + " " + lib_app + " ]"
 
     (HERE / "bundle.glon").write_text(combined, encoding="utf-8")
 

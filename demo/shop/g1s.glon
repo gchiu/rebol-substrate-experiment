@@ -1,0 +1,54 @@
+;; demo/shop/g1s.glon -- the G1 STRING! primitives (existing M3C mechanics).
+;;
+;; STRING! is an intrinsic tag (T_STRING = 12) over a managed, immutable byte
+;; series (GC_KIND_STRING = 6): payload [length, byte0..byteN-1] with one raw
+;; byte (0..255) per cell. `alloc`/`lookup` are the managed-heap entry points,
+;; exposed symbolically by the RAW assembler (see r0_s1_runtime.c assemble_raw).
+;; No new datatype, no GC change, no frozen-S1 change.
+
+;; mk-string: ( block-of-bytes -> string! ). Allocates an exact managed string
+;; and copies the bytes. Uses only the safe scratch cells (A/B/E/F), which live
+;; above RS_INIT so they are never clobbered by the return stack.
+mk-string: raw 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_E !
+    LIT SCRATCH_F @ LIT SCRATCH_E @ !
+    LIT 0 LIT SCRATCH_A !
+  mk-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH mk-done
+    LIT SCRATCH_B @ LIT 2 ADD LIT SCRATCH_A @ ADD @ LIT 16 DIV
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_A @ ADD
+    !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH mk-loop
+  mk-done:
+    LIT SCRATCH_E @ LIT T_STRING ADD ARITY 1 EXIT
+]
+
+;; str-eq: ( string! string! -> 1|0 ). Content equality as a flat RAW loop
+;; (avoids per-byte GLON recursion).
+str-eq: raw 2 [
+    LIT SCRATCH_B !
+    DUP LIT 16 MOD SUB LIT SCRATCH_A !
+    DROP
+    LIT SCRATCH_B @ DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    DROP
+    LIT SCRATCH_A @ @ LIT SCRATCH_B @ @ EQ ZBRANCH str-eq-neq
+    LIT SCRATCH_A @ @ LIT SCRATCH_F !
+    LIT 0 LIT SCRATCH_E !
+  str-eq-loop:
+    LIT SCRATCH_E @ LIT SCRATCH_F @ LT ZBRANCH str-eq-yes
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_E @ ADD @
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_E @ ADD @
+    EQ ZBRANCH str-eq-neq
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    BRANCH str-eq-loop
+  str-eq-yes:
+    INT 1 ARITY 1 EXIT
+  str-eq-neq:
+    INT 0 ARITY 1 EXIT
+]
+
+;; get: ( word -> value ). Look up a word in the current context.
+get: raw 1 [ CALL lookup ARITY 1 EXIT ]

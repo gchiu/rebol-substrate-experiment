@@ -44,16 +44,16 @@ emit-digits: func [n] [
 ;; emit-text is a RAW loop (not per-byte GLON recursion): the frozen return
 ;; stack is small, and recursive emit-text-at exhausted it once the view atoms
 ;; grew beyond a few dozen bytes. Iterating in S1 keeps the render depth flat.
-;; Scratch cells: A (index), B (block ptr), F (length) are all above RS_INIT;
-;; E is the shared output length. (SCRATCH_C/D live inside the return-stack
-;; region and would be clobbered mid-loop, so they are avoided here.)
+;; Scratch cells: A (index), B (string ptr), F (length) are all above RS_INIT;
+;; E is the shared output length. The string payload is [len, b0..bN-1] with a
+;; raw byte (0..255) per cell, so each byte is re-tagged (x16) for G1_OUT.
 emit-text: raw 1 [
     DUP LIT 16 MOD SUB LIT SCRATCH_B !
     LIT 0 LIT SCRATCH_A !
     LIT SCRATCH_B @ @ LIT SCRATCH_F !
   emit-text-loop:
     LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH emit-text-done
-    LIT SCRATCH_B @ LIT 2 ADD LIT SCRATCH_A @ ADD @
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL
     LIT G1_OUT_DATA LIT SCRATCH_E @ ADD
     !
     LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
@@ -62,18 +62,10 @@ emit-text: raw 1 [
   emit-text-done:
     ARITY 0 EXIT
 ]
-;; ---- byte-list equality (structural equality of loader blocks) ------------
-;; The basket must decide which product an add-product VALUE refers to.
-;; current-value arrives as a fresh byte-list each event, so pointer equality
-;; (=) cannot distinguish it from a catalogue entry; compare element-by-element.
-blk-eq: func [a b] [ blk-eq-at a b 0 ]
-blk-eq-at: func [a b i] [
-    either = block-len a block-len b [
-        either < i block-len a [
-            either = block-at a i block-at b i [ blk-eq-at a b + i 1 ] [ 0 ]
-        ] [ 1 ]
-    ] [ 0 ]
-]
+;; ---- string equality (content equality of managed strings) ----------------
+;; The basket must decide which product an add-product VALUE refers to. The
+;; value arrives as a fresh STRING! each event, so pointer equality (=) cannot
+;; distinguish it from a catalogue entry; compare byte-by-byte via string=?. 
 
 ;; ---- HTML tag atoms (single-quoted attributes keep the source simple) ------
 h1-open:   "<h1>"
@@ -115,11 +107,18 @@ nav-close:  "</p>"
 
 ;; ---- view vocabulary ------------------------------------------------------
 ;; Each term wraps its CONTENT (a block of emit-* calls) in an HTML element.
-heading: func [content] [ emit-text h1-open do content emit-text h1-close ]
-subhead: func [content] [ emit-text h2-open do content emit-text h2-close ]
-text:    func [content] [ emit-text p-open  do content emit-text p-close ]
-tagline: func [content] [ emit-text tagline-open do content emit-text tagline-close ]
-meta:    func [content] [ emit-text meta-open do content emit-text meta-close ]
+;; The five single-element wrappers share one algorithm. `wrap` is a factory:
+;; it returns a closure that wraps its content in a given open/close atom pair.
+;; The algorithm therefore lives in one place, and each term below is declared
+;; as plain data (name -> [open close]).
+wrap: func [open close] [
+    func [content] [ emit-text open do content emit-text close ]
+]
+heading: wrap h1-open h1-close
+subhead: wrap h2-open h2-close
+text:    wrap p-open p-close
+tagline: wrap tagline-open tagline-close
+meta:    wrap meta-open meta-close
 link:    func [content route] [
     emit-text nav-open
     emit-text btn-open emit-text route emit-text btn-mid do content emit-text btn-close
@@ -151,8 +150,8 @@ each-product: func [items] [ emit-product-at items 0 block-len items ]
 emit-product-at: func [items i n] [
     either < i n [
         emit-text li-open
-        emit-text span-open emit-text block-at items i emit-text span-close
-        value-button [ emit-text "Add" ] "add-product" block-at items i
+        emit-text span-open emit-text get block-at items i emit-text span-close
+        value-button [ emit-text "Add" ] "add-product" get block-at items i
         emit-text li-close
         emit-product-at items + i 1 n
     ] [ none ]
