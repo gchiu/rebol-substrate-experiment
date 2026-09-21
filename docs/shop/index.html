@@ -70,6 +70,14 @@ get: masm 1 [ CALL lookup ARITY 1 EXIT ]
 
 
 
+lambda: func [spec body] [ func :spec :body ]
+does:   func [body] [ lambda [] body ]
+
+
+
+
+
+
 
 
 
@@ -374,10 +382,19 @@ error-view: [
 
 
 
-render-home:      func [] [ emit-clear do home-view emit-finish ]
-render-not-found: func [] [ emit-clear do not-found-view emit-finish ]
-render-loading:   func [] [ emit-clear do loading-view emit-finish ]
-render-error:     func [] [ emit-clear do error-view emit-finish ]
+
+
+renderer: func [view] [
+    does [
+        emit-clear
+        do view
+        emit-finish
+    ]
+]
+render-home:      renderer home-view
+render-not-found: renderer not-found-view
+render-loading:   renderer loading-view
+render-error:     renderer error-view
 
 
 
