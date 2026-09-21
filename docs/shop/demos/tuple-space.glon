@@ -1,108 +1,113 @@
-[ mnew-task: raw 3 [
-    LIT 25026 !
-    LIT 25025 !
-    DUP LIT 16 MOD SUB LIT 25024 !
-    LIT 0 LIT 25027 !
+[ mnew-task: masm 3 [
+    ;; (body do-word finish-word -> task-id | -1)
+    LIT M1_S2 !                      ; finish-word
+    LIT M1_S1 !                      ; do-word
+    DUP LIT 16 MOD SUB LIT M1_S0 !   ; body ptr
+    LIT 0 LIT M1_S3 !                ; slot = 0
   Lfind:
-    LIT 25027 @ LIT 3 LT ZBRANCH Lfull
-    LIT 25027 @ LIT 16 MUL LIT 65000 ADD LIT 25028 !
-    LIT 25028 @ LIT 8 ADD @ LIT 2 EQ ZBRANCH Lnext
+    LIT M1_S3 @ LIT 3 LT ZBRANCH Lfull
+    LIT M1_S3 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S4 !   ; record addr
+    LIT M1_S4 @ LIT TREC_STATE ADD @ LIT 2 EQ ZBRANCH Lnext    ; EMPTY?
     BRANCH Lmake
   Lnext:
-    LIT 25027 @ LIT 1 ADD LIT 25027 !
+    LIT M1_S3 @ LIT 1 ADD LIT M1_S3 !
     BRANCH Lfind
   Lfull:
     LIT -1 LIT 16 MUL ARITY 1 EXIT
   Lmake:
-    LIT 25028 @ LIT 80 ADD LIT 25029 !
-    LIT 3 LIT 25029 @ !
-    LIT 0 LIT 25029 @ LIT 1 ADD !
-    LIT 25025 @ LIT 25029 @ LIT 2 ADD !
-    LIT 25024 @ LIT 6 ADD LIT 25029 @ LIT 3 ADD !
-    LIT 25026 @ LIT 25029 @ LIT 4 ADD !
-    LIT 25010 @ LIT 25028 @ !
-    LIT 25027 @ LIT 3400 MUL LIT 54800 ADD LIT 400 ADD LIT 25028 @ LIT 1 ADD !
-    LIT 25027 @ LIT 3400 MUL LIT 54800 ADD LIT 3400 ADD LIT 25028 @ LIT 2 ADD !
-    LIT 25029 @ LIT 2 ADD LIT 25028 @ LIT 3 ADD !
-    LIT 25029 @ LIT 5 ADD LIT 25028 @ LIT 4 ADD !
-    LIT RV_CTX @ LIT 25028 @ LIT 5 ADD !
-    LIT 25029 @ LIT 25028 @ LIT 6 ADD !
-    LIT 0 LIT 25028 @ LIT 7 ADD !
-    LIT 0 LIT 25028 @ LIT 8 ADD !
-    LIT 25028 @ LIT 16 MUL ARITY 1 EXIT
+    LIT M1_S4 @ LIT M1_WRAPPER_DELTA ADD LIT M1_S5 !   ; wrapper ptr
+    LIT 3 LIT M1_S5 @ !                 ; wrapper[0]=3 (arity)
+    LIT 0 LIT M1_S5 @ LIT 1 ADD !       ; wrapper[1]=0
+    LIT M1_S1 @ LIT M1_S5 @ LIT 2 ADD ! ; wrapper[2]=do-word
+    LIT M1_S0 @ LIT 6 ADD LIT M1_S5 @ LIT 3 ADD !   ; wrapper[3]=body ctx+6
+    LIT M1_S2 @ LIT M1_S5 @ LIT 4 ADD ! ; wrapper[4]=finish-word
+    LIT M1_MAIN_ENTRY_CELL @ LIT M1_S4 @ !            ; record[IP]=entry
+    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_DS_OFF ADD LIT M1_S4 @ LIT TREC_SP ADD !   ; record[SP]
+    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_RS_OFF ADD LIT M1_S4 @ LIT TREC_RP ADD !   ; record[RP]
+    LIT M1_S5 @ LIT 2 ADD LIT M1_S4 @ LIT TREC_CUR ADD !   ; record[CUR]
+    LIT M1_S5 @ LIT 5 ADD LIT M1_S4 @ LIT TREC_END ADD !   ; record[END]
+    LIT RV_CTX @ LIT M1_S4 @ LIT TREC_CTX ADD !            ; record[CTX]
+    LIT M1_S5 @ LIT M1_S4 @ LIT TREC_BLK ADD !             ; record[BLK]
+    LIT 0 LIT M1_S4 @ LIT TREC_FRAME ADD !                 ; record[FRAME]
+    LIT 0 LIT M1_S4 @ LIT TREC_STATE ADD !                 ; record[STATE]=RUNNABLE
+    LIT M1_S4 @ LIT 16 MUL ARITY 1 EXIT
 ]
- yield: raw [
+ yield: masm [
+    ;; save task regs -> M1_CUR_TASK, restore scheduler from M1_SCHED_REC
     NONE LIT 16
-    LIT REG_RP @ @ LIT 25011 @ LIT 0 ADD !
-    LIT REG_SP @ LIT 25011 @ LIT 1 ADD !
-    LIT REG_RP @ LIT 25011 @ LIT 2 ADD !
-    LIT RV_CUR @ LIT 25011 @ LIT 3 ADD !
-    LIT RV_END @ LIT 25011 @ LIT 4 ADD !
-    LIT RV_CTX @ LIT 25011 @ LIT 5 ADD !
-    LIT RV_BLK @ LIT 25011 @ LIT 6 ADD !
-    LIT RV_FRAME @ LIT 25011 @ LIT 7 ADD !
-    LIT 25012 LIT 1 ADD @ LIT REG_SP !
-    LIT 25012 LIT 2 ADD @ LIT REG_RP !
-    LIT 25012 LIT 3 ADD @ LIT RV_CUR !
-    LIT 25012 LIT 4 ADD @ LIT RV_END !
-    LIT 25012 LIT 5 ADD @ LIT RV_CTX !
-    LIT 25012 LIT 6 ADD @ LIT RV_BLK !
-    LIT 25012 LIT 7 ADD @ LIT RV_FRAME !
-    LIT 25012 LIT 0 ADD @ LIT REG_IP !
+    LIT REG_RP @ @ LIT M1_CUR_TASK @ LIT TREC_IP ADD !      ; task IP
+    LIT REG_SP @ LIT M1_CUR_TASK @ LIT TREC_SP ADD !
+    LIT REG_RP @ LIT M1_CUR_TASK @ LIT TREC_RP ADD !
+    LIT RV_CUR @ LIT M1_CUR_TASK @ LIT TREC_CUR ADD !
+    LIT RV_END @ LIT M1_CUR_TASK @ LIT TREC_END ADD !
+    LIT RV_CTX @ LIT M1_CUR_TASK @ LIT TREC_CTX ADD !
+    LIT RV_BLK @ LIT M1_CUR_TASK @ LIT TREC_BLK ADD !
+    LIT RV_FRAME @ LIT M1_CUR_TASK @ LIT TREC_FRAME ADD !
+    LIT M1_SCHED_REC LIT TREC_SP ADD @ LIT REG_SP !
+    LIT M1_SCHED_REC LIT TREC_RP ADD @ LIT REG_RP !
+    LIT M1_SCHED_REC LIT TREC_CUR ADD @ LIT RV_CUR !
+    LIT M1_SCHED_REC LIT TREC_END ADD @ LIT RV_END !
+    LIT M1_SCHED_REC LIT TREC_CTX ADD @ LIT RV_CTX !
+    LIT M1_SCHED_REC LIT TREC_BLK ADD @ LIT RV_BLK !
+    LIT M1_SCHED_REC LIT TREC_FRAME ADD @ LIT RV_FRAME !
+    LIT M1_SCHED_REC LIT TREC_IP ADD @ LIT REG_IP !
 ]
- task-finish: raw [
-    LIT 1 LIT 25011 @ LIT 8 ADD !
-    LIT 25012 LIT 1 ADD @ LIT REG_SP !
-    LIT 25012 LIT 2 ADD @ LIT REG_RP !
-    LIT 25012 LIT 3 ADD @ LIT RV_CUR !
-    LIT 25012 LIT 4 ADD @ LIT RV_END !
-    LIT 25012 LIT 5 ADD @ LIT RV_CTX !
-    LIT 25012 LIT 6 ADD @ LIT RV_BLK !
-    LIT 25012 LIT 7 ADD @ LIT RV_FRAME !
-    LIT 25012 LIT 0 ADD @ LIT REG_IP !
+ task-finish: masm [
+    ;; mark task FINISHED, then resume the scheduler
+    LIT 1 LIT M1_CUR_TASK @ LIT TREC_STATE ADD !
+    LIT M1_SCHED_REC LIT TREC_SP ADD @ LIT REG_SP !
+    LIT M1_SCHED_REC LIT TREC_RP ADD @ LIT REG_RP !
+    LIT M1_SCHED_REC LIT TREC_CUR ADD @ LIT RV_CUR !
+    LIT M1_SCHED_REC LIT TREC_END ADD @ LIT RV_END !
+    LIT M1_SCHED_REC LIT TREC_CTX ADD @ LIT RV_CTX !
+    LIT M1_SCHED_REC LIT TREC_BLK ADD @ LIT RV_BLK !
+    LIT M1_SCHED_REC LIT TREC_FRAME ADD @ LIT RV_FRAME !
+    LIT M1_SCHED_REC LIT TREC_IP ADD @ LIT REG_IP !
 ]
- run-tasks: raw [
-    LIT REG_IP @ LIT 11 ADD LIT 25012 LIT 0 ADD !
-    LIT REG_SP @ LIT 25012 LIT 1 ADD !
-    LIT REG_RP @ LIT 25012 LIT 2 ADD !
-    LIT RV_CUR @ LIT 25012 LIT 3 ADD !
-    LIT RV_END @ LIT 25012 LIT 4 ADD !
-    LIT RV_CTX @ LIT 25012 LIT 5 ADD !
-    LIT RV_BLK @ LIT 25012 LIT 6 ADD !
-    LIT RV_FRAME @ LIT 25012 LIT 7 ADD !
-    LIT 25020 @ LIT 25031 !
-    LIT 0 LIT 25032 !
+ run-tasks: masm [
+    ;; save scheduler state (IP+11 resumes at Lscan), then round-robin
+    LIT REG_IP @ LIT 11 ADD LIT M1_SCHED_REC LIT TREC_IP ADD !
+    LIT REG_SP @ LIT M1_SCHED_REC LIT TREC_SP ADD !
+    LIT REG_RP @ LIT M1_SCHED_REC LIT TREC_RP ADD !
+    LIT RV_CUR @ LIT M1_SCHED_REC LIT TREC_CUR ADD !
+    LIT RV_END @ LIT M1_SCHED_REC LIT TREC_END ADD !
+    LIT RV_CTX @ LIT M1_SCHED_REC LIT TREC_CTX ADD !
+    LIT RV_BLK @ LIT M1_SCHED_REC LIT TREC_BLK ADD !
+    LIT RV_FRAME @ LIT M1_SCHED_REC LIT TREC_FRAME ADD !
+    LIT M1_CURSOR @ LIT M1_S7 !      ; scan index
+    LIT 0 LIT M1_S8 !                ; scan count
   Lscan:
-    LIT 25032 @ LIT 3 LT ZBRANCH Ldone
-    LIT 25031 @ LIT 16 MUL LIT 65000 ADD LIT 25030 !
-    LIT 25030 @ LIT 8 ADD @ LIT 0 NE ZBRANCH Lfound
+    LIT M1_S8 @ LIT 3 LT ZBRANCH Ldone
+    LIT M1_S7 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S6 !   ; record addr
+    LIT M1_S6 @ LIT TREC_STATE ADD @ LIT 0 NE ZBRANCH Lfound   ; RUNNABLE/FINISHED
   Lskip:
-    LIT 25031 @ LIT 1 ADD LIT 3 MOD LIT 25031 !
-    LIT 25032 @ LIT 1 ADD LIT 25032 !
+    LIT M1_S7 @ LIT 1 ADD LIT 3 MOD LIT M1_S7 !
+    LIT M1_S8 @ LIT 1 ADD LIT M1_S8 !
     BRANCH Lscan
   Ldone:
     NONE LIT 16 EXIT
   Lfound:
-    LIT 25030 @ LIT 25011 !
-    LIT 25031 @ LIT 1 ADD LIT 3 MOD LIT 25020 !
-    LIT 25011 @ LIT 1 ADD @ LIT REG_SP !
-    LIT 25011 @ LIT 2 ADD @ LIT REG_RP !
-    LIT 25011 @ LIT 3 ADD @ LIT RV_CUR !
-    LIT 25011 @ LIT 4 ADD @ LIT RV_END !
-    LIT 25011 @ LIT 5 ADD @ LIT RV_CTX !
-    LIT 25011 @ LIT 6 ADD @ LIT RV_BLK !
-    LIT 25011 @ LIT 7 ADD @ LIT RV_FRAME !
-    LIT 25011 @ LIT 0 ADD @ LIT REG_IP !
+    LIT M1_S6 @ LIT M1_CUR_TASK !    ; resume this record
+    LIT M1_S7 @ LIT 1 ADD LIT 3 MOD LIT M1_CURSOR !   ; next cursor
+    LIT M1_CUR_TASK @ LIT TREC_SP ADD @ LIT REG_SP !
+    LIT M1_CUR_TASK @ LIT TREC_RP ADD @ LIT REG_RP !
+    LIT M1_CUR_TASK @ LIT TREC_CUR ADD @ LIT RV_CUR !
+    LIT M1_CUR_TASK @ LIT TREC_END ADD @ LIT RV_END !
+    LIT M1_CUR_TASK @ LIT TREC_CTX ADD @ LIT RV_CTX !
+    LIT M1_CUR_TASK @ LIT TREC_BLK ADD @ LIT RV_BLK !
+    LIT M1_CUR_TASK @ LIT TREC_FRAME ADD @ LIT RV_FRAME !
+    LIT M1_CUR_TASK @ LIT TREC_IP ADD @ LIT REG_IP !
 ]
-  reset-tasks: raw [
-    LIT 0 LIT 25027 !
+  reset-tasks: masm [
+    ;; mark all three slots EMPTY, reset cursor
+    LIT 0 LIT M1_S3 !
   Rloop:
-    LIT 25027 @ LIT 3 LT ZBRANCH Rdone
-    LIT 2 LIT 25027 @ LIT 16 MUL LIT 65000 ADD LIT 8 ADD !
-    LIT 25027 @ LIT 1 ADD LIT 25027 !
+    LIT M1_S3 @ LIT 3 LT ZBRANCH Rdone
+    LIT 2 LIT M1_S3 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT TREC_STATE ADD !
+    LIT M1_S3 @ LIT 1 ADD LIT M1_S3 !
     BRANCH Rloop
   Rdone:
-    LIT 0 LIT 25020 !
+    LIT 0 LIT M1_CURSOR !
     ARITY 0 EXIT
 ]
  spawn: func [body] [ mnew-task body 'do 'task-finish ]
@@ -119,10 +124,10 @@
 
 tuple-space-loaded: 1
 
-block-set!: raw 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
+block-set!: masm 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
 
 ;; zero every element of a mutable block in place (reset helper)
-block-zero!: raw 1 [
+block-zero!: masm 1 [
     DUP LIT 16 MOD SUB LIT SCRATCH_A !
     LIT SCRATCH_A @ @ LIT SCRATCH_F !
     LIT 0 LIT SCRATCH_E !
@@ -136,7 +141,7 @@ block-zero!: raw 1 [
 ]
 
 ;; i mod 3, tagged (0,1,2 -> mk_int 0,1,2): reducer fan-out position for a tuple
-mod3: raw 1 [ LIT 3 MOD LIT 16 MUL ARITY 1 EXIT ]
+mod3: masm 1 [ LIT 3 MOD LIT 16 MUL ARITY 1 EXIT ]
 
 ;; ---- the transaction space (a shared tuple space) ---------------------------
 ;; one BUY / SELL / RETURN Tea cycle [kind qty price] (0=buy 1=sell 2=return),
