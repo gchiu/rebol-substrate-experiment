@@ -145,45 +145,10 @@ vis-digits: func [n] [
 
 
 
-
-vis-sp:  does [ vis-byte 32 ]
-vis-eol: does [ vis-byte 10 ]
-vis-int-field:  func [n]    [ vis-sp vis-int n ]
-vis-text-field: func [text] [ vis-sp vis-text text ]
-
-vis-box: func [x y w h label] [
-    vis-byte 66
-    vis-int-field x
-    vis-int-field y
-    vis-int-field w
-    vis-int-field h
-    vis-text-field label
-    vis-eol
-]
-vis-line: func [x1 y1 x2 y2] [
-    vis-byte 76
-    vis-int-field x1
-    vis-int-field y1
-    vis-int-field x2
-    vis-int-field y2
-    vis-eol
-]
-vis-dot: func [id x y] [
-    vis-byte 68
-    vis-int-field id
-    vis-int-field x
-    vis-int-field y
-    vis-eol
-]
-vis-move: func [id x1 y1 x2 y2] [
-    vis-byte 77
-    vis-int-field id
-    vis-int-field x1
-    vis-int-field y1
-    vis-int-field x2
-    vis-int-field y2
-    vis-eol
-]
+vis-box:  func [x y w h label] [ vis-byte 66 vis-byte 32 vis-int x vis-byte 32 vis-int y vis-byte 32 vis-int w vis-byte 32 vis-int h vis-byte 32 vis-text label vis-byte 10 ]
+vis-line: func [x1 y1 x2 y2] [ vis-byte 76 vis-byte 32 vis-int x1 vis-byte 32 vis-int y1 vis-byte 32 vis-int x2 vis-byte 32 vis-int y2 vis-byte 10 ]
+vis-dot:  func [id x y] [ vis-byte 68 vis-byte 32 vis-int id vis-byte 32 vis-int x vis-byte 32 vis-int y vis-byte 10 ]
+vis-move: func [id x1 y1 x2 y2] [ vis-byte 77 vis-byte 32 vis-int id vis-byte 32 vis-int x1 vis-byte 32 vis-int y1 vis-byte 32 vis-int x2 vis-byte 32 vis-int y2 vis-byte 10 ]
 
 
 block-len: masm 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
