@@ -60,7 +60,8 @@ int run_r0_s1_lambda_tests(void) {
          "  lambda0: func [body] [ lambda [] body ] "
          "  lambda1: func [body] [ lambda [a] body ] "
          "  lambda2: func [body] [ lambda [a b] body ] "
-         "  lambda3: func [body] [ lambda [a b c] body ] ]");
+         "  lambda3: func [body] [ lambda [a b c] body ] "
+         "  does: func [body] [ lambda [] body ] ]");
     CHECK(N == 1 && r0_s1_ran_cleanly(), "library loads cleanly");
 
     /* the GC trigger is a raw; define it in its own load so the raw's assembly
@@ -154,6 +155,23 @@ int run_r0_s1_lambda_tests(void) {
          "  a: make-at-depth 3 0  b: make-at-depth 2 5  collect  collect  values [a b a b] ]");
     CHECK(N == 4 && got(0) == 30 && got(1) == 25 && got(2) == 30 && got(3) == 25,
           "17: same-site re-entrant capture survives forced GC (30 25 30 25)");
+
+    /* ---- DOES: Rebol-style zero-arg function vocabulary on the factory ----- */
+    eval("[ f: does [ 42 ]  f ]");
+    CHECK(N == 1 && got(0) == 42, "18: does [42] -> arity-0 callable (42)");
+
+    eval("[ make: func [n] [ does [ n: + n 1  n ] ]  a: make 0  b: make 100  values [a a b a] ]");
+    CHECK(N == 4 && got(0) == 1 && got(1) == 2 && got(2) == 101 && got(3) == 3,
+          "19: does captures an enclosing local with independent instances (1 2 101 3)");
+
+    eval("[ make: func [n] [ does [ does [ n ] ] ]  f: make 77  g: f  g ]");
+    CHECK(N == 1 && got(0) == 77, "20: nested does capture through two factory layers (77)");
+
+    eval("[ make: func [n] [ does [ n: + n 1  n ] ]  f: make 0  collect  collect  f ]");
+    CHECK(N == 1 && got(0) == 1, "21: does closure survives forced GC (1)");
+
+    eval("[ g: 5  f: does [ g ]  g: 9  f ]");
+    CHECK(N == 1 && got(0) == 9, "22: does body resolves globals dynamically (9)");
 
     if (failures == 0) printf("all lambda-factory tests passed\n");
     return failures;

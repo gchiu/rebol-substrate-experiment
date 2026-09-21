@@ -1357,6 +1357,13 @@ static void emit_binding_ctx(void) {
     e_cell(RV_T4); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_fetch();
     e_cell(RV_T1); asm_host(HOST_EQ);
     cell j_next = asm_zbranch_fwd();
+    /* a factory-manufactured closure inherits its origin's site, so skip any
+     * frame whose depth bias is non-zero (it is a factory closure, not the
+     * origin activation whose child context actually holds the body's bound
+     * words); only a bias-0 activation is the lexical origin. */
+    e_cell(RV_T4); asm_lit(FRAME_BIAS); asm_host(HOST_ADD); asm_fetch();
+    asm_lit(0); asm_host(HOST_EQ);
+    cell j_next_bias = asm_zbranch_fwd();
     /* matched: return prev.FRAME_CTX, or 0 if it matched the innermost frame */
     e_cell(RV_T5); asm_lit(0); asm_host(HOST_EQ);
     cell j_hasprev = asm_zbranch_fwd();
@@ -1365,6 +1372,7 @@ static void emit_binding_ctx(void) {
     e_cell(RV_T5); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_fetch();
     asm_exit();
     asm_patch_here(j_next);
+    asm_patch_here(j_next_bias);
     e_cell(RV_T4); e_setc(RV_T5);          /* prev = frame */
     e_cell(RV_T4); asm_fetch(); e_setc(RV_T4);   /* frame = frame.FRAME_PREV */
     asm_branch(walk);
