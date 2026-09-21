@@ -121,8 +121,9 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   if (!/Glon Demos/.test(home) ||
       !/data-glon-load='demos\/shop\.glon'/.test(home) ||
       !/data-glon-load='demos\/guide\.glon'/.test(home) ||
-      !/data-glon-load='demos\/merchant-flow\.glon'/.test(home))
-    fail("home route: expected 'Glon Demos' launcher + three load-links, got: " + home);
+      !/data-glon-load='demos\/merchant-flow\.glon'/.test(home) ||
+      !/data-glon-load='demos\/tuple-space\.glon'/.test(home))
+    fail("home route: expected 'Glon Demos' launcher + load-links, got: " + home);
 
   // 2. selecting Shop loads shop.glon and renders the shop landing
   loadDemo("shop");
@@ -145,8 +146,8 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   // 5. selecting Merchant flow loads merchant-flow.glon and renders it
   loadDemo("merchant-flow");
   const mf = route("merchant-flow");
-  if (!/Julia merchant flow/.test(mf) || !/merchant_flow\.jl/.test(mf))
-    fail("merchant-flow route: expected 'Julia merchant flow' + source link, got: " + mf);
+  if (!/multitasking/.test(mf) || !/data-glon-event='start'/.test(mf))
+    fail("merchant-flow route: expected 'multitasking' + Start control, got: " + mf);
 
   // 6. products route shows visit 1, an empty basket, and the repeated list
   const v1 = route("products");

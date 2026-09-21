@@ -148,7 +148,8 @@ int run_r0_s1_g1e_tests(void) {
     CHECK(has(r, "Glon Demos") &&
           has(r, "data-glon-load='demos/shop.glon'") &&
           has(r, "data-glon-load='demos/guide.glon'") &&
-          has(r, "data-glon-load='demos/merchant-flow.glon'"),
+          has(r, "data-glon-load='demos/merchant-flow.glon'") &&
+          has(r, "data-glon-load='demos/tuple-space.glon'"),
           "2: home renders the launcher with load-on-demand links");
 
     printf("g1e: selecting a demo loads and renders it\n");
