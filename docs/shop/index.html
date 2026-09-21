@@ -46,9 +46,7 @@ mk-string: raw 1 [
 str-eq: raw 2 [
     LIT SCRATCH_B !
     DUP LIT 16 MOD SUB LIT SCRATCH_A !
-    DROP
     LIT SCRATCH_B @ DUP LIT 16 MOD SUB LIT SCRATCH_B !
-    DROP
     LIT SCRATCH_A @ @ LIT SCRATCH_B @ @ EQ ZBRANCH str-eq-neq
     LIT SCRATCH_A @ @ LIT SCRATCH_F !
     LIT 0 LIT SCRATCH_E !
@@ -99,6 +97,45 @@ emit-byte: raw 1 [
     ARITY 0 EXIT
 ]
 emit-finish: raw [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
+
+
+
+
+
+
+vis-clear: raw [ LIT 0 LIT SCRATCH_D ! ARITY 0 EXIT ]
+vis-byte: raw 1 [
+    LIT SCRATCH_D @ LIT G1_VIS_DATA ADD !
+    LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
+    ARITY 0 EXIT
+]
+vis-text: raw 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_A !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  vis-text-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH vis-text-done
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL
+    LIT G1_VIS_DATA LIT SCRATCH_D @ ADD
+    !
+    LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH vis-text-loop
+  vis-text-done:
+    ARITY 0 EXIT
+]
+vis-finish: raw [ LIT SCRATCH_D @ LIT G1_VIS ! LIT G1_VIS LIT T_BLOCK ADD ARITY 1 EXIT ]
+vis-int: func [n] [ either < n 0 [ vis-byte 45 vis-digits - 0 n ] [ vis-digits n ] ]
+vis-digits: func [n] [
+    either > n 9 [ vis-digits / n 10 ] [ none ]
+    vis-byte + 48 - n * 10 / n 10
+]
+
+
+vis-box:  func [x y w h label] [ vis-byte 66 vis-byte 32 vis-int x vis-byte 32 vis-int y vis-byte 32 vis-int w vis-byte 32 vis-int h vis-byte 32 vis-text label vis-byte 10 ]
+vis-line: func [x1 y1 x2 y2] [ vis-byte 76 vis-byte 32 vis-int x1 vis-byte 32 vis-int y1 vis-byte 32 vis-int x2 vis-byte 32 vis-int y2 vis-byte 10 ]
+vis-dot:  func [id x y] [ vis-byte 68 vis-byte 32 vis-int id vis-byte 32 vis-int x vis-byte 32 vis-int y vis-byte 10 ]
+vis-move: func [id x1 y1 x2 y2] [ vis-byte 77 vis-byte 32 vis-int id vis-byte 32 vis-int x1 vis-byte 32 vis-int y1 vis-byte 32 vis-int x2 vis-byte 32 vis-int y2 vis-byte 10 ]
 
 
 block-len: raw 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
@@ -263,6 +300,7 @@ emit-product-at: func [items i n] [
 shop-loaded: 0
 guide-loaded: 0
 merchant-flow-loaded: 0
+tuple-space-loaded: 0
 
 
 home-view: [
@@ -279,9 +317,14 @@ home-view: [
         load-link [ emit-text "Programmer's guide" ] "guide" "demos/guide.glon"
     ]
     either merchant-flow-loaded [
-        link [ emit-text "Julia merchant flow" ] "merchant-flow"
+        link [ emit-text "Multitasking / dataflow" ] "merchant-flow"
     ] [
-        load-link [ emit-text "Julia merchant flow" ] "merchant-flow" "demos/merchant-flow.glon"
+        load-link [ emit-text "Multitasking / dataflow" ] "merchant-flow" "demos/merchant-flow.glon"
+    ]
+    either tuple-space-loaded [
+        link [ emit-text "Tuple space / dataflow" ] "tuple-space"
+    ] [
+        load-link [ emit-text "Tuple space / dataflow" ] "tuple-space" "demos/tuple-space.glon"
     ]
 ]
 
@@ -326,8 +369,11 @@ render-current: func [] [
     either = current-route 'merchant-flow [
         either merchant-flow-loaded [ render-merchant-flow ] [ render-loading ]
     ] [
+    either = current-route 'tuple-space [
+        either tuple-space-loaded [ render-tuple-space ] [ render-loading ]
+    ] [
     either = current-route 'home [ render-home ] [ render-not-found ]
-    ]]]]
+    ]]]]]
 ]
 
 
@@ -342,9 +388,15 @@ route: [
 
 
 
+
+
 do-event: [
     either = current-event 'load-failed [ render-error ]
-    [ either shop-loaded [ do-shop-event ] [ render-current ] ]
+    [ either = current-event 'start [ do-start ]
+      [ either = current-event 'reset [ do-reset ]
+        [ either = current-event 'run [ do-space-run ]
+          [ either = current-event 'space-reset [ do-space-reset ]
+            [ either shop-loaded [ do-shop-event ] [ render-current ] ] ] ] ] ]
 ] ]</script>
 <script src="host.js"></script>
 </body>
