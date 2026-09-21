@@ -133,11 +133,7 @@ wasm-test: web/demo.js
 # source (standalone/app.glon) is NOT embedded in the binary; it is inlined
 # into the generated docs/standalone.html by standalone/build-docs.py and
 # passed to glon_load at runtime.
-# Diagnostic-only instrumentation flag (see standalone/glon.c).  Off by default
-# so normal builds stay quiet; the CI diagnostic matrix sets it explicitly.
-WASM_OPT ?= -O1
-DIAG_FLAG ?=
-STANDALONE_FLAGS = $(WASM_OPT) $(DIAG_FLAG) -nostdlib -fno-builtin \
+STANDALONE_FLAGS = -O1 -nostdlib -fno-builtin \
 	-s STANDALONE_WASM=1 -s ALLOW_MEMORY_GROWTH=1 \
 	-Wl,--no-entry -Wl,--export-memory \
 	-I.

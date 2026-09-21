@@ -62,7 +62,6 @@ const imports = {
 
 function fail(msg) {
   console.error("GLON_G1E_TEST FAIL: " + msg);
-  if (logs.length) console.error("--- diagnostic logs ---\n" + logs.join(""));
   process.exit(1);
 }
 
@@ -222,6 +221,5 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
     fail("tuple-space reset: expected topology-only canvas, got: " + tsResetScript);
 
   console.log("GLON_G1E_TEST PASS (launcher / lazy shop / lazy guide / lazy merchant-flow / basket / search / persist / unknown / load-failed / tuple-space canvas)");
-  if (logs.length) console.log("--- diagnostic logs ---\n" + logs.join(""));
   process.exit(0);
 }).catch((e) => fail(e.message || e));

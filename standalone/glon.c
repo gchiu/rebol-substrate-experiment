@@ -133,39 +133,10 @@ int fflush(FILE *f) { (void)f; return 0; }
 static unsigned char heap[1 << 16];   /* 64 KiB bump heap */
 static unsigned int heap_used = 0;
 
-#ifdef GLON_DIAGNOSTICS
-static unsigned int diag_malloc_high;   /* bump-heap high-water mark        */
-static unsigned int diag_malloc_fail;   /* allocation failures              */
-static unsigned int diag_nalloc;        /* total allocations                */
-/* One-line state report.  All numeric fields use %ld (the only supported
- * integer specifier here) with explicit (long) casts; never %u. */
-static void diag_state(const char *tag, unsigned int src_len, int rc) {
-    unsigned long cap = (unsigned long)sizeof(heap);
-    unsigned long high = (unsigned long)diag_malloc_high;
-    unsigned long loader = (unsigned long)M[GC_LOADER_HP];
-    unsigned long hp = (unsigned long)s1_mem(REG_HP);
-    fprintf(stderr,
-        "DIAG %s src=%ld rc=%ld clean=%ld malloc=%ld/%ld rem=%ld fail=%ld n=%ld "
-        "loader=%ld/%ld managed=%ld/%ld vis=%ld\n",
-        tag, (long)src_len, (long)rc, (long)r0_s1_ran_cleanly(),
-        (long)high, (long)cap, (long)(cap - high),
-        (long)diag_malloc_fail, (long)diag_nalloc,
-        (long)loader, (long)(R0S1_HEAP_LIMIT - loader),
-        (long)hp, (long)(GC_HEAP_LIMIT - hp), (long)M[G1_VIS]);
-}
-#endif
-
 void *malloc(unsigned int n) {
     unsigned int a = (heap_used + 7u) & ~7u;
-#ifdef GLON_DIAGNOSTICS
-    diag_nalloc++;
-    if (a + n > sizeof(heap)) { diag_malloc_fail++; return (void *)0; }
-    heap_used = a + n;
-    if (heap_used > diag_malloc_high) diag_malloc_high = heap_used;
-#else
     if (a + n > sizeof(heap)) return (void *)0;
     heap_used = a + n;
-#endif
     return (void *)(heap + a);
 }
 
@@ -269,9 +240,6 @@ int glon_load(const unsigned char *src, unsigned int len) {
      * The parsed block lives in the loader heap and copies everything out of
      * srcbuf, so srcbuf is safe to overwrite on the next load. */
     int N = r0_s1_run_persistent(prog);
-#ifdef GLON_DIAGNOSTICS
-    diag_state("load", len, (N < 0) ? -3 : 0);
-#endif
     return (N < 0) ? -3 : 0;
 }
 
@@ -324,11 +292,7 @@ int glon_route(const unsigned char *token, unsigned int len) {
     tok[i] = 0;
 
     int out_len = 0;
-    int rc = r0_s1_g1a_route((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len);
-#ifdef GLON_DIAGNOSTICS
-    diag_state("route", len, rc);
-#endif
-    if (rc != 0)
+    if (r0_s1_g1a_route((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len) != 0)
         return -2;
 
     host_set_html(1u, htmlbuf, (unsigned int)out_len);
@@ -350,11 +314,7 @@ int glon_event(const unsigned char *token, unsigned int len) {
     tok[i] = 0;
 
     int out_len = 0;
-    int rc = r0_s1_g1a_event((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len);
-#ifdef GLON_DIAGNOSTICS
-    diag_state("event", len, rc);
-#endif
-    if (rc != 0)
+    if (r0_s1_g1a_event((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len) != 0)
         return -2;
 
     host_set_html(1u, htmlbuf, (unsigned int)out_len);
