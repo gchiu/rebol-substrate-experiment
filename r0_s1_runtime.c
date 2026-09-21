@@ -1198,6 +1198,7 @@ static void emit_gc(void) {
 static cell r_reduce, r_set, r_append, r_mkctx, r_mkclosure;
 static cell r_load_lex, r_hash_insert, r_build_hash;
 static cell r_values, r_run_block, r_native, r_invoke_closure, r_return, r_invoke_raw, r_subexpr, r_block_eval;
+static cell r_binding_ctx;
 
 /* REDUCE: [r1..rN, tagged-N] -> [r1] (or [NONE] if N==0) */
 static void emit_reduce(void) {
@@ -1336,6 +1337,41 @@ static void emit_lookup(void) {
     asm_branch(inner);
 }
 
+/* BINDING-CTX: ( site -- ctx | 0 )  the "Guard of Binding" origin lookup.
+ * Given a func-site-id, find the NEAREST live activation (frame) carrying that
+ * site and return the context of the frame called directly from it -- the child
+ * context of the enclosing func that the supplied body block was lexically
+ * bound to. Walking innermost-first means that when several activations of one
+ * site are live (re-entrancy/recursion), the innermost (most recent) one wins.
+ * Returns 0 when the site has no live activation (a hand-written FUNC body,
+ * whose own site is not yet on the frame chain), so FUNC falls back to
+ * capturing RV_CTX. */
+static void emit_binding_ctx(void) {
+    r_binding_ctx = asm_here();
+    e_pop_to(RV_T1);                       /* site (raw) */
+    e_cell(RV_FRAME); e_setc(RV_T4);       /* frame */
+    asm_lit(0); e_setc(RV_T5);             /* prev = 0 */
+    cell walk = asm_here();
+    e_cell(RV_T4); asm_lit(0); asm_host(HOST_NE);
+    cell j_notfound = asm_zbranch_fwd();
+    e_cell(RV_T4); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_fetch();
+    e_cell(RV_T1); asm_host(HOST_EQ);
+    cell j_next = asm_zbranch_fwd();
+    /* matched: return prev.FRAME_CTX, or 0 if it matched the innermost frame */
+    e_cell(RV_T5); asm_lit(0); asm_host(HOST_EQ);
+    cell j_hasprev = asm_zbranch_fwd();
+    asm_lit(0); asm_exit();
+    asm_patch_here(j_hasprev);
+    e_cell(RV_T5); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_fetch();
+    asm_exit();
+    asm_patch_here(j_next);
+    e_cell(RV_T4); e_setc(RV_T5);          /* prev = frame */
+    e_cell(RV_T4); asm_fetch(); e_setc(RV_T4);   /* frame = frame.FRAME_PREV */
+    asm_branch(walk);
+    asm_patch_here(j_notfound);
+    asm_lit(0); asm_exit();
+}
+
 /* LOAD-LEX: ( bound -- value )  direct lexical slot access via RV_CTX.
  * A bound word encodes (depth, slot); this walks `depth` CTX_PARENT hops from
  * the current context and reads the value cell at the slot offset, with no
@@ -1349,6 +1385,16 @@ static void emit_load_lex(void) {
     asm_lit(16); asm_host(HOST_DIV);         /* payload = depth*16+slot (tag drops out) */
     asm_dup(); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T2);  /* slot  */
     asm_lit(16); asm_host(HOST_DIV); e_setc(RV_T3);             /* depth */
+    /* Guard of Binding: add the current activation's depth bias (0 for a
+     * hand-written FUNC body, +1 for a factory-manufactured body). The bias
+     * lives in the frame, so it is correctly scoped across nested invocations
+     * (each activation's frame carries its own). RV_FRAME is 0 only at top
+     * level, where no T_BOUND reference can occur. */
+    e_cell(RV_FRAME); asm_lit(0); asm_host(HOST_NE);
+    cell j_nobias = asm_zbranch_fwd();
+    e_cell(RV_FRAME); asm_lit(FRAME_BIAS); asm_host(HOST_ADD); asm_fetch();
+    e_cell(RV_T3); asm_host(HOST_ADD); e_setc(RV_T3);           /* depth += bias */
+    asm_patch_here(j_nobias);
 #ifdef R0_S1_PROFILE
     e_cell(RV_T3); asm_lit(0); asm_host(HOST_EQ);
     cell j_parent = asm_zbranch_fwd();
@@ -1579,12 +1625,16 @@ static void emit_mkctx(void) {
     asm_exit();
 }
 
-/* MKCLOSURE: ( spec body captured site-id -- closure ).
+/* MKCLOSURE: ( spec body captured site-id bias -- closure ).
  * Promotes the captured context to the managed heap when it is stack-local
- * (escaping), so the closure always captures a managed/loader context. */
+ * (escaping), so the closure always captures a managed/loader context. The
+ * bias (0 or +1) is stored in CLOSURE_BIAS and copied to the frame on
+ * invocation, where LOAD-LEX adds it to each T_BOUND depth. */
 static void emit_mkclosure(void) {
     r_mkclosure = asm_here();
-    asm_lit(16); asm_lit(GC_KIND_CLOSURE); asm_call(r_alloc); e_setc(RV_T4);   /* 16-aligned, >= 4 cells */
+    asm_lit(16); asm_lit(GC_KIND_CLOSURE); asm_call(r_alloc); e_setc(RV_T4);   /* 16-aligned, >= 5 cells */
+    e_pop_to(RV_T6);  /* bias */
+    e_cell(RV_T6); e_cell(RV_T4); asm_lit(CLOSURE_BIAS); asm_host(HOST_ADD); asm_store();   /* +4 = bias */
     e_pop_to(RV_T5);  /* site-id */
     e_pop_to(RV_T1);  /* captured */
     /* promote captured (RV_T1) if it is a stack-local context */
@@ -1935,12 +1985,12 @@ static void emit_invoke_closure(void) {
     /* Allocate the activation frame ON the return stack (task-local storage).
      * The frame pointer must be 16-aligned so its R0 tag is T_INT (0) and it is
      * never mistaken for a callable. FIB-OPT-P9: compute the 16-aligned frame
-     * base once, adjust RP once, then store the 9 fields at their fixed symbolic
-     * FRAME_* offsets and zero the padding -- instead of nine derived >R pushes
+     * base once, adjust RP once, then store the 10 fields at their fixed symbolic
+     * FRAME_* offsets and zero the padding -- instead of ten derived >R pushes
      * (each re-reads and re-writes the memory-mapped RP). The physical layout
      * and RAW-visible offsets are unchanged. */
-    asm_lit(REG_RP); asm_fetch(); asm_lit(9); asm_host(HOST_SUB); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T5);  /* padding */
-    asm_lit(REG_RP); asm_fetch(); asm_lit(9); asm_host(HOST_SUB); e_cell(RV_T5); asm_host(HOST_SUB); e_setc(RV_T6);  /* frame base */
+    asm_lit(REG_RP); asm_fetch(); asm_lit(10); asm_host(HOST_SUB); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T5);  /* padding */
+    asm_lit(REG_RP); asm_fetch(); asm_lit(10); asm_host(HOST_SUB); e_cell(RV_T5); asm_host(HOST_SUB); e_setc(RV_T6);  /* frame base */
     e_cell(RV_T6); asm_lit(REG_RP); asm_store();          /* RP = frame base (one adjustment) */
     e_cell(RV_FRAME); e_cell(RV_T6); asm_lit(FRAME_PREV); asm_host(HOST_ADD); asm_store();   /* +0 = prev (old frame) */
     e_cell(RV_T6); e_setc(RV_FRAME);                       /* RV_FRAME = frame base (16-aligned) */
@@ -1953,14 +2003,16 @@ static void emit_invoke_closure(void) {
     e_cell(RV_CUR); e_cell(RV_T6); asm_lit(FRAME_CUR); asm_host(HOST_ADD); asm_store();    /* +6 = CUR */
     e_cell(RV_END); e_cell(RV_T6); asm_lit(FRAME_END); asm_host(HOST_ADD); asm_store();    /* +7 = END */
     e_cell(RV_BLK); e_cell(RV_T6); asm_lit(FRAME_BLK); asm_host(HOST_ADD); asm_store();    /* +8 = BLK */
-    /* zero the padding cells (frame+9 .. frame+8+padding) so the GC never
+    e_cell(RV_CLOSURE); asm_lit(CLOSURE_BIAS); asm_host(HOST_ADD); asm_fetch();
+        e_cell(RV_T6); asm_lit(FRAME_BIAS); asm_host(HOST_ADD); asm_store();              /* +9 = BIAS */
+    /* zero the padding cells (frame+10 .. frame+9+padding) so the GC never
      * mistakes them for closures. */
     cell pad_loop = asm_here();
     e_cell(RV_T5); asm_lit(0); asm_host(HOST_GT);
     cell j_pad_done = asm_zbranch_fwd();
     e_cell(RV_T5); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T5);
     asm_lit(0);
-    e_cell(RV_T6); asm_lit(9); asm_host(HOST_ADD); e_cell(RV_T5); asm_host(HOST_ADD);
+    e_cell(RV_T6); asm_lit(10); asm_host(HOST_ADD); e_cell(RV_T5); asm_host(HOST_ADD);
     asm_store();
     asm_branch(pad_loop);
     asm_patch_here(j_pad_done);
@@ -2120,10 +2172,27 @@ static void emit_subexpr(void) {
     asm_call(r_reduce);
     e_pop_to(RV_T2);                             /* body */
     e_pop_to(RV_T3);                             /* spec */
+    /* Guard of Binding: if the body block is already lexically bound to an
+     * enclosing (still-active) func, capture that func's child context and set
+     * a +1 depth bias, so the body's static depths keep denoting the same
+     * lexical meanings. Otherwise capture RV_CTX with bias 0. */
+    e_cell(RV_T2); e_untag_ptr(); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_SITE);  /* site = body.BLK_SITE */
+    e_cell(RV_SITE); asm_call(r_binding_ctx);    /* -> origin ctx (0 if none) */
+    e_pop_to(RV_T1);                             /* origin ctx */
+    e_cell(RV_T1); asm_lit(0); asm_host(HOST_NE);
+    cell j_noorigin = asm_zbranch_fwd();
+    e_cell(RV_T1); e_setc(RV_T5);                /* captured = origin ctx */
+    asm_lit(1); e_setc(RV_T4);                   /* bias = +1 */
+    cell j_gotbind = asm_branch_fwd();
+    asm_patch_here(j_noorigin);
+    e_cell(RV_CTX); e_setc(RV_T5);               /* captured = RV_CTX */
+    asm_lit(0); e_setc(RV_T4);                   /* bias = 0 */
+    asm_patch_here(j_gotbind);
     e_cell(RV_T3);                               /* spec */
     e_cell(RV_T2);                               /* body */
-    e_cell(RV_CTX);                              /* captured */
-    e_cell(RV_T2); e_untag_ptr(); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch(); /* site-id */
+    e_cell(RV_T5);                               /* captured */
+    e_cell(RV_SITE);                             /* site-id */
+    e_cell(RV_T4);                               /* bias */
     asm_call(r_mkclosure);
     asm_lit(16);
     asm_exit();
@@ -2275,6 +2344,7 @@ cell r0_s1_init(void) {
     emit_append();
     emit_mkctx();
     emit_mkclosure();
+    emit_binding_ctx();
     emit_values();
     emit_run_block();
     emit_native();

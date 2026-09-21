@@ -282,8 +282,13 @@ enum { CTX_PARENT = 0, CTX_COUNT = 1, CTX_CAP = 2, CTX_DATA = 3 };
 #define R0S1_CTX_CELLS 64    /* 16-aligned stack-context size (3+32+16=51 -> 64) */
 #define HASH_EMPTY    (-1)   /* empty hash bucket sentinel */
 
-/* closure layout: [spec, body, captured-context, func-site-id] */
-enum { CLOSURE_SPEC = 0, CLOSURE_BODY = 1, CLOSURE_CTX = 2, CLOSURE_SITE = 3 };
+/* closure layout: [spec, body, captured-context, func-site-id, depth-bias]
+ * CLOSURE_BIAS is the "Guard of Binding" depth offset: 0 for a hand-written
+ * FUNC body (its T_BOUND depths already account for the closure's own context),
+ * +1 for a body block that was manufactured through a runtime factory and whose
+ * originating activation was live in the lexical ancestry (its depths are
+ * relative to that enclosing func, one level outside the closure). */
+enum { CLOSURE_SPEC = 0, CLOSURE_BODY = 1, CLOSURE_CTX = 2, CLOSURE_SITE = 3, CLOSURE_BIAS = 4 };
 
 /* RAW callable layout: [entry-address, arity] */
 enum { RAW_ENTRY = 0, RAW_ARITY = 1 };
@@ -291,10 +296,10 @@ enum { RAW_ENTRY = 0, RAW_ARITY = 1 };
 /* block layout: [count, return-site-id, elem0, elem1, ...] */
 enum { BLK_COUNT = 0, BLK_SITE = 1, BLK_DATA = 2 };
 
-/* activation frame (linked list in M): [prev, site, SP, RP, IP, CTX, CUR, END, BLK] */
+/* activation frame (linked list in M): [prev, site, SP, RP, IP, CTX, CUR, END, BLK, bias] */
 enum {
     FRAME_PREV = 0, FRAME_SITE = 1, FRAME_SP = 2, FRAME_RP = 3, FRAME_IP = 4,
-    FRAME_CTX = 5, FRAME_CUR = 6, FRAME_END = 7, FRAME_BLK = 8
+    FRAME_CTX = 5, FRAME_CUR = 6, FRAME_END = 7, FRAME_BLK = 8, FRAME_BIAS = 9
 };
 
 /* --- loader + runtime API ------------------------------------------------ */
