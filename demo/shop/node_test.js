@@ -208,8 +208,9 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   const tsFlow = canvasScripts.join("");
   if (!/M 0 500 58 310 218/.test(tsFlow) ||   // token 0 -> worker 1 (W1)
       !/M 0 310 218 500 378/.test(tsFlow) ||  // -> router
-      !/M 0 500 378 310 538/.test(tsFlow))    // -> Stock
-    fail("tuple-space run: expected token 0 path space->W1->router->Stock, got: " + tsFlow);
+      !/M 0 500 378 310 538/.test(tsFlow) ||  // -> Stock
+      !/M 23 500 58 690 218/.test(tsFlow))    // token 23 -> worker 3 (24 real Jaffas)
+    fail("tuple-space run: expected token 0 path space->W1->router->Stock + 24th Jaffa, got: " + tsFlow);
   if (tsFlow.indexOf("M 1 500 58 500 218") >= tsFlow.indexOf("M 0 310 218 500 378"))
     fail("tuple-space run: expected interleaved claims (token 1 claim before token 0 route), got: " + tsFlow);
 

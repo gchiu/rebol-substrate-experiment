@@ -151,10 +151,10 @@ enum {
  * G1_OUT) into which a demo emits a generic visual script during render. The
  * browser host reads it after the dispatch and draws/animated the Canvas; the
  * native test reads it to assert the emitted path matches the real execution.
- * Lives in the free gap just below the managed heap (29456..30482). */
+ * Lives in the free gap just below the managed heap (29456..32018). */
 #define G1_VIS      29456
 #define G1_VIS_DATA (G1_VIS + 2)
-#define G1_VIS_CAP  1024
+#define G1_VIS_CAP  2560
 
 /* M3 datatype-library state (free region above the GC state, below the D1
  * state records). BUILTIN_BASE is the fixed 16-slot BUILTIN_TYPE table; the

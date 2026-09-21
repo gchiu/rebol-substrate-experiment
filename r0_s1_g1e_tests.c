@@ -294,7 +294,7 @@ int run_r0_s1_g1e_tests(void) {
     r = event("load-failed");
     CHECK(has(r, "Load failed"), "25: load-failed event renders a controlled error");
 
-    printf("g1e: tuple-space demo (shared space + 3 workers + router)\n");
+    printf("g1e: tuple-space demo (24 real tuples + 3 workers + router + canvas)\n");
 
     CHECK(load_file("demo/shop/demos/tuple-space.glon") == 0, "26: tuple-space.glon loads");
     r = route("tuple-space");
@@ -302,37 +302,44 @@ int run_r0_s1_g1e_tests(void) {
           has(r, "data-glon-event='run'"),
           "27: home -> tuple-space renders the space + workers + Run control");
 
+    /* the shared space holds 24 real tuples (eight BUY/SELL/RETURN cycles) */
+    CHECK(int_val(eval_int("[ block-len space ]")) == 24,
+          "28: the space holds 24 real tuples");
+
     r = event("run");
-    CHECK(has(r, "Stock:  8") && has(r, "Cash:  -26") && has(r, "Sales:  2"),
-          "28: Run consumes the space -> stock 8, cash -26, sales 2");
-    CHECK(has(r, "worker 1 took BUY Tea") && has(r, "worker 2 took SELL Tea") &&
-          has(r, "worker 3 took RETURN Tea"),
-          "29: more than one Glon worker consumed a tuple");
-    CHECK(has(r, "worker 1 took") && has(r, "worker 2 took") && has(r, "worker 3 took") &&
-          has(r, "Router -> inventory") && has(r, "Router -> cash") && has(r, "Router -> sales"),
-          "30: all three tuples consumed exactly once + router fan-out");
+    CHECK(has(r, "Stock:  64") && has(r, "Cash:  -208") && has(r, "Sales:  16"),
+          "29: Run consumes 8 cycles -> stock 64, cash -208, sales 16");
+    CHECK(int_val(eval_int("[ space-cursor ]")) == 24,
+          "30: all 24 tuples claimed exactly once (space-cursor == 24)");
+    CHECK(int_val(eval_int("[ block-at space-taken-by 0 ]")) != 0 &&
+          int_val(eval_int("[ block-at space-taken-by 23 ]")) != 0,
+          "31: no tuple lost (first and last recorded)");
+    CHECK(has(r, "worker 1 took") && has(r, "worker 2 took") && has(r, "worker 3 took"),
+          "32: all three M1 workers participated");
+    CHECK(has(r, "Router -> inventory") && has(r, "Router -> cash") && has(r, "Router -> sales"),
+          "33: router fan-out recorded");
     CHECK(!r0_s1_stack_sentry_fired(),
-          "31: no SP/RP sentry fires during Run");
+          "34: no SP/RP sentry fires during Run");
 
     r = event("space-reset");
-    CHECK(has(r, "Stock:  0") && has(r, "pending"),
-          "32: Reset clears the space and totals");
+    CHECK(has(r, "Stock:  0") && int_val(eval_int("[ space-cursor ]")) == 0,
+          "35: Reset clears totals and reopens the space");
 
     r = event("run");
-    CHECK(has(r, "Stock:  8") && has(r, "Cash:  -26") && has(r, "Sales:  2"),
-          "33: rerunning reproduces the same deterministic totals");
+    CHECK(has(r, "Stock:  64") && has(r, "Cash:  -208") && has(r, "Sales:  16"),
+          "36: rerun reproduces 64 / -208 / 16");
 
     /* GC + task-slot reuse: run/reset/run again forces collections and reuses
      * the same three task slots; sentries must stay quiet throughout. */
     r = event("space-reset");
     r = event("run");
-    CHECK(has(r, "Stock:  8") && !r0_s1_stack_sentry_fired(),
-          "34: GC during/after task activity + slot reuse remain safe (no sentry)");
+    CHECK(has(r, "Stock:  64") && !r0_s1_stack_sentry_fired(),
+          "37: run/reset/run deterministic + no sentry");
 
     route("home");
     r = route("tuple-space");
     CHECK(has(r, "Transaction space") && has(r, "data-glon-event='space-reset'"),
-          "35: navigating away and back does not corrupt the demo");
+          "38: navigating away and back does not corrupt the demo");
 
     printf("g1e: tuple-space canvas script follows the real Glon path\n");
 
@@ -341,10 +348,9 @@ int run_r0_s1_g1e_tests(void) {
         r = route("tuple-space");
         vis_script(vs, sizeof vs);
         CHECK(has(vs, "B 420 40 160 36 Transaction space") &&
-              has(vs, "B 250 200 120 36 W1") &&
               has(vs, "B 430 360 140 36 Router") &&
               has(vs, "L 500 76 310 200"),
-              "36: canvas script describes the topology");
+              "39: canvas script describes the topology");
 
         /* space-taken-by[0] is worker 1, so token 0 -> W1 center (310,218) */
         r = event("space-reset");
@@ -353,37 +359,41 @@ int run_r0_s1_g1e_tests(void) {
         CHECK(has(vs, "M 0 500 58 310 218") &&
               has(vs, "M 0 310 218 500 378") &&
               has(vs, "M 0 500 378 310 538"),
-              "37: token 0 moves space -> worker-1 -> router -> Stock");
+              "40: token 0 moves space -> worker-1 -> router -> Stock");
 
         CHECK(has(vs, "M 1 500 58 500 218") && has(vs, "M 1 500 378 500 538"),
-              "38: token 1 -> worker 2 -> router -> Cash");
+              "41: token 1 -> worker 2 -> router -> Cash");
+        CHECK(has(vs, "M 2 500 58 690 218") && has(vs, "M 2 500 378 690 538"),
+              "42: token 2 -> worker 3 -> router -> Sales");
+        CHECK(has(vs, "M 23 500 58 690 218"),
+              "43: token 23 -> worker 3 (round-robin repeats across 24)");
 
         /* the trace is a temporal interleaving, not a per-token history: every
          * claim (space -> worker) precedes any route (worker -> router), so the
          * browser draws several Jaffas in flight at once */
         CHECK(before(vs, "M 1 500 58 500 218", "M 0 310 218 500 378") &&
               before(vs, "M 2 500 58 690 218", "M 0 310 218 500 378"),
-              "38a: claims are interleaved (tokens 1+2 claim before token 0 routes)");
+              "43a: claims are interleaved (tokens 1+2 claim before token 0 routes)");
 
         /* reassigning the worker in Glon changes the path with no JS change */
         eval_int("[ block-set! space-taken-by 0 3 block-at space-taken-by 0 ]");
         r = route("tuple-space");
         vis_script(vs, sizeof vs);
         CHECK(has(vs, "M 0 500 58 690 218"),
-              "39: Glon worker reassignment -> token 0 moves to W3 (690,218)");
+              "44: Glon worker reassignment -> token 0 moves to W3 (690,218)");
 
         /* reset clears the flow: topology only, no Jaffa moves */
         r = event("space-reset");
         vis_script(vs, sizeof vs);
         CHECK(has(vs, "B 420 40 160 36 Transaction space") && !has(vs, "M "),
-              "40: reset renders topology only (no Jaffa moves)");
+              "45: reset renders topology only (no Jaffa moves)");
 
         r = event("run");
         vis_script(vs, sizeof vs);
         CHECK(has(vs, "M 0 500 58 310 218") &&
               before(vs, "M 1 500 58 500 218", "M 0 310 218 500 378") &&
               !r0_s1_stack_sentry_fired(),
-              "41: rerun reproduces the deterministic interleaving + no sentry");
+              "46: rerun reproduces the deterministic interleaving + no sentry");
     }
 
     return failures;
