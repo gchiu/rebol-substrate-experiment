@@ -111,6 +111,10 @@ emit-finish: masm [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARIT
 
 
 
+
+
+
+
 vis-clear: masm [ LIT 0 LIT SCRATCH_D ! ARITY 0 EXIT ]
 vis-byte: masm 1 [
     LIT SCRATCH_D @ LIT G1_VIS_DATA ADD !
@@ -138,6 +142,7 @@ vis-digits: func [n] [
     either > n 9 [ vis-digits / n 10 ] [ none ]
     vis-byte + 48 - n * 10 / n 10
 ]
+
 
 
 vis-box:  func [x y w h label] [ vis-byte 66 vis-byte 32 vis-int x vis-byte 32 vis-int y vis-byte 32 vis-int w vis-byte 32 vis-int h vis-byte 32 vis-text label vis-byte 10 ]
