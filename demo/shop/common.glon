@@ -36,9 +36,7 @@ mk-string: raw 1 [
 str-eq: raw 2 [
     LIT SCRATCH_B !
     DUP LIT 16 MOD SUB LIT SCRATCH_A !
-    DROP
     LIT SCRATCH_B @ DUP LIT 16 MOD SUB LIT SCRATCH_B !
-    DROP
     LIT SCRATCH_A @ @ LIT SCRATCH_B @ @ EQ ZBRANCH str-eq-neq
     LIT SCRATCH_A @ @ LIT SCRATCH_F !
     LIT 0 LIT SCRATCH_E !

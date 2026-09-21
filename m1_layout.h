@@ -45,15 +45,23 @@
  * 7000-cell loader arena. The task count was lowered from 5 to 4 (the M1/M2
  * tests use at most 3 tasks, so 4 keeps a full task of headroom) and the arena
  * base moved up to 50600, keeping the arena end at 65000 (where the task table
- * lives). This is a memory-limit tradeoff: 65536 cells total. */
+ * lives). This is a memory-limit tradeoff: 65536 cells total.
+ *
+ * The merchant-flow demo (a real M1 multitasking + dataflow visualisation:
+ * mnew-task/yield/task-finish/run-tasks + three competing workers + a router +
+ * an SVG/HTML rendering) outgrew that again, so the task count was lowered from
+ * 4 to 3 (the M1/M2 tests and the demo use exactly 3 tasks) and the arena base
+ * moved up to 54200, giving the loader heap [40000, 54200). The arena still
+ * ends at 65000 (task table). This is the last task slot the tests/demo can
+ * spare: 3 is the minimum M1_MAX_TASKS the tests require. */
 #define M1_TASK_TABLE      65000  /* task records                                 */
 #define M1_TASK_REC_SIZE   16     /* cells per task record                        */
-#define M1_MAX_TASKS       4      /* fixed task count for M1                      */
+#define M1_MAX_TASKS       3      /* fixed task count for M1                      */
 #define M1_WRAPPER_DELTA   80     /* wrapper block base = task table base + delta */
-                                   /* (task records occupy 65000..65064; wrappers
+                                   /* (task records occupy 65000..65048; wrappers
                                     * live at 65080 + slot*16, in the free region) */
 
-#define M1_ARENA_BASE      50600  /* per-task stack arena                         */
+#define M1_ARENA_BASE      54200  /* per-task stack arena                         */
 #define M1_TASK_CELLS      3600   /* cells per task (400 DS + 3200 RS)            */
 #define M1_DS_OFF          400    /* DS top offset within a task's region         */
 #define M1_RS_OFF          3600   /* RS top offset within a task's region         */

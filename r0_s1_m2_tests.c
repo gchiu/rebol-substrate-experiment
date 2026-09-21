@@ -379,8 +379,83 @@ static void test_S(void) {
            " outer: func [] [ v: func [] [ 42 ]  gc-now  v ] "
            " outer  collect ", &N);
     CHECK(r0_s1_gc_free_cells() >= 32,
-          "S: value reclaimed once the frame is popped and the reference drops");
+           "S: value reclaimed once the frame is popped and the reference drops");
 }
+
+/* T: the G1 permanent emit buffer (mk_block(G1_OUT), payload 25344) is a
+ * legitimate render result that stays live across a later GC. Its cells are all
+ * tagged ints (rendered bytes), so mark_value must treat it as an opaque leaf.
+ * Before the fix, this fail-stopped as "out-of-range T_BLOCK". */
+static void test_T(void) {
+    printf("m2: T permanent G1_OUT emit block survives collection\n");
+    int N;
+    m2_run(" mk-g1out: raw [ LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ] "
+           " x: mk-g1out collect x ", &N);
+    int ok = (N == 1 && r0_s1_result(0, 1) == mk_block(G1_OUT));
+    if (ok) printf("  ok: T: mk_block(G1_OUT) survives collect (opaque leaf, no children)\n");
+    else { printf("  FAIL: T (N=%d got %ld want %ld)\n", N,
+                  (long)(N == 1 ? r0_s1_result(0, 1) : -999), (long)mk_block(G1_OUT)); failures++; }
+}
+
+/* U: a forged T_BLOCK at an unrelated low address is still fail-stop corruption
+ * (only the exact G1_OUT buffer is exempt, never arbitrary low blocks). */
+static void test_U(void) {
+    printf("m2: U forged low-address T_BLOCK is corruption\n");
+    const char *capture = "/tmp/opencode_m2_forgeblk.txt";
+    int saved_err = dup(2);
+    int capfd = open(capture, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (capfd >= 0) { dup2(capfd, 2); close(capfd); }
+
+    int N;
+    m2_run(" forge: raw [ LIT 16 LIT T_BLOCK ADD ARITY 1 EXIT ] "
+           " x: forge collect ", &N);
+
+    fflush(stderr);
+    if (capfd >= 0) { dup2(saved_err, 2); close(saved_err); }
+
+    FILE *fp = fopen(capture, "r");
+    int bad = 0, dump = 0;
+    if (fp) {
+        static char buf[1 << 20];
+        size_t n = fread(buf, 1, sizeof buf - 1, fp);
+        buf[n] = 0; fclose(fp);
+        if (strstr(buf, "bad opcode")) bad = 1;
+        if (strstr(buf, "[dump]")) dump = 1;
+    }
+    CHECK(bad == 0 && dump == 1,
+          "U: forged low-address T_BLOCK still halts cleanly as corruption");
+}
+
+/* V: the collector must classify SP0 into an explicit valid region, never
+ * derive a negative/out-of-range task slot from raw SP arithmetic. */
+static int m2_set_sp_check(cell sp) {
+    int N;
+    char prog[256];
+    snprintf(prog, sizeof prog,
+             " set-sp: raw 1 [ LIT 16 DIV LIT REG_SP ! LIT 0 LIT REG_SP @ ! CALL %ld ARITY 0 EXIT ] set-sp %ld ",
+             (long)collect_addr, (long)sp);
+    m2_run(prog, &N);
+    return r0_s1_ran_cleanly();
+}
+
+static void test_V(void) {
+    printf("m2: V GC world classification by explicit SP range\n");
+    CHECK(m2_set_sp_check(R0S1_DS_INIT),
+          "V: SP == DS_INIT scans the main world (no fail-stop)");
+    /* seed the main DS cells just below DS_INIT so a non-empty SP scans
+     * well-formed tagged ints rather than stale cells */
+    for (cell a = R0S1_DS_INIT - 64; a < R0S1_DS_INIT; a++) M[a] = 0;
+    CHECK(m2_set_sp_check(R0S1_DS_INIT - 1),
+          "V: a valid non-empty main-world SP scans the main world");    CHECK(!m2_set_sp_check(R0S1_DS_INIT + 2),
+          "V: SP == DS_INIT+2 fail-stops (would otherwise give a negative slot)");
+    CHECK(!m2_set_sp_check(M1_ARENA_BASE - 1),
+          "V: SP just below the M1 arena fail-stops");
+    CHECK(!m2_set_sp_check(M1_ARENA_BASE + M1_MAX_TASKS * M1_TASK_CELLS),
+          "V: SP at the M1 arena end fail-stops");
+    CHECK(!m2_set_sp_check(M1_ARENA_BASE + M1_MAX_TASKS * M1_TASK_CELLS + 64),
+          "V: SP beyond the M1 arena fail-stops");
+}
+
 
 int run_r0_s1_m2_tests(void) {
     printf("R0-S1 M2: shared-heap garbage collection above frozen S1\n");
@@ -408,6 +483,9 @@ int run_r0_s1_m2_tests(void) {
     test_Q();
     test_R();
     test_S();
+    test_T();
+    test_U();
+    test_V();
 
     if (failures == 0) printf("all R0-S1 M2 GC tests passed\n");
     return failures;

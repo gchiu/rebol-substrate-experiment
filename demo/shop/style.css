@@ -110,3 +110,11 @@ body {
 }
 
 .nav { margin: 0; }
+
+/* multitasking / dataflow demo (merchant-flow.glon SVG) */
+svg.flow { display: block; max-width: 100%; height: auto; }
+.flow .node { fill: #ffffff; stroke: #1f2937; stroke-width: 1.5; }
+.flow .edge { stroke: #9ca3af; stroke-width: 1.5; }
+.flow .label { fill: #1f2937; font: 13px system-ui, sans-serif; }
+ul.flow-log { margin: 0 0 1.25rem; padding-left: 1.25rem; font-size: 0.95rem; }
+ul.flow-log li { margin: 0.2rem 0; }

@@ -66,8 +66,11 @@ enum {
  * re-parse overhead from the G1A route/event bridge outgrew the original
  * 7000-cell arena [40000, 47000). The M1 arena was shrunk from 5 to 4 tasks
  * (tests use <=3) and its base moved up to 50600, giving the loader heap
- * [40000, 50600) = 10600 cells. */
-#define R0S1_HEAP_LIMIT 50600L
+ * [40000, 50600) = 10600 cells. The merchant-flow demo (real M1 multitasking
+ * + dataflow visualisation) outgrew that, so the arena was shrunk again from 4
+ * to 3 tasks (the tests and the demo use exactly 3) and its base moved up to
+ * 54200, giving the loader heap [40000, 54200) = 14200 cells. */
+#define R0S1_HEAP_LIMIT 54200L
 #define R0S1_CTX_CAP   16      /* max bindings per child context */
 
 /* FIB-OPT-P8: contexts with fewer than this many bindings are resolved by the
@@ -312,6 +315,7 @@ cell r0_s1_result(int i, int N);
 
 /* instrumentation */
 cell r0_s1_ip_start(void), r0_s1_ip_end(void);
+int  r0_s1_ran_cleanly(void);   /* 1 iff the last run reached the normal halt */
 cell r0_s1_sp_start(void), r0_s1_sp_end(void);
 cell r0_s1_rp_start(void), r0_s1_rp_end(void);
 cell r0_s1_rp_min(void);   /* min RP observed (max return depth) */

@@ -1,33 +1,261 @@
-;; demo/shop/demos/merchant-flow.glon -- the Julia merchant-flow page.
+[ mnew-task: raw 3 [
+    LIT 25026 !
+    LIT 25025 !
+    DUP LIT 16 MOD SUB LIT 25024 !
+    LIT 0 LIT 25027 !
+  Lfind:
+    LIT 25027 @ LIT 3 LT ZBRANCH Lfull
+    LIT 25027 @ LIT 16 MUL LIT 65000 ADD LIT 25028 !
+    LIT 25028 @ LIT 8 ADD @ LIT 2 EQ ZBRANCH Lnext
+    BRANCH Lmake
+  Lnext:
+    LIT 25027 @ LIT 1 ADD LIT 25027 !
+    BRANCH Lfind
+  Lfull:
+    LIT -1 LIT 16 MUL ARITY 1 EXIT
+  Lmake:
+    LIT 25028 @ LIT 80 ADD LIT 25029 !
+    LIT 3 LIT 25029 @ !
+    LIT 0 LIT 25029 @ LIT 1 ADD !
+    LIT 25025 @ LIT 25029 @ LIT 2 ADD !
+    LIT 25024 @ LIT 6 ADD LIT 25029 @ LIT 3 ADD !
+    LIT 25026 @ LIT 25029 @ LIT 4 ADD !
+    LIT 25010 @ LIT 25028 @ !
+    LIT 25027 @ LIT 3600 MUL LIT 54200 ADD LIT 400 ADD LIT 25028 @ LIT 1 ADD !
+    LIT 25027 @ LIT 3600 MUL LIT 54200 ADD LIT 3600 ADD LIT 25028 @ LIT 2 ADD !
+    LIT 25029 @ LIT 2 ADD LIT 25028 @ LIT 3 ADD !
+    LIT 25029 @ LIT 5 ADD LIT 25028 @ LIT 4 ADD !
+    LIT RV_CTX @ LIT 25028 @ LIT 5 ADD !
+    LIT 25029 @ LIT 25028 @ LIT 6 ADD !
+    LIT 0 LIT 25028 @ LIT 7 ADD !
+    LIT 0 LIT 25028 @ LIT 8 ADD !
+    LIT 25028 @ LIT 16 MUL ARITY 1 EXIT
+]
+ yield: raw [
+    NONE LIT 16
+    LIT REG_RP @ @ LIT 25011 @ LIT 0 ADD !
+    LIT REG_SP @ LIT 25011 @ LIT 1 ADD !
+    LIT REG_RP @ LIT 25011 @ LIT 2 ADD !
+    LIT RV_CUR @ LIT 25011 @ LIT 3 ADD !
+    LIT RV_END @ LIT 25011 @ LIT 4 ADD !
+    LIT RV_CTX @ LIT 25011 @ LIT 5 ADD !
+    LIT RV_BLK @ LIT 25011 @ LIT 6 ADD !
+    LIT RV_FRAME @ LIT 25011 @ LIT 7 ADD !
+    LIT 25012 LIT 1 ADD @ LIT REG_SP !
+    LIT 25012 LIT 2 ADD @ LIT REG_RP !
+    LIT 25012 LIT 3 ADD @ LIT RV_CUR !
+    LIT 25012 LIT 4 ADD @ LIT RV_END !
+    LIT 25012 LIT 5 ADD @ LIT RV_CTX !
+    LIT 25012 LIT 6 ADD @ LIT RV_BLK !
+    LIT 25012 LIT 7 ADD @ LIT RV_FRAME !
+    LIT 25012 LIT 0 ADD @ LIT REG_IP !
+]
+ task-finish: raw [
+    LIT 1 LIT 25011 @ LIT 8 ADD !
+    LIT 25012 LIT 1 ADD @ LIT REG_SP !
+    LIT 25012 LIT 2 ADD @ LIT REG_RP !
+    LIT 25012 LIT 3 ADD @ LIT RV_CUR !
+    LIT 25012 LIT 4 ADD @ LIT RV_END !
+    LIT 25012 LIT 5 ADD @ LIT RV_CTX !
+    LIT 25012 LIT 6 ADD @ LIT RV_BLK !
+    LIT 25012 LIT 7 ADD @ LIT RV_FRAME !
+    LIT 25012 LIT 0 ADD @ LIT REG_IP !
+]
+ run-tasks: raw [
+    LIT REG_IP @ LIT 11 ADD LIT 25012 LIT 0 ADD !
+    LIT REG_SP @ LIT 25012 LIT 1 ADD !
+    LIT REG_RP @ LIT 25012 LIT 2 ADD !
+    LIT RV_CUR @ LIT 25012 LIT 3 ADD !
+    LIT RV_END @ LIT 25012 LIT 4 ADD !
+    LIT RV_CTX @ LIT 25012 LIT 5 ADD !
+    LIT RV_BLK @ LIT 25012 LIT 6 ADD !
+    LIT RV_FRAME @ LIT 25012 LIT 7 ADD !
+    LIT 25020 @ LIT 25031 !
+    LIT 0 LIT 25032 !
+  Lscan:
+    LIT 25032 @ LIT 3 LT ZBRANCH Ldone
+    LIT 25031 @ LIT 16 MUL LIT 65000 ADD LIT 25030 !
+    LIT 25030 @ LIT 8 ADD @ LIT 0 NE ZBRANCH Lfound
+  Lskip:
+    LIT 25031 @ LIT 1 ADD LIT 3 MOD LIT 25031 !
+    LIT 25032 @ LIT 1 ADD LIT 25032 !
+    BRANCH Lscan
+  Ldone:
+    NONE LIT 16 EXIT
+  Lfound:
+    LIT 25030 @ LIT 25011 !
+    LIT 25031 @ LIT 1 ADD LIT 3 MOD LIT 25020 !
+    LIT 25011 @ LIT 1 ADD @ LIT REG_SP !
+    LIT 25011 @ LIT 2 ADD @ LIT REG_RP !
+    LIT 25011 @ LIT 3 ADD @ LIT RV_CUR !
+    LIT 25011 @ LIT 4 ADD @ LIT RV_END !
+    LIT 25011 @ LIT 5 ADD @ LIT RV_CTX !
+    LIT 25011 @ LIT 6 ADD @ LIT RV_BLK !
+    LIT 25011 @ LIT 7 ADD @ LIT RV_FRAME !
+    LIT 25011 @ LIT 0 ADD @ LIT REG_IP !
+]
+  reset-tasks: raw [
+    LIT 0 LIT 25027 !
+  Rloop:
+    LIT 25027 @ LIT 3 LT ZBRANCH Rdone
+    LIT 2 LIT 25027 @ LIT 16 MUL LIT 65000 ADD LIT 8 ADD !
+    LIT 25027 @ LIT 1 ADD LIT 25027 !
+    BRANCH Rloop
+  Rdone:
+    LIT 0 LIT 25020 !
+    ARITY 0 EXIT
+]
+ spawn: func [body] [ mnew-task body 'do 'task-finish ]
+
+
+;; demo/shop/demos/merchant-flow.glon -- a real Glon multitasking + dataflow demo.
 ;;
-;; Loaded on first selection of "Julia merchant flow". Describes (does not run)
-;; the Julia Tasks + Channels dataflow demo in julia/merchant_flow.jl. The
-;; launcher's dispatch references render-merchant-flow under the
-;; merchant-flow-loaded flag.
+;; Three Glon worker tasks compete for a shared pool of merchant transactions
+;; (BUY / SELL / RETURN). Each worker takes the next job, computes the
+;; stock/cash/sales deltas, appends a result, and yields -- real cooperative
+;; M1 multitasking, not three boxes drawn by one task. A router then fans the
+;; accumulated deltas out to three reducers. The final totals are deterministic
+;; regardless of which worker takes which job.
 
 merchant-flow-loaded: 1
 
+block-set!: raw 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
+;; ---- data ------------------------------------------------------------------
+jobs: [ [0 10 4] [1 3 7] [2 1 7] ]       ;; [kind qty price] 0=buy 1=sell 2=return
+next-job: 0
+stock-deltas: [0 0 0]
+cash-deltas: [0 0 0]
+sales-deltas: [0 0 0]
+worker-job: [0 0 0]
+stock: 0
+cash: 0
+sales: 0
+started: 0
+log: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+log-count: 0
+
+;; ---- helpers ---------------------------------------------------------------
+log-append: func [v] [ block-set! log log-count v log-count: + log-count 1 ]
+
+;; ---- a worker: compete for the next job, emit a delta, yield ----------------
+compute: func [i job] [
+    kind: block-at job 0 qty: block-at job 1 price: block-at job 2
+    either = kind 0 [
+        block-set! stock-deltas i qty
+        block-set! cash-deltas i - 0 * qty price
+        block-set! sales-deltas i 0
+    ] [
+    either = kind 1 [
+        block-set! stock-deltas i - 0 qty
+        block-set! cash-deltas i * qty price
+        block-set! sales-deltas i qty
+    ] [
+        block-set! stock-deltas i qty
+        block-set! cash-deltas i - 0 * qty price
+        block-set! sales-deltas i - 0 qty
+    ]]
+]
+
+worker: func [id] [
+    either < next-job 3 [
+        job-idx: next-job
+        job: block-at jobs job-idx
+        next-job: + next-job 1
+        block-set! worker-job - id 1 job-idx
+        log-append 1 log-append id log-append job-idx
+        compute job-idx job
+        log-append 2 log-append id log-append job-idx
+        yield
+        worker id
+    ] [ none ]
+]
+
+;; ---- router: fan the deltas out to the reducers -----------------------------
+route-at: func [i] [
+    either < i 3 [
+        stock: + stock block-at stock-deltas i
+        cash: + cash block-at cash-deltas i
+        sales: + sales block-at sales-deltas i
+        route-at + i 1
+    ] [ none ]
+]
+router: func [] [ route-at 0 ]
+
+;; ---- controls --------------------------------------------------------------
+reset-state: func [] [
+    next-job: 0 log-count: 0 stock: 0 cash: 0 sales: 0
+    stock-deltas: [0 0 0] cash-deltas: [0 0 0] sales-deltas: [0 0 0] worker-job: [0 0 0]
+]
+
+start: func [] [
+    started: 1 reset-tasks reset-state
+    task-a: spawn [ worker 1 ] task-b: spawn [ worker 2 ] task-c: spawn [ worker 3 ]
+    run-tasks router
+    log-append 3 log-append 0 log-append 0
+    log-append 3 log-append 1 log-append 0
+    log-append 3 log-append 2 log-append 0
+]
+
+reset: func [] [ started: 0 reset-tasks reset-state ]
+
+do-start: func [] [ start render-current ]
+do-reset: func [] [ reset render-current ]
+
+;; ---- view ------------------------------------------------------------------
+emit-kind: func [k] [ either = k 0 [ emit-text "BUY" ] [ either = k 1 [ emit-text "SELL" ] [ emit-text "RETURN" ] ] ]
+
+worker-cell: func [i] [
+    emit-text "Worker " emit-int + i 1 emit-text ": "
+    either started [ emit-kind block-at block-at jobs block-at worker-job i 0 emit-text " Tea" ] [ emit-text "idle" ]
+]
+
+draw-flow: func [] [
+    emit-text "<pre class='flow'>pending:  BUY Tea 10    SELL Tea 3    RETURN Tea 1
+workers:  "
+    worker-cell 0 emit-text "     " worker-cell 1 emit-text "     " worker-cell 2
+    emit-text "
+            Router
+Stock:  " emit-int stock
+    emit-text "      Cash:  " emit-int cash
+    emit-text "      Sales:  " emit-int sales
+    emit-text "</pre>"
+]
+
+draw-log: func [i] [ either < i log-count [ draw-log-entry i draw-log + i 3 ] [ none ] ]
+
+draw-log-entry: func [i] [
+    op: block-at log i
+    emit-text "<li>"
+    either = op 1 [
+        emit-text "Task " emit-int block-at log + i 1 emit-text " took "
+        emit-kind block-at block-at jobs block-at log + i 2 0
+        emit-text " Tea"
+    ] [
+    either = op 2 [
+        emit-text "Task " emit-int block-at log + i 1 emit-text " emitted stock "
+        emit-int block-at stock-deltas block-at log + i 2
+        emit-text " / cash " emit-int block-at cash-deltas block-at log + i 2
+        emit-text " / sales " emit-int block-at sales-deltas block-at log + i 2
+    ] [
+        emit-text "Router -> "
+        either = block-at log + i 1 0 [ emit-text "inventory" ]
+        [ either = block-at log + i 1 1 [ emit-text "cash" ] [ emit-text "sales" ] ]
+    ]]
+    emit-text "</li>"
+]
+
 merchant-flow-view: [
-    heading [ emit-text "Julia merchant flow" ]
-    tagline [ emit-text "A Julia Tasks + Channels dataflow demonstration" ]
-    pre [ emit-text "Transaction pool
-      ↓
-anonymous workers
-      ↓
-    router
-    / | \
-stock cash sales" ]
-    subhead [ emit-text "How it works" ]
-    text [ emit-text "Four anonymous workers compete for transactions from a single shared pool; each transaction is consumed exactly once." ]
-    text [ emit-text "One router fans each consequence out to three typed channels — stock, cash, and sales." ]
-    text [ emit-text "Three reducer tasks own the only mutable state, one concern each; they return immutable final totals when their channel closes." ]
-    text [ emit-text "Bounded channels give back-pressure: a slow consumer pauses the whole pipeline, making the flow visible." ]
-    text [ emit-text "Money is integer cents, so the final totals are exact and independent of processing order." ]
-    text [
-        emit-text "Runs under Julia, not the browser. Source: "
-        emit-text "<a href='https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/julia/merchant_flow.jl'>julia/merchant_flow.jl</a>"
-    ]
+    heading [ emit-text "Glon multitasking / dataflow" ]
+    text [ emit-text "Three Glon tasks compete for work; results flow through a router to reducers." ]
+    draw-flow
+    either started [ button [ emit-text "Reset" ] "reset" ] [ button [ emit-text "Start" ] "start" ]
+    emit-text " "
     link [ emit-text "Back to demos" ] "home"
+    subhead [ emit-text "Event log" ]
+    emit-text "<ul class='flow-log'>"
+    draw-log 0
+    emit-text "</ul>"
 ]
 
 render-merchant-flow: func [] [ emit-clear do merchant-flow-view emit-finish ]
+ ]

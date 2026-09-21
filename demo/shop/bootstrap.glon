@@ -36,9 +36,7 @@ mk-string: raw 1 [
 str-eq: raw 2 [
     LIT SCRATCH_B !
     DUP LIT 16 MOD SUB LIT SCRATCH_A !
-    DROP
     LIT SCRATCH_B @ DUP LIT 16 MOD SUB LIT SCRATCH_B !
-    DROP
     LIT SCRATCH_A @ @ LIT SCRATCH_B @ @ EQ ZBRANCH str-eq-neq
     LIT SCRATCH_A @ @ LIT SCRATCH_F !
     LIT 0 LIT SCRATCH_E !
@@ -269,9 +267,9 @@ home-view: [
         load-link [ emit-text "Programmer's guide" ] "guide" "demos/guide.glon"
     ]
     either merchant-flow-loaded [
-        link [ emit-text "Julia merchant flow" ] "merchant-flow"
+        link [ emit-text "Multitasking / dataflow" ] "merchant-flow"
     ] [
-        load-link [ emit-text "Julia merchant flow" ] "merchant-flow" "demos/merchant-flow.glon"
+        load-link [ emit-text "Multitasking / dataflow" ] "merchant-flow" "demos/merchant-flow.glon"
     ]
 ]
 
@@ -332,7 +330,11 @@ route: [
 
 
 
+
+
 do-event: [
     either = current-event 'load-failed [ render-error ]
-    [ either shop-loaded [ do-shop-event ] [ render-current ] ]
+    [ either = current-event 'start [ do-start ]
+      [ either = current-event 'reset [ do-reset ]
+        [ either shop-loaded [ do-shop-event ] [ render-current ] ] ] ]
 ] ]

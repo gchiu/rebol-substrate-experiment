@@ -14,6 +14,7 @@
 
 #include "r0_s1.h"
 #include "r0_s1_g1a.h"
+#include "m1_layout.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -23,7 +24,7 @@ static int failures = 0;
                          else { printf("  FAIL: %s\n", m); failures++; } } while (0)
 
 static char src[65536];
-static char out[8192];
+static char out[65536];
 
 /* strip `;;` line comments, exactly as standalone/glon.c glon_load does */
 static void strip_comments(char *s) {
@@ -49,12 +50,14 @@ static int load_file(const char *path) {
     cell b = r0_s1_parse(src, &err);
     if (err) return -2;
     int N = r0_s1_run_persistent(b);
+    if (!r0_s1_ran_cleanly()) return -4;   /* fail-stop HALT during load */
     return (N < 0) ? -3 : 0;
 }
 
 static const char *route(const char *token) {
     int out_len = 0;
     if (r0_s1_g1a_route(token, out, (int)sizeof out, &out_len) != 0) return NULL;
+    if (!r0_s1_ran_cleanly()) return NULL;   /* fail-stop HALT during route */
     out[out_len] = 0;
     return out;
 }
@@ -62,6 +65,7 @@ static const char *route(const char *token) {
 static const char *event(const char *token) {
     int out_len = 0;
     if (r0_s1_g1a_event(token, out, (int)sizeof out, &out_len) != 0) return NULL;
+    if (!r0_s1_ran_cleanly()) return NULL;   /* fail-stop HALT during event */
     out[out_len] = 0;
     return out;
 }
@@ -69,6 +73,7 @@ static const char *event(const char *token) {
 static const char *event_value(const char *token, const char *value) {
     int out_len = 0;
     if (r0_s1_g1a_event_value(token, value, out, (int)sizeof out, &out_len) != 0) return NULL;
+    if (!r0_s1_ran_cleanly()) return NULL;   /* fail-stop HALT during event */
     out[out_len] = 0;
     return out;
 }
@@ -104,7 +109,15 @@ int run_r0_s1_g1e_tests(void) {
 
     printf("g1e: launcher renders before any demo is loaded\n");
 
-    r0_s1_init();
+    {
+        cell main_entry = r0_s1_init();
+        /* Seed the M1 multitasking environment (the same cells the WASM
+         * glon_init seeds) so the merchant-flow demo's worker tasks can run. */
+        M[M1_MAIN_ENTRY_CELL] = main_entry;
+        M[M1_CURSOR] = 0;
+        for (int i = 0; i < M1_MAX_TASKS; i++)
+            M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
+    }
     CHECK(load_file("demo/shop/bootstrap.glon") == 0, "1: bootstrap loads");
 
     const char *r = route("home");
@@ -133,51 +146,81 @@ int run_r0_s1_g1e_tests(void) {
 
     CHECK(load_file("demo/shop/demos/merchant-flow.glon") == 0, "8: merchant-flow.glon loads");
     r = route("merchant-flow");
-    CHECK(has(r, "Julia merchant flow") && has(r, "merchant_flow.jl"),
-          "9: home -> merchant-flow renders the Julia page + source link");
+    CHECK(has(r, "multitasking") && has(r, "data-glon-event='start'") &&
+          has(r, "Worker 1") && has(r, "Router"),
+          "9: home -> merchant-flow renders the flow graph + Start control");
+
+    printf("g1e: merchant-flow runs three competing tasks with deterministic totals\n");
+
+    r = event("start");
+    CHECK(has(r, "data-glon-event='reset'") &&
+          has(r, "Stock:  8") && has(r, "Cash:  -26") && has(r, "Sales:  2"),
+          "10: Start runs the flow -> stock 8, cash -26, sales 2");
+    CHECK(has(r, "Task 1 took BUY Tea") &&
+          has(r, "Task 2 took SELL Tea") &&
+          has(r, "Task 3 took RETURN Tea"),
+          "11: the event log records which task took which job");
+    CHECK(has(r, "Router -> inventory") &&
+          has(r, "Router -> cash") &&
+          has(r, "Router -> sales"),
+          "12: the event log records the router fan-out");
+
+    r = event("reset");
+    CHECK(has(r, "data-glon-event='start'") &&
+          has(r, "Stock:  0") && !has(r, "Task 1 took"),
+          "13: Reset restores the initial state");
+
+    r = event("start");
+    CHECK(has(r, "Stock:  8") && has(r, "Cash:  -26") && has(r, "Sales:  2"),
+          "14: Start again reproduces the same deterministic totals");
+
+    route("home");
+    r = route("merchant-flow");
+    CHECK(has(r, "data-glon-event='reset'") && has(r, "Stock:  8"),
+          "15: navigating away and back does not corrupt the machine");
 
     printf("g1e: shop basket / events / persistence survive load-on-demand\n");
 
     r = route("products");
     CHECK(has(r, "0 items") && has(r, "data-glon-value='Tea'") && has(r, "data-glon-value='Rice'"),
-          "10: products renders catalogue + empty basket");
+          "16: products renders catalogue + empty basket");
 
     r = event_value("add-product", "Tea");
     CHECK(has(r, "Tea</span><span class='qty'>× 1</span>") && has(r, "1 item"),
-          "11: Add Tea once => Tea x1");
+          "17: Add Tea once => Tea x1");
 
     r = event_value("add-product", "Rice");
     CHECK(has(r, "Tea</span><span class='qty'>× 1</span>") &&
           has(r, "Rice</span><span class='qty'>× 1</span>") && has(r, "2 items"),
-          "12: Add Rice once => Tea x1, Rice x1");
+          "18: Add Rice once => Tea x1, Rice x1");
 
     r = event_value("add-product", "Tea");
     CHECK(has(r, "Tea</span><span class='qty'>× 2</span>") &&
           has(r, "Rice</span><span class='qty'>× 1</span>") && has(r, "3 items"),
-          "13: Add Tea again => Tea x2, Rice x1, 3 items");
+          "19: Add Tea again => Tea x2, Rice x1, 3 items");
 
     route("home");
     r = route("products");
     CHECK(has(r, "Tea</span><span class='qty'>× 2</span>") &&
           has(r, "Rice</span><span class='qty'>× 1</span>") && has(r, "3 items"),
-          "14: basket survives navigation away and back");
+          "20: basket survives navigation away and back");
 
     r = event_value("search", "green tea");
-    CHECK(has(r, "Search: green tea"), "15: search still works");
+    CHECK(has(r, "Search: green tea"), "21: search still works");
 
     printf("g1e: loaded STRING!/blocks/functions survive source-buffer reuse\n");
     /* `src` has been overwritten by guide.glon and merchant-flow.glon since
      * shop.glon was loaded; the shop's strings/blocks/closures must still be
      * intact (they were copied out of the source buffer at load time). */
     r = route("products");
-    CHECK(has(r, "Glon Shop") || has(r, "Products"), "16: shop view intact after later loads");
+    CHECK(has(r, "Glon Shop") || has(r, "Products"), "22: shop view intact after later loads");
     r = route("shop");
-    CHECK(has(r, "Glon Shop"), "17: shop landing still renders after later loads");
+    CHECK(has(r, "Glon Shop"), "23: shop landing still renders after later loads");
 
     printf("g1e: failures and unknown routes are controlled\n");
-    CHECK(has(route("definitely-unknown"), "Not found"), "18: unknown route still works");
+    CHECK(has(route("definitely-unknown"), "Not found"), "24: unknown route still works");
     r = event("load-failed");
-    CHECK(has(r, "Load failed"), "19: load-failed event renders a controlled error");
+    CHECK(has(r, "Load failed"), "25: load-failed event renders a controlled error");
 
     return failures;
 }

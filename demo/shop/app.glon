@@ -39,9 +39,9 @@ home-view: [
         load-link [ emit-text "Programmer's guide" ] "guide" "demos/guide.glon"
     ]
     either merchant-flow-loaded [
-        link [ emit-text "Julia merchant flow" ] "merchant-flow"
+        link [ emit-text "Multitasking / dataflow" ] "merchant-flow"
     ] [
-        load-link [ emit-text "Julia merchant flow" ] "merchant-flow" "demos/merchant-flow.glon"
+        load-link [ emit-text "Multitasking / dataflow" ] "merchant-flow" "demos/merchant-flow.glon"
     ]
 ]
 
@@ -99,10 +99,14 @@ route: [
 ]
 
 ;; ---- events (delegate to the loaded demo, or fall back) --------------------
-;; The shop owns add-product/search (see demos/shop.glon do-shop-event). A
-;; generic load-failed event lets the host report a fetch failure without
-;; knowing anything about the application.
+;; The shop owns add-product/search (demos/shop.glon do-shop-event); the
+;; merchant-flow demo owns start/reset (demos/merchant-flow.glon do-start /
+;; do-reset). A generic load-failed event reports a fetch failure. Each handler
+;; is only referenced under its own event token, so it is only dereferenced
+;; once its demo has loaded.
 do-event: [
     either = current-event 'load-failed [ render-error ]
-    [ either shop-loaded [ do-shop-event ] [ render-current ] ]
+    [ either = current-event 'start [ do-start ]
+      [ either = current-event 'reset [ do-reset ]
+        [ either shop-loaded [ do-shop-event ] [ render-current ] ] ] ]
 ]

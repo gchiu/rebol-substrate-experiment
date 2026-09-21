@@ -23,6 +23,7 @@ static const char *syms[256];            /* interner: sym_id -> spelling */
 static int nsyms;
 static cell global_ctx;                  /* tagged CONTEXT value */
 static cell main_entry;                  /* top-level S1 entry point */
+static cell main_halt_ip;                /* REG_IP value after a NORMAL run */
 static int g_seed_datatypes;             /* M3: enable bootstrap heap seeding */
 
 /* instrumentation */
@@ -830,6 +831,13 @@ static void emit_mark_value(void) {
     e_cell(GC_T2); asm_lit(T_BLOCK); asm_host(HOST_EQ);
     cell j_nb = asm_zbranch_fwd();                        /* not BLOCK -> skip */
     asm_lit(T_BLOCK); asm_host(HOST_SUB); e_setc(GC_T1);   /* p = v - T_BLOCK */
+    /* G1 permanent emit buffer (G1_OUT): a loader-style byte-list block below
+     * the managed heap whose cells are all tagged ints (rendered bytes), so it
+     * is an opaque leaf with no collected children. Exact, not a range check. */
+    e_cell(GC_T1); asm_lit(G1_OUT); asm_host(HOST_EQ);
+    cell j_g1out = asm_zbranch_fwd();
+    asm_exit();                                          /* permanent emit buffer */
+    asm_patch_here(j_g1out);
     /* p < GC_HEAP_BASE -> corrupt */
     e_cell(GC_T1); asm_lit(GC_HEAP_BASE); asm_host(HOST_GE);
     cell j_below = asm_zbranch_fwd();
@@ -927,14 +935,27 @@ static void emit_collect(void) {
      * points at it), so no separate meta root is needed. */
     asm_lit(BUILTIN_BASE); asm_lit(BUILTIN_BASE + 16); asm_call(r_scan_values);
 
-    /* active world DS/RS (main world vs a running task, by SP) */
-    e_cell(GC_C1); asm_lit(R0S1_DS_INIT); asm_host(HOST_GT); /* SP0 > DS_INIT? */
-    cell j_main_world = asm_zbranch_fwd();
-    /* a task is running: its DS/RS (index derived from SP) + scheduler world */
+    /* active world DS/RS. Classify SP0 into a VALID region rather than a
+     * heuristic: SP0 <= DS_INIT => main world; SP0 inside a task's DS region
+     * => that task (+ its scheduler world); anything else is fail-stop
+     * corruption. This guarantees the task slot is never negative and never
+     * derived from arbitrary SP arithmetic. */
+    e_cell(GC_C1); asm_lit(R0S1_DS_INIT); asm_host(HOST_GT);   /* SP0 > DS_INIT -> task? */
+    cell j_main_world = asm_zbranch_fwd();                      /* else (SP0 <= DS_INIT) -> main */
+    /* task? SP0 in [M1_ARENA_BASE, M1_ARENA_BASE + M1_MAX_TASKS*M1_TASK_CELLS) */
+    e_cell(GC_C1); asm_lit(M1_ARENA_BASE); asm_host(HOST_GE);
+    cell j_bad_sp = asm_zbranch_fwd();                          /* below arena -> corrupt */
+    e_cell(GC_C1); asm_lit(M1_ARENA_BASE + M1_MAX_TASKS * M1_TASK_CELLS); asm_host(HOST_LT);
+    cell j_bad_sp2 = asm_zbranch_fwd();                         /* at/above arena end -> corrupt */
+    /* slot = (SP0 - base) / cells  (0 <= slot < M1_MAX_TASKS by the range above) */
     e_cell(GC_C1); asm_lit(M1_ARENA_BASE); asm_host(HOST_SUB);
-    asm_lit(M1_TASK_CELLS); asm_host(HOST_DIV); e_setc(GC_C3);       /* i */
+    asm_lit(M1_TASK_CELLS); asm_host(HOST_DIV); e_setc(GC_C3);  /* slot */
     e_cell(GC_C3); asm_lit(M1_TASK_CELLS); asm_host(HOST_MUL);
-    asm_lit(M1_ARENA_BASE); asm_host(HOST_ADD); e_setc(GC_C4);       /* arena base */
+    asm_lit(M1_ARENA_BASE); asm_host(HOST_ADD); e_setc(GC_C4);  /* arena base */
+    /* SP0 must lie inside the task's DS region [base, base+M1_DS_OFF] */
+    e_cell(GC_C1); e_cell(GC_C4); asm_lit(M1_DS_OFF); asm_host(HOST_ADD); asm_host(HOST_LE);
+    cell j_bad_sp3 = asm_zbranch_fwd();                         /* in RS/out of DS region -> corrupt */
+    /* a task is running: its DS/RS + scheduler world */
     e_cell(GC_C1); e_cell(GC_C4); asm_lit(M1_DS_OFF); asm_host(HOST_ADD); asm_call(r_scan_values);
     e_cell(GC_C2); e_cell(GC_C4); asm_lit(M1_RS_OFF); asm_host(HOST_ADD); asm_call(r_scan_closures);
     e_cell(M1_SCHED_REC + 1); asm_lit(R0S1_DS_INIT); asm_call(r_scan_values);
@@ -944,7 +965,13 @@ static void emit_collect(void) {
     /* main world: standard DS/RS */
     e_cell(GC_C1); asm_lit(R0S1_DS_INIT); asm_call(r_scan_values);
     e_cell(GC_C2); asm_lit(R0S1_RS_INIT); asm_call(r_scan_closures);
+    cell fw_main_done = asm_branch_fwd();
+    asm_patch_here(j_bad_sp3);
+    asm_patch_here(j_bad_sp2);
+    asm_patch_here(j_bad_sp);
+    asm_host(HOST_DUMP); asm_halt();                            /* invalid/corrupt SP */
     asm_patch_here(fw_active_done);
+    asm_patch_here(fw_main_done);
 
     /* every task record (saved tasks are roots) */
     asm_lit(0); e_setc(GC_C3);
@@ -2193,6 +2220,7 @@ static void emit_block_eval(void) {
 static void emit_main(void) {
     main_entry = asm_here();
     asm_call(r_block_eval);
+    main_halt_ip = asm_here() + 1;      /* OP_HALT at asm_here(); IP lands here+1 */
     asm_halt();
 }
 
@@ -2455,6 +2483,7 @@ cell r0_s1_result(int i, int N) {
 
 cell r0_s1_ip_start(void) { return ip_start; }
 cell r0_s1_ip_end(void)   { return ip_end; }
+int  r0_s1_ran_cleanly(void){ return ip_end == main_halt_ip; }
 cell r0_s1_sp_start(void) { return sp_start; }
 cell r0_s1_sp_end(void)   { return sp_end; }
 cell r0_s1_rp_start(void) { return rp_start; }
