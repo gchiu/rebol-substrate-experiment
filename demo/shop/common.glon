@@ -14,7 +14,7 @@
 ;; and copies the bytes. Uses the safe scratch cells (A/B/C/F) so it never
 ;; collides with SCRATCH_E (the live output length used by emit-byte/emit-text),
 ;; which lets quoted literals build strings inline during a render.
-mk-string: raw 1 [
+mk-string: masm 1 [
     DUP LIT 16 MOD SUB LIT SCRATCH_B !
     LIT SCRATCH_B @ @ LIT SCRATCH_F !
     LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
@@ -33,7 +33,7 @@ mk-string: raw 1 [
 
 ;; str-eq: ( string! string! -> 1|0 ). Content equality as a flat RAW loop
 ;; (avoids per-byte GLON recursion).
-str-eq: raw 2 [
+str-eq: masm 2 [
     LIT SCRATCH_B !
     DUP LIT 16 MOD SUB LIT SCRATCH_A !
     LIT SCRATCH_B @ DUP LIT 16 MOD SUB LIT SCRATCH_B !
@@ -54,7 +54,7 @@ str-eq: raw 2 [
 ]
 
 ;; get: ( word -> value ). Look up a word in the current context.
-get: raw 1 [ CALL lookup ARITY 1 EXIT ]
+get: masm 1 [ CALL lookup ARITY 1 EXIT ]
 ;; demo/shop/common.glon (was g1b.glon) -- the G1B SPA view dialect (library).
 ;;
 ;; This is the smallest dialect that makes a persistent SPA read as a Rebol
@@ -80,26 +80,26 @@ get: raw 1 [ CALL lookup ARITY 1 EXIT ]
 ;; new S1 primitive, no native id, and no evaluator change.
 
 ;; ---- view dialect (was g1b.glon) -----------------------------------------
-emit-clear: raw [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
-emit-byte: raw 1 [
+emit-clear: masm [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
+emit-byte: masm 1 [
     LIT SCRATCH_E @ LIT G1_OUT_DATA ADD !
     LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
     ARITY 0 EXIT
 ]
-emit-finish: raw [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
+emit-finish: masm [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
 
 ;; ---- canvas visual-script output (generic; the browser host draws it) ------
 ;; The same byte-output idea as emit-*, but into G1_VIS (read by the host as a
 ;; generic visual script). SCRATCH_D is the live visual length. Commands are
 ;; newline-terminated: B x y w h label / L x1 y1 x2 y2 / T x y label /
 ;; D id x y / M id x1 y1 x2 y2. Nothing here names a worker/reducer decision.
-vis-clear: raw [ LIT 0 LIT SCRATCH_D ! ARITY 0 EXIT ]
-vis-byte: raw 1 [
+vis-clear: masm [ LIT 0 LIT SCRATCH_D ! ARITY 0 EXIT ]
+vis-byte: masm 1 [
     LIT SCRATCH_D @ LIT G1_VIS_DATA ADD !
     LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
     ARITY 0 EXIT
 ]
-vis-text: raw 1 [
+vis-text: masm 1 [
     DUP LIT 16 MOD SUB LIT SCRATCH_B !
     LIT 0 LIT SCRATCH_A !
     LIT SCRATCH_B @ @ LIT SCRATCH_F !
@@ -114,7 +114,7 @@ vis-text: raw 1 [
   vis-text-done:
     ARITY 0 EXIT
 ]
-vis-finish: raw [ LIT SCRATCH_D @ LIT G1_VIS ! LIT G1_VIS LIT T_BLOCK ADD ARITY 1 EXIT ]
+vis-finish: masm [ LIT SCRATCH_D @ LIT G1_VIS ! LIT G1_VIS LIT T_BLOCK ADD ARITY 1 EXIT ]
 vis-int: func [n] [ either < n 0 [ vis-byte 45 vis-digits - 0 n ] [ vis-digits n ] ]
 vis-digits: func [n] [
     either > n 9 [ vis-digits / n 10 ] [ none ]
@@ -128,8 +128,8 @@ vis-dot:  func [id x y] [ vis-byte 68 vis-byte 32 vis-int id vis-byte 32 vis-int
 vis-move: func [id x1 y1 x2 y2] [ vis-byte 77 vis-byte 32 vis-int id vis-byte 32 vis-int x1 vis-byte 32 vis-int y1 vis-byte 32 vis-int x2 vis-byte 32 vis-int y2 vis-byte 10 ]
 
 ;; ---- loader-block primitives (RAW) ----------------------------------------
-block-len: raw 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
-block-at: raw 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ]
+block-len: masm 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
+block-at: masm 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ]
 
 ;; ---- general table lookup (Rebol-family select) ---------------------------
 ;; select rows key: return the first row whose FIRST element equals key, or NONE.
@@ -154,7 +154,7 @@ emit-digits: func [n] [
 ;; Scratch cells: A (index), B (string ptr), F (length) are all above RS_INIT;
 ;; E is the shared output length. The string payload is [len, b0..bN-1] with a
 ;; raw byte (0..255) per cell, so each byte is re-tagged (x16) for G1_OUT.
-emit-text: raw 1 [
+emit-text: masm 1 [
     DUP LIT 16 MOD SUB LIT SCRATCH_B !
     LIT 0 LIT SCRATCH_A !
     LIT SCRATCH_B @ @ LIT SCRATCH_F !

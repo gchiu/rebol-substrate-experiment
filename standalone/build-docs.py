@@ -6,7 +6,7 @@ Mirrors web/build-docs.py (W1.1): the two logical sections of app.glon are
 marked with line comments
 
     ;; @section application
-    ;; @section raw
+    ;; @section masm
 
 and are HTML-escaped into static <pre><code> listings.  The FULL app.glon
 source is also inlined into a <script type="application/glon"> block so that
@@ -32,10 +32,10 @@ def read_sections(path):
         s = line.strip()
         if s.startswith(";; @section "):
             markers[s[len(";; @section "):].strip()] = i
-    if "application" not in markers or "raw" not in markers:
+    if "application" not in markers or "masm" not in markers:
         sys.exit("build-docs: missing @section markers in app.glon")
-    app = lines[markers["application"] + 1: markers["raw"]]
-    raw = lines[markers["raw"] + 1:]
+    app = lines[markers["application"] + 1: markers["masm"]]
+    raw = lines[markers["masm"] + 1:]
     # drop the single trailing outer-block "]" line (the file closes the RAW
     # fragment's own block, then the outer block)
     if raw and raw[-1].strip() == "]":
@@ -104,8 +104,8 @@ def main():
   {app}
 
   <details>
-    <summary>Show low-level RAW/S1 host adapter</summary>
-    <p class="muted">RAW is R0&rsquo;s trapdoor to the tiny Forth-like S1
+    <summary>Show low-level MASM/S1 host adapter</summary>
+    <p class="muted">MASM is R0&rsquo;s macroassembler over the tiny Forth-like S1
        substrate. Application code normally stays above this layer.</p>
     {raw}
   </details>

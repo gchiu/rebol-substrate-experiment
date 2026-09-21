@@ -40,10 +40,10 @@ increment: [
 ]</code></pre>
 
   <details>
-    <summary>Show low-level RAW/S1 host adapter</summary>
-    <p class="muted">RAW is R0&rsquo;s trapdoor to the tiny Forth-like S1
+    <summary>Show low-level MASM/S1 host adapter</summary>
+    <p class="muted">MASM is R0&rsquo;s macroassembler over the tiny Forth-like S1
        substrate. Application code normally stays above this layer.</p>
-    <pre><code>web-set-int: raw 2 [
+    <pre><code>web-set-int: masm 2 [
     LIT 16 DIV
     &gt;R
     LIT 16 DIV
@@ -175,7 +175,7 @@ increment: [
   <!-- the authoritative source, inlined for glon.js to pass to glon_load -->
   <script type="application/glon">;; standalone/app.glon -- the R0/GLON application (authoritative source).
 ;;
-;; The `;; @section application` / `;; @section raw` markers are ordinary line
+;; The `;; @section application` / `;; @section masm` markers are ordinary line
 ;; comments (stripped by the reader before parsing).  `standalone/glon.js`
 ;; reads this file's contents at build/publish time to populate the demo and
 ;; the static docs, exactly like web/demo.r0 + web/build-docs.py do in W1.1.
@@ -183,7 +183,7 @@ increment: [
 ;; The counter STATE and the increment LOGIC live entirely in R0.  Each click
 ;; runs `do increment`; that increments the counter and asks the browser to
 ;; update the DOM through the small `web-set-int` host adapter (a first-class
-;; RAW S1 fragment, the same technique used for web/demo.r0).
+;; MASM S1 fragment, the same technique used for web/demo.r0).
 
 [
 ;; @section application
@@ -194,8 +194,8 @@ increment: [
     web-set-int 1 counter
 ]
 
-;; @section raw
-web-set-int: raw 2 [
+;; @section masm
+web-set-int: masm 2 [
     LIT 16 DIV
     >R
     LIT 16 DIV

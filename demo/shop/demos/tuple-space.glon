@@ -1,4 +1,4 @@
-[ mnew-task: raw 3 [
+[ mnew-task: masm 3 [
     LIT 25026 !
     LIT 25025 !
     DUP LIT 16 MOD SUB LIT 25024 !
@@ -31,7 +31,7 @@
     LIT 0 LIT 25028 @ LIT 8 ADD !
     LIT 25028 @ LIT 16 MUL ARITY 1 EXIT
 ]
- yield: raw [
+ yield: masm [
     NONE LIT 16
     LIT REG_RP @ @ LIT 25011 @ LIT 0 ADD !
     LIT REG_SP @ LIT 25011 @ LIT 1 ADD !
@@ -50,7 +50,7 @@
     LIT 25012 LIT 7 ADD @ LIT RV_FRAME !
     LIT 25012 LIT 0 ADD @ LIT REG_IP !
 ]
- task-finish: raw [
+ task-finish: masm [
     LIT 1 LIT 25011 @ LIT 8 ADD !
     LIT 25012 LIT 1 ADD @ LIT REG_SP !
     LIT 25012 LIT 2 ADD @ LIT REG_RP !
@@ -61,7 +61,7 @@
     LIT 25012 LIT 7 ADD @ LIT RV_FRAME !
     LIT 25012 LIT 0 ADD @ LIT REG_IP !
 ]
- run-tasks: raw [
+ run-tasks: masm [
     LIT REG_IP @ LIT 11 ADD LIT 25012 LIT 0 ADD !
     LIT REG_SP @ LIT 25012 LIT 1 ADD !
     LIT REG_RP @ LIT 25012 LIT 2 ADD !
@@ -94,7 +94,7 @@
     LIT 25011 @ LIT 7 ADD @ LIT RV_FRAME !
     LIT 25011 @ LIT 0 ADD @ LIT REG_IP !
 ]
-  reset-tasks: raw [
+  reset-tasks: masm [
     LIT 0 LIT 25027 !
   Rloop:
     LIT 25027 @ LIT 3 LT ZBRANCH Rdone
@@ -119,10 +119,10 @@
 
 tuple-space-loaded: 1
 
-block-set!: raw 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
+block-set!: masm 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
 
 ;; zero every element of a mutable block in place (reset helper)
-block-zero!: raw 1 [
+block-zero!: masm 1 [
     DUP LIT 16 MOD SUB LIT SCRATCH_A !
     LIT SCRATCH_A @ @ LIT SCRATCH_F !
     LIT 0 LIT SCRATCH_E !
@@ -136,7 +136,7 @@ block-zero!: raw 1 [
 ]
 
 ;; i mod 3, tagged (0,1,2 -> mk_int 0,1,2): reducer fan-out position for a tuple
-mod3: raw 1 [ LIT 3 MOD LIT 16 MUL ARITY 1 EXIT ]
+mod3: masm 1 [ LIT 3 MOD LIT 16 MUL ARITY 1 EXIT ]
 
 ;; ---- the transaction space (a shared tuple space) ---------------------------
 ;; one BUY / SELL / RETURN Tea cycle [kind qty price] (0=buy 1=sell 2=return),

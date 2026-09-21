@@ -83,7 +83,8 @@ enum {
 
 /* reserved symbol id: "func" is interned first, so mk_word(0) == the `func`
  * keyword. "return" is interned second, so mk_word(1) == the `return`
- * keyword. "raw" is interned third, so mk_word(2) == the `raw` keyword. */
+ * keyword. "raw" (the legacy MASM spelling) is interned third, so
+ * mk_word(2) == the `raw` keyword. */
 #define FUNC_SYM 0
 #define RETURN_SYM 1
 #define RAW_SYM 2

@@ -176,11 +176,14 @@ static cell parse_word(parser_t *P) {
 static cell parse_form(parser_t *P);
 static cell emit_call_fwd(void);   /* forward decl (defined in the emitter section) */
 
-/* ==================== RAW assembler (loader/toolchain) ====================
+/* ================= MASM: S1 macroassembler (loader/toolchain) ==============
  * Translates symbolic S1 assembly (mnemonics + operands + labels) into S1
  * cells. This is pure toolchain: it knows the frozen opcodes and a few
  * derived conveniences, and knows NOTHING about R0 control constructs
- * (break/throw or any reified control effect). */
+ * (break/throw or any reified control effect).
+ *
+ * The Glon source spelling is `masm [...]`; `raw` is the legacy alias for the
+ * same path (the internal C identifiers below still say "raw"). */
 
 /* Symbolic ABI: user-facing names for memory cells and frame offsets,
  * resolved to numbers at assembly time. This is tooling only — the assembler
@@ -385,7 +388,10 @@ static cell parse_block(parser_t *P) {
                 lex_pop();
                 continue;
             }
-            if (len == 3 && strncmp(P->s + start, "raw", 3) == 0) {
+            /* `masm` (canonical) and `raw` (compatibility alias) both enter the
+             * same S1 macroassembler path; nothing below differs. */
+            if ((len == 3 && strncmp(P->s + start, "raw", 3) == 0) ||
+                (len == 4 && strncmp(P->s + start, "masm", 4) == 0)) {
                 int arity = 0;
                 /* optional integer arity before the assembly block */
                 int save = P->pos;

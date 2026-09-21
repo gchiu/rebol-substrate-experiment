@@ -1,6 +1,6 @@
 ;; standalone/app.glon -- the R0/GLON application (authoritative source).
 ;;
-;; The `;; @section application` / `;; @section raw` markers are ordinary line
+;; The `;; @section application` / `;; @section masm` markers are ordinary line
 ;; comments (stripped by the reader before parsing).  `standalone/glon.js`
 ;; reads this file's contents at build/publish time to populate the demo and
 ;; the static docs, exactly like web/demo.r0 + web/build-docs.py do in W1.1.
@@ -8,7 +8,7 @@
 ;; The counter STATE and the increment LOGIC live entirely in R0.  Each click
 ;; runs `do increment`; that increments the counter and asks the browser to
 ;; update the DOM through the small `web-set-int` host adapter (a first-class
-;; RAW S1 fragment, the same technique used for web/demo.r0).
+;; MASM S1 fragment, the same technique used for web/demo.r0).
 
 [
 ;; @section application
@@ -19,8 +19,8 @@ increment: [
     web-set-int 1 counter
 ]
 
-;; @section raw
-web-set-int: raw 2 [
+;; @section masm
+web-set-int: masm 2 [
     LIT 16 DIV
     >R
     LIT 16 DIV
