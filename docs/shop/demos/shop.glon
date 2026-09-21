@@ -48,8 +48,8 @@ basket: func [] [
 shop-view: [
     heading [ emit-text "Glon Shop" ]
     tagline [ emit-text "A tiny GLON storefront" ]
-    link [ emit-text "View products" ] "products"
-    link [ emit-text "Back to demos" ] "home"
+    link "View products" "products"
+    link "Back to demos" "home"
 ]
 
 products-view: [
@@ -64,7 +64,7 @@ products-view: [
     meta [ emit-text "Products page visits: " emit-int visit-count ]
     emit-text panel-close
     basket
-    link [ emit-text "Back to shop" ] "shop"
+    link "Back to shop" "shop"
 ]
 
 ;; ---- rendering -------------------------------------------------------------

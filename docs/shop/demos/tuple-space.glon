@@ -332,7 +332,7 @@ tuple-space-view: [
     emit-text "<canvas id='glon-canvas' width='1000' height='620'></canvas>"
     either started [ button [ emit-text "Reset" ] "space-reset" ] [ button [ emit-text "Run" ] "run" ]
     emit-text " "
-    link [ emit-text "Back to demos" ] "home"
+    link "Back to demos" "home"
     subhead [ emit-text "Event log" ]
     emit-text "<ul class='flow-log'>"
     draw-log 0

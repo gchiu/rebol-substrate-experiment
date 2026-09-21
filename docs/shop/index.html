@@ -142,6 +142,17 @@ block-len: raw 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
 block-at: raw 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ]
 
 
+
+
+
+select: func [rows key] [ select-at rows 0 block-len rows key ]
+select-at: func [rows i n key] [
+    either < i n [
+        either = block-at block-at rows i 0 key [ block-at rows i ] [ select-at rows + i 1 n key ]
+    ] [ none ]
+]
+
+
 emit-int: func [n] [ either < n 0 [ emit-byte 45 emit-digits - 0 n ] [ emit-digits n ] ]
 emit-digits: func [n] [
     either > n 9 [ emit-digits / n 10 ] [ none ]
@@ -230,18 +241,18 @@ text:    wrap p-open p-close
 tagline: wrap tagline-open tagline-close
 meta:    wrap meta-open meta-close
 pre:     wrap pre-open pre-close
-link:    func [content route] [
+link:    func [label route] [
     emit-text nav-open
-    emit-text btn-open emit-text route emit-text btn-mid do content emit-text btn-close
+    emit-text btn-open emit-text route emit-text btn-mid emit-text label emit-text btn-close
     emit-text nav-close
 ]
 
 
 
-load-link: func [content route path] [
+load-link: func [label route path] [
     emit-text nav-open
     emit-text load-btn-open emit-text route emit-text load-btn-mid emit-text path emit-text btn-mid
-    do content emit-text btn-close
+    emit-text label emit-text btn-close
     emit-text nav-close
 ]
 
@@ -297,53 +308,65 @@ emit-product-at: func [items i n] [
 
 
 
+
+
+
+
 shop-loaded: 0
 guide-loaded: 0
 merchant-flow-loaded: 0
 tuple-space-loaded: 0
+always: 1          
+
+
+
+shop-route: "shop"  shop-label: "Shop SPA"  shop-path: "demos/shop.glon"
+guide-route: "guide"  guide-label: "Programmer's guide"  guide-path: "demos/guide.glon"
+mf-route: "merchant-flow"  mf-label: "Multitasking / dataflow"  mf-path: "demos/merchant-flow.glon"
+ts-route: "tuple-space"  ts-label: "Tuple space / dataflow"  ts-path: "demos/tuple-space.glon"
+
+demos: [
+    [shop-loaded          shop-route shop-label shop-path]
+    [guide-loaded         guide-route guide-label guide-path]
+    [merchant-flow-loaded mf-route   mf-label   mf-path]
+    [tuple-space-loaded   ts-route   ts-label   ts-path]
+]
 
 
 home-view: [
     heading [ emit-text "Glon Demos" ]
     tagline [ emit-text "Small applications running in Glon" ]
-    either shop-loaded [
-        link [ emit-text "Shop SPA" ] "shop"
-    ] [
-        load-link [ emit-text "Shop SPA" ] "shop" "demos/shop.glon"
-    ]
-    either guide-loaded [
-        link [ emit-text "Programmer's guide" ] "guide"
-    ] [
-        load-link [ emit-text "Programmer's guide" ] "guide" "demos/guide.glon"
-    ]
-    either merchant-flow-loaded [
-        link [ emit-text "Multitasking / dataflow" ] "merchant-flow"
-    ] [
-        load-link [ emit-text "Multitasking / dataflow" ] "merchant-flow" "demos/merchant-flow.glon"
-    ]
-    either tuple-space-loaded [
-        link [ emit-text "Tuple space / dataflow" ] "tuple-space"
-    ] [
-        load-link [ emit-text "Tuple space / dataflow" ] "tuple-space" "demos/tuple-space.glon"
-    ]
+    each-demo 0 block-len demos
+]
+
+each-demo: func [i n] [
+    either < i n [
+        row: block-at demos i
+        either get block-at row 0 [
+            link get block-at row 2 get block-at row 1
+        ] [
+            load-link get block-at row 2 get block-at row 1 get block-at row 3
+        ]
+        each-demo + i 1 n
+    ] [ none ]
 ]
 
 
 not-found-view: [
     heading [ emit-text "Not found" ]
-    link [ emit-text "Back to demos" ] "home"
+    link "Back to demos" "home"
 ]
 
 loading-view: [
     heading [ emit-text "Loading…" ]
     text [ emit-text "Loading the selected demo…" ]
-    link [ emit-text "Back to demos" ] "home"
+    link "Back to demos" "home"
 ]
 
 error-view: [
     heading [ emit-text "Load failed" ]
     text [ emit-text "The selected demo could not be loaded." ]
-    link [ emit-text "Back to demos" ] "home"
+    link "Back to demos" "home"
 ]
 
 
@@ -356,24 +379,22 @@ render-not-found: func [] [ emit-clear do not-found-view emit-finish ]
 render-loading:   func [] [ emit-clear do loading-view emit-finish ]
 render-error:     func [] [ emit-clear do error-view emit-finish ]
 
+
+
+routes: [
+    ['home          always               [render-home]]
+    ['shop          shop-loaded          [render-shop]]
+    ['products      shop-loaded          [render-products]]
+    ['guide         guide-loaded         [render-guide]]
+    ['merchant-flow merchant-flow-loaded [render-merchant-flow]]
+    ['tuple-space   tuple-space-loaded   [render-tuple-space]]
+]
+
 render-current: func [] [
-    either = current-route 'shop [
-        either shop-loaded [ render-shop ] [ render-loading ]
-    ] [
-    either = current-route 'products [
-        either shop-loaded [ render-products ] [ render-loading ]
-    ] [
-    either = current-route 'guide [
-        either guide-loaded [ render-guide ] [ render-loading ]
-    ] [
-    either = current-route 'merchant-flow [
-        either merchant-flow-loaded [ render-merchant-flow ] [ render-loading ]
-    ] [
-    either = current-route 'tuple-space [
-        either tuple-space-loaded [ render-tuple-space ] [ render-loading ]
-    ] [
-    either = current-route 'home [ render-home ] [ render-not-found ]
-    ]]]]]
+    route-row: select routes current-route
+    either route-row [
+        either get block-at route-row 1 [ do block-at route-row 2 ] [ render-loading ]
+    ] [ render-not-found ]
 ]
 
 
@@ -386,17 +407,21 @@ route: [
 
 
 
-
-
-
+events: [
+    ['load-failed   [render-error]]
+    ['start         [do-start]]
+    ['reset         [do-reset]]
+    ['run           [do-space-run]]
+    ['space-reset   [do-space-reset]]
+]
 
 do-event: [
-    either = current-event 'load-failed [ render-error ]
-    [ either = current-event 'start [ do-start ]
-      [ either = current-event 'reset [ do-reset ]
-        [ either = current-event 'run [ do-space-run ]
-          [ either = current-event 'space-reset [ do-space-reset ]
-            [ either shop-loaded [ do-shop-event ] [ render-current ] ] ] ] ] ]
+    event-row: select events current-event
+    either event-row [
+        do block-at event-row 1
+    ] [
+        either shop-loaded [ do-shop-event ] [ render-current ]
+    ]
 ] ]</script>
 <script src="host.js"></script>
 </body>
