@@ -108,25 +108,28 @@
  spawn: func [body] [ mnew-task body 'do 'task-finish ]
 
 
-;; demo/shop/demos/merchant-flow.glon -- a real Glon multitasking + dataflow demo.
+;; demo/shop/demos/tuple-space.glon -- a Glon tuple-space / dataflow demo.
 ;;
-;; Three Glon worker tasks compete for a shared pool of merchant transactions
-;; (BUY / SELL / RETURN). Each worker takes the next job, computes the
-;; stock/cash/sales deltas, appends a result, and yields -- real cooperative
-;; M1 multitasking, not three boxes drawn by one task. A router then fans the
-;; accumulated deltas out to three reducers. The final totals are deterministic
-;; regardless of which worker takes which job.
+;; A shared transaction space holds three trivial tuples (BUY / SELL / RETURN
+;; Tea). Three Glon worker tasks consume tuples from the space under real M1
+;; cooperative multitasking, compute stock/cash/sales deltas, and yield. A
+;; router then fans the accumulated deltas to the three reducers. The final
+;; totals are deterministic regardless of which worker consumes which tuple.
 
-merchant-flow-loaded: 1
+tuple-space-loaded: 1
 
 block-set!: raw 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
-;; ---- data ------------------------------------------------------------------
-jobs: [ [0 10 4] [1 3 7] [2 1 7] ]       ;; [kind qty price] 0=buy 1=sell 2=return
-next-job: 0
+
+;; ---- the transaction space (a shared tuple space) ---------------------------
+space: [ [0 10 4] [1 3 7] [2 1 7] ]       ;; [kind qty price] 0=buy 1=sell 2=return
+space-cursor: 0                            ;; next tuple to consume
+space-taken-by: [0 0 0]                    ;; which worker consumed each tuple
+worker-job: [0 0 0]                        ;; which tuple each worker is processing
+
+;; ---- reducers ---------------------------------------------------------------
 stock-deltas: [0 0 0]
 cash-deltas: [0 0 0]
 sales-deltas: [0 0 0]
-worker-job: [0 0 0]
 stock: 0
 cash: 0
 sales: 0
@@ -134,10 +137,9 @@ started: 0
 log: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
 log-count: 0
 
-;; ---- helpers ---------------------------------------------------------------
 log-append: func [v] [ block-set! log log-count v log-count: + log-count 1 ]
 
-;; ---- a worker: compete for the next job, emit a delta, yield ----------------
+;; ---- a worker: consume the next tuple from the space, emit a delta, yield ----
 compute: func [i job] [
     kind: block-at job 0 qty: block-at job 1 price: block-at job 2
     either = kind 0 [
@@ -157,10 +159,11 @@ compute: func [i job] [
 ]
 
 worker: func [id] [
-    either < next-job 3 [
-        job-idx: next-job
-        job: block-at jobs job-idx
-        next-job: + next-job 1
+    either < space-cursor 3 [
+        job-idx: space-cursor
+        job: block-at space job-idx
+        space-cursor: + space-cursor 1
+        block-set! space-taken-by job-idx id
         block-set! worker-job - id 1 job-idx
         log-append 1 log-append id log-append job-idx
         compute job-idx job
@@ -182,15 +185,16 @@ route-at: func [i] [
 router: func [] [ route-at 0 ]
 
 ;; ---- controls --------------------------------------------------------------
-;; The delta / worker-job blocks are mutable (block-set! writes their elements
-;; in place), so "reset" must zero the elements rather than rebind to a block
-;; literal -- a literal is a single shared loader block that a previous run has
-;; already mutated.
+;; The delta / taken-by / worker-job blocks are mutable (block-set! writes their
+;; elements in place), so "reset" must zero the elements rather than rebind to a
+;; block literal -- a literal is a single shared loader block that a previous run
+;; has already mutated.
 reset-state: func [] [
-    next-job: 0 log-count: 0 stock: 0 cash: 0 sales: 0
+    space-cursor: 0 log-count: 0 stock: 0 cash: 0 sales: 0
     block-set! stock-deltas 0 0 block-set! stock-deltas 1 0 block-set! stock-deltas 2 0
     block-set! cash-deltas 0 0 block-set! cash-deltas 1 0 block-set! cash-deltas 2 0
     block-set! sales-deltas 0 0 block-set! sales-deltas 1 0 block-set! sales-deltas 2 0
+    block-set! space-taken-by 0 0 block-set! space-taken-by 1 0 block-set! space-taken-by 2 0
     block-set! worker-job 0 0 block-set! worker-job 1 0 block-set! worker-job 2 0
 ]
 
@@ -205,21 +209,28 @@ start: func [] [
 
 reset: func [] [ started: 0 reset-tasks reset-state ]
 
-do-start: func [] [ start render-current ]
-do-reset: func [] [ reset render-current ]
+do-space-run: func [] [ start render-current ]
+do-space-reset: func [] [ reset render-current ]
 
 ;; ---- view ------------------------------------------------------------------
 emit-kind: func [k] [ either = k 0 [ emit-text "BUY" ] [ either = k 1 [ emit-text "SELL" ] [ emit-text "RETURN" ] ] ]
 
-worker-cell: func [i] [
-    emit-text "Worker " emit-int + i 1 emit-text ": "
-    either started [ emit-kind block-at block-at jobs block-at worker-job i 0 emit-text " Tea" ] [ emit-text "idle" ]
+;; one tuple in the space, with its consumed/worker state
+space-item: func [i] [
+    emit-text "["
+    emit-kind block-at block-at space i 0
+    emit-text " Tea"
+    either = block-at space-taken-by i 0 [ emit-text " pending" ]
+    [ emit-text " <- worker " emit-int block-at space-taken-by i ]
+    emit-text "]"
 ]
 
-draw-flow: func [] [
-    emit-text "<pre class='flow'>pending:  BUY Tea 10    SELL Tea 3    RETURN Tea 1
-workers:  "
-    worker-cell 0 emit-text "     " worker-cell 1 emit-text "     " worker-cell 2
+draw-space: func [] [
+    emit-text "<pre class='space'>Transaction space:  "
+    space-item 0 emit-text "   " space-item 1 emit-text "   " space-item 2
+    emit-text "
+Workers:  "
+    worker-cell 0 emit-text "    " worker-cell 1 emit-text "    " worker-cell 2
     emit-text "
             Router
 Stock:  " emit-int stock
@@ -228,18 +239,23 @@ Stock:  " emit-int stock
     emit-text "</pre>"
 ]
 
+worker-cell: func [i] [
+    emit-text "w" emit-int + i 1 emit-text ": "
+    either started [ emit-kind block-at block-at space block-at worker-job i 0 emit-text " Tea" ] [ emit-text "idle" ]
+]
+
 draw-log: func [i] [ either < i log-count [ draw-log-entry i draw-log + i 3 ] [ none ] ]
 
 draw-log-entry: func [i] [
     op: block-at log i
     emit-text "<li>"
     either = op 1 [
-        emit-text "Task " emit-int block-at log + i 1 emit-text " took "
-        emit-kind block-at block-at jobs block-at log + i 2 0
-        emit-text " Tea"
+        emit-text "worker " emit-int block-at log + i 1 emit-text " took "
+        emit-kind block-at block-at space block-at log + i 2 0
+        emit-text " Tea from the space"
     ] [
     either = op 2 [
-        emit-text "Task " emit-int block-at log + i 1 emit-text " emitted stock "
+        emit-text "worker " emit-int block-at log + i 1 emit-text " emitted stock "
         emit-int block-at stock-deltas block-at log + i 2
         emit-text " / cash " emit-int block-at cash-deltas block-at log + i 2
         emit-text " / sales " emit-int block-at sales-deltas block-at log + i 2
@@ -251,11 +267,11 @@ draw-log-entry: func [i] [
     emit-text "</li>"
 ]
 
-merchant-flow-view: [
-    heading [ emit-text "Glon multitasking / dataflow" ]
-    text [ emit-text "Three Glon tasks compete for work; results flow through a router to reducers." ]
-    draw-flow
-    either started [ button [ emit-text "Reset" ] "reset" ] [ button [ emit-text "Start" ] "start" ]
+tuple-space-view: [
+    heading [ emit-text "Glon tuple space / dataflow" ]
+    text [ emit-text "Three Glon tasks consume tuples from a shared space; results flow through a router to reducers." ]
+    draw-space
+    either started [ button [ emit-text "Reset" ] "space-reset" ] [ button [ emit-text "Run" ] "run" ]
     emit-text " "
     link [ emit-text "Back to demos" ] "home"
     subhead [ emit-text "Event log" ]
@@ -264,5 +280,5 @@ merchant-flow-view: [
     emit-text "</ul>"
 ]
 
-render-merchant-flow: func [] [ emit-clear do merchant-flow-view emit-finish ]
- ]
+render-tuple-space: func [] [ emit-clear do tuple-space-view emit-finish ]
+]

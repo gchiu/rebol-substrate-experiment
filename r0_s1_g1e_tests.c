@@ -82,6 +82,20 @@ static int has(const char *html, const char *needle) {
     return html != NULL && strstr(html, needle) != NULL;
 }
 
+/* Evaluate a single Glon form and return its integer result (0 on failure), so
+ * a test can inspect live demo state -- e.g. the mutable delta blocks -- that
+ * the rendered view never shows. */
+static cell eval_int(const char *prog) {
+    strcpy(src, prog);
+    strip_comments(src);
+    int err = 0;
+    cell b = r0_s1_parse(src, &err);
+    if (err) return 0;
+    int N = r0_s1_run_persistent(b);
+    if (!r0_s1_ran_cleanly() || N != 1) return 0;
+    return r0_s1_result(0, 1);
+}
+
 static int file_contains(const char *path, const char *needle) {
     FILE *f = fopen(path, "rb");
     if (!f) return 0;
@@ -179,6 +193,42 @@ int run_r0_s1_g1e_tests(void) {
     CHECK(has(r, "data-glon-event='reset'") && has(r, "Stock:  8"),
           "15: navigating away and back does not corrupt the machine");
 
+    printf("g1e: merchant-flow reset genuinely zeroes the mutable blocks\n");
+
+    /* start/reset/start/reset/start must stay deterministic, and each reset must
+     * actually zero the mutable delta/worker blocks (not leave a stale mutated
+     * loader literal behind). */
+    r = event("start");
+    CHECK(has(r, "Stock:  8") && has(r, "Cash:  -26") && has(r, "Sales:  2"),
+          "15a: start -> stock 8 / cash -26 / sales 2");
+
+    r = event("reset");
+    CHECK(has(r, "Stock:  0") && has(r, "idle") && !has(r, "Task 1 took"),
+          "15b: reset -> zero totals, idle workers, empty log");
+    CHECK(int_val(eval_int("[ block-at stock-deltas 0 ]")) == 0 &&
+          int_val(eval_int("[ block-at stock-deltas 1 ]")) == 0 &&
+          int_val(eval_int("[ block-at stock-deltas 2 ]")) == 0 &&
+          int_val(eval_int("[ block-at worker-job 0 ]")) == 0 &&
+          int_val(eval_int("[ block-at worker-job 1 ]")) == 0 &&
+          int_val(eval_int("[ block-at worker-job 2 ]")) == 0,
+          "15c: mutable delta/worker blocks read back 0 after reset");
+
+    r = event("start");
+    CHECK(has(r, "Stock:  8") && has(r, "Cash:  -26") && has(r, "Sales:  2"),
+          "15d: start -> stock 8 / cash -26 / sales 2");
+
+    r = event("reset");
+    CHECK(has(r, "Stock:  0") && has(r, "idle") && !has(r, "Task 1 took"),
+          "15e: reset -> zero totals, idle workers, empty log");
+    CHECK(int_val(eval_int("[ block-at stock-deltas 0 ]")) == 0 &&
+          int_val(eval_int("[ block-at worker-job 2 ]")) == 0,
+          "15f: mutable blocks read back 0 after the second reset");
+
+    r = event("start");
+    CHECK(has(r, "Stock:  8") && has(r, "Cash:  -26") && has(r, "Sales:  2") &&
+          !r0_s1_stack_sentry_fired(),
+          "15g: third start is deterministic and no sentry fires");
+
     printf("g1e: shop basket / events / persistence survive load-on-demand\n");
 
     r = route("products");
@@ -221,6 +271,46 @@ int run_r0_s1_g1e_tests(void) {
     CHECK(has(route("definitely-unknown"), "Not found"), "24: unknown route still works");
     r = event("load-failed");
     CHECK(has(r, "Load failed"), "25: load-failed event renders a controlled error");
+
+    printf("g1e: tuple-space demo (shared space + 3 workers + router)\n");
+
+    CHECK(load_file("demo/shop/demos/tuple-space.glon") == 0, "26: tuple-space.glon loads");
+    r = route("tuple-space");
+    CHECK(has(r, "Transaction space") && has(r, "Worker") && has(r, "Router") &&
+          has(r, "data-glon-event='run'"),
+          "27: home -> tuple-space renders the space + workers + Run control");
+
+    r = event("run");
+    CHECK(has(r, "Stock:  8") && has(r, "Cash:  -26") && has(r, "Sales:  2"),
+          "28: Run consumes the space -> stock 8, cash -26, sales 2");
+    CHECK(has(r, "worker 1 took BUY Tea") && has(r, "worker 2 took SELL Tea") &&
+          has(r, "worker 3 took RETURN Tea"),
+          "29: more than one Glon worker consumed a tuple");
+    CHECK(has(r, "worker 1 took") && has(r, "worker 2 took") && has(r, "worker 3 took") &&
+          has(r, "Router -> inventory") && has(r, "Router -> cash") && has(r, "Router -> sales"),
+          "30: all three tuples consumed exactly once + router fan-out");
+    CHECK(!r0_s1_stack_sentry_fired(),
+          "31: no SP/RP sentry fires during Run");
+
+    r = event("space-reset");
+    CHECK(has(r, "Stock:  0") && has(r, "pending"),
+          "32: Reset clears the space and totals");
+
+    r = event("run");
+    CHECK(has(r, "Stock:  8") && has(r, "Cash:  -26") && has(r, "Sales:  2"),
+          "33: rerunning reproduces the same deterministic totals");
+
+    /* GC + task-slot reuse: run/reset/run again forces collections and reuses
+     * the same three task slots; sentries must stay quiet throughout. */
+    r = event("space-reset");
+    r = event("run");
+    CHECK(has(r, "Stock:  8") && !r0_s1_stack_sentry_fired(),
+          "34: GC during/after task activity + slot reuse remain safe (no sentry)");
+
+    route("home");
+    r = route("tuple-space");
+    CHECK(has(r, "Transaction space") && has(r, "data-glon-event='space-reset'"),
+          "35: navigating away and back does not corrupt the demo");
 
     return failures;
 }

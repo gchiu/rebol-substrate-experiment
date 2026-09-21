@@ -393,8 +393,15 @@ static cell parse_block(parser_t *P) {
                     arity = (int)int_val(parse_int(P));
                 else
                     P->pos = save;
+                /* The RAW source block is dead once assembled (its mnemonics
+                 * are translated into emitted code); reclaim its loader-heap
+                 * space so self-contained demos that re-define the M1 library
+                 * do not exhaust the loader heap.  Only the 2-cell callable
+                 * [entry, arity] needs to survive. */
+                cell save_lhp = M[GC_LOADER_HP];
                 cell asm_block = parse_form(P);           /* [ instr... ] */
                 cell entry = assemble_raw(asm_block);
+                M[GC_LOADER_HP] = save_lhp;
                 cell p = lalloc(2);
                 M[p + RAW_ENTRY] = entry;
                 M[p + RAW_ARITY] = (cell)arity;

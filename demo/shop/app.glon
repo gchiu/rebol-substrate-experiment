@@ -23,6 +23,7 @@
 shop-loaded: 0
 guide-loaded: 0
 merchant-flow-loaded: 0
+tuple-space-loaded: 0
 
 ;; ---- launcher view ---------------------------------------------------------
 home-view: [
@@ -42,6 +43,11 @@ home-view: [
         link [ emit-text "Multitasking / dataflow" ] "merchant-flow"
     ] [
         load-link [ emit-text "Multitasking / dataflow" ] "merchant-flow" "demos/merchant-flow.glon"
+    ]
+    either tuple-space-loaded [
+        link [ emit-text "Tuple space / dataflow" ] "tuple-space"
+    ] [
+        load-link [ emit-text "Tuple space / dataflow" ] "tuple-space" "demos/tuple-space.glon"
     ]
 ]
 
@@ -86,8 +92,11 @@ render-current: func [] [
     either = current-route 'merchant-flow [
         either merchant-flow-loaded [ render-merchant-flow ] [ render-loading ]
     ] [
+    either = current-route 'tuple-space [
+        either tuple-space-loaded [ render-tuple-space ] [ render-loading ]
+    ] [
     either = current-route 'home [ render-home ] [ render-not-found ]
-    ]]]]
+    ]]]]]
 ]
 
 ;; ---- routes (entry side effects, then render) -----------------------------
@@ -108,5 +117,7 @@ do-event: [
     either = current-event 'load-failed [ render-error ]
     [ either = current-event 'start [ do-start ]
       [ either = current-event 'reset [ do-reset ]
-        [ either shop-loaded [ do-shop-event ] [ render-current ] ] ] ]
+        [ either = current-event 'run [ do-space-run ]
+          [ either = current-event 'space-reset [ do-space-reset ]
+            [ either shop-loaded [ do-shop-event ] [ render-current ] ] ] ] ] ]
 ]
