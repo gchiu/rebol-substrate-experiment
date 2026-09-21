@@ -82,6 +82,13 @@ static int has(const char *html, const char *needle) {
     return html != NULL && strstr(html, needle) != NULL;
 }
 
+/* true iff both substrings occur and `a` appears before `b` */
+static int before(const char *html, const char *a, const char *b) {
+    const char *pa = html ? strstr(html, a) : NULL;
+    const char *pb = html ? strstr(html, b) : NULL;
+    return pa != NULL && pb != NULL && pa < pb;
+}
+
 /* Evaluate a single Glon form and return its integer result (0 on failure), so
  * a test can inspect live demo state -- e.g. the mutable delta blocks -- that
  * the rendered view never shows. */
@@ -347,6 +354,13 @@ int run_r0_s1_g1e_tests(void) {
         CHECK(has(vs, "M 1 500 58 500 218") && has(vs, "M 1 500 378 500 538"),
               "38: token 1 -> worker 2 -> router -> Cash");
 
+        /* the trace is a temporal interleaving, not a per-token history: every
+         * claim (space -> worker) precedes any route (worker -> router), so the
+         * browser draws several Jaffas in flight at once */
+        CHECK(before(vs, "M 1 500 58 500 218", "M 0 310 218 500 378") &&
+              before(vs, "M 2 500 58 690 218", "M 0 310 218 500 378"),
+              "38a: claims are interleaved (tokens 1+2 claim before token 0 routes)");
+
         /* reassigning the worker in Glon changes the path with no JS change */
         eval_int("[ block-set! space-taken-by 0 3 block-at space-taken-by 0 ]");
         r = route("tuple-space");
@@ -362,8 +376,10 @@ int run_r0_s1_g1e_tests(void) {
 
         r = event("run");
         vis_script(vs, sizeof vs);
-        CHECK(has(vs, "M 0 500 58 310 218") && !r0_s1_stack_sentry_fired(),
-              "41: rerun reproduces the real flow (worker 1) and no sentry fires");
+        CHECK(has(vs, "M 0 500 58 310 218") &&
+              before(vs, "M 1 500 58 500 218", "M 0 310 218 500 378") &&
+              !r0_s1_stack_sentry_fired(),
+              "41: rerun reproduces the deterministic interleaving + no sentry");
     }
 
     return failures;
