@@ -26,6 +26,16 @@ extern const char *M1_LIB;
 static cell collect_addr;
 static char lib_buf[4096];
 
+/* A test-scratch cell that is mechanically guaranteed to lie OUTSIDE the
+ * emitted code region [256, 256+r0_s1_code_size()), so RAW fragments may use it
+ * without corrupting the program. It lives in the free region just above the
+ * code (well below the data stack), and the collector never scans it (it is not
+ * a root and not inside [SP, DS_INIT)). */
+static cell m2_scratch_cell(void) {
+    r0_s1_init();                                   /* ensure the code is emitted */
+    return (256 + r0_s1_code_size() + 64) & ~15L;   /* 16-aligned, above code end */
+}
+
 /* M2 diagnostic library (RAW fragments only): untag, collect, heap-high */
 static char *m2_lib(void) {
     snprintf(lib_buf, sizeof lib_buf,
@@ -317,9 +327,15 @@ static void test_Q(void) {
 static void test_R(void) {
     printf("m2: R RAW root contract\n");
     int N;
-    m2_run(" f: func [] [ 42 ] "
-           " stash: raw 1 [ LIT 9000 ! ARITY 0 EXIT ] "
-           " stash f  f: none  collect ", &N);
+    cell scratch = m2_scratch_cell();
+    CHECK(scratch >= 256 + r0_s1_code_size(),
+          "R: unregistered scratch cell lies outside emitted code");
+    char prog[256];
+    snprintf(prog, sizeof prog,
+             " f: func [] [ 42 ] "
+             " stash: raw 1 [ LIT %ld ! ARITY 0 EXIT ] "
+             " stash f  f: none  collect ", (long)scratch);
+    m2_run(prog, &N);
     CHECK(r0_s1_gc_live_objs() == 0,
           "R: closure referenced only by unregistered RAW scratch was collected");
 }
