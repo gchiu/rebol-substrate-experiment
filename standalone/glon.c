@@ -133,10 +133,29 @@ int fflush(FILE *f) { (void)f; return 0; }
 static unsigned char heap[1 << 16];   /* 64 KiB bump heap */
 static unsigned int heap_used = 0;
 
+#ifdef GLON_DIAGNOSTICS
+static unsigned int diag_malloc_high;   /* bump-heap high-water mark        */
+static unsigned int diag_malloc_fail;   /* allocation failures              */
+static unsigned int diag_nalloc;        /* total allocations                */
+static void diag_report(const char *tag) {
+    fprintf(stderr,
+        "DIAG %s malloc=%u/%u fail=%u nalloc=%u loader=%ld hp=%ld vis=%ld\n",
+        tag, diag_malloc_high, (unsigned)sizeof(heap), diag_malloc_fail,
+        diag_nalloc, (long)M[GC_LOADER_HP], (long)s1_mem(REG_HP), (long)M[G1_VIS]);
+}
+#endif
+
 void *malloc(unsigned int n) {
     unsigned int a = (heap_used + 7u) & ~7u;
+#ifdef GLON_DIAGNOSTICS
+    diag_nalloc++;
+    if (a + n > sizeof(heap)) { diag_malloc_fail++; return (void *)0; }
+    heap_used = a + n;
+    if (heap_used > diag_malloc_high) diag_malloc_high = heap_used;
+#else
     if (a + n > sizeof(heap)) return (void *)0;
     heap_used = a + n;
+#endif
     return (void *)(heap + a);
 }
 
@@ -240,6 +259,11 @@ int glon_load(const unsigned char *src, unsigned int len) {
      * The parsed block lives in the loader heap and copies everything out of
      * srcbuf, so srcbuf is safe to overwrite on the next load. */
     int N = r0_s1_run_persistent(prog);
+#ifdef GLON_DIAGNOSTICS
+    fprintf(stderr, "DIAG load len=%u rc=%d clean=%d\n",
+            len, (N < 0) ? -3 : 0, (int)r0_s1_ran_cleanly());
+    diag_report("load");
+#endif
     return (N < 0) ? -3 : 0;
 }
 
@@ -292,7 +316,13 @@ int glon_route(const unsigned char *token, unsigned int len) {
     tok[i] = 0;
 
     int out_len = 0;
-    if (r0_s1_g1a_route((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len) != 0)
+    int rc = r0_s1_g1a_route((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len);
+#ifdef GLON_DIAGNOSTICS
+    fprintf(stderr, "DIAG route '%s' rc=%d clean=%d\n",
+            tok, rc, (int)r0_s1_ran_cleanly());
+    diag_report("route");
+#endif
+    if (rc != 0)
         return -2;
 
     host_set_html(1u, htmlbuf, (unsigned int)out_len);
@@ -314,7 +344,13 @@ int glon_event(const unsigned char *token, unsigned int len) {
     tok[i] = 0;
 
     int out_len = 0;
-    if (r0_s1_g1a_event((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len) != 0)
+    int rc = r0_s1_g1a_event((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len);
+#ifdef GLON_DIAGNOSTICS
+    fprintf(stderr, "DIAG event '%s' rc=%d clean=%d\n",
+            tok, rc, (int)r0_s1_ran_cleanly());
+    diag_report("event");
+#endif
+    if (rc != 0)
         return -2;
 
     host_set_html(1u, htmlbuf, (unsigned int)out_len);
