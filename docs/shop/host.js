@@ -57,13 +57,14 @@
   // ---- Canvas visualization -----------------------------------------------
   // host_canvas_script receives a generic visual script (newline commands)
   // that Glon emitted during render, and draws/animates it on the canvas. The
-  // script knows only graphical concepts: B(ox), L(ine), D(ot), M(ove). It
-  // never names a worker, reducer, or transaction.
+  // script knows only graph-scene concepts: B labelled node, L edge,
+  // D persistent token, M token motion. It never names a worker, reducer, or
+  // transaction.
 
   function parseCanvasScript(script) {
-    var statics = [];   // boxes + lines, drawn every frame
-    var jaffas = {};    // id -> {x, y}
-    var moves = [];     // animated transitions
+    var statics = [];   // nodes + edges, drawn every frame
+    var jaffas = {};    // id -> {x, y}  (persistent tokens)
+    var moves = [];     // animated transitions (token traversal)
     var lines = script.split("\n");
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i].replace(/^\s+|\s+$/g, "");

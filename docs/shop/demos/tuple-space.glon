@@ -258,7 +258,7 @@ do-space-reset: func [] [ reset render-current ]
 ;; Coordinates are presentation only. The worker DECISION comes from Glon state
 ;; (space-taken-by records which worker took each tuple); the reducer DECISION
 ;; is the router's ordered fan-out (Stock, Cash, Sales). The browser host only
-;; draws the boxes / lines / red-dot moves it is told -- it knows no semantics.
+;; draws the nodes / edges / token moves it is told -- it knows no semantics.
 space-cx: 500 space-cy: 58
 worker-cx: [310 500 690] worker-cy: 218
 router-cx: 500 router-cy: 378
