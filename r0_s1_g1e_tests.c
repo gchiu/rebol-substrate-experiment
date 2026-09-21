@@ -316,8 +316,12 @@ int run_r0_s1_g1e_tests(void) {
           "31: no tuple lost (first and last recorded)");
     CHECK(has(r, "worker 1 took") && has(r, "worker 2 took") && has(r, "worker 3 took"),
           "32: all three M1 workers participated");
-    CHECK(has(r, "Router -> inventory") && has(r, "Router -> cash") && has(r, "Router -> sales"),
-          "33: router fan-out recorded");
+    CHECK(has(r, "token 0: router -> stock") &&
+          has(r, "token 1: router -> cash") &&
+          has(r, "token 2: router -> sales"),
+          "33: packet-level router fan-out recorded (router->reducer per token)");
+    CHECK(int_val(eval_int("[ block-at space-taken-by 3 ]")) == 2,
+          "33a: work difference drifts the claim order (token 3 -> worker 2, not 1)");
     CHECK(!r0_s1_stack_sentry_fired(),
           "34: no SP/RP sentry fires during Run");
 
@@ -328,6 +332,9 @@ int run_r0_s1_g1e_tests(void) {
     r = event("run");
     CHECK(has(r, "Stock:  64") && has(r, "Cash:  -208") && has(r, "Sales:  16"),
           "36: rerun reproduces 64 / -208 / 16");
+    CHECK(int_val(eval_int("[ block-at space-taken-by 3 ]")) == 2 &&
+          int_val(eval_int("[ block-at space-taken-by 23 ]")) == 1,
+          "36a: rerun reproduces the same drifted claim order (deterministic)");
 
     /* GC + task-slot reuse: run/reset/run again forces collections and reuses
      * the same three task slots; sentries must stay quiet throughout. */
@@ -365,8 +372,8 @@ int run_r0_s1_g1e_tests(void) {
               "41: token 1 -> worker 2 -> router -> Cash");
         CHECK(has(vs, "M 2 500 58 690 218") && has(vs, "M 2 500 378 690 538"),
               "42: token 2 -> worker 3 -> router -> Sales");
-        CHECK(has(vs, "M 23 500 58 690 218"),
-              "43: token 23 -> worker 3 (round-robin repeats across 24)");
+        CHECK(has(vs, "M 23 500 58 310 218"),
+              "43: token 23 -> worker 1 (drifted, not round-robin)");
 
         /* the trace is a temporal interleaving, not a per-token history: every
          * claim (space -> worker) precedes any route (worker -> router), so the
