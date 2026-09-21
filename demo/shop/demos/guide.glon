@@ -31,7 +31,7 @@ guide-view: [
         emit-text "<a href='https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/demo/shop/README.md'>demo/shop/README.md</a>"
     ]
 
-    link [ emit-text "Back to demos" ] "home"
+    link "Back to demos" "home"
 ]
 
 render-guide: func [] [ emit-clear do guide-view emit-finish ]

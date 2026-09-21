@@ -137,6 +137,10 @@ int run_r0_s1_g1e_tests(void) {
           !file_contains("demo/shop/app.html", "The three paths") &&
           !file_contains("demo/shop/app.html", "How it works"),
           "D: bootstrap does NOT embed shop/guide/merchant-flow content");
+    CHECK(file_contains("demo/shop/app.html", "routes: [") &&
+          file_contains("demo/shop/app.html", "events: [") &&
+          file_contains("demo/shop/app.html", "demos: ["),
+          "E: dispatch is expressed as routes/events/demos data tables");
 
     printf("g1e: launcher renders before any demo is loaded\n");
 

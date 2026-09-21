@@ -131,6 +131,17 @@ vis-move: func [id x1 y1 x2 y2] [ vis-byte 77 vis-byte 32 vis-int id vis-byte 32
 block-len: raw 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
 block-at: raw 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ]
 
+;; ---- general table lookup (Rebol-family select) ---------------------------
+;; select rows key: return the first row whose FIRST element equals key, or NONE.
+;; This is the one general word that lets route/event dispatch be expressed as
+;; data tables instead of nested EITHER chains.
+select: func [rows key] [ select-at rows 0 block-len rows key ]
+select-at: func [rows i n key] [
+    either < i n [
+        either = block-at block-at rows i 0 key [ block-at rows i ] [ select-at rows + i 1 n key ]
+    ] [ none ]
+]
+
 ;; ---- text emission (GLON policy over RAW mechanics) -----------------------
 emit-int: func [n] [ either < n 0 [ emit-byte 45 emit-digits - 0 n ] [ emit-digits n ] ]
 emit-digits: func [n] [
@@ -220,18 +231,18 @@ text:    wrap p-open p-close
 tagline: wrap tagline-open tagline-close
 meta:    wrap meta-open meta-close
 pre:     wrap pre-open pre-close
-link:    func [content route] [
+link:    func [label route] [
     emit-text nav-open
-    emit-text btn-open emit-text route emit-text btn-mid do content emit-text btn-close
+    emit-text btn-open emit-text route emit-text btn-mid emit-text label emit-text btn-close
     emit-text nav-close
 ]
 ;; G1E load-on-demand: a link that ALSO names the resource the host must fetch
 ;; before the route is dispatched. Glon decides the resource path; host.js only
 ;; fetches whatever [data-glon-load] names and then re-dispatches the route.
-load-link: func [content route path] [
+load-link: func [label route path] [
     emit-text nav-open
     emit-text load-btn-open emit-text route emit-text load-btn-mid emit-text path emit-text btn-mid
-    do content emit-text btn-close
+    emit-text label emit-text btn-close
     emit-text nav-close
 ]
 ;; G1C: a button that carries a generic application-event token (not a route).

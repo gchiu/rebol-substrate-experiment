@@ -257,7 +257,7 @@ merchant-flow-view: [
     draw-flow
     either started [ button [ emit-text "Reset" ] "reset" ] [ button [ emit-text "Start" ] "start" ]
     emit-text " "
-    link [ emit-text "Back to demos" ] "home"
+    link "Back to demos" "home"
     subhead [ emit-text "Event log" ]
     emit-text "<ul class='flow-log'>"
     draw-log 0
