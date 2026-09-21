@@ -1118,7 +1118,18 @@ static void emit_collect(void) {
     asm_exit();
 }
 
-/* ALLOC: ( n kind -- payload-addr ) first-fit + bump + collect. */
+/* ALLOC: ( n kind -- payload-addr ) first-fit + bump + collect.
+ *
+ * GC-safepoint invariant (runtime law): allocation may trigger a collection,
+ * and the collector scans the Glon data stack, return stack, and roots assuming
+ * every cell is a valid tagged Glon value.  Therefore at every allocation the
+ * DS must contain only tagged Glon values -- never raw implementation values
+ * (untagged integers, pointer ids, site-ids, bias, counts).  Audit: the closure
+ * allocation was the exposed violation (raw site-id/bias left on the DS; fixed
+ * in emit_mkclosure by popping them first); the context-promotion allocation
+ * was already safe (only tagged spec/body on the DS); alloc's own (n kind)
+ * arguments are popped before the collector runs; no other runtime-generated
+ * raw-DS-across-GC hazard remains. */
 static void emit_alloc(void) {
     r_alloc = asm_here();
     e_setc(GC_A2);                                   /* kind */
@@ -1656,7 +1667,16 @@ static void emit_mkctx(void) {
  * Promotes the captured context to the managed heap when it is stack-local
  * (escaping), so the closure always captures a managed/loader context. The
  * bias (0 or +1) is stored in CLOSURE_BIAS and copied to the frame on
- * invocation, where LOAD-LEX adds it to each T_BOUND depth. */
+ * invocation, where LOAD-LEX adds it to each T_BOUND depth.
+ *
+ * Closure-promotion note (recorded, deliberately NOT optimised): a factory-made
+ * closure whose body has no lexical reference still promotes a stack-local
+ * captured context (closure 32 + context 80 managed cells).  The obvious
+ * shortcut -- "no T_BOUND in the body, so skip promotion" -- is UNSOUND: a plain
+ * T_WORD reference in the body may denote a local introduced by SET-WORD in the
+ * enclosing activation, which is resolved through the captured context, not by
+ * T_BOUND.  Distinguishing such locals from globals would require escape
+ * analysis, so promotion remains unconditional here. */
 static void emit_mkclosure(void) {
     r_mkclosure = asm_here();
     /* GC-safepoint invariant: site-id and bias are raw implementation values,
