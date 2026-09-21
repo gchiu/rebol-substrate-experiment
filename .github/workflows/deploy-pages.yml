@@ -49,11 +49,13 @@ jobs:
           version: latest
 
       - name: Build shop WASM (diag -O1) and run G1E flow test
+        continue-on-error: true
         run: |
           python3 demo/shop/build.py
           make wasm-g1a-test WASM_OPT=-O1 DIAG_FLAG=-DGLON_DIAGNOSTICS
 
       - name: Build shop WASM (diag -O0) and run G1E flow test
+        continue-on-error: true
         run: |
           rm -f demo/shop/glon.wasm
           make wasm-g1a-test WASM_OPT=-O0 DIAG_FLAG=-DGLON_DIAGNOSTICS

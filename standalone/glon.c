@@ -137,11 +137,21 @@ static unsigned int heap_used = 0;
 static unsigned int diag_malloc_high;   /* bump-heap high-water mark        */
 static unsigned int diag_malloc_fail;   /* allocation failures              */
 static unsigned int diag_nalloc;        /* total allocations                */
-static void diag_report(const char *tag) {
+/* One-line state report.  All numeric fields use %ld (the only supported
+ * integer specifier here) with explicit (long) casts; never %u. */
+static void diag_state(const char *tag, unsigned int src_len, int rc) {
+    unsigned long cap = (unsigned long)sizeof(heap);
+    unsigned long high = (unsigned long)diag_malloc_high;
+    unsigned long loader = (unsigned long)M[GC_LOADER_HP];
+    unsigned long hp = (unsigned long)s1_mem(REG_HP);
     fprintf(stderr,
-        "DIAG %s malloc=%u/%u fail=%u nalloc=%u loader=%ld hp=%ld vis=%ld\n",
-        tag, diag_malloc_high, (unsigned)sizeof(heap), diag_malloc_fail,
-        diag_nalloc, (long)M[GC_LOADER_HP], (long)s1_mem(REG_HP), (long)M[G1_VIS]);
+        "DIAG %s src=%ld rc=%ld clean=%ld malloc=%ld/%ld rem=%ld fail=%ld n=%ld "
+        "loader=%ld/%ld managed=%ld/%ld vis=%ld\n",
+        tag, (long)src_len, (long)rc, (long)r0_s1_ran_cleanly(),
+        (long)high, (long)cap, (long)(cap - high),
+        (long)diag_malloc_fail, (long)diag_nalloc,
+        (long)loader, (long)(R0S1_HEAP_LIMIT - loader),
+        (long)hp, (long)(GC_HEAP_LIMIT - hp), (long)M[G1_VIS]);
 }
 #endif
 
@@ -260,9 +270,7 @@ int glon_load(const unsigned char *src, unsigned int len) {
      * srcbuf, so srcbuf is safe to overwrite on the next load. */
     int N = r0_s1_run_persistent(prog);
 #ifdef GLON_DIAGNOSTICS
-    fprintf(stderr, "DIAG load len=%u rc=%d clean=%d\n",
-            len, (N < 0) ? -3 : 0, (int)r0_s1_ran_cleanly());
-    diag_report("load");
+    diag_state("load", len, (N < 0) ? -3 : 0);
 #endif
     return (N < 0) ? -3 : 0;
 }
@@ -318,9 +326,7 @@ int glon_route(const unsigned char *token, unsigned int len) {
     int out_len = 0;
     int rc = r0_s1_g1a_route((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len);
 #ifdef GLON_DIAGNOSTICS
-    fprintf(stderr, "DIAG route '%s' rc=%d clean=%d\n",
-            tok, rc, (int)r0_s1_ran_cleanly());
-    diag_report("route");
+    diag_state("route", len, rc);
 #endif
     if (rc != 0)
         return -2;
@@ -346,9 +352,7 @@ int glon_event(const unsigned char *token, unsigned int len) {
     int out_len = 0;
     int rc = r0_s1_g1a_event((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len);
 #ifdef GLON_DIAGNOSTICS
-    fprintf(stderr, "DIAG event '%s' rc=%d clean=%d\n",
-            tok, rc, (int)r0_s1_ran_cleanly());
-    diag_report("event");
+    diag_state("event", len, rc);
 #endif
     if (rc != 0)
         return -2;
