@@ -210,6 +210,19 @@ static const raw_sym_t raw_syms[] = {
     { "T_BLOCK", T_BLOCK }, { "GC_KIND_BLOCK", GC_KIND_BLOCK },
     { "G1_OUT", G1_OUT }, { "G1_OUT_DATA", G1_OUT_DATA },
     { "G1_VIS", G1_VIS }, { "G1_VIS_DATA", G1_VIS_DATA },
+    /* M1 multitasking world (m1_layout.h): task records, arena, scratch */
+    { "M1_MAIN_ENTRY_CELL", M1_MAIN_ENTRY_CELL },
+    { "M1_CUR_TASK", M1_CUR_TASK }, { "M1_SCHED_REC", M1_SCHED_REC },
+    { "M1_CURSOR", M1_CURSOR },
+    { "M1_S0", M1_S0 }, { "M1_S1", M1_S1 }, { "M1_S2", M1_S2 }, { "M1_S3", M1_S3 },
+    { "M1_S4", M1_S4 }, { "M1_S5", M1_S5 }, { "M1_S6", M1_S6 }, { "M1_S7", M1_S7 },
+    { "M1_S8", M1_S8 },
+    { "M1_TASK_TABLE", M1_TASK_TABLE }, { "M1_ARENA_BASE", M1_ARENA_BASE },
+    { "M1_TASK_CELLS", M1_TASK_CELLS }, { "M1_DS_OFF", M1_DS_OFF },
+    { "M1_RS_OFF", M1_RS_OFF }, { "M1_WRAPPER_DELTA", M1_WRAPPER_DELTA },
+    { "TREC_IP", TREC_IP }, { "TREC_SP", TREC_SP }, { "TREC_RP", TREC_RP },
+    { "TREC_CUR", TREC_CUR }, { "TREC_END", TREC_END }, { "TREC_CTX", TREC_CTX },
+    { "TREC_BLK", TREC_BLK }, { "TREC_FRAME", TREC_FRAME }, { "TREC_STATE", TREC_STATE },
 };
 #define N_RAW_SYMS ((int)(sizeof raw_syms / sizeof raw_syms[0]))
 
