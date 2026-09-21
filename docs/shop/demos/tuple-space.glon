@@ -242,18 +242,32 @@ draw-canvas-topology: func [] [
     vis-line 500 396 690 520
 ]
 
-;; one token (tuple i): a red Jaffa leaves the space, travels to the worker
-;; that actually took it, then to the router, then to reducer i.
-draw-canvas-token: func [i] [
-    wid: block-at space-taken-by i
-    vis-dot i space-cx space-cy
-    vis-move i space-cx space-cy block-at worker-cx - wid 1 worker-cy
-    vis-move i block-at worker-cx - wid 1 worker-cy router-cx router-cy
-    vis-move i router-cx router-cy block-at reducer-cx i reducer-cy
+;; The visual script is a TEMPORAL TRACE, not a per-token history: all Jaffas
+;; first queue at the space, then each claim (space -> worker) is emitted in the
+;; real scheduler order, then each route (worker -> router -> reducer) in the
+;; router's order. The browser therefore shows several Jaffas in flight at once,
+;; matching the real M1 interleaving.
+draw-canvas-dots: func [i n] [
+    either < i n [ vis-dot i space-cx space-cy draw-canvas-dots + i 1 n ] [ none ]
 ]
 
-draw-canvas-flow: func [i] [
-    either < i 3 [ draw-canvas-token i draw-canvas-flow + i 1 ] [ none ]
+;; each worker claims the next tuple in scheduler (round-robin) order
+draw-canvas-claims: func [i n] [
+    either < i n [
+        wid: block-at space-taken-by i
+        vis-move i space-cx space-cy block-at worker-cx - wid 1 worker-cy
+        draw-canvas-claims + i 1 n
+    ] [ none ]
+]
+
+;; the router fans each job's result out to its reducer (token i -> reducer i)
+draw-canvas-routes: func [i n] [
+    either < i n [
+        wid: block-at space-taken-by i
+        vis-move i block-at worker-cx - wid 1 worker-cy router-cx router-cy
+        vis-move i router-cx router-cy block-at reducer-cx i reducer-cy
+        draw-canvas-routes + i 1 n
+    ] [ none ]
 ]
 
 ;; ---- view ------------------------------------------------------------------
@@ -327,7 +341,13 @@ tuple-space-view: [
 
 render-tuple-space: func [] [
     emit-clear do tuple-space-view
-    vis-clear draw-canvas-topology either started [ draw-canvas-flow 0 ] [ none ] vis-finish
+    vis-clear draw-canvas-topology
+    either started [
+        draw-canvas-dots 0 block-len space
+        draw-canvas-claims 0 block-len space
+        draw-canvas-routes 0 block-len space
+    ] [ none ]
+    vis-finish
     emit-finish
 ]
 ]

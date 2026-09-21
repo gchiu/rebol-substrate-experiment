@@ -92,6 +92,12 @@
     return { statics: statics, jaffas: jaffas, moves: moves };
   }
 
+  // A small generic spread (presentation only) so Jaffas queued at the same
+  // node do not stack on one pixel. Keyed on the token id, not on any meaning.
+  function jaffaOffset(id) {
+    return { ox: (id % 3) * 10 - 10, oy: ((id / 3 | 0) % 3) * 8 - 8 };
+  }
+
   function drawCanvas(ctx, w, h, statics, jaffas) {
     ctx.clearRect(0, 0, w, h);
     ctx.font = "12px sans-serif";
@@ -118,35 +124,55 @@
     ctx.fillStyle = "#d33";
     for (var id in jaffas) {
       var j = jaffas[id];
+      var off = jaffaOffset(Number(id));
       ctx.beginPath();
-      ctx.arc(j.x, j.y, 8, 0, 2 * Math.PI);
+      ctx.arc(j.x + off.ox, j.y + off.oy, 6, 0, 2 * Math.PI);
       ctx.fill();
     }
   }
 
+  // The script is a temporal trace: each M command is one logical scheduler
+  // step, in the order Glon produced them. The JS groups the moves back into
+  // per-Jaffa paths and staggers each Jaffa by its first (claim) step, so every
+  // Jaffa's hops stay sequential while different Jaffas overlap -- matching the
+  // real M1 interleaving. JS only maps time; Glon decided what happened and
+  // when.
   function playCanvasScript(canvas, script) {
     var ctx = canvas.getContext("2d");
     var w = canvas.width, h = canvas.height;
     var parsed = parseCanvasScript(script);
-    var index = 0;
-    function next() {
-      drawCanvas(ctx, w, h, parsed.statics, parsed.jaffas);
-      if (index >= parsed.moves.length) return;
-      var m = parsed.moves[index];
-      var j = parsed.jaffas[m.id];
-      var start = null, dur = 450;
-      function step(t) {
-        if (start === null) start = t;
-        var p = Math.min(1, (t - start) / dur);
-        j.x = m.x1 + (m.x2 - m.x1) * p;
-        j.y = m.y1 + (m.y2 - m.y1) * p;
-        drawCanvas(ctx, w, h, parsed.statics, parsed.jaffas);
-        if (p < 1) requestAnimationFrame(step);
-        else { index += 1; next(); }
-      }
-      requestAnimationFrame(step);
+    var paths = {};      // id -> [ {x1,y1,x2,y2}, ... ] in temporal order
+    var claimStep = {};  // id -> script index of its first (claim) move
+    for (var i = 0; i < parsed.moves.length; i++) {
+      var m = parsed.moves[i];
+      if (!paths[m.id]) { paths[m.id] = []; claimStep[m.id] = i; }
+      paths[m.id].push(m);
     }
-    next();
+    var STEP = 130;   // ms spacing between successive claims
+    var DUR = 430;    // ms per hop (> STEP, so Jaffas overlap)
+    var start = null;
+
+    function frame(t) {
+      if (start === null) start = t;
+      var elapsed = t - start;
+      var moving = false;
+      for (var id in paths) {
+        var segs = paths[id];
+        var local = elapsed - claimStep[id] * STEP;
+        if (local < 0) { moving = true; continue; }
+        var seg = Math.floor(local / DUR);
+        if (seg >= segs.length) continue;   // this Jaffa has arrived
+        moving = true;
+        var frac = (local % DUR) / DUR;
+        var m = segs[seg];
+        var j = parsed.jaffas[id];
+        j.x = m.x1 + (m.x2 - m.x1) * frac;
+        j.y = m.y1 + (m.y2 - m.y1) * frac;
+      }
+      drawCanvas(ctx, w, h, parsed.statics, parsed.jaffas);
+      if (moving) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
   }
 
   function alloc(str) {
