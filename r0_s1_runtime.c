@@ -1659,10 +1659,15 @@ static void emit_mkctx(void) {
  * invocation, where LOAD-LEX adds it to each T_BOUND depth. */
 static void emit_mkclosure(void) {
     r_mkclosure = asm_here();
+    /* GC-safepoint invariant: site-id and bias are raw implementation values,
+     * not tagged Glon values. Pop them off the DS BEFORE the closure allocation
+     * so a GC triggered by that allocation never scans them as Glon values.
+     * spec, body and captured stay on the DS: all three are valid tagged Glon
+     * values (two blocks and a context) that the collector handles correctly. */
+    e_pop_to(RV_T6);  /* bias (raw) */
+    e_pop_to(RV_T5);  /* site-id (raw) */
     asm_lit(16); asm_lit(GC_KIND_CLOSURE); asm_call(r_alloc); e_setc(RV_T4);   /* 16-aligned, >= 5 cells */
-    e_pop_to(RV_T6);  /* bias */
     e_cell(RV_T6); e_cell(RV_T4); asm_lit(CLOSURE_BIAS); asm_host(HOST_ADD); asm_store();   /* +4 = bias */
-    e_pop_to(RV_T5);  /* site-id */
     e_pop_to(RV_T1);  /* captured */
     /* promote captured (RV_T1) if it is a stack-local context */
     {
