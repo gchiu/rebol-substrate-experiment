@@ -85,11 +85,20 @@ error-view: [
 ;; render-home / render-not-found / render-loading / render-error live here;
 ;; the demo renderers (render-shop, render-products, render-guide,
 ;; render-merchant-flow) are defined by their demos and referenced only under
-;; the matching loaded flag below.
-render-home:      func [] [ emit-clear do home-view emit-finish ]
-render-not-found: func [] [ emit-clear do not-found-view emit-finish ]
-render-loading:   func [] [ emit-clear do loading-view emit-finish ]
-render-error:     func [] [ emit-clear do error-view emit-finish ]
+;; the matching loaded flag below. `renderer` is a small factory: it returns a
+;; zero-argument closure that clears the output, runs the given view, and
+;; finishes the emitted HTML.
+renderer: func [view] [
+    does [
+        emit-clear
+        do view
+        emit-finish
+    ]
+]
+render-home:      renderer home-view
+render-not-found: renderer not-found-view
+render-loading:   renderer loading-view
+render-error:     renderer error-view
 
 ;; ---- route dispatch --------------------------------------------------------
 ;; each route row: ['token loaded-flag [renderer]]

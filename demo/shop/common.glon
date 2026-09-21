@@ -55,6 +55,14 @@ str-eq: masm 2 [
 
 ;; get: ( word -> value ). Look up a word in the current context.
 get: masm 1 [ CALL lookup ARITY 1 EXIT ]
+
+;; ---- core function vocabulary (lambda / does) ------------------------------
+;; A runtime closure factory and its zero-argument form, both pure Glon. `:spec`
+;; / `:body` are GETs so the factory preserves an already-bound body's lexical
+;; meaning (see the Guard of Binding in r0_s1_runtime.c).
+lambda: func [spec body] [ func :spec :body ]
+does:   func [body] [ lambda [] body ]
+
 ;; demo/shop/common.glon (was g1b.glon) -- the G1B SPA view dialect (library).
 ;;
 ;; This is the smallest dialect that makes a persistent SPA read as a Rebol
