@@ -1,13 +1,16 @@
+;; ---- M1 cooperative multitasking core (one task record per worker) --------
+;; Task record fields (m1_layout.h TREC_*): IP resume point, SP/RP stack
+;; pointers, CUR/END evaluator position, CTX/BLK context/block, FRAME frame,
+;; STATE runnable/finished. yield saves all of these; run-tasks restores them.
 [ mnew-task: masm 3 [
-    ;;; (body do-word finish-word -> task-id | -1)
-    LIT M1_S2 !                      ;; finish-word
-    LIT M1_S1 !                      ;; do-word
-    DUP LIT 16 MOD SUB LIT M1_S0 !   ;; body ptr
-    LIT 0 LIT M1_S3 !                ;; slot = 0
+    LIT M1_S2 ! ;; finish-word
+    LIT M1_S1 ! ;; do-word
+    DUP LIT 16 MOD SUB LIT M1_S0 ! ;; body ptr
+    LIT 0 LIT M1_S3 ! ;; slot = 0
   Lfind:
     LIT M1_S3 @ LIT 3 LT ZBRANCH Lfull
-    LIT M1_S3 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S4 !   ;; record addr
-    LIT M1_S4 @ LIT TREC_STATE ADD @ LIT 2 EQ ZBRANCH Lnext    ;; EMPTY?
+    LIT M1_S3 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S4 ! ;; record addr
+    LIT M1_S4 @ LIT TREC_STATE ADD @ LIT 2 EQ ZBRANCH Lnext ;; EMPTY?
     BRANCH Lmake
   Lnext:
     LIT M1_S3 @ LIT 1 ADD LIT M1_S3 !
@@ -15,27 +18,28 @@
   Lfull:
     LIT -1 LIT 16 MUL ARITY 1 EXIT
   Lmake:
-    LIT M1_S4 @ LIT M1_WRAPPER_DELTA ADD LIT M1_S5 !   ;; wrapper ptr
-    LIT 3 LIT M1_S5 @ !                 ;; wrapper[0]=3 (arity)
-    LIT 0 LIT M1_S5 @ LIT 1 ADD !       ;; wrapper[1]=0
-    LIT M1_S1 @ LIT M1_S5 @ LIT 2 ADD ! ;; wrapper[2]=do-word
-    LIT M1_S0 @ LIT 6 ADD LIT M1_S5 @ LIT 3 ADD !   ;; wrapper[3]=body ctx+6
-    LIT M1_S2 @ LIT M1_S5 @ LIT 4 ADD ! ;; wrapper[4]=finish-word
-    LIT M1_MAIN_ENTRY_CELL @ LIT M1_S4 @ !            ;; record[IP]=entry
-    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_DS_OFF ADD LIT M1_S4 @ LIT TREC_SP ADD !   ;; record[SP]
-    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_RS_OFF ADD LIT M1_S4 @ LIT TREC_RP ADD !   ;; record[RP]
-    LIT M1_S5 @ LIT 2 ADD LIT M1_S4 @ LIT TREC_CUR ADD !   ;; record[CUR]
-    LIT M1_S5 @ LIT 5 ADD LIT M1_S4 @ LIT TREC_END ADD !   ;; record[END]
-    LIT RV_CTX @ LIT M1_S4 @ LIT TREC_CTX ADD !            ;; record[CTX]
-    LIT M1_S5 @ LIT M1_S4 @ LIT TREC_BLK ADD !             ;; record[BLK]
-    LIT 0 LIT M1_S4 @ LIT TREC_FRAME ADD !                 ;; record[FRAME]
-    LIT 0 LIT M1_S4 @ LIT TREC_STATE ADD !                 ;; record[STATE]=RUNNABLE
+    ;; build the wrapper block [arity 0 do-word body-ctx finish-word]
+    LIT M1_S4 @ LIT M1_WRAPPER_DELTA ADD LIT M1_S5 !
+    LIT 3 LIT M1_S5 @ !
+    LIT 0 LIT M1_S5 @ LIT 1 ADD !
+    LIT M1_S1 @ LIT M1_S5 @ LIT 2 ADD !
+    LIT M1_S0 @ LIT 6 ADD LIT M1_S5 @ LIT 3 ADD !
+    LIT M1_S2 @ LIT M1_S5 @ LIT 4 ADD !
+    LIT M1_MAIN_ENTRY_CELL @ LIT M1_S4 @ !
+    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_DS_OFF ADD LIT M1_S4 @ LIT TREC_SP ADD !
+    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_RS_OFF ADD LIT M1_S4 @ LIT TREC_RP ADD !
+    LIT M1_S5 @ LIT 2 ADD LIT M1_S4 @ LIT TREC_CUR ADD !
+    LIT M1_S5 @ LIT 5 ADD LIT M1_S4 @ LIT TREC_END ADD !
+    LIT RV_CTX @ LIT M1_S4 @ LIT TREC_CTX ADD !
+    LIT M1_S5 @ LIT M1_S4 @ LIT TREC_BLK ADD !
+    LIT 0 LIT M1_S4 @ LIT TREC_FRAME ADD !
+    LIT 0 LIT M1_S4 @ LIT TREC_STATE ADD !
     LIT M1_S4 @ LIT 16 MUL ARITY 1 EXIT
 ]
+;; YIELD -- save this task's machine state to its record, resume the scheduler.
  yield: masm [
-    ;;; save task regs -> M1_CUR_TASK, restore scheduler from M1_SCHED_REC
     NONE LIT 16
-    LIT REG_RP @ @ LIT M1_CUR_TASK @ LIT TREC_IP ADD !      ;; task IP
+    LIT REG_RP @ @ LIT M1_CUR_TASK @ LIT TREC_IP ADD ! ;; task IP
     LIT REG_SP @ LIT M1_CUR_TASK @ LIT TREC_SP ADD !
     LIT REG_RP @ LIT M1_CUR_TASK @ LIT TREC_RP ADD !
     LIT RV_CUR @ LIT M1_CUR_TASK @ LIT TREC_CUR ADD !
@@ -52,8 +56,8 @@
     LIT M1_SCHED_REC LIT TREC_FRAME ADD @ LIT RV_FRAME !
     LIT M1_SCHED_REC LIT TREC_IP ADD @ LIT REG_IP !
 ]
+;; TASK-FINISH -- mark this task finished, then resume the scheduler.
  task-finish: masm [
-    ;;; mark task FINISHED, then resume the scheduler
     LIT 1 LIT M1_CUR_TASK @ LIT TREC_STATE ADD !
     LIT M1_SCHED_REC LIT TREC_SP ADD @ LIT REG_SP !
     LIT M1_SCHED_REC LIT TREC_RP ADD @ LIT REG_RP !
@@ -64,8 +68,9 @@
     LIT M1_SCHED_REC LIT TREC_FRAME ADD @ LIT RV_FRAME !
     LIT M1_SCHED_REC LIT TREC_IP ADD @ LIT REG_IP !
 ]
+;; RUN-TASKS -- deterministic round-robin: save the scheduler, then restore the
+;; next runnable task's saved state and transfer control to its continuation.
  run-tasks: masm [
-    ;;; save scheduler state (IP+11 resumes at Lscan), then round-robin
     LIT REG_IP @ LIT 11 ADD LIT M1_SCHED_REC LIT TREC_IP ADD !
     LIT REG_SP @ LIT M1_SCHED_REC LIT TREC_SP ADD !
     LIT REG_RP @ LIT M1_SCHED_REC LIT TREC_RP ADD !
@@ -74,12 +79,12 @@
     LIT RV_CTX @ LIT M1_SCHED_REC LIT TREC_CTX ADD !
     LIT RV_BLK @ LIT M1_SCHED_REC LIT TREC_BLK ADD !
     LIT RV_FRAME @ LIT M1_SCHED_REC LIT TREC_FRAME ADD !
-    LIT M1_CURSOR @ LIT M1_S7 !      ;; scan index
-    LIT 0 LIT M1_S8 !                ;; scan count
+    LIT M1_CURSOR @ LIT M1_S7 ! ;; scan index
+    LIT 0 LIT M1_S8 ! ;; scan count
   Lscan:
     LIT M1_S8 @ LIT 3 LT ZBRANCH Ldone
-    LIT M1_S7 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S6 !   ;; record addr
-    LIT M1_S6 @ LIT TREC_STATE ADD @ LIT 0 NE ZBRANCH Lfound   ;; RUNNABLE/FINISHED
+    LIT M1_S7 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S6 ! ;; record addr
+    LIT M1_S6 @ LIT TREC_STATE ADD @ LIT 0 NE ZBRANCH Lfound ;; RUNNABLE/FINISHED
   Lskip:
     LIT M1_S7 @ LIT 1 ADD LIT 3 MOD LIT M1_S7 !
     LIT M1_S8 @ LIT 1 ADD LIT M1_S8 !
@@ -87,8 +92,8 @@
   Ldone:
     NONE LIT 16 EXIT
   Lfound:
-    LIT M1_S6 @ LIT M1_CUR_TASK !    ;; resume this record
-    LIT M1_S7 @ LIT 1 ADD LIT 3 MOD LIT M1_CURSOR !   ;; next cursor
+    LIT M1_S6 @ LIT M1_CUR_TASK ! ;; resume this record
+    LIT M1_S7 @ LIT 1 ADD LIT 3 MOD LIT M1_CURSOR ! ;; next cursor
     LIT M1_CUR_TASK @ LIT TREC_SP ADD @ LIT REG_SP !
     LIT M1_CUR_TASK @ LIT TREC_RP ADD @ LIT REG_RP !
     LIT M1_CUR_TASK @ LIT TREC_CUR ADD @ LIT RV_CUR !
@@ -98,8 +103,8 @@
     LIT M1_CUR_TASK @ LIT TREC_FRAME ADD @ LIT RV_FRAME !
     LIT M1_CUR_TASK @ LIT TREC_IP ADD @ LIT REG_IP !
 ]
+;; RESET-TASKS -- mark all three task slots EMPTY and reset the cursor.
   reset-tasks: masm [
-    ;;; mark all three slots EMPTY, reset cursor
     LIT 0 LIT M1_S3 !
   Rloop:
     LIT M1_S3 @ LIT 3 LT ZBRANCH Rdone
@@ -113,14 +118,25 @@
  spawn: func [body] [ mnew-task body 'do 'task-finish ]
 
 
-;; demo/shop/demos/tuple-space.glon -- a Glon tuple-space / dataflow demo.
+;; demo/shop/demos/tuple-space.glon -- cooperative multitasking / dataflow demo.
+;; Three workers share one tuple space (24 tuples: eight BUY/SELL/RETURN Tea
+;; cycles). Each worker loops: claim tuple -> compute delta -> cooperative work
+;; -> yield, until the space is empty. Workers never call each other; the space
+;; is the only shared medium.
 ;;
-;; A shared transaction space holds 24 tuples: eight repeated BUY / SELL / RETURN
-;; Tea cycles. Three Glon worker tasks consume every tuple from the space under
-;; real M1 cooperative multitasking (each worker loops until the space is empty),
-;; compute stock/cash/sales deltas, and yield. A router then fans the accumulated
-;; deltas to the three reducers. The final totals are deterministic regardless of
-;; which worker consumes which tuple.
+;;   worker --yield--> scheduler --restore next runnable--> worker
+;;
+;; Cooperative multitasking: yield saves the task's machine state into its task
+;; record and resumes the scheduler; run-tasks restores the next runnable record;
+;; task-finish marks a record done and returns. Scheduling is deterministic
+;; round-robin. Workers fall out of the W1/W2/W3 lockstep because BUY/SELL/RETURN
+;; do different amounts of cooperative work (3/1/2 yields) -- no sleeps, no
+;; randomness, no host timing.
+;;
+;; The canvas (B labelled node, L edge, D persistent token, M traversal) is a
+;; view of the real execution: the red Jaffas are work tokens moving through the
+;; graph. host.js only animates the emitted trace; it holds no BUY/SELL/RETURN
+;; semantics.
 
 tuple-space-loaded: 1
 
@@ -148,9 +164,9 @@ mod3: masm 1 [ LIT 3 MOD LIT 16 MUL ARITY 1 EXIT ]
 ;; repeated eight times to build the 24-tuple workload.
 cycle: [ [0 10 4] [1 3 7] [2 1 7] ]
 space: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
-space-cursor: 0                            ;; next tuple to consume
+space-cursor: 0 ;; next tuple to consume
 space-taken-by: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
-worker-job: [0 0 0]                        ;; which tuple each worker is processing
+worker-job: [0 0 0] ;; which tuple each worker is processing
 
 ;; fill the space from the cycle: space[i] = cycle[i mod 3]
 fill-space: func [i n] [
@@ -174,14 +190,14 @@ log-count: 0
 
 log-append: func [v] [ block-set! log log-count v log-count: + log-count 1 ]
 
-;; ---- cooperative work (occupancy) ------------------------------------------
-;; Different transaction kinds keep a worker busy for different numbers of
-;; scheduler turns, so the workers drift out of the W1/W2/W3 lockstep. The work
-;; is deliberately trivial; it only exists to vary task occupancy. No wall-clock
-;; sleep, no scheduler change.
+;; ---- cooperative work (occupancy): vary task occupancy, no wall-clock -------
 work: func [n] [ either > n 0 [ yield work - n 1 ] [ none ] ]
 
-;; ---- a worker: consume the next tuple from the space, emit a delta, work ----
+;; ---- worker loop -----------------------------------------------------------
+;; claim next tuple -> record which worker took it -> compute deltas -> do
+;; kind-specific cooperative work (BUY 3 / SELL 1 / RETURN 2 yields) -> yield
+;; -> recurse until the space is empty. The drift out of lockstep comes from
+;; these real deterministic work differences, not sleeps or randomness.
 compute: func [i job] [
     kind: block-at job 0 qty: block-at job 1 price: block-at job 2
     either = kind 0 [
@@ -209,18 +225,16 @@ worker: func [id] [
         block-set! worker-job - id 1 job-idx
         log-append 1 log-append id log-append job-idx
         compute job-idx job
-        either = block-at job 0 0 [ work 3 ]      ;; BUY    -> 3 turns
-        [ either = block-at job 0 1 [ work 1 ]    ;; SELL   -> 1 turn
-          [ work 2 ] ]                             ;; RETURN -> 2 turns
+        either = block-at job 0 0 [ work 3 ] ;; BUY    -> 3 turns
+        [ either = block-at job 0 1 [ work 1 ] ;; SELL   -> 1 turn
+          [ work 2 ] ] ;; RETURN -> 2 turns
         worker id
     ] [ none ]
 ]
 
-;; ---- router: fan the deltas out to the reducers -----------------------------
-;; Each token is routed packet-by-packet: router -> reducer (op 3), in the real
-;; router order. The reducer is the visual fan-out token % 3 (Stock/Cash/Sales).
-;; (The worker -> router hop is already recorded by the "worker N took X" log
-;; line and the canvas claim path, so it is not duplicated here.)
+;; ---- router: fan deltas to reducers (op 3) -------------------------------
+;; Each token routes router -> reducer (token % 3 -> Stock/Cash/Sales), in the
+;; real router order; the worker -> router hop is already in the "took" log.
 route-at: func [i] [
     either < i block-len space [
         stock: + stock block-at stock-deltas i
@@ -233,10 +247,8 @@ route-at: func [i] [
 router: func [] [ route-at 0 ]
 
 ;; ---- controls --------------------------------------------------------------
-;; The delta / taken-by / worker-job blocks are mutable (block-set! writes their
-;; elements in place), so "reset" must zero the elements rather than rebind to a
-;; block literal -- a literal is a single shared loader block that a previous run
-;; has already mutated.
+;; reset zeroes the mutable blocks in place (a rebind would keep the shared,
+;; already-mutated loader literal).
 reset-state: func [] [
     space-cursor: 0 log-count: 0 stock: 0 cash: 0 sales: 0
     block-zero! stock-deltas block-zero! cash-deltas block-zero! sales-deltas
@@ -284,11 +296,9 @@ draw-canvas-topology: func [] [
     vis-line 500 396 690 520
 ]
 
-;; The visual script is a TEMPORAL TRACE, not a per-token history: all Jaffas
-;; first queue at the space, then each claim (space -> worker) is emitted in the
-;; real scheduler order, then each route (worker -> router -> reducer) in the
-;; router's order. The browser therefore shows several Jaffas in flight at once,
-;; matching the real M1 interleaving.
+;; The script is a temporal trace: all Jaffas queue (D), then each claim and
+;; route (M) is emitted in real scheduler order, so several Jaffas are in
+;; flight at once, matching the M1 interleaving.
 draw-canvas-dots: func [i n] [
     either < i n [ vis-dot i space-cx space-cy draw-canvas-dots + i 1 n ] [ none ]
 ]
