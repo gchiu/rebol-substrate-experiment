@@ -96,6 +96,16 @@ static cell eval_int(const char *prog) {
     return r0_s1_result(0, 1);
 }
 
+/* Reconstruct the generic visual script Glon emitted into the G1_VIS byte-list
+ * block as a NUL-terminated C string (one canvas command per line). */
+static void vis_script(char *buf, int cap) {
+    cell n = M[G1_VIS];
+    int i;
+    for (i = 0; i < n && i < cap - 1; i++)
+        buf[i] = (char)int_val(M[G1_VIS_DATA + i]);
+    buf[i] = 0;
+}
+
 static int file_contains(const char *path, const char *needle) {
     FILE *f = fopen(path, "rb");
     if (!f) return 0;
@@ -311,6 +321,49 @@ int run_r0_s1_g1e_tests(void) {
     r = route("tuple-space");
     CHECK(has(r, "Transaction space") && has(r, "data-glon-event='space-reset'"),
           "35: navigating away and back does not corrupt the demo");
+
+    printf("g1e: tuple-space canvas script follows the real Glon path\n");
+
+    {
+        char vs[4096];
+        r = route("tuple-space");
+        vis_script(vs, sizeof vs);
+        CHECK(has(vs, "B 420 40 160 36 Transaction space") &&
+              has(vs, "B 250 200 120 36 W1") &&
+              has(vs, "B 430 360 140 36 Router") &&
+              has(vs, "L 500 76 310 200"),
+              "36: canvas script describes the topology");
+
+        /* space-taken-by[0] is worker 1, so token 0 -> W1 center (310,218) */
+        r = event("space-reset");
+        r = event("run");
+        vis_script(vs, sizeof vs);
+        CHECK(has(vs, "M 0 500 58 310 218") &&
+              has(vs, "M 0 310 218 500 378") &&
+              has(vs, "M 0 500 378 310 538"),
+              "37: token 0 moves space -> worker-1 -> router -> Stock");
+
+        CHECK(has(vs, "M 1 500 58 500 218") && has(vs, "M 1 500 378 500 538"),
+              "38: token 1 -> worker 2 -> router -> Cash");
+
+        /* reassigning the worker in Glon changes the path with no JS change */
+        eval_int("[ block-set! space-taken-by 0 3 block-at space-taken-by 0 ]");
+        r = route("tuple-space");
+        vis_script(vs, sizeof vs);
+        CHECK(has(vs, "M 0 500 58 690 218"),
+              "39: Glon worker reassignment -> token 0 moves to W3 (690,218)");
+
+        /* reset clears the flow: topology only, no Jaffa moves */
+        r = event("space-reset");
+        vis_script(vs, sizeof vs);
+        CHECK(has(vs, "B 420 40 160 36 Transaction space") && !has(vs, "M "),
+              "40: reset renders topology only (no Jaffa moves)");
+
+        r = event("run");
+        vis_script(vs, sizeof vs);
+        CHECK(has(vs, "M 0 500 58 310 218") && !r0_s1_stack_sentry_fired(),
+              "41: rerun reproduces the real flow (worker 1) and no sentry fires");
+    }
 
     return failures;
 }

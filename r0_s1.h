@@ -69,8 +69,11 @@ enum {
  * [40000, 50600) = 10600 cells. The merchant-flow demo (real M1 multitasking
  * + dataflow visualisation) outgrew that, so the arena was shrunk again from 4
  * to 3 tasks (the tests and the demo use exactly 3) and its base moved up to
- * 54200, giving the loader heap [40000, 54200) = 14200 cells. */
-#define R0S1_HEAP_LIMIT 54200L
+ * 54200, giving the loader heap [40000, 54200) = 14200 cells. The tuple-space
+ * /dataflow demo + its canvas visualisation outgrew that, so the per-task RS
+ * was trimmed (3200 -> 3000) and the arena base moved up to 54800, giving the
+ * loader heap [40000, 54800) = 14800 cells. */
+#define R0S1_HEAP_LIMIT 54800L
 #define R0S1_CTX_CAP   16      /* max bindings per child context */
 
 /* FIB-OPT-P8: contexts with fewer than this many bindings are resolved by the
@@ -143,6 +146,15 @@ enum {
 #define G1_OUT      25344
 #define G1_OUT_DATA (G1_OUT + 2)
 #define G1_OUT_CAP  4096
+
+/* G1 canvas-visualization output: a second byte-output buffer (same layout as
+ * G1_OUT) into which a demo emits a generic visual script during render. The
+ * browser host reads it after the dispatch and draws/animated the Canvas; the
+ * native test reads it to assert the emitted path matches the real execution.
+ * Lives in the free gap just below the managed heap (29456..30482). */
+#define G1_VIS      29456
+#define G1_VIS_DATA (G1_VIS + 2)
+#define G1_VIS_CAP  1024
 
 /* M3 datatype-library state (free region above the GC state, below the D1
  * state records). BUILTIN_BASE is the fixed 16-slot BUILTIN_TYPE table; the

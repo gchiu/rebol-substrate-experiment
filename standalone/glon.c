@@ -28,6 +28,12 @@ void host_set_text(unsigned int handle, unsigned int value);
 __attribute__((import_module("env"), import_name("host_set_html")))
 void host_set_html(unsigned int handle, const unsigned char *ptr, unsigned int len);
 
+/* G1-canvas: hand the browser a generic visual script (a sequence of
+ * newline-terminated canvas commands emitted by Glon during render). The host
+ * draws it; it never interprets the application semantics. */
+__attribute__((import_module("env"), import_name("host_canvas_script")))
+void host_canvas_script(const unsigned char *ptr, unsigned int len);
+
 /* ---- minimal libc surface (no libc linked) ------------------------------- */
 
 /* tiny stdio shim: FILE is just an integer fd */
@@ -263,6 +269,20 @@ int glon_call(const unsigned char *name, unsigned int len) {
  * no routing/application logic. */
 static unsigned char htmlbuf[16384];
 
+/* G1 canvas: read the generic visual script Glon emitted into the G1_VIS
+ * byte-list block during the last dispatch and hand its bytes to the host. Only
+ * dispatches that draw a canvas (tuple-space) fill G1_VIS; an empty buffer is a
+ * no-op, so every other route/event just skips this step. */
+static unsigned char visbuf[G1_VIS_CAP];
+
+static void emit_canvas_script(void) {
+    cell n = M[G1_VIS];
+    if (n < 0 || n > G1_VIS_CAP) return;
+    for (cell i = 0; i < n; i++)
+        visbuf[i] = (unsigned char)int_val(M[G1_VIS_DATA + i]);
+    host_canvas_script(visbuf, (unsigned int)n);
+}
+
 __attribute__((export_name("glon_route")))
 int glon_route(const unsigned char *token, unsigned int len) {
     if (len == 0 || len > 63) return -1;
@@ -276,6 +296,7 @@ int glon_route(const unsigned char *token, unsigned int len) {
         return -2;
 
     host_set_html(1u, htmlbuf, (unsigned int)out_len);
+    emit_canvas_script();
     return 0;
 }
 
@@ -297,6 +318,7 @@ int glon_event(const unsigned char *token, unsigned int len) {
         return -2;
 
     host_set_html(1u, htmlbuf, (unsigned int)out_len);
+    emit_canvas_script();
     return 0;
 }
 
@@ -324,6 +346,7 @@ int glon_event_value(const unsigned char *token, unsigned int tlen,
         return -2;
 
     host_set_html(1u, htmlbuf, (unsigned int)out_len);
+    emit_canvas_script();
     return 0;
 }
 

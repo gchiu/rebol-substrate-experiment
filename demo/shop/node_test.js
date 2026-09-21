@@ -41,6 +41,7 @@ if (SRC !== BOOTSTRAP) {
 }
 
 const rendered = [];       // host_set_html(handle, html) captures
+const canvasScripts = [];  // host_canvas_script(ptr, len) captures
 const logs = [];
 let mem;
 
@@ -52,6 +53,9 @@ const imports = {
     host_set_text(handle, value) { /* retained; unused */ },
     host_set_html(handle, ptr, len) {
       rendered.push(new TextDecoder().decode(new Uint8Array(mem.buffer, ptr, len)));
+    },
+    host_canvas_script(ptr, len) {
+      canvasScripts.push(new TextDecoder().decode(new Uint8Array(mem.buffer, ptr, len)));
     }
   }
 };
@@ -188,6 +192,30 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   if (!/Load failed/.test(err))
     fail("load-failed event: expected 'Load failed', got: " + err);
 
-  console.log("GLON_G1E_TEST PASS (launcher / lazy shop / lazy guide / lazy merchant-flow / basket / search / persist / unknown / load-failed)");
+  // 12. tuple-space demo: the canvas script follows the real Glon path
+  loadDemo("tuple-space");
+  canvasScripts.length = 0;
+  const ts = route("tuple-space");
+  const tsTopo = canvasScripts.join("");
+  if (!/glon-canvas/.test(ts) ||
+      !/B 420 40 160 36 Transaction space/.test(tsTopo) ||
+      !/B 250 200 120 36 W1/.test(tsTopo))
+    fail("tuple-space route: expected canvas topology, got: " + tsTopo);
+
+  canvasScripts.length = 0;
+  const tsRun = event("run");
+  const tsFlow = canvasScripts.join("");
+  if (!/M 0 500 58 310 218/.test(tsFlow) ||   // token 0 -> worker 1 (W1)
+      !/M 0 310 218 500 378/.test(tsFlow) ||  // -> router
+      !/M 0 500 378 310 538/.test(tsFlow))    // -> Stock
+    fail("tuple-space run: expected token 0 path space->W1->router->Stock, got: " + tsFlow);
+
+  canvasScripts.length = 0;
+  const tsReset = event("space-reset");
+  const tsResetScript = canvasScripts.join("");
+  if (!/B 420 40 160 36 Transaction space/.test(tsResetScript) || /M /.test(tsResetScript))
+    fail("tuple-space reset: expected topology-only canvas, got: " + tsResetScript);
+
+  console.log("GLON_G1E_TEST PASS (launcher / lazy shop / lazy guide / lazy merchant-flow / basket / search / persist / unknown / load-failed / tuple-space canvas)");
   process.exit(0);
 }).catch((e) => fail(e.message || e));

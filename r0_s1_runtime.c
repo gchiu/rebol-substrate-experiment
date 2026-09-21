@@ -19,7 +19,7 @@
 
 /* ============================= loader state ============================ */
 
-static const char *syms[256];            /* interner: sym_id -> spelling */
+static const char *syms[512];            /* interner: sym_id -> spelling */
 static int nsyms;
 static cell global_ctx;                  /* tagged CONTEXT value */
 static cell main_entry;                  /* top-level S1 entry point */
@@ -206,6 +206,7 @@ static const raw_sym_t raw_syms[] = {
     { "T_STRING", T_STRING }, { "GC_KIND_STRING", GC_KIND_STRING },
     { "T_BLOCK", T_BLOCK }, { "GC_KIND_BLOCK", GC_KIND_BLOCK },
     { "G1_OUT", G1_OUT }, { "G1_OUT_DATA", G1_OUT_DATA },
+    { "G1_VIS", G1_VIS }, { "G1_VIS_DATA", G1_VIS_DATA },
 };
 #define N_RAW_SYMS ((int)(sizeof raw_syms / sizeof raw_syms[0]))
 

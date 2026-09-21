@@ -21,8 +21,8 @@
     LIT 25024 @ LIT 6 ADD LIT 25029 @ LIT 3 ADD !
     LIT 25026 @ LIT 25029 @ LIT 4 ADD !
     LIT 25010 @ LIT 25028 @ !
-    LIT 25027 @ LIT 3600 MUL LIT 54200 ADD LIT 400 ADD LIT 25028 @ LIT 1 ADD !
-    LIT 25027 @ LIT 3600 MUL LIT 54200 ADD LIT 3600 ADD LIT 25028 @ LIT 2 ADD !
+    LIT 25027 @ LIT 3400 MUL LIT 54800 ADD LIT 400 ADD LIT 25028 @ LIT 1 ADD !
+    LIT 25027 @ LIT 3400 MUL LIT 54800 ADD LIT 3400 ADD LIT 25028 @ LIT 2 ADD !
     LIT 25029 @ LIT 2 ADD LIT 25028 @ LIT 3 ADD !
     LIT 25029 @ LIT 5 ADD LIT 25028 @ LIT 4 ADD !
     LIT RV_CTX @ LIT 25028 @ LIT 5 ADD !
@@ -212,6 +212,50 @@ reset: func [] [ started: 0 reset-tasks reset-state ]
 do-space-run: func [] [ start render-current ]
 do-space-reset: func [] [ reset render-current ]
 
+;; ---- canvas visualization (generic script; the browser host draws it) ------
+;; Coordinates are presentation only. The worker DECISION comes from Glon state
+;; (space-taken-by records which worker took each tuple); the reducer DECISION
+;; is the router's ordered fan-out (Stock, Cash, Sales). The browser host only
+;; draws the boxes / lines / red-dot moves it is told -- it knows no semantics.
+space-cx: 500 space-cy: 58
+worker-cx: [310 500 690] worker-cy: 218
+router-cx: 500 router-cy: 378
+reducer-cx: [310 500 690] reducer-cy: 538
+
+draw-canvas-topology: func [] [
+    vis-box 420 40 160 36 "Transaction space"
+    vis-box 250 200 120 36 "W1"
+    vis-box 440 200 120 36 "W2"
+    vis-box 630 200 120 36 "W3"
+    vis-box 430 360 140 36 "Router"
+    vis-box 250 520 120 36 "Stock"
+    vis-box 440 520 120 36 "Cash"
+    vis-box 630 520 120 36 "Sales"
+    vis-line 500 76 310 200
+    vis-line 500 76 500 200
+    vis-line 500 76 690 200
+    vis-line 310 236 500 360
+    vis-line 500 236 500 360
+    vis-line 690 236 500 360
+    vis-line 500 396 310 520
+    vis-line 500 396 500 520
+    vis-line 500 396 690 520
+]
+
+;; one token (tuple i): a red Jaffa leaves the space, travels to the worker
+;; that actually took it, then to the router, then to reducer i.
+draw-canvas-token: func [i] [
+    wid: block-at space-taken-by i
+    vis-dot i space-cx space-cy
+    vis-move i space-cx space-cy block-at worker-cx - wid 1 worker-cy
+    vis-move i block-at worker-cx - wid 1 worker-cy router-cx router-cy
+    vis-move i router-cx router-cy block-at reducer-cx i reducer-cy
+]
+
+draw-canvas-flow: func [i] [
+    either < i 3 [ draw-canvas-token i draw-canvas-flow + i 1 ] [ none ]
+]
+
 ;; ---- view ------------------------------------------------------------------
 emit-kind: func [k] [ either = k 0 [ emit-text "BUY" ] [ either = k 1 [ emit-text "SELL" ] [ emit-text "RETURN" ] ] ]
 
@@ -271,6 +315,7 @@ tuple-space-view: [
     heading [ emit-text "Glon tuple space / dataflow" ]
     text [ emit-text "Three Glon tasks consume tuples from a shared space; results flow through a router to reducers." ]
     draw-space
+    emit-text "<canvas id='glon-canvas' width='1000' height='620'></canvas>"
     either started [ button [ emit-text "Reset" ] "space-reset" ] [ button [ emit-text "Run" ] "run" ]
     emit-text " "
     link [ emit-text "Back to demos" ] "home"
@@ -280,5 +325,9 @@ tuple-space-view: [
     emit-text "</ul>"
 ]
 
-render-tuple-space: func [] [ emit-clear do tuple-space-view emit-finish ]
+render-tuple-space: func [] [
+    emit-clear do tuple-space-view
+    vis-clear draw-canvas-topology either started [ draw-canvas-flow 0 ] [ none ] vis-finish
+    emit-finish
+]
 ]

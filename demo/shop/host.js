@@ -45,9 +45,109 @@
       host_set_html: function (handle, ptr, len) {
         var el = document.querySelector('[data-glon-id="' + handle + '"]');
         if (el) el.innerHTML = dec.decode(view().subarray(ptr, ptr + len));
+      },
+      host_canvas_script: function (ptr, len) {
+        var script = dec.decode(view().subarray(ptr, ptr + len));
+        var canvas = document.querySelector("#glon-canvas");
+        if (canvas) playCanvasScript(canvas, script);
       }
     }
   };
+
+  // ---- Canvas visualization -----------------------------------------------
+  // host_canvas_script receives a generic visual script (newline commands)
+  // that Glon emitted during render, and draws/animates it on the canvas. The
+  // script knows only graphical concepts: B(ox), L(ine), D(ot), M(ove). It
+  // never names a worker, reducer, or transaction.
+
+  function parseCanvasScript(script) {
+    var statics = [];   // boxes + lines, drawn every frame
+    var jaffas = {};    // id -> {x, y}
+    var moves = [];     // animated transitions
+    var lines = script.split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].replace(/^\s+|\s+$/g, "");
+      if (!line) continue;
+      var parts = line.split(" ");
+      var op = parts[0];
+      var nums = function (a, b) {
+        var r = [];
+        for (var k = a; k < b; k++) r.push(Number(parts[k]));
+        return r;
+      };
+      if (op === "B") {
+        var b = nums(1, 5);
+        statics.push({ op: "B", x: b[0], y: b[1], w: b[2], h: b[3], label: parts.slice(5).join(" ") });
+      } else if (op === "L") {
+        var l = nums(1, 5);
+        statics.push({ op: "L", x1: l[0], y1: l[1], x2: l[2], y2: l[3] });
+      } else if (op === "D") {
+        var d = nums(1, 4);
+        jaffas[d[0]] = { x: d[1], y: d[2] };
+      } else if (op === "M") {
+        var m = nums(1, 6);
+        moves.push({ id: m[0], x1: m[1], y1: m[2], x2: m[3], y2: m[4] });
+      }
+    }
+    return { statics: statics, jaffas: jaffas, moves: moves };
+  }
+
+  function drawCanvas(ctx, w, h, statics, jaffas) {
+    ctx.clearRect(0, 0, w, h);
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    var i;
+    for (i = 0; i < statics.length; i++) {
+      var s = statics[i];
+      if (s.op === "B") {
+        ctx.fillStyle = "#f5f5f5";
+        ctx.strokeStyle = "#444";
+        ctx.fillRect(s.x, s.y, s.w, s.h);
+        ctx.strokeRect(s.x, s.y, s.w, s.h);
+        ctx.fillStyle = "#222";
+        ctx.fillText(s.label, s.x + s.w / 2, s.y + s.h / 2);
+      } else if (s.op === "L") {
+        ctx.strokeStyle = "#888";
+        ctx.beginPath();
+        ctx.moveTo(s.x1, s.y1);
+        ctx.lineTo(s.x2, s.y2);
+        ctx.stroke();
+      }
+    }
+    ctx.fillStyle = "#d33";
+    for (var id in jaffas) {
+      var j = jaffas[id];
+      ctx.beginPath();
+      ctx.arc(j.x, j.y, 8, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+  }
+
+  function playCanvasScript(canvas, script) {
+    var ctx = canvas.getContext("2d");
+    var w = canvas.width, h = canvas.height;
+    var parsed = parseCanvasScript(script);
+    var index = 0;
+    function next() {
+      drawCanvas(ctx, w, h, parsed.statics, parsed.jaffas);
+      if (index >= parsed.moves.length) return;
+      var m = parsed.moves[index];
+      var j = parsed.jaffas[m.id];
+      var start = null, dur = 450;
+      function step(t) {
+        if (start === null) start = t;
+        var p = Math.min(1, (t - start) / dur);
+        j.x = m.x1 + (m.x2 - m.x1) * p;
+        j.y = m.y1 + (m.y2 - m.y1) * p;
+        drawCanvas(ctx, w, h, parsed.statics, parsed.jaffas);
+        if (p < 1) requestAnimationFrame(step);
+        else { index += 1; next(); }
+      }
+      requestAnimationFrame(step);
+    }
+    next();
+  }
 
   function alloc(str) {
     var bytes = enc.encode(str);

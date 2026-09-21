@@ -181,6 +181,13 @@ static int g1a_dispatch(const char *var, const char *dispatcher, const char *tok
     src[n] = 0;
 
     int err = 0;
+    /* The dispatch source is a fresh, throw-away block parsed into the loader
+     * heap. It (and any loader blocks the run transiently allocates) is dead
+     * once the run returns -- the rendered fragment is a fixed M[] byte-list,
+     * never a loader block -- so reclaim it to stop route/event re-parses from
+     * leaking the loader heap. */
+    cell save_lhp = M[GC_LOADER_HP];
+    M[G1_VIS] = 0;                     /* default: no visual script this dispatch */
     cell blk = r0_s1_parse(src, &err);
     if (err) return -1;
 
@@ -188,6 +195,7 @@ static int g1a_dispatch(const char *var, const char *dispatcher, const char *tok
      * program's `route`/`do-event` block against persistent managed state, so
      * use the persistent-run entry (resets transient stacks, preserves HP). */
     int N = r0_s1_run_persistent(blk);
+    M[GC_LOADER_HP] = save_lhp;
     if (N < 1) return -1;               /* no fragment produced */
 
     cell frag = r0_s1_result(0, N);

@@ -53,7 +53,12 @@
  * 4 to 3 (the M1/M2 tests and the demo use exactly 3 tasks) and the arena base
  * moved up to 54200, giving the loader heap [40000, 54200). The arena still
  * ends at 65000 (task table). This is the last task slot the tests/demo can
- * spare: 3 is the minimum M1_MAX_TASKS the tests require. */
+ * spare: 3 is the minimum M1_MAX_TASKS the tests require.
+ *
+ * The tuple-space/dataflow demo + its canvas visualisation outgrew that once
+ * more, so the per-task RS was trimmed from 3200 to 3000 cells (still >= 2x the
+ * repeat-20 requirement) and the arena base moved up to 54800, giving the
+ * loader heap [40000, 54800). The arena still ends at 65000. */
 #define M1_TASK_TABLE      65000  /* task records                                 */
 #define M1_TASK_REC_SIZE   16     /* cells per task record                        */
 #define M1_MAX_TASKS       3      /* fixed task count for M1                      */
@@ -61,10 +66,10 @@
                                    /* (task records occupy 65000..65048; wrappers
                                     * live at 65080 + slot*16, in the free region) */
 
-#define M1_ARENA_BASE      54200  /* per-task stack arena                         */
-#define M1_TASK_CELLS      3600   /* cells per task (400 DS + 3200 RS)            */
+#define M1_ARENA_BASE      54800  /* per-task stack arena                         */
+#define M1_TASK_CELLS      3400   /* cells per task (400 DS + 3000 RS)            */
 #define M1_DS_OFF          400    /* DS top offset within a task's region         */
-#define M1_RS_OFF          3600   /* RS top offset within a task's region         */
+#define M1_RS_OFF          3400   /* RS top offset within a task's region         */
 
 /* task record field offsets */
 #define TREC_IP    0
