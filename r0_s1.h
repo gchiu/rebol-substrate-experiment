@@ -316,6 +316,7 @@ cell r0_s1_result(int i, int N);
 /* instrumentation */
 cell r0_s1_ip_start(void), r0_s1_ip_end(void);
 int  r0_s1_ran_cleanly(void);   /* 1 iff the last run reached the normal halt */
+int  r0_s1_stack_sentry_fired(void);  /* 1 iff the last run violated SP/RP bounds */
 cell r0_s1_sp_start(void), r0_s1_sp_end(void);
 cell r0_s1_rp_start(void), r0_s1_rp_end(void);
 cell r0_s1_rp_min(void);   /* min RP observed (max return depth) */

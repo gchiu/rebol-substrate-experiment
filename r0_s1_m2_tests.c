@@ -456,6 +456,85 @@ static void test_V(void) {
           "V: SP beyond the M1 arena fail-stops");
 }
 
+/* W: stack sentries -- a run that leaves SP/RP outside the legal main-world
+ * region fires the C-level sentry. (The sentry reports the final register
+ * state after the run, so each offending operation is exercised in its own
+ * run; the "ARITY 0" result cell compensates one cell, hence the two-fold
+ * operations below.) */
+static int m2_sentry(const char *prog) {
+    int N;
+    m2_run(prog, &N);
+    return r0_s1_stack_sentry_fired();
+}
+
+static void test_W(void) {
+    printf("m2: W stack sentries detect main-world SP/RP bounds\n");
+    CHECK(m2_sentry(" drop-empty: raw [ DROP DROP ARITY 0 EXIT ] drop-empty "),
+          "W: DROP on empty main DS fires the sentry (underflow)");
+    CHECK(m2_sentry(" add-empty: raw [ ADD ADD ARITY 0 EXIT ] add-empty "),
+          "W: ADD needing 2 operands on empty main DS fires (underflow)");
+    CHECK(m2_sentry(" ds-over: raw [ LIT 0 LIT 25060 ! "
+            " L1: LIT 25060 @ LIT 10000 LT ZBRANCH Ldone LIT 0 LIT 25060 @ LIT 1 ADD LIT 25060 ! BRANCH L1 "
+            " Ldone: ARITY 0 EXIT ] ds-over "),
+          "W: main DS overflow (pushing past code) fires the sentry");
+    CHECK(m2_sentry(" rpop-empty: raw [ LIT REG_RP @ @ LIT 24577 ! LIT 24577 LIT REG_RP ! ARITY 0 EXIT ] rpop-empty "),
+          "W: RP raised above RS_INIT fires the sentry (underflow)");
+    CHECK(m2_sentry(" rs-over: raw [ LIT 0 LIT 25060 ! "
+            " L1: LIT 25060 @ LIT 9000 LT ZBRANCH Ldone LIT 0 >R LIT 25060 @ LIT 1 ADD LIT 25060 ! BRANCH L1 "
+            " Ldone: ARITY 0 EXIT ] rs-over "),
+          "W: main RS overflow (too many >R) fires the sentry");
+    CHECK(!m2_sentry(" drop-valid: raw [ LIT 0 DROP ARITY 0 EXIT ] drop-valid "),
+          "W: DROP on a non-empty main DS does not fire the sentry");
+    CHECK(!m2_sentry(" r-valid: raw [ LIT 0 >R R> DROP ARITY 0 EXIT ] r-valid "),
+          "W: balanced >R/R> does not fire the sentry");
+}
+
+/* X: task-world stack sentries (via the collector's RUNNABLE-task scan) and the
+ * finished-task / task-slot-reuse convention. */
+static void test_X(void) {
+    printf("m2: X task stack sentries + finished-task convention\n");
+    int N;
+
+    /* task DS underflow: the task over-pops its DS; when the collector scans the
+     * still-RUNNABLE task it must fail-stop rather than scan a bogus range. */
+    m2_m1_run(" t-drop: raw [ DROP DROP ARITY 0 EXIT ] "
+              " task-a: spawn [ t-drop t-drop t-drop collect ] "
+              " run-tasks ", &N);
+    CHECK(!r0_s1_ran_cleanly(),
+          "X: task DS underflow fail-stops (SP above the task DS top)");
+
+    /* finished-task convention: after run-tasks the task is FINISHED with a
+     * two-cell residual on its DS (the suspended yield's [NONE,arity]) and an
+     * unconsumed RS; the collector SKIPS finished tasks, so a following collect
+     * must NOT treat those residuals as roots. */
+    m2_m1_run(" task-a: spawn [ yield ] run-tasks collect ", &N);
+    CHECK(r0_s1_ran_cleanly(), "X: finished task residuals are skipped by GC");
+    {
+        cell *rec = &M[M1_TASK_TABLE + 0 * M1_TASK_REC_SIZE];
+        CHECK(rec[TREC_STATE] == TASK_FINISHED, "X: task is FINISHED after run-tasks");
+        cell base = M1_ARENA_BASE;
+        printf("  (finished task SP=%ld base+DS_OFF=%ld RP=%ld base+RS_OFF=%ld)\n",
+               (long)rec[TREC_SP], (long)(base + M1_DS_OFF),
+               (long)rec[TREC_RP], (long)(base + M1_RS_OFF));
+    }
+
+    /* slot reuse: spawn again into the same slot, run to FINISHED, force GC --
+     * fresh SP/RP must be reinitialised and stale residuals must not become
+     * roots or affect execution. */
+    m2_m1_run(" task-a: spawn [ yield ] run-tasks "
+              " task-a: spawn [ yield ] run-tasks collect ", &N);
+    CHECK(r0_s1_ran_cleanly(), "X: slot reuse reinitialises SP/RP and survives GC");
+    {
+        cell *rec = &M[M1_TASK_TABLE + 0 * M1_TASK_REC_SIZE];
+        cell base = M1_ARENA_BASE;
+        CHECK(rec[TREC_STATE] == TASK_FINISHED, "X: reused task is FINISHED");
+        CHECK(rec[TREC_SP] >= base && rec[TREC_SP] <= base + M1_DS_OFF,
+              "X: reused task SP is inside the DS region");
+        CHECK(rec[TREC_RP] >= base + M1_DS_OFF && rec[TREC_RP] <= base + M1_RS_OFF,
+              "X: reused task RP is inside the RS region");
+    }
+}
+
 
 int run_r0_s1_m2_tests(void) {
     printf("R0-S1 M2: shared-heap garbage collection above frozen S1\n");
@@ -486,6 +565,8 @@ int run_r0_s1_m2_tests(void) {
     test_T();
     test_U();
     test_V();
+    test_W();
+    test_X();
 
     if (failures == 0) printf("all R0-S1 M2 GC tests passed\n");
     return failures;

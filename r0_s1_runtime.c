@@ -25,6 +25,7 @@ static cell global_ctx;                  /* tagged CONTEXT value */
 static cell main_entry;                  /* top-level S1 entry point */
 static cell main_halt_ip;                /* REG_IP value after a NORMAL run */
 static int g_seed_datatypes;             /* M3: enable bootstrap heap seeding */
+static int stack_sentry_fired;           /* stack sentry: last run violated bounds */
 
 /* instrumentation */
 static cell ip_start, ip_end, sp_start, sp_end, rp_start, rp_end;
@@ -987,6 +988,26 @@ static void emit_collect(void) {
     e_cell(GC_C4); asm_lit(TREC_FRAME); asm_host(HOST_ADD); asm_fetch(); asm_call(r_mark_frame);
     e_cell(GC_C3); asm_lit(M1_TASK_CELLS); asm_host(HOST_MUL);
     asm_lit(M1_ARENA_BASE); asm_host(HOST_ADD); e_setc(GC_C5);       /* top base */
+    /* task stack sentry: a RUNNABLE task's saved SP/RP must lie inside its
+     * arena DS [base, base+DS_OFF] and RS [base+DS_OFF, base+RS_OFF]; fail-stop
+     * (not corrupt) if a saved register is out of bounds. */
+    e_cell(GC_C4); asm_lit(TREC_SP); asm_host(HOST_ADD); asm_fetch(); e_setc(GC_T7); /* SP */
+    e_cell(GC_T7); e_cell(GC_C5); asm_host(HOST_GE);
+    cell j_tbad = asm_zbranch_fwd();                     /* SP < base */
+    e_cell(GC_T7); e_cell(GC_C5); asm_lit(M1_DS_OFF); asm_host(HOST_ADD); asm_host(HOST_LE);
+    cell j_tbad2 = asm_zbranch_fwd();                    /* SP > base+DS_OFF */
+    e_cell(GC_C4); asm_lit(TREC_RP); asm_host(HOST_ADD); asm_fetch(); e_setc(GC_T8); /* RP */
+    e_cell(GC_T8); e_cell(GC_C5); asm_lit(M1_DS_OFF); asm_host(HOST_ADD); asm_host(HOST_GE);
+    cell j_tbad3 = asm_zbranch_fwd();                    /* RP < base+DS_OFF */
+    e_cell(GC_T8); e_cell(GC_C5); asm_lit(M1_RS_OFF); asm_host(HOST_ADD); asm_host(HOST_LE);
+    cell j_tbad4 = asm_zbranch_fwd();                    /* RP > base+RS_OFF */
+    cell fw_tok = asm_branch_fwd();
+    asm_patch_here(j_tbad4);
+    asm_patch_here(j_tbad3);
+    asm_patch_here(j_tbad2);
+    asm_patch_here(j_tbad);
+    asm_host(HOST_DUMP); asm_halt();                     /* task stack bounds violated */
+    asm_patch_here(fw_tok);
     e_cell(GC_C4); asm_lit(TREC_SP); asm_host(HOST_ADD); asm_fetch();
     e_cell(GC_C5); asm_lit(M1_DS_OFF); asm_host(HOST_ADD); asm_call(r_scan_values);
     e_cell(GC_C4); asm_lit(TREC_RP); asm_host(HOST_ADD); asm_fetch();
@@ -2395,6 +2416,38 @@ cell r0_s1_parse(const char *src, int *err) {
     return b;
 }
 
+/* STACK-SENTRY: after a run the SP/RP must be back inside the legal region of
+ * the world the run ended in (main DS [code_end, DS_INIT], main RS
+ * [DS_INIT, RS_INIT], or a task DS [base, base+M1_DS_OFF] / task RS
+ * [base+M1_DS_OFF, base+M1_RS_OFF]). A violation is reported immediately, with
+ * the offending register state, not a later GC or unrelated failure. */
+static void r0_s1_stack_sentry(void) {
+    cell sp = s1_mem(REG_SP), rp = s1_mem(REG_RP);
+    const char *what = NULL;
+    if (sp <= R0S1_DS_INIT) {
+        /* main world */
+        if (sp < code_end)              what = "main data-stack overflow (SP < code)";
+        else if (rp > R0S1_RS_INIT)     what = "main return-stack underflow (RP > RS_INIT)";
+        else if (rp < R0S1_DS_INIT)     what = "main return-stack overflow (RP < DS_INIT)";
+    } else if (sp >= M1_ARENA_BASE &&
+               sp < M1_ARENA_BASE + M1_MAX_TASKS * M1_TASK_CELLS) {
+        /* M1 task world (slot derived from SP; SP is always >= its arena base) */
+        cell base = M1_ARENA_BASE + ((sp - M1_ARENA_BASE) / M1_TASK_CELLS) * M1_TASK_CELLS;
+        cell ds_top = base + M1_DS_OFF;
+        cell rs_top = base + M1_RS_OFF;
+        if (sp > ds_top)                what = "task data-stack underflow (SP > DS top)";
+        else if (rp > rs_top)           what = "task return-stack underflow (RP > RS top)";
+        else if (rp < ds_top)           what = "task return-stack overflow (RP < DS top)";
+    } else {
+        what = "invalid SP (outside main and task regions)";
+    }
+    if (what) {
+        stack_sentry_fired = 1;
+        fprintf(stderr, "stack sentry: %s (SP=%ld RP=%ld)\n",
+                what, (long)sp, (long)rp);
+    }
+}
+
 int r0_s1_run_ex(cell block, int preserve_hp) {
     cell bp = r0_untag(block);
     M[RV_CUR] = bp + BLK_DATA;
@@ -2407,6 +2460,7 @@ int r0_s1_run_ex(cell block, int preserve_hp) {
     M[RV_HOSTCALLS] = 0;
     M[RV_RPMIN] = 65535;
     M[RV_SPMIN] = 65535;
+    stack_sentry_fired = 0;
 #ifdef R0_S1_PROFILE
     for (cell c = PF_BASE; c <= PF_HASH_FALLBACK_SLOTS; c++)
         if (c != PF_TRACE) M[c] = 0;   /* PF_TRACE is a persistent mode flag */
@@ -2428,6 +2482,7 @@ int r0_s1_run_ex(cell block, int preserve_hp) {
     ip_end = s1_mem(REG_IP);
     sp_end = s1_mem(REG_SP);
     rp_end = s1_mem(REG_RP);
+    r0_s1_stack_sentry();
 
     cell arity = s1_top();
     return (int)(arity / 16);
@@ -2457,6 +2512,7 @@ int r0_s1_run_compiled(cell block, void (*run_fn)(cell *, cell)) {
     M[RV_HOSTCALLS] = 0;
     M[RV_RPMIN] = 65535;
     M[RV_SPMIN] = 65535;
+    stack_sentry_fired = 0;
 #ifdef R0_S1_PROFILE
     for (cell c = PF_BASE; c <= PF_HASH_FALLBACK_SLOTS; c++)
         if (c != PF_TRACE) M[c] = 0;
@@ -2471,6 +2527,7 @@ int r0_s1_run_compiled(cell block, void (*run_fn)(cell *, cell)) {
     ip_end = s1_mem(REG_IP);
     sp_end = s1_mem(REG_SP);
     rp_end = s1_mem(REG_RP);
+    r0_s1_stack_sentry();
 
     cell arity = s1_top();
     return (int)(arity / 16);
@@ -2484,6 +2541,7 @@ cell r0_s1_result(int i, int N) {
 cell r0_s1_ip_start(void) { return ip_start; }
 cell r0_s1_ip_end(void)   { return ip_end; }
 int  r0_s1_ran_cleanly(void){ return ip_end == main_halt_ip; }
+int  r0_s1_stack_sentry_fired(void){ return stack_sentry_fired; }
 cell r0_s1_sp_start(void) { return sp_start; }
 cell r0_s1_sp_end(void)   { return sp_end; }
 cell r0_s1_rp_start(void) { return rp_start; }
