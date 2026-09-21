@@ -164,12 +164,19 @@ stock: 0
 cash: 0
 sales: 0
 started: 0
-log: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+log: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
 log-count: 0
 
 log-append: func [v] [ block-set! log log-count v log-count: + log-count 1 ]
 
-;; ---- a worker: consume the next tuple from the space, emit a delta, yield ----
+;; ---- cooperative work (occupancy) ------------------------------------------
+;; Different transaction kinds keep a worker busy for different numbers of
+;; scheduler turns, so the workers drift out of the W1/W2/W3 lockstep. The work
+;; is deliberately trivial; it only exists to vary task occupancy. No wall-clock
+;; sleep, no scheduler change.
+work: func [n] [ either > n 0 [ yield work - n 1 ] [ none ] ]
+
+;; ---- a worker: consume the next tuple from the space, emit a delta, work ----
 compute: func [i job] [
     kind: block-at job 0 qty: block-at job 1 price: block-at job 2
     either = kind 0 [
@@ -197,17 +204,24 @@ worker: func [id] [
         block-set! worker-job - id 1 job-idx
         log-append 1 log-append id log-append job-idx
         compute job-idx job
-        yield
+        either = block-at job 0 0 [ work 3 ]      ;; BUY    -> 3 turns
+        [ either = block-at job 0 1 [ work 1 ]    ;; SELL   -> 1 turn
+          [ work 2 ] ]                             ;; RETURN -> 2 turns
         worker id
     ] [ none ]
 ]
 
 ;; ---- router: fan the deltas out to the reducers -----------------------------
+;; Each token is routed packet-by-packet: router -> reducer (op 3), in the real
+;; router order. The reducer is the visual fan-out token % 3 (Stock/Cash/Sales).
+;; (The worker -> router hop is already recorded by the "worker N took X" log
+;; line and the canvas claim path, so it is not duplicated here.)
 route-at: func [i] [
     either < i block-len space [
         stock: + stock block-at stock-deltas i
         cash: + cash block-at cash-deltas i
         sales: + sales block-at sales-deltas i
+        log-append 3 log-append mod3 i log-append i
         route-at + i 1
     ] [ none ]
 ]
@@ -228,9 +242,6 @@ start: func [] [
     started: 1 reset-tasks reset-state
     task-a: spawn [ worker 1 ] task-b: spawn [ worker 2 ] task-c: spawn [ worker 3 ]
     run-tasks router
-    log-append 3 log-append 0 log-append 0
-    log-append 3 log-append 1 log-append 0
-    log-append 3 log-append 2 log-append 0
 ]
 
 reset: func [] [ started: 0 reset-tasks reset-state ]
@@ -344,16 +355,10 @@ draw-log-entry: func [i] [
         emit-kind block-at block-at space block-at log + i 2 0
         emit-text " Tea from the space"
     ] [
-    either = op 2 [
-        emit-text "worker " emit-int block-at log + i 1 emit-text " emitted stock "
-        emit-int block-at stock-deltas block-at log + i 2
-        emit-text " / cash " emit-int block-at cash-deltas block-at log + i 2
-        emit-text " / sales " emit-int block-at sales-deltas block-at log + i 2
-    ] [
-        emit-text "Router -> "
-        either = block-at log + i 1 0 [ emit-text "inventory" ]
+        emit-text "token " emit-int block-at log + i 2 emit-text ": router -> "
+        either = block-at log + i 1 0 [ emit-text "stock" ]
         [ either = block-at log + i 1 1 [ emit-text "cash" ] [ emit-text "sales" ] ]
-    ]]
+    ]
     emit-text "</li>"
 ]
 
