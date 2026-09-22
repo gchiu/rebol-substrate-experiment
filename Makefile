@@ -99,7 +99,7 @@ fib-p10b-bench: r0_s1_p10b_bench.c r0_s1_runtime.c s1.c
 	$(CC) $(CFLAGS) -o $@ r0_s1_p10b_bench.c r0_s1_runtime.c s1.c -ldl
 
 clean:
-	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench fib-p10b-bench $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
+	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench fib-p10b-bench traffic-bench-o0 traffic-bench-o2 $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
 # Produces web/demo.js (Emscripten runtime + web/glue.js) and web/demo.wasm,
@@ -182,4 +182,16 @@ wasm-g1a-test: demo/shop/glon.wasm demo/shop/app.html
 	@grep -q "GLON_G1E_TEST PASS" /tmp/opencode_g1a_test.out && \
 	 echo "wasm-g1a-test: PASS (home / products / add-product x3 / search / persist / unknown)"
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test
+# ---- Traffic simulator benchmark (post-Alpha application; no language change) -
+# load-once benchmark of the IDM sim. Builds both the shipped -O0 runtime and a
+# directly-compiled -O2 runtime so interpreter cost can be separated from C
+# optimisation level. Not part of the test suite.
+traffic-bench: traffic-bench-o0 traffic-bench-o2
+
+traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
+	$(CC) $(CFLAGS) -o $@ r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
+
+traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
+	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
+
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2
