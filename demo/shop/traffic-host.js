@@ -6,15 +6,18 @@
  *   - instantiate demo/shop/glon.wasm (the existing G1A runtime, unchanged);
  *   - glon_init, then glon_load the combined source inlined in the page's
  *     <script type="application/glon"> block (common.glon + traffic.glon);
- *   - schedule simulation work: each Start/Pause/Reset/Speed control maps to
- *     one glon_event("traffic-start"/"traffic-advance"/"traffic-reset") call
- *     through the same G1A event bridge the launcher uses;
+ *   - schedule simulation work: Start/Resume/Advance/Reset map to
+ *     glon_event("traffic-start"/"traffic-resume"/"traffic-advance"/
+ *     "traffic-reset"); the Baseline/Pacing selector maps to
+ *     glon_event_value("traffic-mode", "baseline"|"pacing");
  *   - decode the G1_VIS canvas script Glon emitted (host_canvas_script) and
  *     paint the road + vehicle dots;
  *   - show the status line Glon emitted (host_set_html).
  *
- * This file contains NO IDM physics, NO gap/speed computation, and NO vehicle
- * positions of its own: every number it shows was produced by frozen Glon.
+ * This file contains NO IDM physics, NO gap/speed computation, NO pacing
+ * policy, and NO vehicle positions of its own: every number it shows, and
+ * which vehicle is paced and by how much, is decided entirely by frozen Glon
+ * (demos/traffic.glon). JS only decides *when* to ask Glon for the next tick.
  */
 (function () {
   "use strict";
@@ -100,6 +103,14 @@
     if (rc !== 0) console.error("traffic-host.js: glon_event('" + token + "') rc=" + rc);
   }
 
+  function eventValue(token, value) {
+    if (typeof ex.glon_event_value !== "function") return;
+    var t = alloc(token);
+    var v = alloc(value);
+    var rc = ex.glon_event_value(t[0], t[1], v[0], v[1]);
+    if (rc !== 0) console.error("traffic-host.js: glon_event_value('" + token + "', '" + value + "') rc=" + rc);
+  }
+
   // ---- playback scheduling -------------------------------------------------
   // Each advance event = advance 5 = 0.5 simulated seconds. One event period
   // at speed S therefore covers S*5 ticks/s; 1x real-time is 10 ticks/s, i.e.
@@ -120,11 +131,19 @@
   }
 
   // ---- controls ------------------------------------------------------------
+  // everStarted distinguishes a fresh Start (init + first render, so a mode
+  // switch or Reset always begins from tick 0) from a Resume after Pause
+  // (no re-init -- Pause only stops this file's scheduling loop, it never
+  // tells Glon anything, so the simulation state Glon holds is untouched and
+  // resuming must not rewind it).
+  var everStarted = false;
+
   function start() {
     if (running) return;
     running = true;
     lastEvent = performance.now();
-    event("traffic-start");       // init + first render
+    if (everStarted) event("traffic-resume");
+    else { event("traffic-start"); everStarted = true; }
     requestAnimationFrame(function (t) { lastEvent = t; });
   }
 
@@ -134,7 +153,14 @@
 
   function reset() {
     running = false;
+    everStarted = false;
     event("traffic-reset");
+  }
+
+  function setMode(value) {
+    running = false;
+    everStarted = false;
+    eventValue("traffic-mode", value);
   }
 
   function boot() {
@@ -156,6 +182,7 @@
     var startBtn = document.querySelector("#start");
     var resetBtn = document.querySelector("#reset");
     var speedSel = document.querySelector("#speed");
+    var modeSel = document.querySelector("#mode");
 
     startBtn.addEventListener("click", function () {
       if (running) { pause(); startBtn.textContent = "Start"; }
@@ -167,6 +194,10 @@
     });
     speedSel.addEventListener("change", function () {
       speed = Number(speedSel.value);
+    });
+    modeSel.addEventListener("change", function () {
+      setMode(modeSel.value);
+      startBtn.textContent = "Start";
     });
 
     reset();                       // initial render (tick 0, 25 dots)

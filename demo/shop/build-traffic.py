@@ -66,6 +66,11 @@ def main() -> None:
   <canvas id="glon-canvas" width="1000" height="320"></canvas>
 
   <p style="margin-top: 0.75rem;">
+    <label for="mode">Experiment</label>
+    <select id="mode">
+      <option value="baseline" selected>Baseline</option>
+      <option value="pacing">Pacing</option>
+    </select>
     <button id="start">Start</button>
     <button id="reset">Reset</button>
     <label for="speed">Speed</label>
@@ -76,6 +81,8 @@ def main() -> None:
     </select>
     <span class="muted" style="margin-left: 0.75rem;">1 tick = 0.1 simulated seconds</span>
   </p>
+  <p class="muted">Pacing: vehicle 24 (the disturbed vehicle's immediate follower) is speed-capped at
+     18 m/s from the moment the brake begins. Switching modes resets the experiment.</p>
 
   <script type="application/glon">{combined}</script>
   <script src="traffic-host.js"></script>

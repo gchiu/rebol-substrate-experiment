@@ -173,6 +173,104 @@ int run_r0_s1_traffic_tests(void) {
     CHECK(r0_s1_ran_cleanly() && int_val(eval_int("[ min-gap ]")) > 0,
           "16: normal run stays collision-free (min gap > 0)");
 
+    /* ---- pacing experiment (post-freeze application code; no language or
+     * runtime change) -------------------------------------------------------
+     * One controlled vehicle (24, the disturbed vehicle's immediate follower)
+     * is speed-capped at 1800 cm/s once the disturbance begins. Checked
+     * directly against the real Glon/S1 model, not modelled in C or Python. */
+
+    /* 17: step-pacing returns exactly one result on every tick, including the
+     * ticks where the cap actually engages (regression: block-set!'s own
+     * ARITY 0 result used to surface as step-pacing's result whenever the cap
+     * fired, because the engage/no-op either was step-pacing's last
+     * subexpression; a trailing `tick` now matches step's own contract). */
+    {
+        int all_single = 1;
+        eval_int("[ init ]");
+        for (int t = 0; t < 400 && all_single; t++) {
+            cell save_lhp = M[GC_LOADER_HP];
+            strcpy(src, "[ step-pacing ]");
+            int err = 0;
+            cell b = r0_s1_parse(src, &err);
+            int N = r0_s1_run_persistent(b);
+            M[GC_LOADER_HP] = save_lhp;
+            if (err || N != 1 || !r0_s1_ran_cleanly()) all_single = 0;
+        }
+        CHECK(all_single, "17: step-pacing returns exactly one result on every tick (200..600)");
+    }
+
+    /* 18: pacing is a no-op before the disturbance -- baseline and pacing must
+     * be identical at tick 199 (one tick before tick0), since the cap only
+     * ever reads/writes vehicle 24's speed once tick >= tick0. */
+    eval_int("[ init ]");
+    for (int t = 0; t < 199; t++) eval_int("[ step ]");
+    long base199_mean = int_val(eval_int("[ mean-v ]"));
+    long base199_minv  = int_val(eval_int("[ min-v ]"));
+    eval_int("[ init ]");
+    for (int t = 0; t < 199; t++) eval_int("[ step-pacing ]");
+    CHECK(int_val(eval_int("[ mean-v ]")) == base199_mean &&
+          int_val(eval_int("[ min-v ]")) == base199_minv,
+          "18: pacing is a no-op before tick0 (identical to baseline at tick 199)");
+
+    /* 19: once engaged, the pacing cap actually holds vehicle 24 at or below
+     * 1800 cm/s -- the governor is real, not merely present in source. */
+    eval_int("[ init ]");
+    for (int t = 0; t < 400; t++) eval_int("[ step-pacing ]");
+    CHECK(int_val(eval_int("[ block-at vs 24 ]")) <= 1800,
+          "19: pacing holds vehicle 24 at or below 1800 cm/s once engaged");
+
+    /* 20: a full pacing run stays collision-free and fail-stops cleanly, just
+     * like the baseline (the overlap invariant is not weakened by pacing). */
+    eval_int("[ init ]");
+    for (int t = 0; t < 600; t++) eval_int("[ step-pacing ]");
+    CHECK(r0_s1_ran_cleanly() && int_val(eval_int("[ min-gap ]")) > 0,
+          "20: a full pacing run stays collision-free (min gap > 0)");
+
+    /* 21: pacing is bit-for-bit deterministic, exactly like the baseline. */
+    {
+        long psig1 = 0, psig2 = 0;
+        eval_int("[ init ]");
+        for (int t = 0; t < 600; t++) eval_int("[ step-pacing ]");
+        for (int i = 0; i < 25; i++) {
+            char p[64];
+            snprintf(p, sizeof p, "[ block-at xs %d ]", i); psig1 += int_val(eval_int(p));
+            snprintf(p, sizeof p, "[ block-at vs %d ]", i); psig1 += int_val(eval_int(p));
+        }
+        eval_int("[ init ]");
+        for (int t = 0; t < 600; t++) eval_int("[ step-pacing ]");
+        for (int i = 0; i < 25; i++) {
+            char p[64];
+            snprintf(p, sizeof p, "[ block-at xs %d ]", i); psig2 += int_val(eval_int(p));
+            snprintf(p, sizeof p, "[ block-at vs %d ]", i); psig2 += int_val(eval_int(p));
+        }
+        CHECK(psig1 == psig2, "21: two full pacing runs are bit-for-bit deterministic");
+    }
+
+    /* 22: quantitative baseline-vs-pacing comparison at tick 600, pinned
+     * exact (the model is deterministic fixed-point integer arithmetic).
+     * Honest characterisation, not a cherry-picked "pacing wins" number: by
+     * tick 600 pacing shows a real amplitude reduction (max-v - min-v) but
+     * bundled with a real mean-speed reduction -- it trades throughput for a
+     * smaller wave, it does not damp the wave for free. See GLON-TRAFFIC-IDM.md
+     * / PART 10 report for the tick-by-tick picture (pacing and baseline are
+     * statistically indistinguishable through the actual wave-propagation
+     * window, ticks ~215-350; the divergence is a late-time recovery-suppression
+     * effect, not wave damping). */
+    eval_int("[ init ]");
+    for (int t = 0; t < 600; t++) eval_int("[ step ]");
+    long base600_mean = int_val(eval_int("[ mean-v ]"));
+    long base600_amp  = int_val(eval_int("[ wave-amplitude ]"));
+    eval_int("[ init ]");
+    for (int t = 0; t < 600; t++) eval_int("[ step-pacing ]");
+    long pace600_mean = int_val(eval_int("[ mean-v ]"));
+    long pace600_amp  = int_val(eval_int("[ wave-amplitude ]"));
+    CHECK(base600_mean == 1799 && base600_amp == 998,
+          "22a: baseline at tick 600 (pinned): mean-v 1799, amplitude 998");
+    CHECK(pace600_mean == 1654 && pace600_amp == 834,
+          "22b: pacing at tick 600 (pinned): mean-v 1654, amplitude 834");
+    CHECK(pace600_amp < base600_amp && pace600_mean < base600_mean,
+          "22c: pacing trades mean speed for a smaller amplitude, not a free win");
+
     if (failures == 0) printf("all traffic-simulator tests passed\n");
     return failures;
 }

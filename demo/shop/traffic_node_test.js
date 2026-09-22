@@ -10,7 +10,13 @@
 //   2. initial render emits the road line + 25 vehicle dots;
 //   3. advancing changes vehicle state and re-renders it;
 //   4. reset returns to the initial state;
-//   5. the disturbance window is ticks 200..215 (BRAKING shown then, not after).
+//   5. the disturbance window is ticks 200..215 (BRAKING shown then, not after);
+//   6. baseline is the default experiment mode;
+//   7. selecting pacing (glon_event_value) resets the run and shows [PACING];
+//   8. switching mode mid-run does not leak the previous mode's tick/state;
+//   9. baseline and pacing produce genuinely different Glon-emitted numbers by
+//      tick 600 -- this file never computes a speed, gap or mean itself, so a
+//      difference here can only come from Glon's own pacing logic.
 "use strict";
 
 const fs = require("fs");
@@ -83,6 +89,12 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
     const rc = e.glon_event(p, n);
     if (rc !== 0) fail("glon_event('" + token + "') rc=" + rc);
   };
+  const eventValue = (token, value) => {
+    const [tp, tn] = put(token);
+    const [vp, vn] = put(value);
+    const rc = e.glon_event_value(tp, tn, vp, vn);
+    if (rc !== 0) fail("glon_event_value('" + token + "', '" + value + "') rc=" + rc);
+  };
 
   if (e.glon_init() !== 0) fail("glon_init");
 
@@ -121,6 +133,47 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   if (!/tick 0/.test(statuses[statuses.length - 1]))
     fail("reset: expected 'tick 0', got: " + statuses[statuses.length - 1]);
 
-  console.log("TRAFFIC_TEST PASS (embedded source / initial render / advance / disturbance window / reset)");
+  // 6. default mode is baseline, shown in the status line
+  if (!/\[BASELINE\]/.test(statuses[statuses.length - 1]))
+    fail("default mode: expected '[BASELINE]', got: " + statuses[statuses.length - 1]);
+
+  // 7. selecting pacing resets the experiment and is reflected in the status line
+  eventValue("traffic-mode", "pacing");
+  if (!/\[PACING\]/.test(statuses[statuses.length - 1]) || !/tick 0/.test(statuses[statuses.length - 1]))
+    fail("select pacing: expected '[PACING]' at tick 0, got: " + statuses[statuses.length - 1]);
+
+  // 8. switching mode mid-run does not leak state: advance a bit in pacing,
+  // then switch back to baseline and confirm a clean tick-0 restart, not a
+  // continuation of the pacing run's tick/positions.
+  for (let i = 0; i < 10; i++) event("traffic-advance");   // tick 50 in pacing
+  if (!/tick 50/.test(statuses[statuses.length - 1]))
+    fail("pacing mid-run: expected 'tick 50', got: " + statuses[statuses.length - 1]);
+  eventValue("traffic-mode", "baseline");
+  if (!/\[BASELINE\]/.test(statuses[statuses.length - 1]) || !/tick 0/.test(statuses[statuses.length - 1]))
+    fail("mode switch mid-run: expected a clean '[BASELINE]' tick 0, got: " + statuses[statuses.length - 1]);
+
+  // 9. pacing is real Glon-computed physics, not a JS-side label: run baseline
+  // and pacing out past the disturbance (tick 600) from identical initial
+  // conditions and confirm the reported (Glon-emitted) numbers genuinely
+  // differ -- this file never computes a speed, gap or mean itself.
+  const runTo600 = () => { for (let i = 0; i < 120; i++) event("traffic-advance"); };
+  event("traffic-reset");
+  runTo600();
+  const baselineStatus = statuses[statuses.length - 1];
+  if (!/tick 600/.test(baselineStatus)) fail("baseline run: expected 'tick 600', got: " + baselineStatus);
+
+  eventValue("traffic-mode", "pacing");
+  runTo600();
+  const pacingStatus = statuses[statuses.length - 1];
+  if (!/tick 600/.test(pacingStatus)) fail("pacing run: expected 'tick 600', got: " + pacingStatus);
+  if (pacingStatus === baselineStatus)
+    fail("pacing at tick 600 is identical to baseline -- pacing does not appear to affect the Glon simulation:\n  baseline: " +
+         baselineStatus + "\n  pacing:   " + pacingStatus);
+
+  // leave the page in baseline mode, matching the page's own default on load
+  eventValue("traffic-mode", "baseline");
+
+  console.log("TRAFFIC_TEST PASS (embedded source / initial render / advance / disturbance window / " +
+              "reset / mode selection / no state leak on mode switch / pacing changes Glon-computed state)");
   process.exit(0);
 }).catch((e) => fail(e.message || e));
