@@ -2082,11 +2082,17 @@ static void emit_invoke_closure(void) {
     e_cell(PF_DEPTH); e_setc(PF_MAXDEPTH);
     asm_patch_here(j_max);
 #endif
-    /* return-stack guard: one invocation's context (48) + frame (9) + 16-align
-     * padding must fit above the owning stack's data-stack top; fail-stop (not
-     * corrupt) on deep recursion.  The bottom is DS_INIT for the main world, or
-     * the running task's data-stack top (arena base + DS_OFF) for an M1 task,
-     * detected by SP > DS_INIT (the same probe the collector uses). */
+    /* return-stack guard: one invocation reserves, below the guard-time RP R0,
+     * exactly  1 (mkctx CALL return address) + 64 (R0S1_CTX_CELLS context)
+     * + (R0-65) mod 16 (context 16-align padding, 0..15) + 16 (activation frame:
+     * 10 fields + 6 padding) = at most 96 cells. The frame base therefore lands
+     * at R0 - 96 in the worst case, so `RP - 96 < DS top` fail-stops (never
+     * corrupts) on deep recursion. DS_INIT is the main world's data-stack
+     * "empty" sentinel: push() pre-decrements, so the data stack never writes
+     * cell DS_INIT itself and the return stack may legally reach it (the sentry
+     * flags only rp < DS_INIT). For an M1 task the bottom is the task's
+     * data-stack top (arena base + DS_OFF), detected by SP > DS_INIT (the same
+     * probe the collector uses). */
     asm_lit(REG_SP); asm_fetch(); e_setc(RV_T5);     /* SP0 */
     e_cell(RV_T5); asm_lit(R0S1_DS_INIT); asm_host(HOST_GT);
     cell j_main = asm_zbranch_fwd();                  /* task? fall through */
@@ -2230,7 +2236,7 @@ static void emit_invoke_closure(void) {
     e_cell(RV_FRAME); asm_lit(FRAME_CUR); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_CUR);
     e_cell(RV_FRAME); asm_lit(FRAME_BLK); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_BLK);
     e_cell(RV_FRAME); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_CTX);
-    /* release the frame (9 fields + 16-align padding): RP = frame.RP - 1, the
+    /* release the frame (10 fields + 16-align padding): RP = frame.RP - 1, the
      * invocation's return-stack baseline (equivalent to the old
      * RP += (frame.RP - 1 - frame) because RP == frame base here). The trailing
      * asm_exit then pops the return address at that position. */
