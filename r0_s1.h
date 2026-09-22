@@ -56,7 +56,8 @@ enum {
     RN_PRINT = 14,
     RN_VALUES = 100,
     RN_EITHER = 101,
-    RN_DO = 102
+    RN_DO = 102,
+    RN_INVOKE = 103
 };
 
 /* --- memory layout ------------------------------------------------------ */
