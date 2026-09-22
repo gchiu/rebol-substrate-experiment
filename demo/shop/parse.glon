@@ -1,0 +1,84 @@
+;; demo/shop/parse.glon -- minimal structural PARSE (block matching, Alpha).
+;;
+;; The Alpha rule grammar is deliberately tiny and DATA, not executed Glon:
+;;
+;;     parse input [
+;;         BEGIN                          ;; literal word (matches input word)
+;;         some [ alt [BUY] [SELL] ]      ;; one-or-more of an alternative
+;;         opt [END]                      ;; optional
+;;     ]
+;;
+;; Operators (bare words) are: skip, alt, opt, some, any.
+;; Every other rule value is a LITERAL matched against the next input value
+;; with Glon's existing `=` (which compares word ids / integer values).
+;;
+;; Full-match law: `parse input rules` is TRUE only if the rules succeed AND
+;; consume the whole input. Internal subrules may stop mid-input.
+;;
+;; Repetition law (zero-width guard): a repeated subrule must advance the input
+;; cursor on each iteration; if it succeeds without progress the repetition
+;; ends (never infinite).
+;;
+;; Failure sentinel is the integer -1, distinct from every non-negative input
+;; position (NONE would collide with position 0 under `=`'s floor division).
+;;
+;; Depends only on the shared vocabulary: block-len, block-at, =, <, +, either,
+;; func. Loaded separately from bootstrap so applications pay for it on demand.
+
+skip-word: 'skip
+alt-word:  'alt
+opt-word:  'opt
+some-word: 'some
+any-word:  'any
+
+;; any-loop: repeat subrules until failure or a zero-width match (progress guard).
+any-loop: func [input ip a] [
+    r: parse-seq input ip a 0
+    either = r -1 [ ip ] [ either = r ip [ ip ] [ any-loop input r a ] ]
+]
+
+;; parse-seq: walk rules from rp, consuming input from ip.
+;;   returns the next input position on success, -1 on failure.
+parse-seq: func [input ip rules rp] [
+    either < rp block-len rules [
+        rule: block-at rules rp
+        either = rule skip-word [
+            either < ip block-len input [ parse-seq input + ip 1 rules + rp 1 ] [ -1 ]
+        ] [
+        either = rule alt-word [
+            a: block-at rules + rp 1
+            b: block-at rules + rp 2
+            ra: parse-seq input ip a 0
+            either = ra -1 [
+                rb: parse-seq input ip b 0
+                either = rb -1 [ -1 ] [ parse-seq input rb rules + rp 3 ]
+            ] [
+                parse-seq input ra rules + rp 3
+            ]
+        ] [
+        either = rule opt-word [
+            a: block-at rules + rp 1
+            r: parse-seq input ip a 0
+            either = r -1 [ parse-seq input ip rules + rp 2 ] [ parse-seq input r rules + rp 2 ]
+        ] [
+        either = rule some-word [
+            a: block-at rules + rp 1
+            r: parse-seq input ip a 0
+            either = r -1 [ -1 ] [ parse-seq input any-loop input r a rules + rp 2 ]
+        ] [
+        either = rule any-word [
+            a: block-at rules + rp 1
+            parse-seq input any-loop input ip a rules + rp 2
+        ] [
+            either < ip block-len input [
+                either = block-at input ip rule [ parse-seq input + ip 1 rules + rp 1 ] [ -1 ]
+            ] [ -1 ]
+        ]]]]]
+    ] [ ip ]
+]
+
+;; parse: full-match. TRUE iff rules succeed AND consume the whole input.
+parse: func [input rules] [
+    r: parse-seq input 0 rules 0
+    either = r block-len input [ 1 ] [ 0 ]
+]
