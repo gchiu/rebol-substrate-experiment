@@ -173,3 +173,39 @@ when `r0_s1_runtime.c` is compiled `-O2` (a build flag, not a language change).
 
 None of these threatens the correctness of frozen Alpha: the language is
 untouched, and every item was met entirely in application space.
+
+## Standalone visual demo (GitHub Pages)
+
+The simulator ships as a standalone page, not as a fifth launcher entry (the
+launcher's loader heap is full; see above). `demo/shop/build-traffic.py` bundles
+`common.glon` + `traffic.glon` (no launcher `app.glon`) into
+`demo/shop/traffic.html`, which inlines the source in a
+`<script type="application/glon">` block and is driven by
+`demo/shop/traffic-host.js`.
+
+- The page loads the **existing** `demo/shop/glon.wasm` (unchanged) and drives
+  the simulation through the same `glon_event` bridge as the launcher:
+  `traffic-start`/`traffic-advance`/`traffic-reset`.
+- `traffic-host.js` contains **no IDM physics**: it schedules ticks, decodes the
+  `G1_VIS` script, paints the road + 25 dots (vehicle 0 in red), and shows the
+  status line Glon emits. Every number on screen is computed by Glon.
+- The visualization is the **unrolled ring** (straight road with wrap-around),
+  reusing the existing `draw-road`/`draw-vehicles` output. A geometric ring
+  needs `sin`/`cos` (per-vehicle `x = cx + r·cos θ`), which frozen Glon cannot
+  express; that would be substantial application work, so it was not done.
+- Controls: Start/Pause, Reset, and a 1x/2x/5x speed selector. 1 tick = 0.1 s;
+  the host schedules `advance 5` (0.5 s) per event with a wall-clock gate so it
+  never builds a backlog.
+- Disturbance visibility: the status line shows "BRAKING" while tick 200–215 is
+  active, plus the caption "Brake disturbance: 20.0–21.5 s".
+
+### Browser/WASM performance
+
+Measured in Node against the real WASM (`-O1`, same build as published):
+`advance 5` + render ≈ **95.9 ms/event ≈ 52 ticks/s ≈ ~1300 vehicle updates/s ≈
+5.2 simulated-s/wall-s**. Real-time playback is 10 ticks/s, so even 5x real-time
+is comfortably within budget; the page's default 2x uses ~20 ticks/s.
+
+Loader impact: the standalone bundle loads `common.glon` + `traffic.glon` into
+the loader heap at ~46610 cells (limit 54800, ~8.2k free) — no heap limit was
+changed, and traffic is not added to the launcher bootstrap.

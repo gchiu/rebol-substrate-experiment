@@ -182,6 +182,17 @@ wasm-g1a-test: demo/shop/glon.wasm demo/shop/app.html
 	@grep -q "GLON_G1E_TEST PASS" /tmp/opencode_g1a_test.out && \
 	 echo "wasm-g1a-test: PASS (home / products / add-product x3 / search / persist / unknown)"
 
+# ---- Standalone traffic page (post-Alpha application; no language change) ---
+# Bundles common.glon + traffic.glon into demo/shop/traffic.html (no launcher),
+# and verifies the wiring headlessly against the real WASM + event bridge.
+traffic.html: demo/shop/common.glon demo/shop/demos/traffic.glon demo/shop/build-traffic.py
+	python3 demo/shop/build-traffic.py
+
+wasm-traffic-test: demo/shop/glon.wasm traffic.html
+	node demo/shop/traffic_node_test.js | tee /tmp/opencode_traffic_test.out
+	@grep -q "TRAFFIC_TEST PASS" /tmp/opencode_traffic_test.out && \
+	 echo "wasm-traffic-test: PASS (embedded source / initial render / advance / disturbance / reset)"
+
 # ---- Traffic simulator benchmark (post-Alpha application; no language change) -
 # load-once benchmark of the IDM sim. Builds both the shipped -O0 runtime and a
 # directly-compiled -O2 runtime so interpreter cost can be separated from C
@@ -194,4 +205,4 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test

@@ -58,11 +58,17 @@ jobs:
           python3 demo/shop/build.py
           make wasm-g1a-test
 
+      - name: Build standalone traffic page and run its test
+        run: |
+          python3 demo/shop/build-traffic.py
+          make wasm-traffic-test
+
       - name: Assemble site files
         run: |
           rm -rf /tmp/shop && mkdir -p /tmp/shop
           cp demo/shop/app.html /tmp/shop/index.html
           cp demo/shop/style.css demo/shop/host.js demo/shop/glon.wasm /tmp/shop/
+          cp demo/shop/traffic.html demo/shop/traffic-host.js /tmp/shop/
           cp -r demo/shop/demos /tmp/shop/demos
 
       - name: Checkout main (Pages source)

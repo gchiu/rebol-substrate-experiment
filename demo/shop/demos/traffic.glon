@@ -225,4 +225,42 @@ render-traffic: func [] [
     vis-finish emit-finish
 ]
 
+;; ---- standalone page (pure Glon; driven through the G1A event bridge) -------
+;; The standalone page loads common.glon + traffic.glon (no launcher app.glon),
+;; then drives the simulation with glon_event. The dispatcher below is the same
+;; shape as the launcher's do-event/events tables, so no new host machinery is
+;; needed. current-event is bound by the bridge to the event token.
+events: [
+    ['traffic-start   [do-traffic-start]]
+    ['traffic-advance [do-traffic-advance]]
+    ['traffic-reset   [do-traffic-reset]]
+]
+
+do-event: [
+    event-row: select events current-event
+    either event-row [ do block-at event-row 1 ] [ none ]
+]
+
+do-traffic-start: func [] [ init render-traffic-standalone ]
+do-traffic-advance: func [] [ advance 5 render-traffic-standalone ]
+do-traffic-reset: func [] [ init render-traffic-standalone ]
+
+;; a leaner view: status line only (the standalone page owns its own canvas)
+standalone-view: [
+    emit-text "t = " emit-int / tick 10 emit-text " s    tick " emit-int tick
+    emit-text "    mean " emit-int mean-v
+    emit-text " cm/s    min " emit-int min-v
+    emit-text " cm/s    gap " emit-int min-gap
+    emit-text " cm    "
+    either >= tick tick0 [
+        either < tick tick1 [ emit-text "BRAKING" ] [ emit-text "free" ]
+    ] [ emit-text "free" ]
+]
+
+render-traffic-standalone: func [] [
+    emit-clear do standalone-view
+    vis-clear draw-road draw-vehicles 0 nveh
+    vis-finish emit-finish
+]
+
 ]
