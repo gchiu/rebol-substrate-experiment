@@ -96,9 +96,14 @@ static cell eval_int(const char *prog) {
     strcpy(src, prog);
     strip_comments(src);
     int err = 0;
+    /* Like g1a_dispatch, the throw-away form is parsed into the loader heap and
+     * is dead once the run returns, so reclaim its loader cells on every exit
+     * path -- otherwise each eval_int leaks ~10 loader cells. */
+    cell save_lhp = M[GC_LOADER_HP];
     cell b = r0_s1_parse(src, &err);
-    if (err) return 0;
+    if (err) { M[GC_LOADER_HP] = save_lhp; return 0; }
     int N = r0_s1_run_persistent(b);
+    M[GC_LOADER_HP] = save_lhp;
     if (!r0_s1_ran_cleanly() || N != 1) return 0;
     return r0_s1_result(0, 1);
 }
@@ -154,6 +159,21 @@ int run_r0_s1_g1e_tests(void) {
             M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
     }
     CHECK(load_file("demo/shop/bootstrap.glon") == 0, "1: bootstrap loads");
+
+    printf("g1e: eval_int is loader-neutral (reclaims its throw-away form)\n");
+    {
+        cell hp0 = M[GC_LOADER_HP];
+        int v0 = (int)int_val(eval_int("[ + 1 2 ]"));
+        int v1 = (int)int_val(eval_int("[ block-len [ 1 2 3 4 ] ]"));
+        int v2 = (int)int_val(eval_int("[ block-at [ 10 20 30 ] 1 ]"));
+        int v3 = (int)int_val(eval_int("[ + 6 7 ]"));
+        int v4 = (int)int_val(eval_int("[ block-len [ 5 6 ] ]"));
+        int v5 = (int)int_val(eval_int("[ block-at [ 40 50 60 ] 2 ]"));
+        CHECK(v0 == 3 && v1 == 4 && v2 == 20 && v3 == 13 && v4 == 2 && v5 == 60,
+              "eval_int still returns the evaluated integer");
+        CHECK(M[GC_LOADER_HP] == hp0,
+              "eval_int does not consume persistent loader heap");
+    }
 
     const char *r = route("home");
     CHECK(has(r, "Glon Demos") &&
