@@ -530,7 +530,6 @@ static void emit_call_indirect(cell c) {
 /* forward-call patch lists */
 static cell to_subexpr[64];   static int n_subexpr;
 static cell to_block_eval[16]; static int n_block_eval;
-static cell to_invoke[8];      static int n_invoke;
 
 /* ========================== M2 GC build ==================================
  * A non-moving, stop-the-world, exact mark/sweep collector + first-fit
@@ -1875,24 +1874,6 @@ static void emit_native(void) {
     asm_call(r_reduce);
     asm_branch(r_run_block);                          /* tail */
     asm_patch_here(j_not_do);
-    /* invoke (id 103): ( closure-producing-expression -- result )  Evaluate ONE
-     * expression to obtain a closure VALUE, then hand control to the closure,
-     * which consumes its own arity arguments from the SAME caller expression
-     * stream. This is the dynamic closure invocation (Forth EXECUTE analogue):
-     * it lets a closure value obtained from select/block-at/get/return be
-     * invoked exactly as if it had been reached through an ordinary word. */
-    e_cell(RV_NAT); asm_lit(RN_INVOKE); asm_host(HOST_EQ);
-    cell j_not_invoke = asm_zbranch_fwd();
-    to_subexpr[n_subexpr++] = emit_call_fwd();       /* evaluate closure-producing expr */
-    asm_call(r_reduce);                              /* -> closure value */
-    asm_dup(); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T4);  /* tag (value left on DS) */
-    e_cell(RV_T4); asm_lit(T_CLOSURE); asm_host(HOST_EQ);
-    cell j_not_closure = asm_zbranch_fwd();
-    to_invoke[n_invoke++] = emit_call_fwd();         /* CALL r_invoke_closure (forward) */
-    asm_exit();                                      /* return to invoke's caller */
-    asm_patch_here(j_not_closure);
-    asm_drop(); asm_host(HOST_DUMP); asm_halt();     /* not a closure -> fail-stop */
-    asm_patch_here(j_not_invoke);
     /* arithmetic: arity 2 */
     e_cell(RV_NAT); asm_toR();                 /* save native id across arg eval */
     to_subexpr[n_subexpr++] = emit_call_fwd();
@@ -2399,7 +2380,6 @@ cell r0_s1_init(void) {
     M[GC_LOADER_HP] = R0S1_HEAP_BASE;
     nsyms = 0;
     n_subexpr = 0; n_block_eval = 0;
-    n_invoke = 0;
     n_fw_mv = 0; n_fw_mf = 0;
     next_site = 1;      /* func-site-ids start at 1; 0 = "no enclosing func" */
     site_depth = 0;
@@ -2430,7 +2410,6 @@ cell r0_s1_init(void) {
 
     for (int i = 0; i < n_subexpr; i++) s1_set_mem(to_subexpr[i], r_subexpr);
     for (int i = 0; i < n_block_eval; i++) s1_set_mem(to_block_eval[i], r_block_eval);
-    for (int i = 0; i < n_invoke; i++) s1_set_mem(to_invoke[i], r_invoke_closure);
 
     /* preload the global environment ("func"/"return"/"raw" first => sym 0/1/2) */
     intern("func");
@@ -2455,7 +2434,6 @@ cell r0_s1_init(void) {
     bind(global_ctx, intern("values"), mk_native(RN_VALUES));
     bind(global_ctx, intern("either"), mk_native(RN_EITHER));
     bind(global_ctx, intern("do"), mk_native(RN_DO));
-    bind(global_ctx, intern("invoke"), mk_native(RN_INVOKE));
 
     /* M2: seed GC roots and world state.  The collector scans the global
      * context, the (empty) M1 task table, and the (empty) scheduler-world DS/RS
