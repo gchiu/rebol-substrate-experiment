@@ -1425,6 +1425,20 @@ static void emit_load_lex(void) {
 #ifdef R0_S1_PROFILE
     pf_incr(PF_LEX_DIRECT);                  /* one direct lexical access */
 #endif
+    /* Bound-block safety guard: a T_BOUND reference is relative to the
+     * activation that created its block. A bare block records only its static
+     * BLK_SITE, so it is valid only while executing under a frame with the same
+     * FRAME_SITE (and never with no frame at all). A travelling bound block --
+     * e.g. passed into a helper and `do`ne there, or `do`ne after its creator
+     * returned -- would otherwise silently resolve against an unrelated
+     * activation, so it must fail loudly. Closures (which capture CLOSURE_CTX)
+     * are the portable form and are unaffected. */
+    e_cell(RV_FRAME); asm_lit(0); asm_host(HOST_NE);   /* frame != 0 */
+    e_cell(RV_BLK); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch();
+    e_cell(RV_FRAME); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_fetch();
+    asm_host(HOST_EQ);                                  /* block site == frame site */
+    asm_host(HOST_MUL);                                 /* guard */
+    cell j_guard_ok = asm_zbranch_fwd();
     asm_lit(16); asm_host(HOST_DIV);         /* payload = depth*16+slot (tag drops out) */
     asm_dup(); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T2);  /* slot  */
     asm_lit(16); asm_host(HOST_DIV); e_setc(RV_T3);             /* depth */
@@ -1459,6 +1473,9 @@ static void emit_load_lex(void) {
     e_cell(RV_T2); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);   /* +2*slot */
     asm_fetch();                              /* [value] */
     asm_exit();
+    /* invalid bound execution: no frame, or block site != frame site */
+    asm_patch_here(j_guard_ok);
+    asm_host(HOST_DUMP); asm_halt();
 }
 
 /* HASH-INSERT (P5): insert (RV_WORD -> RV_T3 slot) into the hash index of the

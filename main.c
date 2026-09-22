@@ -27,6 +27,7 @@ int run_r0_s1_invoke_tests(void);
 int run_r0_s1_reduce_tests(void);
 int run_r0_s1_parse_tests(void);
 int run_r0_s1_equality_tests(void);
+int run_r0_s1_bound_tests(void);
 
 int main(void) {
     int failures = run_tests();
@@ -56,6 +57,7 @@ int main(void) {
     failures += run_r0_s1_reduce_tests();
     failures += run_r0_s1_parse_tests();
     failures += run_r0_s1_equality_tests();
+    failures += run_r0_s1_bound_tests();
     if (failures == 0) {
         printf("all tests passed\n");
         return 0;
