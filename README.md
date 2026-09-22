@@ -12,6 +12,17 @@ GLON began as an experiment in language architecture:
 > is allowed to descend through a stable low-level "trapdoor" only when it
 > needs machinery the evaluator itself does not provide?
 
+## Alpha
+
+The language is frozen at Alpha: `glon-alpha-v1`. The authoritative contract
+(what each value is, how equality/truth/words/blocks/closures/reduce/parse
+behave, and what is explicitly deferred) is in:
+
+    GLON-ALPHA-LAWS.md
+
+Read that first. Native tests (`make test`) and `./check-frozen-s1.sh` are the
+correctness gates. The storefront demo lives under `demo/shop/`.
+
 The result is a small stack of layers:
 
     GLON / R0
