@@ -123,10 +123,33 @@ int run_r0_s1_reduce_tests(void) {
     CHECK(N == 4 && got(0) == 1 && got(1) == 11 && got(2) == 111 && got(3) == 111,
           "14: left-to-right order + side effects ([1 11 111])");
 
-    /* 16: forced GC during construction (closures trigger the collector). */
-    eval("[ collect block-len reduce [ does [1] does [2] does [3] ] ]");
-    CHECK(N == 1 && got(0) == 3 && r0_s1_ran_cleanly(),
-          "16: forced GC during construction (3 closures survive)");
+    /* 16: GC genuinely DURING construction, not merely before it.
+     * `collect` BEFORE reduce (the old test) runs GC before any result block
+     * exists, so it never exercises a partially-built result block being traced.
+     * Here the managed heap is filled to the limit with dead strings first, so
+     * the closure allocated by the MIDDLE element (`does [22]`) must trigger a
+     * collection exactly while the result block is live with length 1 (only `11`
+     * committed) on the data stack. If result-block rooting or incremental
+     * length accounting were broken, this would corrupt or fail-stop. */
+    eval("[ fill-heap: raw 1 [ "
+         "    LIT SCRATCH_B ! LIT 0 LIT SCRATCH_A ! "
+         "  Lfill: LIT REG_HP @ LIT 39984 LT ZBRANCH Ldone "
+         "    LIT 16 LIT GC_KIND_STRING CALL alloc LIT T_STRING ADD "
+         "    LIT SCRATCH_B @ DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_A @ ADD ! "
+         "    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A ! BRANCH Lfill "
+         "  Ldone: ARITY 0 EXIT ] ]");
+    CHECK(N == 1 && r0_s1_ran_cleanly(), "16a: fill-heap raw loads cleanly");
+    eval("[ buf: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ] "
+         "  fill-heap buf "
+         "  buf: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ] ]");
+    CHECK(N == 1 && r0_s1_ran_cleanly() && r0_s1_heap_high() >= 39984,
+          "16b: managed heap filled to the limit, strings orphaned");
+    long gc_before = (long)r0_s1_gc_count();
+    eval("[ t: reduce [ 11 does [22] 33 ]  values [ block-len t  block-at t 0  block-at t 2 ] ]");
+    CHECK(N == 3 && got(0) == 3 && got(1) == 11 && got(2) == 33 && r0_s1_ran_cleanly(),
+          "16c: reduce completes correctly across a mid-construction GC (len 3, [11 _ 33])");
+    CHECK(r0_s1_gc_count() > gc_before,
+          "16d: a collection actually ran DURING reduce construction");
 
     /* 17: GC after the result survives and stays intact. */
     eval("[ f: func [x] [ reduce [ does [x] ] ]  t: f 42  collect  invoke block-at t 0 ]");

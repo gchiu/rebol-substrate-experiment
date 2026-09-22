@@ -97,6 +97,38 @@ int run_r0_s1_bound_tests(void) {
     eval("[ exec: func [blk] [ do blk ]  f: func [x] [ exec block-at [ [x] ] 0 ]  f 7 ]");
     CHECK(!r0_s1_ran_cleanly(), "12: executing the nested bound block cross-function fails");
 
+    /* ---- documented same-site recursion behaviour -------------------------
+     * Two live activations of ONE site share FRAME_SITE, so a travelling bare
+     * bound block resolves against the INNERMOST matching activation. This is
+     * the Alpha-documented limitation, not a bug; pin it so it cannot drift. */
+    eval("[ f: func [x depth carried] [ "
+         "    either = depth 0 [ b: [x]  f 99 1 b ] [ do carried ] ] "
+         "  f 7 0 none ]");
+    CHECK(N == 1 && got(0) == 99 && r0_s1_ran_cleanly(),
+          "13: same-site recursion resolves bare bound block against innermost (99)");
+
+    /* The closure control: the OUTER activation captures x=7; the inner same-site
+     * activation x=99 invokes it, and the closure still sees 7. */
+    eval("[ does: func [body] [ func [] :body ] "
+         "  f: func [x depth carried] [ "
+         "    either = depth 0 [ b: does [x]  f 99 1 b ] [ carried ] ] "
+         "  f 7 0 none ]");
+    CHECK(N == 1 && got(0) == 7 && r0_s1_ran_cleanly(),
+          "14: closure control captures the outer activation (7) across same-site recursion");
+
+    /* ---- return-stack invocation boundary ---------------------------------
+     * One invocation reserves at most 96 cells (context 64 + frame 16 + mkctx
+     * call 1 + alignment padding <=15); the guard fail-stops cleanly rather than
+     * corrupting. countdown recurses ~96 cells/level, so depth 83 is the deepest
+     * clean level and 84 must fail-stop with the stack sentry NOT firing. */
+    eval("[ countdown: func [n] [ either < n 0 [ n ] [ countdown - n 1 ] ]  countdown 83 ]");
+    CHECK(r0_s1_ran_cleanly() && !r0_s1_stack_sentry_fired() &&
+          r0_s1_rp_min() >= R0S1_DS_INIT,
+          "15: deepest clean recursion (83) returns correctly, RP stays >= DS_INIT");
+    eval("[ countdown: func [n] [ either < n 0 [ n ] [ countdown - n 1 ] ]  countdown 84 ]");
+    CHECK(!r0_s1_ran_cleanly() && !r0_s1_stack_sentry_fired(),
+          "16: one level deeper (84) fail-stops at the guard, not via the sentry");
+
     if (failures == 0) printf("all bound-block safety tests passed\n");
     return failures;
 }
