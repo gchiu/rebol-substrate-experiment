@@ -1968,7 +1968,45 @@ static void emit_native(void) {
     asm_call(r_reduce);
     asm_branch(r_reduce_block);                      /* tail */
     asm_patch_here(j_not_reduce);
-    /* arithmetic: arity 2 */
+    /* = (id 6): type-safe identity. WORD/SET/GET/LIT (tags 2..5) compare by
+     * symbol id, so a quoted word and a plain word denote the same symbol (the
+     * route/event dispatch relies on this). Every other tag compares by raw
+     * cell identity: INT by value, NONE only with NONE, BLOCK/CLOSURE/STRING by
+     * address. This removes the old numeric (int_val) "=" accidental cross-type
+     * collisions -- NONE == 0, WORD == INT, block == int -- while keeping
+     * word-vs-lit-word dispatch working. */
+    e_cell(RV_NAT); asm_lit(RN_EQ); asm_host(HOST_EQ);
+    cell j_not_eq = asm_zbranch_fwd();
+    to_subexpr[n_subexpr++] = emit_call_fwd();       /* arg 1 */
+    asm_call(r_reduce);
+    to_subexpr[n_subexpr++] = emit_call_fwd();       /* arg 2 */
+    asm_call(r_reduce);
+    e_pop_to(RV_T1);                                 /* b */
+    e_pop_to(RV_T2);                                 /* a */
+    e_cell(RV_T1); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T3);  /* tag b */
+    e_cell(RV_T2); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T4);  /* tag a */
+    /* both word-family? 2 <= tag <= 5 for both a and b */
+    e_cell(RV_T4); asm_lit(2); asm_host(HOST_GE);
+    e_cell(RV_T4); asm_lit(5); asm_host(HOST_LE);
+    asm_host(HOST_MUL);
+    e_cell(RV_T3); asm_lit(2); asm_host(HOST_GE);
+    e_cell(RV_T3); asm_lit(5); asm_host(HOST_LE);
+    asm_host(HOST_MUL);
+    asm_host(HOST_MUL);
+    cell j_raw = asm_zbranch_fwd();                  /* not both word -> raw */
+    e_cell(RV_T2); asm_lit(16); asm_host(HOST_DIV);  /* symbol id a */
+    e_cell(RV_T1); asm_lit(16); asm_host(HOST_DIV);  /* symbol id b */
+    asm_host(HOST_EQ);
+    cell j_done = asm_branch_fwd();
+    asm_patch_here(j_raw);
+    e_cell(RV_T2); e_cell(RV_T1); asm_host(HOST_EQ);  /* a == b raw */
+    asm_patch_here(j_done);
+    asm_lit(16); asm_host(HOST_MUL);
+    e_cell(RV_HOSTCALLS); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_HOSTCALLS);
+    asm_lit(16);
+    asm_exit();
+    asm_patch_here(j_not_eq);
+    /* arithmetic: arity 2 (numeric; = handled above, so it is excluded here) */
     e_cell(RV_NAT); asm_toR();                 /* save native id across arg eval */
     to_subexpr[n_subexpr++] = emit_call_fwd();
     asm_call(r_reduce);
@@ -1983,18 +2021,18 @@ static void emit_native(void) {
         /* FIB-OPT-P7: dispatch in fib's observed frequency order (<= then +/-
          * are the hot arithmetic natives), so the common case exits the chain
          * after one or two comparisons. Ordering only; semantics unchanged. */
-        static const int op[9] = { HOST_LE, HOST_ADD, HOST_SUB, HOST_MUL, HOST_DIV,
-                                   HOST_EQ, HOST_LT, HOST_GT, HOST_GE };
-        static const int id[9] = { 10, 0, 1, 2, 3, 6, 8, 9, 11 };
-        cell done[9];
-        for (int k = 0; k < 9; k++) {
+        static const int op[8] = { HOST_LE, HOST_ADD, HOST_SUB, HOST_MUL, HOST_DIV,
+                                   HOST_LT, HOST_GT, HOST_GE };
+        static const int id[8] = { 10, 0, 1, 2, 3, 8, 9, 11 };
+        cell done[8];
+        for (int k = 0; k < 8; k++) {
             e_cell(RV_NAT); asm_lit(id[k]); asm_host(HOST_EQ);
             cell j = asm_zbranch_fwd();
             asm_host(op[k]);
             done[k] = asm_branch_fwd();
             asm_patch_here(j);
         }
-        for (int k = 0; k < 9; k++) asm_patch_here(done[k]);
+        for (int k = 0; k < 8; k++) asm_patch_here(done[k]);
     }
 #ifdef R0_S1_PROFILE
     /* trace: base-case decision at `<=`. Print 'B' + (0|1); the comparison
