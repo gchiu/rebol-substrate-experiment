@@ -69,17 +69,24 @@ idm-accel: func [v vl gap] [
 ;; lead: (i n -> leader index)  wraps n-1 -> 0
 lead: func [i n] [ either = + i 1 n [ 0 ] [ + i 1 ] ]
 
-;; gap: (xs i n -> gap cm)  net gap to leader (wrapped, minus length), min 1.
+;; gap: (xs i n -> gap cm)  net gap to leader (wrapped, minus length).
 ;; The ring wraps by SIGN of the raw separation: the leader is always ahead on
 ;; the ring, so a negative (leader_pos - own_pos) means the leader has crossed
 ;; the origin; add road. No overtaking keeps every gap < road, so one wrap is
 ;; always correct.
+;;
+;; Physical invariant: raw gap > 0 (vehicles must not overlap). raw gap == 0 is
+;; bumper-to-bumper contact, not overlap, and is the IDM's singular s*/s limit;
+;; it is floored to 1 cm so the denominator stays positive. raw gap < 0 is a
+;; genuine overlap/collision and FAIL-STOPS (never silently repaired).
+overlap-fail: func [] [ invoke 0 ]   ;; invoke a non-closure -> runtime fail-stop
+
 gap: func [xs i n] [
     ln: lead i n
     d: - block-at xs ln block-at xs i
     d2: either < d 0 [ + d road ] [ d ]
     g: - d2 L
-    either < g 1 [ 1 ] [ g ]
+    either < g 0 [ overlap-fail ] [ either = g 0 [ 1 ] [ g ] ]
 ]
 
 ;; raw-gap: (xs i n -> gap cm)  unclamped, for the no-collision assertion

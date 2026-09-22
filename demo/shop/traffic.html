@@ -440,12 +440,19 @@ lead: func [i n] [ either = + i 1 n [ 0 ] [ + i 1 ] ]
 
 
 
+
+
+
+
+
+overlap-fail: func [] [ invoke 0 ]   
+
 gap: func [xs i n] [
     ln: lead i n
     d: - block-at xs ln block-at xs i
     d2: either < d 0 [ + d road ] [ d ]
     g: - d2 L
-    either < g 1 [ 1 ] [ g ]
+    either < g 0 [ overlap-fail ] [ either = g 0 [ 1 ] [ g ] ]
 ]
 
 

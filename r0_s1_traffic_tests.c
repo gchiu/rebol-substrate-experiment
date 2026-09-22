@@ -158,6 +158,21 @@ int run_r0_s1_traffic_tests(void) {
               "14: canvas view emits the road line + 25 vehicle dots");
     }
 
+    /* ---- overlap invariant ------------------------------------------------- */
+    /* raw gap < 0 is a genuine collision and must fail-stop, not be silently
+     * floored to 1 cm. Set vehicle 1 only 200 cm ahead of vehicle 0 (raw gap
+     * 200 - 500 = -300) and step: the IDM gap computation must fail-stop. */
+    eval_int("[ init ]");
+    eval_int("[ block-set! xs 1 200 ]");
+    eval_int("[ step ]");
+    CHECK(!r0_s1_ran_cleanly(), "15: overlapping vehicles (raw gap < 0) fail-stop");
+
+    /* the shipped physical scenario is unchanged: no overlap ever occurs */
+    eval_int("[ init ]");
+    for (int t = 0; t < 200; t++) eval_int("[ step ]");
+    CHECK(r0_s1_ran_cleanly() && int_val(eval_int("[ min-gap ]")) > 0,
+          "16: normal run stays collision-free (min gap > 0)");
+
     if (failures == 0) printf("all traffic-simulator tests passed\n");
     return failures;
 }
