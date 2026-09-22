@@ -1,0 +1,228 @@
+[
+;; demo/shop/demos/traffic.glon -- IDM car-following on a single-lane ring road.
+;;
+;; A deterministic microscopic traffic simulator built purely in frozen Glon
+;; Alpha. Every vehicle follows the Intelligent Driver Model:
+;;
+;;     s* = s0 + v*T + v*(v-vl) / (2*sqrt(a*b))
+;;     a  = amax * (1 - (v/v0)^4 - (s*/s)^2)
+;;
+;; There is no floating point and no sqrt in the frozen language, so the two
+;; fractional terms are evaluated in fixed point (scale 1000) and the one
+;; irrational constant 2*sqrt(a*b) is precomputed as K. b = amax = 100 cm/s^2,
+;; so K = 2*100 = 200. Units are centimetres and seconds; dt = 0.1 s, so one
+;; tick advances v by a/10 and x by v/10.
+;;
+;; The host drives time: each `step` performs ONE synchronous update (all
+;; accelerations are computed from the pre-update snapshot, then all positions
+;; and velocities are advanced together). No randomness, no host timing.
+;;
+;; Vehicle 0 temporarily brakes at tick 200 for 1.5 s (a speed cap modelling a
+;; brief governor), then normal IDM behaviour resumes; the disturbance
+;; propagates backwards around the ring as a stop-and-go wave.
+
+traffic-loaded: 1
+
+;; ---- block primitives (block-len / block-at come from the bootstrap common.glon;
+;; only block-set! is demo-specific, matching merchant-flow/tuple-space) -------
+block-set!: masm 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
+
+;; ---- parameters (centimetres / seconds) -------------------------------------
+v0: 3000      ;; desired speed 30 m/s = 3000 cm/s
+headway: 3    ;; T = 1.5 s, encoded as 3/2 (v*T = v*3/2)
+s0: 200       ;; minimum jam gap 2 m = 200 cm
+amax: 100     ;; max acceleration 1 m/s^2 = 100 cm/s^2
+K: 200        ;; 2*sqrt(a*b) = 2*sqrt(100*100) = 200 cm/s^2 (b = amax = 100)
+L: 500        ;; vehicle length 5 m = 500 cm
+road: 100000  ;; circumference 1000 m = 100000 cm
+nveh: 25      ;; number of vehicles
+tick0: 200    ;; brake starts at tick 200 = 20 s
+tick1: 215    ;; brake ends at tick 215 = 21.5 s
+brakespeed: 500  ;; imposed brake speed 5 m/s during the disturbance
+
+;; ---- fixed-point helpers (scale 1000) --------------------------------------
+;; frac: (num den -> num*1000/den)  a scale-1000 fraction
+frac: func [num den] [ / * num 1000 den ]
+;; square: (f -> f*f/1000)  square a scale-1000 fraction, stay in scale 1000
+square: func [f] [ / * f f 1000 ]
+;; max0: (x -> max(0, x))
+max0: func [x] [ either < x 0 [ 0 ] [ x ] ]
+
+;; ---- IDM car-following ------------------------------------------------------
+;; idm-accel: (v vl gap -> accel cm/s^2)
+idm-accel: func [v vl gap] [
+    dv: - v vl
+    ;; s* = s0 + max(0, v*T + v*dv/K)  =  s0 + max(0, v*3/2 + v*dv/200)
+    ht: + / * v headway 2 / * v dv K
+    ss: + s0 max0 ht
+    ;; (v/v0)^4
+    rv: frac v v0
+    rv4: square square rv
+    ;; (s*/gap)^2
+    rs: frac ss gap
+    rs2: square rs
+    ;; accel = amax * (1000 - rv4 - rs2) / 1000  =  (1000 - rv4 - rs2) / 10
+    / - 1000 + rv4 rs2 10
+]
+
+;; ---- ring geometry ----------------------------------------------------------
+;; lead: (i n -> leader index)  wraps n-1 -> 0
+lead: func [i n] [ either = + i 1 n [ 0 ] [ + i 1 ] ]
+
+;; gap: (xs i n -> gap cm)  net gap to leader (wrapped, minus length), min 1.
+;; The ring wraps by SIGN of the raw separation: the leader is always ahead on
+;; the ring, so a negative (leader_pos - own_pos) means the leader has crossed
+;; the origin; add road. No overtaking keeps every gap < road, so one wrap is
+;; always correct.
+gap: func [xs i n] [
+    ln: lead i n
+    d: - block-at xs ln block-at xs i
+    d2: either < d 0 [ + d road ] [ d ]
+    g: - d2 L
+    either < g 1 [ 1 ] [ g ]
+]
+
+;; raw-gap: (xs i n -> gap cm)  unclamped, for the no-collision assertion
+raw-gap: func [xs i n] [
+    ln: lead i n
+    d: - block-at xs ln block-at xs i
+    d2: either < d 0 [ + d road ] [ d ]
+    - d2 L
+]
+
+;; ---- synchronous update -----------------------------------------------------
+;; accels: compute all accelerations from the SAME snapshot into `as`
+accels: func [xs vs as i n] [
+    either < i n [
+        v: block-at vs i
+        vl: block-at vs lead i n
+        g: gap xs i n
+        block-set! as i idm-accel v vl g
+        accels xs vs as + i 1 n
+    ] [ none ]
+]
+
+;; update: advance all velocities and positions by the precomputed accelerations
+update: func [xs vs as i n] [
+    either < i n [
+        v: block-at vs i
+        vn: max0 + v / block-at as i 10        ;; v + a/10
+        block-set! vs i vn
+        xn: + block-at xs i / vn 10            ;; x + vn/10
+        block-set! xs i either < xn road [ xn ] [ - xn road ]
+        update xs vs as + i 1 n
+    ] [ none ]
+]
+
+;; ---- state ------------------------------------------------------------------
+;; Initial conditions: evenly spaced, uniform speed v0/2.
+xs: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+vs: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+as: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+tick: 0
+
+init: func [] [ init-at 0 ]
+init-at: func [i] [
+    either < i nveh [
+        block-set! xs i * / road nveh i
+        block-set! vs i / v0 2
+        init-at + i 1
+    ] [ tick: 0 ]
+]
+
+;; ---- disturbance ------------------------------------------------------------
+;; During the window, cap vehicle 0's speed at brakespeed (a temporary governor).
+disturb: func [t] [
+    either >= t tick0 [
+        either < t tick1 [
+            either > block-at vs 0 brakespeed [ block-set! vs 0 brakespeed ] [ none ]
+        ] [ none ]
+    ] [ none ]
+]
+
+;; ---- one synchronous tick ---------------------------------------------------
+step: func [] [
+    accels xs vs as 0 nveh
+    update xs vs as 0 nveh
+    disturb tick
+    tick: + tick 1
+]
+
+;; ---- observables ------------------------------------------------------------
+min-v: func [] [ minv-at 0 block-at vs 0 ]
+minv-at: func [i m] [
+    either < i nveh [ minv-at + i 1 either < block-at vs i m [ block-at vs i ] [ m ] ] [ m ]
+]
+max-v: func [] [ maxv-at 0 block-at vs 0 ]
+maxv-at: func [i m] [
+    either < i nveh [ maxv-at + i 1 either > block-at vs i m [ block-at vs i ] [ m ] ] [ m ]
+]
+mean-v: func [] [ meansum 0 0 ]
+meansum: func [i acc] [
+    either < i nveh [ meansum + i 1 + acc block-at vs i ] [ / acc nveh ]
+]
+min-gap: func [] [ mingap-at 0 raw-gap xs 0 nveh ]
+mingap-at: func [i m] [
+    either < i nveh [
+        g: raw-gap xs i nveh
+        mingap-at + i 1 either < g m [ g ] [ m ]
+    ] [ m ]
+]
+
+;; ---- controls ---------------------------------------------------------------
+;; The host drives time: each click advances a bounded batch of synchronous
+;; ticks. `advance` recurses, so its depth is the batch size (<= ~25, well under
+;; the frozen return-stack guard); the host never needs a deep Glon loop.
+started: 0
+
+advance: func [n] [
+    either > n 0 [ step advance - n 1 ] [ none ]
+]
+
+do-traffic-run: func [] [ started: 1 init advance 25 render-current ]
+do-traffic-step: func [] [ advance 25 render-current ]
+do-traffic-reset: func [] [ started: 0 init render-current ]
+
+;; ---- view -------------------------------------------------------------------
+;; The ring is drawn unrolled as a straight road; a vehicle's dot is placed at
+;; x = position/100 (position 0..100000 cm -> 0..1000 px), so a wrap around the
+;; ring shows as the dot jumping from the right edge back to the left.
+draw-road: func [] [ vis-line 0 300 1000 300 ]
+draw-vehicles: func [i n] [
+    either < i n [
+        vis-dot i / block-at xs i 100 300
+        draw-vehicles + i 1 n
+    ] [ none ]
+]
+
+draw-stats: func [] [
+    emit-text "tick " emit-int tick
+    emit-text "    mean " emit-int mean-v
+    emit-text " cm/s    min " emit-int min-v
+    emit-text " cm/s    min gap " emit-int min-gap
+    emit-text " cm"
+]
+
+traffic-view: [
+    heading [ emit-text "IDM traffic simulator" ]
+    tagline [ emit-text "25 vehicles follow the Intelligent Driver Model on a one-lane ring." ]
+    draw-stats
+    emit-text "<canvas id='glon-canvas' width='1000' height='320'></canvas>"
+    either started [
+        button [ emit-text "Step" ] "traffic-step"
+        emit-text " "
+        button [ emit-text "Reset" ] "traffic-reset"
+    ] [
+        button [ emit-text "Run" ] "traffic-run"
+    ]
+    emit-text " "
+    link "Back to demos" "home"
+]
+
+render-traffic: func [] [
+    emit-clear do traffic-view
+    vis-clear draw-road draw-vehicles 0 nveh
+    vis-finish emit-finish
+]
+
+]
