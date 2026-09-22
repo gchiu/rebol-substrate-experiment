@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glon IDM traffic simulator</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 1040px; margin: 1.5rem auto; padding: 0 1rem; color: #111; }
+  h1 { font-size: 1.4rem; }
+  .muted { color: #666; font-size: 0.9rem; }
+  #status { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.95rem;
+            background: #f6f6f6; border: 1px solid #e0e0e0; border-radius: 4px; padding: 0.4rem 0.6rem; margin: 0.6rem 0; }
+  #glon-canvas { border: 1px solid #ccc; border-radius: 4px; display: block; background: #fff; }
+  button { font-size: 1rem; padding: 0.4rem 1rem; margin-right: 0.5rem; }
+  select { font-size: 1rem; padding: 0.3rem; }
+</style>
+</head>
+<body>
+  <h1>Glon IDM traffic simulator</h1>
+  <p class="muted">25 vehicles follow the Intelligent Driver Model on a one-lane ring road
+     (1 km circumference, drawn unrolled). The simulation runs in frozen Glon Alpha; this page
+     only schedules ticks, paints the canvas, and shows the status Glon emits.</p>
+  <p class="muted">Brake disturbance: vehicle 0 is speed-capped at 5 m/s for 20.0&ndash;21.5 s,
+     then normal IDM dynamics resume. Vehicle 0 is drawn in red.</p>
+
+  <div id="status" data-glon-id="1">loading&hellip;</div>
+  <canvas id="glon-canvas" width="1000" height="320"></canvas>
+
+  <p style="margin-top: 0.75rem;">
+    <button id="start">Start</button>
+    <button id="reset">Reset</button>
+    <label for="speed">Speed</label>
+    <select id="speed">
+      <option value="1">1x</option>
+      <option value="2" selected>2x</option>
+      <option value="5">5x</option>
+    </select>
+    <span class="muted" style="margin-left: 0.75rem;">1 tick = 0.1 simulated seconds</span>
+  </p>
+
+  <script type="application/glon">[ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+mk-string: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT SCRATCH_C @ !
+    LIT 0 LIT SCRATCH_A !
+  mk-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH mk-done
+    LIT SCRATCH_B @ LIT 2 ADD LIT SCRATCH_A @ ADD @ LIT 16 DIV
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_A @ ADD
+    !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH mk-loop
+  mk-done:
+    LIT SCRATCH_C @ LIT T_STRING ADD ARITY 1 EXIT
+]
+
+
+
+str-eq: masm 2 [
+    LIT SCRATCH_B !
+    DUP LIT 16 MOD SUB LIT SCRATCH_A !
+    LIT SCRATCH_B @ DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT SCRATCH_A @ @ LIT SCRATCH_B @ @ EQ ZBRANCH str-eq-neq
+    LIT SCRATCH_A @ @ LIT SCRATCH_F !
+    LIT 0 LIT SCRATCH_E !
+  str-eq-loop:
+    LIT SCRATCH_E @ LIT SCRATCH_F @ LT ZBRANCH str-eq-yes
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_E @ ADD @
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_E @ ADD @
+    EQ ZBRANCH str-eq-neq
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    BRANCH str-eq-loop
+  str-eq-yes:
+    INT 1 ARITY 1 EXIT
+  str-eq-neq:
+    INT 0 ARITY 1 EXIT
+]
+
+
+get: masm 1 [ CALL lookup ARITY 1 EXIT ]
+
+
+
+
+
+lambda: func [spec body] [ func :spec :body ]
+does:   func [body] [ lambda [] body ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+emit-clear: masm [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
+emit-byte: masm 1 [
+    LIT SCRATCH_E @ LIT G1_OUT_DATA ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    ARITY 0 EXIT
+]
+emit-finish: masm [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
+
+
+
+
+
+
+
+
+
+
+vis-clear: masm [ LIT 0 LIT SCRATCH_D ! ARITY 0 EXIT ]
+vis-byte: masm 1 [
+    LIT SCRATCH_D @ LIT G1_VIS_DATA ADD !
+    LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
+    ARITY 0 EXIT
+]
+vis-text: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_A !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  vis-text-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH vis-text-done
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL
+    LIT G1_VIS_DATA LIT SCRATCH_D @ ADD
+    !
+    LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH vis-text-loop
+  vis-text-done:
+    ARITY 0 EXIT
+]
+vis-finish: masm [ LIT SCRATCH_D @ LIT G1_VIS ! LIT G1_VIS LIT T_BLOCK ADD ARITY 1 EXIT ]
+vis-int: func [n] [ either < n 0 [ vis-byte 45 vis-digits - 0 n ] [ vis-digits n ] ]
+vis-digits: func [n] [
+    either > n 9 [ vis-digits / n 10 ] [ none ]
+    vis-byte + 48 - n * 10 / n 10
+]
+
+
+
+
+vis-sp:  does [ vis-byte 32 ]
+vis-eol: does [ vis-byte 10 ]
+vis-int-field:  func [n]    [ vis-sp vis-int n ]
+vis-text-field: func [text] [ vis-sp vis-text text ]
+
+vis-box: func [x y w h label] [
+    vis-byte 66
+    vis-int-field x
+    vis-int-field y
+    vis-int-field w
+    vis-int-field h
+    vis-text-field label
+    vis-eol
+]
+vis-line: func [x1 y1 x2 y2] [
+    vis-byte 76
+    vis-int-field x1
+    vis-int-field y1
+    vis-int-field x2
+    vis-int-field y2
+    vis-eol
+]
+vis-dot: func [id x y] [
+    vis-byte 68
+    vis-int-field id
+    vis-int-field x
+    vis-int-field y
+    vis-eol
+]
+vis-move: func [id x1 y1 x2 y2] [
+    vis-byte 77
+    vis-int-field id
+    vis-int-field x1
+    vis-int-field y1
+    vis-int-field x2
+    vis-int-field y2
+    vis-eol
+]
+
+
+block-len: masm 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
+block-at: masm 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ]
+
+
+
+
+
+select: func [rows key] [ select-at rows 0 block-len rows key ]
+select-at: func [rows i n key] [
+    either < i n [
+        either = block-at block-at rows i 0 key [ block-at rows i ] [ select-at rows + i 1 n key ]
+    ] [ none ]
+]
+
+
+emit-int: func [n] [ either < n 0 [ emit-byte 45 emit-digits - 0 n ] [ emit-digits n ] ]
+emit-digits: func [n] [
+    either > n 9 [ emit-digits / n 10 ] [ none ]
+    emit-byte + 48 - n * 10 / n 10
+]
+
+
+
+
+
+
+emit-text: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_A !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  emit-text-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH emit-text-done
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL
+    LIT G1_OUT_DATA LIT SCRATCH_E @ ADD
+    !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH emit-text-loop
+  emit-text-done:
+    ARITY 0 EXIT
+]
+
+
+
+
+
+
+h1-open:   "<h1>"
+h1-close:  "</h1>"
+h2-open:   "<h2>"
+h2-close:  "</h2>"
+p-open:    "<p>"
+p-close:   "</p>"
+catalog-open:  "<ul class='catalog'>"
+catalog-close: "</ul>"
+basket-list-open:  "<ul class='basket-list'>"
+basket-list-close: "</ul>"
+li-open:   "<li>"
+li-close:  "</li>"
+span-open:  "<span class='item'>"
+span-close: "</span>"
+qty-open:  "<span class='qty'>"
+qty-close: "</span>"
+btn-open:  "<button class='btn' data-glon-route='"
+btn-mid:   "'>"
+btn-close: "</button>"
+event-open: "<button class='btn' data-glon-event='"
+input-open: "<input class='search-input' type='text' placeholder='Search' data-glon-input='"
+value-mid:  "' data-glon-value='"
+panel-open:  "<div class='panel'>"
+panel-close: "</div>"
+search-open:  "<div class='search-row'>"
+search-close: "</div>"
+basket-open:  "<div class='basket'>"
+basket-close: "</div>"
+total-open:  "<p class='total'>"
+total-close: "</p>"
+meta-open:   "<p class='meta'>"
+meta-close:  "</p>"
+tagline-open:  "<p class='tagline'>"
+tagline-close: "</p>"
+nav-open:   "<p class='nav'>"
+nav-close:  "</p>"
+pre-open:   "<pre>"
+pre-close:  "</pre>"
+load-btn-open: "<button class='btn' data-glon-route='"
+load-btn-mid:  "' data-glon-load='"
+
+
+
+
+
+
+
+wrap: func [open close] [
+    func [content] [ emit-text open do content emit-text close ]
+]
+heading: wrap h1-open h1-close
+subhead: wrap h2-open h2-close
+text:    wrap p-open p-close
+tagline: wrap tagline-open tagline-close
+meta:    wrap meta-open meta-close
+pre:     wrap pre-open pre-close
+link:    func [label route] [
+    emit-text nav-open
+    emit-text btn-open emit-text route emit-text btn-mid emit-text label emit-text btn-close
+    emit-text nav-close
+]
+
+
+
+load-link: func [label route path] [
+    emit-text nav-open
+    emit-text load-btn-open emit-text route emit-text load-btn-mid emit-text path emit-text btn-mid
+    emit-text label emit-text btn-close
+    emit-text nav-close
+]
+
+button:  func [content event] [
+    emit-text event-open emit-text event emit-text btn-mid do content emit-text btn-close
+]
+
+value-button: func [content event value] [
+    emit-text event-open emit-text event emit-text value-mid emit-text value emit-text btn-mid
+    do content emit-text btn-close
+]
+
+
+
+input:   func [name] [
+    emit-text input-open emit-text name emit-text btn-mid
+]
+
+
+
+
+
+
+products: func [items] [ emit-text catalog-open each-product items emit-text catalog-close ]
+each-product: func [items] [ emit-product-at items 0 block-len items ]
+emit-product-at: func [items i n] [
+    either < i n [
+        emit-text li-open
+        emit-text span-open emit-text get block-at items i emit-text span-close
+        value-button [ emit-text "Add" ] "add-product" get block-at items i
+        emit-text li-close
+        emit-product-at items + i 1 n
+    ] [ none ]
+] 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+traffic-loaded: 1
+
+
+
+block-set!: masm 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
+
+
+v0: 3000      
+headway: 3    
+s0: 200       
+amax: 100     
+K: 200        
+L: 500        
+road: 100000  
+nveh: 25      
+tick0: 200    
+tick1: 215    
+brakespeed: 500  
+
+
+
+frac: func [num den] [ / * num 1000 den ]
+
+square: func [f] [ / * f f 1000 ]
+
+max0: func [x] [ either < x 0 [ 0 ] [ x ] ]
+
+
+
+idm-accel: func [v vl gap] [
+    dv: - v vl
+    
+    ht: + / * v headway 2 / * v dv K
+    ss: + s0 max0 ht
+    
+    rv: frac v v0
+    rv4: square square rv
+    
+    rs: frac ss gap
+    rs2: square rs
+    
+    / - 1000 + rv4 rs2 10
+]
+
+
+
+lead: func [i n] [ either = + i 1 n [ 0 ] [ + i 1 ] ]
+
+
+
+
+
+
+gap: func [xs i n] [
+    ln: lead i n
+    d: - block-at xs ln block-at xs i
+    d2: either < d 0 [ + d road ] [ d ]
+    g: - d2 L
+    either < g 1 [ 1 ] [ g ]
+]
+
+
+raw-gap: func [xs i n] [
+    ln: lead i n
+    d: - block-at xs ln block-at xs i
+    d2: either < d 0 [ + d road ] [ d ]
+    - d2 L
+]
+
+
+
+accels: func [xs vs as i n] [
+    either < i n [
+        v: block-at vs i
+        vl: block-at vs lead i n
+        g: gap xs i n
+        block-set! as i idm-accel v vl g
+        accels xs vs as + i 1 n
+    ] [ none ]
+]
+
+
+update: func [xs vs as i n] [
+    either < i n [
+        v: block-at vs i
+        vn: max0 + v / block-at as i 10        
+        block-set! vs i vn
+        xn: + block-at xs i / vn 10            
+        block-set! xs i either < xn road [ xn ] [ - xn road ]
+        update xs vs as + i 1 n
+    ] [ none ]
+]
+
+
+
+xs: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+vs: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+as: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+tick: 0
+
+init: func [] [ init-at 0 ]
+init-at: func [i] [
+    either < i nveh [
+        block-set! xs i * / road nveh i
+        block-set! vs i / v0 2
+        init-at + i 1
+    ] [ tick: 0 ]
+]
+
+
+
+disturb: func [t] [
+    either >= t tick0 [
+        either < t tick1 [
+            either > block-at vs 0 brakespeed [ block-set! vs 0 brakespeed ] [ none ]
+        ] [ none ]
+    ] [ none ]
+]
+
+
+step: func [] [
+    accels xs vs as 0 nveh
+    update xs vs as 0 nveh
+    disturb tick
+    tick: + tick 1
+]
+
+
+min-v: func [] [ minv-at 0 block-at vs 0 ]
+minv-at: func [i m] [
+    either < i nveh [ minv-at + i 1 either < block-at vs i m [ block-at vs i ] [ m ] ] [ m ]
+]
+max-v: func [] [ maxv-at 0 block-at vs 0 ]
+maxv-at: func [i m] [
+    either < i nveh [ maxv-at + i 1 either > block-at vs i m [ block-at vs i ] [ m ] ] [ m ]
+]
+mean-v: func [] [ meansum 0 0 ]
+meansum: func [i acc] [
+    either < i nveh [ meansum + i 1 + acc block-at vs i ] [ / acc nveh ]
+]
+min-gap: func [] [ mingap-at 0 raw-gap xs 0 nveh ]
+mingap-at: func [i m] [
+    either < i nveh [
+        g: raw-gap xs i nveh
+        mingap-at + i 1 either < g m [ g ] [ m ]
+    ] [ m ]
+]
+
+
+
+
+
+started: 0
+
+advance: func [n] [
+    either > n 0 [ step advance - n 1 ] [ none ]
+]
+
+do-traffic-run: func [] [ started: 1 init advance 25 render-current ]
+do-traffic-step: func [] [ advance 25 render-current ]
+do-traffic-reset: func [] [ started: 0 init render-current ]
+
+
+
+
+
+draw-road: func [] [ vis-line 0 300 1000 300 ]
+draw-vehicles: func [i n] [
+    either < i n [
+        vis-dot i / block-at xs i 100 300
+        draw-vehicles + i 1 n
+    ] [ none ]
+]
+
+draw-stats: func [] [
+    emit-text "tick " emit-int tick
+    emit-text "    mean " emit-int mean-v
+    emit-text " cm/s    min " emit-int min-v
+    emit-text " cm/s    min gap " emit-int min-gap
+    emit-text " cm"
+]
+
+traffic-view: [
+    heading [ emit-text "IDM traffic simulator" ]
+    tagline [ emit-text "25 vehicles follow the Intelligent Driver Model on a one-lane ring." ]
+    draw-stats
+    emit-text "<canvas id='glon-canvas' width='1000' height='320'></canvas>"
+    either started [
+        button [ emit-text "Step" ] "traffic-step"
+        emit-text " "
+        button [ emit-text "Reset" ] "traffic-reset"
+    ] [
+        button [ emit-text "Run" ] "traffic-run"
+    ]
+    emit-text " "
+    link "Back to demos" "home"
+]
+
+render-traffic: func [] [
+    emit-clear do traffic-view
+    vis-clear draw-road draw-vehicles 0 nveh
+    vis-finish emit-finish
+]
+
+
+
+
+
+
+events: [
+    ['traffic-start   [do-traffic-start]]
+    ['traffic-advance [do-traffic-advance]]
+    ['traffic-reset   [do-traffic-reset]]
+]
+
+do-event: [
+    event-row: select events current-event
+    either event-row [ do block-at event-row 1 ] [ none ]
+]
+
+do-traffic-start: func [] [ init render-traffic-standalone ]
+do-traffic-advance: func [] [ advance 5 render-traffic-standalone ]
+do-traffic-reset: func [] [ init render-traffic-standalone ]
+
+
+standalone-view: [
+    emit-text "t = " emit-int / tick 10 emit-text " s    tick " emit-int tick
+    emit-text "    mean " emit-int mean-v
+    emit-text " cm/s    min " emit-int min-v
+    emit-text " cm/s    gap " emit-int min-gap
+    emit-text " cm    "
+    either >= tick tick0 [
+        either < tick tick1 [ emit-text "BRAKING" ] [ emit-text "free" ]
+    ] [ emit-text "free" ]
+]
+
+render-traffic-standalone: func [] [
+    emit-clear do standalone-view
+    vis-clear draw-road draw-vehicles 0 nveh
+    vis-finish emit-finish
+]
+
+ ]</script>
+  <script src="traffic-host.js"></script>
+</body>
+</html>
