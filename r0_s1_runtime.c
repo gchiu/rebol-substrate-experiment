@@ -681,9 +681,12 @@ static void emit_trace_string(void) {
     asm_exit();
 }
 
-/* TRACE-BLOCK: ( p -- ) trace a managed BLOCK (a tagged-value series). First
- * verify length against the allocated block extent (fail-stop, never clamp),
- * then mark_value each tagged element. The alignment padding is never traced.
+/* TRACE-BLOCK: ( p -- ) trace a managed BLOCK (a tagged-value series). Managed
+ * blocks share the loader-block layout [count, site_id, elem...] so the
+ * block-at/bset/block-len primitives operate on them unchanged; the site_id
+ * slot (always 0 at runtime) is never traced. First verify length against the
+ * allocated block extent (fail-stop, never clamp), then mark_value each tagged
+ * element. The alignment padding is never traced.
  *
  * trace_block is reached ONLY from the collector's drain loop, so like
  * trace_user/trace_string it may use the GC_T6..GC_T8 scan/drain partition for
@@ -692,21 +695,21 @@ static void emit_trace_string(void) {
 static void emit_trace_block(void) {
     r_trace_block = asm_here();
     e_setc(GC_T6);                                   /* p */
-    /* length = M[p]; size = M[p-16]; require length <= size-17 (fail-stop) */
+    /* length = M[p]; size = M[p-16]; require length <= size-18 (fail-stop) */
     e_cell(GC_T6); asm_lit(GC_HDR_STRIDE); asm_host(HOST_SUB); asm_fetch(); e_setc(GC_T5); /* size */
     e_cell(GC_T6); asm_fetch(); e_setc(GC_T7);        /* length */
     e_cell(GC_T7);                                    /* length */
-    e_cell(GC_T5); asm_lit(GC_HDR_STRIDE + 1); asm_host(HOST_SUB);   /* size-17 */
-    asm_host(HOST_GT);                                /* length > size-17 ? */
+    e_cell(GC_T5); asm_lit(GC_HDR_STRIDE + 2); asm_host(HOST_SUB);   /* size-18 */
+    asm_host(HOST_GT);                                /* length > size-18 ? */
     cell j_ok = asm_zbranch_fwd();
     asm_host(HOST_DUMP); asm_halt();                  /* corrupt length */
     asm_patch_here(j_ok);
-    /* mark each element M[p+1+i] */
+    /* mark each element M[p+BLK_DATA+i] (skip the site_id slot) */
     asm_lit(0); e_setc(GC_T8);                        /* i = 0 */
     cell loop = asm_here();
     e_cell(GC_T8); e_cell(GC_T7); asm_host(HOST_LT);
     cell j_done = asm_zbranch_fwd();
-    e_cell(GC_T6); asm_lit(1); asm_host(HOST_ADD);
+    e_cell(GC_T6); asm_lit(BLK_DATA); asm_host(HOST_ADD);
     e_cell(GC_T8); asm_host(HOST_ADD); asm_fetch();
     call_mark_value();                                /* element */
     e_cell(GC_T8); asm_lit(1); asm_host(HOST_ADD); e_setc(GC_T8);
@@ -1229,6 +1232,7 @@ static void emit_gc(void) {
 static cell r_reduce, r_set, r_append, r_mkctx, r_mkclosure;
 static cell r_load_lex, r_hash_insert, r_build_hash;
 static cell r_values, r_run_block, r_native, r_invoke_closure, r_return, r_invoke_raw, r_subexpr, r_block_eval;
+static cell r_reduce_block;
 static cell r_binding_ctx;
 
 /* REDUCE: [r1..rN, tagged-N] -> [r1] (or [NONE] if N==0) */
@@ -1790,6 +1794,70 @@ static void emit_values(void) {
     asm_exit();
 }
 
+/* REDUCE-BLOCK: ( block -- managed-block )  evaluate each source expression
+ * left-to-right, reduce it to a single value, and collect the values into a
+ * freshly allocated managed block [count, site_id, v0..vN-1]. The source block
+ * is a permanent loader block (never a managed block, which is data, not code),
+ * so it is walked exactly like `values` walks its argument. The result block is
+ * rooted on the data stack for the whole walk and its length field always
+ * reflects the filled prefix, so a GC during any sub-expression marks exactly
+ * the collected values. */
+static void emit_reduce_block(void) {
+    r_reduce_block = asm_here();
+    /* input must be a BLOCK (tag 6); fail-stop otherwise */
+    asm_dup(); asm_lit(16); asm_host(HOST_MOD); asm_lit(T_BLOCK); asm_host(HOST_EQ);
+    cell j_not_block = asm_zbranch_fwd();
+    e_untag_ptr(); e_setc(RV_T1);                    /* source block ptr */
+    /* M3D execution guard: a managed block is data, not code. */
+    e_cell(RV_T1); asm_lit(GC_HEAP_BASE); asm_host(HOST_GE);
+    cell j_g1 = asm_zbranch_fwd();
+    e_cell(RV_T1); asm_lit(GC_HEAP_LIMIT); asm_host(HOST_LT);
+    cell j_g2 = asm_zbranch_fwd();
+    asm_host(HOST_DUMP); asm_halt();
+    asm_patch_here(j_g2);
+    asm_patch_here(j_g1);
+    e_cell(RV_T1); asm_fetch(); e_setc(RV_T3);        /* source count (upper bound) */
+    /* save evaluator state, then point it at the source block */
+    e_cell(RV_CUR); asm_toR();
+    e_cell(RV_END); asm_toR();
+    e_cell(RV_BLK); asm_toR();
+    e_cell(RV_T1); asm_lit(BLK_DATA); asm_host(HOST_ADD); e_setc(RV_CUR);
+    e_cell(RV_T1); asm_lit(BLK_DATA); asm_host(HOST_ADD);
+    e_cell(RV_T3); asm_host(HOST_ADD); e_setc(RV_END);
+    e_cell(RV_T1); e_setc(RV_BLK);
+    /* allocate the result block: 16-aligned (2 + source-count) payload cells */
+    e_cell(RV_T3); asm_lit(2); asm_host(HOST_ADD); asm_lit(15); asm_host(HOST_ADD);
+    asm_lit(16); asm_host(HOST_DIV); asm_lit(16); asm_host(HOST_MUL); e_setc(RV_T2);
+    e_cell(RV_T2); asm_lit(GC_KIND_BLOCK); asm_call(r_alloc); e_setc(RV_T1); /* result payload */
+    asm_lit(0); e_cell(RV_T1); asm_store();            /* M[result] = 0 (length) */
+    asm_lit(0); e_cell(RV_T1); asm_lit(1); asm_host(HOST_ADD); asm_store(); /* site_id = 0 */
+    /* root the result block on the data stack (the source block was consumed) */
+    e_cell(RV_T1); asm_lit(T_BLOCK); asm_host(HOST_ADD);
+    cell rloop = asm_here();
+    e_cell(RV_CUR); e_cell(RV_END); asm_host(HOST_LT);
+    cell j_done = asm_zbranch_fwd();
+    e_cell(RV_T1); asm_toR();                          /* result payload survives subexpr */
+    to_subexpr[n_subexpr++] = emit_call_fwd();         /* evaluate one expression */
+    asm_fromR(); e_setc(RV_T1);                        /* restore result payload */
+    asm_call(r_reduce);                                /* -> [value] */
+    /* store value into result[BLK_DATA + length], then length++ */
+    e_cell(RV_T1); asm_lit(BLK_DATA); asm_host(HOST_ADD);
+    e_cell(RV_T1); asm_fetch(); asm_host(HOST_ADD);    /* addr = result + BLK_DATA + length */
+    asm_store();
+    e_cell(RV_T1); asm_fetch(); asm_lit(1); asm_host(HOST_ADD);   /* length + 1 */
+    e_cell(RV_T1); asm_store();                        /* M[result] = length + 1 */
+    asm_branch(rloop);
+    asm_patch_here(j_done);
+    asm_fromR(); e_setc(RV_BLK);
+    asm_fromR(); e_setc(RV_END);
+    asm_fromR(); e_setc(RV_CUR);
+    asm_lit(16);                                       /* count marker: one result */
+    asm_exit();                                        /* result block already on DS */
+    /* input was not a BLOCK: fail-stop (the value is still on the DS) */
+    asm_patch_here(j_not_block);
+    asm_drop(); asm_host(HOST_DUMP); asm_halt();
+}
+
 /* RUN-BLOCK: ( block -- result-set )  evaluate a block argument as code.
  * Saves RV_CUR/RV_END/RV_BLK, points them at the block, calls block-eval,
  * restores. */
@@ -1893,6 +1961,13 @@ static void emit_native(void) {
     asm_patch_here(j_not_closure);
     asm_drop(); asm_host(HOST_DUMP); asm_halt();     /* not a closure -> fail-stop */
     asm_patch_here(j_not_invoke);
+    /* reduce (id 104): arity 1 (block) -> managed block of reduced values */
+    e_cell(RV_NAT); asm_lit(RN_REDUCE); asm_host(HOST_EQ);
+    cell j_not_reduce = asm_zbranch_fwd();
+    to_subexpr[n_subexpr++] = emit_call_fwd();
+    asm_call(r_reduce);
+    asm_branch(r_reduce_block);                      /* tail */
+    asm_patch_here(j_not_reduce);
     /* arithmetic: arity 2 */
     e_cell(RV_NAT); asm_toR();                 /* save native id across arg eval */
     to_subexpr[n_subexpr++] = emit_call_fwd();
@@ -2418,6 +2493,7 @@ cell r0_s1_init(void) {
     emit_mkclosure();
     emit_binding_ctx();
     emit_values();
+    emit_reduce_block();
     emit_run_block();
     emit_native();
     emit_invoke_closure();
@@ -2456,6 +2532,7 @@ cell r0_s1_init(void) {
     bind(global_ctx, intern("either"), mk_native(RN_EITHER));
     bind(global_ctx, intern("do"), mk_native(RN_DO));
     bind(global_ctx, intern("invoke"), mk_native(RN_INVOKE));
+    bind(global_ctx, intern("reduce"), mk_native(RN_REDUCE));
 
     /* M2: seed GC roots and world state.  The collector scans the global
      * context, the (empty) M1 task table, and the (empty) scheduler-world DS/RS
