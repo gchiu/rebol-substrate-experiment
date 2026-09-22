@@ -53,7 +53,7 @@ int run_r0_s1_gc_safepoint_tests(void) {
          "    LIT SCRATCH_B ! LIT 0 LIT SCRATCH_A ! "
          "  Lfill: LIT REG_HP @ LIT 39984 LT ZBRANCH Ldone "
          "    LIT 16 LIT GC_KIND_STRING CALL alloc LIT T_STRING ADD "
-         "    LIT SCRATCH_B @ LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_A @ ADD ! "
+         "    LIT SCRATCH_B @ DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_A @ ADD ! "
          "    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A ! BRANCH Lfill "
          "  Ldone: ARITY 0 EXIT ] ]");
     CHECK(N == 1 && r0_s1_ran_cleanly(), "1: fill-heap raw loads cleanly");
