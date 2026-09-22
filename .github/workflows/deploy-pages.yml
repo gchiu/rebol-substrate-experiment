@@ -46,7 +46,12 @@ jobs:
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: latest
+          # Pin Emscripten: 6.0.10 (the "latest" at this time) makes the
+          # standalone -nostdlib link fail with "symbol exported via --export
+          # not found: setThrew" (SUPPORT_LONGJMP defaults to 'emscripten',
+          # which forces the setThrew export that the minimal no-runtime build
+          # does not define). 6.0.9 is the last known-good release.
+          version: 6.0.9
 
       - name: Build shop WASM and run G1E flow test
         run: |
