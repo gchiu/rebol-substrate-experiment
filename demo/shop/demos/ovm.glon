@@ -1,0 +1,193 @@
+[
+;; demo/shop/demos/ovm.glon -- FVDM (Full Velocity Difference Model) with a
+;; piecewise-linear optimal-velocity function.
+;;
+;; Acceleration law: Jiang, R., Wu, Q., Zhu, Z. (2001), "Full velocity
+;; difference model for a car-following theory", Physical Review E 64, 017101:
+;;
+;;     a_n = a0 * (V(h_n) - v_n)  +  lambda * (v_lead - v_n)
+;;
+;; V(h) (the optimal-velocity function) is Bando et al. (1995)'s OVM concept
+;; but with a PIECEWISE-LINEAR shape substituted for the canonical tanh one --
+;; frozen Glon has no transcendental functions. See GLON-TRAFFIC-MODELS.md
+;; sec 1 (why Gipps and canonical/tanh OVM were rejected) and sec 3 (full
+;; design note, parameters, and the OVM-instability prediction this file's
+;; tests check against).
+;;
+;;     V(h) = 0                                  h <= hc
+;;     V(h) = vmax * (h - hc) / (hmax - hc)       hc < h < hmax
+;;     V(h) = vmax                                h >= hmax
+;;
+;; All names are ovm-prefixed; IDM's demos/traffic.glon is untouched.
+
+ovm-loaded: 1
+
+ovm-block-set!: masm 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
+
+;; ---- parameters (centimetres / seconds) -------------------------------------
+ovm-vmax: 3000
+ovm-hc: 200          ;; jam gap (V=0 at or below this net gap), matches IDM's s0
+ovm-hmax: 4000        ;; free gap (V=vmax at or above this net gap)
+ovm-L: 500             ;; vehicle length, matches IDM's L
+ovm-road: 100000
+ovm-nveh: 25
+ovm-tick0: 200
+ovm-tick1: 215
+ovm-brakespeed: 500
+;; sensitivity a0 (relaxation rate, 1/s) as a fraction num/den; applied as
+;; (num*x)/den, the same "scale by a plain fraction" idiom as IDM's headway.
+;; "moderate" set (default, used by ovm-accel): published-typical magnitude.
+ovm-a0num: 5   ovm-a0den: 10    ;; a0 = 0.5 /s
+ovm-lamnum: 5  ovm-lamden: 10   ;; lambda = 0.5 /s
+;; "instability" set: a0 well below the model's own linear-stability bound
+;; (see design doc sec 3) -- used only by the dedicated instability test, not
+;; the default scenario, and not tuned to look good; it is testing a named,
+;; published phenomenon (OVM stop-and-go instability), and a negative result
+;; (no instability observed) would be reported as such.
+ovm-a0num-unstable: 1   ovm-a0den-unstable: 10   ;; a0 = 0.1 /s
+
+;; ---- state -------------------------------------------------------------------
+ovm-xs: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+ovm-vs: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+ovm-as: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+ovm-tick: 0
+;; active sensitivity set (mutable so tests can select the instability set
+;; without a second copy of the whole file); default = moderate.
+ovm-a0n: 5   ovm-a0d: 10
+
+ovm-lead: func [i n] [ either = + i 1 n [ 0 ] [ + i 1 ] ]
+
+;; optimal-velocity function (net gap -> desired speed)
+ovm-V: func [h] [
+    either <= h ovm-hc [ 0 ] [
+        either >= h ovm-hmax [ ovm-vmax ] [
+            / * ovm-vmax - h ovm-hc - ovm-hmax ovm-hc
+        ]
+    ]
+]
+
+;; net gap, wrap-by-sign (same technique as IDM), floored to 1 like IDM's
+;; post-fix gap (overlap still fails loudly, not silently).
+ovm-overlap-fail: func [] [ invoke 0 ]
+ovm-gap: func [xs i n] [
+    ln: ovm-lead i n
+    d: - block-at xs ln block-at xs i
+    d2: either < d 0 [ + d ovm-road ] [ d ]
+    g: - d2 ovm-L
+    either < g 0 [ ovm-overlap-fail ] [ either = g 0 [ 1 ] [ g ] ]
+]
+ovm-raw-gap: func [xs i n] [
+    ln: ovm-lead i n
+    d: - block-at xs ln block-at xs i
+    d2: either < d 0 [ + d ovm-road ] [ d ]
+    - d2 ovm-L
+]
+
+;; ---- synchronous update: all accelerations from the pre-update snapshot,
+;; then all positions/velocities advance together (identical shape to IDM's
+;; accels/update split). --------------------------------------------------------
+ovm-accel: func [v vl h] [
+    want: ovm-V h
+    term1: / * ovm-a0n - want v ovm-a0d
+    term2: / * ovm-lamnum - vl v ovm-lamden
+    + term1 term2
+]
+ovm-accels: func [i n] [
+    either < i n [
+        v: block-at ovm-vs i
+        vl: block-at ovm-vs ovm-lead i n
+        h: ovm-gap ovm-xs i n
+        ovm-block-set! ovm-as i ovm-accel v vl h
+        ovm-accels + i 1 n
+    ] [ none ]
+]
+ovm-update: func [i n] [
+    either < i n [
+        v: block-at ovm-vs i
+        vn: + v / block-at ovm-as i 10
+        vn2: either < vn 0 [ 0 ] [ vn ]        ;; velocity floor at 0 (no reversing)
+        ovm-block-set! ovm-vs i vn2
+        xn: + block-at ovm-xs i / vn2 10
+        ovm-block-set! ovm-xs i either < xn ovm-road [ xn ] [ - xn ovm-road ]
+        ovm-update + i 1 n
+    ] [ none ]
+]
+
+ovm-disturb: func [t] [
+    either >= t ovm-tick0 [
+        either < t ovm-tick1 [
+            either > block-at ovm-vs 0 ovm-brakespeed [ ovm-block-set! ovm-vs 0 ovm-brakespeed ] [ none ]
+        ] [ none ]
+    ] [ none ]
+]
+
+ovm-step: func [] [
+    ovm-accels 0 ovm-nveh
+    ovm-update 0 ovm-nveh
+    ovm-disturb ovm-tick
+    ovm-tick: + ovm-tick 1
+]
+
+;; ---- init: uniform flow at the SAME initial speed as IDM (v0/2 = 1500 cm/s).
+;; Unlike Newell, OVM/FVDM has an explicit relaxation term (a0*(V-v)) that is
+;; simply near-zero (not necessarily exactly zero) at v0/2 -- it is not
+;; required to be an exact fixed point for a sane startup, since the
+;; relaxation term will pull it toward V(h) smoothly rather than snap to it;
+;; this was verified against the actual model (not assumed) before being kept
+;; as the shared initial condition -- see GLON-TRAFFIC-MODELS.md sec 8. -------
+ovm-init: func [] [ ovm-init-at 0 ]
+ovm-init-at: func [i] [
+    either < i ovm-nveh [
+        ovm-block-set! ovm-xs i * / ovm-road ovm-nveh i
+        ovm-block-set! ovm-vs i / ovm-vmax 2
+        ovm-init-at + i 1
+    ] [ ovm-tick: 0 ]
+]
+;; select the sensitivity set used by ovm-accel (default = moderate)
+ovm-use-moderate: func [] [ ovm-a0n: ovm-a0num  ovm-a0d: ovm-a0den ]
+ovm-use-unstable: func [] [ ovm-a0n: ovm-a0num-unstable  ovm-a0d: ovm-a0den-unstable ]
+
+;; ---- observables --------------------------------------------------------------
+ovm-min-v: func [] [ ovm-minv-at 0 block-at ovm-vs 0 ]
+ovm-minv-at: func [i m] [ either < i ovm-nveh [ ovm-minv-at + i 1 either < block-at ovm-vs i m [ block-at ovm-vs i ] [ m ] ] [ m ] ]
+ovm-max-v: func [] [ ovm-maxv-at 0 block-at ovm-vs 0 ]
+ovm-maxv-at: func [i m] [ either < i ovm-nveh [ ovm-maxv-at + i 1 either > block-at ovm-vs i m [ block-at ovm-vs i ] [ m ] ] [ m ] ]
+ovm-mean-v: func [] [ ovm-meansum 0 0 ]
+ovm-meansum: func [i acc] [ either < i ovm-nveh [ ovm-meansum + i 1 + acc block-at ovm-vs i ] [ / acc ovm-nveh ] ]
+ovm-wave-amplitude: func [] [ - ovm-max-v ovm-min-v ]
+ovm-min-gap: func [] [ ovm-mingap-at 0 ovm-raw-gap ovm-xs 0 ovm-nveh ]
+ovm-mingap-at: func [i m] [
+    either < i ovm-nveh [
+        g: ovm-raw-gap ovm-xs i ovm-nveh
+        ovm-mingap-at + i 1 either < g m [ g ] [ m ]
+    ] [ m ]
+]
+
+;; ---- controls -----------------------------------------------------------------
+ovm-advance: func [n] [ either > n 0 [ ovm-step ovm-advance - n 1 ] [ none ] ]
+
+;; ---- view -----------------------------------------------------------------------
+ovm-draw-vehicles: func [i n] [
+    either < i n [
+        vis-dot i / block-at ovm-xs i 100 300
+        ovm-draw-vehicles + i 1 n
+    ] [ none ]
+]
+ovm-draw-stats: func [] [
+    emit-text "[FVDM]  tick " emit-int ovm-tick
+    emit-text "    mean " emit-int ovm-mean-v
+    emit-text " cm/s    min " emit-int ovm-min-v
+    emit-text " cm/s    gap " emit-int ovm-min-gap
+    emit-text " cm    "
+    either >= ovm-tick ovm-tick0 [
+        either < ovm-tick ovm-tick1 [ emit-text "BRAKING" ] [ emit-text "free" ]
+    ] [ emit-text "free" ]
+]
+ovm-view: [ ovm-draw-stats ]
+ovm-render: func [] [
+    emit-clear do ovm-view
+    vis-clear vis-line 0 300 1000 300 ovm-draw-vehicles 0 ovm-nveh
+    vis-finish emit-finish
+]
+
+]

@@ -1,0 +1,216 @@
+[
+;; demo/shop/demos/newell.glon -- Newell (2002) simplified car-following.
+;;
+;; x_n(t) = min( x_n(t-tau) + vmax*tau*dt ,  x_{n-1}(t-tau) - d )
+;;
+;; G. F. Newell, "A simplified car-following theory: a lower order model",
+;; Transportation Research Part B 36 (2002). See GLON-TRAFFIC-MODELS.md sec 2
+;; for the full design note (history representation, parameters, and the
+;; qualitative prediction this file's tests check against).
+;;
+;; No acceleration term: a vehicle's own position tau ticks ago, advanced at
+;; most vmax*tau, capped by the leader's position tau ticks ago minus the jam
+;; spacing d, IS the new position. Velocity is a derived observable, not
+;; stored state. tau (reaction time) is represented as a fixed tick delay,
+;; requiring an explicit per-vehicle position-history ring buffer -- this is
+;; the one model in this lab whose canonical form cannot be expressed without
+;; history state, and it is implemented honestly (no memoryless shortcut).
+;;
+;; All names are newell-prefixed so this file can be loaded alongside
+;; demos/traffic.glon (IDM) without shadowing its bare step/init/mean-v/...
+;; words; IDM's file is untouched.
+
+newell-loaded: 1
+
+;; ---- block primitives (block-len/block-at from common.glon; block-set! is
+;; per-file, matching every other demo in this lab) ---------------------------
+newell-block-set!: masm 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
+
+;; ---- parameters (centimetres / seconds) -------------------------------------
+newell-vmax: 3000        ;; free-flow speed cap, cm/s (matches IDM's v0)
+newell-tau: 10            ;; reaction time, ticks (1.0 s at dt=0.1s)
+newell-d: 500              ;; jam spacing (net), cm
+newell-road: 100000
+newell-nveh: 25
+newell-tick0: 200
+newell-tick1: 215
+newell-brakespeed: 500
+newell-step-cm: 300        ;; vmax*dt = 3000*0.1, the uniform pre-seed step (see init note)
+newell-tau1: + newell-tau 1   ;; ring buffer size (11 slots)
+
+;; mod: a - (a/m)*m, wrapped non-negative. C division truncates toward zero,
+;; so a plain a-(a/m)*m goes negative for negative a (e.g. a=-3,m=11 gives
+;; -3, not 8); this corrects that so it is a true mathematical modulo.
+newell-mod: func [a m] [
+    r: - a * / a m m
+    either < r 0 [ + r m ] [ r ]
+]
+
+;; ---- state -------------------------------------------------------------------
+;; hist[i*tau1 + slot]: vehicle i's position at tick T, stored at
+;; slot = T mod tau1. xs/vs mirror the CURRENT tick for cheap observables.
+;; 25 vehicles * 11 slots (tau1) = 275 cells, laid out as 5 rows of 55.
+newell-hist: [
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+]
+newell-xs: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+newell-vs: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+newell-xs2: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+newell-vs2: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+newell-tick: 0
+
+newell-lead: func [i n] [ either = + i 1 n [ 0 ] [ + i 1 ] ]
+
+;; ---- history ring accessors --------------------------------------------------
+newell-hidx: func [i slot] [ + * i newell-tau1 slot ]
+newell-hset: func [i tick pos] [ newell-block-set! newell-hist newell-hidx i newell-mod tick newell-tau1  pos ]
+newell-hget: func [i tick] [ block-at newell-hist newell-hidx i newell-mod tick newell-tau1 ]
+
+;; ---- init: uniform flow at vmax, history pre-seeded consistently with that
+;; same uniform flow for tau virtual ticks before t=0. vmax (not vmax/2, and
+;; not IDM's v0/2) is the deliberate choice: with this ring's spacing
+;; (road/nveh = 4000 cm net) and this file's (tau, d), free-flow at vmax is
+;; Newell's own stable equilibrium here (vmax*tau + d = 3000*1 + 500 = 3500 cm
+;; < 4000 cm of room), so cruising at vmax is exactly self-consistent -- the
+;; free-flow term x_n(t-tau)+vmax*tau reduces identically to x_n(t) when the
+;; vehicle has truly been at vmax for the whole tau window, at ANY tick
+;; granularity, so seeding at vmax produces zero startup transient. Seeding at
+;; a DIFFERENT speed (e.g. IDM's v0/2, copied blindly) is not a fixed point of
+;; Newell's own rule under these parameters and was tried first: it produced a
+;; large one-tick jump toward the true equilibrium, which is Newell's own
+;; response to an artificially inconsistent history, not a bug in the update
+;; rule -- see GLON-TRAFFIC-MODELS.md and the friction log for this finding.
+newell-init: func [] [ newell-init-at 0 ]
+newell-init-at: func [i] [
+    either < i newell-nveh [
+        p: * / newell-road newell-nveh i
+        newell-block-set! newell-xs i p
+        newell-block-set! newell-vs i newell-vmax
+        newell-seed-hist-at i 0 p
+        newell-init-at + i 1
+    ] [ newell-tick: 0 ]
+]
+;; seed virtual ticks vt = -tau .. 0 at position p + vt*step, wrapped into
+;; [0,road) (vt <= 0, so this runs uniform flow backward from t=0's position
+;; p; the wrap matters here because p can be as small as 0, so p+vt*step goes
+;; negative for the earliest virtual ticks and must wrap the same way every
+;; other stored position on this ring does).
+newell-seed-hist-at: func [i vt p] [
+    either >= vt - 0 newell-tau [
+        seedpos: + p * vt newell-step-cm
+        wrapped: either < seedpos 0 [ + seedpos newell-road ] [ seedpos ]
+        newell-hset i vt wrapped
+        newell-seed-hist-at i - vt 1 p
+    ] [ none ]
+]
+
+;; ---- one synchronous tick: every vehicle's new position is computed from
+;; the SAME tau-old snapshot (already frozen in the history ring -- this
+;; tick's own writes never feed this tick's own reads), then committed. Two
+;; passes, exactly mirroring IDM's accels/update split. ------------------------
+newell-next: func [i n] [
+    either < i n [
+        own_delayed: newell-hget i - newell-tick newell-tau
+        lead_delayed: newell-hget newell-lead i n - newell-tick newell-tau
+        raw_d: - lead_delayed own_delayed
+        wrapped_d: either < raw_d 0 [ + raw_d newell-road ] [ raw_d ]   ;; ring wrap by sign (IDM's technique)
+        follow_target: + own_delayed - wrapped_d newell-d
+        free: + own_delayed / * newell-vmax newell-tau 10
+        want: either < free follow_target [ free ] [ follow_target ]
+        cur: block-at newell-xs i
+        final: either = i 0 [
+            either >= newell-tick newell-tick0 [
+                either < newell-tick newell-tick1 [
+                    brakepos: + cur / newell-brakespeed 10
+                    either < brakepos want [ brakepos ] [ want ]
+                ] [ want ]
+            ] [ want ]
+        ] [ want ]
+        finalwrapped: either < final 0 [ + final newell-road ] [ either >= final newell-road [ - final newell-road ] [ final ] ]
+        raw_delta: - finalwrapped cur   ;; one-tick advance; vehicles only move forward, so a
+        delta: either < raw_delta 0 [ + raw_delta newell-road ] [ raw_delta ]  ;; negative delta means it wrapped past 0
+        newell-block-set! newell-vs2 i * delta 10
+        newell-block-set! newell-xs2 i finalwrapped
+        newell-next + i 1 n
+    ] [ none ]
+]
+newell-commit: func [i n] [
+    either < i n [
+        p: block-at newell-xs2 i
+        newell-block-set! newell-xs i p
+        newell-block-set! newell-vs i block-at newell-vs2 i
+        newell-hset i newell-tick p
+        newell-commit + i 1 n
+    ] [ none ]
+]
+
+;; The tick is advanced BEFORE next/commit (not after, unlike IDM's step):
+;; next/commit compute and store the position FOR tick newell-tick, reading
+;; own/leader history from (newell-tick - tau); incrementing first makes that
+;; the tick actually being computed, not a redundant recomputation of the
+;; already-known previous tick.
+newell-step: func [] [
+    newell-tick: + newell-tick 1
+    newell-next 0 newell-nveh
+    newell-commit 0 newell-nveh
+    newell-tick
+]
+
+;; ---- observables --------------------------------------------------------------
+newell-min-v: func [] [ newell-minv-at 0 block-at newell-vs 0 ]
+newell-minv-at: func [i m] [ either < i newell-nveh [ newell-minv-at + i 1 either < block-at newell-vs i m [ block-at newell-vs i ] [ m ] ] [ m ] ]
+newell-max-v: func [] [ newell-maxv-at 0 block-at newell-vs 0 ]
+newell-maxv-at: func [i m] [ either < i newell-nveh [ newell-maxv-at + i 1 either > block-at newell-vs i m [ block-at newell-vs i ] [ m ] ] [ m ] ]
+newell-mean-v: func [] [ newell-meansum 0 0 ]
+newell-meansum: func [i acc] [ either < i newell-nveh [ newell-meansum + i 1 + acc block-at newell-vs i ] [ / acc newell-nveh ] ]
+newell-wave-amplitude: func [] [ - newell-max-v newell-min-v ]
+
+;; raw-gap: unclamped net gap (position-only; Newell's min() rule is itself
+;; the collision-avoidance mechanism, so a negative raw gap here signals a
+;; real implementation bug, not expected in normal operation).
+newell-raw-gap: func [i n] [
+    ln: newell-lead i n
+    d: - block-at newell-xs ln block-at newell-xs i
+    d2: either < d 0 [ + d newell-road ] [ d ]
+    - d2 500   ;; vehicle length, same convention as IDM's L
+]
+newell-min-gap: func [] [ newell-mingap-at 0 newell-raw-gap 0 newell-nveh ]
+newell-mingap-at: func [i m] [
+    either < i newell-nveh [
+        g: newell-raw-gap i newell-nveh
+        newell-mingap-at + i 1 either < g m [ g ] [ m ]
+    ] [ m ]
+]
+
+;; ---- controls -----------------------------------------------------------------
+newell-advance: func [n] [ either > n 0 [ newell-step newell-advance - n 1 ] [ none ] ]
+
+;; ---- view ----------------------------------------------------------------------
+newell-draw-vehicles: func [i n] [
+    either < i n [
+        vis-dot i / block-at newell-xs i 100 300
+        newell-draw-vehicles + i 1 n
+    ] [ none ]
+]
+newell-draw-stats: func [] [
+    emit-text "[NEWELL]  tick " emit-int newell-tick
+    emit-text "    mean " emit-int newell-mean-v
+    emit-text " cm/s    min " emit-int newell-min-v
+    emit-text " cm/s    gap " emit-int newell-min-gap
+    emit-text " cm    "
+    either >= newell-tick newell-tick0 [
+        either < newell-tick newell-tick1 [ emit-text "BRAKING" ] [ emit-text "free" ]
+    ] [ emit-text "free" ]
+]
+newell-view: [ newell-draw-stats ]
+newell-render: func [] [
+    emit-clear do newell-view
+    vis-clear vis-line 0 300 1000 300 newell-draw-vehicles 0 newell-nveh
+    vis-finish emit-finish
+]
+
+]

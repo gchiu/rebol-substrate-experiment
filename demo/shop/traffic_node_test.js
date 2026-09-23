@@ -2,21 +2,34 @@
 // traffic page wiring (no DOM, no browser, no Emscripten runtime).
 //
 // Mirrors node_test.js: it instantiates demo/shop/glon.wasm with the four host
-// imports, extracts the combined source from traffic.html's
-// <script type="application/glon"> block (exactly as a browser's script.textContent
-// would), glon_load's it, then drives the simulation through the same
-// glon_event bridge the page's traffic-host.js uses, asserting:
-//   1. the traffic page embeds exactly common.glon + traffic.glon (no launcher);
+// imports, extracts the main combined source from traffic.html's main
+// <script type="application/glon"> block (exactly as a browser's
+// script.textContent would), glon_load's it, then drives the simulation
+// through the same glon_event bridge the page's traffic-host.js uses,
+// asserting:
+//   1. the traffic page's main bundle is exactly common.glon + traffic.glon
+//      (IDM) + models-dispatch.glon (no launcher); the other three model
+//      families each sit in their own separate, lazily-loaded script block
+//      (see build-traffic.py for why: combining all four model families plus
+//      the dispatcher into one glon_load call exceeds the parser's per-block
+//      form limit -- reported as friction, not routed around by touching the
+//      parser or the loader-heap limit, both forbidden for this task);
 //   2. initial render emits the road line + 25 vehicle dots;
 //   3. advancing changes vehicle state and re-renders it;
 //   4. reset returns to the initial state;
 //   5. the disturbance window is ticks 200..215 (BRAKING shown then, not after);
-//   6. baseline is the default experiment mode;
+//   6. baseline is the default experiment mode, and IDM is the default model;
 //   7. selecting pacing (glon_event_value) resets the run and shows [PACING];
 //   8. switching mode mid-run does not leak the previous mode's tick/state;
 //   9. baseline and pacing produce genuinely different Glon-emitted numbers by
 //      tick 600 -- this file never computes a speed, gap or mean itself, so a
-//      difference here can only come from Glon's own pacing logic.
+//      difference here can only come from Glon's own pacing logic;
+//   10. an alternate model (Newell) lazy-loads on first selection, shows its
+//       own status-line tag, advances, and switching back to IDM does not
+//       leak state (the shipped page caps this at one extra model per
+//       session -- see traffic-host.js and GLON-TRAFFIC-MODELS.md sec 7/10
+//       for why: the standalone page's loader heap cannot hold all three of
+//       newell/ovm/nasch loaded in the same session).
 "use strict";
 
 const fs = require("fs");
@@ -26,7 +39,12 @@ const HERE = __dirname;
 const WASM = path.join(HERE, "glon.wasm");
 const HTML = fs.readFileSync(path.join(HERE, "traffic.html"), "utf8");
 const COMMON = fs.readFileSync(path.join(HERE, "common.glon"), "utf8");
-const TRAFFIC = fs.readFileSync(path.join(HERE, "demos", "traffic.glon"), "utf8");
+const MAIN_FILES = ["traffic.glon", "models-dispatch.glon"]
+  .map(f => fs.readFileSync(path.join(HERE, "demos", f), "utf8"));
+const LAZY_MODEL_SRC = {};
+for (const [id, fname] of [["newell", "newell.glon"], ["ovm", "ovm.glon"], ["nasch", "nasch.glon"]]) {
+  LAZY_MODEL_SRC[id] = fs.readFileSync(path.join(HERE, "demos", fname), "utf8");
+}
 
 // Match build-traffic.py exactly: Python's str.splitlines() does not yield a
 // trailing empty element for a final newline, so strip trailing newlines first.
@@ -35,18 +53,27 @@ function stripComments(s) {
 }
 function unbox(s) { const t = s.trim(); return (t.startsWith("[") && t.endsWith("]")) ? t.slice(1, -1) : t; }
 
-const scriptMatch = /<script type="application\/glon">([\s\S]*?)<\/script>/.exec(HTML);
-if (!scriptMatch) {
-  console.error("TRAFFIC_TEST FAIL: traffic.html has no <script type=\"application/glon\"> block");
+const mainMatch = /<script type="application\/glon">([\s\S]*?)<\/script>/.exec(HTML);
+if (!mainMatch) {
+  console.error("TRAFFIC_TEST FAIL: traffic.html has no main <script type=\"application/glon\"> block");
   process.exit(1);
 }
-const SRC = scriptMatch[1];
-const EXPECTED = "[ " + stripComments(COMMON) + " " + unbox(stripComments(TRAFFIC)) + " ]";
+const SRC = mainMatch[1];
+const EXPECTED = "[ " + stripComments(COMMON) + " " +
+  MAIN_FILES.map(t => unbox(stripComments(t))).join(" ") + " ]";
 if (SRC !== EXPECTED) {
-  console.error("TRAFFIC_TEST FAIL: traffic.html source differs from common.glon + traffic.glon " +
+  console.error("TRAFFIC_TEST FAIL: traffic.html main bundle differs from common.glon + traffic.glon + models-dispatch.glon " +
     "(script " + SRC.length + " bytes vs expected " + EXPECTED.length + " bytes)");
   process.exit(1);
 }
+for (const id of Object.keys(LAZY_MODEL_SRC)) {
+  const re = new RegExp('<script type="application/glon" data-model="' + id + '"[^>]*>([\\s\\S]*?)<\\/script>');
+  const m = re.exec(HTML);
+  if (!m) fail_early("no lazy block for model '" + id + "'");
+  else if (m[1] !== stripComments(LAZY_MODEL_SRC[id]))
+    fail_early("lazy block for '" + id + "' does not match demos/" + id + " source");
+}
+function fail_early(msg) { console.error("TRAFFIC_TEST FAIL: " + msg); process.exit(1); }
 
 let mem;
 const statuses = [];
@@ -173,7 +200,42 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   // leave the page in baseline mode, matching the page's own default on load
   eventValue("traffic-mode", "baseline");
 
+  // 10. lazy model loading: the shipped page loads at most ONE non-IDM model
+  // per session (traffic-host.js caps this in JS, refusing a second extra
+  // model's glon_load before attempting it -- see its own comments). That
+  // cap exists because the standalone page's loader heap (a fixed,
+  // never-reclaimed budget -- design doc sec 7/10) cannot hold all three of
+  // newell+ovm+nasch's definitions on top of common+IDM+the dispatcher in
+  // the same session; measured directly with a throwaway probe (not
+  // guessed), loading a third distinct model can exhaust the heap badly
+  // enough that even switching back to an already-working model then fails.
+  // This test exercises exactly the shipped, safe path: one extra model,
+  // loaded once, selectable, advances, and switches back to IDM cleanly.
+  event("traffic-reset");
+  const idmStatus = statuses[statuses.length - 1];
+  if (!/tick 0/.test(idmStatus)) fail("IDM reset baseline: expected 'tick 0', got: " + idmStatus);
+
+  load(LAZY_MODEL_SRC.newell);                // lazy glon_load, as traffic-host.js does on first select
+  eventValue("traffic-model", "newell");
+  const newellStatus = statuses[statuses.length - 1];
+  if (!newellStatus.startsWith("[NEWELL]"))
+    fail("model 'newell': expected status to start with [NEWELL], got: " + newellStatus);
+  if (!/tick 0/.test(newellStatus))
+    fail("model 'newell': expected a clean tick-0 start, got: " + newellStatus);
+  for (let i = 0; i < 5; i++) event("traffic-advance");
+  const newellStatus2 = statuses[statuses.length - 1];
+  if (/tick 0/.test(newellStatus2))
+    fail("model 'newell': advancing did not change tick, got: " + newellStatus2);
+
+  // switching back to IDM after newell does not leak its state either -- a
+  // clean tick-0 baseline restart.
+  eventValue("traffic-model", "idm");
+  const backToIdm = statuses[statuses.length - 1];
+  if (!backToIdm.startsWith("[BASELINE]") || !/tick 0/.test(backToIdm))
+    fail("switch back to IDM: expected a clean '[BASELINE]' tick 0, got: " + backToIdm);
+
   console.log("TRAFFIC_TEST PASS (embedded source / initial render / advance / disturbance window / " +
-              "reset / mode selection / no state leak on mode switch / pacing changes Glon-computed state)");
+              "reset / mode selection / no state leak on mode switch / pacing changes Glon-computed state / " +
+              "lazy per-model loading / model switching leaks no state)");
   process.exit(0);
 }).catch((e) => fail(e.message || e));

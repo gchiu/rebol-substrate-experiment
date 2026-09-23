@@ -29,6 +29,9 @@ int run_r0_s1_parse_tests(void);
 int run_r0_s1_equality_tests(void);
 int run_r0_s1_bound_tests(void);
 int run_r0_s1_traffic_tests(void);
+int run_r0_s1_newell_tests(void);
+int run_r0_s1_ovm_tests(void);
+int run_r0_s1_nasch_tests(void);
 
 int main(void) {
     int failures = run_tests();
@@ -60,6 +63,9 @@ int main(void) {
     failures += run_r0_s1_equality_tests();
     failures += run_r0_s1_bound_tests();
     failures += run_r0_s1_traffic_tests();
+    failures += run_r0_s1_newell_tests();
+    failures += run_r0_s1_ovm_tests();
+    failures += run_r0_s1_nasch_tests();
     if (failures == 0) {
         printf("all tests passed\n");
         return 0;
