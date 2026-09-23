@@ -48,22 +48,64 @@ Every value is one cell: `payload * 16 + tag`, where `tag` is the low 4 bits.
   (fail-stop), never silently resolving against an unrelated activation.
 - Known limitation: under same-site recursion, two live activations share a
   `FRAME_SITE`, so a travelling bare bound block resolves against the innermost
-  matching activation. Use a closure when activation-specific capture is
-  required.
+  matching activation. The same holds for a block whose creating activation is
+  dead but which is `do`ne inside a *later* activation of the same function: it
+  resolves against that later activation. Use a closure when
+  activation-specific capture is required.
+- `do` runs a block in the **current** context. A block passed into another
+  function and `do`ne there resolves its plain (`T_WORD`) words dynamically in
+  that function's context, so they can be captured by the callee's names. User
+  control forms should turn caller blocks into closures (as `case` does), not
+  `do` them.
 
 ## 4. Closures
 
 - A closure is an executable value: `[spec, body, captured-ctx, site, bias]`.
 - `CLOSURE_CTX` captures the **actual** lexical context identity; a captured
-  stack-local context is promoted to the managed heap on escape.
+  stack-local context is promoted to the managed heap on escape. Promotion
+  redirects the owning activation onto the managed copy, so the activation and
+  all its closures share one context (mutation is visible both ways).
 - A closure is the **portable executable form**; it keeps its captured ancestry
   even after its creator returns and across same-site recursion.
+- Closure-origin binding (the Guard of Binding), by body kind:
+  - a **literal** body (`func SPEC [...]`) is the new func's own scope:
+    capture the current context, bias 0;
+  - a **computed** body (`func :spec :body`, `func [] block-at rows i`) keeps
+    the lexical meaning it was parsed with. A top-level block binds to the
+    global context. Otherwise the nearest live frame of the block's site is its
+    origin: that activation's context (bias-0 frame), or the origin captured by
+    a closure made from one of its blocks (bias-1 frame). Capture it, bias +1;
+  - a computed body whose origin activation is **dead** yields a closure whose
+    `T_BOUND` references fail-stop (it never resolves against another context).
+- A func spec's words are never lexically resolved: an inner parameter shadows
+  a same-named outer parameter.
 
 ## 5. func / lambda / does
 
 - `func` is the base closure constructor (a reserved keyword).
 - `lambda` and `does` are ordinary Glon built from `func`; they imply no new
   primitive.
+- `func` fails loudly when its body is not a block.
+
+## 5a. case
+
+- `case [ [cond-1] [action-1] [cond-2] [action-2] ... ]` is ordinary Glon
+  (`demo/shop/case.glon`, an optional library loaded after bootstrap like
+  `parse.glon`), built from `func`, `invoke`, `either`,
+  `block-at`/`block-len`. It implies no new primitive.
+- Conditions are evaluated in order; the first truthy one runs its action, and
+  CASE returns the action's result. Later conditions/actions are not evaluated.
+  No match returns `NONE`. A condition without an action fails loudly.
+- Conditions are **blocks**, not inline expressions: Glon has no way to evaluate
+  one expression of a block at a time from Glon code.
+- Each condition/action runs as a zero-argument closure bound to its lexical
+  origin, so words resolve exactly as if written in the enclosing function,
+  including assignment. `RETURN` inside an action returns from that action
+  (CASE yields the value), not from the enclosing function.
+- Each tested clause allocates one closure, and the first one promotes the
+  enclosing activation's context to the managed heap. Recursion through
+  CASE-using functions is therefore bounded by live promoted contexts (about
+  25 levels with the current heap).
 
 ## 6. invoke
 
@@ -118,7 +160,8 @@ Every value is one cell: `payload * 16 + tag`, where `tag` is the low 4 bits.
 
 ## 14. Explicit non-features (deferred)
 
-`CASE`, `SWITCH`, `EACH`/`FOREACH`, full Rebol PARSE, string PARSE, PARSE
+`SWITCH`, `EACH`/`FOREACH`, Rebol-style inline-condition `CASE` and `/ALL`,
+full Rebol PARSE, string PARSE, PARSE
 `into`, `type?`, Rebol-style portable bound blocks, distributed closures.
 Post-Alpha language changes require evidence from real machine-written
 applications or a demonstrated correctness defect.

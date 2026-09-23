@@ -104,6 +104,12 @@ static int site_stack[64];
 static int site_depth;
 static int next_site;
 
+/* CLOSURE_SITE of a closure made from a block whose lexical origin activation
+ * is dead. Real sites are >= 0, so no block's BLK_SITE ever equals it and the
+ * LOAD-LEX guard fail-stops any T_BOUND reference in such a body. A multiple
+ * of 16, so the raw FRAME_SITE cell still reads as an INT to any scan. */
+#define DEAD_SITE (-16)
+
 /* FIB-OPT-P4: lexical binding scope stack (parse/load). Each scope holds the
  * word ids of the enclosing function's PARAMETERS, stored in slot order (the
  * runtime bind loop appends params in reverse spec order, so slot 0 is the
@@ -381,9 +387,27 @@ static cell parse_block(parser_t *P) {
             if (len == 4 && strncmp(P->s + start, "func", 4) == 0) {
                 int sid = next_site++;
                 tmp[n++] = intern("func");
-                cell spec = parse_form(P);                /* spec (param block) */
+                /* spec (param block): its words NAME the new parameters, so
+                 * they must never be lexically resolved against an enclosing
+                 * func's same-named parameter (that would turn `x` into a
+                 * T_BOUND, drop it from the new scope, and make the body's `x`
+                 * silently read the OUTER x). */
+                int save_lex_depth = lex_depth;
+                lex_depth = 0;
+                cell spec = parse_form(P);
+                lex_depth = save_lex_depth;
+                /* Only a literal body block is this func's own lexical scope.
+                 * A computed body (`func [] :b`, `func [] block-at rows i`) is
+                 * an ordinary expression in the ENCLOSING scope; parsing it
+                 * under the new scope would give its words wrong depths. */
+                skip_ws(P);
+                if (P->s[P->pos] != '[') {
+                    tmp[n++] = spec;
+                    continue;
+                }
                 lex_push();                               /* new lexical scope */
-                {   /* collect the spec's parameter words.  The bind loop in
+                if (r0_tag(spec) == T_BLOCK) {
+                    /* collect the spec's parameter words.  The bind loop in
                      * invoke_closure appends params in REVERSE spec order
                      * (slot 0 = spec[arity-1], ...), so add them in reverse
                      * order here so the slot indices match the runtime. */
@@ -1372,15 +1396,21 @@ static void emit_lookup(void) {
     asm_branch(inner);
 }
 
-/* BINDING-CTX: ( site -- ctx | 0 )  the "Guard of Binding" origin lookup.
- * Given a func-site-id, find the NEAREST live activation (frame) carrying that
- * site and return the context of the frame called directly from it -- the child
- * context of the enclosing func that the supplied body block was lexically
- * bound to. Walking innermost-first means that when several activations of one
- * site are live (re-entrancy/recursion), the innermost (most recent) one wins.
- * Returns 0 when the site has no live activation (a hand-written FUNC body,
- * whose own site is not yet on the frame chain), so FUNC falls back to
- * capturing RV_CTX. */
+/* BINDING-CTX: ( site -- origin-ctx 1 | 0 0 )  the "Guard of Binding" origin
+ * lookup for a COMPUTED func body (one that was not parsed as that func's own
+ * literal body, so its T_BOUND depths are relative to an enclosing activation).
+ * Walk the frame chain innermost-first for the nearest live frame carrying
+ * `site`; its child context is RV_CTX when it is the innermost frame, else the
+ * FRAME_CTX saved by the frame called directly from it.
+ *   - bias-0 frame (the origin activation itself): origin = its child context;
+ *   - bias-1 frame (a closure manufactured from one of the origin's blocks,
+ *     e.g. `does [...]`): origin = its child context's parent, which is the
+ *     origin context that closure captured -- so a block from an escaped
+ *     factory closure still resolves against ITS captured origin, not against
+ *     some unrelated live activation of the same site.
+ * Either way the new closure captures the origin with a +1 depth bias.
+ * Returns (0, 0) when the site has no live frame: the block's lexical origin
+ * is dead, and FUNC must not bind it to an unrelated context. */
 static void emit_binding_ctx(void) {
     r_binding_ctx = asm_here();
     e_pop_to(RV_T1);                       /* site (raw) */
@@ -1392,27 +1422,28 @@ static void emit_binding_ctx(void) {
     e_cell(RV_T4); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_fetch();
     e_cell(RV_T1); asm_host(HOST_EQ);
     cell j_next = asm_zbranch_fwd();
-    /* a factory-manufactured closure inherits its origin's site, so skip any
-     * frame whose depth bias is non-zero (it is a factory closure, not the
-     * origin activation whose child context actually holds the body's bound
-     * words); only a bias-0 activation is the lexical origin. */
-    e_cell(RV_T4); asm_lit(FRAME_BIAS); asm_host(HOST_ADD); asm_fetch();
-    asm_lit(0); asm_host(HOST_EQ);
-    cell j_next_bias = asm_zbranch_fwd();
-    /* matched: return prev.FRAME_CTX, or 0 if it matched the innermost frame */
+    /* matched: push the frame's child context (RV_CTX if innermost) */
     e_cell(RV_T5); asm_lit(0); asm_host(HOST_EQ);
     cell j_hasprev = asm_zbranch_fwd();
-    asm_lit(0); asm_exit();
+    e_cell(RV_CTX);
+    cell j_gotchild = asm_branch_fwd();
     asm_patch_here(j_hasprev);
     e_cell(RV_T5); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_fetch();
-    asm_exit();
+    asm_patch_here(j_gotchild);
+    /* bias-1 frame: step to the child's parent (the captured origin) */
+    e_cell(RV_T4); asm_lit(FRAME_BIAS); asm_host(HOST_ADD); asm_fetch();
+    asm_lit(0); asm_host(HOST_EQ);
+    cell j_origin = asm_zbranch_fwd();
+    asm_lit(1); asm_exit();                /* bias-0: [child 1] */
+    asm_patch_here(j_origin);
+    e_untag_ptr(); asm_lit(CTX_PARENT); asm_host(HOST_ADD); asm_fetch();
+    asm_lit(1); asm_exit();                /* bias-1: [parent 1] */
     asm_patch_here(j_next);
-    asm_patch_here(j_next_bias);
     e_cell(RV_T4); e_setc(RV_T5);          /* prev = frame */
     e_cell(RV_T4); asm_fetch(); e_setc(RV_T4);   /* frame = frame.FRAME_PREV */
     asm_branch(walk);
     asm_patch_here(j_notfound);
-    asm_lit(0); asm_exit();
+    asm_lit(0); asm_lit(0); asm_exit();
 }
 
 /* LOAD-LEX: ( bound -- value )  direct lexical slot access via RV_CTX.
@@ -1702,14 +1733,16 @@ static void emit_mkctx(void) {
 static void emit_mkclosure(void) {
     r_mkclosure = asm_here();
     /* GC-safepoint invariant: site-id and bias are raw implementation values,
-     * not tagged Glon values. Pop them off the DS BEFORE the closure allocation
-     * so a GC triggered by that allocation never scans them as Glon values.
-     * spec, body and captured stay on the DS: all three are valid tagged Glon
-     * values (two blocks and a context) that the collector handles correctly. */
+     * not tagged Glon values. Pop them off the DS BEFORE any allocation so a GC
+     * triggered by it never scans them as Glon values. spec and body stay on
+     * the DS: both are valid tagged Glon values (blocks).
+     *
+     * Allocation order: the captured context is promoted FIRST and the closure
+     * allocated LAST. The new closure is reachable from no root until this
+     * routine returns it on the DS, so a GC triggered by a later allocation
+     * (the promotion) would sweep it and hand out a freed object. */
     e_pop_to(RV_T6);  /* bias (raw) */
     e_pop_to(RV_T5);  /* site-id (raw) */
-    asm_lit(16); asm_lit(GC_KIND_CLOSURE); asm_call(r_alloc); e_setc(RV_T4);   /* 16-aligned, >= 5 cells */
-    e_cell(RV_T6); e_cell(RV_T4); asm_lit(CLOSURE_BIAS); asm_host(HOST_ADD); asm_store();   /* +4 = bias */
     e_pop_to(RV_T1);  /* captured */
     /* promote captured (RV_T1) if it is a stack-local context */
     {
@@ -1731,12 +1764,12 @@ static void emit_mkclosure(void) {
 #endif
         asm_lit(R0S1_CTX_CELLS); asm_lit(GC_KIND_CTX); asm_call(r_alloc); e_setc(RV_T3);   /* managed dst */
         e_cell(RV_T2); asm_fetch(); e_cell(RV_T3); asm_store();                /* parent */
-        e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T6); /* count */
-        e_cell(RV_T6); e_cell(RV_T3); asm_lit(1); asm_host(HOST_ADD); asm_store();
+        e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T4); /* count */
+        e_cell(RV_T4); e_cell(RV_T3); asm_lit(1); asm_host(HOST_ADD); asm_store();
         e_cell(RV_T2); asm_lit(2); asm_host(HOST_ADD); asm_fetch(); e_cell(RV_T3); asm_lit(2); asm_host(HOST_ADD); asm_store();
         asm_lit(0); e_setc(RV_N);                       /* i = 0 */
         cell loop = asm_here();
-        e_cell(RV_N); e_cell(RV_T6); asm_host(HOST_LT);
+        e_cell(RV_N); e_cell(RV_T4); asm_host(HOST_LT);
         cell j_done = asm_zbranch_fwd();
         e_cell(RV_T2); asm_lit(3); asm_host(HOST_ADD); e_cell(RV_N); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD); asm_fetch();
         e_cell(RV_T3); asm_lit(3); asm_host(HOST_ADD); e_cell(RV_N); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD); asm_store();
@@ -1755,11 +1788,42 @@ static void emit_mkclosure(void) {
         e_cell(RV_N); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_N);
         asm_branch(hloop);
         asm_patch_here(j_hdone);
-        e_cell(RV_T3); asm_lit(T_CONTEXT); asm_host(HOST_ADD); e_setc(RV_T1);  /* captured = managed */
-        e_cell(RV_T1); e_setc(RV_CTX);                  /* current context promoted */
+        e_cell(RV_T3); asm_lit(T_CONTEXT); asm_host(HOST_ADD); e_setc(RV_T3);  /* managed (tagged) */
+        /* Redirect every live reference to the stack context onto its managed
+         * copy, so the owning activation and the new closure share ONE context
+         * (captured mutation is visible both ways). The stack context is
+         * referenced only as RV_CTX (its activation is current) or as the
+         * FRAME_CTX saved by the frame called from its activation (e.g. when a
+         * factory such as `does` promotes its caller's context). It is never a
+         * CTX_PARENT: a closure capturing it would already have promoted it.
+         * RV_CTX must not be overwritten unconditionally -- the creator may be
+         * a factory whose own context is unrelated to the captured one. */
+        e_cell(RV_CTX); e_cell(RV_T1); asm_host(HOST_EQ);
+        cell j_ctxdiff = asm_zbranch_fwd();
+        e_cell(RV_T3); e_setc(RV_CTX);
+        asm_patch_here(j_ctxdiff);
+        e_cell(RV_FRAME); e_setc(RV_N);                 /* frame walk */
+        cell rloop = asm_here();
+        e_cell(RV_N); asm_lit(0); asm_host(HOST_NE);
+        cell j_rdone = asm_zbranch_fwd();
+        e_cell(RV_N); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_fetch();
+        e_cell(RV_T1); asm_host(HOST_EQ);
+        cell j_fsame = asm_zbranch_fwd();
+        e_cell(RV_T3); e_cell(RV_N); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_store();
+        asm_patch_here(j_fsame);
+        e_cell(RV_N); asm_lit(FRAME_PREV); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_N);
+        asm_branch(rloop);
+        asm_patch_here(j_rdone);
+        e_cell(RV_T3); e_setc(RV_T1);                   /* captured = managed */
         asm_patch_here(j_no2);
         asm_patch_here(j_no1);
     }
+    /* keep captured rooted on the DS (with spec and body) across the closure
+     * allocation */
+    e_cell(RV_T1);
+    asm_lit(16); asm_lit(GC_KIND_CLOSURE); asm_call(r_alloc); e_setc(RV_T4);   /* 16-aligned, >= 5 cells */
+    e_cell(RV_T6); e_cell(RV_T4); asm_lit(CLOSURE_BIAS); asm_host(HOST_ADD); asm_store();   /* +4 = bias */
+    e_pop_to(RV_T1);  /* captured */
     e_pop_to(RV_T2);  /* body */
     e_pop_to(RV_T3);  /* spec */
     e_cell(RV_T3); e_cell(RV_T4); asm_store();                            /* spec */
@@ -2373,28 +2437,69 @@ static void emit_subexpr(void) {
     asm_dup(); asm_lit(mk_word(FUNC_SYM)); asm_host(HOST_EQ);
     cell j_notfunc = asm_zbranch_fwd();
     asm_drop();
+    /* Literal-body candidate: the parser opens a fresh lexical scope/site only
+     * for a literal block written directly as the body (`func SPEC [...]`), so
+     * remember the element at the body position (a loader block, else 0) and
+     * compare it with the evaluated body below. Kept on the DS (a valid value). */
+    asm_lit(0);
+    e_cell(RV_CUR); asm_lit(1); asm_host(HOST_ADD); e_cell(RV_END); asm_host(HOST_LT);
+    cell j_nocand = asm_zbranch_fwd();
+    asm_drop();
+    e_cell(RV_CUR); asm_lit(1); asm_host(HOST_ADD); asm_fetch();
+    asm_dup(); asm_lit(16); asm_host(HOST_MOD); asm_lit(T_BLOCK); asm_host(HOST_EQ);
+    cell j_candblk = asm_zbranch_fwd();
+    cell j_candok = asm_branch_fwd();
+    asm_patch_here(j_candblk);
+    asm_drop(); asm_lit(0);
+    asm_patch_here(j_candok);
+    asm_patch_here(j_nocand);
     to_subexpr[n_subexpr++] = emit_call_fwd();  /* spec */
     asm_call(r_reduce);
     to_subexpr[n_subexpr++] = emit_call_fwd();  /* body */
     asm_call(r_reduce);
     e_pop_to(RV_T2);                             /* body */
     e_pop_to(RV_T3);                             /* spec */
-    /* Guard of Binding: if the body block is already lexically bound to an
-     * enclosing (still-active) func, capture that func's child context and set
-     * a +1 depth bias, so the body's static depths keep denoting the same
-     * lexical meanings. Otherwise capture RV_CTX with bias 0. */
+    e_pop_to(RV_T1);                             /* literal-body candidate */
+    /* a func body must be a block: anything else would be read as a block
+     * header below and executed as garbage, so fail-stop instead. */
+    e_cell(RV_T2); asm_lit(16); asm_host(HOST_MOD); asm_lit(T_BLOCK); asm_host(HOST_EQ);
+    cell j_bodyblk = asm_zbranch_fwd();
+    cell j_bodyok = asm_branch_fwd();
+    asm_patch_here(j_bodyblk);
+    asm_host(HOST_DUMP); asm_halt();
+    asm_patch_here(j_bodyok);
+    /* Guard of Binding. A literal body is bound to the new func's own fresh
+     * scope: capture RV_CTX, bias 0. A computed body (e.g. lambda's `:body`, or
+     * a block taken from data) keeps the lexical meaning it was parsed with:
+     *   - site 0 (a top-level block): its origin is the global context;
+     *   - live origin (see BINDING-CTX): capture it with a +1 depth bias;
+     *   - dead origin: capture the global context and mark the closure's site
+     *     DEAD_SITE, which matches no block, so any T_BOUND reference in the
+     *     body fail-stops at the LOAD-LEX guard instead of reading an
+     *     unrelated context's slot. */
     e_cell(RV_T2); e_untag_ptr(); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_SITE);  /* site = body.BLK_SITE */
-    e_cell(RV_SITE); asm_call(r_binding_ctx);    /* -> origin ctx (0 if none) */
-    e_pop_to(RV_T1);                             /* origin ctx */
-    e_cell(RV_T1); asm_lit(0); asm_host(HOST_NE);
-    cell j_noorigin = asm_zbranch_fwd();
-    e_cell(RV_T1); e_setc(RV_T5);                /* captured = origin ctx */
-    asm_lit(1); e_setc(RV_T4);                   /* bias = +1 */
-    cell j_gotbind = asm_branch_fwd();
-    asm_patch_here(j_noorigin);
-    e_cell(RV_CTX); e_setc(RV_T5);               /* captured = RV_CTX */
+    e_cell(RV_T2); e_cell(RV_T1); asm_host(HOST_EQ);
+    cell j_computed = asm_zbranch_fwd();
+    e_cell(RV_CTX); e_setc(RV_T5);               /* literal: captured = RV_CTX */
     asm_lit(0); e_setc(RV_T4);                   /* bias = 0 */
+    cell j_gotbind = asm_branch_fwd();
+    asm_patch_here(j_computed);
+    e_cell(RV_SITE); asm_lit(0); asm_host(HOST_EQ);
+    cell j_sited = asm_zbranch_fwd();
+    e_cell(GC_GLOBAL_CTX); e_setc(RV_T5);        /* site 0: captured = global */
+    asm_lit(0); e_setc(RV_T4);
+    cell j_gotbind2 = asm_branch_fwd();
+    asm_patch_here(j_sited);
+    e_cell(RV_SITE); asm_call(r_binding_ctx);    /* -> [origin 1] | [0 0] */
+    e_pop_to(RV_T4);                             /* bias */
+    e_pop_to(RV_T5);                             /* origin ctx */
+    e_cell(RV_T4); asm_lit(0); asm_host(HOST_EQ);
+    cell j_gotbind3 = asm_zbranch_fwd();
+    e_cell(GC_GLOBAL_CTX); e_setc(RV_T5);        /* dead origin: captured = global */
+    asm_lit(DEAD_SITE); e_setc(RV_SITE);         /* ... and no block matches it */
     asm_patch_here(j_gotbind);
+    asm_patch_here(j_gotbind2);
+    asm_patch_here(j_gotbind3);
     e_cell(RV_T3);                               /* spec */
     e_cell(RV_T2);                               /* body */
     e_cell(RV_T5);                               /* captured */

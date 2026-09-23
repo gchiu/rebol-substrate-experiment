@@ -1,0 +1,33 @@
+;; demo/shop/case.glon -- CASE, a first-match conditional in pure Glon.
+;;
+;; Optional library, loaded after bootstrap (like parse.glon). It needs only
+;; func / invoke / either and the shared block-len / block-at. It is not part
+;; of common.glon: the shipped bundles have no headroom (traffic.html's single
+;; block is within a few forms of the parser's 512-form limit, and the G1E
+;; launcher plus all demos fill the loader heap to within a few cells).
+;;
+;;   case [ [cond-1] [action-1]  [cond-2] [action-2] ... ]
+;;
+;; Conditions are evaluated in order; the first truthy one (not NONE, not 0)
+;; runs its action and CASE returns the action's result. Later conditions and
+;; actions are never evaluated. No match returns NONE. A condition without an
+;; action, or a condition/action that is not a block, fails loudly.
+;;
+;; Each condition/action block runs as a zero-argument closure (`func [] blk`),
+;; so the Guard of Binding binds it to its live lexical origin -- the function
+;; that wrote the CASE -- and its words (parameters, locals, assignments)
+;; resolve exactly as if written there; CASE's own names never capture them.
+;; RETURN inside an action returns from that action (CASE yields its value),
+;; not from the enclosing function.
+
+case: func [cases] [ case-from cases 0 ]
+
+case-from: func [cases i] [
+    either < i block-len cases [
+        either < + i 1 block-len cases [
+            either invoke func [] block-at cases i
+                [ invoke func [] block-at cases + i 1 ]
+                [ case-from cases + i 2 ]
+        ] [ invoke 0 ]
+    ] [ none ]
+]

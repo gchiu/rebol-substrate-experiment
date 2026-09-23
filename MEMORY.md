@@ -268,6 +268,21 @@ MATCH; 326/326 tests pass; frozen-S1 guard passes. Next: measured re-profiling
 rather than another micro-optimisation.
 Full detail: `FIB-OPT-P10F-FALLTHROUGH.md`, `FIB-OPT-P10F-RESULTS.md`.
 
+### Closure-origin binding law + CASE (post-Alpha)
+
+A review for "can CASE be ordinary Glon?" found CASE-as-Glon impossible on the
+old runtime: turning a caller's block into a closure hit five general bugs
+(shadowed params parsed as outer `T_BOUND`; literal func re-evaluated under
+its own live activation mis-captured; closures in escaped closures and
+dead-origin blocks read stale slots; factory promotion gave a snapshot copy and
+clobbered the factory's `RV_CTX`; a fresh closure was swept by a GC triggered
+by its own promotion). Fixed in the func/mkclosure/parser path only (fib hot
+path untouched, +224 code cells); the law is in `GLON-ALPHA-LAWS.md` §4.
+`case` is now pure Glon in `demo/shop/case.glon` (block conditions; RETURN in
+an action returns from the action). It is not in `common.glon`: the shipped
+bundles have no headroom (traffic.html is 506/511 forms per block; the G1E
+image fills the loader heap). Tests: `r0_s1_case_tests.c`.
+
 ## 5. Milestones (branch / tag → commit)
 
 In order:
