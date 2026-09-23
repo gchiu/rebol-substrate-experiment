@@ -183,3 +183,55 @@ networking, persistence, captures/binding, host I/O.
     frozen S1       f90496c26dc45c7a387d8fc8639cd2781507d3d2  (unchanged)
     runtime         r0_s1_runtime.c, S1 above frozen substrate
     browser/JS/WASM none participated
+
+## 11. Correctness repairs (found while porting to the browser)
+
+Two real defects were found and fixed minimally in this file, with native
+regression tests (section S11 of `tuple-space-v003-tests.glon`):
+
+1. **Tuple slot reuse broke oldest-first ordering.** `out` reused the first
+   empty arena slot, so `OUT [job 1]; OUT [job 2]; IN [job 1]; OUT [job 3]`
+   put `[job 3]` in slot 0 and `rd? [job *]` then returned `[job 3]` instead of
+   the older `[job 2]`.  Fix: tuple storage is **append-only**; when the arena
+   is full, `compact-arena` shifts live tuples to the front preserving order
+   (dropping holes).  A reused slot can no longer make a newer tuple look
+   older.
+
+2. **Repeated immediate RD/IN exhausted the fixed waiter arena.** `rd-wait` /
+   `in-wait` registered a waiter *before* checking for an immediate match, so
+   every immediate operation consumed a waiter slot; after 16 the waiter arena
+   returned 0.  Fix: a non-allocating `find-slot` scan is performed first; an
+   immediate match returns/consumes without touching the waiter arena.  Only
+   genuine waits enqueue.
+
+The native suite grew from 345 to **354 checks, 0 failures** (ASan clean).
+
+## 12. Browser demonstration
+
+A public standalone page demonstrates the same law with the **stock three-task
+M1 layout** (no task-count expansion) and the existing G1A runtime:
+
+    demo/shop/demos/linda.glon     self-contained Glon (scheduler + tuple space
+                                   + S7 scenario + render + event bridge)
+    demo/shop/build-linda.py       bundles it into linda.html
+    demo/shop/linda.html           the page
+    demo/shop/linda-host.js        browser host (WASM load, Step/Run/Reset pacing)
+    demo/shop/linda_node_test.js   headless test of the page wiring
+
+`linda.glon` is self-contained (no common.glon) because the standalone page's
+source buffer is a fixed 16 KiB.  Its one scheduling addition is the per-task
+wait flag plus a per-call step budget (cell 25033 = M1_S9): `run-steps` resumes
+at most one task slice and returns, so each browser **Step** advances one real
+task slice.  JS implements no Linda semantics — it only loads WASM/source and
+paces `glon_event("linda-step")`.
+
+The scenario is the S7 shape: A `OUT [started a]`, stage-a = 1, `IN [go a]`
+(blocks); B runs, `RD [started a]` (observes stage-a = 1), `OUT [go a]` (wakes
+A), `IN [finished a]` (blocks); C `IN [finished b]` (blocks); then A resumes
+after its IN, stage-a = 2, `OUT [finished a]`, finishes; B and C follow.  The
+page renders task states, tuple space, waiters, stage markers and the event
+trace, all read from the real Glon task table / tuple space.
+
+Public URL: `https://gchiu.github.io/rebol-substrate-experiment/shop/linda.html`
+(published to `docs/shop/` by `.github/workflows/deploy-pages.yml`).
+

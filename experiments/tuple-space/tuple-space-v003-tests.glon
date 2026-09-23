@@ -221,6 +221,36 @@ s10: func [] [
     check = out b 0                    ; string-literal form is a block: rejected
 ]
 
+;; ---- S11: correctness repairs (slot reuse ordering; waiter lifetime) ------
+s11: func [] [
+    ;; tuple slot reuse must not make a newer tuple look older
+    reset-space
+    out [job 1]
+    out [job 2]
+    r: in? [job 1]
+    out [job 3]
+    r: rd? [job *]
+    check tuple-match? r [job 2]          ; oldest live tuple, not reused slot 0
+    r: in? [job *]
+    check tuple-match? r [job 2]
+    r: rd? [job *]
+    check tuple-match? r [job 3]
+    check = space-count 1
+    ;; repeated immediate RD must not queue (no waiter-arena exhaustion)
+    reset-space
+    out [x 1]
+    check = waiter-tail 0
+    repeat 20 [ r: rd-wait [x 1] ]
+    check = waiter-tail 0
+    ;; repeated immediate IN must also not queue
+    reset-space
+    repeat 10 [ out [k 1] ]
+    check = waiter-tail 0
+    repeat 10 [ r: in-wait [k 1] ]
+    check = waiter-tail 0
+    check = space-count 0
+]
+
 ;; ---- run everything --------------------------------------------------------
 s1
 s2
@@ -232,6 +262,7 @@ s7
 s8
 s9
 s10
+s11
 
 ;; determinism: repeat the three ordering scenarios 20 times each
 repeat 20 [ s3 s4 s5 s6 ]

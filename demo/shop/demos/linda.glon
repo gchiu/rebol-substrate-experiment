@@ -1,0 +1,314 @@
+[
+;; demo/shop/demos/linda.glon -- self-contained cooperative Linda blocking demo.
+;;
+;; Same semantic law as the native v0.03 experiment, adapted to the STOCK
+;; three-task M1 layout, and self-contained (the standalone page has a fixed
+;; 16 KiB source buffer, so it bundles no common.glon).  Scripts: minimal
+;; emit/block helpers, the M1 scheduler + a per-task WAIT FLAG (task-record
+;; cell 9) + a STEP BUDGET (cell 25033), the tuple space, and the S7 scenario.
+;; A blocked task keeps STATE=RUNNABLE so the collector still roots it.
+
+;; ---- minimal block helpers (managed + loader blocks share the layout) -------
+block-len: masm 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
+block-at:  masm 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ]
+block-set!: masm 3 [
+    LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT
+]
+new-block: masm 1 [
+    LIT 16 DIV LIT SCRATCH_C !
+    LIT SCRATCH_C @ LIT 2 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL
+    LIT GC_KIND_BLOCK CALL alloc LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT SCRATCH_A @ ! LIT 0 LIT SCRATCH_A @ LIT 1 ADD !
+    LIT 0 LIT SCRATCH_B !
+  nb: LIT SCRATCH_B @ LIT SCRATCH_C @ LT ZBRANCH nbd
+    NONE LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ ADD ! LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B ! BRANCH nb
+  nbd: LIT SCRATCH_A @ LIT T_BLOCK ADD ARITY 1 EXIT
+]
+new-tuple: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_A @ @ LIT SCRATCH_B !
+    LIT SCRATCH_B @ LIT 2 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL
+    LIT GC_KIND_BLOCK CALL alloc LIT SCRATCH_C !
+    LIT SCRATCH_B @ LIT SCRATCH_C @ ! LIT 0 LIT SCRATCH_C @ LIT 1 ADD ! LIT 0 LIT SCRATCH_D !
+  nt: LIT SCRATCH_D @ LIT SCRATCH_B @ LT ZBRANCH ntd
+    LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_D @ ADD @ LIT SCRATCH_C @ LIT 2 ADD LIT SCRATCH_D @ ADD !
+    LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D ! BRANCH nt
+  ntd: LIT SCRATCH_C @ LIT T_BLOCK ADD ARITY 1 EXIT
+]
+
+;; ---- minimal emit (G1 output byte-list) ------------------------------------
+emit-clear: masm [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
+emit-byte: masm 1 [ LIT SCRATCH_E @ LIT G1_OUT_DATA ADD ! LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E ! ARITY 0 EXIT ]
+emit-finish: masm [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
+emit-int: func [n] [ either < n 0 [ emit-byte 45 emit-digits - 0 n ] [ emit-digits n ] ]
+emit-digits: func [n] [ either > n 9 [ emit-digits / n 10 ] [ none ]  emit-byte + 48 - n * 10 / n 10 ]
+emit-text: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B ! LIT 0 LIT SCRATCH_A ! LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  et: LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH etd
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL LIT G1_OUT_DATA LIT SCRATCH_E @ ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E ! LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A ! BRANCH et
+  etd: ARITY 0 EXIT
+]
+;; string literals expand to `mk-string [bytes]`; define it here (the page is
+;; self-contained, so common.glon's copy is not available).
+mk-string: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B ! LIT SCRATCH_B @ @ LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT SCRATCH_C @ ! LIT 0 LIT SCRATCH_A !
+  mk: LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH mkd
+    LIT SCRATCH_B @ LIT 2 ADD LIT SCRATCH_A @ ADD @ LIT 16 DIV LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_A @ ADD !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A ! BRANCH mk
+  mkd: LIT SCRATCH_C @ LIT T_STRING ADD ARITY 1 EXIT
+]
+
+;; ---- cooperative scheduler (stock 3 tasks) ---------------------------------
+mnew-task: masm 3 [
+    LIT M1_S2 ! LIT M1_S1 ! DUP LIT 16 MOD SUB LIT M1_S0 ! LIT 0 LIT M1_S3 !
+  f: LIT M1_S3 @ LIT 3 LT ZBRANCH full
+    LIT M1_S3 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S4 !
+    LIT M1_S4 @ LIT 8 ADD @ LIT 2 EQ ZBRANCH nxt BRANCH mk
+  nxt: LIT M1_S3 @ LIT 1 ADD LIT M1_S3 ! BRANCH f
+  full: LIT -1 LIT 16 MUL ARITY 1 EXIT
+  mk: LIT M1_S4 @ LIT M1_WRAPPER_DELTA ADD LIT M1_S5 !
+    LIT 3 LIT M1_S5 @ ! LIT 0 LIT M1_S5 @ LIT 1 ADD !
+    LIT M1_S1 @ LIT M1_S5 @ LIT 2 ADD ! LIT M1_S0 @ LIT 6 ADD LIT M1_S5 @ LIT 3 ADD !
+    LIT M1_S2 @ LIT M1_S5 @ LIT 4 ADD ! LIT M1_MAIN_ENTRY_CELL @ LIT M1_S4 @ !
+    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_DS_OFF ADD LIT M1_S4 @ LIT TREC_SP ADD !
+    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_RS_OFF ADD LIT M1_S4 @ LIT TREC_RP ADD !
+    LIT M1_S5 @ LIT 2 ADD LIT M1_S4 @ LIT TREC_CUR ADD ! LIT M1_S5 @ LIT 5 ADD LIT M1_S4 @ LIT TREC_END ADD !
+    LIT RV_CTX @ LIT M1_S4 @ LIT TREC_CTX ADD ! LIT M1_S5 @ LIT M1_S4 @ LIT TREC_BLK ADD !
+    LIT 0 LIT M1_S4 @ LIT TREC_FRAME ADD ! LIT 0 LIT M1_S4 @ LIT TREC_STATE ADD ! LIT 0 LIT M1_S4 @ LIT 9 ADD !
+    LIT M1_S4 @ LIT 16 MUL ARITY 1 EXIT
+]
+task-block: masm [
+    NONE LIT 16
+    LIT REG_RP @ @ LIT M1_CUR_TASK @ LIT TREC_IP ADD ! LIT REG_SP @ LIT M1_CUR_TASK @ LIT TREC_SP ADD !
+    LIT REG_RP @ LIT M1_CUR_TASK @ LIT TREC_RP ADD ! LIT RV_CUR @ LIT M1_CUR_TASK @ LIT TREC_CUR ADD !
+    LIT RV_END @ LIT M1_CUR_TASK @ LIT TREC_END ADD ! LIT RV_CTX @ LIT M1_CUR_TASK @ LIT TREC_CTX ADD !
+    LIT RV_BLK @ LIT M1_CUR_TASK @ LIT TREC_BLK ADD ! LIT RV_FRAME @ LIT M1_CUR_TASK @ LIT TREC_FRAME ADD !
+    LIT 1 LIT M1_CUR_TASK @ LIT 9 ADD !
+    LIT M1_SCHED_REC LIT 1 ADD @ LIT REG_SP ! LIT M1_SCHED_REC LIT 2 ADD @ LIT REG_RP !
+    LIT M1_SCHED_REC LIT 3 ADD @ LIT RV_CUR ! LIT M1_SCHED_REC LIT 4 ADD @ LIT RV_END !
+    LIT M1_SCHED_REC LIT 5 ADD @ LIT RV_CTX ! LIT M1_SCHED_REC LIT 6 ADD @ LIT RV_BLK !
+    LIT M1_SCHED_REC LIT 7 ADD @ LIT RV_FRAME ! LIT M1_SCHED_REC LIT 0 ADD @ LIT REG_IP !
+]
+task-finish: masm [
+    LIT 1 LIT M1_CUR_TASK @ LIT TREC_STATE ADD !
+    LIT M1_SCHED_REC LIT 1 ADD @ LIT REG_SP ! LIT M1_SCHED_REC LIT 2 ADD @ LIT REG_RP !
+    LIT M1_SCHED_REC LIT 3 ADD @ LIT RV_CUR ! LIT M1_SCHED_REC LIT 4 ADD @ LIT RV_END !
+    LIT M1_SCHED_REC LIT 5 ADD @ LIT RV_CTX ! LIT M1_SCHED_REC LIT 6 ADD @ LIT RV_BLK !
+    LIT M1_SCHED_REC LIT 7 ADD @ LIT RV_FRAME ! LIT M1_SCHED_REC LIT 0 ADD @ LIT REG_IP !
+]
+;; run-steps: run-tasks prologue (offset 11) + a budget in 25033; stops after
+;; that many task slices.  A blocked/finished task resumes the scheduler at the
+;; loop point, which decrements again or returns.
+run-steps: masm [
+    LIT REG_IP @ LIT 11 ADD LIT M1_SCHED_REC LIT 0 ADD !
+    LIT REG_SP @ LIT M1_SCHED_REC LIT 1 ADD ! LIT REG_RP @ LIT M1_SCHED_REC LIT 2 ADD !
+    LIT RV_CUR @ LIT M1_SCHED_REC LIT 3 ADD ! LIT RV_END @ LIT M1_SCHED_REC LIT 4 ADD !
+    LIT RV_CTX @ LIT M1_SCHED_REC LIT 5 ADD ! LIT RV_BLK @ LIT M1_SCHED_REC LIT 6 ADD !
+    LIT RV_FRAME @ LIT M1_SCHED_REC LIT 7 ADD ! LIT M1_CURSOR @ LIT M1_S7 ! LIT 0 LIT M1_S8 !
+  sc: LIT 25033 @ LIT 0 GT ZBRANCH done
+    LIT M1_S8 @ LIT 3 LT ZBRANCH done
+    LIT M1_S7 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S6 !
+    LIT M1_S6 @ LIT TREC_STATE ADD @ LIT 0 NE ZBRANCH chk BRANCH sk
+  chk: LIT M1_S6 @ LIT 9 ADD @ LIT 0 NE ZBRANCH found
+  sk: LIT M1_S7 @ LIT 1 ADD LIT 3 MOD LIT M1_S7 ! LIT M1_S8 @ LIT 1 ADD LIT M1_S8 ! BRANCH sc
+  done: NONE LIT 16 EXIT
+  found: LIT 25033 @ LIT 1 SUB LIT 25033 !
+    LIT M1_S6 @ LIT M1_CUR_TASK ! LIT M1_S7 @ LIT 1 ADD LIT 3 MOD LIT M1_CURSOR !
+    LIT M1_CUR_TASK @ LIT 1 ADD @ LIT REG_SP ! LIT M1_CUR_TASK @ LIT 2 ADD @ LIT REG_RP !
+    LIT M1_CUR_TASK @ LIT 3 ADD @ LIT RV_CUR ! LIT M1_CUR_TASK @ LIT 4 ADD @ LIT RV_END !
+    LIT M1_CUR_TASK @ LIT 5 ADD @ LIT RV_CTX ! LIT M1_CUR_TASK @ LIT 6 ADD @ LIT RV_BLK !
+    LIT M1_CUR_TASK @ LIT 7 ADD @ LIT RV_FRAME ! LIT M1_CUR_TASK @ LIT 0 ADD @ LIT REG_IP !
+]
+reset-tasks: masm [
+    LIT 0 LIT M1_S3 !
+  rl: LIT M1_S3 @ LIT 3 LT ZBRANCH rd
+    LIT 2 LIT M1_S3 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT TREC_STATE ADD !
+    LIT M1_S3 @ LIT 1 ADD LIT M1_S3 ! BRANCH rl
+  rd: LIT 0 LIT M1_CURSOR ! LIT 0 LIT 25033 ! ARITY 0 EXIT
+]
+spawn: func [body] [ mnew-task body 'do 'task-finish ]
+sched-budget: masm [ LIT 1 LIT 25033 ! ARITY 0 EXIT ]
+cur-task: masm [ LIT M1_CUR_TASK @ LIT 16 MUL ARITY 1 EXIT ]
+wake: masm 1 [ LIT SCRATCH_A ! LIT 0 LIT SCRATCH_A @ LIT 16 DIV LIT 9 ADD ! ARITY 0 EXIT ]
+task-state: masm 1 [ LIT 16 DIV LIT 16 MUL LIT M1_TASK_TABLE ADD LIT TREC_STATE ADD @ LIT 16 MUL ARITY 1 EXIT ]
+task-wait:  masm 1 [ LIT 16 DIV LIT 16 MUL LIT M1_TASK_TABLE ADD LIT 9 ADD @ LIT 16 MUL ARITY 1 EXIT ]
+
+;; ---- tuple space (managed arena + waiters; append-only keeps age order) -----
+arena: new-block 16
+waiters: new-block 16
+arena-used: 0
+waiter-tail: 0
+wildcard: '*
+reset-space: func [] [ fill arena 0 16  fill waiters 0 16  arena-used: 0  waiter-tail: 0 ]
+fill: func [b i n] [ either < i n [ block-set! b i none  fill b + i 1 n ] [ none ] ]
+tmatch?: func [t p] [ either = block-len t block-len p [ ma t p 0 block-len p ] [ 0 ] ]
+ma: func [t p i n] [
+    either < i n [
+        pv: block-at p i
+        either = pv wildcard [ ma t p + i 1 n ] [ either = pv block-at t i [ ma t p + i 1 n ] [ 0 ] ]
+    ] [ 1 ]
+]
+find-slot: func [pattern] [ fs 0 arena-used pattern ]
+fs: func [i n pattern] [
+    either < i n [
+        t: block-at arena i
+        either = t none [ fs + i 1 n pattern ] [ either tmatch? t pattern [ i ] [ fs + i 1 n pattern ] ]
+    ] [ -1 ]
+]
+add-waiter: func [op pattern task] [
+    j: waiter-tail
+    either < j 16 [
+        w: new-block 8
+        block-set! w 0 1  block-set! w 1 op  block-set! w 2 block-len pattern
+        cwf pattern w 0 block-len pattern  block-set! w 7 task  block-set! waiters j w  waiter-tail: + j 1  j
+    ] [ 0 ]
+]
+cwf: func [src dst i n] [ either < i n [ block-set! dst + 3 i block-at src i  cwf src dst + i 1 n ] [ none ] ]
+wm: func [w t i n] [
+    either < i n [
+        pv: block-at w + 3 i
+        either = pv wildcard [ wm w t + i 1 n ] [ either = pv block-at t i [ wm w t + i 1 n ] [ 0 ] ]
+    ] [ 1 ]
+]
+wtm?: func [w t] [ either = block-at w 2 block-len t [ wm w t 0 block-at w 2 ] [ 0 ] ]
+fm: func [j n w] [ either < j n [ t: block-at arena j  either = t none [ fm + j 1 n w ] [ either wtm? w t [ t ] [ fm + j 1 n w ] ] ] [ none ] ]
+cleart: func [t] [ ct 0 arena-used t ]
+ct: func [i n t] [ either < i n [ either = block-at arena i t [ block-set! arena i none ] [ none ]  ct + i 1 n t ] [ none ] ]
+serve-i: func [i n] [
+    either < i n [
+        w: block-at waiters i
+        either = w none [ none ] [
+            either = block-at w 0 1 [
+                t: fm 0 arena-used w
+                either = t none [ none ] [ wake block-at w 7  either = block-at w 1 1 [ cleart t ] [ none ]  block-set! w 0 2 ]
+            ] [ none ]
+        ]
+        serve-i + i 1 n
+    ] [ none ]
+]
+serve-waiters: func [] [ serve-i 0 waiter-tail ]
+out: func [tuple] [
+    either >= arena-used 16 [ 0 ] [
+        block-set! arena arena-used new-tuple tuple
+        arena-used: + arena-used 1
+        serve-waiters
+        1
+    ]
+]
+rd-wait: func [pattern] [
+    i: find-slot pattern
+    either = i -1 [ add-waiter 0 pattern cur-task  task-block ] [ new-tuple block-at arena i ]
+]
+in-wait: func [pattern] [
+    i: find-slot pattern
+    either = i -1 [ add-waiter 1 pattern cur-task  task-block ] [
+        r: new-tuple block-at arena i  block-set! arena i none  r
+    ]
+]
+
+;; ---- the scenario (A blocks on IN; B runs and wakes A) ---------------------
+trace: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+trace-n: 0
+stage-a: 0
+obs-a: -1
+tcode: func [c] [ block-set! trace trace-n c  trace-n: + trace-n 1 ]
+start-scenario: func [] [
+    reset-tasks reset-space
+    trace-n: 0 stage-a: 0 obs-a: -1
+    ta: spawn [
+        out [started a] tcode 1
+        stage-a: 1 tcode 2
+        tcode 3 in-wait [go a]
+        tcode 4 stage-a: 2
+        out [finished a] tcode 5
+    ]
+    tb: spawn [
+        out [started b] tcode 6
+        rd-wait [started a] obs-a: stage-a tcode 7
+        out [go a] tcode 8
+        tcode 9 in-wait [finished a]
+        tcode 10 out [finished b] tcode 11
+    ]
+    tc: spawn [ tcode 12 in-wait [finished b] tcode 13 ]
+]
+
+;; ---- render (state read from the real task table / space) ------------------
+label: func [s w] [
+    either = s 2 [ emit-text "-" ] [
+    either = s 1 [ emit-text "FINISHED" ] [ either = w 0 [ emit-text "RUNNABLE" ] [ emit-text "WAITING" ]]]
+]
+card: func [i name] [ emit-text name emit-text ": " label task-state i task-wait i emit-text "  " ]
+ftxt: func [v] [
+    either = v 'started [ emit-text "started" ] [
+    either = v 'go [ emit-text "go" ] [
+    either = v 'finished [ emit-text "finished" ] [
+    either = v 'a [ emit-text "a" ] [ either = v 'b [ emit-text "b" ] [ emit-int v ]]]]]
+]
+ffields: func [b from n] [ either < from n [ ftxt block-at b from emit-text " " ffields b + from 1 n ] [ none ] ]
+ftuples: func [i n] [
+    either < i n [
+        t: block-at arena i
+        either = t none [ none ] [ emit-text "[ " ffields t 0 block-len t emit-text "] " ]
+        ftuples + i 1 n
+    ] [ none ]
+]
+fwaiters: func [i n] [
+    either < i n [
+        w: block-at waiters i
+        either = w none [ none ] [
+            emit-text "[#" emit-int i emit-text " "
+            either = block-at w 1 1 [ emit-text "IN " ] [ emit-text "RD " ]
+            emit-text "[ " ffields w 3 + 3 block-at w 2 emit-text "] "
+            either = block-at w 0 2 [ emit-text "done" ] [ emit-text "waiting" ]
+            emit-text "] "
+        ]
+        fwaiters + i 1 n
+    ] [ none ]
+]
+tlabel: func [c] [
+    either = c 1 [ emit-text "A OUT [started a]" ] [
+    either = c 2 [ emit-text "A stage-a = 1" ] [
+    either = c 3 [ emit-text "A IN [go a] -> A WAITING" ] [
+    either = c 4 [ emit-text "A resumes AFTER IN" ] [
+    either = c 5 [ emit-text "A stage-a = 2; A OUT [finished a]" ] [
+    either = c 6 [ emit-text "B OUT [started b]" ] [
+    either = c 7 [ emit-text "B RD [started a]; B sees stage-a = 1" ] [
+    either = c 8 [ emit-text "B OUT [go a] -> A RUNNABLE" ] [
+    either = c 9 [ emit-text "B IN [finished a] -> B WAITING" ] [
+    either = c 10 [ emit-text "B resumes AFTER IN; B OUT [finished b]" ] [
+    either = c 11 [ emit-text "B FINISHED" ] [
+    either = c 12 [ emit-text "C IN [finished b] -> C WAITING" ] [
+    either = c 13 [ emit-text "C resumes AFTER IN; C FINISHED" ] [ emit-text "?" ]]]]]]]]]]]]]
+]
+ftrace: func [i n] [ either < i n [ emit-text "<li>" tlabel block-at trace i emit-text "</li>" ftrace + i 1 n ] [ none ] ]
+anyrun?: func [] [ ar 0 3 ]
+ar: func [i n] [
+    either < i n [ either = task-state i 0 [ either = task-wait i 0 [ 1 ] [ ar + i 1 n ] ] [ ar + i 1 n ] ] [ 0 ]
+]
+render-state: func [] [
+    emit-clear
+    emit-text "<h1>Glon Linda</h1><p>Task A blocks on IN [go a]; B runs, OUTs [go a], A resumes AFTER its IN.</p><p>"
+    card 0 "A" card 1 "B" card 2 "C"
+    emit-text "</p><p>tuple space: "
+    either = arena-used 0 [ emit-text "(empty)" ] [ ftuples 0 arena-used ]
+    emit-text "</p><p>waiters: "
+    either = waiter-tail 0 [ emit-text "(none)" ] [ fwaiters 0 waiter-tail ]
+    emit-text "</p><p>stage-a = " emit-int stage-a emit-text " ; B observed stage-a = " emit-int obs-a
+    either anyrun? [ emit-text "</p><p><b>STATUS: RUNNING</b></p>" ] [ emit-text "</p><p><b>STATUS: COMPLETE</b></p>" ]
+    emit-text "<h2>Event trace</h2><ul>"
+    either = trace-n 0 [ emit-text "<li>(no events yet)</li>" ] [ ftrace 0 trace-n ]
+    emit-text "</ul>"
+    emit-finish
+]
+
+;; ---- G1A event bridge ------------------------------------------------------
+linda-reset: func [] [ start-scenario render-state ]
+linda-step:  func [] [ sched-budget run-steps render-state ]
+do-event: [
+    either = current-event 'linda-reset [ linda-reset ] [
+    either = current-event 'linda-step  [ linda-step ] [ none ]]
+]
+]

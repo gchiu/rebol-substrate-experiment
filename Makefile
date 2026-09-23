@@ -196,6 +196,18 @@ wasm-traffic-test: demo/shop/glon.wasm traffic.html
 	@grep -q "TRAFFIC_TEST PASS" /tmp/opencode_traffic_test.out && \
 	 echo "wasm-traffic-test: PASS (embedded source / initial render / advance / disturbance / reset)"
 
+# ---- Standalone Linda page (post-Alpha application; no language change) -----
+# Bundles the self-contained demos/linda.glon into demo/shop/linda.html and
+# verifies the cooperative blocking/wakeup wiring headlessly against the real
+# WASM + event bridge.
+linda.html: demo/shop/demos/linda.glon demo/shop/build-linda.py
+	python3 demo/shop/build-linda.py
+
+wasm-linda-test: demo/shop/glon.wasm linda.html
+	node demo/shop/linda_node_test.js | tee /tmp/opencode_linda_test.out
+	@grep -q "LINDA_TEST PASS" /tmp/opencode_linda_test.out && \
+	 echo "wasm-linda-test: PASS (embedded source / reset / A blocks at IN / B runs while A blocked / OUT wakes A / A resumes after IN / all finish / deterministic)"
+
 # ---- Traffic simulator benchmark (post-Alpha application; no language change) -
 # load-once benchmark of the IDM sim. Builds both the shipped -O0 runtime and a
 # directly-compiled -O2 runtime so interpreter cost can be separated from C
@@ -208,4 +220,4 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test

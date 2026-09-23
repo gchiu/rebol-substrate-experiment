@@ -449,15 +449,44 @@ serve-i: func [i n] [
 
 serve-waiters: func [ ] [ serve-i 0 waiter-tail ]
 
+;; find-slot: ( pattern -- slot-index | -1 ).  Oldest matching arena slot.
+find-slot: func [pattern] [ fs 0 arena-used pattern ]
+fs: func [i n pattern] [
+    either < i n [
+        t: block-at arena i
+        either = t none [
+            fs + i 1 n pattern
+        ] [
+            either tuple-match? t pattern [ i ] [ fs + i 1 n pattern ]
+        ]
+    ] [ -1 ]
+]
+
+;; compact-arena: shift live tuples to the front, preserving oldest-first
+;; order, and drop the empty holes.  Keeps tuple storage append-only (so slot
+;; reuse can never make a newer tuple look older).
+compact-arena: func [] [ ca 0 0 arena-used ]
+ca: func [i k n] [
+    either < i n [
+        t: block-at arena i
+        either = t none [
+            ca + i 1 k n
+        ] [
+            either = k i [ none ] [ block-set! arena k t  block-set! arena i none ]
+            ca + i 1 + k 1 n
+        ]
+    ] [ arena-used: k ]
+]
+
 out: func [tuple] [
     either tuple-ok? tuple [
-        j: arena-free 0 arena-used
-        either < j 16 [
-            block-set! arena j new-tuple tuple
-            either >= j arena-used [ arena-used: + j 1 ] [ none ]
+        either >= arena-used 16 [ compact-arena ] [ none ]
+        either >= arena-used 16 [ 0 ] [
+            block-set! arena arena-used new-tuple tuple
+            arena-used: + arena-used 1
             serve-waiters
             1
-        ] [ 0 ]
+        ]
     ] [ 0 ]
 ]
 
@@ -467,18 +496,31 @@ out: func [tuple] [
 ;; task's record cells, which task-result then turns into a tuple block.
 waiter-state: func [j] [ block-at block-at waiters j 0 ]
 
+;; Blocking RD / IN.  If a match already exists, return/consume it immediately
+;; WITHOUT touching the waiter arena (so repeated immediate operations can never
+;; exhaust waiter slots).  Otherwise park a waiter and genuinely block.
 rd-wait: func [pattern] [
     either tuple-ok? pattern [
-        j: add-waiter 0 pattern cur-task
-        serve-waiters
-        either = waiter-state j 2 [ task-result ] [ task-block  task-result ]
+        i: find-slot pattern
+        either = i -1 [
+            add-waiter 0 pattern cur-task
+            task-block
+            task-result
+        ] [ new-tuple block-at arena i ]
     ] [ none ]
 ]
 
 in-wait: func [pattern] [
     either tuple-ok? pattern [
-        j: add-waiter 1 pattern cur-task
-        serve-waiters
-        either = waiter-state j 2 [ task-result ] [ task-block  task-result ]
+        i: find-slot pattern
+        either = i -1 [
+            add-waiter 1 pattern cur-task
+            task-block
+            task-result
+        ] [
+            r: new-tuple block-at arena i
+            block-set! arena i none
+            r
+        ]
     ] [ none ]
 ]

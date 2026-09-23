@@ -49,6 +49,7 @@ home-view: [
     heading [ emit-text "Glon Demos" ]
     tagline [ emit-text "Small applications running in Glon" ]
     each-demo 0 block-len demos
+    emit-text "<p><a href='linda.html'>Linda / tuple space — real cooperative blocking</a></p>"
 ]
 
 each-demo: func [i n] [

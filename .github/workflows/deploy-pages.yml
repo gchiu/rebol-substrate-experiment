@@ -63,12 +63,18 @@ jobs:
           python3 demo/shop/build-traffic.py
           make wasm-traffic-test
 
+      - name: Build standalone Linda page and run its test
+        run: |
+          python3 demo/shop/build-linda.py
+          make wasm-linda-test
+
       - name: Assemble site files
         run: |
           rm -rf /tmp/shop && mkdir -p /tmp/shop
           cp demo/shop/app.html /tmp/shop/index.html
           cp demo/shop/style.css demo/shop/host.js demo/shop/glon.wasm /tmp/shop/
           cp demo/shop/traffic.html demo/shop/traffic-host.js /tmp/shop/
+          cp demo/shop/linda.html demo/shop/linda-host.js /tmp/shop/
           cp -r demo/shop/demos /tmp/shop/demos
 
       - name: Checkout main (Pages source)
