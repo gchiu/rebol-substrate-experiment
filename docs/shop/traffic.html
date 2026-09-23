@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Glon IDM traffic simulator</title>
+<title>Glon traffic model laboratory</title>
 <style>
   body { font-family: system-ui, sans-serif; max-width: 1040px; margin: 1.5rem auto; padding: 0 1rem; color: #111; }
   h1 { font-size: 1.4rem; }
@@ -16,17 +16,32 @@
 </style>
 </head>
 <body>
-  <h1>Glon IDM traffic simulator</h1>
-  <p class="muted">25 vehicles follow the Intelligent Driver Model on a one-lane ring road
-     (1 km circumference, drawn unrolled). The simulation runs in frozen Glon Alpha; this page
-     only schedules ticks, paints the canvas, and shows the status Glon emits.</p>
-  <p class="muted">Brake disturbance: vehicle 0 is speed-capped at 5 m/s for 20.0&ndash;21.5 s,
-     then normal IDM dynamics resume. Vehicle 0 is drawn in red.</p>
+  <h1>Glon traffic model laboratory</h1>
+  <p class="muted">25 vehicles on a one-lane ring road (1 km circumference, drawn unrolled),
+     under four deliberately different published car-following models. Every model and every
+     number shown runs in frozen Glon Alpha; this page only schedules ticks, loads a model's
+     source the first time it is selected, paints the canvas, and shows the status Glon emits.
+     See GLON-TRAFFIC-MODELS.md for the model comparison.</p>
+  <p class="muted">Brake disturbance: vehicle 0 is speed-capped for a window near the start of
+     the run, then normal dynamics resume (NaSch instead forces a full stop -- see the model
+     comparison doc for why). Vehicle 0 is drawn in red.</p>
 
   <div id="status" data-glon-id="1">loading&hellip;</div>
   <canvas id="glon-canvas" width="1000" height="320"></canvas>
 
   <p style="margin-top: 0.75rem;">
+    <label for="model">Model</label>
+    <select id="model">
+      <option value="idm" selected>IDM</option>
+      <option value="newell">Newell</option>
+      <option value="ovm">FVDM (OVM)</option>
+      <option value="nasch">NaSch</option>
+    </select>
+    <label for="mode">Scenario</label>
+    <select id="mode">
+      <option value="baseline" selected>Baseline</option>
+      <option value="pacing">Pacing (IDM only)</option>
+    </select>
     <button id="start">Start</button>
     <button id="reset">Reset</button>
     <label for="speed">Speed</label>
@@ -35,8 +50,11 @@
       <option value="2" selected>2x</option>
       <option value="5">5x</option>
     </select>
-    <span class="muted" style="margin-left: 0.75rem;">1 tick = 0.1 simulated seconds</span>
   </p>
+  <p class="muted">Pacing (IDM only): vehicle 24 (the disturbed vehicle's immediate follower) is
+     speed-capped at 18 m/s from the moment the brake begins -- see GLON-TRAFFIC-MODELS.md for why
+     this does not (and is not claimed to) generalize to the other three models. Switching model
+     or scenario resets the experiment.</p>
 
   <script type="application/glon">[ 
 
@@ -405,6 +423,12 @@ nveh: 25
 tick0: 200    
 tick1: 215    
 brakespeed: 500  
+mode: 0
+mode-baseline: 0
+mode-pacing: 1
+pace-vehicle: 24
+pace-speed: 1800
+mode-label: func [] [ either = mode mode-pacing [ "PACING" ] [ "BASELINE" ] ]
 
 
 
@@ -440,12 +464,19 @@ lead: func [i n] [ either = + i 1 n [ 0 ] [ + i 1 ] ]
 
 
 
+
+
+
+
+
+overlap-fail: func [] [ invoke 0 ]   
+
 gap: func [xs i n] [
     ln: lead i n
     d: - block-at xs ln block-at xs i
     d2: either < d 0 [ + d road ] [ d ]
     g: - d2 L
-    either < g 1 [ 1 ] [ g ]
+    either < g 0 [ overlap-fail ] [ either = g 0 [ 1 ] [ g ] ]
 ]
 
 
@@ -515,6 +546,22 @@ step: func [] [
 ]
 
 
+
+
+
+
+
+step-pacing: func [] [
+    step
+    either >= tick tick0 [
+        either > block-at vs pace-vehicle pace-speed [
+            block-set! vs pace-vehicle pace-speed
+        ] [ none ]
+    ] [ none ]
+    tick
+]
+
+
 min-v: func [] [ minv-at 0 block-at vs 0 ]
 minv-at: func [i m] [
     either < i nveh [ minv-at + i 1 either < block-at vs i m [ block-at vs i ] [ m ] ] [ m ]
@@ -534,6 +581,7 @@ mingap-at: func [i m] [
         mingap-at + i 1 either < g m [ g ] [ m ]
     ] [ m ]
 ]
+wave-amplitude: func [] [ - max-v min-v ]
 
 
 
@@ -543,6 +591,9 @@ started: 0
 
 advance: func [n] [
     either > n 0 [ step advance - n 1 ] [ none ]
+]
+advance-pacing: func [n] [
+    either > n 0 [ step-pacing advance-pacing - n 1 ] [ none ]
 ]
 
 do-traffic-run: func [] [ started: 1 init advance 25 render-current ]
@@ -598,8 +649,10 @@ render-traffic: func [] [
 
 events: [
     ['traffic-start   [do-traffic-start]]
+    ['traffic-resume  [do-traffic-resume]]
     ['traffic-advance [do-traffic-advance]]
     ['traffic-reset   [do-traffic-reset]]
+    ['traffic-mode    [do-traffic-mode]]
 ]
 
 do-event: [
@@ -607,17 +660,27 @@ do-event: [
     either event-row [ do block-at event-row 1 ] [ none ]
 ]
 
-do-traffic-start: func [] [ init render-traffic-standalone ]
-do-traffic-advance: func [] [ advance 5 render-traffic-standalone ]
-do-traffic-reset: func [] [ init render-traffic-standalone ]
+do-traffic-start: func [] [ started: 1 init render-traffic-standalone ]
+do-traffic-resume: func [] [ started: 1 render-traffic-standalone ]
+do-traffic-advance: func [] [
+    either = mode mode-pacing [ advance-pacing 5 ] [ advance 5 ]
+    render-traffic-standalone
+]
+do-traffic-reset: func [] [ started: 0 init render-traffic-standalone ]
+do-traffic-mode: func [] [
+    either str-eq current-value "pacing" [ mode: mode-pacing ] [ mode: mode-baseline ]
+    started: 0 init render-traffic-standalone
+]
 
 
 standalone-view: [
-    emit-text "t = " emit-int / tick 10 emit-text " s    tick " emit-int tick
+    emit-text "[" emit-text mode-label emit-text "]  t = " emit-int / tick 10
+    emit-text " s    tick " emit-int tick
     emit-text "    mean " emit-int mean-v
     emit-text " cm/s    min " emit-int min-v
     emit-text " cm/s    gap " emit-int min-gap
-    emit-text " cm    "
+    emit-text " cm    amp " emit-int wave-amplitude
+    emit-text " cm/s    "
     either >= tick tick0 [
         either < tick tick1 [ emit-text "BRAKING" ] [ emit-text "free" ]
     ] [ emit-text "free" ]
@@ -629,7 +692,688 @@ render-traffic-standalone: func [] [
     vis-finish emit-finish
 ]
 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+current-model: 'idm
+
+do-model-start: func [] [
+    either = current-model 'idm [ started: 1 init render-traffic-standalone ] [
+    either = current-model 'newell [ newell-init newell-render ] [
+    either = current-model 'ovm [ ovm-init ovm-render ] [
+    nasch-init nasch-init-seed 1 nasch-render ]]]
+]
+do-model-resume: func [] [
+    either = current-model 'idm [ started: 1 render-traffic-standalone ] [
+    either = current-model 'newell [ newell-render ] [
+    either = current-model 'ovm [ ovm-render ] [
+    nasch-render ]]]
+]
+
+
+
+do-model-advance: func [] [
+    either = current-model 'idm [ do-traffic-advance ] [
+    either = current-model 'newell [ newell-advance 5 newell-render ] [
+    either = current-model 'ovm [ ovm-advance 5 ovm-render ] [
+    nasch-advance 1 nasch-render ]]]
+]
+do-model-reset: func [] [ do-model-start ]
+do-model-set: func [] [
+    either str-eq current-value "newell" [ current-model: 'newell ] [
+    either str-eq current-value "ovm" [ current-model: 'ovm ] [
+    either str-eq current-value "nasch" [ current-model: 'nasch ] [
+    current-model: 'idm ]]]
+    do-model-start
+]
+
+events: [
+    ['traffic-start   [do-model-start]]
+    ['traffic-resume  [do-model-resume]]
+    ['traffic-advance [do-model-advance]]
+    ['traffic-reset   [do-model-reset]]
+    ['traffic-mode    [do-traffic-mode]]    
+    ['traffic-model   [do-model-set]]
+]
+
  ]</script>
+  <script type="application/glon" data-model="newell" style="display:none">[
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+newell-loaded: 1
+
+
+
+newell-block-set!: masm 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
+
+
+newell-vmax: 3000        
+newell-tau: 10            
+newell-d: 500              
+newell-road: 100000
+newell-nveh: 25
+newell-tick0: 200
+newell-tick1: 215
+newell-brakespeed: 500
+newell-step-cm: 300        
+newell-tau1: + newell-tau 1   
+
+
+
+
+newell-mod: func [a m] [
+    r: - a * / a m m
+    either < r 0 [ + r m ] [ r ]
+]
+
+
+
+
+
+newell-hist: [
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+]
+newell-xs: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+newell-vs: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+newell-xs2: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+newell-vs2: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+newell-tick: 0
+
+newell-lead: func [i n] [ either = + i 1 n [ 0 ] [ + i 1 ] ]
+
+
+newell-hidx: func [i slot] [ + * i newell-tau1 slot ]
+newell-hset: func [i tick pos] [ newell-block-set! newell-hist newell-hidx i newell-mod tick newell-tau1  pos ]
+newell-hget: func [i tick] [ block-at newell-hist newell-hidx i newell-mod tick newell-tau1 ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+newell-init: func [] [ newell-init-at 0 ]
+newell-init-at: func [i] [
+    either < i newell-nveh [
+        p: * / newell-road newell-nveh i
+        newell-block-set! newell-xs i p
+        newell-block-set! newell-vs i newell-vmax
+        newell-seed-hist-at i 0 p
+        newell-init-at + i 1
+    ] [ newell-tick: 0 ]
+]
+
+
+
+
+
+newell-seed-hist-at: func [i vt p] [
+    either >= vt - 0 newell-tau [
+        seedpos: + p * vt newell-step-cm
+        wrapped: either < seedpos 0 [ + seedpos newell-road ] [ seedpos ]
+        newell-hset i vt wrapped
+        newell-seed-hist-at i - vt 1 p
+    ] [ none ]
+]
+
+
+
+
+
+newell-next: func [i n] [
+    either < i n [
+        own_delayed: newell-hget i - newell-tick newell-tau
+        lead_delayed: newell-hget newell-lead i n - newell-tick newell-tau
+        raw_d: - lead_delayed own_delayed
+        wrapped_d: either < raw_d 0 [ + raw_d newell-road ] [ raw_d ]   
+        follow_target: + own_delayed - wrapped_d newell-d
+        free: + own_delayed / * newell-vmax newell-tau 10
+        want: either < free follow_target [ free ] [ follow_target ]
+        cur: block-at newell-xs i
+        final: either = i 0 [
+            either >= newell-tick newell-tick0 [
+                either < newell-tick newell-tick1 [
+                    brakepos: + cur / newell-brakespeed 10
+                    either < brakepos want [ brakepos ] [ want ]
+                ] [ want ]
+            ] [ want ]
+        ] [ want ]
+        finalwrapped: either < final 0 [ + final newell-road ] [ either >= final newell-road [ - final newell-road ] [ final ] ]
+        raw_delta: - finalwrapped cur   
+        delta: either < raw_delta 0 [ + raw_delta newell-road ] [ raw_delta ]  
+        newell-block-set! newell-vs2 i * delta 10
+        newell-block-set! newell-xs2 i finalwrapped
+        newell-next + i 1 n
+    ] [ none ]
+]
+newell-commit: func [i n] [
+    either < i n [
+        p: block-at newell-xs2 i
+        newell-block-set! newell-xs i p
+        newell-block-set! newell-vs i block-at newell-vs2 i
+        newell-hset i newell-tick p
+        newell-commit + i 1 n
+    ] [ none ]
+]
+
+
+
+
+
+
+newell-step: func [] [
+    newell-tick: + newell-tick 1
+    newell-next 0 newell-nveh
+    newell-commit 0 newell-nveh
+    newell-tick
+]
+
+
+newell-min-v: func [] [ newell-minv-at 0 block-at newell-vs 0 ]
+newell-minv-at: func [i m] [ either < i newell-nveh [ newell-minv-at + i 1 either < block-at newell-vs i m [ block-at newell-vs i ] [ m ] ] [ m ] ]
+newell-max-v: func [] [ newell-maxv-at 0 block-at newell-vs 0 ]
+newell-maxv-at: func [i m] [ either < i newell-nveh [ newell-maxv-at + i 1 either > block-at newell-vs i m [ block-at newell-vs i ] [ m ] ] [ m ] ]
+newell-mean-v: func [] [ newell-meansum 0 0 ]
+newell-meansum: func [i acc] [ either < i newell-nveh [ newell-meansum + i 1 + acc block-at newell-vs i ] [ / acc newell-nveh ] ]
+newell-wave-amplitude: func [] [ - newell-max-v newell-min-v ]
+
+
+
+
+newell-raw-gap: func [i n] [
+    ln: newell-lead i n
+    d: - block-at newell-xs ln block-at newell-xs i
+    d2: either < d 0 [ + d newell-road ] [ d ]
+    - d2 500   
+]
+newell-min-gap: func [] [ newell-mingap-at 0 newell-raw-gap 0 newell-nveh ]
+newell-mingap-at: func [i m] [
+    either < i newell-nveh [
+        g: newell-raw-gap i newell-nveh
+        newell-mingap-at + i 1 either < g m [ g ] [ m ]
+    ] [ m ]
+]
+
+
+newell-advance: func [n] [ either > n 0 [ newell-step newell-advance - n 1 ] [ none ] ]
+
+
+newell-draw-vehicles: func [i n] [
+    either < i n [
+        vis-dot i / block-at newell-xs i 100 300
+        newell-draw-vehicles + i 1 n
+    ] [ none ]
+]
+newell-draw-stats: func [] [
+    emit-text "[NEWELL]  tick " emit-int newell-tick
+    emit-text "    mean " emit-int newell-mean-v
+    emit-text " cm/s    min " emit-int newell-min-v
+    emit-text " cm/s    gap " emit-int newell-min-gap
+    emit-text " cm    "
+    either >= newell-tick newell-tick0 [
+        either < newell-tick newell-tick1 [ emit-text "BRAKING" ] [ emit-text "free" ]
+    ] [ emit-text "free" ]
+]
+newell-view: [ newell-draw-stats ]
+newell-render: func [] [
+    emit-clear do newell-view
+    vis-clear vis-line 0 300 1000 300 newell-draw-vehicles 0 newell-nveh
+    vis-finish emit-finish
+]
+
+]</script>
+  <script type="application/glon" data-model="ovm" style="display:none">[
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ovm-loaded: 1
+
+ovm-block-set!: masm 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
+
+
+ovm-vmax: 3000
+ovm-hc: 200          
+ovm-hmax: 4000        
+ovm-L: 500             
+ovm-road: 100000
+ovm-nveh: 25
+ovm-tick0: 200
+ovm-tick1: 215
+ovm-brakespeed: 500
+
+
+
+ovm-a0num: 5   ovm-a0den: 10    
+ovm-lamnum: 5  ovm-lamden: 10   
+
+
+
+
+
+ovm-a0num-unstable: 1   ovm-a0den-unstable: 10   
+
+
+ovm-xs: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+ovm-vs: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+ovm-as: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+ovm-tick: 0
+
+
+ovm-a0n: 5   ovm-a0d: 10
+
+ovm-lead: func [i n] [ either = + i 1 n [ 0 ] [ + i 1 ] ]
+
+
+ovm-V: func [h] [
+    either <= h ovm-hc [ 0 ] [
+        either >= h ovm-hmax [ ovm-vmax ] [
+            / * ovm-vmax - h ovm-hc - ovm-hmax ovm-hc
+        ]
+    ]
+]
+
+
+
+ovm-overlap-fail: func [] [ invoke 0 ]
+ovm-gap: func [xs i n] [
+    ln: ovm-lead i n
+    d: - block-at xs ln block-at xs i
+    d2: either < d 0 [ + d ovm-road ] [ d ]
+    g: - d2 ovm-L
+    either < g 0 [ ovm-overlap-fail ] [ either = g 0 [ 1 ] [ g ] ]
+]
+ovm-raw-gap: func [xs i n] [
+    ln: ovm-lead i n
+    d: - block-at xs ln block-at xs i
+    d2: either < d 0 [ + d ovm-road ] [ d ]
+    - d2 ovm-L
+]
+
+
+
+
+ovm-accel: func [v vl h] [
+    want: ovm-V h
+    term1: / * ovm-a0n - want v ovm-a0d
+    term2: / * ovm-lamnum - vl v ovm-lamden
+    + term1 term2
+]
+ovm-accels: func [i n] [
+    either < i n [
+        v: block-at ovm-vs i
+        vl: block-at ovm-vs ovm-lead i n
+        h: ovm-gap ovm-xs i n
+        ovm-block-set! ovm-as i ovm-accel v vl h
+        ovm-accels + i 1 n
+    ] [ none ]
+]
+ovm-update: func [i n] [
+    either < i n [
+        v: block-at ovm-vs i
+        vn: + v / block-at ovm-as i 10
+        vn2: either < vn 0 [ 0 ] [ vn ]        
+        ovm-block-set! ovm-vs i vn2
+        xn: + block-at ovm-xs i / vn2 10
+        ovm-block-set! ovm-xs i either < xn ovm-road [ xn ] [ - xn ovm-road ]
+        ovm-update + i 1 n
+    ] [ none ]
+]
+
+ovm-disturb: func [t] [
+    either >= t ovm-tick0 [
+        either < t ovm-tick1 [
+            either > block-at ovm-vs 0 ovm-brakespeed [ ovm-block-set! ovm-vs 0 ovm-brakespeed ] [ none ]
+        ] [ none ]
+    ] [ none ]
+]
+
+ovm-step: func [] [
+    ovm-accels 0 ovm-nveh
+    ovm-update 0 ovm-nveh
+    ovm-disturb ovm-tick
+    ovm-tick: + ovm-tick 1
+]
+
+
+
+
+
+
+
+
+ovm-init: func [] [ ovm-init-at 0 ]
+ovm-init-at: func [i] [
+    either < i ovm-nveh [
+        ovm-block-set! ovm-xs i * / ovm-road ovm-nveh i
+        ovm-block-set! ovm-vs i / ovm-vmax 2
+        ovm-init-at + i 1
+    ] [ ovm-tick: 0 ]
+]
+
+ovm-use-moderate: func [] [ ovm-a0n: ovm-a0num  ovm-a0d: ovm-a0den ]
+ovm-use-unstable: func [] [ ovm-a0n: ovm-a0num-unstable  ovm-a0d: ovm-a0den-unstable ]
+
+
+ovm-min-v: func [] [ ovm-minv-at 0 block-at ovm-vs 0 ]
+ovm-minv-at: func [i m] [ either < i ovm-nveh [ ovm-minv-at + i 1 either < block-at ovm-vs i m [ block-at ovm-vs i ] [ m ] ] [ m ] ]
+ovm-max-v: func [] [ ovm-maxv-at 0 block-at ovm-vs 0 ]
+ovm-maxv-at: func [i m] [ either < i ovm-nveh [ ovm-maxv-at + i 1 either > block-at ovm-vs i m [ block-at ovm-vs i ] [ m ] ] [ m ] ]
+ovm-mean-v: func [] [ ovm-meansum 0 0 ]
+ovm-meansum: func [i acc] [ either < i ovm-nveh [ ovm-meansum + i 1 + acc block-at ovm-vs i ] [ / acc ovm-nveh ] ]
+ovm-wave-amplitude: func [] [ - ovm-max-v ovm-min-v ]
+ovm-min-gap: func [] [ ovm-mingap-at 0 ovm-raw-gap ovm-xs 0 ovm-nveh ]
+ovm-mingap-at: func [i m] [
+    either < i ovm-nveh [
+        g: ovm-raw-gap ovm-xs i ovm-nveh
+        ovm-mingap-at + i 1 either < g m [ g ] [ m ]
+    ] [ m ]
+]
+
+
+ovm-advance: func [n] [ either > n 0 [ ovm-step ovm-advance - n 1 ] [ none ] ]
+
+
+ovm-draw-vehicles: func [i n] [
+    either < i n [
+        vis-dot i / block-at ovm-xs i 100 300
+        ovm-draw-vehicles + i 1 n
+    ] [ none ]
+]
+ovm-draw-stats: func [] [
+    emit-text "[FVDM]  tick " emit-int ovm-tick
+    emit-text "    mean " emit-int ovm-mean-v
+    emit-text " cm/s    min " emit-int ovm-min-v
+    emit-text " cm/s    gap " emit-int ovm-min-gap
+    emit-text " cm    "
+    either >= ovm-tick ovm-tick0 [
+        either < ovm-tick ovm-tick1 [ emit-text "BRAKING" ] [ emit-text "free" ]
+    ] [ emit-text "free" ]
+]
+ovm-view: [ ovm-draw-stats ]
+ovm-render: func [] [
+    emit-clear do ovm-view
+    vis-clear vis-line 0 300 1000 300 ovm-draw-vehicles 0 ovm-nveh
+    vis-finish emit-finish
+]
+
+]</script>
+  <script type="application/glon" data-model="nasch" style="display:none">[
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+nasch-loaded: 1
+
+nasch-block-set!: masm 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
+
+
+nasch-ncells: 133     
+nasch-cellcm: 750       
+nasch-nveh: 25
+nasch-vmax-canonical: 5   
+                            
+                            
+                            
+nasch-vmax-lowdensity: 3   
+                            
+                            
+                            
+nasch-vmax: 5              
+                             
+                             
+nasch-tick0: 20          
+nasch-tick1: 22           
+
+
+
+
+
+
+
+
+
+nasch-lcg-a: 101
+nasch-lcg-c: 12345
+nasch-lcg-m: 1048576         
+nasch-pslow-num: 3            
+nasch-pslow-den: 10
+nasch-seed: 1                  
+
+
+
+nasch-mod: func [a m] [
+    r: - a * / a m m
+    either < r 0 [ + r m ] [ r ]
+]
+nasch-rand-next: func [seed] [ nasch-mod + * seed nasch-lcg-a nasch-lcg-c nasch-lcg-m ]
+nasch-init-seed: func [s] [ nasch-seed: s ]
+
+
+nasch-draw-slow: func [] [
+    nasch-seed: nasch-rand-next nasch-seed
+    either < nasch-seed / * nasch-lcg-m nasch-pslow-num nasch-pslow-den [ 1 ] [ 0 ]
+]
+
+
+nasch-pos: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+nasch-vel: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+nasch-vel2: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+nasch-tick: 0
+
+nasch-lead: func [i n] [ either = + i 1 n [ 0 ] [ + i 1 ] ]
+
+
+
+
+nasch-gap: func [i n] [
+    ln: nasch-lead i n
+    d: - block-at nasch-pos ln block-at nasch-pos i
+    d2: either < d 0 [ + d nasch-ncells ] [ d ]
+    - d2 1
+]
+
+
+
+
+
+
+nasch-rule123: func [i n] [
+    either < i n [
+        v: block-at nasch-vel i
+        v1: either < v nasch-vmax [ + v 1 ] [ v ]          
+        g: nasch-gap i n
+        v2: either < v1 g [ v1 ] [ g ]                      
+        v3: either = nasch-draw-slow 1 [ either > v2 0 [ - v2 1 ] [ 0 ] ] [ v2 ]  
+        nasch-block-set! nasch-vel2 i v3
+        nasch-rule123 + i 1 n
+    ] [ none ]
+]
+nasch-rule4: func [i n] [
+    either < i n [
+        v: block-at nasch-vel2 i
+        nasch-block-set! nasch-vel i v
+        p: + block-at nasch-pos i v
+        nasch-block-set! nasch-pos i either >= p nasch-ncells [ - p nasch-ncells ] [ p ]  
+        nasch-rule4 + i 1 n
+    ] [ none ]
+]
+
+
+
+
+
+
+nasch-disturb: func [t] [
+    either >= t nasch-tick0 [
+        either < t nasch-tick1 [ nasch-block-set! nasch-vel 0 0 ] [ none ]
+    ] [ none ]
+]
+
+nasch-step: func [] [
+    nasch-rule123 0 nasch-nveh
+    nasch-rule4 0 nasch-nveh
+    nasch-disturb nasch-tick
+    nasch-tick: + nasch-tick 1
+    nasch-tick
+]
+
+
+
+
+
+
+
+
+
+
+
+
+
+nasch-use-canonical: func [] [ nasch-vmax: nasch-vmax-canonical ]
+nasch-use-lowdensity: func [] [ nasch-vmax: nasch-vmax-lowdensity ]
+nasch-init: func [] [ nasch-init-v-at 0 nasch-vmax ]   
+nasch-init-v-at: func [i v0] [
+    either < i nasch-nveh [
+        nasch-block-set! nasch-pos i / * nasch-ncells i nasch-nveh
+        nasch-block-set! nasch-vel i v0
+        nasch-init-v-at + i 1 v0
+    ] [ nasch-tick: 0 ]
+]
+
+
+
+
+nasch-min-v: func [] [ nasch-minv-at 0 block-at nasch-vel 0 ]
+nasch-minv-at: func [i m] [ either < i nasch-nveh [ nasch-minv-at + i 1 either < block-at nasch-vel i m [ block-at nasch-vel i ] [ m ] ] [ m ] ]
+nasch-max-v: func [] [ nasch-maxv-at 0 block-at nasch-vel 0 ]
+nasch-maxv-at: func [i m] [ either < i nasch-nveh [ nasch-maxv-at + i 1 either > block-at nasch-vel i m [ block-at nasch-vel i ] [ m ] ] [ m ] ]
+nasch-mean-v-cells100: func [] [ nasch-meansum 0 0 ]   
+nasch-meansum: func [i acc] [ either < i nasch-nveh [ nasch-meansum + i 1 + acc * 100 block-at nasch-vel i ] [ / acc nasch-nveh ] ]
+nasch-wave-amplitude: func [] [ - nasch-max-v nasch-min-v ]
+nasch-min-gap: func [] [ nasch-mingap-at 0 nasch-gap 0 nasch-nveh ]
+nasch-mingap-at: func [i m] [
+    either < i nasch-nveh [
+        g: nasch-gap i nasch-nveh
+        nasch-mingap-at + i 1 either < g m [ g ] [ m ]
+    ] [ m ]
+]
+
+
+nasch-advance: func [n] [ either > n 0 [ nasch-step nasch-advance - n 1 ] [ none ] ]
+
+
+nasch-draw-vehicles: func [i n] [
+    either < i n [
+        vis-dot i / * block-at nasch-pos i nasch-cellcm 100 300
+        nasch-draw-vehicles + i 1 n
+    ] [ none ]
+]
+nasch-draw-stats: func [] [
+    emit-text "[NASCH]  tick " emit-int nasch-tick
+    emit-text "    mean(x100) " emit-int nasch-mean-v-cells100
+    emit-text " cells/tick    min " emit-int nasch-min-v
+    emit-text " cells/tick    gap " emit-int nasch-min-gap
+    emit-text " cells    seed " emit-int nasch-seed
+    emit-text "    "
+    either >= nasch-tick nasch-tick0 [
+        either < nasch-tick nasch-tick1 [ emit-text "BRAKING" ] [ emit-text "free" ]
+    ] [ emit-text "free" ]
+]
+nasch-view: [ nasch-draw-stats ]
+nasch-render: func [] [
+    emit-clear do nasch-view
+    vis-clear vis-line 0 300 1000 300 nasch-draw-vehicles 0 nasch-nveh
+    vis-finish emit-finish
+]
+
+]</script>
   <script src="traffic-host.js"></script>
 </body>
 </html>

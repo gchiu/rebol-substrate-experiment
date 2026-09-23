@@ -1,0 +1,64 @@
+[
+;; demo/shop/demos/models-dispatch.glon -- shared Model selector for the
+;; standalone traffic page.
+;;
+;; Loaded AFTER common.glon + traffic.glon (IDM) + newell.glon + ovm.glon +
+;; nasch.glon. It wires all four model families behind one Model/Scenario UI
+;; WITHOUT editing any of the four model files themselves: it redefines the
+;; global `events` word (traffic.glon's own dispatch table for the standalone
+;; page's G1A event bridge) to point at a new table built from each model's
+;; own already-existing, already-tested init/advance/render words. This is
+;; the "small shared interface" PART 5 of the task brief asks for, not a
+;; forced common physics interface -- each model keeps its own state shape
+;; and its own vocabulary; this file only decides WHICH model's words to
+;; call for a given UI action.
+;;
+;; IDM keeps its own Baseline/Pacing scenario, unchanged (do-traffic-mode is
+;; still reachable via 'traffic-mode and is a no-op for the other models,
+;; since they never read `mode`). The other three models expose only
+;; Baseline (brake disturbance) -- PART 6 of the brief: "If the current
+;; pacing intervention is IDM-specific, do not pretend it is meaningful under
+;; all models."
+
+current-model: 'idm
+
+do-model-start: func [] [
+    either = current-model 'idm [ started: 1 init render-traffic-standalone ] [
+    either = current-model 'newell [ newell-init newell-render ] [
+    either = current-model 'ovm [ ovm-init ovm-render ] [
+    nasch-init nasch-init-seed 1 nasch-render ]]]
+]
+do-model-resume: func [] [
+    either = current-model 'idm [ started: 1 render-traffic-standalone ] [
+    either = current-model 'newell [ newell-render ] [
+    either = current-model 'ovm [ ovm-render ] [
+    nasch-render ]]]
+]
+;; advance batch sizes: 5 ticks (0.5 simulated s) for the 0.1 s-tick
+;; continuous models, matching IDM's own convention; 1 tick (1 simulated s)
+;; for NaSch, which has its own coarser 1 s tick (design doc sec 4).
+do-model-advance: func [] [
+    either = current-model 'idm [ do-traffic-advance ] [
+    either = current-model 'newell [ newell-advance 5 newell-render ] [
+    either = current-model 'ovm [ ovm-advance 5 ovm-render ] [
+    nasch-advance 1 nasch-render ]]]
+]
+do-model-reset: func [] [ do-model-start ]
+do-model-set: func [] [
+    either str-eq current-value "newell" [ current-model: 'newell ] [
+    either str-eq current-value "ovm" [ current-model: 'ovm ] [
+    either str-eq current-value "nasch" [ current-model: 'nasch ] [
+    current-model: 'idm ]]]
+    do-model-start
+]
+
+events: [
+    ['traffic-start   [do-model-start]]
+    ['traffic-resume  [do-model-resume]]
+    ['traffic-advance [do-model-advance]]
+    ['traffic-reset   [do-model-reset]]
+    ['traffic-mode    [do-traffic-mode]]    ;; IDM-only Baseline/Pacing selector, unchanged
+    ['traffic-model   [do-model-set]]
+]
+
+]

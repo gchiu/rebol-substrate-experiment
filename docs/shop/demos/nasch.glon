@@ -1,0 +1,209 @@
+[
+;; demo/shop/demos/nasch.glon -- Nagel-Schreckenberg (1992) cellular-automaton
+;; traffic model.
+;;
+;; K. Nagel, M. Schreckenberg, "A cellular automaton model for freeway
+;; traffic", Journal de Physique I 2 (1992). Discrete positions (cells),
+;; discrete velocities (cells/tick), four rules applied synchronously to the
+;; SAME previous-tick snapshot every tick, in this exact published order:
+;;
+;;   1. Acceleration:  if v < vmax: v = v + 1
+;;   2. Safety braking: v = min(v, gap)          (gap in cells to the car ahead)
+;;   3. Randomization:  with probability p: v = max(v - 1, 0)
+;;   4. Movement:       pos = pos + v             (ring-wrapped)
+;;
+;; See GLON-TRAFFIC-MODELS.md sec 4 for the full design note: why this model
+;; gets its own tick duration (1 s, not the continuous models' 0.1 s -- the
+;; canonical NaSch tick is 1 s, and forcing it onto 0.1 s ticks to make tick
+;; counts directly comparable would misrepresent vmax as an unrealistic
+;; speed), the cm-per-cell mapping onto the shared 1 km ring, and sec 4.2 for
+;; the seeded PRNG's exact constants and why they were chosen (bounded-width
+;; safety under Glon's tagged-integer overflow ceiling, not textbook values).
+;;
+;; All names are nasch-prefixed; IDM's demos/traffic.glon is untouched.
+
+nasch-loaded: 1
+
+nasch-block-set!: masm 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
+
+;; ---- parameters ---------------------------------------------------------------
+nasch-ncells: 133     ;; road/750, rounded down; ring is 99750 cm, ~0.25% short of 1 km
+nasch-cellcm: 750       ;; cm per cell (canonical NaSch convention)
+nasch-nveh: 25
+nasch-vmax-canonical: 5   ;; cells/tick (canonical NaSch value; critical density
+                            ;; ncells/(vmax+1) = 22.2 vehicles -- this ring runs 25,
+                            ;; ABOVE critical, so it self-jams at this vmax by
+                            ;; construction; see nasch-vmax and design doc sec 4/8.
+nasch-vmax-lowdensity: 3   ;; sub-critical value (critical count 133/4=33.25 > 25)
+                            ;; used ONLY for the genuinely-stable free-flow control
+                            ;; (Part 2.A); scenarios B/C use the canonical vmax=5,
+                            ;; where the jamming itself is the reported finding.
+nasch-vmax: 5              ;; ACTIVE vmax; mutable so tests can select either set
+                             ;; without a second copy of the file (same pattern as
+                             ;; ovm-a0n/ovm-a0d).
+nasch-tick0: 20          ;; disturbance window, in NaSch's OWN 1 s ticks (~20 s)
+nasch-tick1: 22           ;; ~2 s duration (closest whole-tick approx of 1.5 s)
+
+;; ---- seeded LCG PRNG (application-level, pure Glon; see design doc sec 4.2):
+;; seed' = (seed*A + C) mod M. A=101 (A mod 4 = 1) and C=12345 (odd) satisfy
+;; the Hull-Dobell full-period theorem for the power-of-two modulus M=2^20, so
+;; every seed visits all M states before repeating. The binding constraint was
+;; the largest intermediate value, seed*A (at most (M-1)*101 =~ 105,910,475),
+;; which must stay under a 32-bit tagged Glon cell's ~134,000,000 ceiling
+;; (payload*16 needs 4 spare bits -- see design doc sec 1); a textbook LCG
+;; (e.g. A=1664525, C=1013904223, M=2^32) overflows that by a wide margin.
+nasch-lcg-a: 101
+nasch-lcg-c: 12345
+nasch-lcg-m: 1048576         ;; 2^20
+nasch-pslow-num: 3            ;; p = 3/10 = 0.3 (threshold = (M*3)/10, truncated)
+nasch-pslow-den: 10
+nasch-seed: 1                  ;; current PRNG state; set explicitly by nasch-init-seed
+
+;; mod: a - (a/m)*m, wrapped non-negative (same idiom as newell-mod; needed
+;; here because C division truncates toward zero, not floor).
+nasch-mod: func [a m] [
+    r: - a * / a m m
+    either < r 0 [ + r m ] [ r ]
+]
+nasch-rand-next: func [seed] [ nasch-mod + * seed nasch-lcg-a nasch-lcg-c nasch-lcg-m ]
+nasch-init-seed: func [s] [ nasch-seed: s ]
+;; draw: advances nasch-seed and returns 1 (slow down) or 0, using the NEW
+;; seed as the draw value (standard LCG convention).
+nasch-draw-slow: func [] [
+    nasch-seed: nasch-rand-next nasch-seed
+    either < nasch-seed / * nasch-lcg-m nasch-pslow-num nasch-pslow-den [ 1 ] [ 0 ]
+]
+
+;; ---- state ----------------------------------------------------------------------
+nasch-pos: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+nasch-vel: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+nasch-vel2: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+nasch-tick: 0
+
+nasch-lead: func [i n] [ either = + i 1 n [ 0 ] [ + i 1 ] ]
+
+;; gap in cells to the leader (cells strictly between the two vehicles; a
+;; leader in the very next cell is gap 0). Wrap by sign, same technique as
+;; every continuous model in this lab.
+nasch-gap: func [i n] [
+    ln: nasch-lead i n
+    d: - block-at nasch-pos ln block-at nasch-pos i
+    d2: either < d 0 [ + d nasch-ncells ] [ d ]
+    - d2 1
+]
+
+;; ---- one synchronous tick: rules 1-3 compute every vehicle's NEW velocity
+;; from the PREVIOUS tick's positions/velocities into a scratch block; only
+;; then does rule 4 (movement) commit positions using the new velocities --
+;; the same "compute from a frozen snapshot, then commit" shape as every
+;; other model in this lab, just spread across 3 rules instead of 1 formula. -
+nasch-rule123: func [i n] [
+    either < i n [
+        v: block-at nasch-vel i
+        v1: either < v nasch-vmax [ + v 1 ] [ v ]          ;; 1. acceleration
+        g: nasch-gap i n
+        v2: either < v1 g [ v1 ] [ g ]                      ;; 2. safety braking
+        v3: either = nasch-draw-slow 1 [ either > v2 0 [ - v2 1 ] [ 0 ] ] [ v2 ]  ;; 3. randomization
+        nasch-block-set! nasch-vel2 i v3
+        nasch-rule123 + i 1 n
+    ] [ none ]
+]
+nasch-rule4: func [i n] [
+    either < i n [
+        v: block-at nasch-vel2 i
+        nasch-block-set! nasch-vel i v
+        p: + block-at nasch-pos i v
+        nasch-block-set! nasch-pos i either >= p nasch-ncells [ - p nasch-ncells ] [ p ]  ;; 4. movement
+        nasch-rule4 + i 1 n
+    ] [ none ]
+]
+
+;; disturbance: force vehicle 0 to a dead stop for the window (the discrete
+;; equivalent of the continuous models' speed cap -- v=0 for one tick is the
+;; smallest nonzero disturbance this model's granularity can express as a
+;; hard brake; see design doc sec 4 for why NaSch cannot share the continuous
+;; models' cm/s brakespeed value).
+nasch-disturb: func [t] [
+    either >= t nasch-tick0 [
+        either < t nasch-tick1 [ nasch-block-set! nasch-vel 0 0 ] [ none ]
+    ] [ none ]
+]
+
+nasch-step: func [] [
+    nasch-rule123 0 nasch-nveh
+    nasch-rule4 0 nasch-nveh
+    nasch-disturb nasch-tick
+    nasch-tick: + nasch-tick 1
+    nasch-tick
+]
+
+;; ---- init: uniform, evenly spaced. This ring (25 vehicles in 133 cells)
+;; averages 133/25 = 5.32 cells of spacing, i.e. ~4.3 free cells per vehicle --
+;; already at/above the critical density for vmax=5 (NaSch's own flow is
+;; unstable once average free gap < vmax; the critical count is
+;; ncells/(vmax+1) = 133/6 = 22.2 vehicles, and this lab runs 25). Measured
+;; directly (see design doc sec 4/8): initializing at vmax jams the ring from
+;; pure car-following dynamics alone, with NO disturbance needed -- reported
+;; as the dedicated high-density scenario (Part 2.C), not hidden. A genuinely
+;; free-flow baseline (Part 2.A/B) therefore needs a slower, sub-critical
+;; starting speed; nasch-init-v takes it explicitly instead of hard-coding
+;; vmax, so both scenarios are real, distinct experiments, not the same run
+;; relabelled. -----------------------------------------------------------------------
+nasch-use-canonical: func [] [ nasch-vmax: nasch-vmax-canonical ]
+nasch-use-lowdensity: func [] [ nasch-vmax: nasch-vmax-lowdensity ]
+nasch-init: func [] [ nasch-init-v-at 0 nasch-vmax ]   ;; starts at the ACTIVE vmax; select the set first
+nasch-init-v-at: func [i v0] [
+    either < i nasch-nveh [
+        nasch-block-set! nasch-pos i / * nasch-ncells i nasch-nveh
+        nasch-block-set! nasch-vel i v0
+        nasch-init-v-at + i 1 v0
+    ] [ nasch-tick: 0 ]
+]
+
+;; ---- observables (cells/tick, converted to cm/s for cross-model comparison
+;; via *cellcm; kept as raw cells/tick too since NaSch's own natural unit is
+;; cells, not cm) --------------------------------------------------------------------
+nasch-min-v: func [] [ nasch-minv-at 0 block-at nasch-vel 0 ]
+nasch-minv-at: func [i m] [ either < i nasch-nveh [ nasch-minv-at + i 1 either < block-at nasch-vel i m [ block-at nasch-vel i ] [ m ] ] [ m ] ]
+nasch-max-v: func [] [ nasch-maxv-at 0 block-at nasch-vel 0 ]
+nasch-maxv-at: func [i m] [ either < i nasch-nveh [ nasch-maxv-at + i 1 either > block-at nasch-vel i m [ block-at nasch-vel i ] [ m ] ] [ m ] ]
+nasch-mean-v-cells100: func [] [ nasch-meansum 0 0 ]   ;; mean * 100 (integer-friendly; cells/tick has no room for a plain fraction)
+nasch-meansum: func [i acc] [ either < i nasch-nveh [ nasch-meansum + i 1 + acc * 100 block-at nasch-vel i ] [ / acc nasch-nveh ] ]
+nasch-wave-amplitude: func [] [ - nasch-max-v nasch-min-v ]
+nasch-min-gap: func [] [ nasch-mingap-at 0 nasch-gap 0 nasch-nveh ]
+nasch-mingap-at: func [i m] [
+    either < i nasch-nveh [
+        g: nasch-gap i nasch-nveh
+        nasch-mingap-at + i 1 either < g m [ g ] [ m ]
+    ] [ m ]
+]
+
+;; ---- controls -----------------------------------------------------------------
+nasch-advance: func [n] [ either > n 0 [ nasch-step nasch-advance - n 1 ] [ none ] ]
+
+;; ---- view -----------------------------------------------------------------------
+nasch-draw-vehicles: func [i n] [
+    either < i n [
+        vis-dot i / * block-at nasch-pos i nasch-cellcm 100 300
+        nasch-draw-vehicles + i 1 n
+    ] [ none ]
+]
+nasch-draw-stats: func [] [
+    emit-text "[NASCH]  tick " emit-int nasch-tick
+    emit-text "    mean(x100) " emit-int nasch-mean-v-cells100
+    emit-text " cells/tick    min " emit-int nasch-min-v
+    emit-text " cells/tick    gap " emit-int nasch-min-gap
+    emit-text " cells    seed " emit-int nasch-seed
+    emit-text "    "
+    either >= nasch-tick nasch-tick0 [
+        either < nasch-tick nasch-tick1 [ emit-text "BRAKING" ] [ emit-text "free" ]
+    ] [ emit-text "free" ]
+]
+nasch-view: [ nasch-draw-stats ]
+nasch-render: func [] [
+    emit-clear do nasch-view
+    vis-clear vis-line 0 300 1000 300 nasch-draw-vehicles 0 nasch-nveh
+    vis-finish emit-finish
+]
+
+]
