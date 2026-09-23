@@ -59,17 +59,38 @@
  * more, so the per-task RS was trimmed from 3200 to 3000 cells (still >= 2x the
  * repeat-20 requirement) and the arena base moved up to 54800, giving the
  * loader heap [40000, 54800). The arena still ends at 65000. */
+/* The tuple-space experiment (v0.03) needs more concurrent tasks than the
+ * native M1 tests/demo (which use 3). The defaults below are unchanged for
+ * every existing build; a separate experimental runtime object may override
+ * M1_MAX_TASKS / M1_TASK_CELLS / M1_RS_OFF on the compiler command line
+ * (the values are guarded so the default build is bit-identical in effect). */
+#ifndef M1_TASK_TABLE
 #define M1_TASK_TABLE      65000  /* task records                                 */
+#endif
+#ifndef M1_TASK_REC_SIZE
 #define M1_TASK_REC_SIZE   16     /* cells per task record                        */
+#endif
+#ifndef M1_MAX_TASKS
 #define M1_MAX_TASKS       3      /* fixed task count for M1                      */
+#endif
+#ifndef M1_WRAPPER_DELTA
 #define M1_WRAPPER_DELTA   80     /* wrapper block base = task table base + delta */
                                    /* (task records occupy 65000..65048; wrappers
                                     * live at 65080 + slot*16, in the free region) */
+#endif
 
+#ifndef M1_ARENA_BASE
 #define M1_ARENA_BASE      54800  /* per-task stack arena                         */
+#endif
+#ifndef M1_TASK_CELLS
 #define M1_TASK_CELLS      3400   /* cells per task (400 DS + 3000 RS)            */
+#endif
+#ifndef M1_DS_OFF
 #define M1_DS_OFF          400    /* DS top offset within a task's region         */
+#endif
+#ifndef M1_RS_OFF
 #define M1_RS_OFF          3400   /* RS top offset within a task's region         */
+#endif
 
 /* task record field offsets */
 #define TREC_IP    0

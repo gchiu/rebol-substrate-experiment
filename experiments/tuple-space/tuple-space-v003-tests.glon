@@ -1,0 +1,239 @@
+;; experiments/tuple-space/tuple-space-v003-tests.glon
+;;
+;; v0.03 executable tests.  Concatenated after tuple-space-v003.glon by the
+;; native driver (which also prepends a `collect` raw helper for forced GC).
+;;
+;; Results are accumulated in `checks` (1 = pass, 0 = fail); the program
+;; returns `values [check-count checks]` for the driver to report.
+
+checks: new-block 512
+check-count: 0
+
+check: func [ok] [
+    block-set! checks check-count ok
+    check-count: + check-count 1
+]
+
+repeat: func [n b] [ either > n 0 [ do b  repeat - n 1 b ] [ none ] ]
+
+space-count: func [] [ sc 0 16 ]
+sc: func [i n] [
+    either < i n [
+        either = block-at arena i none [ sc + i 1 n ] [ + 1 sc + i 1 n ]
+    ] [ 0 ]
+]
+
+reset-all: func [] [ reset-tasks  reset-space ]
+
+;; ---- S1: nonblocking matching law -----------------------------------------
+s1: func [] [
+    reset-space
+    out [job 17 pending]
+    r: rd? [job 17 pending]
+    check tuple-match? r [job 17 pending]          ; exact match
+    r: rd? [job 17 running]
+    check = r none                                 ; exact mismatch
+    r: rd? [job * pending]
+    check tuple-match? r [job 17 pending]          ; wildcard
+    r: rd? [job * running]
+    check = r none                                 ; wildcard wrong field
+    r: rd? [job 17]
+    check = r none                                 ; arity too short
+    r: rd? [job 17 pending extra]
+    check = r none                                 ; arity too long
+    r: rd? [job 18 pending]
+    check = r none                                 ; different int
+    r: rd? [job pending pending]
+    check = r none                                 ; type mismatch word/int
+    r: rd? [JOB 17 pending]
+    check = r none                                 ; case-sensitive symbol
+    r: rd? ['job 17 pending]
+    check tuple-match? r [job 17 pending]          ; word-family equivalence
+    r: rd? [* 17 *]
+    check tuple-match? r [job 17 pending]          ; wildcard in several positions
+    r: rd? [job * *]
+    check tuple-match? r [job 17 pending]          ; nested wildcard positions
+]
+
+;; ---- S2: duplicates, oldest match, rd?/in? ---------------------------------
+s2: func [] [
+    reset-space
+    out [x 1]
+    out [x 1]
+    check = space-count 2
+    r: in? [x 1]
+    check tuple-match? r [x 1]
+    check = space-count 1
+    r: rd? [x 1]
+    check tuple-match? r [x 1]
+    check = space-count 1
+    reset-space
+    out [x 1]
+    out [x 2]
+    r: rd? [x *]
+    check tuple-match? r [x 1]                     ; oldest wins
+    r: in? [x *]
+    check tuple-match? r [x 1]
+    r: rd? [x *]
+    check tuple-match? r [x 2]
+]
+
+;; ---- S3: RD/RD/IN/RD fairness (Phase 10) -----------------------------------
+ra3: none rb3: none rc3: none rd3: none
+s3: func [] [
+    reset-all
+    ra3: none rb3: none rc3: none rd3: none
+    ta: spawn [ ra3: rd-wait [x 1] ]
+    tb: spawn [ rb3: rd-wait [x 1] ]
+    tc: spawn [ rc3: in-wait [x 1] ]
+    td: spawn [ rd3: rd-wait [x 1] ]
+    run-tasks
+    out [x 1]
+    run-tasks
+    check tuple-match? ra3 [x 1]
+    check tuple-match? rb3 [x 1]
+    check tuple-match? rc3 [x 1]
+    check = task-waiting td 1                     ; D genuinely still blocked
+    check = space-count 0                          ; C consumed the tuple
+]
+
+;; ---- S4: IN/RD/RD (Phase 11) -----------------------------------------------
+ra4: none rb4: none rc4: none
+s4: func [] [
+    reset-all
+    ra4: none rb4: none rc4: none
+    ta: spawn [ ra4: in-wait [x 1] ]
+    tb: spawn [ rb4: rd-wait [x 1] ]
+    tc: spawn [ rc4: rd-wait [x 1] ]
+    run-tasks
+    out [x 1]
+    run-tasks
+    check tuple-match? ra4 [x 1]
+    check = task-waiting tb 1
+    check = task-waiting tc 1
+    check = space-count 0
+]
+
+;; ---- S5: nonmatching head (Phase 12) ---------------------------------------
+ra5: none rb5: none
+s5: func [] [
+    reset-all
+    ra5: none rb5: none
+    ta: spawn [ ra5: in-wait [x 2] ]
+    tb: spawn [ rb5: in-wait [x 1] ]
+    run-tasks
+    out [x 1]
+    run-tasks
+    check = task-waiting ta 1
+    check tuple-match? rb5 [x 1]
+    check = space-count 0
+]
+
+;; ---- S6: two takers / two tuples (Phase 13) --------------------------------
+ra6: none rb6: none
+s6: func [] [
+    reset-all
+    ra6: none rb6: none
+    ta: spawn [ ra6: in-wait [job *] ]
+    tb: spawn [ rb6: in-wait [job *] ]
+    run-tasks
+    out [job 1]
+    out [job 2]
+    run-tasks
+    check tuple-match? ra6 [job 1]
+    check tuple-match? rb6 [job 2]
+    check = space-count 0
+]
+
+;; ---- S7: true concurrency (Phase 14) ---------------------------------------
+a-stage: 0
+trace7: 0
+rc7: none
+s7: func [] [
+    reset-all
+    a-stage: 0 trace7: 0 rc7: none
+    ta: spawn [
+        out [started a]
+        a-stage: 1
+        in-wait [go a]
+        a-stage: 2
+        out [finished a]
+    ]
+    tb: spawn [
+        out [started b]
+        rd-wait [started a]
+        trace7: a-stage                ; A is blocked at IN: must be 1
+        out [go a]
+        yield
+        rd-wait [finished a]
+        out [finished b]
+    ]
+    tc: spawn [ rc7: rd-wait [finished b] ]
+    run-tasks
+    check = trace7 1                   ; B observed A stopped at IN
+    check = a-stage 2                  ; A resumed after IN and finished
+    check tuple-match? rc7 [finished b]
+]
+
+;; ---- S8: copy ownership ----------------------------------------------------
+s8: func [] [
+    reset-space
+    t: [x 1]
+    out t
+    block-set! t 1 99                  ; mutate caller's tuple after OUT
+    r: rd? [x 1]
+    check tuple-match? r [x 1]         ; stored tuple is unaffected
+    r: rd? [x 99]
+    check = r none
+    reset-space
+    out [x 1]
+    r: rd? [x 1]
+    block-set! r 1 99                  ; mutate returned tuple
+    r2: rd? [x 1]
+    check tuple-match? r2 [x 1]        ; stored tuple is unaffected
+]
+
+;; ---- S9: forced GC while a tuple is stored and while a task is blocked -----
+ra9: none
+s9: func [] [
+    reset-space
+    out [x 1]
+    collect                            ; forced collection (injected helper)
+    r: rd? [x 1]
+    check tuple-match? r [x 1]         ; stored tuple survived GC
+    reset-all
+    ra9: none
+    ta: spawn [ ra9: rd-wait [z 1] ]
+    run-tasks                          ; A is genuinely blocked
+    collect                            ; forced GC with a blocked task
+    out [z 1]
+    run-tasks
+    check tuple-match? ra9 [z 1]       ; blocked task survived GC and resumed
+]
+
+;; ---- S10: OUT rejects unsupported field types ------------------------------
+s10: func [] [
+    reset-space
+    b: [x [1 2]]
+    check = out b 0                    ; block field rejected
+    reset-space
+    b: [x "Beta"]
+    check = out b 0                    ; string-literal form is a block: rejected
+]
+
+;; ---- run everything --------------------------------------------------------
+s1
+s2
+s3
+s4
+s5
+s6
+s7
+s8
+s9
+s10
+
+;; determinism: repeat the three ordering scenarios 20 times each
+repeat 20 [ s3 s4 s5 s6 ]
+
+values [check-count checks]

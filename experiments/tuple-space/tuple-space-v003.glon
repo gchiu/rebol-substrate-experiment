@@ -1,0 +1,484 @@
+;; experiments/tuple-space/tuple-space-v003.glon
+;;
+;; Glon v0.03: deterministic Linda tuple space with REAL cooperative blocking.
+;;
+;; This is the Glon port of the R3 executable specification
+;; (tuple-space-v001.r3 / tuple-space-v002.r3).  Storage, matching, ordering
+;; and copy ownership follow the R3 contract.  The R3 prototype could not
+;; BLOCK a task (Oldes R3 has no cooperative scheduler); here the existing M1
+;; cooperative scheduler supplies blocking, so a task that executes IN really
+;; stops running until OUT publishes a matching tuple.
+;;
+;; What is reused, not reinvented:
+;;   * the M1 task record + context switch (IP/SP/RP/RV_CUR/RV_END/RV_CTX/
+;;     RV_BLK/RV_FRAME), the same mechanism as r0_s1_m1_tests.c;
+;;   * the managed-block primitives from demo/shop/common.glon
+;;     (block-len/block-at/block-set!).
+;;
+;; The one local addition is a per-task WAIT FLAG (task-record cell 9).  A
+;; blocked task keeps STATE = RUNNABLE (0) so the collector still scans it as
+;; a suspended root; the scheduler additionally skips tasks whose wait flag
+;; is set.  This is the smallest local mechanism that makes blocking real
+;; without moving scheduling semantics into C or S1.
+;;
+;; Tuple field value model for v0.03 (explicitly restricted):
+;;   INT, NONE, and the word family (WORD/SET-WORD/GET-WORD/LIT-WORD).
+;; Strings, blocks, closures, contexts and RAW are REJECTED by OUT in v0.03
+;; because their ownership/copy semantics are not yet defined.  See
+;; TUPLE-SPACE-V003.md.
+
+;; ---------------------------------------------------------------------------
+;; Managed-block helpers (same technique as demo/shop/common.glon)
+;; ---------------------------------------------------------------------------
+
+;; new-block: ( capacity -- managed-block ) all cells NONE.  (count=cap)
+new-block: masm 1 [
+    LIT 16 DIV LIT SCRATCH_C !
+    LIT SCRATCH_C @ LIT 2 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL
+    LIT GC_KIND_BLOCK CALL alloc
+    LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT SCRATCH_A @ !
+    LIT 0 LIT SCRATCH_A @ LIT 1 ADD !
+    LIT 0 LIT SCRATCH_B !
+  nb-loop:
+    LIT SCRATCH_B @ LIT SCRATCH_C @ LT ZBRANCH nb-done
+    NONE LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ ADD !
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B !
+    BRANCH nb-loop
+  nb-done:
+    LIT SCRATCH_A @ LIT T_BLOCK ADD ARITY 1 EXIT
+]
+
+;; new-tuple: ( block -- managed-block ) copy of BLOCK's elements (ownership).
+new-tuple: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_B !
+    LIT SCRATCH_B @ LIT 2 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL
+    LIT GC_KIND_BLOCK CALL alloc
+    LIT SCRATCH_C !
+    LIT SCRATCH_B @ LIT SCRATCH_C @ !
+    LIT 0 LIT SCRATCH_C @ LIT 1 ADD !
+    LIT 0 LIT SCRATCH_D !
+  nt-loop:
+    LIT SCRATCH_D @ LIT SCRATCH_B @ LT ZBRANCH nt-done
+    LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_D @ ADD @
+    LIT SCRATCH_C @ LIT 2 ADD LIT SCRATCH_D @ ADD !
+    LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
+    BRANCH nt-loop
+  nt-done:
+    LIT SCRATCH_C @ LIT T_BLOCK ADD ARITY 1 EXIT
+]
+
+block-len: masm 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
+block-at: masm 2 [
+    LIT SCRATCH_B !
+    DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @
+    ARITY 1 EXIT
+]
+block-set!: masm 3 [
+    LIT SCRATCH_C !
+    LIT SCRATCH_B !
+    DUP LIT 16 MOD SUB LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD !
+    ARITY 0 EXIT
+]
+
+;; val-tag: ( value -- tagged tag ).  Returns mk_int(low4) so Glon can compare.
+val-tag: masm 1 [ LIT 16 MOD LIT 16 MUL ARITY 1 EXIT ]
+
+;; ---------------------------------------------------------------------------
+;; Cooperative scheduler (M1 mechanism; MAX_TASKS = 5 for this experiment)
+;; ---------------------------------------------------------------------------
+
+mnew-task: masm 3 [
+    LIT M1_S2 !
+    LIT M1_S1 !
+    DUP LIT 16 MOD SUB LIT M1_S0 !
+    LIT 0 LIT M1_S3 !
+  Lfind:
+    LIT M1_S3 @ LIT 5 LT ZBRANCH Lfull
+    LIT M1_S3 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S4 !
+    LIT M1_S4 @ LIT 8 ADD @ LIT 2 EQ ZBRANCH Lnext
+    BRANCH Lmake
+  Lnext:
+    LIT M1_S3 @ LIT 1 ADD LIT M1_S3 !
+    BRANCH Lfind
+  Lfull:
+    LIT -1 LIT 16 MUL ARITY 1 EXIT
+  Lmake:
+    LIT M1_S4 @ LIT M1_WRAPPER_DELTA ADD LIT M1_S5 !
+    LIT 3 LIT M1_S5 @ !
+    LIT 0 LIT M1_S5 @ LIT 1 ADD !
+    LIT M1_S1 @ LIT M1_S5 @ LIT 2 ADD !
+    LIT M1_S0 @ LIT 6 ADD LIT M1_S5 @ LIT 3 ADD !
+    LIT M1_S2 @ LIT M1_S5 @ LIT 4 ADD !
+    LIT M1_MAIN_ENTRY_CELL @ LIT M1_S4 @ !
+    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_DS_OFF ADD LIT M1_S4 @ LIT TREC_SP ADD !
+    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_RS_OFF ADD LIT M1_S4 @ LIT TREC_RP ADD !
+    LIT M1_S5 @ LIT 2 ADD LIT M1_S4 @ LIT TREC_CUR ADD !
+    LIT M1_S5 @ LIT 5 ADD LIT M1_S4 @ LIT TREC_END ADD !
+    LIT RV_CTX @ LIT M1_S4 @ LIT TREC_CTX ADD !
+    LIT M1_S5 @ LIT M1_S4 @ LIT TREC_BLK ADD !
+    LIT 0 LIT M1_S4 @ LIT TREC_FRAME ADD !
+    LIT 0 LIT M1_S4 @ LIT TREC_STATE ADD !
+    LIT 0 LIT M1_S4 @ LIT 9 ADD !
+    LIT M1_S4 @ LIT 16 MUL ARITY 1 EXIT
+]
+
+;; yield: task -> scheduler, state unchanged.
+yield: masm [
+    NONE LIT 16
+    LIT REG_RP @ @ LIT M1_CUR_TASK @ LIT TREC_IP ADD !
+    LIT REG_SP @ LIT M1_CUR_TASK @ LIT TREC_SP ADD !
+    LIT REG_RP @ LIT M1_CUR_TASK @ LIT TREC_RP ADD !
+    LIT RV_CUR @ LIT M1_CUR_TASK @ LIT TREC_CUR ADD !
+    LIT RV_END @ LIT M1_CUR_TASK @ LIT TREC_END ADD !
+    LIT RV_CTX @ LIT M1_CUR_TASK @ LIT TREC_CTX ADD !
+    LIT RV_BLK @ LIT M1_CUR_TASK @ LIT TREC_BLK ADD !
+    LIT RV_FRAME @ LIT M1_CUR_TASK @ LIT TREC_FRAME ADD !
+    LIT M1_SCHED_REC LIT 1 ADD @ LIT REG_SP !
+    LIT M1_SCHED_REC LIT 2 ADD @ LIT REG_RP !
+    LIT M1_SCHED_REC LIT 3 ADD @ LIT RV_CUR !
+    LIT M1_SCHED_REC LIT 4 ADD @ LIT RV_END !
+    LIT M1_SCHED_REC LIT 5 ADD @ LIT RV_CTX !
+    LIT M1_SCHED_REC LIT 6 ADD @ LIT RV_BLK !
+    LIT M1_SCHED_REC LIT 7 ADD @ LIT RV_FRAME !
+    LIT M1_SCHED_REC LIT 0 ADD @ LIT REG_IP !
+]
+
+;; task-block: like yield, but sets the wait flag and keeps STATE runnable
+;; (so the collector still treats the task as a suspended root).
+task-block: masm [
+    NONE LIT 16
+    LIT REG_RP @ @ LIT M1_CUR_TASK @ LIT TREC_IP ADD !
+    LIT REG_SP @ LIT M1_CUR_TASK @ LIT TREC_SP ADD !
+    LIT REG_RP @ LIT M1_CUR_TASK @ LIT TREC_RP ADD !
+    LIT RV_CUR @ LIT M1_CUR_TASK @ LIT TREC_CUR ADD !
+    LIT RV_END @ LIT M1_CUR_TASK @ LIT TREC_END ADD !
+    LIT RV_CTX @ LIT M1_CUR_TASK @ LIT TREC_CTX ADD !
+    LIT RV_BLK @ LIT M1_CUR_TASK @ LIT TREC_BLK ADD !
+    LIT RV_FRAME @ LIT M1_CUR_TASK @ LIT TREC_FRAME ADD !
+    LIT 1 LIT M1_CUR_TASK @ LIT 9 ADD !
+    LIT M1_SCHED_REC LIT 1 ADD @ LIT REG_SP !
+    LIT M1_SCHED_REC LIT 2 ADD @ LIT REG_RP !
+    LIT M1_SCHED_REC LIT 3 ADD @ LIT RV_CUR !
+    LIT M1_SCHED_REC LIT 4 ADD @ LIT RV_END !
+    LIT M1_SCHED_REC LIT 5 ADD @ LIT RV_CTX !
+    LIT M1_SCHED_REC LIT 6 ADD @ LIT RV_BLK !
+    LIT M1_SCHED_REC LIT 7 ADD @ LIT RV_FRAME !
+    LIT M1_SCHED_REC LIT 0 ADD @ LIT REG_IP !
+]
+
+task-finish: masm [
+    LIT 1 LIT M1_CUR_TASK @ LIT TREC_STATE ADD !
+    LIT M1_SCHED_REC LIT 1 ADD @ LIT REG_SP !
+    LIT M1_SCHED_REC LIT 2 ADD @ LIT REG_RP !
+    LIT M1_SCHED_REC LIT 3 ADD @ LIT RV_CUR !
+    LIT M1_SCHED_REC LIT 4 ADD @ LIT RV_END !
+    LIT M1_SCHED_REC LIT 5 ADD @ LIT RV_CTX !
+    LIT M1_SCHED_REC LIT 6 ADD @ LIT RV_BLK !
+    LIT M1_SCHED_REC LIT 7 ADD @ LIT RV_FRAME !
+    LIT M1_SCHED_REC LIT 0 ADD @ LIT REG_IP !
+]
+
+;; run-tasks: deterministic round-robin over STATE==RUNNABLE and waitflag==0.
+run-tasks: masm [
+    LIT REG_IP @ LIT 11 ADD LIT M1_SCHED_REC LIT 0 ADD !
+    LIT REG_SP @ LIT M1_SCHED_REC LIT 1 ADD !
+    LIT REG_RP @ LIT M1_SCHED_REC LIT 2 ADD !
+    LIT RV_CUR @ LIT M1_SCHED_REC LIT 3 ADD !
+    LIT RV_END @ LIT M1_SCHED_REC LIT 4 ADD !
+    LIT RV_CTX @ LIT M1_SCHED_REC LIT 5 ADD !
+    LIT RV_BLK @ LIT M1_SCHED_REC LIT 6 ADD !
+    LIT RV_FRAME @ LIT M1_SCHED_REC LIT 7 ADD !
+    LIT M1_CURSOR @ LIT M1_S7 !
+    LIT 0 LIT M1_S8 !
+  Lscan:
+    LIT M1_S8 @ LIT 5 LT ZBRANCH Ldone
+    LIT M1_S7 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S6 !
+    LIT M1_S6 @ LIT TREC_STATE ADD @ LIT 0 NE ZBRANCH Lchk
+    BRANCH Lskip
+  Lchk:
+    LIT M1_S6 @ LIT 9 ADD @ LIT 0 NE ZBRANCH Lfound
+  Lskip:
+    LIT M1_S7 @ LIT 1 ADD LIT 5 MOD LIT M1_S7 !
+    LIT M1_S8 @ LIT 1 ADD LIT M1_S8 !
+    BRANCH Lscan
+  Ldone:
+    NONE LIT 16 EXIT
+  Lfound:
+    LIT M1_S6 @ LIT M1_CUR_TASK !
+    LIT M1_S7 @ LIT 1 ADD LIT 5 MOD LIT M1_CURSOR !
+    LIT M1_CUR_TASK @ LIT 1 ADD @ LIT REG_SP !
+    LIT M1_CUR_TASK @ LIT 2 ADD @ LIT REG_RP !
+    LIT M1_CUR_TASK @ LIT 3 ADD @ LIT RV_CUR !
+    LIT M1_CUR_TASK @ LIT 4 ADD @ LIT RV_END !
+    LIT M1_CUR_TASK @ LIT 5 ADD @ LIT RV_CTX !
+    LIT M1_CUR_TASK @ LIT 6 ADD @ LIT RV_BLK !
+    LIT M1_CUR_TASK @ LIT 7 ADD @ LIT RV_FRAME !
+    LIT M1_CUR_TASK @ LIT 0 ADD @ LIT REG_IP !
+]
+
+reset-tasks: masm [
+    LIT 0 LIT M1_S3 !
+  Rsloop:
+    LIT M1_S3 @ LIT 5 LT ZBRANCH Rsdone
+    LIT 2 LIT M1_S3 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT TREC_STATE ADD !
+    LIT M1_S3 @ LIT 1 ADD LIT M1_S3 !
+    BRANCH Rsloop
+  Rsdone:
+    LIT 0 LIT M1_CURSOR !
+    ARITY 0 EXIT
+]
+
+;; cur-task: ( -- handle ) current task record as a tagged integer.
+cur-task: masm [ LIT M1_CUR_TASK @ LIT 16 MUL ARITY 1 EXIT ]
+;; task-waiting: ( handle -- 1|0 ) wait flag of a task record.
+task-waiting: masm 1 [ LIT 16 DIV LIT 9 ADD @ LIT 16 MUL ARITY 1 EXIT ]
+
+;; task-deliver: ( taskhandle tupleblock -- ) copy tuple fields into the task's
+;; result cells (10 = arity, 11..15 = up to five fields) and clear the wait flag.
+task-deliver: masm 2 [
+    LIT SCRATCH_A !
+    LIT SCRATCH_B !
+    LIT SCRATCH_B @ LIT 16 DIV LIT SCRATCH_C !
+    LIT SCRATCH_A @ DUP LIT 16 MOD SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_D !
+    LIT SCRATCH_D @ LIT 16 MUL LIT SCRATCH_C @ LIT 10 ADD !
+    LIT 0 LIT SCRATCH_E !
+  tdloop:
+    LIT SCRATCH_E @ LIT SCRATCH_D @ LT ZBRANCH tddone
+    LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_E @ ADD @
+    LIT SCRATCH_C @ LIT 11 ADD LIT SCRATCH_E @ ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    BRANCH tdloop
+  tddone:
+    LIT 0 LIT SCRATCH_C @ LIT 9 ADD !
+    ARITY 0 EXIT
+]
+
+;; task-result: ( -- managed-block ) the result delivered to the current task.
+task-result: masm [
+    LIT M1_CUR_TASK @ LIT 10 ADD @ LIT 16 DIV LIT SCRATCH_A !
+    LIT SCRATCH_A @ LIT 2 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL
+    LIT GC_KIND_BLOCK CALL alloc
+    LIT SCRATCH_B !
+    LIT SCRATCH_A @ LIT SCRATCH_B @ !
+    LIT 0 LIT SCRATCH_B @ LIT 1 ADD !
+    LIT 0 LIT SCRATCH_C !
+  trloop:
+    LIT SCRATCH_C @ LIT SCRATCH_A @ LT ZBRANCH trdone
+    LIT M1_CUR_TASK @ LIT 11 ADD LIT SCRATCH_C @ ADD @
+    LIT SCRATCH_B @ LIT 2 ADD LIT SCRATCH_C @ ADD !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    BRANCH trloop
+  trdone:
+    LIT SCRATCH_B @ LIT T_BLOCK ADD ARITY 1 EXIT
+]
+
+spawn: func [body] [ mnew-task body 'do 'task-finish ]
+
+;; ---------------------------------------------------------------------------
+;; Tuple space
+;; ---------------------------------------------------------------------------
+
+arena:   new-block 16
+waiters: new-block 16
+arena-used:  0
+waiter-tail: 0
+wildcard: '*
+t-int: 0  t-none: 1  t-word: 2  t-set: 3  t-get: 4  t-lit: 5
+
+fill-none: func [blk i n] [
+    either < i n [ block-set! blk i none  fill-none blk + i 1 n ] [ none ]
+]
+
+reset-space: func [ ] [
+    fill-none arena 0 16
+    fill-none waiters 0 16
+    arena-used: 0
+    waiter-tail: 0
+]
+
+field-ok?: func [v] [
+    t: val-tag v
+    either = t t-int  [ 1 ] [
+    either = t t-none [ 1 ] [
+    either = t t-word [ 1 ] [
+    either = t t-set  [ 1 ] [
+    either = t t-get  [ 1 ] [
+    either = t t-lit  [ 1 ] [ 0 ] ]]]]]
+]
+
+fields-ok?: func [b i n] [
+    either < i n [
+        either field-ok? block-at b i [ fields-ok? b + i 1 n ] [ 0 ]
+    ] [ 1 ]
+]
+
+tuple-ok?: func [b] [
+    n: block-len b
+    either = n 0 [ 0 ] [ either > n 5 [ 0 ] [ fields-ok? b 0 n ] ]
+]
+
+;; field equality: wildcard matches anything; otherwise Glon '=' (type-safe
+;; identity: word-family by symbol id, ints/none by tagged value).
+tuple-match?: func [t p] [
+    either = block-len t block-len p [
+        match-at t p 0 block-len p
+    ] [ 0 ]
+]
+match-at: func [t p i n] [
+    either < i n [
+        pv: block-at p i
+        either = pv wildcard [
+            match-at t p + i 1 n
+        ] [
+            either = pv block-at t i [ match-at t p + i 1 n ] [ 0 ]
+        ]
+    ] [ 1 ]
+]
+
+arena-free: func [i n] [
+    either < i n [
+        either = block-at arena i none [ i ] [ arena-free + i 1 n ]
+    ] [ n ]
+]
+
+rd?: func [pattern] [ rd-from 0 arena-used pattern ]
+rd-from: func [i n pattern] [
+    either < i n [
+        t: block-at arena i
+        either = t none [
+            rd-from + i 1 n pattern
+        ] [
+            either tuple-match? t pattern [ new-tuple t ] [ rd-from + i 1 n pattern ]
+        ]
+    ] [ none ]
+]
+
+in?: func [pattern] [ in-from 0 arena-used pattern ]
+in-from: func [i n pattern] [
+    either < i n [
+        t: block-at arena i
+        either = t none [
+            in-from + i 1 n pattern
+        ] [
+            either tuple-match? t pattern [
+                r: new-tuple t
+                block-set! arena i none
+                r
+            ] [ in-from + i 1 n pattern ]
+        ]
+    ] [ none ]
+]
+
+copy-fields: func [src dst i n] [
+    either < i n [
+        block-set! dst + 3 i block-at src i
+        copy-fields src dst + i 1 n
+    ] [ none ]
+]
+
+add-waiter: func [op pattern task] [
+    j: waiter-tail
+    either < j 16 [
+        w: new-block 9
+        block-set! w 0 1
+        block-set! w 1 op
+        block-set! w 2 block-len pattern
+        copy-fields pattern w 0 block-len pattern
+        block-set! w 8 task
+        block-set! waiters j w
+        waiter-tail: + j 1
+        j
+    ] [ 0 ]
+]
+
+waiter-tuple-match?: func [w t] [
+    either = block-at w 2 block-len t [
+        wmatch-at w t 0 block-at w 2
+    ] [ 0 ]
+]
+wmatch-at: func [w t i n] [
+    either < i n [
+        pv: block-at w + 3 i
+        either = pv wildcard [
+            wmatch-at w t + i 1 n
+        ] [
+            either = pv block-at t i [ wmatch-at w t + i 1 n ] [ 0 ]
+        ]
+    ] [ 1 ]
+]
+
+find-match: func [j n w] [
+    either < j n [
+        t: block-at arena j
+        either = t none [
+            find-match + j 1 n w
+        ] [
+            either waiter-tuple-match? w t [ t ] [ find-match + j 1 n w ]
+        ]
+    ] [ none ]
+]
+
+clear-tuple: func [t] [ clear-i 0 arena-used t ]
+clear-i: func [i n t] [
+    either < i n [
+        either = block-at arena i t [ block-set! arena i none ] [ none ]
+        clear-i + i 1 n t
+    ] [ none ]
+]
+
+serve-i: func [i n] [
+    either < i n [
+        w: block-at waiters i
+        either = w none [ none ] [
+            either = block-at w 0 1 [
+                t: find-match 0 arena-used w
+                either = t none [ none ] [
+                    task-deliver block-at w 8 t
+                    either = block-at w 1 1 [ clear-tuple t ] [ none ]
+                    block-set! w 0 2
+                ]
+            ] [ none ]
+        ]
+        serve-i + i 1 n
+    ] [ none ]
+]
+
+serve-waiters: func [ ] [ serve-i 0 waiter-tail ]
+
+out: func [tuple] [
+    either tuple-ok? tuple [
+        j: arena-free 0 arena-used
+        either < j 16 [
+            block-set! arena j new-tuple tuple
+            either >= j arena-used [ arena-used: + j 1 ] [ none ]
+            serve-waiters
+            1
+        ] [ 0 ]
+    ] [ 0 ]
+]
+
+;; Blocking RD / IN.  Register the waiter, run the deterministic service pass
+;; (which completes it immediately if a match already exists), otherwise block
+;; the current task until OUT serves it.  Serving writes the result into the
+;; task's record cells, which task-result then turns into a tuple block.
+waiter-state: func [j] [ block-at block-at waiters j 0 ]
+
+rd-wait: func [pattern] [
+    either tuple-ok? pattern [
+        j: add-waiter 0 pattern cur-task
+        serve-waiters
+        either = waiter-state j 2 [ task-result ] [ task-block  task-result ]
+    ] [ none ]
+]
+
+in-wait: func [pattern] [
+    either tuple-ok? pattern [
+        j: add-waiter 1 pattern cur-task
+        serve-waiters
+        either = waiter-state j 2 [ task-result ] [ task-block  task-result ]
+    ] [ none ]
+]
