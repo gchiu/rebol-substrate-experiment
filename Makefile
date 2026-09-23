@@ -209,6 +209,15 @@ wasm-linda-test: demo/shop/glon.wasm linda.html
 	@grep -q "LINDA_TEST PASS" /tmp/opencode_linda_test.out && \
 	 echo "wasm-linda-test: PASS (embedded source / reset / A blocks at IN / B runs while A blocked / OUT wakes A / A resumes after IN / all finish / deterministic)"
 
+# ---- WASM regression: closure-origin binding law + CASE vocabulary ----------
+# The G1E/traffic/Linda/web suites do not exercise CASE or the closure-origin
+# binding law, so this probe loads bootstrap.glon + case.glon into the real
+# demo/shop/glon.wasm and runs the native r0_s1_case_tests.c scenarios.
+wasm-binding-test: demo/shop/glon.wasm
+	node demo/shop/binding_case_wasm_test.js | tee /tmp/opencode_binding_test.out
+	@grep -q "BINDING_CASE_WASM_TEST PASS" /tmp/opencode_binding_test.out && \
+	 echo "wasm-binding-test: PASS (closure-origin binding law + CASE on real WASM)"
+
 # ---- Traffic simulator benchmark (post-Alpha application; no language change) -
 # load-once benchmark of the IDM sim. Builds both the shipped -O0 runtime and a
 # directly-compiled -O2 runtime so interpreter cost can be separated from C
@@ -221,4 +230,4 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test
