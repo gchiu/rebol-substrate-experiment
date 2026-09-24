@@ -1,0 +1,122 @@
+<!doctype html>
+<!-- site/index.html: the authoritative source of the published site root.
+     The Pages workflow (.github/workflows/deploy-pages.yml) copies it verbatim
+     to docs/index.html on main. Plain HTML/CSS: no scripts, fonts or tracking. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glon Programming Language</title>
+<meta name="description" content="Glon is a small experimental programming language inspired by the Rebol family. Try it in your browser: it runs interactively in WebAssembly.">
+<link rel="canonical" href="https://gchiu.github.io/rebol-substrate-experiment/">
+<style>
+  :root { --fg: #16181d; --muted: #5d6470; --bg: #fdfdfc; --panel: #f3f4f6; --line: #d9dce1;
+          --accent: #2456a6; --code: #eceef2; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e6e8ec; --muted: #9aa1ad; --bg: #15171b; --panel: #1e2127; --line: #333842;
+            --accent: #7fa7ec; --code: #262a31; }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; line-height: 1.55; max-width: 820px; margin: 0 auto;
+         padding: 2rem 16px 4rem; color: var(--fg); background: var(--bg); }
+  h1 { font-size: 2.4rem; margin: 0 0 0.3rem; letter-spacing: -0.01em; }
+  h2 { font-size: 1.2rem; margin: 2.4rem 0 0.6rem; }
+  .lede { font-size: 1.2rem; margin: 0 0 1rem; }
+  .muted { color: var(--muted); }
+  a { color: var(--accent); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92rem; }
+  code { background: var(--code); padding: 0 0.25rem; border-radius: 3px; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+        padding: 0.75rem 1rem; overflow-x: auto; line-height: 1.45; }
+  pre .res { color: var(--muted); }
+  .cta { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem;
+         margin: 1.5rem 0 0.5rem; padding: 0; list-style: none; }
+  .cta a { display: block; height: 100%; padding: 0.9rem 1rem; border: 1px solid var(--line);
+           border-radius: 8px; background: var(--panel); text-decoration: none; color: var(--fg); }
+  .cta a:hover, .cta a:focus-visible { border-color: var(--accent); }
+  .cta strong { display: block; color: var(--accent); font-size: 1.05rem; }
+  .cta span { display: block; color: var(--muted); font-size: 0.9rem; }
+  .cta .first a { border-color: var(--accent); }
+  ul.plain { padding-left: 1.2rem; }
+  ul.plain li { margin: 0.25rem 0; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Glon</h1>
+  <p class="lede">Glon is a small experimental programming language inspired by the Rebol family.</p>
+  <p>It runs interactively in WebAssembly, right in this browser. Code is made of
+     blocks, words and values; functions are lexically bound closures; programs can
+     run as cooperative tasks; and failures are first-class <code>SIN!</code> values
+     that you <code>raise</code> and <code>judge</code>.</p>
+</header>
+
+<main>
+<section aria-labelledby="try">
+  <h2 id="try">Try it</h2>
+  <ul class="cta">
+    <li class="first"><a href="shop/primer.html">
+      <strong>Saturnine &mdash; A Glonbook</strong>
+      <span>Glon in 5 minutes: edit and run every example live</span></a></li>
+    <li><a href="shop/traffic.html">
+      <strong>Traffic simulator</strong>
+      <span>Four car-following models, written in Glon</span></a></li>
+    <li><a href="https://github.com/gchiu/rebol-substrate-experiment">
+      <strong>Source code</strong>
+      <span>The runtime, the language laws and the tests</span></a></li>
+  </ul>
+  <p class="muted">New to Glon? Start with Saturnine. Every example there runs in a fresh
+     Glon WebAssembly runtime, and you can change it and run it again.</p>
+</section>
+
+<section aria-labelledby="taste">
+  <h2 id="taste">A first taste</h2>
+  <p>Calls are prefix and take a fixed number of arguments, so no parentheses are needed:</p>
+<pre><code>double: func [x] [
+    * x 2
+]
+double 21
+<span class="res">;; =&gt; 42</span></code></pre>
+</section>
+
+<section aria-labelledby="what">
+  <h2 id="what">What Glon has today</h2>
+  <ul class="plain">
+    <li><strong>Blocks and words.</strong> A block is data until something evaluates it.</li>
+    <li><strong>Lexical binding and closures.</strong> A function keeps the context it was
+        made in; a block that depends on a call may not escape that call.</li>
+    <li><strong>Cooperative tasks.</strong> <code>spawn</code>, <code>yield</code> and
+        <code>run-tasks</code> interleave work deterministically.</li>
+    <li><strong><code>SIN!</code>, <code>raise</code> and <code>judge</code>.</strong>
+        Creating a sin is harmless. Raising it causes trouble. Judgment permits
+        execution to continue.</li>
+    <li><strong>Executable laws.</strong> The language is developed against written
+        laws and a native test suite, and the browser examples are tested too.</li>
+    <li><strong>Real programs.</strong> The traffic simulator runs IDM, Newell, OVM/FVDM
+        and NaSch models in Glon, in the browser.</li>
+  </ul>
+  <p>Glon is a place for gloriously hacking both the code and the language. It is an
+     experiment: expect sharp edges, and expect it to change.</p>
+</section>
+
+<section aria-labelledby="more">
+  <h2 id="more">More to read and run</h2>
+  <ul class="plain">
+    <li><a href="https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/GLON-PRIMER.md">Glon primer (Markdown)</a>
+        &mdash; the same lessons as Saturnine, readable on GitHub</li>
+    <li><a href="https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/GLON-ALPHA-LAWS.md">Glon Alpha language laws</a>
+        &mdash; the normative rules</li>
+    <li><a href="shop/linda.html">Linda demo</a> &mdash; cooperative tasks blocking and waking on a tuple space</li>
+    <li><a href="shop/">Glon demo launcher</a> &mdash; a small shop and more demos, loaded on demand</li>
+    <li><a href="r0-counter.html">Early R0/S1 counter demo</a> &mdash; where the WebAssembly work began</li>
+  </ul>
+</section>
+</main>
+
+<footer class="muted">
+  Glon is an open experiment. Source, issues and history:
+  <a href="https://github.com/gchiu/rebol-substrate-experiment">github.com/gchiu/rebol-substrate-experiment</a>.
+</footer>
+</body>
+</html>

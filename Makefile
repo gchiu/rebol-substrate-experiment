@@ -121,14 +121,15 @@ WASM_FLAGS = -O1 -s ALLOW_MEMORY_GROWTH=1 \
 	--embed-file web/demo.r0@demo.r0 \
 	-I.
 
-wasm: web/demo.js docs/index.html
+wasm: web/demo.js docs/r0-counter.html
 
 web/demo.js: web/demo.c web/demo.r0 web/glue.js s1.c s1.h r0_s1_runtime.c r0_s1.h
 	$(EMCC) $(WASM_FLAGS) web/demo.c s1.c r0_s1_runtime.c -o web/demo.js
 
-# generate the static source listings in docs/index.html from demo.r0/glue.js
-# (no JavaScript fetches or renders the source)
-docs/index.html: web/demo.r0 web/glue.js web/build-docs.py web/demo.js web/demo.wasm
+# generate the static source listings in docs/r0-counter.html from demo.r0/glue.js
+# (no JavaScript fetches or renders the source). The site root, docs/index.html,
+# is the Glon landing page: site/index.html, published by the Pages workflow.
+docs/r0-counter.html: web/demo.r0 web/glue.js web/build-docs.py web/demo.js web/demo.wasm
 	python3 web/build-docs.py
 
 # headless verification under node (no browser/DOM required)

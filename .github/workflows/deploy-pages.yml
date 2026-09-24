@@ -1,13 +1,16 @@
-# Build the G1E shop WASM with Emscripten and publish it under the existing
-# GitHub Pages site (branch-mode: docs/ served from `main`).
+# Build the G1E shop WASM with Emscripten and publish the Glon site on the
+# existing GitHub Pages site (branch-mode: docs/ served from `main`):
 #
-# The existing R0/S1 counter demo (docs/index.html + demo.js/demo.wasm) and the
-# W2 standalone demo (docs/standalone.html + glon.js/glon.wasm) are left
-# untouched. The shop is added under docs/shop/:
-#
+#   site/index.html     ->  docs/index.html       (the Glon landing page)
+#   docs/r0-counter.html + demo.js/demo.wasm      (the early R0/S1 counter demo,
+#                                                  formerly the site root)
 #   demo/shop/app.html  ->  docs/shop/index.html
 #   demo/shop/host.js   ->  docs/shop/host.js
 #   demo/shop/glon.wasm ->  docs/shop/glon.wasm   (built here by Emscripten)
+#   ... and the standalone traffic, Linda and Saturnine primer pages.
+#
+# The W2 standalone demo (docs/standalone.html + glon.js/glon.wasm) is left
+# untouched. site/check-site.py verifies the assembled tree before publishing.
 #
 # The WASM is built fresh on every run (no committed stale binary); the built
 # binary is committed back to main's docs/shop/ so the existing branch-mode
@@ -92,17 +95,20 @@ jobs:
           ref: main
           path: pages
 
-      - name: Publish docs/shop/ to main
+      - name: Publish the site to main
         run: |
+          mkdir -p pages/docs/shop
+          cp -r /tmp/shop/. pages/docs/shop/
+          cp site/index.html pages/docs/index.html
+          cp docs/r0-counter.html docs/demo.js docs/demo.wasm pages/docs/
+          python3 site/check-site.py pages/docs
           cd pages
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          mkdir -p docs/shop
-          cp -r /tmp/shop/. docs/shop/
-          git add docs/shop
+          git add docs/shop docs/index.html docs/r0-counter.html docs/demo.js docs/demo.wasm
           if git diff --cached --quiet; then
-            echo "docs/shop unchanged; nothing to commit"
+            echo "docs/ unchanged; nothing to commit"
           else
-            git commit -m "Publish G1E demo launcher (built WASM) to docs/shop"
+            git commit -m "Publish the Glon site (landing page and built demos) to docs/"
             git push origin HEAD:main
           fi

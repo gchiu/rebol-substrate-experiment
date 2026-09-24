@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Generate the public GitHub Pages page (docs/index.html) from the single
-authoritative R0 source web/demo.r0.
+"""Generate the early R0/S1 counter demo page (docs/r0-counter.html) from the
+single authoritative R0 source web/demo.r0. (It was the site root until the
+Glon landing page, site/index.html, took over docs/index.html.)
 
 The two logical sections of demo.r0 are marked with line comments:
 
@@ -8,7 +9,7 @@ The two logical sections of demo.r0 are marked with line comments:
     ;; @section raw
 
 This script reads those sections, HTML-escapes them, and emits STATIC
-<pre><code> listings into docs/index.html.  No JavaScript fetches or renders
+<pre><code> listings into docs/r0-counter.html.  No JavaScript fetches or renders
 the source.  It also copies the built demo.js / demo.wasm into docs/.
 """
 import html
@@ -120,7 +121,7 @@ def main():
 </html>
 """.format(app=app_block, raw=raw_block, glue=glue_block)
 
-    (DOCS / "index.html").write_text(page)
+    (DOCS / "r0-counter.html").write_text(page)
 
     # publish the built artifacts alongside the page
     for name in ("demo.js", "demo.wasm"):
@@ -130,7 +131,7 @@ def main():
         else:
             sys.exit(f"build-docs: missing {name} (run `make wasm` first)")
 
-    print("build-docs: generated docs/index.html (+ demo.js, demo.wasm)")
+    print("build-docs: generated docs/r0-counter.html (+ demo.js, demo.wasm)")
 
 
 if __name__ == "__main__":
