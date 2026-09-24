@@ -3567,6 +3567,9 @@ int  r0_s1_uncaught_error(cell *type, cell *id, cell *arg) {
     if (arg) *arg = a;
     return 1;
 }
+const char *r0_s1_sym_name(cell id) {
+    return (id >= 0 && id < nsyms) ? syms[id] : 0;
+}
 int  r0_s1_stack_sentry_fired(void){ return stack_sentry_fired; }
 cell r0_s1_sp_start(void) { return sp_start; }
 cell r0_s1_sp_end(void)   { return sp_end; }

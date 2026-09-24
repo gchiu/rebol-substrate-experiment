@@ -1,7 +1,7 @@
 CC      ?= cc
 CFLAGS  ?= -std=c17 -Wall -Wextra -O0 -g
 
-OBJS = s1.o tests.o adversarial.o claims.o r0.o r0_tests.o r0_s1_runtime.o r0_s1_g1a.o r0_s1_tests.o r0_s1_debug_tests.o r0_s1_m1_tests.o r0_s1_m2_tests.o r0_s1_m3_tests.o r0_s1_m3b_tests.o r0_s1_m3c_tests.o r0_s1_m3d_tests.o r0_s1_nested_closure_tests.o r0_s1_p4_tests.o r0_s1_p5_tests.o r0_s1_g1a_tests.o r0_s1_g1b_tests.o r0_s1_g1c_tests.o r0_s1_g1d_tests.o r0_s1_g1e_tests.o r0_s1_lambda_tests.o r0_s1_masm_tests.o r0_s1_gc_safepoint_tests.o r0_s1_invoke_tests.o r0_s1_reduce_tests.o r0_s1_parse_tests.o r0_s1_equality_tests.o r0_s1_bound_tests.o r0_s1_case_tests.o r0_s1_escape_law_tests.o r0_s1_error_tests.o r0_s1_traffic_tests.o r0_s1_newell_tests.o r0_s1_ovm_tests.o r0_s1_nasch_tests.o main.o
+OBJS = s1.o tests.o adversarial.o claims.o r0.o r0_tests.o r0_s1_runtime.o r0_s1_g1a.o r0_s1_tests.o r0_s1_debug_tests.o r0_s1_m1_tests.o r0_s1_m2_tests.o r0_s1_m3_tests.o r0_s1_m3b_tests.o r0_s1_m3c_tests.o r0_s1_m3d_tests.o r0_s1_nested_closure_tests.o r0_s1_p4_tests.o r0_s1_p5_tests.o r0_s1_g1a_tests.o r0_s1_g1b_tests.o r0_s1_g1c_tests.o r0_s1_g1d_tests.o r0_s1_g1e_tests.o r0_s1_lambda_tests.o r0_s1_masm_tests.o r0_s1_gc_safepoint_tests.o r0_s1_invoke_tests.o r0_s1_reduce_tests.o r0_s1_parse_tests.o r0_s1_equality_tests.o r0_s1_bound_tests.o r0_s1_case_tests.o r0_s1_escape_law_tests.o r0_s1_error_tests.o r0_s1_show.o r0_s1_primer_tests.o r0_s1_traffic_tests.o r0_s1_newell_tests.o r0_s1_ovm_tests.o r0_s1_nasch_tests.o main.o
 
 all: s1
 
@@ -32,6 +32,8 @@ r0_s1_bound_tests.o: r0_s1_bound_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_case_tests.o: r0_s1_case_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_escape_law_tests.o: r0_s1_escape_law_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_error_tests.o: r0_s1_error_tests.c r0_s1.h m1_layout.h s1.h
+r0_s1_show.o: r0_s1_show.c r0_s1.h s1.h
+r0_s1_primer_tests.o: r0_s1_primer_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_traffic_tests.o: r0_s1_traffic_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_newell_tests.o: r0_s1_newell_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_ovm_tests.o: r0_s1_ovm_tests.c r0_s1.h m1_layout.h s1.h
@@ -52,6 +54,7 @@ main.o: main.c s1.h
 test: s1
 	./check-frozen-s1.sh
 	./s1
+	python3 demo/shop/build-primer.py --check
 
 # ---- FIB-PROFILE-P1: Fibonacci profiler (instrumented + baseline builds) ---
 # fib-profiler : counters + trace (compiles runtime AND driver with -DR0_S1_PROFILE)
@@ -152,8 +155,8 @@ STANDALONE_FLAGS = -O1 -nostdlib -fno-builtin \
 
 wasm-standalone: standalone/glon.wasm docs/standalone.html
 
-standalone/glon.wasm: standalone/glon.c s1.c s1.h r0_s1_runtime.c r0_s1.h
-	$(EMCC) $(STANDALONE_FLAGS) standalone/glon.c s1.c r0_s1_runtime.c \
+standalone/glon.wasm: standalone/glon.c s1.c s1.h r0_s1_runtime.c r0_s1_show.c r0_s1.h
+	$(EMCC) $(STANDALONE_FLAGS) standalone/glon.c s1.c r0_s1_runtime.c r0_s1_show.c \
 		-o standalone/glon.wasm
 
 # generate docs/standalone.html from app.glon/glon.js and publish artifacts
@@ -173,8 +176,8 @@ wasm-standalone-test: standalone/glon.wasm
 # runtime, no libc, no WASI, no virtual filesystem.
 wasm-g1a: demo/shop/glon.wasm demo/shop/app.html
 
-demo/shop/glon.wasm: standalone/glon.c r0_s1_g1a.c r0_s1_g1a.h s1.c s1.h r0_s1_runtime.c r0_s1.h
-	$(EMCC) $(STANDALONE_FLAGS) standalone/glon.c r0_s1_g1a.c s1.c r0_s1_runtime.c \
+demo/shop/glon.wasm: standalone/glon.c r0_s1_g1a.c r0_s1_g1a.h s1.c s1.h r0_s1_runtime.c r0_s1_show.c r0_s1.h
+	$(EMCC) $(STANDALONE_FLAGS) standalone/glon.c r0_s1_g1a.c s1.c r0_s1_runtime.c r0_s1_show.c \
 		-o demo/shop/glon.wasm
 
 # bundle the bootstrap (common.glon + app.glon) into demo/shop/app.html
@@ -220,6 +223,19 @@ wasm-binding-test: demo/shop/glon.wasm
 	@grep -q "BINDING_CASE_WASM_TEST PASS" /tmp/opencode_binding_test.out && \
 	 echo "wasm-binding-test: PASS (closure-origin binding law + CASE on real WASM)"
 
+# ---- Glon primer (newcomer onboarding; no language change) -----------------
+# demo/shop/primer.txt is the single source of the primer. build-primer.py
+# renders it into GLON-PRIMER.md and demo/shop/primer.html (`--check`, run by
+# `make test`, fails if either is stale); the native primer doc-tests run every
+# example, and this probe runs every example through the real WASM glon_run.
+primer.html: demo/shop/primer.txt demo/shop/build-primer.py demo/shop/bootstrap.glon demo/shop/case.glon demo/shop/demos/tuple-space.glon
+	python3 demo/shop/build-primer.py
+
+wasm-primer-test: demo/shop/glon.wasm primer.html
+	node demo/shop/primer_node_test.js | tee /tmp/opencode_primer_test.out
+	@grep -q "PRIMER_TEST PASS" /tmp/opencode_primer_test.out && \
+	 echo "wasm-primer-test: PASS (every primer example through glon_run on real WASM)"
+
 # ---- Traffic simulator benchmark (post-Alpha application; no language change) -
 # load-once benchmark of the IDM sim. Builds both the shipped -O0 runtime and a
 # directly-compiled -O2 runtime so interpreter cost can be separated from C
@@ -232,4 +248,4 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test primer.html wasm-primer-test

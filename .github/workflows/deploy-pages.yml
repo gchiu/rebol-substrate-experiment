@@ -71,6 +71,11 @@ jobs:
           python3 demo/shop/build-linda.py
           make wasm-linda-test
 
+      - name: Build the live Glon primer and run every example through WASM
+        run: |
+          python3 demo/shop/build-primer.py --check
+          make wasm-primer-test
+
       - name: Assemble site files
         run: |
           rm -rf /tmp/shop && mkdir -p /tmp/shop
@@ -78,6 +83,7 @@ jobs:
           cp demo/shop/style.css demo/shop/host.js demo/shop/glon.wasm /tmp/shop/
           cp demo/shop/traffic.html demo/shop/traffic-host.js /tmp/shop/
           cp demo/shop/linda.html demo/shop/linda-host.js /tmp/shop/
+          cp demo/shop/primer.html demo/shop/primer-host.js /tmp/shop/
           cp -r demo/shop/demos /tmp/shop/demos
 
       - name: Checkout main (Pages source)

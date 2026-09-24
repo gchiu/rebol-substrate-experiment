@@ -8,7 +8,8 @@
  *     strlen, isspace/isdigit, stdout/stderr) WITHOUT libc;
  *   - declares the two generic host imports (host_print, host_set_text);
  *   - exports a small generic ABI (glon_alloc / glon_init / glon_load /
- *     glon_call) for a handwritten JS bootloader.
+ *     glon_call, and glon_run + glon_result_ptr/len for the primer) for a
+ *     handwritten JS bootloader.
  *
  * No generated Emscripten JS runtime, no virtual filesystem, no --embed-file.
  */
@@ -357,6 +358,29 @@ int glon_event_value(const unsigned char *token, unsigned int tlen,
     emit_canvas_script();
     return 0;
 }
+
+/* Primer: run one program (source WITHOUT the outer [ ]) persistently and
+ * keep its outcome as text -- the molded results, "** uncaught #[SIN! ...]",
+ * a halt or a parse error -- formatted by r0_s1_show_run, the same code the
+ * native primer doc-tests check. The host reads the text with
+ * glon_result_ptr / glon_result_len. Returns 0 (the outcome text is set in
+ * every case) or -1 if the source does not fit. */
+static char resultbuf[4096];
+static int resultlen = 0;
+
+__attribute__((export_name("glon_run")))
+int glon_run(const unsigned char *src, unsigned int len) {
+    resultlen = 0;
+    if (len >= sizeof(srcbuf)) return -1;
+    resultlen = r0_s1_show_run((const char *)src, len, resultbuf, (int)sizeof resultbuf);
+    return 0;
+}
+
+__attribute__((export_name("glon_result_ptr")))
+int glon_result_ptr(void) { return (int)(intptr_t)resultbuf; }
+
+__attribute__((export_name("glon_result_len")))
+int glon_result_len(void) { return resultlen; }
 
 /* Emscripten standalone-CRT stack shims: exported by the CRT even under
  * -nostdlib, but never called by our handwritten host.  No-op is fine. */

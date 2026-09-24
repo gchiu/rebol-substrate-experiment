@@ -419,6 +419,12 @@ int  r0_s1_ran_cleanly(void);   /* 1 iff the last run reached the normal halt */
 /* 1 iff the last run halted because a raised SIN! reached no judge; fills the
  * error's type/id/arg (any pointer may be NULL). */
 int  r0_s1_uncaught_error(cell *type, cell *id, cell *arg);
+/* the spelling of interned symbol `id` (a word's word_id), or NULL */
+const char *r0_s1_sym_name(cell id);
+/* r0_s1_show.c: run `src` (len bytes, without the outer [ ]) persistently and
+ * write its outcome as text into out (NUL-terminated); returns the length.
+ * Shared by the primer doc-tests and the WASM host's glon_run. */
+int  r0_s1_show_run(const char *src, unsigned int len, char *out, int cap);
 int  r0_s1_stack_sentry_fired(void);  /* 1 iff the last run violated SP/RP bounds */
 cell r0_s1_sp_start(void), r0_s1_sp_end(void);
 cell r0_s1_rp_start(void), r0_s1_rp_end(void);
