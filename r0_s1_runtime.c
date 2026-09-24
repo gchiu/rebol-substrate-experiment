@@ -2059,6 +2059,21 @@ static void emit_esc_same(void) {
     asm_exit();
 }
 
+/* CONTEXT-FULL guard (inline, shared by r_set and r_append): RV_T2 = context
+ * payload, RV_T3 = its binding count. If the context is full, fail-stop BEFORE
+ * any write: record R0S1_HALT_CONTEXT_FULL, dump and HALT. This is a machine
+ * resource ceiling, not a SIN! (no judge can catch it), so a full context never
+ * overwrites its hash index / escape-site tail or whatever follows it. */
+static void emit_ctx_full_guard(void) {
+    e_cell(RV_T3);
+    e_cell(RV_T2); asm_lit(CTX_CAP); asm_host(HOST_ADD); asm_fetch();
+    asm_host(HOST_GE);                                   /* count >= cap ? */
+    cell j_room = asm_zbranch_fwd();
+    asm_lit(R0S1_HALT_CONTEXT_FULL); e_setc(RV_HALTWHY);
+    asm_host(HOST_DUMP); asm_halt();
+    asm_patch_here(j_room);
+}
+
 static void emit_set(void) {
     r_set = asm_here();
     e_peek(); e_setc(RV_T6);
@@ -2069,6 +2084,7 @@ static void emit_set(void) {
     asm_drop();
     e_cell(RV_CTX); e_untag_ptr(); e_setc(RV_T2);
     e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T3);
+    emit_ctx_full_guard();                   /* no room: fail-stop before writing */
     e_cell(RV_WORD);
     e_cell(RV_T2); asm_lit(3); asm_host(HOST_ADD);
     e_cell(RV_T3); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);
@@ -2128,6 +2144,7 @@ static void emit_append(void) {
     r_append = asm_here();
     e_cell(RV_CHILD); e_untag_ptr(); e_setc(RV_T2);
     e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T3);
+    emit_ctx_full_guard();                   /* no room: fail-stop before writing */
     e_cell(RV_WORD);
     e_cell(RV_T2); asm_lit(3); asm_host(HOST_ADD);
     e_cell(RV_T3); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);
@@ -3533,6 +3550,7 @@ int r0_s1_run_ex(cell block, int preserve_hp) {
     M[RV_SPMIN] = 65535;
     stack_sentry_fired = 0;
     M[RV_ERRUNC] = 0;          /* SIN!: no pending or uncaught error */
+    M[RV_HALTWHY] = R0S1_HALT_NONE;
     M[RV_ERRV] = R0_NONE; M[RV_ERRT] = R0_NONE; M[RV_ERRI] = R0_NONE; M[RV_ERRA] = R0_NONE;
 #ifdef R0_S1_PROFILE
     for (cell c = PF_BASE; c <= PF_HASH_FALLBACK_SLOTS; c++)
@@ -3587,6 +3605,7 @@ int r0_s1_run_compiled(cell block, void (*run_fn)(cell *, cell)) {
     M[RV_SPMIN] = 65535;
     stack_sentry_fired = 0;
     M[RV_ERRUNC] = 0;          /* SIN!: no pending or uncaught error */
+    M[RV_HALTWHY] = R0S1_HALT_NONE;
     M[RV_ERRV] = R0_NONE; M[RV_ERRT] = R0_NONE; M[RV_ERRI] = R0_NONE; M[RV_ERRA] = R0_NONE;
 #ifdef R0_S1_PROFILE
     for (cell c = PF_BASE; c <= PF_HASH_FALLBACK_SLOTS; c++)
@@ -3632,6 +3651,9 @@ const char *r0_s1_sym_name(cell id) {
     return (id >= 0 && id < nsyms) ? syms[id] : 0;
 }
 int  r0_s1_stack_sentry_fired(void){ return stack_sentry_fired; }
+int  r0_s1_halt_reason(void) {
+    return r0_s1_ran_cleanly() ? R0S1_HALT_NONE : (int)M[RV_HALTWHY];
+}
 cell r0_s1_sp_start(void) { return sp_start; }
 cell r0_s1_sp_end(void)   { return sp_end; }
 cell r0_s1_rp_start(void) { return rp_start; }

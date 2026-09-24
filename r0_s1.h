@@ -143,9 +143,18 @@ enum {
     RV_ERRV     = RV_BASE + 31, /* pending SIN! value, or NONE */
     RV_ERRRET   = RV_BASE + 32, /* judge's caller return address (raw, transient) */
     RV_ERRUNC   = RV_BASE + 33, /* 1 iff the last run halted on an uncaught error */
+    RV_HALTWHY  = RV_BASE + 34, /* why the last run fail-stopped (R0S1_HALT_*), or 0 */
     RV_RES_BUF  = RV_BASE + 40  /* scratch: preserved result set (16 cells) */
 };
 _Static_assert(RV_ERRUNC < RV_RES_BUF, "SIN! registers must stay below RV_RES_BUF");
+_Static_assert(RV_HALTWHY < RV_RES_BUF, "RV_HALTWHY must stay below RV_RES_BUF");
+
+/* Structured reasons for a machine-level fail-stop (not SIN!s: no judge can
+ * catch them). A halt with no recorded reason reads as R0S1_HALT_NONE. */
+enum {
+    R0S1_HALT_NONE = 0,
+    R0S1_HALT_CONTEXT_FULL = 1   /* a new binding would exceed the context's capacity */
+};
 
 /* Generic scratch cells available to RAW fragments. They live in the free
  * region above the RV cells and (since M3C) above the return-stack top
@@ -438,6 +447,9 @@ const char *r0_s1_sym_name(cell id);
  * Shared by the primer doc-tests and the WASM host's glon_run. */
 int  r0_s1_show_run(const char *src, unsigned int len, char *out, int cap);
 int  r0_s1_stack_sentry_fired(void);  /* 1 iff the last run violated SP/RP bounds */
+/* R0S1_HALT_* reason the last run fail-stopped (R0S1_HALT_NONE after a clean
+ * run, an uncaught SIN!, or a halt with no recorded reason). */
+int  r0_s1_halt_reason(void);
 cell r0_s1_sp_start(void), r0_s1_sp_end(void);
 cell r0_s1_rp_start(void), r0_s1_rp_end(void);
 cell r0_s1_rp_min(void);   /* min RP observed (max return depth) */

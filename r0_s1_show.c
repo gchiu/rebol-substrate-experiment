@@ -9,6 +9,7 @@
  *   clean run        the results, molded and separated by one space
  *                    (no results: "none")
  *   uncaught SIN!    "** uncaught #[SIN! type id arg]"
+ *   context full     "** halted: context full (no SIN!: a machine-level fail-stop)"
  *   other halt       "** halted (no SIN!: a machine-level fail-stop)"
  *   parse error      "** parse error"
  *
@@ -133,7 +134,10 @@ int r0_s1_show_run(const char *src, unsigned int len, char *out, int cap) {
             mold(&o, a, 1);
             put_ch(&o, ']');
         } else {
-            put_s(&o, "** halted (no SIN!: a machine-level fail-stop)");
+            if (r0_s1_halt_reason() == R0S1_HALT_CONTEXT_FULL)
+                put_s(&o, "** halted: context full (no SIN!: a machine-level fail-stop)");
+            else
+                put_s(&o, "** halted (no SIN!: a machine-level fail-stop)");
         }
     }
     o.p[o.n] = 0;
