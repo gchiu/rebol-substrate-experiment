@@ -36,14 +36,19 @@ static int failures = 0;
 
 /* fixed free-region state buffers (in the M3C-relocated state region
  * [24576, 25315), just above the return-stack top RS_INIT=24576; the debuggee's
- * stacks live below that, at DBGEE_SP=12000 / DBGEE_RP=20000) */
+ * stacks live below that, at DBGEE_SP=14000 / DBGEE_RP=20000) */
 #define DBGEE_BUF 24859
 #define DBGER_BUF 24879
 
 /* the debuggee runs on a reserved lower stack region so its return stack can
- * never overwrite the debugger's live return stack (24576 downward). */
-#define DBGEE_SP 12000
+ * never overwrite the debugger's live return stack (24576 downward). Its data
+ * stack grows down from DBGEE_SP toward the emitted code, which ends at
+ * 256 + r0_s1_code_size() plus the RAW fragments assembled at load time, so
+ * DBGEE_SP must stay above that (checked at the start of the group; it was
+ * 12000 until the SIN! runtime code pushed the code end past it). */
+#define DBGEE_SP 14000
 #define DBGEE_RP 20000
+#define DBGEE_CODE_MARGIN 1024   /* room for the debugger/debuggee RAW fragments */
 
 /* the debugger runs on its own heap region (>= 50000), disjoint from the
  * debuggee's S1 heap (32768..40000) and the loader heap (40000..50600).  This
@@ -475,6 +480,11 @@ static void audit_runtime_clean(void) {
 
 int run_r0_s1_debug_tests(void) {
     printf("R0-S1 D1 debugger: HLL-first cooperative debugger\n");
+
+    /* layout: the debuggee's data stack must start above the emitted code */
+    r0_s1_init();
+    CHECK(256 + r0_s1_code_size() + DBGEE_CODE_MARGIN <= DBGEE_SP,
+          "layout: emitted code (+ RAW margin) ends below the debuggee's data stack");
 
     /* capture stderr so we can prove ZERO unexpected machine diagnostics */
     const char *capture = "/tmp/opencode_debug_stderr.txt";

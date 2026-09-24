@@ -26,6 +26,7 @@ Every value is one cell: `payload * 16 + tag`, where `tag` is the low 4 bits.
 | 11 | USER | user object payload address |
 | 12 | STRING | 16-aligned string payload address |
 | 13 | BOUND | (depth*16 + slot) |
+| 14 | SIN | 16-aligned SIN! payload address (see §6a) |
 
 ## 2. Words
 
@@ -113,6 +114,39 @@ Every value is one cell: `payload * 16 + tag`, where `tag` is the low 4 bits.
   resulting closure, which consumes its own arity from the same expression
   stream. Non-closure invocation fails safely.
 
+## 6a. SIN!, raise, judge
+
+An error value and error propagation are separate things.
+
+- **SIN! is a value.** `create-sin type id arg` builds one: `type` and `id`
+  are conventionally words, `arg` is any value. Holding, passing, storing,
+  returning or comparing a SIN! never raises. `sin? v` is 1 for a SIN!
+  and 0 otherwise; `sin-type`, `sin-id` and `sin-arg` read its fields.
+  A SIN! equals only itself (§9).
+- **`raise err` propagates.** It abandons the current operation and unwinds
+  through any number of unaware callers to the nearest `judge` in the same
+  task. `raise` of a non-SIN! raises `'type 'raise` carrying that value.
+- **`judge block`** runs `block` in place, in the current activation, like
+  `do`. If the block completes, `judge` returns its result. If anything in it
+  raises, `judge` returns the SIN! and execution continues after the `judge`.
+  Nested judges: the nearest one catches.
+- `return` inside a judge body returns from the enclosing function, unwinding
+  through the judge.
+- **Uncaught:** with no judge, a raise ends the run exactly as a fail-stop
+  does (the run is not clean). The host can read the uncaught error.
+- **Tasks:** judges are per task. An error raised in a task is caught only by
+  a judge in that task; unjudged, it ends the run. A judge in the main world
+  does not catch a task's error.
+- **Runtime errors.** An accessor applied to a non-SIN! raises `'type
+  'sin-field`; `judge` of a non-block raises `'type 'judge`. The escape-time
+  binding law raises `'escape` with id `'return`, `'argument`, `'store`,
+  `'capture` or `'transport` (the boundary that detected the violation) and
+  arg = the offending block's site id. The violating operation is abandoned
+  before it completes; a judge never receives the illegal value.
+- Machine-integrity failures (heap/stack corruption, out of memory,
+  return-stack exhaustion) are not SIN!s: they still fail-stop and cannot
+  be judged.
+
 ## 7. reduce
 
 - `reduce block` evaluates each source expression once, left-to-right, reduces
@@ -147,11 +181,21 @@ Every value is one cell: `payload * 16 + tag`, where `tag` is the low 4 bits.
   permanent and never swept.
 - GC-safepoint invariant: at every GC-capable allocation, all GC-scanned state
   (data stack, return stack, roots) holds only valid tagged Glon values.
+- **Known limit (pre-existing, not addressed here):** the global context holds
+  256 bindings. A session that loads traffic plus two extra models needs 280
+  and silently overflows it; the shipped traffic page does not offer that
+  session shape. The largest legal session measured is traffic + one model
+  (232/256); the G1E shop session uses 224. (SIN! adds 7 globals everywhere.)
 
 ## 12. Tasks / tuple space
 
 - Cooperative, deterministic single-world tasks; Linda-style tuple
   coordination. No claim of multicore/distributed execution.
+- Every shipped task-creation word (`mnew-task` in linda, merchant-flow,
+  tuple-space and examples/multitasking.r0) calls the runtime's shared
+  `ESC_TRANSPORT` check on the still-tagged body before touching the task
+  table: an activation-dependent body raises `'escape 'transport` and no task
+  is created (escape law boundary 5).
 
 ## 13. Visual host
 

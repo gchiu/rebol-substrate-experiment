@@ -19,7 +19,8 @@ enum {
     T_INT = 0, T_NONE = 1, T_WORD = 2, T_SET = 3, T_GET = 4, T_LIT = 5,
     T_BLOCK = 6, T_CONTEXT = 7, T_CLOSURE = 8, T_NATIVE = 9, T_RAW = 10,
     T_USER = 11, T_STRING = 12,
-    T_BOUND = 13   /* FIB-OPT-P4: pre-resolved lexical (depth, slot) reference */
+    T_BOUND = 13,  /* FIB-OPT-P4: pre-resolved lexical (depth, slot) reference */
+    T_ERROR = 14   /* SIN!: a first-class error value (inert data until RAISEd) */
 };
 
 #define R0_NONE       ((cell)0x1)
@@ -58,7 +59,15 @@ enum {
     RN_EITHER = 101,
     RN_DO = 102,
     RN_INVOKE = 103,
-    RN_REDUCE = 104
+    RN_REDUCE = 104,
+    /* SIN!: construction, inspection, propagation, judge boundary */
+    RN_MAKE_ERROR = 105,
+    RN_ERRORP = 106,
+    RN_ERROR_TYPE = 107,
+    RN_ERROR_ID = 108,
+    RN_ERROR_ARG = 109,
+    RN_RAISE = 110,
+    RN_TRAP = 111
 };
 
 /* --- memory layout ------------------------------------------------------ */
@@ -124,8 +133,19 @@ enum {
     RV_SIP      = RV_BASE + 25, /* scratch: saved return IP */
     RV_SRP      = RV_BASE + 26, /* scratch: saved caller RP */
     RV_FNEW     = RV_BASE + 27, /* scratch: new frame ptr */
+    /* SIN!: the error being propagated (set by RAISE or a runtime check,
+     * consumed by the judge landing pad; never live across an allocation
+     * except via the data stack). RV_ERRV holds a raised SIN! value, or NONE
+     * when the landing pad must build one from RV_ERRT/RV_ERRI/RV_ERRA. */
+    RV_ERRT     = RV_BASE + 28, /* pending error type (word) */
+    RV_ERRI     = RV_BASE + 29, /* pending error id (word or none) */
+    RV_ERRA     = RV_BASE + 30, /* pending error argument (any value) */
+    RV_ERRV     = RV_BASE + 31, /* pending SIN! value, or NONE */
+    RV_ERRRET   = RV_BASE + 32, /* judge's caller return address (raw, transient) */
+    RV_ERRUNC   = RV_BASE + 33, /* 1 iff the last run halted on an uncaught error */
     RV_RES_BUF  = RV_BASE + 40  /* scratch: preserved result set (16 cells) */
 };
+_Static_assert(RV_ERRUNC < RV_RES_BUF, "SIN! registers must stay below RV_RES_BUF");
 
 /* Generic scratch cells available to RAW fragments. They live in the free
  * region above the RV cells and (since M3C) above the return-stack top
@@ -354,8 +374,16 @@ _Static_assert(RV_ESC_W < GC_HEAP_BASE,
 /* activation frame (linked list in M): [prev, site, SP, RP, IP, CTX, CUR, END, BLK, bias] */
 enum {
     FRAME_PREV = 0, FRAME_SITE = 1, FRAME_SP = 2, FRAME_RP = 3, FRAME_IP = 4,
-    FRAME_CTX = 5, FRAME_CUR = 6, FRAME_END = 7, FRAME_BLK = 8, FRAME_BIAS = 9
+    FRAME_CTX = 5, FRAME_CUR = 6, FRAME_END = 7, FRAME_BLK = 8, FRAME_BIAS = 9,
+    /* Judge frames only (built by JUDGE, always 16 cells): the judge's caller
+     * return address. A judge frame is recognised by FRAME_IP == the judge
+     * landing pad, an address no closure invocation ever returns to. */
+    FRAME_TRAPRET = 10
 };
+
+/* SIN! payload (a managed GC_KIND_USER object, so the collector traces it
+ * generically): [desc = none, count = 3, type, id, arg]. */
+enum { ERR_DESC = 0, ERR_COUNT = 1, ERR_TYPE = 2, ERR_ID = 3, ERR_ARG = 4, ERR_NFIELDS = 3 };
 
 /* --- loader + runtime API ------------------------------------------------ */
 
@@ -388,6 +416,9 @@ cell r0_s1_result(int i, int N);
 /* instrumentation */
 cell r0_s1_ip_start(void), r0_s1_ip_end(void);
 int  r0_s1_ran_cleanly(void);   /* 1 iff the last run reached the normal halt */
+/* 1 iff the last run halted because a raised SIN! reached no judge; fills the
+ * error's type/id/arg (any pointer may be NULL). */
+int  r0_s1_uncaught_error(cell *type, cell *id, cell *arg);
 int  r0_s1_stack_sentry_fired(void);  /* 1 iff the last run violated SP/RP bounds */
 cell r0_s1_sp_start(void), r0_s1_sp_end(void);
 cell r0_s1_rp_start(void), r0_s1_rp_end(void);

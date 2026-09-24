@@ -62,8 +62,10 @@ mk-string: masm 1 [
 ]
 
 ;; ---- cooperative scheduler (stock 3 tasks) ---------------------------------
+;; CALL ESC_TRANSPORT: escape law (5) -- reject an activation-dependent body
+;; (still tagged, on the stack top) before any task-table change.
 mnew-task: masm 3 [
-    LIT M1_S2 ! LIT M1_S1 ! DUP LIT 16 MOD SUB LIT M1_S0 ! LIT 0 LIT M1_S3 !
+    LIT M1_S2 ! LIT M1_S1 ! CALL ESC_TRANSPORT DUP LIT 16 MOD SUB LIT M1_S0 ! LIT 0 LIT M1_S3 !
   f: LIT M1_S3 @ LIT 3 LT ZBRANCH full
     LIT M1_S3 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S4 !
     LIT M1_S4 @ LIT 8 ADD @ LIT 2 EQ ZBRANCH nxt BRANCH mk

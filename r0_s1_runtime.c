@@ -113,7 +113,7 @@ static int parse_func_depth;
 static int last_block_dep;
 
 /* Escape-time binding law enforcement subroutines (emitted S1; defined later). */
-static cell r_esc_any, r_esc_eq, r_esc_capture, r_esc_results, r_esc_same, r_esc_anc;
+static cell r_esc_any, r_esc_eq, r_esc_capture, r_esc_results, r_esc_same, r_esc_anc, r_esc_transport;
 
 /* CLOSURE_SITE of a closure made from a block whose lexical origin activation
  * is dead. Real sites are >= 0, so no block's BLK_SITE ever equals it and the
@@ -315,6 +315,7 @@ static cell assemble_raw(cell block) {
                     else if (strcmp(cn, "collect") == 0) asm_call(r_collect);
                     else if (strcmp(cn, "lookup") == 0) asm_call(r_lookup);
                     else if (strcmp(cn, "ESC_ANY") == 0) asm_call(r_esc_any);
+                    else if (strcmp(cn, "ESC_TRANSPORT") == 0) asm_call(r_esc_transport);
                     else { cell q = emit_call_fwd(); raw_refs[raw_nrefs].patch = q; raw_refs[raw_nrefs].name = cn; raw_nrefs++; }
                 }
                 else asm_call((int)int_val(op));
@@ -919,6 +920,7 @@ static void emit_mark_value(void) {
      * is fail-stop heap corruption, not something to trace. */
     e_cell(GC_T2); asm_lit(T_USER); asm_host(HOST_EQ);
     cell j_nu = asm_zbranch_fwd();
+    cell l_user = asm_here();                               /* ERROR joins here */
     asm_lit(T_USER); asm_host(HOST_SUB); e_setc(GC_T1);     /* p */
     e_cell(GC_T1); asm_lit(GC_HEAP_BASE); asm_host(HOST_GE);
     cell j_bad1 = asm_zbranch_fwd();                        /* p < base -> corrupt */
@@ -945,6 +947,14 @@ static void emit_mark_value(void) {
     asm_patch_here(j_sbad1);
     asm_host(HOST_DUMP); asm_halt();                        /* out-of-range T_STRING */
     asm_patch_here(j_ns);
+    /* ERROR (tag 14): a SIN! payload is a managed GC_KIND_USER object.
+     * Rebase the value to USER's tag and share USER's range check and
+     * mark_push; the drain loop's trace_user then marks type/id/arg. */
+    e_cell(GC_T2); asm_lit(T_ERROR); asm_host(HOST_EQ);
+    cell j_ne = asm_zbranch_fwd();
+    asm_lit(T_ERROR - T_USER); asm_host(HOST_SUB);
+    asm_branch(l_user);
+    asm_patch_here(j_ne);
     /* BLOCK (tag 6): three-way classification. A managed block (payload in the
      * managed heap) must be an allocated GC_KIND_BLOCK payload start; a
      * permanent loader block (payload in the loader heap) has no children;
@@ -1298,6 +1308,174 @@ static void emit_alloc(void) {
     e_cell(GC_T2); asm_lit(GC_HDR_FLAGS); asm_host(HOST_ADD); asm_store();
     e_cell(GC_T2); asm_lit(GC_HDR_STRIDE); asm_host(HOST_ADD);
     asm_exit();
+}
+
+/* ================================ SIN! =====================================
+ * A SIN! is a first-class value (tag T_ERROR) whose payload is a small
+ * managed GC_KIND_USER object [desc = none, count = 3, type, id, arg], so the
+ * collector traces it generically (trace_user). Possessing, storing, passing
+ * or comparing a SIN! never raises: it is inert data.
+ *
+ * Propagation is control flow, kept separate from the value. RAISE (or a
+ * converted runtime check) leaves the error in the RV_ERR* registers and
+ * branches to RAISE-UNWIND, which walks the activation-frame chain for the
+ * nearest JUDGE frame and restores it exactly as RETURN restores its target
+ * (SP, RP, CTX, CUR, END, BLK, FRAME; RV_CHILD/RV_CLOSURE cleared). The judge
+ * landing pad then builds the SIN! value -- in a clean evaluator state, so
+ * that allocation is an ordinary GC safepoint -- and returns it as JUDGE's
+ * result. No judge: the run halts exactly like the old fail-stop, with
+ * RV_ERRUNC set so the host can report the error.
+ *
+ * Judge frames are ordinary links in the per-world RV_FRAME chain, so a task
+ * only ever unwinds to its own judges (M1 task records already save and restore
+ * RV_FRAME), and nothing else needs a new stack or fixed memory region. */
+
+static cell r_mkerror, r_raise_unwind, r_trap_landing, r_raise3, r_raise_escape;
+
+/* Word literals emitted before r0_s1_init preloads the symbol table (which
+ * must allocate func/return/raw as symbols 0/1/2 first): each is emitted as a
+ * placeholder LIT and patched with the interned word after the preload. */
+typedef struct { cell patch; const char *name; } word_ref_t;
+static word_ref_t word_refs[32];
+static int n_word_refs;
+static void emit_word_lit(const char *name) {
+    if (n_word_refs >= (int)(sizeof word_refs / sizeof word_refs[0])) {
+        fprintf(stderr, "r0_s1: word_refs table full\n");
+        abort();
+    }
+    word_refs[n_word_refs].patch = asm_lit_fwd();
+    word_refs[n_word_refs].name = name;
+    n_word_refs++;
+}
+
+/* Raise a runtime error SIN! [type, id, the value in register arg_cell]:
+ * push the three fields and branch to RAISE3 (never returns). */
+static void emit_raise_fields(const char *type, const char *id, cell arg_cell) {
+    emit_word_lit(type); emit_word_lit(id); e_cell(arg_cell);
+    asm_branch(r_raise3);
+}
+
+/* MKERROR: ( type id arg -- err ) allocate a SIN!. The three values stay on
+ * the data stack across the allocation, so a collection it triggers sees them
+ * as roots. */
+static void emit_mkerror(void) {
+    r_mkerror = asm_here();
+    asm_lit(16); asm_lit(GC_KIND_USER); asm_call(r_alloc); e_setc(RV_T1);   /* payload */
+    asm_lit(R0_NONE); e_cell(RV_T1); asm_lit(ERR_DESC); asm_host(HOST_ADD); asm_store();
+    asm_lit(ERR_NFIELDS); e_cell(RV_T1); asm_lit(ERR_COUNT); asm_host(HOST_ADD); asm_store();
+    e_cell(RV_T1); asm_lit(ERR_ARG); asm_host(HOST_ADD); asm_store();      /* arg  */
+    e_cell(RV_T1); asm_lit(ERR_ID); asm_host(HOST_ADD); asm_store();       /* id   */
+    e_cell(RV_T1); asm_lit(ERR_TYPE); asm_host(HOST_ADD); asm_store();     /* type */
+    e_cell(RV_T1); asm_lit(T_ERROR); asm_host(HOST_ADD);
+    asm_exit();
+}
+
+/* JUDGE-LANDING: RAISE-UNWIND has restored the judge frame's caller state and
+ * put the caller's return address in RV_ERRRET. Deliver the SIN! as JUDGE's
+ * single result and continue in the caller. It is emitted directly after
+ * MKERROR's EXIT, so it is never the return address of any invocation; that
+ * is what lets RAISE-UNWIND and RETURN recognise a judge frame by its IP. */
+static void emit_trap_landing(void) {
+    r_trap_landing = asm_here();
+    e_cell(RV_ERRV); asm_lit(R0_NONE); asm_host(HOST_EQ);
+    cell j_have = asm_zbranch_fwd();          /* RV_ERRV != none: a raised value */
+    e_cell(RV_ERRT); e_cell(RV_ERRI); e_cell(RV_ERRA);
+    asm_call(r_mkerror);
+    cell j_built = asm_branch_fwd();
+    asm_patch_here(j_have);
+    e_cell(RV_ERRV);
+    asm_patch_here(j_built);
+    asm_lit(16);                              /* one result */
+    e_cell(RV_ERRRET); asm_lit(REG_IP); asm_store();
+}
+
+/* RAISE-UNWIND: find the nearest judge frame on the current world's frame
+ * chain and restore it; with none, halt as an uncaught error. The data and
+ * return stacks above the judge are discarded wholesale, so the operation that
+ * raised (a store, a bind, a result delivery) is abandoned, never completed. */
+static void emit_raise_unwind(void) {
+    r_raise_unwind = asm_here();
+    e_cell(RV_FRAME); e_setc(RV_T2);
+    cell loop = asm_here();
+    e_cell(RV_T2); asm_lit(0); asm_host(HOST_EQ);
+    cell j_frame = asm_zbranch_fwd();
+    asm_lit(1); e_setc(RV_ERRUNC);            /* uncaught: the old fail-stop */
+    asm_host(HOST_DUMP); asm_halt();
+    asm_patch_here(j_frame);
+    e_cell(RV_T2); asm_lit(FRAME_IP); asm_host(HOST_ADD); asm_fetch();
+    asm_lit(r_trap_landing); asm_host(HOST_EQ);
+    cell j_notrap = asm_zbranch_fwd();
+    e_cell(RV_T2); asm_lit(FRAME_SP); asm_host(HOST_ADD); asm_fetch(); asm_lit(REG_SP); asm_store();
+    e_cell(RV_T2); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_CTX);
+    e_cell(RV_T2); asm_lit(FRAME_CUR); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_CUR);
+    e_cell(RV_T2); asm_lit(FRAME_END); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_END);
+    e_cell(RV_T2); asm_lit(FRAME_BLK); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_BLK);
+    e_cell(RV_T2); asm_lit(FRAME_TRAPRET); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_ERRRET);
+    e_cell(RV_T2); asm_lit(FRAME_RP); asm_host(HOST_ADD); asm_fetch(); asm_lit(REG_RP); asm_store();
+    e_cell(RV_T2); asm_fetch(); e_setc(RV_FRAME);          /* RV_FRAME = judge.prev */
+    asm_lit(0); e_setc(RV_CHILD);             /* M2: abandoned invocations' roots */
+    asm_lit(0); e_setc(RV_CLOSURE);
+    asm_branch(r_trap_landing);
+    asm_patch_here(j_notrap);
+    e_cell(RV_T2); asm_fetch(); e_setc(RV_T2);             /* frame = prev */
+    asm_branch(loop);
+}
+
+/* RAISE3: ( type id arg -- ) raise a runtime error built from these fields. */
+static void emit_raise3(void) {
+    r_raise3 = asm_here();
+    e_setc(RV_ERRA); e_setc(RV_ERRI); e_setc(RV_ERRT);
+    asm_lit(R0_NONE); e_setc(RV_ERRV);
+    asm_branch(r_raise_unwind);
+}
+
+/* RAISE-ESCAPE: ( id -- ) raise SIN! [type 'escape, id, arg = the decoded
+ * site id of the activation-dependent block in RV_ESC_A, as an integer]. The
+ * block itself is never placed in the error: the raise abandons the
+ * transport, so a judge recovers control without receiving the illegal value. */
+static void emit_raise_escape_routine(void) {
+    r_raise_escape = asm_here();
+    e_setc(RV_ERRI);
+    e_cell(RV_ESC_A); e_untag_ptr(); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch();
+    asm_neg(); asm_lit(1); asm_host(HOST_SUB);          /* decoded site */
+    asm_lit(16); asm_host(HOST_MUL); e_setc(RV_ERRA);    /* as a Glon integer */
+    emit_word_lit("escape"); e_setc(RV_ERRT);
+    asm_lit(R0_NONE); e_setc(RV_ERRV);
+    asm_branch(r_raise_unwind);
+}
+
+/* Emitted right after the collector (MKERROR needs r_alloc) and before every
+ * routine that can raise, so their addresses are known to all raise sites.
+ * JUDGE-LANDING must directly follow MKERROR's EXIT (see its comment). */
+static void emit_error_core(void) {
+    emit_mkerror();
+    emit_trap_landing();
+    emit_raise_unwind();
+    emit_raise3();
+    emit_raise_escape_routine();
+}
+
+/* Return-stack headroom check (machine limit, stays a fatal fail-stop): the
+ * same bound computation as INVOKE-CLOSURE's guard, for the main world or the
+ * running M1 task. Uses RV_T5/RV_T6. */
+static void emit_rs_guard(cell margin) {
+    asm_lit(REG_SP); asm_fetch(); e_setc(RV_T5);
+    e_cell(RV_T5); asm_lit(R0S1_DS_INIT); asm_host(HOST_GT);
+    cell j_main = asm_zbranch_fwd();
+    e_cell(RV_T5); asm_lit(M1_ARENA_BASE); asm_host(HOST_SUB);
+    asm_lit(M1_TASK_CELLS); asm_host(HOST_DIV);
+    asm_lit(M1_TASK_CELLS); asm_host(HOST_MUL);
+    asm_lit(M1_ARENA_BASE); asm_host(HOST_ADD);
+    asm_lit(M1_DS_OFF); asm_host(HOST_ADD); e_setc(RV_T6);
+    cell j_g = asm_branch_fwd();
+    asm_patch_here(j_main);
+    asm_lit(R0S1_DS_INIT); e_setc(RV_T6);
+    asm_patch_here(j_g);
+    asm_lit(REG_RP); asm_fetch(); asm_lit(margin); asm_host(HOST_SUB);
+    e_cell(RV_T6); asm_host(HOST_LT);
+    cell j_room = asm_zbranch_fwd();
+    asm_host(HOST_DUMP); asm_halt();          /* return-stack exhaustion */
+    asm_patch_here(j_room);
 }
 
 static void emit_gc(void) {
@@ -1659,13 +1837,24 @@ static void emit_build_hash(void) {
  * A block whose executable tree carries a T_BOUND/RETURN that resolves against
  * its origin activation is "activation-dependent" and marked (parser) by a
  * negated BLK_SITE. It may be consumed or closed over while that activation is
- * live, but must not be transported beyond it. These routines fail-stop at the
+ * live, but must not be transported beyond it. These routines raise SIN! 'escape at the
  * transport boundary; they never resolve, copy or evaluate the value. They use
  * only the private RV_ESC_* cells (never SCRATCH_A..F, GC/M1 state, the D1 inspection state or
  * any blessed RAW library cell), so a legal check has zero observable effect on
  * program state. */
 
-/* ESC-ANY: fail-stop if RV_ESC_A holds an activation-dependent block. */
+/* A detected violation raises SIN! [type 'escape, id <boundary>, arg <the
+ * decoded site id of the offending block, as an integer>]. The block itself is
+ * never placed in the error: the raise abandons the transport, so a judge
+ * recovers control without ever receiving the illegal value. Uncaught, the
+ * raise halts exactly as the old fail-stop did. `id` NULL keeps RV_ERRI as
+ * preset by the caller (the shared ESC-NOTANC check serves store and capture). */
+static void emit_raise_escape(const char *id) {
+    if (id) emit_word_lit(id); else e_cell(RV_ERRI);
+    asm_branch(r_raise_escape);
+}
+
+/* ESC-ANY: raise if RV_ESC_A holds an activation-dependent block. */
 static void emit_esc_any(void) {
     r_esc_any = asm_here();
     e_cell(RV_ESC_A); asm_lit(16); asm_host(HOST_MOD); asm_lit(T_BLOCK); asm_host(HOST_EQ);
@@ -1673,13 +1862,25 @@ static void emit_esc_any(void) {
     e_cell(RV_ESC_A); e_untag_ptr(); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch();
     asm_lit(0); asm_host(HOST_LT);
     cell j_nodep = asm_zbranch_fwd();
-    asm_host(HOST_DUMP); asm_halt();
+    emit_raise_escape("transport");
     asm_patch_here(j_nodep);
     asm_patch_here(j_notblk);
     asm_exit();
 }
 
-/* ESC-NOTANC: RV_ESC_A = value, RV_ESC_B = context/site owner. Fail-stop if
+/* ESC-TRANSPORT: ( body -- body ) the escape law's task-transport boundary (5),
+ * the one check every blessed RAW task-creation word (mnew-task) calls: raise
+ * 'escape 'transport if the TAGGED value on top of the data stack is an
+ * activation-dependent block. It must be called while the body is still
+ * tagged and before any task-table or scheduler state changes, so a rejected
+ * transport creates no task and runs no body instruction. */
+static void emit_esc_transport(void) {
+    r_esc_transport = asm_here();
+    e_peek(); asm_lit(RV_ESC_A); asm_store();
+    asm_branch(r_esc_any);                          /* tail: ESC-ANY's EXIT returns */
+}
+
+/* ESC-NOTANC: RV_ESC_A = value, RV_ESC_B = context/site owner. Raise if
  * the value is an activation-dependent block whose site B is NOT an
  * ancestor-or-self of the owner (a foreign-site store/capture). */
 static void emit_esc_eq(void) {
@@ -1698,7 +1899,7 @@ static void emit_esc_eq(void) {
     asm_patch_here(j_neq);
     e_cell(RV_ESC_W); asm_lit(0); asm_host(HOST_EQ);
     cell j_nonzero = asm_zbranch_fwd();
-    asm_host(HOST_DUMP); asm_halt();                               /* root: not ancestor */
+    emit_raise_escape(NULL);                                       /* root: not ancestor */
     asm_patch_here(j_nonzero);
     e_cell(RV_ESC_W); asm_lit(SITE_PARENT_BASE); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_ESC_W);
     asm_branch(loop);
@@ -1708,7 +1909,7 @@ static void emit_esc_eq(void) {
     asm_exit();
 }
 
-/* ESC-ANC: RV_ESC_A = value, RV_ESC_B = returning frame site F. Fail-stop if
+/* ESC-ANC: RV_ESC_A = value, RV_ESC_B = returning frame site F. Raise if
  * the value is an activation-dependent block whose site B is ancestor-or-self
  * of F (a frame of B or nested in B must not return B's block). */
 static void emit_esc_anc(void) {
@@ -1723,7 +1924,7 @@ static void emit_esc_anc(void) {
     cell loop = asm_here();
     e_cell(RV_ESC_N); e_cell(RV_ESC_W); asm_host(HOST_EQ);
     cell j_neq = asm_zbranch_fwd();
-    asm_host(HOST_DUMP); asm_halt();                               /* escape */
+    emit_raise_escape("return");                                   /* escape */
     asm_patch_here(j_neq);
     e_cell(RV_ESC_W); asm_lit(0); asm_host(HOST_EQ);
     cell j_nonzero = asm_zbranch_fwd();
@@ -1760,11 +1961,12 @@ static void emit_esc_results(void) {
     asm_exit();
 }
 
-/* ESC-CAPTURE: RV_T1 = a context about to be captured/promoted. Fail-stop if it
+/* ESC-CAPTURE: RV_T1 = a context about to be captured/promoted. Raise if it
  * holds any activation-dependent block whose site != the context's owning site
  * (global context = owner site 0). */
 static void emit_esc_capture(void) {
     r_esc_capture = asm_here();
+    emit_word_lit("capture"); e_setc(RV_ERRI);       /* id if ESC-NOTANC raises */
     e_cell(RV_T1); e_untag_ptr(); e_setc(RV_ESC_P);                        /* p */
     e_cell(RV_T1); e_cell(GC_GLOBAL_CTX); asm_host(HOST_EQ);
     cell j_nglobal = asm_zbranch_fwd();
@@ -1800,10 +2002,11 @@ static void emit_esc_store_check(void) {
     asm_patch_here(j_nglobal);
     e_cell(RV_T2); asm_lit(CTX_ESCSITE); asm_host(HOST_ADD); asm_fetch(); asm_lit(RV_ESC_B); asm_store();
     asm_patch_here(j_ga);
+    emit_word_lit("store"); e_setc(RV_ERRI);         /* id if ESC-NOTANC raises */
     emit_esc_ref(&r_esc_eq);
 }
 
-/* ESC-SAME: RV_ESC_A = value, RV_ESC_B = closure site. Fail-stop only if the
+/* ESC-SAME: RV_ESC_A = value, RV_ESC_B = closure site. Raise only if the
  * value is an activation-dependent block whose decoded site == SCRATCH_B
  * (same-site argument re-entry). A foreign-site dependent block passed down to
  * a live helper remains legal. */
@@ -1817,7 +2020,7 @@ static void emit_esc_same(void) {
     asm_neg(); asm_lit(1); asm_host(HOST_SUB);      /* decoded site */
     e_cell(RV_ESC_B); asm_host(HOST_EQ);        /* == closure site? */
     cell j_neq = asm_zbranch_fwd();                 /* 0 -> not equal -> permitted */
-    asm_host(HOST_DUMP); asm_halt();                /* same-site re-entry */
+    emit_raise_escape("argument");                  /* same-site re-entry */
     asm_patch_here(j_neq);
     asm_exit();
     asm_patch_here(j_nonneg);
@@ -2222,6 +2425,120 @@ static void emit_run_block(void) {
 }
 
 /* NATIVE: (native -- result-set)  evaluate arity args, dispatch */
+/* SIN! natives. Every path ends in EXIT or an unwind; none falls through.
+ *   create-sin type id arg  -> a new SIN! (inert data)
+ *   sin? value            -> 1 if value is a SIN!, else 0
+ *   sin-type / sin-id / sin-arg err -> that field
+ *   raise err               -> propagate err (a non-SIN! raises 'type 'raise)
+ *   judge block              -> block's result, or the SIN! it raised */
+static void emit_error_natives(void) {
+    /* create-sin (105): arity 3 */
+    e_cell(RV_NAT); asm_lit(RN_MAKE_ERROR); asm_host(HOST_EQ);
+    cell j_not_make = asm_zbranch_fwd();
+    for (int k = 0; k < 3; k++) {
+        to_subexpr[n_subexpr++] = emit_call_fwd();
+        asm_call(r_reduce);
+    }
+    asm_call(r_mkerror);
+    cell j_ret1 = asm_branch_fwd();                  /* -> shared [v, 1] tail */
+    asm_patch_here(j_not_make);
+
+    /* the rest (106..111) are arity 1: evaluate the argument once -> RV_T1.
+     * RV_NAT is saved across it: a nested native in the argument rewrites it. */
+    e_cell(RV_NAT); asm_toR();
+    to_subexpr[n_subexpr++] = emit_call_fwd();
+    asm_call(r_reduce);
+    e_pop_to(RV_T1);
+    asm_fromR(); e_setc(RV_NAT);
+
+    /* sin? (106) */
+    e_cell(RV_NAT); asm_lit(RN_ERRORP); asm_host(HOST_EQ);
+    cell j_not_errp = asm_zbranch_fwd();
+    e_cell(RV_T1); asm_lit(16); asm_host(HOST_MOD); asm_lit(T_ERROR); asm_host(HOST_EQ);
+    asm_lit(16); asm_host(HOST_MUL);                 /* 0/1 as a Glon integer */
+    cell j_ret2 = asm_branch_fwd();
+    asm_patch_here(j_not_errp);
+
+    /* is the argument a SIN!? (used by the field readers and raise) */
+    e_cell(RV_T1); asm_lit(16); asm_host(HOST_MOD); asm_lit(T_ERROR); asm_host(HOST_EQ);
+    e_setc(RV_T2);
+
+    /* sin-type / sin-id / sin-arg (107..109): field offset is
+     * RV_NAT - RN_MAKE_ERROR (= ERR_TYPE / ERR_ID / ERR_ARG) */
+    e_cell(RV_NAT); asm_lit(RN_ERROR_ARG); asm_host(HOST_LE);
+    cell j_not_field = asm_zbranch_fwd();
+    e_cell(RV_T2);
+    cell j_field_bad = asm_zbranch_fwd();
+    e_cell(RV_T1); e_untag_ptr();
+    e_cell(RV_NAT); asm_lit(RN_MAKE_ERROR); asm_host(HOST_SUB); asm_host(HOST_ADD);
+    asm_fetch();
+    cell j_ret3 = asm_branch_fwd();
+    asm_patch_here(j_field_bad);
+    emit_raise_fields("type", "sin-field", RV_T1);
+    asm_patch_here(j_not_field);
+
+    /* raise (110) */
+    e_cell(RV_NAT); asm_lit(RN_RAISE); asm_host(HOST_EQ);
+    cell j_not_raise = asm_zbranch_fwd();
+    e_cell(RV_T2);
+    cell j_raise_bad = asm_zbranch_fwd();
+    e_cell(RV_T1); e_setc(RV_ERRV);
+    asm_branch(r_raise_unwind);
+    asm_patch_here(j_raise_bad);
+    emit_raise_fields("type", "raise", RV_T1);
+    asm_patch_here(j_not_raise);
+
+    /* judge (111): the block runs in place, in the current activation and
+     * context (like `do`, via RUN-BLOCK), under a transparent judge frame that
+     * copies the enclosing activation's site and bias, so lexical references
+     * resolve exactly as they would without the judge. RETURN unwinds through
+     * the judge frame; a raise unwinds TO it. Frame layout: the 10 standard
+     * fields plus FRAME_TRAPRET, 16-aligned below the caller's return address. */
+    e_cell(RV_T1); asm_lit(16); asm_host(HOST_MOD); asm_lit(T_BLOCK); asm_host(HOST_EQ);
+    cell j_trap_bad = asm_zbranch_fwd();
+    emit_rs_guard(32);
+    asm_fetchR(); e_setc(RV_SIP);                                         /* caller return */
+    asm_lit(REG_RP); asm_fetch(); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_SRP);
+    asm_lit(REG_RP); asm_fetch(); asm_lit(11); asm_host(HOST_SUB); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T5);
+    asm_lit(REG_RP); asm_fetch(); asm_lit(11); asm_host(HOST_SUB); e_cell(RV_T5); asm_host(HOST_SUB); e_setc(RV_T6);
+    e_cell(RV_T6); asm_lit(REG_RP); asm_store();                          /* RP = frame base */
+    asm_lit(0); e_setc(RV_T3);                                            /* site (top level) */
+    asm_lit(0); e_setc(RV_T4);                                            /* bias (top level) */
+    e_cell(RV_FRAME);
+    cell j_top = asm_zbranch_fwd();
+    e_cell(RV_FRAME); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T3);
+    e_cell(RV_FRAME); asm_lit(FRAME_BIAS); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T4);
+    asm_patch_here(j_top);
+    e_cell(RV_FRAME); e_cell(RV_T6); asm_lit(FRAME_PREV); asm_host(HOST_ADD); asm_store();
+    e_cell(RV_T3); e_cell(RV_T6); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_store();
+    asm_lit(REG_SP); asm_fetch(); e_cell(RV_T6); asm_lit(FRAME_SP); asm_host(HOST_ADD); asm_store();
+    e_cell(RV_SRP); e_cell(RV_T6); asm_lit(FRAME_RP); asm_host(HOST_ADD); asm_store();
+    asm_lit(r_trap_landing); e_cell(RV_T6); asm_lit(FRAME_IP); asm_host(HOST_ADD); asm_store();
+    e_cell(RV_CTX); e_cell(RV_T6); asm_lit(FRAME_CTX); asm_host(HOST_ADD); asm_store();
+    e_cell(RV_CUR); e_cell(RV_T6); asm_lit(FRAME_CUR); asm_host(HOST_ADD); asm_store();
+    e_cell(RV_END); e_cell(RV_T6); asm_lit(FRAME_END); asm_host(HOST_ADD); asm_store();
+    e_cell(RV_BLK); e_cell(RV_T6); asm_lit(FRAME_BLK); asm_host(HOST_ADD); asm_store();
+    e_cell(RV_T4); e_cell(RV_T6); asm_lit(FRAME_BIAS); asm_host(HOST_ADD); asm_store();
+    e_cell(RV_SIP); e_cell(RV_T6); asm_lit(FRAME_TRAPRET); asm_host(HOST_ADD); asm_store();
+    e_cell(RV_T6); e_setc(RV_FRAME);
+    e_cell(RV_T1);
+    asm_call(r_run_block);            /* managed-block guard, save/restore CUR/END/BLK */
+    /* normal completion: pop the judge frame; the block's result set stays */
+    e_cell(RV_FRAME); asm_lit(FRAME_RP); asm_host(HOST_ADD); asm_fetch(); asm_lit(1); asm_host(HOST_SUB);
+    asm_lit(REG_RP); asm_store();
+    e_cell(RV_FRAME); asm_fetch(); e_setc(RV_FRAME);
+    asm_exit();
+    asm_patch_here(j_trap_bad);
+    emit_raise_fields("type", "judge", RV_T1);
+
+    /* shared tail: [value] -> [value, 1] */
+    asm_patch_here(j_ret1);
+    asm_patch_here(j_ret2);
+    asm_patch_here(j_ret3);
+    asm_lit(16);
+    asm_exit();
+}
+
 static void emit_native(void) {
     r_native = asm_here();
     asm_dup(); asm_lit(16); asm_host(HOST_DIV); e_setc(RV_NAT);
@@ -2302,6 +2619,12 @@ static void emit_native(void) {
     asm_call(r_reduce);
     asm_branch(r_reduce_block);                      /* tail */
     asm_patch_here(j_not_reduce);
+    /* SIN! natives (ids 105..111) behind ONE range check, so the arithmetic
+     * fall-through below (the fib hot path) pays a single extra comparison. */
+    e_cell(RV_NAT); asm_lit(RN_MAKE_ERROR); asm_host(HOST_GE);
+    cell j_not_errnat = asm_zbranch_fwd();
+    emit_error_natives();
+    asm_patch_here(j_not_errnat);
     /* = (id 6): type-safe identity. WORD/SET/GET/LIT (tags 2..5) compare by
      * symbol id, so a quoted word and a plain word denote the same symbol (the
      * route/event dispatch relies on this). Every other tag compares by raw
@@ -2622,6 +2945,11 @@ static void emit_return(void) {
     e_cell(RV_T2); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_fetch();
     e_cell(RV_SITE); asm_host(HOST_EQ);
     cell j_nomatch = asm_zbranch_fwd();
+    /* a JUDGE frame copies its enclosing activation's site but is not an
+     * activation: RETURN unwinds through it to the real function frame. */
+    e_cell(RV_T2); asm_lit(FRAME_IP); asm_host(HOST_ADD); asm_fetch();
+    asm_lit(r_trap_landing); asm_host(HOST_NE);
+    cell j_trapframe = asm_zbranch_fwd();
     /* match: restore target state and jump */
     e_cell(RV_T2); asm_lit(FRAME_SP); asm_host(HOST_ADD); asm_fetch(); asm_lit(REG_SP); asm_store();
     e_cell(RV_N); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T4);   /* re-place: i = N-1 */
@@ -2644,6 +2972,7 @@ static void emit_return(void) {
     e_cell(RV_T2); asm_lit(FRAME_IP); asm_host(HOST_ADD); asm_fetch(); asm_lit(REG_IP); asm_store();
     /* (control is now at the target's return address) */
     asm_patch_here(j_nomatch);
+    asm_patch_here(j_trapframe);
     e_cell(RV_T2); asm_fetch(); e_setc(RV_T2);         /* frame = prev */
     asm_branch(find_loop);
 }
@@ -2903,6 +3232,7 @@ cell r0_s1_init(void) {
     n_invoke = 0;
     n_fw_mv = 0; n_fw_mf = 0;
     n_esc_refs = 0;
+    n_word_refs = 0;
     next_site = 1;      /* func-site-ids start at 1; 0 = "no enclosing func" */
     site_depth = 0;
     parse_func_depth = 0;
@@ -2912,6 +3242,7 @@ cell r0_s1_init(void) {
     asm_reset();
     code_begin = asm_here();
     emit_gc();                      /* M2: mark/sweep collector + allocator */
+    emit_error_core();              /* SIN!: mkerror, judge landing, raise-unwind */
     emit_reduce();
     emit_lookup();
     emit_load_lex();
@@ -2933,6 +3264,7 @@ cell r0_s1_init(void) {
     emit_block_eval();
     emit_main();
     emit_esc_any();
+    emit_esc_transport();
     emit_esc_eq();
     emit_esc_same();
     emit_esc_anc();
@@ -2971,6 +3303,17 @@ cell r0_s1_init(void) {
     bind(global_ctx, intern("do"), mk_native(RN_DO));
     bind(global_ctx, intern("invoke"), mk_native(RN_INVOKE));
     bind(global_ctx, intern("reduce"), mk_native(RN_REDUCE));
+    /* SIN! vocabulary */
+    bind(global_ctx, intern("create-sin"), mk_native(RN_MAKE_ERROR));
+    bind(global_ctx, intern("sin?"), mk_native(RN_ERRORP));
+    bind(global_ctx, intern("sin-type"), mk_native(RN_ERROR_TYPE));
+    bind(global_ctx, intern("sin-id"), mk_native(RN_ERROR_ID));
+    bind(global_ctx, intern("sin-arg"), mk_native(RN_ERROR_ARG));
+    bind(global_ctx, intern("raise"), mk_native(RN_RAISE));
+    bind(global_ctx, intern("judge"), mk_native(RN_TRAP));
+    /* word literals in emitted code (emitted before the preload above) */
+    for (int i = 0; i < n_word_refs; i++)
+        s1_set_mem(word_refs[i].patch, intern(word_refs[i].name));
 
     /* M2: seed GC roots and world state.  The collector scans the global
      * context, the (empty) M1 task table, and the (empty) scheduler-world DS/RS
@@ -3128,6 +3471,8 @@ int r0_s1_run_ex(cell block, int preserve_hp) {
     M[RV_RPMIN] = 65535;
     M[RV_SPMIN] = 65535;
     stack_sentry_fired = 0;
+    M[RV_ERRUNC] = 0;          /* SIN!: no pending or uncaught error */
+    M[RV_ERRV] = R0_NONE; M[RV_ERRT] = R0_NONE; M[RV_ERRI] = R0_NONE; M[RV_ERRA] = R0_NONE;
 #ifdef R0_S1_PROFILE
     for (cell c = PF_BASE; c <= PF_HASH_FALLBACK_SLOTS; c++)
         if (c != PF_TRACE) M[c] = 0;   /* PF_TRACE is a persistent mode flag */
@@ -3180,6 +3525,8 @@ int r0_s1_run_compiled(cell block, void (*run_fn)(cell *, cell)) {
     M[RV_RPMIN] = 65535;
     M[RV_SPMIN] = 65535;
     stack_sentry_fired = 0;
+    M[RV_ERRUNC] = 0;          /* SIN!: no pending or uncaught error */
+    M[RV_ERRV] = R0_NONE; M[RV_ERRT] = R0_NONE; M[RV_ERRI] = R0_NONE; M[RV_ERRA] = R0_NONE;
 #ifdef R0_S1_PROFILE
     for (cell c = PF_BASE; c <= PF_HASH_FALLBACK_SLOTS; c++)
         if (c != PF_TRACE) M[c] = 0;
@@ -3208,6 +3555,18 @@ cell r0_s1_result(int i, int N) {
 cell r0_s1_ip_start(void) { return ip_start; }
 cell r0_s1_ip_end(void)   { return ip_end; }
 int  r0_s1_ran_cleanly(void){ return ip_end == main_halt_ip; }
+int  r0_s1_uncaught_error(cell *type, cell *id, cell *arg) {
+    if (r0_s1_ran_cleanly() || M[RV_ERRUNC] != 1) return 0;
+    cell t = M[RV_ERRT], i = M[RV_ERRI], a = M[RV_ERRA], v = M[RV_ERRV];
+    if ((v & 15) == T_ERROR) {
+        cell p = v - T_ERROR;
+        t = M[p + ERR_TYPE]; i = M[p + ERR_ID]; a = M[p + ERR_ARG];
+    }
+    if (type) *type = t;
+    if (id) *id = i;
+    if (arg) *arg = a;
+    return 1;
+}
 int  r0_s1_stack_sentry_fired(void){ return stack_sentry_fired; }
 cell r0_s1_sp_start(void) { return sp_start; }
 cell r0_s1_sp_end(void)   { return sp_end; }

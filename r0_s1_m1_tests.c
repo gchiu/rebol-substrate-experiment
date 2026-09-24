@@ -53,8 +53,10 @@ const char *M1_LIB =
     " mnew-task: raw 3 [ "
     "   LIT " XSTR(M1_S2) " ! "
     "   LIT " XSTR(M1_S1) " ! "
+    /* escape law (5), task transport: ESC_TRANSPORT checks the TAGGED body on
+     * the stack top before it is untagged and before any task-table change */
+    "   CALL ESC_TRANSPORT "
     "   DUP LIT 16 MOD SUB LIT " XSTR(M1_S0) " ! "
-    "   LIT " XSTR(M1_S0) " @ LIT " XSTR(RV_ESC_A) " ! CALL ESC_ANY "
     "   LIT 0 LIT " XSTR(M1_S3) " ! "
     "   Lfind: "
     "   LIT " XSTR(M1_S3) " @ LIT " XSTR(M1_MAX_TASKS) " LT ZBRANCH Lfull "

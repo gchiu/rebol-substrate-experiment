@@ -196,7 +196,7 @@ static const esc_case CASES[] = {
       0, VALUE, 9, FAILSTOP, 0, "(3) global store in f 5" },
     { "X1b", "store into the global context, executed at top level",
       "[ gb: 0  f: func [x] [ gb: [x]  0 ]  f 5  do gb ]",
-      0, FAILSTOP, 0, FAILSTOP, 0, "(3) global store (now: LOAD-LEX guard at use)" },
+      0, FAILSTOP, 0, FAILSTOP, 0, "(3) global store" },
     { "CTX1", "store into an enclosing activation's context (non-global)",
       "[ f: func [] [ keep: none"
       "    g: func [x d] [ either = d 0 [ keep: [x]  0 ] [ t: does keep  t ] ]"
@@ -208,7 +208,7 @@ static const esc_case CASES[] = {
       1, VALUE, 9, FAILSTOP, 0, "(1) exit of f 5" },
     { "N2", "cross-task: bound task body escapes its spawning activation",
       "[ res: 0  go: func [x] [ spawn [ res: x ] ]  go 5  run-tasks  res ]",
-      1, FAILSTOP, 0, FAILSTOP, 0, "(5) task transport (now: LOAD-LEX guard in the task)" },
+      1, FAILSTOP, 0, FAILSTOP, 0, "(5) task transport (mnew-task ESC_ANY, before any task-table change)" },
 
     /* ---- legal: must succeed now and under the law ---------------------------- */
     { "L1", "downward CASE in the writing activation",

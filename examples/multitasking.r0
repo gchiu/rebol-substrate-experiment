@@ -32,6 +32,7 @@
   mnew-task: raw 3 [
       LIT 8278 !                                  ;; finish word -> scratch
       LIT 8277 !                                  ;; do word     -> scratch
+      CALL ESC_TRANSPORT                          ;; escape law (5): reject a dependent body first
       DUP LIT 16 MOD SUB LIT 8276 !               ;; body ptr    -> scratch
       LIT 0 LIT 8279 !                            ;; i = 0
       Lfind: LIT 8279 @ LIT 8 LT ZBRANCH Lfull
