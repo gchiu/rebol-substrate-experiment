@@ -3651,6 +3651,11 @@ const char *r0_s1_sym_name(cell id) {
     return (id >= 0 && id < nsyms) ? syms[id] : 0;
 }
 int  r0_s1_stack_sentry_fired(void){ return stack_sentry_fired; }
+void r0_s1_global_usage(cell *count, cell *cap) {
+    cell p = r0_untag(global_ctx);
+    if (count) *count = M[p + CTX_COUNT];
+    if (cap) *cap = M[p + CTX_CAP];
+}
 int  r0_s1_halt_reason(void) {
     return r0_s1_ran_cleanly() ? R0S1_HALT_NONE : (int)M[RV_HALTWHY];
 }

@@ -88,6 +88,14 @@ static void mold(out_t *o, cell v, int depth) {
     }
 }
 
+int r0_s1_mold(cell v, char *out, int cap) {
+    out_t o = { out, 0, cap };
+    if (cap <= 0) return 0;
+    mold(&o, v, 0);
+    o.p[o.n] = 0;
+    return o.n;
+}
+
 /* the program source, wrapped as "[ src ]" (the loader's top-level form) */
 static char progbuf[16400];
 

@@ -1,3 +1,5 @@
 # build artifacts
 s1
 *.o
+jupyter/host/glon-kernel-host
+__pycache__/

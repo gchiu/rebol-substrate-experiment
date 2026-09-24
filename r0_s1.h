@@ -446,6 +446,41 @@ const char *r0_s1_sym_name(cell id);
  * write its outcome as text into out (NUL-terminated); returns the length.
  * Shared by the primer doc-tests and the WASM host's glon_run. */
 int  r0_s1_show_run(const char *src, unsigned int len, char *out, int cap);
+/* r0_s1_show.c: mold one value as text (the same rendering as show_run);
+ * returns the length written (NUL-terminated). */
+int  r0_s1_mold(cell v, char *out, int cap);
+
+/* Global-context usage: current binding count and capacity. */
+void r0_s1_global_usage(cell *count, cell *cap);
+
+/* r0_s1_session.c: run one cell (source WITHOUT the outer [ ]) in the persistent
+ * session and classify the outcome from structured runtime state only. */
+enum {
+    R0S1_OUT_OK = 0,              /* ran cleanly; `count` results, read with r0_s1_result(i, count) */
+    R0S1_OUT_PARSE_ERROR = 1,     /* the cell is not valid source (detail: syntax / too_large) */
+    R0S1_OUT_RESOURCE_ERROR = 2,  /* a fixed session capacity is exhausted (detail says which) */
+    R0S1_OUT_UNCAUGHT_SIN = 3,    /* a raised SIN! reached no judge (sin_type/id/arg) */
+    R0S1_OUT_HALT = 4             /* any other machine-level fail-stop (detail: stack_sentry / machine) */
+};
+enum {
+    R0S1_DETAIL_NONE = 0,
+    R0S1_DETAIL_SYNTAX = 1,
+    R0S1_DETAIL_TOO_LARGE = 2,
+    R0S1_DETAIL_SYMBOL_TABLE_FULL = 3,
+    R0S1_DETAIL_LOADER_EXHAUSTED = 4,
+    R0S1_DETAIL_SITE_TABLE_FULL = 5,
+    R0S1_DETAIL_CONTEXT_FULL = 6,
+    R0S1_DETAIL_STACK_SENTRY = 7,
+    R0S1_DETAIL_MACHINE = 8
+};
+typedef struct {
+    int status, detail;
+    int count;                    /* OK: number of results left by the cell */
+    cell sin_type, sin_id, sin_arg;
+} r0_s1_outcome;
+int  r0_s1_session_run(const char *src, unsigned int len, r0_s1_outcome *out);
+const char *r0_s1_outcome_status_name(int status);
+const char *r0_s1_outcome_detail_name(int detail);
 int  r0_s1_stack_sentry_fired(void);  /* 1 iff the last run violated SP/RP bounds */
 /* R0S1_HALT_* reason the last run fail-stopped (R0S1_HALT_NONE after a clean
  * run, an uncaught SIN!, or a halt with no recorded reason). */

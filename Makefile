@@ -1,7 +1,7 @@
 CC      ?= cc
 CFLAGS  ?= -std=c17 -Wall -Wextra -O0 -g
 
-OBJS = s1.o tests.o adversarial.o claims.o r0.o r0_tests.o r0_s1_runtime.o r0_s1_g1a.o r0_s1_tests.o r0_s1_debug_tests.o r0_s1_m1_tests.o r0_s1_m2_tests.o r0_s1_m3_tests.o r0_s1_m3b_tests.o r0_s1_m3c_tests.o r0_s1_m3d_tests.o r0_s1_nested_closure_tests.o r0_s1_p4_tests.o r0_s1_p5_tests.o r0_s1_g1a_tests.o r0_s1_g1b_tests.o r0_s1_g1c_tests.o r0_s1_g1d_tests.o r0_s1_g1e_tests.o r0_s1_lambda_tests.o r0_s1_masm_tests.o r0_s1_gc_safepoint_tests.o r0_s1_invoke_tests.o r0_s1_reduce_tests.o r0_s1_parse_tests.o r0_s1_equality_tests.o r0_s1_bound_tests.o r0_s1_case_tests.o r0_s1_escape_law_tests.o r0_s1_error_tests.o r0_s1_show.o r0_s1_primer_tests.o r0_s1_parse_hardening_tests.o r0_s1_context_capacity_tests.o r0_s1_traffic_tests.o r0_s1_newell_tests.o r0_s1_ovm_tests.o r0_s1_nasch_tests.o main.o
+OBJS = s1.o tests.o adversarial.o claims.o r0.o r0_tests.o r0_s1_runtime.o r0_s1_g1a.o r0_s1_tests.o r0_s1_debug_tests.o r0_s1_m1_tests.o r0_s1_m2_tests.o r0_s1_m3_tests.o r0_s1_m3b_tests.o r0_s1_m3c_tests.o r0_s1_m3d_tests.o r0_s1_nested_closure_tests.o r0_s1_p4_tests.o r0_s1_p5_tests.o r0_s1_g1a_tests.o r0_s1_g1b_tests.o r0_s1_g1c_tests.o r0_s1_g1d_tests.o r0_s1_g1e_tests.o r0_s1_lambda_tests.o r0_s1_masm_tests.o r0_s1_gc_safepoint_tests.o r0_s1_invoke_tests.o r0_s1_reduce_tests.o r0_s1_parse_tests.o r0_s1_equality_tests.o r0_s1_bound_tests.o r0_s1_case_tests.o r0_s1_escape_law_tests.o r0_s1_error_tests.o r0_s1_show.o r0_s1_primer_tests.o r0_s1_parse_hardening_tests.o r0_s1_context_capacity_tests.o r0_s1_session.o r0_s1_session_tests.o r0_s1_traffic_tests.o r0_s1_newell_tests.o r0_s1_ovm_tests.o r0_s1_nasch_tests.o main.o
 
 all: s1
 
@@ -36,6 +36,8 @@ r0_s1_show.o: r0_s1_show.c r0_s1.h s1.h
 r0_s1_primer_tests.o: r0_s1_primer_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_parse_hardening_tests.o: r0_s1_parse_hardening_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_context_capacity_tests.o: r0_s1_context_capacity_tests.c r0_s1.h m1_layout.h s1.h
+r0_s1_session.o: r0_s1_session.c r0_s1.h s1.h
+r0_s1_session_tests.o: r0_s1_session_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_traffic_tests.o: r0_s1_traffic_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_newell_tests.o: r0_s1_newell_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_ovm_tests.o: r0_s1_ovm_tests.c r0_s1.h m1_layout.h s1.h
@@ -239,6 +241,20 @@ wasm-primer-test: demo/shop/glon.wasm primer.html
 	@grep -q "PRIMER_TEST PASS" /tmp/opencode_primer_test.out && \
 	 echo "wasm-primer-test: PASS (every primer example through glon_run on real WASM)"
 
+# ---- Persistent native Glon session host (Jupyter milestone, phase 1) -------
+# One process = one Glon session: the runtime is initialised once and cells run
+# in it one after another (see jupyter/host/glon_kernel_host.c for the framed
+# request/result protocol). host-test drives it with a stdlib-only Python
+# harness (no Jupyter). Linux/WSL (POSIX fds + fopencookie).
+HOST_SRCS = jupyter/host/glon_kernel_host.c r0_s1_session.c r0_s1_show.c r0_s1_runtime.c s1.c
+jupyter/host/glon-kernel-host: $(HOST_SRCS) r0_s1.h s1.h m1_layout.h
+	$(CC) $(CFLAGS) -I. -o $@ $(HOST_SRCS)
+
+glon-kernel-host: jupyter/host/glon-kernel-host
+
+host-test: jupyter/host/glon-kernel-host
+	python3 jupyter/tests/test_host.py
+
 # ---- Traffic simulator benchmark (post-Alpha application; no language change) -
 # load-once benchmark of the IDM sim. Builds both the shipped -O0 runtime and a
 # directly-compiled -O2 runtime so interpreter cost can be separated from C
@@ -251,4 +267,4 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test primer.html wasm-primer-test
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test primer.html wasm-primer-test glon-kernel-host host-test

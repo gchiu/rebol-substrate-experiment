@@ -1,0 +1,78 @@
+;; jupyter/prelude.glon -- the notebook prelude for the Glon session host.
+;;
+;; The smallest core vocabulary for ordinary notebook Glon. Every definition is
+;; copied VERBATIM from demo/shop/common.glon (jupyter/tests/test_host.py fails
+;; if a copy drifts); nothing here is new language. The rest of common.glon --
+;; the SPA view dialect, HTML/emit/canvas helpers and string atoms -- is web
+;; material a notebook does not use, and would only spend the session's fixed
+;; symbol and loader capacity. The definitions sit inside one outer [ ] block,
+;; because the loader only recognises `masm` and `func` inside a block. CASE is
+;; loaded separately from demo/shop/case.glon (unchanged). Tasks
+;; (spawn/yield/run-tasks) are not included.
+;;
+;;   mk-string  a quoted string literal "..." is read as `mk-string [bytes]`, so every string literal needs it
+;;   str-eq     string content equality (`=` is identity for strings)
+;;   get        `get 'word` looks up a word's value at run time
+;;   lambda     runtime closure factory; `does` is built on it
+;;   does       zero-argument closure, e.g. `does [ x ]` (primer, closures)
+;;   block-len  number of values in a block; needed by CASE
+;;   block-at   the i-th value of a block; needed by CASE
+;;   select     first row of a table whose first element equals a key
+;;   select-at  helper for select
+
+[
+mk-string: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT SCRATCH_C @ !
+    LIT 0 LIT SCRATCH_A !
+  mk-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH mk-done
+    LIT SCRATCH_B @ LIT 2 ADD LIT SCRATCH_A @ ADD @ LIT 16 DIV
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_A @ ADD
+    !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH mk-loop
+  mk-done:
+    LIT SCRATCH_C @ LIT T_STRING ADD ARITY 1 EXIT
+]
+
+str-eq: masm 2 [
+    LIT SCRATCH_B !
+    DUP LIT 16 MOD SUB LIT SCRATCH_A !
+    LIT SCRATCH_B @ DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT SCRATCH_A @ @ LIT SCRATCH_B @ @ EQ ZBRANCH str-eq-neq
+    LIT SCRATCH_A @ @ LIT SCRATCH_F !
+    LIT 0 LIT SCRATCH_E !
+  str-eq-loop:
+    LIT SCRATCH_E @ LIT SCRATCH_F @ LT ZBRANCH str-eq-yes
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_E @ ADD @
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_E @ ADD @
+    EQ ZBRANCH str-eq-neq
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    BRANCH str-eq-loop
+  str-eq-yes:
+    INT 1 ARITY 1 EXIT
+  str-eq-neq:
+    INT 0 ARITY 1 EXIT
+]
+
+get: masm 1 [ CALL lookup ARITY 1 EXIT ]
+
+lambda: func [spec body] [ func :spec :body ]
+
+does:   func [body] [ lambda [] body ]
+
+block-len: masm 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
+
+block-at: masm 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ]
+
+select: func [rows key] [ select-at rows 0 block-len rows key ]
+
+select-at: func [rows i n key] [
+    either < i n [
+        either = block-at block-at rows i 0 key [ block-at rows i ] [ select-at rows + i 1 n key ]
+    ] [ none ]
+]
+]
