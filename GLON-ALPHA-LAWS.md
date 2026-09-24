@@ -181,11 +181,21 @@ An error value and error propagation are separate things.
   permanent and never swept.
 - GC-safepoint invariant: at every GC-capable allocation, all GC-scanned state
   (data stack, return stack, roots) holds only valid tagged Glon values.
-- **Known limit (pre-existing, not addressed here):** the global context holds
-  256 bindings. A session that loads traffic plus two extra models needs 280
-  and silently overflows it; the shipped traffic page does not offer that
-  session shape. The largest legal session measured is traffic + one model
-  (232/256); the G1E shop session uses 224. (SIN! adds 7 globals everywhere.)
+- **Context capacity (an implementation limit):** contexts have fixed
+  capacities: the global context holds 256 bindings and a function's context
+  holds 16 (`R0S1_CTX_CAP`). Adding a new binding (a set-word with no existing
+  binding, or a bound parameter) to a full context is detected **before any
+  mutation**: the machine fail-stops with the structured reason `CONTEXT_FULL`
+  (`r0_s1_halt_reason`). This is a machine/resource failure, not a `SIN!`, so
+  `judge` cannot catch it, and the rejected write leaves existing state
+  uncorrupted. The capacities are implementation limits intended for later
+  removal, not language semantics.
+- **Known limit:** the current 256-binding global-context ceiling can still be
+  reached by sufficiently large combined workloads (for example, a session
+  that loads traffic plus two extra models needs 280 bindings; the shipped
+  traffic page does not offer that session shape). The runtime detects this
+  before writing and fail-stops with `CONTEXT_FULL`; the ceiling remains an
+  implementation limit scheduled for later removal.
 
 ## 12. Tasks / tuple space
 
