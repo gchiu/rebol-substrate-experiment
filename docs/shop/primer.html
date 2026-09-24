@@ -230,7 +230,48 @@ sin-id e</textarea>
 <div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
 <pre class="out" aria-live="polite"></pre>
 </div>
-<h2 id="s8">8. Tasks</h2>
+<h2 id="s8">8. Strings</h2>
+<p>Text in double quotes is a STRING!. Strings are <strong>immutable</strong>: string operations return new strings and never change their inputs. They have qualified names: <code>s/+</code> joins two strings, <code>s/=</code> compares their contents, <code>s/length</code> counts their bytes and <code>s/print</code> prints one. (For now <code>s/+</code> is simply one word; a <code>/</code> inside a word is reserved for qualified names. A bare <code>/</code> is still division.)</p>
+<div class="ex" data-ex="s-plus" data-env="core">
+<textarea rows="3" spellcheck="false" autocapitalize="off" aria-label="Glon source: s-plus">s: "hello "
+t: "world"
+s/+ s t</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p><code>s/+</code> built a new string; <code>s</code> itself is unchanged:</p>
+<div class="ex" data-ex="s-unchanged" data-env="core">
+<textarea rows="3" spellcheck="false" autocapitalize="off" aria-label="Glon source: s-unchanged">s: "hello "
+u: s/+ s "world"
+s</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p><code>s/length</code> counts stored bytes (Glon has no Unicode character semantics yet):</p>
+<div class="ex" data-ex="s-length" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: s-length">s/length "hello world"</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p><code>s/=</code> compares contents. <code>=</code> is identity, so two separately built strings with the same text are <code>s/=</code> but not <code>=</code>:</p>
+<div class="ex" data-ex="s-equal" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: s-equal">s/= s/+ "ab" "c" "abc"</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<div class="ex" data-ex="s-identity" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: s-identity">= s/+ "ab" "c" "abc"</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p><code>s/print "hello"</code> writes the string's bytes and a newline to the output (<code>print</code> prints integers only). Giving a string operation something that is not a string raises a SIN! of type <code>type</code>:</p>
+<div class="ex" data-ex="s-type" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: s-type">e: judge [ s/+ "hello" 42 ]
+sin-id e</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<h2 id="s9">9. Tasks</h2>
 <p>Glon tasks are cooperative: <code>spawn block</code> creates a task, <code>yield</code> hands control to the next task, and <code>run-tasks</code> runs them until all finish. These words come from the task library shipped with the demos (<code>demos/tuple-space.glon</code>), loaded for the examples below. Two tasks interleave their digits:</p>
 <div class="ex" data-ex="tasks" data-env="tasks">
 <textarea rows="5" spellcheck="false" autocapitalize="off" aria-label="Glon source: tasks">trace: 0
@@ -249,10 +290,10 @@ sin-id e</textarea>
 <div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
 <pre class="out" aria-live="polite"></pre>
 </div>
-<h2 id="s9">9. Coming from Rebol or Red</h2>
+<h2 id="s10">10. Coming from Rebol or Red</h2>
 <p>Glon looks familiar, which is exactly why these differences matter:</p>
-<div class="tablewrap"><table><thead><tr><th>In Rebol / Red</th><th>In Glon today</th></tr></thead><tbody><tr><td><code>1 + 2 * 3</code> (infix)</td><td>prefix only: <code>+ 1 * 2 3</code>; comparisons too: <code>&gt; n 0</code></td></tr><tr><td><code>( ... )</code> groups an expression</td><td>no parentheses; fixed arity decides grouping</td></tr><tr><td><code>0</code> is true; <code>true</code> / <code>false</code></td><td><code>0</code> and <code>none</code> are false; no <code>true</code> / <code>false</code> words (use <code>1</code> / <code>0</code>)</td></tr><tr><td><code>case [cond [action] ...]</code>, <code>case/all</code></td><td><code>case [ [cond] [action] ... ]</code>: conditions are blocks; no <code>/all</code></td></tr><tr><td><code>foreach</code>, <code>each</code>, <code>while</code>, <code>repeat</code>, <code>loop</code></td><td>no loop words; use recursion</td></tr><tr><td><code>switch</code></td><td>none; use <code>case</code></td></tr><tr><td><code>type?</code></td><td>none</td></tr><tr><td><code>try</code>, <code>attempt</code>, <code>error!</code>, <code>catch</code> / <code>throw</code></td><td><code>SIN!</code>, <code>create-sin</code>, <code>raise</code>, <code>judge</code></td></tr><tr><td>an unset word is a catchable error</td><td>an unset word halts the run (a machine fail-stop, not a SIN!)</td></tr><tr><td><code>func</code> set-words are global (Rebol); <code>function</code> collects locals (Red)</td><td>a set-word updates the nearest existing binding, else makes a local</td></tr><tr><td>a bound block can travel anywhere</td><td>a block that uses a call's locals may not outlive that call; use a closure</td></tr><tr><td><code>[1] = [1]</code> is true</td><td><code>=</code> is identity for blocks and strings (<code>= [1] [1]</code> is <code>0</code>); <code>str-eq</code> compares strings</td></tr><tr><td>threads, ports</td><td>cooperative tasks: <code>spawn</code>, <code>yield</code>, <code>run-tasks</code> (library words)</td></tr><tr><td><code>print</code> shows any value</td><td><code>print</code> shows integers only</td></tr></tbody></table></div>
-<h2 id="s10">10. Next</h2>
+<div class="tablewrap"><table><thead><tr><th>In Rebol / Red</th><th>In Glon today</th></tr></thead><tbody><tr><td><code>1 + 2 * 3</code> (infix)</td><td>prefix only: <code>+ 1 * 2 3</code>; comparisons too: <code>&gt; n 0</code></td></tr><tr><td><code>( ... )</code> groups an expression</td><td>no parentheses; fixed arity decides grouping</td></tr><tr><td><code>0</code> is true; <code>true</code> / <code>false</code></td><td><code>0</code> and <code>none</code> are false; no <code>true</code> / <code>false</code> words (use <code>1</code> / <code>0</code>)</td></tr><tr><td><code>case [cond [action] ...]</code>, <code>case/all</code></td><td><code>case [ [cond] [action] ... ]</code>: conditions are blocks; no <code>/all</code></td></tr><tr><td><code>foreach</code>, <code>each</code>, <code>while</code>, <code>repeat</code>, <code>loop</code></td><td>no loop words; use recursion</td></tr><tr><td><code>switch</code></td><td>none; use <code>case</code></td></tr><tr><td><code>type?</code></td><td>none</td></tr><tr><td><code>try</code>, <code>attempt</code>, <code>error!</code>, <code>catch</code> / <code>throw</code></td><td><code>SIN!</code>, <code>create-sin</code>, <code>raise</code>, <code>judge</code></td></tr><tr><td>an unset word is a catchable error</td><td>an unset word halts the run (a machine fail-stop, not a SIN!)</td></tr><tr><td><code>func</code> set-words are global (Rebol); <code>function</code> collects locals (Red)</td><td>a set-word updates the nearest existing binding, else makes a local</td></tr><tr><td>a bound block can travel anywhere</td><td>a block that uses a call's locals may not outlive that call; use a closure</td></tr><tr><td><code>[1] = [1]</code> is true</td><td><code>=</code> is identity for blocks and strings (<code>= [1] [1]</code> is <code>0</code>); <code>str-eq</code> compares strings</td></tr><tr><td>threads, ports</td><td>cooperative tasks: <code>spawn</code>, <code>yield</code>, <code>run-tasks</code> (library words)</td></tr><tr><td><code>print</code> shows any value</td><td><code>print</code> shows integers only; <code>s/print</code> prints a string</td></tr><tr><td><code>append</code> changes a string in place</td><td>strings are immutable: <code>s/+</code> returns a new string</td></tr></tbody></table></div>
+<h2 id="s11">11. Next</h2>
 <ul><li>The first substantial Glon program is the live traffic simulator: <a href="https://gchiu.github.io/rebol-substrate-experiment/shop/traffic.html">https://gchiu.github.io/rebol-substrate-experiment/shop/traffic.html</a>. Its IDM, Newell, OVM/FVDM and NaSch car-following models are written in Glon and run through WebAssembly in the browser.</li><li>The normative rules: <a href="https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/GLON-ALPHA-LAWS.md">GLON-ALPHA-LAWS.md</a>.</li></ul>
 
 <script type="application/glon" data-env="bootstrap">[
@@ -290,25 +331,8 @@ mk-string: masm 1 [
 
 
 
-str-eq: masm 2 [
-    LIT SCRATCH_B !
-    DUP LIT 16 MOD SUB LIT SCRATCH_A !
-    LIT SCRATCH_B @ DUP LIT 16 MOD SUB LIT SCRATCH_B !
-    LIT SCRATCH_A @ @ LIT SCRATCH_B @ @ EQ ZBRANCH str-eq-neq
-    LIT SCRATCH_A @ @ LIT SCRATCH_F !
-    LIT 0 LIT SCRATCH_E !
-  str-eq-loop:
-    LIT SCRATCH_E @ LIT SCRATCH_F @ LT ZBRANCH str-eq-yes
-    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_E @ ADD @
-    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_E @ ADD @
-    EQ ZBRANCH str-eq-neq
-    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
-    BRANCH str-eq-loop
-  str-eq-yes:
-    INT 1 ARITY 1 EXIT
-  str-eq-neq:
-    INT 0 ARITY 1 EXIT
-]
+
+str-eq: :s/=
 
 
 get: masm 1 [ CALL lookup ARITY 1 EXIT ]

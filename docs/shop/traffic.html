@@ -91,25 +91,8 @@ mk-string: masm 1 [
 
 
 
-str-eq: masm 2 [
-    LIT SCRATCH_B !
-    DUP LIT 16 MOD SUB LIT SCRATCH_A !
-    LIT SCRATCH_B @ DUP LIT 16 MOD SUB LIT SCRATCH_B !
-    LIT SCRATCH_A @ @ LIT SCRATCH_B @ @ EQ ZBRANCH str-eq-neq
-    LIT SCRATCH_A @ @ LIT SCRATCH_F !
-    LIT 0 LIT SCRATCH_E !
-  str-eq-loop:
-    LIT SCRATCH_E @ LIT SCRATCH_F @ LT ZBRANCH str-eq-yes
-    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_E @ ADD @
-    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_E @ ADD @
-    EQ ZBRANCH str-eq-neq
-    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
-    BRANCH str-eq-loop
-  str-eq-yes:
-    INT 1 ARITY 1 EXIT
-  str-eq-neq:
-    INT 0 ARITY 1 EXIT
-]
+
+str-eq: :s/=
 
 
 get: masm 1 [ CALL lookup ARITY 1 EXIT ]
