@@ -149,6 +149,15 @@ def main():
     check(r.stdout == "7\n" and not r.results and r.reply["status"] == "ok",
           "E: `print 7` -> a stdout stream \"7\", and no Out[] (print returns no value)")
 
+    # ---- immutable strings across cells --------------------------------------------
+    run(kc, 's: "hello "\nt: "world"')
+    r = run(kc, "u: s/+ s t\nu")
+    check(r.out == '"hello world"', 'ST1: cell `u: s/+ s t / u` -> Out "hello world"')
+    check(run(kc, "s").out == '"hello "', 'ST2: a later cell `s` -> Out "hello " (s/+ did not change it)')
+    r = run(kc, "s/print u")
+    check(r.stdout == "hello world\n" and not r.results and r.reply["status"] == "ok",
+          "ST3: `s/print u` -> stdout \"hello world\" (the bytes, not a number), no Out[]")
+
     # ---- F-G: SIN! --------------------------------------------------------------
     r = run(kc, "judge [ raise create-sin 'demo 'oops 7 ]")
     check(r.reply["status"] == "ok" and r.out == "#[SIN! demo oops 7]",

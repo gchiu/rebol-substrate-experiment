@@ -67,7 +67,12 @@ enum {
     RN_ERROR_ID = 108,
     RN_ERROR_ARG = 109,
     RN_RAISE = 110,
-    RN_TRAP = 111
+    RN_TRAP = 111,
+    /* immutable STRING! operations (qualified s/... spellings, flat words for now) */
+    RN_S_CAT = 112,     /* s/+      string string -> new string */
+    RN_S_EQ = 113,      /* s/=      string string -> 1 | 0 (byte equality) */
+    RN_S_LEN = 114,     /* s/length string -> byte count */
+    RN_S_PRINT = 115    /* s/print  string -> (no value); bytes + newline to stdout */
 };
 
 /* --- memory layout ------------------------------------------------------ */

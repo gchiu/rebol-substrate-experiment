@@ -80,14 +80,19 @@ for (const f of ["glon_run", "glon_result_ptr", "glon_result_len"]) {
   if (!exported.includes(f)) fail(path.basename(WASM) + " has no " + f + " export (stale build?)");
 }
 
+let lastOut = [];   // the raw bytes the last run printed (for the s/print check)
 function run(source, envName) {
   const printed = [];
+  const out = [];
+  lastOut = out;
   let ex;
   const view = () => new Uint8Array(ex.memory.buffer);
   const instance = new WebAssembly.Instance(mod, {
     env: {
       host_print(ptr, len) {
-        for (const l of new TextDecoder().decode(view().subarray(ptr, ptr + len)).split("\n")) if (l) printed.push(l);
+        const b = view().subarray(ptr, ptr + len);
+        for (const c of b) out.push(c);
+        for (const l of new TextDecoder().decode(b).split("\n")) if (l) printed.push(l);
       },
       host_set_text(h, v) { printed.push(String(h * 1000000 + v)); },
       host_set_html() {},
@@ -116,10 +121,22 @@ for (const ex of examples) {
   const got = run(ex.source.join("\n"), ex.env);
   if (!matches(got, ex.expect)) fail(ex.id + ": expected \"" + ex.expect + "\", got \"" + got + "\"");
 }
+// s/print writes a string's raw bytes (then a newline) through the host's output
+run("0", "core");
+const envBytes = lastOut.length;        // the environment itself prints nothing
+if (run('s/print s/+ "hello " "world"', "core") !== "none"
+    || Buffer.from(lastOut.slice(envBytes)).toString() !== "hello world\n") {
+  fail("s/print: expected the bytes \"hello world\\n\", got " + JSON.stringify(Buffer.from(lastOut).toString()));
+}
+run("s/print mk-string [104 0 255 105]", "core");
+if (Buffer.compare(Buffer.from(lastOut.slice(envBytes)), Buffer.from([104, 0, 255, 105, 10])) !== 0) {
+  fail("s/print: raw bytes 0 and 255 were not written unchanged");
+}
+
 // isolation: a definition made in one run is gone in the next (fresh instance)
 if (run("leak: 42  leak", "core") !== "42") fail("isolation probe setup");
 if (run("leak", "core") !== "** halted (no SIN!: a machine-level fail-stop)") fail("a previous run's global leaked");
 
 console.log("PRIMER_TEST PASS (" + examples.length + " primer examples through glon_run on " +
-            path.basename(WASM) + "; page sources match primer.txt; runs are isolated)");
+            path.basename(WASM) + "; s/print bytes intact; page sources match primer.txt; runs are isolated)");
 process.exit(0);

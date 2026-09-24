@@ -96,6 +96,23 @@ def main():
           "N1: a multi-line cell with comments runs as one cell (42)")
     h.quit()
 
+    # ---- immutable strings ------------------------------------------------------
+    h = Host()
+    check(ok(h.execute('s: "hello "  t: "world"'), '"world"')
+          and ok(h.execute("u: s/+ s t  u"), '"hello world"'),
+          "ST1: s/+ builds a new string across cells (\"hello world\")")
+    check(ok(h.execute("s"), '"hello "') and ok(h.execute("s/length u"), "11") and ok(h.execute("s/= u s"), "0"),
+          "ST2: the input is unchanged; s/length counts bytes; s/= compares contents")
+    r = h.execute("s/print u")
+    check(ok(r) and r["stdout"] == b"hello world\n", "ST3: s/print writes exactly the bytes + newline to stdout, no value")
+    r = h.execute("s/print mk-string [104 0 255 105]")
+    check(r["stdout"] == b"h\x00\xffi\n", "ST4: s/print writes raw bytes (including 0 and 255) unchanged")
+    r = h.execute("s/+ u 5")
+    check(r["status"] == "UNCAUGHT_SIN" and r["sin"] == {"type": "type", "id": "s/+", "arg": "5"}
+          and ok(h.execute("u"), '"hello world"'),
+          "ST5: a non-string argument raises SIN! 'type 's/+; the session's strings are intact")
+    h.quit()
+
     # ---- G: context full -----------------------------------------------------------
     h = Host()
     h.execute("keep: 21  kf: func [n] [ * n 2 ]")

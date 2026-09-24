@@ -59,7 +59,7 @@ separately, e.g. `pip install jupyterlab`), or in VS Code's kernel picker
 |---|---|
 | values | `execute_result`, the runtime's rendering; several values (`values [ 10 20 ]`) are joined with one space: `10 20` |
 | no value, or a single `none` (`print 7`, an empty cell) | no `Out[]` |
-| `print` output | `stream` stdout |
+| `print` and `s/print` output | `stream` stdout |
 | runtime diagnostics | `stream` stderr |
 | a judged SIN! (`judge [ raise ... ]`) | an ordinary `execute_result`: `#[SIN! type id arg]` |
 | an uncaught SIN! | `error` with ename `SIN!`; evalue `#[SIN! type id arg]` |
@@ -96,8 +96,8 @@ The runtime's capacities are fixed for now. A fresh session uses:
 
 | resource | capacity | used by a fresh session |
 |---|---|---|
-| distinct words (symbols) | 512 | 81 |
-| global bindings | 256 | 33 |
+| distinct words (symbols) | 512 | 79 |
+| global bindings | 256 | 37 |
 | bindings per function | 16 | -- |
 | func literals (sites) | 640 per session | -- |
 | loader heap | ~14,000 cells | ~13,500 free |

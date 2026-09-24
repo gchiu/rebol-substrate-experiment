@@ -216,7 +216,54 @@ sin-id e
 ;; => return
 ```
 
-## 8. Tasks
+## 8. Strings
+
+Text in double quotes is a STRING!. Strings are **immutable**: string operations return new strings and never change their inputs. They have qualified names: `s/+` joins two strings, `s/=` compares their contents, `s/length` counts their bytes and `s/print` prints one. (For now `s/+` is simply one word; a `/` inside a word is reserved for qualified names. A bare `/` is still division.)
+
+```
+s: "hello "
+t: "world"
+s/+ s t
+;; => "hello world"
+```
+
+`s/+` built a new string; `s` itself is unchanged:
+
+```
+s: "hello "
+u: s/+ s "world"
+s
+;; => "hello "
+```
+
+`s/length` counts stored bytes (Glon has no Unicode character semantics yet):
+
+```
+s/length "hello world"
+;; => 11
+```
+
+`s/=` compares contents. `=` is identity, so two separately built strings with the same text are `s/=` but not `=`:
+
+```
+s/= s/+ "ab" "c" "abc"
+;; => 1
+```
+
+```
+= s/+ "ab" "c" "abc"
+;; => 0
+```
+
+`s/print "hello"` writes the string's bytes and a newline to the output (`print` prints integers only). Giving a string operation something that is not a string raises a SIN! of type `type`:
+
+```
+e: judge [ s/+ "hello" 42 ]
+sin-id e
+;; => s/+
+```
+
+## 9. Tasks
 
 Glon tasks are cooperative: `spawn block` creates a task, `yield` hands control to the next task, and `run-tasks` runs them until all finish. These words come from the task library shipped with the demos (`demos/tuple-space.glon`), loaded for the examples below. Two tasks interleave their digits:
 
@@ -238,7 +285,7 @@ sin-id e
 ;; => transport
 ```
 
-## 9. Coming from Rebol or Red
+## 10. Coming from Rebol or Red
 
 Glon looks familiar, which is exactly why these differences matter:
 
@@ -257,9 +304,10 @@ Glon looks familiar, which is exactly why these differences matter:
 | a bound block can travel anywhere | a block that uses a call's locals may not outlive that call; use a closure |
 | `[1] = [1]` is true | `=` is identity for blocks and strings (`= [1] [1]` is `0`); `str-eq` compares strings |
 | threads, ports | cooperative tasks: `spawn`, `yield`, `run-tasks` (library words) |
-| `print` shows any value | `print` shows integers only |
+| `print` shows any value | `print` shows integers only; `s/print` prints a string |
+| `append` changes a string in place | strings are immutable: `s/+` returns a new string |
 
-## 10. Next
+## 11. Next
 
 - The first substantial Glon program is the live traffic simulator: <https://gchiu.github.io/rebol-substrate-experiment/shop/traffic.html>. Its IDM, Newell, OVM/FVDM and NaSch car-following models are written in Glon and run through WebAssembly in the browser.
 - The normative rules: [GLON-ALPHA-LAWS.md](GLON-ALPHA-LAWS.md).

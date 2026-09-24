@@ -2585,6 +2585,151 @@ static void emit_error_natives(void) {
     asm_exit();
 }
 
+/* STRING! natives (ids 112..115). A STRING! is immutable: a managed
+ * GC_KIND_STRING payload [length, byte0 .. byteN-1], one raw byte (0..255) per
+ * cell, tagged T_STRING -- the representation mk-string builds. None of these
+ * natives writes into an existing string; s/+ allocates a new one.
+ *   s/+ a b       a new string: a's bytes then b's
+ *   s/= a b       1 if a and b hold the same bytes, else 0 (str-eq's rule)
+ *   s/length a    the number of stored bytes
+ *   s/print a     a's bytes then a newline on stdout (HOST_PUTCHAR); no value
+ * A non-STRING! argument raises SIN! 'type with the native's name as the id
+ * and the offending value as the arg (as sin-type does for a non-SIN!).
+ * Written compactly: CALL/EXIT dominate the emitted size, so the four share
+ * their argument evaluation, type check and return tails. */
+static void emit_string_natives(void) {
+    /* argument 1 (all four) -> RV_T1; argument 2 (s/+, s/=) -> RV_T2. Both stay
+     * on the data stack until both are evaluated: evaluating an argument uses
+     * the RV_T* scratch registers. RV_NAT is kept on the return stack: a nested
+     * native in an argument rewrites it. */
+    e_cell(RV_NAT); asm_toR();
+    to_subexpr[n_subexpr++] = emit_call_fwd();
+    asm_call(r_reduce);
+    asm_fetchR(); e_setc(RV_NAT);
+    e_peek(); asm_lit(16); asm_host(HOST_MOD); asm_lit(T_STRING); asm_host(HOST_EQ);
+    cell j_bad = asm_zbranch_fwd();
+    e_cell(RV_NAT); asm_lit(RN_S_EQ); asm_host(HOST_LE);
+    cell j_one = asm_zbranch_fwd();
+    to_subexpr[n_subexpr++] = emit_call_fwd();
+    asm_call(r_reduce);
+    asm_fetchR(); e_setc(RV_NAT);
+    e_pop_to(RV_T2);
+    e_cell(RV_T2); asm_lit(16); asm_host(HOST_MOD); asm_lit(T_STRING); asm_host(HOST_EQ);
+    cell j_bad2 = asm_zbranch_fwd();
+    asm_patch_here(j_one);
+    e_pop_to(RV_T1);
+    asm_fromR(); asm_drop();
+    /* both arguments are STRING!s: RV_T5 = payload of a */
+    e_cell(RV_T1); asm_lit(T_STRING); asm_host(HOST_SUB); e_setc(RV_T5);
+
+    /* s/length (114) */
+    e_cell(RV_NAT); asm_lit(RN_S_LEN); asm_host(HOST_EQ);
+    cell j_not_len = asm_zbranch_fwd();
+    e_cell(RV_T5); asm_fetch(); asm_lit(16); asm_host(HOST_MUL);
+    cell j_ret1a = asm_branch_fwd();
+    asm_patch_here(j_not_len);
+
+    /* s/print (115): each stored byte, then a newline; no value (like print) */
+    e_cell(RV_NAT); asm_lit(RN_S_PRINT); asm_host(HOST_EQ);
+    cell j_not_print = asm_zbranch_fwd();
+    e_cell(RV_T5); asm_fetch(); e_setc(RV_T3);
+    cell pr_loop = asm_here();
+    e_cell(RV_T3);
+    cell j_pr_done = asm_zbranch_fwd();
+    e_cell(RV_T5); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_T5);
+    e_cell(RV_T5); asm_fetch(); asm_host(HOST_PUTCHAR);
+    e_cell(RV_T3); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T3);
+    asm_branch(pr_loop);
+    asm_patch_here(j_pr_done);
+    asm_lit(10); asm_host(HOST_PUTCHAR);
+    asm_lit(0);
+    asm_exit();
+    asm_patch_here(j_not_print);
+
+    /* RV_T6 = payload of b */
+    e_cell(RV_T2); asm_lit(T_STRING); asm_host(HOST_SUB); e_setc(RV_T6);
+
+    /* s/= (113): same length and same bytes */
+    e_cell(RV_NAT); asm_lit(RN_S_EQ); asm_host(HOST_EQ);
+    cell j_not_eq = asm_zbranch_fwd();
+    e_cell(RV_T5); asm_fetch(); e_setc(RV_T3);
+    asm_lit(0);                                       /* result if unequal */
+    e_cell(RV_T3); e_cell(RV_T6); asm_fetch(); asm_host(HOST_EQ);
+    cell j_neq_len = asm_zbranch_fwd();
+    cell eq_loop = asm_here();
+    e_cell(RV_T3);
+    cell j_equal = asm_zbranch_fwd();
+    e_cell(RV_T5); e_cell(RV_T3); asm_host(HOST_ADD); asm_fetch();
+    e_cell(RV_T6); e_cell(RV_T3); asm_host(HOST_ADD); asm_fetch(); asm_host(HOST_EQ);
+    cell j_neq_byte = asm_zbranch_fwd();
+    e_cell(RV_T3); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T3);
+    asm_branch(eq_loop);
+    asm_patch_here(j_equal);
+    asm_drop(); asm_lit(mk_int(1));
+    asm_patch_here(j_neq_len);
+    asm_patch_here(j_neq_byte);
+    cell j_ret1b = asm_branch_fwd();
+    asm_patch_here(j_not_eq);
+
+    /* s/+ (112): both inputs stay on the data stack (GC roots) across the
+     * allocation; then both byte runs are copied into the new payload by one
+     * two-pass loop (RV_N = pass). Neither input is written. */
+    e_cell(RV_T1); e_cell(RV_T2);
+    e_cell(RV_T5); asm_fetch(); e_cell(RV_T6); asm_fetch(); asm_host(HOST_ADD); e_setc(RV_T4);
+    e_cell(RV_T4); asm_lit(16); asm_host(HOST_ADD); asm_lit(16); asm_host(HOST_DIV);
+    asm_lit(16); asm_host(HOST_MUL);
+    asm_lit(GC_KIND_STRING); asm_call(r_alloc);                      /* [a b p] */
+    e_pop_to(RV_T2);                                                 /* p */
+    asm_drop(); asm_drop();                                          /* a, b: not moved (non-moving GC) */
+    e_cell(RV_T4); e_cell(RV_T2); asm_store();                      /* new length */
+    e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_T1);   /* destination */
+    asm_lit(0); e_setc(RV_N);
+    cell pass = asm_here();
+    e_cell(RV_T5); asm_fetch(); e_setc(RV_T3);
+    cell cp_loop = asm_here();
+    e_cell(RV_T3);
+    cell j_cp_done = asm_zbranch_fwd();
+    e_cell(RV_T5); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_T5);
+    e_cell(RV_T5); asm_fetch(); e_cell(RV_T1); asm_store();
+    e_cell(RV_T1); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_T1);
+    e_cell(RV_T3); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T3);
+    asm_branch(cp_loop);
+    asm_patch_here(j_cp_done);
+    e_cell(RV_N);
+    cell j_first = asm_zbranch_fwd();
+    e_cell(RV_T2); asm_lit(T_STRING); asm_host(HOST_ADD);            /* the new string */
+    cell j_ret1c = asm_branch_fwd();
+    asm_patch_here(j_first);
+    asm_lit(1); e_setc(RV_N);
+    e_cell(RV_T6); e_setc(RV_T5);                                   /* second pass: b */
+    asm_branch(pass);
+
+    asm_patch_here(j_ret1a);
+    asm_patch_here(j_ret1b);
+    asm_patch_here(j_ret1c);
+    asm_lit(16);
+    asm_exit();
+
+    /* a non-STRING! argument: raise 'type with this native's name */
+    asm_patch_here(j_bad);
+    e_pop_to(RV_T2);                                   /* argument 1 is the offender */
+    asm_patch_here(j_bad2);
+    e_cell(RV_T2); e_setc(RV_T1);
+    e_cell(RV_NAT); asm_lit(RN_S_CAT); asm_host(HOST_EQ);
+    cell j_b1 = asm_zbranch_fwd();
+    emit_raise_fields("type", "s/+", RV_T1);
+    asm_patch_here(j_b1);
+    e_cell(RV_NAT); asm_lit(RN_S_EQ); asm_host(HOST_EQ);
+    cell j_b2 = asm_zbranch_fwd();
+    emit_raise_fields("type", "s/=", RV_T1);
+    asm_patch_here(j_b2);
+    e_cell(RV_NAT); asm_lit(RN_S_LEN); asm_host(HOST_EQ);
+    cell j_b3 = asm_zbranch_fwd();
+    emit_raise_fields("type", "s/length", RV_T1);
+    asm_patch_here(j_b3);
+    emit_raise_fields("type", "s/print", RV_T1);
+}
+
 static void emit_native(void) {
     r_native = asm_here();
     asm_dup(); asm_lit(16); asm_host(HOST_DIV); e_setc(RV_NAT);
@@ -2665,8 +2810,13 @@ static void emit_native(void) {
     asm_call(r_reduce);
     asm_branch(r_reduce_block);                      /* tail */
     asm_patch_here(j_not_reduce);
-    /* SIN! natives (ids 105..111) behind ONE range check, so the arithmetic
-     * fall-through below (the fib hot path) pays a single extra comparison. */
+    /* STRING! natives (ids 112..115), then SIN! natives (105..111), each behind
+     * ONE range check, so the arithmetic fall-through below (the fib hot path)
+     * pays two extra comparisons. */
+    e_cell(RV_NAT); asm_lit(RN_S_CAT); asm_host(HOST_GE);
+    cell j_not_strnat = asm_zbranch_fwd();
+    emit_string_natives();
+    asm_patch_here(j_not_strnat);
     e_cell(RV_NAT); asm_lit(RN_MAKE_ERROR); asm_host(HOST_GE);
     cell j_not_errnat = asm_zbranch_fwd();
     emit_error_natives();
@@ -3361,6 +3511,12 @@ cell r0_s1_init(void) {
     bind(global_ctx, intern("sin-arg"), mk_native(RN_ERROR_ARG));
     bind(global_ctx, intern("raise"), mk_native(RN_RAISE));
     bind(global_ctx, intern("judge"), mk_native(RN_TRAP));
+    /* immutable STRING! operations. An interior '/' marks a qualified name
+     * (domain/operation); for now these are ordinary (flat) global words. */
+    bind(global_ctx, intern("s/+"), mk_native(RN_S_CAT));
+    bind(global_ctx, intern("s/="), mk_native(RN_S_EQ));
+    bind(global_ctx, intern("s/length"), mk_native(RN_S_LEN));
+    bind(global_ctx, intern("s/print"), mk_native(RN_S_PRINT));
     /* word literals in emitted code (emitted before the preload above) */
     for (int i = 0; i < n_word_refs; i++)
         s1_set_mem(word_refs[i].patch, intern(word_refs[i].name));

@@ -36,6 +36,12 @@ Every value is one cell: `payload * 16 + tag`, where `tag` is the low 4 bits.
   `(depth, slot)` against the current context, biased by the activation's
   `FRAME_BIAS` ("Guard of Binding").
 - Word-like values (`WORD` / `SET` / `GET` / `LIT`) compare by symbol id.
+- **Qualified names.** A `/` inside a word is part of the word: `s/+` is one
+  word (`s/+:` sets it, `:s/+` gets it, `'s/+` is its literal form), and a bare
+  `/` is still integer division. An interior `/` is reserved for qualified,
+  path-like names (`domain/operation`). For now such names are ordinary flat
+  words in the usual contexts; no path evaluation, qualified lookup,
+  namespaces or contexts exist yet.
 
 ## 3. Blocks
 
@@ -168,7 +174,26 @@ An error value and error propagation are separate things.
   - word-like values (`WORD`/`SET`/`GET`/`LIT`) compare by symbol id;
   - every other value compares by full tagged cell identity.
 - Consequences: `NONE != 0`; a word never equals an integer; a block/closure
-  equals only itself (identity). String *content* equality is `str-eq`, not `=`.
+  equals only itself (identity). String *content* equality is `s/=` (also
+  spelled `str-eq`), not `=`.
+
+## 9a. STRING!
+
+- A STRING! is an **immutable** sequence of bytes: a managed payload
+  `[length, byte0 .. byteN-1]` with one byte (0..255) per cell. Any byte value,
+  including 0, can be stored; there are no C-string or Unicode semantics. A
+  quoted literal `"..."` is built by `mk-string` (up to 512 bytes per literal).
+- No operation changes an existing string:
+  - `s/+ a b` returns a **new** string holding `a`'s bytes then `b`'s;
+  - `s/= a b` is 1 if `a` and `b` hold the same bytes, else 0 (`str-eq` is the
+    same word);
+  - `s/length a` is the number of stored **bytes**;
+  - `s/print a` writes `a`'s bytes and then a newline to the output and
+    returns no value (`print` prints integers only).
+- A non-STRING! argument raises a SIN! of type `type` whose id is the
+  operation's name and whose arg is the offending value.
+- These are runtime natives, available in every session (native, Jupyter,
+  WebAssembly).
 
 ## 10. Truth
 

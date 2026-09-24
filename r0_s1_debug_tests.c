@@ -36,7 +36,7 @@ static int failures = 0;
 
 /* fixed free-region state buffers (in the M3C-relocated state region
  * [24576, 25315), just above the return-stack top RS_INIT=24576; the debuggee's
- * stacks live below that, at DBGEE_SP=14000 / DBGEE_RP=20000) */
+ * stacks live below that, at DBGEE_SP=14500 / DBGEE_RP=20000) */
 #define DBGEE_BUF 24859
 #define DBGER_BUF 24879
 
@@ -44,9 +44,16 @@ static int failures = 0;
  * never overwrite the debugger's live return stack (24576 downward). Its data
  * stack grows down from DBGEE_SP toward the emitted code, which ends at
  * 256 + r0_s1_code_size() plus the RAW fragments assembled at load time, so
- * DBGEE_SP must stay above that (checked at the start of the group; it was
- * 12000 until the SIN! runtime code pushed the code end past it). */
-#define DBGEE_SP 14000
+ * DBGEE_SP must stay above that: the layout check at the start of the group
+ * requires 256 + code + DBGEE_CODE_MARGIN <= DBGEE_SP, and the 1024-cell margin
+ * is intentional.
+ *
+ * DBGEE_SP is test-fixture placement for this debugger harness, not part of the
+ * Glon ABI or any runtime capacity. It was 12000 until the SIN! runtime code
+ * pushed the code end past it (moved to 14000), and moved to 14500 when the
+ * immutable STRING! natives (s/+ s/= s/length s/print) grew the emitted code
+ * again. The debugger's own data stack runs from 16384 down to DBGEE_SP. */
+#define DBGEE_SP 14500
 #define DBGEE_RP 20000
 #define DBGEE_CODE_MARGIN 1024   /* room for the debugger/debuggee RAW fragments */
 
