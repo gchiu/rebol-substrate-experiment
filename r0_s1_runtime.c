@@ -104,6 +104,17 @@ static int site_stack[64];
 static int site_depth;
 static int next_site;
 
+/* Escape-time binding law (parse/load): number of literal FUNC body scopes open
+ * at the current parse point, and the dependency flag of the most recently
+ * parsed block. A block is activation-dependent if its executable tree (outside
+ * its own nested literal func scopes) carries a T_BOUND that reaches its origin
+ * activation or a RETURN. */
+static int parse_func_depth;
+static int last_block_dep;
+
+/* Escape-time binding law enforcement subroutines (emitted S1; defined later). */
+static cell r_esc_any, r_esc_eq, r_esc_capture, r_esc_results, r_esc_same, r_esc_anc;
+
 /* CLOSURE_SITE of a closure made from a block whose lexical origin activation
  * is dead. Real sites are >= 0, so no block's BLK_SITE ever equals it and the
  * LOAD-LEX guard fail-stops any T_BOUND reference in such a body. A multiple
@@ -303,6 +314,7 @@ static cell assemble_raw(cell block) {
                     if (strcmp(cn, "alloc") == 0) asm_call(r_alloc);
                     else if (strcmp(cn, "collect") == 0) asm_call(r_collect);
                     else if (strcmp(cn, "lookup") == 0) asm_call(r_lookup);
+                    else if (strcmp(cn, "ESC_ANY") == 0) asm_call(r_esc_any);
                     else { cell q = emit_call_fwd(); raw_refs[raw_nrefs].patch = q; raw_refs[raw_nrefs].name = cn; raw_nrefs++; }
                 }
                 else asm_call((int)int_val(op));
@@ -361,10 +373,12 @@ static cell parse_string_literal(parser_t *P) {
     return b;
 }
 
-static cell parse_block(parser_t *P) {
+static cell parse_block(parser_t *P, int is_body) {
     P->pos++; /* '[' */
     cell tmp[512];
     int n = 0;
+    int base_fd = parse_func_depth;
+    int dep = 0;
     for (;;) {
         skip_ws(P);
         char c = P->s[P->pos];
@@ -386,6 +400,10 @@ static cell parse_block(parser_t *P) {
             int len = P->pos - start;
             if (len == 4 && strncmp(P->s + start, "func", 4) == 0) {
                 int sid = next_site++;
+                if (sid < SITE_PARENT_CAP)
+                    M[SITE_PARENT_BASE + sid] = site_depth > 0 ? site_stack[site_depth - 1] : 0;
+                else
+                    P->err = 1;                       /* site table exhausted */
                 tmp[n++] = intern("func");
                 /* spec (param block): its words NAME the new parameters, so
                  * they must never be lexically resolved against an enclosing
@@ -420,7 +438,14 @@ static cell parse_block(parser_t *P) {
                 }
                 tmp[n++] = spec;
                 site_stack[site_depth++] = sid;
-                tmp[n++] = parse_form(P);                 /* body (under scope) */
+                parse_func_depth++;                       /* the body's own scope */
+                tmp[n++] = parse_block(P, 1);             /* literal body (under scope) */
+                parse_func_depth--;
+                /* A nested literal func whose body reaches an ENCLOSING
+                 * activation's scope makes the enclosing block
+                 * activation-dependent: executing it elsewhere would create the
+                 * closure against a foreign/dead origin. */
+                if (last_block_dep) dep = 1;
                 site_depth--;
                 lex_pop();
                 continue;
@@ -454,13 +479,33 @@ static cell parse_block(parser_t *P) {
             }
             P->pos = start;
         }
-        tmp[n++] = parse_form(P);
+        {
+            cell form = parse_form(P);
+            /* Escape-time binding law: mark the block activation-dependent if
+             * this form is a T_BOUND that reaches the origin activation (rather
+             * than a scope opened by a literal func nested inside this block),
+             * a RETURN (whose target is found by BLK_SITE), or a nested block
+             * that is itself dependent. */
+            if (r0_tag(form) == T_BOUND) {
+                int thr = (parse_func_depth - base_fd) + (is_body ? 1 : 0);
+                if ((int)bound_depth(form) >= thr) dep = 1;
+            } else if (form == mk_word(RETURN_SYM)) {
+                dep = 1;
+            } else if (r0_tag(form) == T_BLOCK) {
+                if (last_block_dep) dep = 1;
+            }
+            tmp[n++] = form;
+        }
         if (n >= 512) { P->err = 1; break; }
     }
     cell b = make_block((cell)n);
     cell p = r0_untag(b);
     M[p] = (cell)n;
-    M[p + BLK_SITE] = site_depth > 0 ? site_stack[site_depth - 1] : 0;
+    {
+        cell site = site_depth > 0 ? site_stack[site_depth - 1] : 0;
+        M[p + BLK_SITE] = dep ? BLK_SITE_DEP(site) : site;
+    }
+    last_block_dep = dep;
     for (int i = 0; i < n; i++) M[p + BLK_DATA + i] = tmp[i];
     return b;
 }
@@ -468,7 +513,7 @@ static cell parse_block(parser_t *P) {
 static cell parse_form(parser_t *P) {
     skip_ws(P);
     char c = P->s[P->pos];
-    if (c == '[') return parse_block(P);
+    if (c == '[') return parse_block(P, 0);
     if (c >= '0' && c <= '9') return parse_int(P);
     if (c == '-' && isdigit((unsigned char)P->s[P->pos + 1])) return parse_int(P);
     return parse_word(P);
@@ -482,6 +527,27 @@ static void e_dup(void)    { asm_dup(); }
 static void e_peek(void)   { asm_lit(REG_SP); asm_fetch(); asm_fetch(); }
 static void e_pop_to(cell c) { e_peek(); asm_lit(c); asm_store(); asm_drop(); }
 static void e_untag_ptr(void) { asm_dup(); asm_lit(16); asm_host(HOST_MOD); asm_host(HOST_SUB); }
+
+/* Escape-law: a raw BLK_SITE on the data stack may be dep-encoded (negative).
+ * Decode it in place to the non-negative site id. */
+static void emit_decode_site(void) {
+    asm_dup(); asm_lit(0); asm_host(HOST_LT);       /* raw < 0 ? */
+    cell j_nonneg = asm_zbranch_fwd();
+    asm_neg(); asm_lit(1); asm_host(HOST_SUB);      /* -raw - 1 */
+    asm_patch_here(j_nonneg);
+}
+
+/* Escape-law enforcement routines are emitted AFTER all existing evaluator
+ * code (so their addresses do not shift existing routines); the transport
+ * hooks reach them through forward-patched CALL sites. */
+typedef struct { cell patch; cell *slot; } esc_ref_t;
+static esc_ref_t esc_refs[64];
+static int n_esc_refs;
+static void emit_esc_ref(cell *slot) {
+    esc_refs[n_esc_refs].patch = emit_call_fwd();
+    esc_refs[n_esc_refs].slot = slot;
+    n_esc_refs++;
+}
 
 /* --- FIB-PROFILE-P1 profiler emitters (compiled only under -DR0_S1_PROFILE).
  * Each helper emits pure S1 code above the frozen substrate; none changes GLON
@@ -1466,6 +1532,7 @@ static void emit_load_lex(void) {
      * are the portable form and are unaffected. */
     e_cell(RV_FRAME); asm_lit(0); asm_host(HOST_NE);   /* frame != 0 */
     e_cell(RV_BLK); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch();
+    emit_decode_site();                                /* dep-encoded -> site id */
     e_cell(RV_FRAME); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_fetch();
     asm_host(HOST_EQ);                                  /* block site == frame site */
     asm_host(HOST_MUL);                                 /* guard */
@@ -1588,6 +1655,178 @@ static void emit_build_hash(void) {
 }
 
 /* SET: (value -- value)  bind word (RV_WORD) to value, nearest-update */
+/* ==================== escape-time binding law enforcement ==================
+ * A block whose executable tree carries a T_BOUND/RETURN that resolves against
+ * its origin activation is "activation-dependent" and marked (parser) by a
+ * negated BLK_SITE. It may be consumed or closed over while that activation is
+ * live, but must not be transported beyond it. These routines fail-stop at the
+ * transport boundary; they never resolve, copy or evaluate the value. They use
+ * only the private RV_ESC_* cells (never SCRATCH_A..F, GC/M1 state, the D1 inspection state or
+ * any blessed RAW library cell), so a legal check has zero observable effect on
+ * program state. */
+
+/* ESC-ANY: fail-stop if RV_ESC_A holds an activation-dependent block. */
+static void emit_esc_any(void) {
+    r_esc_any = asm_here();
+    e_cell(RV_ESC_A); asm_lit(16); asm_host(HOST_MOD); asm_lit(T_BLOCK); asm_host(HOST_EQ);
+    cell j_notblk = asm_zbranch_fwd();
+    e_cell(RV_ESC_A); e_untag_ptr(); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch();
+    asm_lit(0); asm_host(HOST_LT);
+    cell j_nodep = asm_zbranch_fwd();
+    asm_host(HOST_DUMP); asm_halt();
+    asm_patch_here(j_nodep);
+    asm_patch_here(j_notblk);
+    asm_exit();
+}
+
+/* ESC-NOTANC: RV_ESC_A = value, RV_ESC_B = context/site owner. Fail-stop if
+ * the value is an activation-dependent block whose site B is NOT an
+ * ancestor-or-self of the owner (a foreign-site store/capture). */
+static void emit_esc_eq(void) {
+    r_esc_eq = asm_here();
+    e_cell(RV_ESC_A); asm_lit(16); asm_host(HOST_MOD); asm_lit(T_BLOCK); asm_host(HOST_EQ);
+    cell j_done1 = asm_zbranch_fwd();
+    e_cell(RV_ESC_A); e_untag_ptr(); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch();
+    asm_dup(); asm_lit(0); asm_host(HOST_LT);
+    cell j_nonneg = asm_zbranch_fwd();
+    asm_neg(); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_ESC_N);      /* B */
+    e_cell(RV_ESC_B); e_setc(RV_ESC_W);                               /* walk copy of owner */
+    cell loop = asm_here();
+    e_cell(RV_ESC_N); e_cell(RV_ESC_W); asm_host(HOST_EQ);
+    cell j_neq = asm_zbranch_fwd();
+    asm_exit();                                                    /* B == D: allowed */
+    asm_patch_here(j_neq);
+    e_cell(RV_ESC_W); asm_lit(0); asm_host(HOST_EQ);
+    cell j_nonzero = asm_zbranch_fwd();
+    asm_host(HOST_DUMP); asm_halt();                               /* root: not ancestor */
+    asm_patch_here(j_nonzero);
+    e_cell(RV_ESC_W); asm_lit(SITE_PARENT_BASE); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_ESC_W);
+    asm_branch(loop);
+    asm_patch_here(j_nonneg);
+    asm_drop(); asm_exit();
+    asm_patch_here(j_done1);
+    asm_exit();
+}
+
+/* ESC-ANC: RV_ESC_A = value, RV_ESC_B = returning frame site F. Fail-stop if
+ * the value is an activation-dependent block whose site B is ancestor-or-self
+ * of F (a frame of B or nested in B must not return B's block). */
+static void emit_esc_anc(void) {
+    r_esc_anc = asm_here();
+    e_cell(RV_ESC_A); asm_lit(16); asm_host(HOST_MOD); asm_lit(T_BLOCK); asm_host(HOST_EQ);
+    cell j_done1 = asm_zbranch_fwd();
+    e_cell(RV_ESC_A); e_untag_ptr(); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch();
+    asm_dup(); asm_lit(0); asm_host(HOST_LT);
+    cell j_nonneg = asm_zbranch_fwd();
+    asm_neg(); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_ESC_N);      /* B */
+    e_cell(RV_ESC_B); e_setc(RV_ESC_W);                               /* walk copy of F */
+    cell loop = asm_here();
+    e_cell(RV_ESC_N); e_cell(RV_ESC_W); asm_host(HOST_EQ);
+    cell j_neq = asm_zbranch_fwd();
+    asm_host(HOST_DUMP); asm_halt();                               /* escape */
+    asm_patch_here(j_neq);
+    e_cell(RV_ESC_W); asm_lit(0); asm_host(HOST_EQ);
+    cell j_nonzero = asm_zbranch_fwd();
+    asm_exit();                                                    /* root: allowed */
+    asm_patch_here(j_nonzero);
+    e_cell(RV_ESC_W); asm_lit(SITE_PARENT_BASE); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_ESC_W);
+    asm_branch(loop);
+    asm_patch_here(j_nonneg);
+    asm_drop(); asm_exit();
+    asm_patch_here(j_done1);
+    asm_exit();
+}
+
+/* ESC-RESULTS: fail-stop if any value in the current data-stack result set
+ * [v0..vN-1, taggedN] is an activation-dependent block whose site is
+ * ancestor-or-self of the returning frame's site. SCRATCH_C keeps that frame
+ * site across the per-value ancestry walks (RV_ESC_C). */
+static void emit_esc_results(void) {
+    r_esc_results = asm_here();
+    e_cell(RV_FRAME); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_ESC_C);  /* F */
+    e_peek(); asm_lit(16); asm_host(HOST_DIV); e_setc(RV_ESC_E);   /* N */
+    asm_lit(0); e_setc(RV_ESC_F);
+    cell loop = asm_here();
+    e_cell(RV_ESC_F); e_cell(RV_ESC_E); asm_host(HOST_LT);
+    cell j_done = asm_zbranch_fwd();
+    asm_lit(REG_SP); asm_fetch(); asm_lit(1); asm_host(HOST_ADD);
+    e_cell(RV_ESC_F); asm_host(HOST_ADD); asm_fetch();             /* v_i */
+    asm_lit(RV_ESC_A); asm_store();
+    e_cell(RV_ESC_C); asm_lit(RV_ESC_B); asm_store();          /* reset F */
+    asm_call(r_esc_anc);
+    e_cell(RV_ESC_F); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_ESC_F);
+    asm_branch(loop);
+    asm_patch_here(j_done);
+    asm_exit();
+}
+
+/* ESC-CAPTURE: RV_T1 = a context about to be captured/promoted. Fail-stop if it
+ * holds any activation-dependent block whose site != the context's owning site
+ * (global context = owner site 0). */
+static void emit_esc_capture(void) {
+    r_esc_capture = asm_here();
+    e_cell(RV_T1); e_untag_ptr(); e_setc(RV_ESC_P);                        /* p */
+    e_cell(RV_T1); e_cell(GC_GLOBAL_CTX); asm_host(HOST_EQ);
+    cell j_nglobal = asm_zbranch_fwd();
+    asm_lit(0); asm_lit(RV_ESC_B); asm_store();
+    cell j_ga = asm_branch_fwd();
+    asm_patch_here(j_nglobal);
+    e_cell(RV_ESC_P); asm_lit(CTX_ESCSITE); asm_host(HOST_ADD); asm_fetch(); asm_lit(RV_ESC_B); asm_store();
+    asm_patch_here(j_ga);
+    e_cell(RV_ESC_P); asm_lit(CTX_COUNT); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_ESC_E);
+    asm_lit(0); e_setc(RV_ESC_F);
+    cell loop = asm_here();
+    e_cell(RV_ESC_F); e_cell(RV_ESC_E); asm_host(HOST_LT);
+    cell j_done = asm_zbranch_fwd();
+    e_cell(RV_ESC_P); asm_lit(CTX_DATA + 1); asm_host(HOST_ADD);
+    e_cell(RV_ESC_F); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD); asm_fetch();
+    asm_lit(RV_ESC_A); asm_store();
+    asm_call(r_esc_eq);
+    e_cell(RV_ESC_F); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_ESC_F);
+    asm_branch(loop);
+    asm_patch_here(j_done);
+    asm_exit();
+}
+
+/* ESC-STORE-CHECK: r_set has located the destination context payload in RV_T2
+ * and the value to store in RV_T6. */
+static void emit_esc_store_check(void) {
+    e_cell(RV_T6); asm_lit(RV_ESC_A); asm_store();
+    e_cell(RV_T2); asm_lit(T_CONTEXT); asm_host(HOST_ADD);
+    e_cell(GC_GLOBAL_CTX); asm_host(HOST_EQ);
+    cell j_nglobal = asm_zbranch_fwd();
+    asm_lit(0); asm_lit(RV_ESC_B); asm_store();
+    cell j_ga = asm_branch_fwd();
+    asm_patch_here(j_nglobal);
+    e_cell(RV_T2); asm_lit(CTX_ESCSITE); asm_host(HOST_ADD); asm_fetch(); asm_lit(RV_ESC_B); asm_store();
+    asm_patch_here(j_ga);
+    emit_esc_ref(&r_esc_eq);
+}
+
+/* ESC-SAME: RV_ESC_A = value, RV_ESC_B = closure site. Fail-stop only if the
+ * value is an activation-dependent block whose decoded site == SCRATCH_B
+ * (same-site argument re-entry). A foreign-site dependent block passed down to
+ * a live helper remains legal. */
+static void emit_esc_same(void) {
+    r_esc_same = asm_here();
+    e_cell(RV_ESC_A); asm_lit(16); asm_host(HOST_MOD); asm_lit(T_BLOCK); asm_host(HOST_EQ);
+    cell j_notblk = asm_zbranch_fwd();
+    e_cell(RV_ESC_A); e_untag_ptr(); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch();
+    asm_dup(); asm_lit(0); asm_host(HOST_LT);
+    cell j_nonneg = asm_zbranch_fwd();
+    asm_neg(); asm_lit(1); asm_host(HOST_SUB);      /* decoded site */
+    e_cell(RV_ESC_B); asm_host(HOST_EQ);        /* == closure site? */
+    cell j_neq = asm_zbranch_fwd();                 /* 0 -> not equal -> permitted */
+    asm_host(HOST_DUMP); asm_halt();                /* same-site re-entry */
+    asm_patch_here(j_neq);
+    asm_exit();
+    asm_patch_here(j_nonneg);
+    asm_drop();                                     /* raw site was not dep */
+    asm_exit();
+    asm_patch_here(j_notblk);
+    asm_exit();
+}
+
 static void emit_set(void) {
     r_set = asm_here();
     e_peek(); e_setc(RV_T6);
@@ -1602,6 +1841,7 @@ static void emit_set(void) {
     e_cell(RV_T2); asm_lit(3); asm_host(HOST_ADD);
     e_cell(RV_T3); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);
     asm_store();
+    emit_esc_store_check();
     e_cell(RV_T6);
     e_cell(RV_T2); asm_lit(4); asm_host(HOST_ADD);
     e_cell(RV_T3); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);
@@ -1639,6 +1879,7 @@ static void emit_set(void) {
     asm_fetch();
     e_cell(RV_WORD); asm_host(HOST_EQ);
     cell j_nomatch = asm_zbranch_fwd();
+    emit_esc_store_check();
     e_cell(RV_T6);
     e_cell(RV_T2); asm_lit(4); asm_host(HOST_ADD);
     e_cell(RV_T4); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);
@@ -1701,6 +1942,11 @@ static void emit_mkctx(void) {
     e_cell(RV_T6); e_cell(RV_T4); asm_store();          /* M[base] = parent */
     asm_lit(0); e_cell(RV_T4); asm_lit(1); asm_host(HOST_ADD); asm_store(); /* count = 0 */
     asm_lit(R0S1_CTX_CAP); e_cell(RV_T4); asm_lit(2); asm_host(HOST_ADD); asm_store(); /* cap */
+    /* Escape law: record the owning func-site of this context (the invoking
+     * closure's site) in the unused context tail. */
+    e_cell(RV_CLOSURE); asm_lit(CLOSURE_SITE); asm_host(HOST_ADD); asm_fetch();
+    e_cell(RV_T4); asm_lit(CTX_ESCSITE); asm_host(HOST_ADD); asm_store();
+
     /* FIB-OPT-P8: the hash index is NOT zeroed here. It is built lazily by
      * r_build_hash when the context's binding count reaches HASH_MIN. Until
      * then lookups use the ordered linear scan. */
@@ -1744,6 +1990,9 @@ static void emit_mkclosure(void) {
     e_pop_to(RV_T6);  /* bias (raw) */
     e_pop_to(RV_T5);  /* site-id (raw) */
     e_pop_to(RV_T1);  /* captured */
+    /* escape law (4): the context about to be captured/promoted must not hold
+     * an activation-dependent block of a foreign site. */
+    emit_esc_ref(&r_esc_capture);
     /* promote captured (RV_T1) if it is a stack-local context */
     {
         e_cell(RV_T1); asm_lit(T_CONTEXT); asm_host(HOST_SUB); e_setc(RV_T2);  /* p */
@@ -1767,6 +2016,10 @@ static void emit_mkclosure(void) {
         e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T4); /* count */
         e_cell(RV_T4); e_cell(RV_T3); asm_lit(1); asm_host(HOST_ADD); asm_store();
         e_cell(RV_T2); asm_lit(2); asm_host(HOST_ADD); asm_fetch(); e_cell(RV_T3); asm_lit(2); asm_host(HOST_ADD); asm_store();
+        /* copy the owning-site marker into the managed copy */
+        e_cell(RV_T2); asm_lit(CTX_ESCSITE); asm_host(HOST_ADD); asm_fetch();
+        e_cell(RV_T3); asm_lit(CTX_ESCSITE); asm_host(HOST_ADD); asm_store();
+
         asm_lit(0); e_setc(RV_N);                       /* i = 0 */
         cell loop = asm_here();
         e_cell(RV_N); e_cell(RV_T4); asm_host(HOST_LT);
@@ -2248,6 +2501,11 @@ static void emit_invoke_closure(void) {
     e_pop_to(RV_T6);
     e_cell(RV_CLOSURE); asm_fetch(); e_untag_ptr(); asm_lit(BLK_DATA); asm_host(HOST_ADD);
     e_cell(RV_T4); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_WORD);
+    /* escape law (2): a dependent block of site S must not be bound as an
+     * argument of a closure whose site is S (same-site re-entry). */
+    e_cell(RV_T6); asm_lit(RV_ESC_A); asm_store();
+    e_cell(RV_CLOSURE); asm_lit(CLOSURE_SITE); asm_host(HOST_ADD); asm_fetch(); asm_lit(RV_ESC_B); asm_store();
+    emit_esc_ref(&r_esc_same);
     e_cell(RV_T6);
     asm_call(r_append);
     e_cell(RV_T4); asm_lit(1); asm_host(HOST_SUB); e_setc(RV_T4);
@@ -2295,6 +2553,8 @@ static void emit_invoke_closure(void) {
     e_cell(RV_BODY); asm_fetch(); asm_host(HOST_ADD); e_setc(RV_END);
     e_cell(RV_BODY); e_setc(RV_BLK);
     to_block_eval[n_block_eval++] = emit_call_fwd();
+    /* escape law (1): a frame must not return an activation-dependent block */
+    emit_esc_ref(&r_esc_results);
     /* normal return: restore caller state from frame, pop frame */
     e_cell(RV_FRAME); asm_lit(FRAME_END); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_END);
     e_cell(RV_FRAME); asm_lit(FRAME_CUR); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_CUR);
@@ -2333,7 +2593,7 @@ static void emit_invoke_closure(void) {
 static void emit_return(void) {
     r_return = asm_here();
     /* site_id = M[RV_BLK + BLK_SITE] */
-    e_cell(RV_BLK); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_SITE);
+    e_cell(RV_BLK); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch(); emit_decode_site(); e_setc(RV_SITE);
     e_cell(RV_SITE); asm_lit(0); asm_host(HOST_EQ);
     cell j_ok = asm_zbranch_fwd();
     asm_host(HOST_DUMP); asm_halt();                 /* return outside function */
@@ -2477,7 +2737,7 @@ static void emit_subexpr(void) {
      *     DEAD_SITE, which matches no block, so any T_BOUND reference in the
      *     body fail-stops at the LOAD-LEX guard instead of reading an
      *     unrelated context's slot. */
-    e_cell(RV_T2); e_untag_ptr(); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_SITE);  /* site = body.BLK_SITE */
+    e_cell(RV_T2); e_untag_ptr(); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch(); emit_decode_site(); e_setc(RV_SITE);  /* site = body.BLK_SITE */
     e_cell(RV_T2); e_cell(RV_T1); asm_host(HOST_EQ);
     cell j_computed = asm_zbranch_fwd();
     e_cell(RV_CTX); e_setc(RV_T5);               /* literal: captured = RV_CTX */
@@ -2642,8 +2902,12 @@ cell r0_s1_init(void) {
     n_subexpr = 0; n_block_eval = 0;
     n_invoke = 0;
     n_fw_mv = 0; n_fw_mf = 0;
+    n_esc_refs = 0;
     next_site = 1;      /* func-site-ids start at 1; 0 = "no enclosing func" */
     site_depth = 0;
+    parse_func_depth = 0;
+    last_block_dep = 0;
+    M[SITE_PARENT_BASE] = 0;
 
     asm_reset();
     code_begin = asm_here();
@@ -2668,6 +2932,14 @@ cell r0_s1_init(void) {
     emit_subexpr();
     emit_block_eval();
     emit_main();
+    emit_esc_any();
+    emit_esc_eq();
+    emit_esc_same();
+    emit_esc_anc();
+    emit_esc_results();
+    emit_esc_capture();
+    for (int i = 0; i < n_esc_refs; i++)
+        s1_set_mem(esc_refs[i].patch, *esc_refs[i].slot);
     code_end = asm_here();
 
     for (int i = 0; i < n_subexpr; i++) s1_set_mem(to_subexpr[i], r_subexpr);
@@ -2788,7 +3060,7 @@ cell r0_s1_parse(const char *src, int *err) {
     site_depth = 0;
     lex_depth = 0;
     skip_ws(&P);
-    if (P.s[P.pos] == '[') { cell b = parse_block(&P); if (P.err) *err = 1; return b; }
+    if (P.s[P.pos] == '[') { cell b = parse_block(&P, 0); if (P.err) *err = 1; return b; }
     cell tmp[512]; int n = 0;
     while (P.s[P.pos] && !P.err) {
         skip_ws(&P);

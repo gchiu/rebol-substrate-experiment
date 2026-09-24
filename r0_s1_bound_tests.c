@@ -89,23 +89,27 @@ int run_r0_s1_bound_tests(void) {
     eval("[ do [ + 1 2 ] ]");
     CHECK(N == 1 && got(0) == 3 && r0_s1_ran_cleanly(), "10: bare block with no T_BOUND remains valid");
 
-    /* 11: a nested bound block is inert data while the outer block is do'd. */
+    /* 11: escape-time law. f RETURNS the inner activation-dependent [x] as
+     * inert data; the old law permitted that (it was never executed), but an
+     * activation-dependent block may not leave its activation at all, so it now
+     * fail-stops at f's frame exit. */
     eval("[ f: func [x] [ do [ [x] ] ]  f 7 ]");
-    CHECK(N == 1 && r0_s1_ran_cleanly(), "11: nested bound block is inert as data");
+    CHECK(!r0_s1_ran_cleanly(),
+          "11: activation-dependent block returned as data fails at escape (law)");
 
     /* 12: executing that nested bound block under an unrelated function fails. */
     eval("[ exec: func [blk] [ do blk ]  f: func [x] [ exec block-at [ [x] ] 0 ]  f 7 ]");
     CHECK(!r0_s1_ran_cleanly(), "12: executing the nested bound block cross-function fails");
 
-    /* ---- documented same-site recursion behaviour -------------------------
-     * Two live activations of ONE site share FRAME_SITE, so a travelling bare
-     * bound block resolves against the INNERMOST matching activation. This is
-     * the Alpha-documented limitation, not a bug; pin it so it cannot drift. */
+    /* ---- escape-time law replaces the old same-site limitation -------------
+     * Passing an activation-dependent block from site S into a different live
+     * activation of the same site S is now rejected at argument bind (the block
+     * may only be consumed by its own activation). */
     eval("[ f: func [x depth carried] [ "
          "    either = depth 0 [ b: [x]  f 99 1 b ] [ do carried ] ] "
          "  f 7 0 none ]");
-    CHECK(N == 1 && got(0) == 99 && r0_s1_ran_cleanly(),
-          "13: same-site recursion resolves bare bound block against innermost (99)");
+    CHECK(!r0_s1_ran_cleanly(),
+          "13: same-site re-entry with a bare bound block fails at bind (law)");
 
     /* The closure control: the OUTER activation captures x=7; the inner same-site
      * activation x=99 invokes it, and the closure still sees 7. */

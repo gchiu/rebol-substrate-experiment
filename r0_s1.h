@@ -299,6 +299,58 @@ enum { RAW_ENTRY = 0, RAW_ARITY = 1 };
 /* block layout: [count, return-site-id, elem0, elem1, ...] */
 enum { BLK_COUNT = 0, BLK_SITE = 1, BLK_DATA = 2 };
 
+/* Escape-time binding law: an activation-dependent block (one whose executable
+ * tree carries a T_BOUND or RETURN that would resolve against its originating
+ * activation) is marked by storing its BLK_SITE NEGATED, so `raw_site < 0`
+ * tests the flag with only the frozen arithmetic host ops (there is no AND).
+ * Decoding recovers the original non-negative site id. */
+#define BLK_SITE_DEP(site)      (-((cell)(site)) - 1)
+#define BLK_SITE_ISDEP(raw)     ((raw) < 0)
+#define BLK_SITE_DECODE(raw)    (((raw) < 0) ? (-(raw) - 1) : (raw))
+
+/* Owning func-site of a cap-16 runtime context (every stack context and every
+ * promoted managed context has cap R0S1_CTX_CAP). It lives in the unused tail
+ * of the fixed 64-cell context (3 + 32 + 16 = 51 cells are used), so the
+ * escape-law checks need no per-context size increase. The global context is a
+ * cap-256 loader context and is special-cased (owner site 0). */
+#define CTX_ESCSITE (CTX_DATA + 3 * R0S1_CTX_CAP)   /* 51 */
+
+/* Static site-parent metadata for the escape law. M[SITE_PARENT_BASE + sid] is
+ * the lexical enclosing func-site of site sid (site 0 is the root). It lives in
+ * the free gap above the G1 visual buffer and below the managed heap
+ * ([32018,32768)), holds raw site ids only, and is never GC-scanned. */
+#define SITE_PARENT_BASE 32024
+#define SITE_PARENT_CAP  640
+
+/* Private scratch cells for the escape-law enforcement helpers. They live in
+ * the authoritative free gap after the site-parent table and before the managed
+ * heap: [SITE_PARENT_BASE+SITE_PARENT_CAP, GC_HEAP_BASE). This depends only on
+ * the two authoritative bounds below, not on the (unmacro'd) end of the D1 /
+ * runtime state region. An escape check therefore never touches SCRATCH_A..F,
+ * the GC work list/state, M1 task state, D1 state or any blessed RAW cell. */
+#define RV_ESC_A 32664
+#define RV_ESC_B 32665
+#define RV_ESC_C 32666
+#define RV_ESC_E 32667
+#define RV_ESC_F 32668
+#define RV_ESC_N 32669
+#define RV_ESC_P 32670
+#define RV_ESC_W 32671
+
+/* Compile-time layout guards (standard C11/_Static_assert; no bespoke layout
+ * mechanism). These fail the build if a future layout edit makes either fixed
+ * region overlap its neighbours. The site-parent table must sit above the G1
+ * visual buffer and below the managed heap; the escape scratch must sit above
+ * the site-parent table and below the managed heap. */
+_Static_assert(SITE_PARENT_BASE >= G1_VIS + 2 + G1_VIS_CAP,
+               "SITE_PARENT table overlaps the G1 visual buffer");
+_Static_assert(SITE_PARENT_BASE + SITE_PARENT_CAP <= GC_HEAP_BASE,
+               "SITE_PARENT table overlaps the managed heap");
+_Static_assert(RV_ESC_A >= SITE_PARENT_BASE + SITE_PARENT_CAP,
+               "RV_ESC_* overlaps the site-parent table");
+_Static_assert(RV_ESC_W < GC_HEAP_BASE,
+               "RV_ESC_* overlaps the managed heap");
+
 /* activation frame (linked list in M): [prev, site, SP, RP, IP, CTX, CUR, END, BLK, bias] */
 enum {
     FRAME_PREV = 0, FRAME_SITE = 1, FRAME_SP = 2, FRAME_RP = 3, FRAME_IP = 4,

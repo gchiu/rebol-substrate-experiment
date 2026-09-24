@@ -1,6 +1,6 @@
-/* r0_s1_escape_law_tests.c - acceptance corpus for the escape-time binding law.
+/* r0_s1_escape_law_tests.c - hard regression corpus for the escape-time law.
  *
- * THE LAW UNDER TEST (not yet implemented):
+ * THE LAW (implemented and enforced unconditionally):
  *
  *   A bare activation-dependent block may be consumed or closed over while its
  *   originating activation is live, but it may not escape that activation.
@@ -21,40 +21,26 @@
  *   (5) RAW/containers  - raw transport is outside the guarantee; blessed
  *                         container/task words must check or taint.
  *
- * STRUCTURE. Each case runs in a fresh runtime (so globals from other cases
- * cannot capture set-words -- see B8 below). A case records:
- *   - the CURRENT behaviour at c1a036c (documented; drift is reported),
- *   - the behaviour REQUIRED by the law, and the enforcement point.
- * LEGAL cases must succeed both now and under the law: hard CHECKs.
- * LAW cases describe the future law. The project has no expected-failure
- * convention, so by default a law mismatch prints "xfail" and is NOT counted;
- * a law case that already behaves as required prints "XPASS". Run with
- *     GLON_ESCAPE_LAW=1 ./s1
- * to make every law expectation a hard failure (for the implementation).
+ * STRUCTURE. Each case runs in a fresh runtime. Every case is a HARD check:
+ *   - the 10 legal cases must succeed (value);
+ *   - the 16 law cases must fail-stop at the named enforcement point.
+ * A regression that lets an illegal escape succeed prints FAIL and fails the
+ * suite. There is no xfail/XPASS/strict mode any more: the law is current.
  *
  * EXISTING COMMITTED COVERAGE (deliberately not duplicated here):
  *   r0_s1_bound_tests.c
- *     8  [ mk: func [x] [ [x] ]  b: mk 7  do b ]           fail-stop now (use);
+ *     8  [ mk: func [x] [ [x] ]  b: mk 7  do b ]           fail-stop (use);
  *        law: fail-stop at (1) mk's frame exit. Assertion unchanged.
- *     11 [ f: func [x] [ do [ [x] ] ]  f 7 ]               succeeds now: f RETURNS
- *        the inner activation-dependent [x] as its result (verified: result is
- *        a 1-element block, BLK_SITE = f's site, element T_BOUND depth 0 slot 0).
- *        It is never executed, so the current law permits it as inert data; it
- *        is nevertheless an escape. law: fail-stop at (1). MUST CHANGE.
- *     13 same-site recursion `f 99 1 b` then `do carried`  99 now (wrong-origin);
- *        law: fail-stop at (2). MUST CHANGE.
- *     6, 12 cross-function `do` in a foreign-site frame    fail-stop now and under
- *        the law (LOAD-LEX guard). Unchanged.
+ *     11 [ f: func [x] [ do [ [x] ] ]  f 7 ]               was: succeed as inert
+ *        data; NOW: fail-stop at (1) - the returned [x] escapes f even as data.
+ *     13 same-site recursion `f 99 1 b` then `do carried`  was: 99 (wrong-origin);
+ *        NOW: fail-stop at (2) at argument bind.
+ *     6, 12 cross-function `do` in a foreign-site frame    fail-stop (LOAD-LEX).
  *     1, 2, 3, 5, 14                                        legal; unchanged.
  *   r0_s1_case_tests.c
- *     B3, B3b, C18 (dead-origin block closed over / CASEd) fail-stop now (use);
+ *     B3, B3b, C18 (dead-origin block closed over / CASEd) fail-stop (use);
  *        law: fail-stop earlier, at (1). Assertions unchanged.
- *     B8 [ f: func [x] [ b: [x]  t: func [] b  t ]  f 5 ] legal. NOTE: in the
- *        persistent case-test session a global `b` (left by B3) captures the
- *        set-word, so under (3) B8 would fail-stop there; rename its variable
- *        when the law lands.
- *     B4, B5, B9 and the other C cases                       legal; unchanged
- *        (C17 RETURN-in-action stays: the action frame is a closure of f).
+ *     B4, B5, B8, B9 and the other C cases                   legal; unchanged.
  *
  * Case ids P05-P08, P30, P31, P35-P37, N2, N5, X1, X3, K1, K2 are the names of
  * the scratch probes from the binding-law review and escape censuses, reduced
@@ -71,7 +57,6 @@
 extern const char *M1_LIB;          /* task words: spawn / run-tasks (r0_s1_m1_tests.c) */
 
 static int failures = 0;
-static int strict = 0;
 static char src[65536];
 static int N;
 
@@ -149,34 +134,18 @@ static const char *desc(int k, long v, char *buf) {
 }
 
 static void run_case(const esc_case *c) {
-    char b1[64], b2[64], b3[64], msg[512];
+    char b1[64], msg[512];
     if (fresh(c->tasks) != 0) { printf("  FAIL: %s setup\n", c->id); failures++; return; }
     snprintf(src, sizeof src, "%s", c->prog);
     run_src();
     long v; int k = observe(&v);
-    int legal = (c->cur == VALUE && c->law == VALUE && c->cur_v == c->law_v);
-    int cur_ok = (k == c->cur) && (k != VALUE || v == c->cur_v);
     int law_ok = (k == c->law) && (k != VALUE || v == c->law_v);
-    if (legal) {
-        snprintf(msg, sizeof msg, "%s legal: %s (%s)", c->id, c->what, desc(c->law, c->law_v, b1));
-        CHECK(law_ok, msg);
-        return;
-    }
-    if (law_ok) {
-        printf("  XPASS: %s %s -- already %s (law: %s at %s)\n", c->id, c->what,
-               desc(k, v, b1), desc(c->law, c->law_v, b2), c->point);
-    } else if (strict) {
-        printf("  FAIL: %s %s -- law requires %s at %s; observed %s\n", c->id, c->what,
-               desc(c->law, c->law_v, b1), c->point, desc(k, v, b2));
-        failures++;
-    } else {
-        printf("  xfail: %s %s -- law requires %s at %s; current %s%s\n", c->id, c->what,
-               desc(c->law, c->law_v, b1), c->point, desc(k, v, b2),
-               cur_ok ? "" : " [CURRENT DRIFT]");
-    }
-    if (!cur_ok && !law_ok)
-        printf("    note: documented current %s, observed %s\n",
-               desc(c->cur, c->cur_v, b1), desc(k, v, b3));
+    if (c->law == FAILSTOP)
+        snprintf(msg, sizeof msg, "%s %s -- fail-stop at %s", c->id, c->what, c->point);
+    else
+        snprintf(msg, sizeof msg, "%s %s -- %s", c->id, c->what, desc(c->law, c->law_v, b1));
+    if (!law_ok) printf("       observed: %s\n", desc(k, v, b1));
+    CHECK(law_ok, msg);
 }
 
 static const esc_case CASES[] = {
@@ -274,13 +243,35 @@ static const esc_case CASES[] = {
       1, VALUE, 42, VALUE, 42, "-" },
 };
 
+/* Focused regression for the SITE_PARENT_CAP bound: a source with more func
+ * sites than the table can hold must fail to LOAD cleanly (parse error), never
+ * silently clamp or overwrite the table. */
+static void test_site_capacity(void) {
+    char *p;
+    for (int over = 0; over < 2; over++) {
+        int blocks = over ? 7 : 5;        /* 700 > CAP(640) sites; 500 < CAP */
+        r0_s1_init();
+        p = src; p += sprintf(p, "[");
+        for (int bx = 0; bx < blocks; bx++) {
+            p += sprintf(p, "[ ");
+            for (int i = 0; i < 100; i++) p += sprintf(p, "func [] [1] ");
+            p += sprintf(p, "] ");
+        }
+        p += sprintf(p, "]");
+        int err = 0;
+        strip_comments(src);
+        r0_s1_parse(src, &err);
+        if (over)
+            CHECK(err != 0, "site-table: 700 func sites (> CAP 640) is a clean parse error");
+        else
+            CHECK(err == 0, "site-table: 500 func sites parse cleanly");
+    }
+}
+
 int run_r0_s1_escape_law_tests(void) {
-    const char *e = getenv("GLON_ESCAPE_LAW");
-    strict = (e && e[0] == '1');
-    printf("R0-S1 escape-time binding law: acceptance corpus%s\n",
-           strict ? " (GLON_ESCAPE_LAW=1: law expectations are hard)" : "");
+    printf("R0-S1 escape-time binding law: acceptance corpus\n");
     for (size_t i = 0; i < sizeof CASES / sizeof CASES[0]; i++) run_case(&CASES[i]);
-    if (failures == 0) printf("all escape-law corpus checks passed%s\n",
-                              strict ? "" : " (law cases reported as xfail/XPASS)");
+    test_site_capacity();
+    if (failures == 0) printf("all escape-law corpus checks passed\n");
     return failures;
 }

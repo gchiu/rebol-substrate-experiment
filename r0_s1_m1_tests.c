@@ -54,6 +54,7 @@ const char *M1_LIB =
     "   LIT " XSTR(M1_S2) " ! "
     "   LIT " XSTR(M1_S1) " ! "
     "   DUP LIT 16 MOD SUB LIT " XSTR(M1_S0) " ! "
+    "   LIT " XSTR(M1_S0) " @ LIT " XSTR(RV_ESC_A) " ! CALL ESC_ANY "
     "   LIT 0 LIT " XSTR(M1_S3) " ! "
     "   Lfind: "
     "   LIT " XSTR(M1_S3) " @ LIT " XSTR(M1_MAX_TASKS) " LT ZBRANCH Lfull "
