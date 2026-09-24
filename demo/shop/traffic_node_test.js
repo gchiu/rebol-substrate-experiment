@@ -234,8 +234,57 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   if (!backToIdm.startsWith("[BASELINE]") || !/tick 0/.test(backToIdm))
     fail("switch back to IDM: expected a clean '[BASELINE]' tick 0, got: " + backToIdm);
 
-  console.log("TRAFFIC_TEST PASS (embedded source / initial render / advance / disturbance window / " +
-              "reset / mode selection / no state leak on mode switch / pacing changes Glon-computed state / " +
-              "lazy per-model loading / model switching leaks no state)");
-  process.exit(0);
+  // 11. The other two lazily loaded models (FVDM/OVM and NaSch) through the
+  // same real WASM path. The shipped page loads at most one extra model per
+  // session (section 10), so each is checked in its own fresh module
+  // instance, exactly as a fresh page load would: load the main bundle,
+  // lazily glon_load the model, select it, and confirm that Glon (not this
+  // file) produced a clean tick-0 start, the road plus 25 vehicles on the
+  // canvas, an advancing tick, and a clean switch back to IDM.
+  const freshModelCheck = (id, tag) =>
+    WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
+      const x = instance.exports;
+      mem = new DataView(x.memory.buffer);
+      const xput = (s) => {
+        const bytes = new TextEncoder().encode(s);
+        const p = x.glon_alloc(bytes.length);
+        new Uint8Array(x.memory.buffer).set(bytes, p);
+        return [p, bytes.length];
+      };
+      const xload = (src) => { const [p, n] = xput(src); if (x.glon_load(p, n) !== 0) fail(id + ": glon_load failed"); };
+      const xevent = (token) => { const [p, n] = xput(token); if (x.glon_event(p, n) !== 0) fail(id + ": glon_event('" + token + "') failed"); };
+      const xeventValue = (token, value) => {
+        const [tp, tn] = xput(token); const [vp, vn] = xput(value);
+        if (x.glon_event_value(tp, tn, vp, vn) !== 0) fail(id + ": glon_event_value('" + token + "', '" + value + "') failed");
+      };
+      if (x.glon_init() !== 0) fail(id + ": glon_init");
+      xload(SRC);
+      xevent("traffic-reset");
+      xload(LAZY_MODEL_SRC[id]);
+      xeventValue("traffic-model", id);
+      const st0 = statuses[statuses.length - 1];
+      if (!st0.startsWith(tag) || !/tick 0/.test(st0))
+        fail("model '" + id + "': expected a clean " + tag + " tick-0 start, got: " + st0);
+      const scene = canvasScripts[canvasScripts.length - 1];
+      const nd = (scene.match(/^D /gm) || []).length;
+      if (nd !== 25 || !/^L 0 300 1000 300/m.test(scene))
+        fail("model '" + id + "': expected road + 25 Glon-drawn vehicles, got " + nd + " dots");
+      for (let i = 0; i < 5; i++) xevent("traffic-advance");
+      const st1 = statuses[statuses.length - 1];
+      if (!st1.startsWith(tag) || /tick 0\b/.test(st1))
+        fail("model '" + id + "': advancing did not change tick, got: " + st1);
+      xeventValue("traffic-model", "idm");
+      const back = statuses[statuses.length - 1];
+      if (!back.startsWith("[BASELINE]") || !/tick 0/.test(back))
+        fail("model '" + id + "': switch back to IDM: expected a clean '[BASELINE]' tick 0, got: " + back);
+    });
+
+  return freshModelCheck("ovm", "[FVDM]")
+    .then(() => freshModelCheck("nasch", "[NASCH]"))
+    .then(() => {
+      console.log("TRAFFIC_TEST PASS (embedded source / initial render / advance / disturbance window / " +
+                  "reset / mode selection / no state leak on mode switch / pacing changes Glon-computed state / " +
+                  "lazy per-model loading / model switching leaks no state / FVDM and NaSch in fresh sessions)");
+      process.exit(0);
+    });
 }).catch((e) => fail(e.message || e));

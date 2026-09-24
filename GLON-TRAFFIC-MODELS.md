@@ -376,7 +376,8 @@ numbers are unchanged from the pacing-experiment pass (`r0_s1_traffic_tests.c`).
 
 Baseline at tick 600: mean-v 1799 cm/s, amplitude 998 cm/s. Pacing at tick
 600: mean-v 1654, amplitude 834 (a throughput-for-amplitude trade, not a free
-win — see the pacing-experiment report). Unchanged by this task.
+win — see test 22 in `r0_s1_traffic_tests.c` and §11.3). Unchanged by this
+task.
 
 ### 8.2 Newell
 
@@ -514,3 +515,106 @@ Unchanged from the pacing-experiment pass: `check-frozen-s1.sh` green,
 carries no new language/runtime-law changes from this work (only the
 pre-existing comment-only fix already present before this task began), and
 `glon-alpha-v1` still resolves to `d6064f765edca67f389864bfb8384341e1951666`.
+
+## 11. Closeout (2026-09-24)
+
+A final verification pass over the committed traffic work (`0092ebc`,
+`546fb32`, `e386f6c`, `8fcc40a`, `b2e64b1`, `dfb3dfe`), made at `d6bb0f2`. No
+traffic source file changed after `dfb3dfe`; the only change in this closeout
+is test coverage (§11.4) and this section.
+
+### 11.1 What exists
+
+Four model families on the same 1 km, 25-vehicle ring: IDM
+(`demos/traffic.glon`, the control, with the Baseline/Pacing scenario), Newell
+(`demos/newell.glon`), FVDM / piecewise-linear OVM (`demos/ovm.glon`), and
+Nagel–Schreckenberg (`demos/nasch.glon`, with its own seeded LCG). The model
+selector lives in `demos/models-dispatch.glon`.
+
+### 11.2 What runs where
+
+- **Glon (on the R0/S1 runtime):** every model equation, integration step,
+  state update, disturbance, the pacing governor, the NaSch PRNG, every
+  observable (tick, mean/min speed, gaps), the status text, and the drawing
+  itself. Each render emits a canvas command script (`L` road line, one
+  `D id x y` per vehicle, positions scaled in Glon), plus the status HTML.
+- **WASM:** the same frozen runtime compiled with Emscripten
+  (`standalone/glon.c` + `r0_s1_g1a.c` + `s1.c` + `r0_s1_runtime.c` →
+  `demo/shop/glon.wasm`). It exposes `glon_load` / `glon_event` /
+  `glon_event_value`.
+- **JavaScript (`traffic-host.js`):** hosting only. It loads the Glon source
+  embedded in `traffic.html`, lazily loads one extra model per session
+  (§7 loader-heap budget), forwards button and selector events as tokens,
+  schedules `traffic-advance` events with `requestAnimationFrame`, and draws
+  the `L`/`D` commands Glon emitted. It computes no speed, gap, acceleration,
+  random number or other model quantity. The other four `<script>` blocks in
+  `traffic.html` are Glon source, not JavaScript.
+
+### 11.3 The two meanings of "pacing"
+
+1. **The Pacing scenario (Glon, IDM only).** `step-pacing` runs the ordinary
+   IDM `step`, then, for every tick from 200 onwards (`tick0`), caps
+   vehicle 24 (the vehicle directly behind the braked vehicle 0) at
+   1800 cm/s if it is faster. It does not change the IDM equations. It does
+   deliberately change the simulated traffic: it is a traffic-control
+   experiment, and its result is pinned (tick 600: baseline mean-v 1799 /
+   amplitude 998; pacing mean-v 1654 / amplitude 834). The honest reading is
+   a throughput-for-amplitude trade, not free wave damping. It is not
+   offered for the other three models.
+2. **Playback speed (JavaScript, all models).** The 1x / 2x / 5x selector
+   changes only the wall-clock period between `traffic-advance` events
+   (500 ms / speed). Each event runs a fixed amount of simulated time in
+   Glon: `advance 5` (0.5 s) for the continuous models, one tick for NaSch.
+   Changing the playback speed never changes any simulated number.
+
+### 11.4 Verification
+
+- **Native suite** (`make s1 && ./s1`, WSL, `-O0`, built from a clean
+  `git archive` of `d6bb0f2` in an isolated directory): make rc 0, suite rc 0,
+  703 ok, 0 FAIL ("all tests passed").
+- **Traffic groups alone** (IDM, Newell, FVDM/OVM, NaSch test objects from
+  that same clean build, linked into a throwaway driver): rc 0, 62 ok,
+  0 failures.
+- **Page bundle:** `python3 demo/shop/build-traffic.py` regenerates
+  `traffic.html` byte-identical to the committed file, so the page embeds
+  exactly the tested Glon sources.
+- **Node/WASM** (`node demo/shop/traffic_node_test.js`, run against the
+  existing local WASM described in the next item): passes, exit 0.
+  This closeout adds check 11 to that test: FVDM/OVM and NaSch each get a
+  fresh WASM session (the page allows one extra model per session). Each
+  must give a clean tick-0 start, the road plus 25 Glon-drawn vehicles, an
+  advancing tick, and a clean switch back to IDM. Before this, only IDM and
+  Newell were exercised through WASM. A deliberately wrong expected tag
+  makes the check fail, so it is not vacuous.
+- **Which WASM was tested.** Emscripten is not available on the closeout
+  machine, so no WASM was rebuilt locally. The local Node run above used an
+  existing, untracked `demo/shop/glon.wasm` (built 2026-09-24 01:34). That
+  build predates `d6bb0f2`, so it does not carry the current runtime, and
+  this local run does not validate current HEAD's WASM. Separately, GitHub
+  Actions run #45 (commit `d6bb0f2`) succeeded. That workflow checks out
+  fresh, builds `glon.wasm` from that commit's runtime with Emscripten 6.0.9,
+  then runs `make wasm-traffic-test`, so the Node test as committed at
+  `d6bb0f2` (IDM baseline and pacing, Newell) passed against a WASM built
+  from the current runtime. The new FVDM/NaSch check will first run against
+  a CI-built WASM on the next push.
+- **Frozen S1:** `bash check-frozen-s1.sh` → "S1 substrate frozen at
+  f90496c…; all frozen files unchanged."
+
+### 11.5 Runtime and language
+
+The traffic work changed no runtime, language law or S1 file. The runtime
+did change later, for unrelated reasons (`c1a036c`: closure-origin binding
+law and CASE; `d6bb0f2`: escape-time binding law). Every native traffic test
+above passes on the current runtime, and so does the CI WASM traffic test
+described in §11.4.
+
+### 11.6 Limitations
+
+This is an architectural demonstration that useful simulator logic can be
+written in and run by Glon. It is not a traffic-engineering tool and is not
+comparable to mature packages such as SUMO: one lane, one ring, 25 vehicles,
+fixed-point integer arithmetic, piecewise-linear OVM in place of `tanh`
+(§7), no merging, lanes or routing. The standalone page can load only one
+non-IDM model per session because the loader heap is never reclaimed
+(§7, `traffic-host.js`). Throughput is tens of ticks per second at `-O0`
+natively (§8.5).
