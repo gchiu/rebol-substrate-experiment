@@ -1,0 +1,1172 @@
+<!doctype html>
+<!-- Generated from demo/shop/primer.txt by demo/shop/build-primer.py. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glon in 5 minutes &middot; Saturnine</title>
+<style>
+  :root { --fg: #16181d; --muted: #5d6470; --bg: #fdfdfc; --panel: #f3f4f6; --line: #d9dce1;
+          --accent: #2456a6; --bad: #b3261e; --code: #eceef2; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e6e8ec; --muted: #9aa1ad; --bg: #15171b; --panel: #1e2127; --line: #333842;
+            --accent: #7fa7ec; --bad: #f2877e; --code: #262a31; }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; line-height: 1.5; max-width: 820px; margin: 0 auto;
+         padding: 1.5rem 16px 4rem; color: var(--fg); background: var(--bg); }
+  h1 { font-size: 1.6rem; margin: 0.3rem 0 0.2rem; }
+  .shell { display: flex; align-items: baseline; gap: 0.5rem; color: var(--muted); font-size: 0.9rem;
+           border-bottom: 1px solid var(--line); padding-bottom: 0.4rem; }
+  .shell strong { color: var(--fg); font-size: 1rem; letter-spacing: 0.02em; }
+  h2 { font-size: 1.15rem; margin: 2.2rem 0 0.4rem; }
+  a { color: var(--accent); }
+  code, textarea, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92rem; }
+  code { background: var(--code); padding: 0 0.25rem; border-radius: 3px; }
+  #status { color: var(--muted); font-size: 0.9rem; }
+  .ex { margin: 0.8rem 0 1.2rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+  .ex textarea { display: block; width: 100%; border: 0; border-bottom: 1px solid var(--line);
+                 border-radius: 6px 6px 0 0; padding: 0.6rem 0.75rem; resize: vertical;
+                 background: var(--bg); color: var(--fg); line-height: 1.45; }
+  .bar { display: flex; gap: 0.5rem; align-items: center; padding: 0.4rem 0.6rem; }
+  .bar button { font-size: 0.9rem; padding: 0.25rem 0.9rem; border-radius: 4px; border: 1px solid var(--line);
+                background: var(--bg); color: var(--fg); cursor: pointer; }
+  .bar button.run { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .bar button:disabled { opacity: 0.5; cursor: default; }
+  .hint { margin-left: auto; color: var(--muted); font-size: 0.8rem; }
+  .out { margin: 0; padding: 0 0.75rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .out:not(:empty) { padding: 0.5rem 0.75rem 0.6rem; border-top: 1px solid var(--line); }
+  .out .res { font-weight: 600; }
+  .out .sin { color: var(--bad); font-weight: 600; }
+  .out .diag { color: var(--muted); font-size: 0.8rem; }
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 0.9rem; width: 100%; }
+  th, td { border: 1px solid var(--line); padding: 0.35rem 0.5rem; text-align: left; vertical-align: top; }
+  th { background: var(--panel); }
+</style>
+</head>
+<body>
+<header class="shell"><strong>Saturnine</strong><span>A Glonbook</span></header>
+<h1>Glon in 5 minutes</h1>
+<p id="status">Loading the Glon runtime&hellip;</p>
+<p>Glon is a small Rebol-family language that runs on a tiny frozen machine (S1), natively and as WebAssembly in the browser. This primer teaches enough Glon to read and change simple programs.</p>
+<p>This primer is <strong>instructional</strong>. The normative rules are in <a href="https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/GLON-ALPHA-LAWS.md">GLON-ALPHA-LAWS.md</a>; where the two differ, the laws win.</p>
+<p>Every example here is real: the live primer runs each one through the actual Glon WebAssembly runtime, and the native test suite checks every result shown below. The result of an example is shown after <code>=&gt;</code>: it is the value of the program's last expression. A result starting <code>** uncaught</code> means the program was stopped by a raised SIN! that nothing caught.</p>
+<p>Live, editable version: <a href="https://gchiu.github.io/rebol-substrate-experiment/shop/primer.html">https://gchiu.github.io/rebol-substrate-experiment/shop/primer.html</a></p>
+<h2 id="s1">1. Values and words</h2>
+<p>A program is a sequence of values. Numbers are integers. A <strong>word</strong> names a value; a <strong>set-word</strong> (a word with a trailing colon) gives it one.</p>
+<div class="ex" data-ex="values" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: values">x: 5
++ x 3</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p>Glon calls are <strong>prefix</strong>: the function comes first and takes a fixed number of arguments. There is no operator precedence and there are no parentheses; each function simply takes the next complete expressions it needs. <code>+ 1 * 2 3</code> reads as <code>+ 1 (* 2 3)</code>.</p>
+<div class="ex" data-ex="prefix" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: prefix">+ 1 * 2 3</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p>A word with a leading quote (<code>'tea</code>) is a word used as data, not looked up.</p>
+<div class="ex" data-ex="litword" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: litword">drink: 'tea
+drink</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<h2 id="s2">2. Blocks are data</h2>
+<p>Square brackets make a <strong>block</strong>. A block is just data (a list of values) until something evaluates it. <code>do</code> evaluates a block.</p>
+<div class="ex" data-ex="block" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: block">[ + 2 3 ]</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<div class="ex" data-ex="do" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: do">do [ + 2 3 ]</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<h2 id="s3">3. Functions</h2>
+<p><code>func [params] [body]</code> makes a function. Calling it needs no parentheses or commas: the function takes as many following values as it has parameters.</p>
+<div class="ex" data-ex="double" data-env="core">
+<textarea rows="4" spellcheck="false" autocapitalize="off" aria-label="Glon source: double">double: func [x] [
+    * x 2
+]
+double 21</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<div class="ex" data-ex="area" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: area">area: func [w h] [ * w h ]
+area 3 4</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p>Calls nest by arity: <code>double double 5</code> is <code>double (double 5)</code>.</p>
+<div class="ex" data-ex="nested" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: nested">double: func [x] [ * x 2 ]
+double double 5</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<h2 id="s4">4. Conditionals</h2>
+<p><code>either condition [then] [else]</code> evaluates one of two blocks. Comparisons are prefix too. <code>none</code> and <code>0</code> are false; every other value is true (there are no <code>true</code>/<code>false</code> words; use <code>1</code> and <code>0</code>).</p>
+<div class="ex" data-ex="either" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: either">n: 7
+either &gt; n 5 [ 'big ] [ 'small ]</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<div class="ex" data-ex="zero" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: zero">either 0 [ 'yes ] [ 'no ]</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<h2 id="s5">5. CASE</h2>
+<p><code>case</code> takes ONE block of pairs: a <strong>condition block</strong> followed by an <strong>action block</strong>. Conditions are tried in order; the first true one runs its action and <code>case</code> returns the action's result. <code>[1]</code> is a catch-all condition. With no match, <code>case</code> returns <code>none</code>. (<code>case</code> is ordinary Glon from <code>case.glon</code>, loaded as a library.)</p>
+<div class="ex" data-ex="case" data-env="core">
+<textarea rows="8" spellcheck="false" autocapitalize="off" aria-label="Glon source: case">size: func [n] [
+    case [
+        [&lt; n 10]  [ 'small ]
+        [&lt; n 100] [ 'medium ]
+        [1]       [ 'large ]
+    ]
+]
+size 50</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<h2 id="s6">6. Closures and lexical scope</h2>
+<p>A function remembers the context it was made in. A function returned from another function is a <strong>closure</strong>: it keeps its parameters alive.</p>
+<div class="ex" data-ex="adder" data-env="core">
+<textarea rows="5" spellcheck="false" autocapitalize="off" aria-label="Glon source: adder">make-adder: func [n] [
+    func [x] [ + x n ]
+]
+add10: make-adder 10
+add10 5</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p>A set-word inside a function updates the nearest existing binding of that word; if there is none, it creates a local of the current call.</p>
+<div class="ex" data-ex="counter" data-env="core">
+<textarea rows="6" spellcheck="false" autocapitalize="off" aria-label="Glon source: counter">counter: func [] [
+    n: 0
+    func [] [ n: + n 1 ]
+]
+c: counter
+c c c</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p><strong>The lexical fence.</strong> A plain block that refers to a function's locals depends on that one call. It may be used while the call is running, but it may not escape it. To take behaviour out of a call, make a closure.</p>
+<p>Legal: the block <code>[ + x 1 ]</code> is evaluated inside the call that owns <code>x</code>.</p>
+<div class="ex" data-ex="fence-ok" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: fence-ok">f: func [x] [ do [ + x 1 ] ]
+f 7</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p>Illegal: <code>do [ [x] ]</code> returns the inner block <code>[x]</code> out of <code>f</code>, but that block still refers to <code>f</code>'s <code>x</code>. The runtime refuses, at the moment of escape, by raising a SIN! of type <code>escape</code>, id <code>return</code>. Its last field, shown here as <code>&lt;site&gt;</code>, is the block's internal lexical site id: an implementation number (the live page shows the real one).</p>
+<div class="ex" data-ex="fence-bad" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: fence-bad">f: func [x] [ do [ [x] ] ]
+f 7</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p>The legal way to take <code>x</code> out is a closure (<code>does</code> makes a function with no parameters):</p>
+<div class="ex" data-ex="fence-closure" data-env="core">
+<textarea rows="3" spellcheck="false" autocapitalize="off" aria-label="Glon source: fence-closure">f: func [x] [ does [ x ] ]
+g: f 7
+g</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<h2 id="s7">7. SIN!, raise and judge</h2>
+<p>A <strong>SIN!</strong> is a first-class value describing a failure: a type, an id and an argument. A SIN! is inert data until it is raised: you can store it, pass it and inspect it freely.</p>
+<div class="ex" data-ex="sin" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: sin">s: create-sin 'demo 'oops 7
+s</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p><code>raise</code> starts propagation: it abandons the current work and unwinds to the nearest <code>judge</code>. <code>judge block</code> runs the block; if something inside raises, <code>judge</code> returns the SIN! as ordinary inert data.</p>
+<div class="ex" data-ex="judge" data-env="core">
+<textarea rows="4" spellcheck="false" autocapitalize="off" aria-label="Glon source: judge">s: create-sin 'demo 'oops 7
+judge [
+    raise s
+]</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p>Inspect a SIN! with <code>sin?</code>, <code>sin-type</code>, <code>sin-id</code> and <code>sin-arg</code>:</p>
+<div class="ex" data-ex="inspect" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: inspect">e: judge [ raise create-sin 'demo 'oops 7 ]
+sin-id e</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p>After <code>judge</code> returns, execution simply continues:</p>
+<div class="ex" data-ex="continue" data-env="core">
+<textarea rows="6" spellcheck="false" autocapitalize="off" aria-label="Glon source: continue">x: 1
+s: judge [
+    raise create-sin 'demo 'oops 7
+]
+x: + x 1
+x</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p>With no <code>judge</code>, a raised SIN! stops the program:</p>
+<div class="ex" data-ex="uncaught" data-env="core">
+<textarea rows="2" spellcheck="false" autocapitalize="off" aria-label="Glon source: uncaught">raise create-sin 'demo 'oops 7</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p>Runtime checks raise SIN!s too. The lexical fence above can be judged like any other raise:</p>
+<div class="ex" data-ex="judge-fence" data-env="core">
+<textarea rows="3" spellcheck="false" autocapitalize="off" aria-label="Glon source: judge-fence">f: func [x] [ do [ [x] ] ]
+e: judge [ f 7 ]
+sin-id e</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<h2 id="s8">8. Tasks</h2>
+<p>Glon tasks are cooperative: <code>spawn block</code> creates a task, <code>yield</code> hands control to the next task, and <code>run-tasks</code> runs them until all finish. These words come from the task library shipped with the demos (<code>demos/tuple-space.glon</code>), loaded for the examples below. Two tasks interleave their digits:</p>
+<div class="ex" data-ex="tasks" data-env="tasks">
+<textarea rows="5" spellcheck="false" autocapitalize="off" aria-label="Glon source: tasks">trace: 0
+spawn [ trace: + * trace 10 1  yield  trace: + * trace 10 1 ]
+spawn [ trace: + * trace 10 2  yield  trace: + * trace 10 2 ]
+run-tasks
+trace</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<p>A task body obeys the lexical fence: a block that depends on the spawning call is rejected with <code>'escape 'transport</code> <strong>before</strong> the task is created.</p>
+<div class="ex" data-ex="transport" data-env="tasks">
+<textarea rows="3" spellcheck="false" autocapitalize="off" aria-label="Glon source: transport">go: func [x] [ spawn [ + x 1 ] ]
+e: judge [ go 5 ]
+sin-id e</textarea>
+<div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
+<pre class="out" aria-live="polite"></pre>
+</div>
+<h2 id="s9">9. Coming from Rebol or Red</h2>
+<p>Glon looks familiar, which is exactly why these differences matter:</p>
+<div class="tablewrap"><table><thead><tr><th>In Rebol / Red</th><th>In Glon today</th></tr></thead><tbody><tr><td><code>1 + 2 * 3</code> (infix)</td><td>prefix only: <code>+ 1 * 2 3</code>; comparisons too: <code>&gt; n 0</code></td></tr><tr><td><code>( ... )</code> groups an expression</td><td>no parentheses; fixed arity decides grouping</td></tr><tr><td><code>0</code> is true; <code>true</code> / <code>false</code></td><td><code>0</code> and <code>none</code> are false; no <code>true</code> / <code>false</code> words (use <code>1</code> / <code>0</code>)</td></tr><tr><td><code>case [cond [action] ...]</code>, <code>case/all</code></td><td><code>case [ [cond] [action] ... ]</code>: conditions are blocks; no <code>/all</code></td></tr><tr><td><code>foreach</code>, <code>each</code>, <code>while</code>, <code>repeat</code>, <code>loop</code></td><td>no loop words; use recursion</td></tr><tr><td><code>switch</code></td><td>none; use <code>case</code></td></tr><tr><td><code>type?</code></td><td>none</td></tr><tr><td><code>try</code>, <code>attempt</code>, <code>error!</code>, <code>catch</code> / <code>throw</code></td><td><code>SIN!</code>, <code>create-sin</code>, <code>raise</code>, <code>judge</code></td></tr><tr><td>an unset word is a catchable error</td><td>an unset word halts the run (a machine fail-stop, not a SIN!)</td></tr><tr><td><code>func</code> set-words are global (Rebol); <code>function</code> collects locals (Red)</td><td>a set-word updates the nearest existing binding, else makes a local</td></tr><tr><td>a bound block can travel anywhere</td><td>a block that uses a call's locals may not outlive that call; use a closure</td></tr><tr><td><code>[1] = [1]</code> is true</td><td><code>=</code> is identity for blocks and strings (<code>= [1] [1]</code> is <code>0</code>); <code>str-eq</code> compares strings</td></tr><tr><td>threads, ports</td><td>cooperative tasks: <code>spawn</code>, <code>yield</code>, <code>run-tasks</code> (library words)</td></tr><tr><td><code>print</code> shows any value</td><td><code>print</code> shows integers only</td></tr></tbody></table></div>
+<h2 id="s10">10. Next</h2>
+<ul><li>The first substantial Glon program is the live traffic simulator: <a href="https://gchiu.github.io/rebol-substrate-experiment/shop/traffic.html">https://gchiu.github.io/rebol-substrate-experiment/shop/traffic.html</a>. Its IDM, Newell, OVM/FVDM and NaSch car-following models are written in Glon and run through WebAssembly in the browser.</li><li>The normative rules: <a href="https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/GLON-ALPHA-LAWS.md">GLON-ALPHA-LAWS.md</a>.</li></ul>
+
+<script type="application/glon" data-env="bootstrap">[
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+mk-string: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT SCRATCH_C @ !
+    LIT 0 LIT SCRATCH_A !
+  mk-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH mk-done
+    LIT SCRATCH_B @ LIT 2 ADD LIT SCRATCH_A @ ADD @ LIT 16 DIV
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_A @ ADD
+    !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH mk-loop
+  mk-done:
+    LIT SCRATCH_C @ LIT T_STRING ADD ARITY 1 EXIT
+]
+
+
+
+str-eq: masm 2 [
+    LIT SCRATCH_B !
+    DUP LIT 16 MOD SUB LIT SCRATCH_A !
+    LIT SCRATCH_B @ DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT SCRATCH_A @ @ LIT SCRATCH_B @ @ EQ ZBRANCH str-eq-neq
+    LIT SCRATCH_A @ @ LIT SCRATCH_F !
+    LIT 0 LIT SCRATCH_E !
+  str-eq-loop:
+    LIT SCRATCH_E @ LIT SCRATCH_F @ LT ZBRANCH str-eq-yes
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_E @ ADD @
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_E @ ADD @
+    EQ ZBRANCH str-eq-neq
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    BRANCH str-eq-loop
+  str-eq-yes:
+    INT 1 ARITY 1 EXIT
+  str-eq-neq:
+    INT 0 ARITY 1 EXIT
+]
+
+
+get: masm 1 [ CALL lookup ARITY 1 EXIT ]
+
+
+
+
+
+lambda: func [spec body] [ func :spec :body ]
+does:   func [body] [ lambda [] body ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+emit-clear: masm [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
+emit-byte: masm 1 [
+    LIT SCRATCH_E @ LIT G1_OUT_DATA ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    ARITY 0 EXIT
+]
+emit-finish: masm [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
+
+
+
+
+
+
+
+
+
+
+vis-clear: masm [ LIT 0 LIT SCRATCH_D ! ARITY 0 EXIT ]
+vis-byte: masm 1 [
+    LIT SCRATCH_D @ LIT G1_VIS_DATA ADD !
+    LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
+    ARITY 0 EXIT
+]
+vis-text: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_A !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  vis-text-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH vis-text-done
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL
+    LIT G1_VIS_DATA LIT SCRATCH_D @ ADD
+    !
+    LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH vis-text-loop
+  vis-text-done:
+    ARITY 0 EXIT
+]
+vis-finish: masm [ LIT SCRATCH_D @ LIT G1_VIS ! LIT G1_VIS LIT T_BLOCK ADD ARITY 1 EXIT ]
+vis-int: func [n] [ either < n 0 [ vis-byte 45 vis-digits - 0 n ] [ vis-digits n ] ]
+vis-digits: func [n] [
+    either > n 9 [ vis-digits / n 10 ] [ none ]
+    vis-byte + 48 - n * 10 / n 10
+]
+
+
+
+
+vis-sp:  does [ vis-byte 32 ]
+vis-eol: does [ vis-byte 10 ]
+vis-int-field:  func [n]    [ vis-sp vis-int n ]
+vis-text-field: func [text] [ vis-sp vis-text text ]
+
+vis-box: func [x y w h label] [
+    vis-byte 66
+    vis-int-field x
+    vis-int-field y
+    vis-int-field w
+    vis-int-field h
+    vis-text-field label
+    vis-eol
+]
+vis-line: func [x1 y1 x2 y2] [
+    vis-byte 76
+    vis-int-field x1
+    vis-int-field y1
+    vis-int-field x2
+    vis-int-field y2
+    vis-eol
+]
+vis-dot: func [id x y] [
+    vis-byte 68
+    vis-int-field id
+    vis-int-field x
+    vis-int-field y
+    vis-eol
+]
+vis-move: func [id x1 y1 x2 y2] [
+    vis-byte 77
+    vis-int-field id
+    vis-int-field x1
+    vis-int-field y1
+    vis-int-field x2
+    vis-int-field y2
+    vis-eol
+]
+
+
+block-len: masm 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
+block-at: masm 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ]
+
+
+
+
+
+select: func [rows key] [ select-at rows 0 block-len rows key ]
+select-at: func [rows i n key] [
+    either < i n [
+        either = block-at block-at rows i 0 key [ block-at rows i ] [ select-at rows + i 1 n key ]
+    ] [ none ]
+]
+
+
+emit-int: func [n] [ either < n 0 [ emit-byte 45 emit-digits - 0 n ] [ emit-digits n ] ]
+emit-digits: func [n] [
+    either > n 9 [ emit-digits / n 10 ] [ none ]
+    emit-byte + 48 - n * 10 / n 10
+]
+
+
+
+
+
+
+emit-text: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_A !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  emit-text-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH emit-text-done
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL
+    LIT G1_OUT_DATA LIT SCRATCH_E @ ADD
+    !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH emit-text-loop
+  emit-text-done:
+    ARITY 0 EXIT
+]
+
+
+
+
+
+
+h1-open:   "<h1>"
+h1-close:  "</h1>"
+h2-open:   "<h2>"
+h2-close:  "</h2>"
+p-open:    "<p>"
+p-close:   "</p>"
+catalog-open:  "<ul class='catalog'>"
+catalog-close: "</ul>"
+basket-list-open:  "<ul class='basket-list'>"
+basket-list-close: "</ul>"
+li-open:   "<li>"
+li-close:  "</li>"
+span-open:  "<span class='item'>"
+span-close: "</span>"
+qty-open:  "<span class='qty'>"
+qty-close: "</span>"
+btn-open:  "<button class='btn' data-glon-route='"
+btn-mid:   "'>"
+btn-close: "</button>"
+event-open: "<button class='btn' data-glon-event='"
+input-open: "<input class='search-input' type='text' placeholder='Search' data-glon-input='"
+value-mid:  "' data-glon-value='"
+panel-open:  "<div class='panel'>"
+panel-close: "</div>"
+search-open:  "<div class='search-row'>"
+search-close: "</div>"
+basket-open:  "<div class='basket'>"
+basket-close: "</div>"
+total-open:  "<p class='total'>"
+total-close: "</p>"
+meta-open:   "<p class='meta'>"
+meta-close:  "</p>"
+tagline-open:  "<p class='tagline'>"
+tagline-close: "</p>"
+nav-open:   "<p class='nav'>"
+nav-close:  "</p>"
+pre-open:   "<pre>"
+pre-close:  "</pre>"
+load-btn-open: "<button class='btn' data-glon-route='"
+load-btn-mid:  "' data-glon-load='"
+
+
+
+
+
+
+
+wrap: func [open close] [
+    func [content] [ emit-text open do content emit-text close ]
+]
+heading: wrap h1-open h1-close
+subhead: wrap h2-open h2-close
+text:    wrap p-open p-close
+tagline: wrap tagline-open tagline-close
+meta:    wrap meta-open meta-close
+pre:     wrap pre-open pre-close
+link:    func [label route] [
+    emit-text nav-open
+    emit-text btn-open emit-text route emit-text btn-mid emit-text label emit-text btn-close
+    emit-text nav-close
+]
+
+
+
+load-link: func [label route path] [
+    emit-text nav-open
+    emit-text load-btn-open emit-text route emit-text load-btn-mid emit-text path emit-text btn-mid
+    emit-text label emit-text btn-close
+    emit-text nav-close
+]
+
+button:  func [content event] [
+    emit-text event-open emit-text event emit-text btn-mid do content emit-text btn-close
+]
+
+value-button: func [content event value] [
+    emit-text event-open emit-text event emit-text value-mid emit-text value emit-text btn-mid
+    do content emit-text btn-close
+]
+
+
+
+input:   func [name] [
+    emit-text input-open emit-text name emit-text btn-mid
+]
+
+
+
+
+
+
+products: func [items] [ emit-text catalog-open each-product items emit-text catalog-close ]
+each-product: func [items] [ emit-product-at items 0 block-len items ]
+emit-product-at: func [items i n] [
+    either < i n [
+        emit-text li-open
+        emit-text span-open emit-text get block-at items i emit-text span-close
+        value-button [ emit-text "Add" ] "add-product" get block-at items i
+        emit-text li-close
+        emit-product-at items + i 1 n
+    ] [ none ]
+]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+shop-loaded: 0
+guide-loaded: 0
+merchant-flow-loaded: 0
+tuple-space-loaded: 0
+always: 1
+
+
+
+shop-route: "shop"  shop-label: "Shop SPA"  shop-path: "demos/shop.glon"
+guide-route: "guide"  guide-label: "Programmer's guide"  guide-path: "demos/guide.glon"
+mf-route: "merchant-flow"  mf-label: "Multitasking / dataflow"  mf-path: "demos/merchant-flow.glon"
+ts-route: "tuple-space"  ts-label: "Tuple space / dataflow"  ts-path: "demos/tuple-space.glon"
+
+demos: [
+    [shop-loaded          shop-route shop-label shop-path]
+    [guide-loaded         guide-route guide-label guide-path]
+    [merchant-flow-loaded mf-route   mf-label   mf-path]
+    [tuple-space-loaded   ts-route   ts-label   ts-path]
+]
+
+
+home-view: [
+    heading [ emit-text "Glon Demos" ]
+    tagline [ emit-text "Small applications running in Glon" ]
+    each-demo 0 block-len demos
+    emit-text "<p><a href='linda.html'>Linda / tuple space — real cooperative blocking</a></p>"
+]
+
+each-demo: func [i n] [
+    either < i n [
+        row: block-at demos i
+        either get block-at row 0 [
+            link get block-at row 2 get block-at row 1
+        ] [
+            load-link get block-at row 2 get block-at row 1 get block-at row 3
+        ]
+        each-demo + i 1 n
+    ] [ none ]
+]
+
+
+not-found-view: [
+    heading [ emit-text "Not found" ]
+    link "Back to demos" "home"
+]
+
+loading-view: [
+    heading [ emit-text "Loading…" ]
+    text [ emit-text "Loading the selected demo…" ]
+    link "Back to demos" "home"
+]
+
+error-view: [
+    heading [ emit-text "Load failed" ]
+    text [ emit-text "The selected demo could not be loaded." ]
+    link "Back to demos" "home"
+]
+
+
+
+
+
+
+
+
+renderer: func [view] [
+    does [
+        emit-clear
+        do view
+        emit-finish
+    ]
+]
+render-home:      renderer home-view
+render-not-found: renderer not-found-view
+render-loading:   renderer loading-view
+render-error:     renderer error-view
+
+
+
+routes: [
+    ['home          always               [render-home]]
+    ['shop          shop-loaded          [render-shop]]
+    ['products      shop-loaded          [render-products]]
+    ['guide         guide-loaded         [render-guide]]
+    ['merchant-flow merchant-flow-loaded [render-merchant-flow]]
+    ['tuple-space   tuple-space-loaded   [render-tuple-space]]
+]
+
+render-current: func [] [
+    route-row: select routes current-route
+    either route-row [
+        either get block-at route-row 1 [ do block-at route-row 2 ] [ render-loading ]
+    ] [ render-not-found ]
+]
+
+
+route: [
+    either = current-route 'products [
+        either shop-loaded [ visit-count: + visit-count 1 ] [ none ]
+    ] [ none ]
+    render-current
+]
+
+
+
+events: [
+    ['load-failed   [render-error]]
+    ['start         [do-start]]
+    ['reset         [do-reset]]
+    ['run           [do-space-run]]
+    ['space-reset   [do-space-reset]]
+]
+
+do-event: [
+    event-row: select events current-event
+    either event-row [
+        do block-at event-row 1
+    ] [
+        either shop-loaded [ do-shop-event ] [ render-current ]
+    ]
+] ]</script>
+<script type="application/glon" data-env="case">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+case: func [cases] [ case-from cases 0 ]
+
+case-from: func [cases i] [
+    either < i block-len cases [
+        either < + i 1 block-len cases [
+            either invoke func [] block-at cases i
+                [ invoke func [] block-at cases + i 1 ]
+                [ case-from cases + i 2 ]
+        ] [ invoke 0 ]
+    ] [ none ]
+]</script>
+<script type="application/glon" data-env="tasks">
+
+
+
+[ mnew-task: masm 3 [
+    LIT M1_S2 !
+    LIT M1_S1 !
+    CALL ESC_TRANSPORT
+    DUP LIT 16 MOD SUB LIT M1_S0 !
+    LIT 0 LIT M1_S3 !
+  Lfind:
+    LIT M1_S3 @ LIT 3 LT ZBRANCH Lfull
+    LIT M1_S3 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S4 !
+    LIT M1_S4 @ LIT TREC_STATE ADD @ LIT 2 EQ ZBRANCH Lnext
+    BRANCH Lmake
+  Lnext:
+    LIT M1_S3 @ LIT 1 ADD LIT M1_S3 !
+    BRANCH Lfind
+  Lfull:
+    LIT -1 LIT 16 MUL ARITY 1 EXIT
+  Lmake:
+
+    LIT M1_S4 @ LIT M1_WRAPPER_DELTA ADD LIT M1_S5 !
+    LIT 3 LIT M1_S5 @ !
+    LIT 0 LIT M1_S5 @ LIT 1 ADD !
+    LIT M1_S1 @ LIT M1_S5 @ LIT 2 ADD !
+    LIT M1_S0 @ LIT 6 ADD LIT M1_S5 @ LIT 3 ADD !
+    LIT M1_S2 @ LIT M1_S5 @ LIT 4 ADD !
+    LIT M1_MAIN_ENTRY_CELL @ LIT M1_S4 @ !
+    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_DS_OFF ADD LIT M1_S4 @ LIT TREC_SP ADD !
+    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_RS_OFF ADD LIT M1_S4 @ LIT TREC_RP ADD !
+    LIT M1_S5 @ LIT 2 ADD LIT M1_S4 @ LIT TREC_CUR ADD !
+    LIT M1_S5 @ LIT 5 ADD LIT M1_S4 @ LIT TREC_END ADD !
+    LIT RV_CTX @ LIT M1_S4 @ LIT TREC_CTX ADD !
+    LIT M1_S5 @ LIT M1_S4 @ LIT TREC_BLK ADD !
+    LIT 0 LIT M1_S4 @ LIT TREC_FRAME ADD !
+    LIT 0 LIT M1_S4 @ LIT TREC_STATE ADD !
+    LIT M1_S4 @ LIT 16 MUL ARITY 1 EXIT
+]
+
+ yield: masm [
+    NONE LIT 16
+    LIT REG_RP @ @ LIT M1_CUR_TASK @ LIT TREC_IP ADD !
+    LIT REG_SP @ LIT M1_CUR_TASK @ LIT TREC_SP ADD !
+    LIT REG_RP @ LIT M1_CUR_TASK @ LIT TREC_RP ADD !
+    LIT RV_CUR @ LIT M1_CUR_TASK @ LIT TREC_CUR ADD !
+    LIT RV_END @ LIT M1_CUR_TASK @ LIT TREC_END ADD !
+    LIT RV_CTX @ LIT M1_CUR_TASK @ LIT TREC_CTX ADD !
+    LIT RV_BLK @ LIT M1_CUR_TASK @ LIT TREC_BLK ADD !
+    LIT RV_FRAME @ LIT M1_CUR_TASK @ LIT TREC_FRAME ADD !
+    LIT M1_SCHED_REC LIT TREC_SP ADD @ LIT REG_SP !
+    LIT M1_SCHED_REC LIT TREC_RP ADD @ LIT REG_RP !
+    LIT M1_SCHED_REC LIT TREC_CUR ADD @ LIT RV_CUR !
+    LIT M1_SCHED_REC LIT TREC_END ADD @ LIT RV_END !
+    LIT M1_SCHED_REC LIT TREC_CTX ADD @ LIT RV_CTX !
+    LIT M1_SCHED_REC LIT TREC_BLK ADD @ LIT RV_BLK !
+    LIT M1_SCHED_REC LIT TREC_FRAME ADD @ LIT RV_FRAME !
+    LIT M1_SCHED_REC LIT TREC_IP ADD @ LIT REG_IP !
+]
+
+ task-finish: masm [
+    LIT 1 LIT M1_CUR_TASK @ LIT TREC_STATE ADD !
+    LIT M1_SCHED_REC LIT TREC_SP ADD @ LIT REG_SP !
+    LIT M1_SCHED_REC LIT TREC_RP ADD @ LIT REG_RP !
+    LIT M1_SCHED_REC LIT TREC_CUR ADD @ LIT RV_CUR !
+    LIT M1_SCHED_REC LIT TREC_END ADD @ LIT RV_END !
+    LIT M1_SCHED_REC LIT TREC_CTX ADD @ LIT RV_CTX !
+    LIT M1_SCHED_REC LIT TREC_BLK ADD @ LIT RV_BLK !
+    LIT M1_SCHED_REC LIT TREC_FRAME ADD @ LIT RV_FRAME !
+    LIT M1_SCHED_REC LIT TREC_IP ADD @ LIT REG_IP !
+]
+
+
+ run-tasks: masm [
+    LIT REG_IP @ LIT 11 ADD LIT M1_SCHED_REC LIT TREC_IP ADD !
+    LIT REG_SP @ LIT M1_SCHED_REC LIT TREC_SP ADD !
+    LIT REG_RP @ LIT M1_SCHED_REC LIT TREC_RP ADD !
+    LIT RV_CUR @ LIT M1_SCHED_REC LIT TREC_CUR ADD !
+    LIT RV_END @ LIT M1_SCHED_REC LIT TREC_END ADD !
+    LIT RV_CTX @ LIT M1_SCHED_REC LIT TREC_CTX ADD !
+    LIT RV_BLK @ LIT M1_SCHED_REC LIT TREC_BLK ADD !
+    LIT RV_FRAME @ LIT M1_SCHED_REC LIT TREC_FRAME ADD !
+    LIT M1_CURSOR @ LIT M1_S7 !
+    LIT 0 LIT M1_S8 !
+  Lscan:
+    LIT M1_S8 @ LIT 3 LT ZBRANCH Ldone
+    LIT M1_S7 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S6 !
+    LIT M1_S6 @ LIT TREC_STATE ADD @ LIT 0 NE ZBRANCH Lfound
+  Lskip:
+    LIT M1_S7 @ LIT 1 ADD LIT 3 MOD LIT M1_S7 !
+    LIT M1_S8 @ LIT 1 ADD LIT M1_S8 !
+    BRANCH Lscan
+  Ldone:
+    NONE LIT 16 EXIT
+  Lfound:
+    LIT M1_S6 @ LIT M1_CUR_TASK !
+    LIT M1_S7 @ LIT 1 ADD LIT 3 MOD LIT M1_CURSOR !
+    LIT M1_CUR_TASK @ LIT TREC_SP ADD @ LIT REG_SP !
+    LIT M1_CUR_TASK @ LIT TREC_RP ADD @ LIT REG_RP !
+    LIT M1_CUR_TASK @ LIT TREC_CUR ADD @ LIT RV_CUR !
+    LIT M1_CUR_TASK @ LIT TREC_END ADD @ LIT RV_END !
+    LIT M1_CUR_TASK @ LIT TREC_CTX ADD @ LIT RV_CTX !
+    LIT M1_CUR_TASK @ LIT TREC_BLK ADD @ LIT RV_BLK !
+    LIT M1_CUR_TASK @ LIT TREC_FRAME ADD @ LIT RV_FRAME !
+    LIT M1_CUR_TASK @ LIT TREC_IP ADD @ LIT REG_IP !
+]
+
+  reset-tasks: masm [
+    LIT 0 LIT M1_S3 !
+  Rloop:
+    LIT M1_S3 @ LIT 3 LT ZBRANCH Rdone
+    LIT 2 LIT M1_S3 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT TREC_STATE ADD !
+    LIT M1_S3 @ LIT 1 ADD LIT M1_S3 !
+    BRANCH Rloop
+  Rdone:
+    LIT 0 LIT M1_CURSOR !
+    ARITY 0 EXIT
+]
+ spawn: func [body] [ mnew-task body 'do 'task-finish ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+tuple-space-loaded: 1
+
+block-set!: masm 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
+
+
+block-zero!: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_F !
+    LIT 0 LIT SCRATCH_E !
+  bz-loop:
+    LIT SCRATCH_E @ LIT SCRATCH_F @ LT ZBRANCH bz-done
+    LIT 0 LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_E @ ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    BRANCH bz-loop
+  bz-done:
+    ARITY 0 EXIT
+]
+
+
+mod3: masm 1 [ LIT 3 MOD LIT 16 MUL ARITY 1 EXIT ]
+
+
+
+
+cycle: [ [0 10 4] [1 3 7] [2 1 7] ]
+space: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+space-cursor: 0
+space-taken-by: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+worker-job: [0 0 0]
+
+
+fill-space: func [i n] [
+    either < i n [
+        block-set! space i block-at cycle mod3 i
+        fill-space + i 1 n
+    ] [ none ]
+]
+fill-space 0 block-len space
+
+
+stock-deltas: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+cash-deltas:  [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+sales-deltas: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+stock: 0
+cash: 0
+sales: 0
+started: 0
+log: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+log-count: 0
+
+log-append: func [v] [ block-set! log log-count v log-count: + log-count 1 ]
+
+
+work: func [n] [ either > n 0 [ yield work - n 1 ] [ none ] ]
+
+
+
+
+
+
+compute: func [i job] [
+    kind: block-at job 0 qty: block-at job 1 price: block-at job 2
+    either = kind 0 [
+        block-set! stock-deltas i qty
+        block-set! cash-deltas i - 0 * qty price
+        block-set! sales-deltas i 0
+    ] [
+    either = kind 1 [
+        block-set! stock-deltas i - 0 qty
+        block-set! cash-deltas i * qty price
+        block-set! sales-deltas i qty
+    ] [
+        block-set! stock-deltas i qty
+        block-set! cash-deltas i - 0 * qty price
+        block-set! sales-deltas i - 0 qty
+    ]]
+]
+
+worker: func [id] [
+    either < space-cursor block-len space [
+        job-idx: space-cursor
+        job: block-at space job-idx
+        space-cursor: + space-cursor 1
+        block-set! space-taken-by job-idx id
+        block-set! worker-job - id 1 job-idx
+        log-append 1 log-append id log-append job-idx
+        compute job-idx job
+        either = block-at job 0 0 [ work 3 ]
+        [ either = block-at job 0 1 [ work 1 ]
+          [ work 2 ] ]
+        worker id
+    ] [ none ]
+]
+
+
+
+
+route-at: func [i] [
+    either < i block-len space [
+        stock: + stock block-at stock-deltas i
+        cash: + cash block-at cash-deltas i
+        sales: + sales block-at sales-deltas i
+        log-append 3 log-append mod3 i log-append i
+        route-at + i 1
+    ] [ none ]
+]
+router: func [] [ route-at 0 ]
+
+
+
+
+reset-state: func [] [
+    space-cursor: 0 log-count: 0 stock: 0 cash: 0 sales: 0
+    block-zero! stock-deltas block-zero! cash-deltas block-zero! sales-deltas
+    block-zero! space-taken-by block-zero! worker-job
+]
+
+start: func [] [
+    started: 1 reset-tasks reset-state
+    task-a: spawn [ worker 1 ] task-b: spawn [ worker 2 ] task-c: spawn [ worker 3 ]
+    run-tasks router
+]
+
+reset: func [] [ started: 0 reset-tasks reset-state ]
+
+do-space-run: func [] [ start render-current ]
+do-space-reset: func [] [ reset render-current ]
+
+
+
+
+
+
+space-cx: 500 space-cy: 58
+worker-cx: [310 500 690] worker-cy: 218
+router-cx: 500 router-cy: 378
+reducer-cx: [310 500 690] reducer-cy: 538
+
+draw-canvas-topology: func [] [
+    vis-box 420 40 160 36 "Transaction space"
+    vis-box 250 200 120 36 "W1"
+    vis-box 440 200 120 36 "W2"
+    vis-box 630 200 120 36 "W3"
+    vis-box 430 360 140 36 "Router"
+    vis-box 250 520 120 36 "Stock"
+    vis-box 440 520 120 36 "Cash"
+    vis-box 630 520 120 36 "Sales"
+    vis-line 500 76 310 200
+    vis-line 500 76 500 200
+    vis-line 500 76 690 200
+    vis-line 310 236 500 360
+    vis-line 500 236 500 360
+    vis-line 690 236 500 360
+    vis-line 500 396 310 520
+    vis-line 500 396 500 520
+    vis-line 500 396 690 520
+]
+
+
+
+
+draw-canvas-dots: func [i n] [
+    either < i n [ vis-dot i space-cx space-cy draw-canvas-dots + i 1 n ] [ none ]
+]
+
+
+draw-canvas-claims: func [i n] [
+    either < i n [
+        wid: block-at space-taken-by i
+        vis-move i space-cx space-cy block-at worker-cx - wid 1 worker-cy
+        draw-canvas-claims + i 1 n
+    ] [ none ]
+]
+
+
+draw-canvas-routes: func [i n] [
+    either < i n [
+        wid: block-at space-taken-by i
+        vis-move i block-at worker-cx - wid 1 worker-cy router-cx router-cy
+        vis-move i router-cx router-cy block-at reducer-cx mod3 i reducer-cy
+        draw-canvas-routes + i 1 n
+    ] [ none ]
+]
+
+
+emit-kind: func [k] [ either = k 0 [ emit-text "BUY" ] [ either = k 1 [ emit-text "SELL" ] [ emit-text "RETURN" ] ] ]
+
+
+space-item: func [i] [
+    emit-text "["
+    emit-kind block-at block-at space i 0
+    emit-text " Tea"
+    either = block-at space-taken-by i 0 [ emit-text " pending" ]
+    [ emit-text " <- worker " emit-int block-at space-taken-by i ]
+    emit-text "]"
+]
+
+space-items: func [i n] [
+    either < i n [
+        space-item i emit-text "  " space-items + i 1 n
+    ] [ none ]
+]
+
+draw-space: func [] [
+    emit-text "<pre class='space'>Transaction space:  "
+    space-items 0 block-len space
+    emit-text "
+Workers:  "
+    worker-cell 0 emit-text "    " worker-cell 1 emit-text "    " worker-cell 2
+    emit-text "
+            Router
+Stock:  " emit-int stock
+    emit-text "      Cash:  " emit-int cash
+    emit-text "      Sales:  " emit-int sales
+    emit-text "</pre>"
+]
+
+worker-cell: func [i] [
+    emit-text "w" emit-int + i 1 emit-text ": "
+    either started [ emit-kind block-at block-at space block-at worker-job i 0 emit-text " Tea" ] [ emit-text "idle" ]
+]
+
+draw-log: func [i] [ either < i log-count [ draw-log-entry i draw-log + i 3 ] [ none ] ]
+
+draw-log-entry: func [i] [
+    op: block-at log i
+    emit-text "<li>"
+    either = op 1 [
+        emit-text "worker " emit-int block-at log + i 1 emit-text " took "
+        emit-kind block-at block-at space block-at log + i 2 0
+        emit-text " Tea from the space"
+    ] [
+        emit-text "token " emit-int block-at log + i 2 emit-text ": router -> "
+        either = block-at log + i 1 0 [ emit-text "stock" ]
+        [ either = block-at log + i 1 1 [ emit-text "cash" ] [ emit-text "sales" ] ]
+    ]
+    emit-text "</li>"
+]
+
+tuple-space-view: [
+    heading [ emit-text "Glon tuple space / dataflow" ]
+    text [ emit-text "Three Glon tasks consume tuples from a shared space; results flow through a router to reducers." ]
+    draw-space
+    emit-text "<canvas id='glon-canvas' width='1000' height='620'></canvas>"
+    either started [ button [ emit-text "Reset" ] "space-reset" ] [ button [ emit-text "Run" ] "run" ]
+    emit-text " "
+    link "Back to demos" "home"
+    subhead [ emit-text "Event log" ]
+    emit-text "<ul class='flow-log'>"
+    draw-log 0
+    emit-text "</ul>"
+]
+
+render-tuple-space: func [] [
+    emit-clear do tuple-space-view
+    vis-clear draw-canvas-topology
+    either started [
+        draw-canvas-dots 0 block-len space
+        draw-canvas-claims 0 block-len space
+        draw-canvas-routes 0 block-len space
+    ] [ none ]
+    vis-finish
+    emit-finish
+]
+]</script>
+<script src="primer-host.js"></script>
+</body>
+</html>
