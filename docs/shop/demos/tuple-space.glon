@@ -5,6 +5,7 @@
 [ mnew-task: masm 3 [
     LIT M1_S2 ! ;; finish-word
     LIT M1_S1 ! ;; do-word
+    CALL ESC_TRANSPORT ;; escape law (5): reject a dependent body first
     DUP LIT 16 MOD SUB LIT M1_S0 ! ;; body ptr
     LIT 0 LIT M1_S3 ! ;; slot = 0
   Lfind:
