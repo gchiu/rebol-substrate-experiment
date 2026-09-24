@@ -128,6 +128,14 @@ int putchar(int c) {
 
 int fflush(FILE *f) { (void)f; return 0; }
 
+/* abort: r0_s1_runtime.c calls it for one fatal, machine-level invariant
+ * (the emitter's word_refs capacity guard during r0_s1_init). Under -nostdlib
+ * there is no libc abort, so provide the freestanding equivalent: an
+ * unconditional WASM trap (`unreachable`). It never returns, stops the whole
+ * module, and is not a Glon SIN!: no judge can observe it. Native builds keep
+ * libc's abort. */
+__attribute__((noreturn)) void abort(void) { __builtin_trap(); }
+
 /* ---- memory -------------------------------------------------------------- */
 
 static unsigned char heap[1 << 16];   /* 64 KiB bump heap */
