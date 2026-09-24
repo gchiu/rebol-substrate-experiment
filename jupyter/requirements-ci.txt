@@ -1,0 +1,11 @@
+# Pinned Python packages for the Glon Jupyter kernel CI (.github/workflows/jupyter.yml)
+# and for running jupyter/tests locally. These are the versions the kernel was
+# proven with (Python 3.10). JupyterLab is not needed: the tests talk to the
+# kernel through jupyter_client.
+ipykernel==7.3.0
+jupyter_client==8.10.0
+jupyter_core==5.9.1
+pyzmq==27.2.0
+ipython==8.39.0
+tornado==6.5.10
+traitlets==5.16.1

@@ -136,12 +136,21 @@ exactly, with no markers.
 ## Tests
 
 ```bash
+pip install -r jupyter/requirements-ci.txt                  # the pinned, tested versions
 make host-test                                              # host only, stdlib Python
 make kernel-test PYTHON=~/.venvs/glon-jupyter/bin/python    # the kernel through jupyter_client
+make kernelspec-test PYTHON=~/.venvs/glon-jupyter/bin/python
 ```
 
 `tests/test_host.py` covers the host exhaustively (every outcome and resource
 edge). `tests/test_kernel.py` starts real kernels with
 `jupyter_client.KernelManager` (no JupyterLab) from a kernelspec in a
 temporary `JUPYTER_PATH`, and checks each Jupyter mapping, persistence,
-restart, interrupt, isolation and shutdown.
+restart, interrupt, isolation and shutdown. `tests/test_kernelspec.py`
+installs the kernelspec into a temporary prefix with the real installer,
+checks that `jupyter kernelspec list` finds it and that its `kernel.json` is
+right, and runs one cell through it.
+
+CI: `.github/workflows/jupyter.yml` runs all three from a clean Ubuntu runner
+(Python 3.10, `requirements-ci.txt`), separately from the native/WASM/Pages
+workflow.

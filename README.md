@@ -6,6 +6,12 @@ Live WebAssembly demo:
 
 https://gchiu.github.io/rebol-substrate-experiment/
 
+GLON also runs as a persistent Jupyter kernel (definitions carry over from
+cell to cell), through the standard Jupyter kernelspec machinery, so any
+Jupyter frontend can use it. Linux/WSL is the proven native target; you
+install it from a repository checkout (there is no pip package yet), and
+macOS and native Windows are not yet supported. See `jupyter/README.md`.
+
 GLON began as an experiment in language architecture:
 
 > How small can the underlying machine be if a REBOL-like high-level language

@@ -1,0 +1,57 @@
+# The Glon Jupyter kernel, from a clean runner: build the native session host,
+# run the host-protocol tests, the Jupyter-protocol tests (jupyter_client; no
+# JupyterLab) and the kernelspec install/discovery/launch test, and check that
+# frozen S1 is untouched.
+#
+# Independent of "Build and publish shop to Pages" (deploy-pages.yml), which
+# runs the full native suite and the WASM/Pages pipeline: this workflow builds
+# only the host and tests only the Jupyter boundary, so it stays short and runs
+# in parallel.
+name: Jupyter kernel
+
+on:
+  push:
+    branches: [glon-shop-g1a]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  jupyter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Fetch and verify frozen-S1 tag
+        run: |
+          git fetch origin '+refs/tags/s1-frozen-v1:refs/tags/s1-frozen-v1'
+          test "$(git rev-parse 's1-frozen-v1^{commit}')" = "f90496c26dc45c7a387d8fc8639cd2781507d3d2"
+
+      - name: Frozen-S1 check
+        run: bash check-frozen-s1.sh
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install the pinned Jupyter kernel dependencies
+        run: python -m pip install -r jupyter/requirements-ci.txt
+
+      - name: Build the native Glon session host
+        run: make glon-kernel-host
+
+      - name: Host-protocol tests
+        run: make host-test PYTHON=python
+
+      - name: Jupyter-protocol tests (jupyter_client)
+        run: make kernel-test PYTHON=python
+
+      - name: Kernelspec install, discovery and launch
+        run: make kernelspec-test PYTHON=python
