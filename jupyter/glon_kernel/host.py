@@ -1,13 +1,18 @@
-"""jupyter/tests/host_client.py -- a stdlib-only client for glon-kernel-host.
+"""jupyter/glon_kernel/host.py -- a stdlib-only client for glon-kernel-host.
 
 Speaks the host's framed protocol (see jupyter/host/glon_kernel_host.c):
 requests on the host's stdin, results on a dedicated pipe passed with
 --result-fd, raw Glon output on stdout/stderr. It contains no Glon semantics:
 it frames requests, decodes the JSON results the host sends, and attributes
-output to a cell using the byte counts the host reports.
+output to a cell using the byte counts the host reports. Used by the Jupyter
+kernel (kernel.py) and by the host-level tests (tests/test_host.py).
 
 stdout and stderr are drained by background threads for the whole life of the
 process, so a cell that prints a lot can never block the host on a full pipe.
+
+Locations: GLON_HOME is the repository checkout (default: two directories
+above this package); GLON_KERNEL_HOST overrides the host binary (e.g. a
+sanitizer build).
 """
 
 import json
@@ -17,8 +22,7 @@ import subprocess
 import threading
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
-# GLON_KERNEL_HOST overrides the binary (e.g. a sanitizer build)
+ROOT = os.environ.get("GLON_HOME") or os.path.normpath(os.path.join(HERE, "..", ".."))
 HOST = os.environ.get("GLON_KERNEL_HOST") or os.path.join(ROOT, "jupyter", "host", "glon-kernel-host")
 DEFAULT_LIBS = [os.path.join(ROOT, "jupyter", "prelude.glon"),
                 os.path.join(ROOT, "demo", "shop", "case.glon")]

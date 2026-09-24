@@ -1,6 +1,6 @@
 """jupyter/tests/test_host.py -- host-level tests for glon-kernel-host.
 
-No Jupyter: the host is driven through host_client.Host (stdlib only), which
+No Jupyter: the host is driven through glon_kernel.host.Host (stdlib only), which
 frames requests and reads structured results. Every expectation below is about
 the host's structured outcome ("status", "detail", "values", "sin") or the
 exact bytes a cell printed; nothing parses rendered result text.
@@ -13,8 +13,8 @@ import re
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from host_client import Host, HostDied, ROOT  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # jupyter/
+from glon_kernel.host import Host, HostDied, ROOT  # noqa: E402  (stdlib only; no Jupyter)
 
 failures = 0
 

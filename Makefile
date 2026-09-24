@@ -255,6 +255,17 @@ glon-kernel-host: jupyter/host/glon-kernel-host
 host-test: jupyter/host/glon-kernel-host
 	python3 jupyter/tests/test_host.py
 
+# The Jupyter kernel over that host, through the real protocol (jupyter_client;
+# no JupyterLab). Needs a Python with ipykernel, e.g.
+#   make kernel-test PYTHON=~/.venvs/glon-jupyter/bin/python
+PYTHON ?= python3
+kernel-test: jupyter/host/glon-kernel-host
+	$(PYTHON) jupyter/tests/test_kernel.py
+
+# Install the Glon kernelspec for this user (repo-checkout install).
+kernel-install: jupyter/host/glon-kernel-host
+	cd jupyter && $(PYTHON) -m glon_kernel.install
+
 # ---- Traffic simulator benchmark (post-Alpha application; no language change) -
 # load-once benchmark of the IDM sim. Builds both the shipped -O0 runtime and a
 # directly-compiled -O2 runtime so interpreter cost can be separated from C
@@ -267,4 +278,4 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test primer.html wasm-primer-test glon-kernel-host host-test
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test primer.html wasm-primer-test glon-kernel-host host-test kernel-test kernel-install
