@@ -1,105 +1,122 @@
-<!DOCTYPE html>
+<!doctype html>
+<!-- site/index.html: the authoritative source of the published site root.
+     The Pages workflow (.github/workflows/deploy-pages.yml) copies it verbatim
+     to docs/index.html on main. Plain HTML/CSS: no scripts, fonts or tracking. -->
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>R0 / S1 WebAssembly Demo</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; color: #111; }
-    h1 { font-size: 1.5rem; }
-    pre { background: #f6f6f6; border: 1px solid #e0e0e0; border-radius: 4px; padding: 0.75rem 1rem; overflow-x: auto; }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    summary { cursor: pointer; font-weight: 600; }
-    details { margin: 0.75rem 0; }
-    .muted { color: #666; font-size: 0.9rem; }
-    #counter { font-weight: 700; }
-    button { font-size: 1rem; padding: 0.4rem 1rem; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glon Programming Language</title>
+<meta name="description" content="Glon is a small experimental programming language inspired by the Rebol family. Try it in your browser: it runs interactively in WebAssembly.">
+<link rel="canonical" href="https://gchiu.github.io/rebol-substrate-experiment/">
+<style>
+  :root { --fg: #16181d; --muted: #5d6470; --bg: #fdfdfc; --panel: #f3f4f6; --line: #d9dce1;
+          --accent: #2456a6; --code: #eceef2; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e6e8ec; --muted: #9aa1ad; --bg: #15171b; --panel: #1e2127; --line: #333842;
+            --accent: #7fa7ec; --code: #262a31; }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; line-height: 1.55; max-width: 820px; margin: 0 auto;
+         padding: 2rem 16px 4rem; color: var(--fg); background: var(--bg); }
+  h1 { font-size: 2.4rem; margin: 0 0 0.3rem; letter-spacing: -0.01em; }
+  h2 { font-size: 1.2rem; margin: 2.4rem 0 0.6rem; }
+  .lede { font-size: 1.2rem; margin: 0 0 1rem; }
+  .muted { color: var(--muted); }
+  a { color: var(--accent); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92rem; }
+  code { background: var(--code); padding: 0 0.25rem; border-radius: 3px; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+        padding: 0.75rem 1rem; overflow-x: auto; line-height: 1.45; }
+  pre .res { color: var(--muted); }
+  .cta { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem;
+         margin: 1.5rem 0 0.5rem; padding: 0; list-style: none; }
+  .cta a { display: block; height: 100%; padding: 0.9rem 1rem; border: 1px solid var(--line);
+           border-radius: 8px; background: var(--panel); text-decoration: none; color: var(--fg); }
+  .cta a:hover, .cta a:focus-visible { border-color: var(--accent); }
+  .cta strong { display: block; color: var(--accent); font-size: 1.05rem; }
+  .cta span { display: block; color: var(--muted); font-size: 0.9rem; }
+  .cta .first a { border-color: var(--accent); }
+  ul.plain { padding-left: 1.2rem; }
+  ul.plain li { margin: 0.25rem 0; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); font-size: 0.85rem; }
+</style>
 </head>
 <body>
-  <h1>R0 / S1 WebAssembly Demo</h1>
+<header>
+  <h1>Glon</h1>
+  <p class="lede">Glon is a small experimental programming language inspired by the Rebol family.</p>
+  <p>It runs interactively in WebAssembly, right in this browser. Code is made of
+     blocks, words and values; functions are lexically bound closures; programs can
+     run as cooperative tasks; and failures are first-class <code>SIN!</code> values
+     that you <code>raise</code> and <code>judge</code>.</p>
+</header>
 
-  <p class="muted">A standalone build (no Emscripten JS runtime, no libc/WASI)
-     lives at <a href="standalone.html">docs/standalone.html</a>.</p>
+<main>
+<section aria-labelledby="try">
+  <h2 id="try">Try it</h2>
+  <ul class="cta">
+    <li class="first"><a href="shop/primer.html">
+      <strong>Saturnine &mdash; A Glonbook</strong>
+      <span>Glon in 5 minutes: edit and run every example live</span></a></li>
+    <li><a href="shop/traffic.html">
+      <strong>Traffic simulator</strong>
+      <span>Four car-following models, written in Glon</span></a></li>
+    <li><a href="https://github.com/gchiu/rebol-substrate-experiment">
+      <strong>Source code</strong>
+      <span>The runtime, the language laws and the tests</span></a></li>
+  </ul>
+  <p class="muted">New to Glon? Start with Saturnine. Every example there runs in a fresh
+     Glon WebAssembly runtime, and you can change it and run it again.</p>
+</section>
 
-  <p>Counter: <span id="counter">0</span></p>
-  <button id="increment">Increment</button>
+<section aria-labelledby="taste">
+  <h2 id="taste">A first taste</h2>
+  <p>Calls are prefix and take a fixed number of arguments, so no parentheses are needed:</p>
+<pre><code>double: func [x] [
+    * x 2
+]
+double 21
+<span class="res">;; =&gt; 42</span></code></pre>
+</section>
 
-  <p class="muted">Application logic: R0 &rarr; WebAssembly<br>
-     Browser plumbing: JavaScript</p>
+<section aria-labelledby="what">
+  <h2 id="what">What Glon has today</h2>
+  <ul class="plain">
+    <li><strong>Blocks and words.</strong> A block is data until something evaluates it.</li>
+    <li><strong>Lexical binding and closures.</strong> A function keeps the context it was
+        made in; a block that depends on a call may not escape that call.</li>
+    <li><strong>Cooperative tasks.</strong> <code>spawn</code>, <code>yield</code> and
+        <code>run-tasks</code> interleave work deterministically.</li>
+    <li><strong><code>SIN!</code>, <code>raise</code> and <code>judge</code>.</strong>
+        Creating a sin is harmless. Raising it causes trouble. Judgment permits
+        execution to continue.</li>
+    <li><strong>Executable laws.</strong> The language is developed against written
+        laws and a native test suite, and the browser examples are tested too.</li>
+    <li><strong>Real programs.</strong> The traffic simulator runs IDM, Newell, OVM/FVDM
+        and NaSch models in Glon, in the browser.</li>
+  </ul>
+  <p>Glon is a place for gloriously hacking both the code and the language. It is an
+     experiment: expect sharp edges, and expect it to change.</p>
+</section>
 
-  <p class="muted">This application logic is R0 running inside WebAssembly.
-     JavaScript only forwards browser events and performs the requested DOM
-     update.</p>
+<section aria-labelledby="more">
+  <h2 id="more">More to read and run</h2>
+  <ul class="plain">
+    <li><a href="https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/GLON-PRIMER.md">Glon primer (Markdown)</a>
+        &mdash; the same lessons as Saturnine, readable on GitHub</li>
+    <li><a href="https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/GLON-ALPHA-LAWS.md">Glon Alpha language laws</a>
+        &mdash; the normative rules</li>
+    <li><a href="shop/linda.html">Linda demo</a> &mdash; cooperative tasks blocking and waking on a tuple space</li>
+    <li><a href="shop/">Glon demo launcher</a> &mdash; a small shop and more demos, loaded on demand</li>
+    <li><a href="r0-counter.html">Early R0/S1 counter demo</a> &mdash; where the WebAssembly work began</li>
+  </ul>
+</section>
+</main>
 
-  <h2>R0 application</h2>
-  <pre><code>counter: 0
-
-on-click: [
-    counter: + counter 1
-    web-set-int 1 counter
-]</code></pre>
-
-  <details>
-    <summary>Show low-level RAW/S1 host adapter</summary>
-    <p class="muted">RAW is R0&rsquo;s trapdoor to the tiny Forth-like S1
-       substrate. Application code normally stays above this layer.</p>
-    <pre><code>web-set-int: raw 2 [
-    LIT 16 DIV
-    &gt;R
-    LIT 16 DIV
-    LIT 1000000 MUL
-    R&gt; ADD
-    PRINT
-    ARITY 0 EXIT
-]</code></pre>
-  </details>
-
-  <details>
-    <summary>Show browser JavaScript glue</summary>
-    <p class="muted">This glue contains no counter state or increment logic; it
-       only forwards clicks and performs the DOM update R0 requests.</p>
-    <pre><code>/* web/glue.js -- the JavaScript half of the browser boundary.
- *
- * JavaScript responsibilities only:
- *   - capture the host&#x27;s standard output (the WEB_SET_INT transport);
- *   - decode handle/value and update the mapped DOM element;
- *   - forward button clicks to the exported WASM entry `r0_click`.
- *
- * No counter state or application logic lives here.
- */
-
-/* handle -&gt; DOM element id (numeric DOM handle 1 = the counter display) */
-var R0_DOM_HANDLES = { 1: &#x27;counter&#x27; };
-
-Module.print = function (line) {
-    var s = String(line).replace(/^\s+|\s+$/g, &#x27;&#x27;);
-    if (s === &#x27;&#x27;) return;
-    var n = parseInt(s, 10);
-    if (!isNaN(n) &amp;&amp; n &gt;= 1000000) {
-        var handle = Math.floor(n / 1000000);
-        var value = n % 1000000;
-        var elId = R0_DOM_HANDLES[handle];
-        if (elId) {
-            var el = document.getElementById(elId);
-            if (el) el.textContent = String(value);
-        }
-    } else {
-        console.log(&#x27;[R0]&#x27;, s);   /* plain R0 output (e.g. the ready line) */
-    }
-};
-Module.printErr = function (line) {
-    console.log(&#x27;[R0:err]&#x27;, line);
-};
-
-Module.onRuntimeInitialized = function () {
-    var btn = document.getElementById(&#x27;increment&#x27;);
-    btn.addEventListener(&#x27;click&#x27;, function () {
-        Module._r0_click();
-    });
-};</code></pre>
-  </details>
-
-  <script src="demo.js"></script>
+<footer class="muted">
+  Glon is an open experiment. Source, issues and history:
+  <a href="https://github.com/gchiu/rebol-substrate-experiment">github.com/gchiu/rebol-substrate-experiment</a>.
+</footer>
 </body>
 </html>
