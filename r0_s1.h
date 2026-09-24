@@ -393,6 +393,18 @@ cell r0_s1_init(void);
 
 /* parse R0 source into a block (loader). *err = 0 on success. */
 cell r0_s1_parse(const char *src, int *err);
+/* Why the last r0_s1_parse failed. A failed parse is rolled back completely
+ * (loader heap, func-site counter, symbol table) and returns R0_NONE. These are
+ * load-time failures, before any Glon runs, so they are never SIN!s. */
+enum {
+    R0S1_PARSE_OK = 0,
+    R0S1_PARSE_SYNTAX = 1,             /* malformed source (e.g. an unclosed [) */
+    R0S1_PARSE_SYMBOL_TABLE_FULL = 2,  /* too many distinct words in the session */
+    R0S1_PARSE_LOADER_EXHAUSTED = 3,   /* the loader heap has no room for this source */
+    R0S1_PARSE_SITE_TABLE_FULL = 4,    /* too many func literals in the session */
+    R0S1_PARSE_TOO_LARGE = 5           /* a block/string exceeds the 512-element limit */
+};
+int  r0_s1_parse_error_kind(void);
 
 /* run a block: set runtime cells, s1_run(EVAL_LOOP), inspect results.
  * Returns result arity N (>= 0), or -1 on error. */

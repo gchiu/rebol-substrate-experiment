@@ -245,7 +245,11 @@ static const esc_case CASES[] = {
 
 /* Focused regression for the SITE_PARENT_CAP bound: a source with more func
  * sites than the table can hold must fail to LOAD cleanly (parse error), never
- * silently clamp or overwrite the table. */
+ * silently clamp or overwrite the table. Each site is `func [] 1` (a computed
+ * body: one site and one 16-cell spec block), so both sources fit the loader
+ * heap and the site table is what is tested. (With `func [] [1]`, 32 loader
+ * cells per site, 500 sites exceed the loader heap: that case used to "parse
+ * cleanly" only because loader exhaustion was silent and wrote through M[-1].) */
 static void test_site_capacity(void) {
     char *p;
     for (int over = 0; over < 2; over++) {
@@ -254,7 +258,7 @@ static void test_site_capacity(void) {
         p = src; p += sprintf(p, "[");
         for (int bx = 0; bx < blocks; bx++) {
             p += sprintf(p, "[ ");
-            for (int i = 0; i < 100; i++) p += sprintf(p, "func [] [1] ");
+            for (int i = 0; i < 100; i++) p += sprintf(p, "func [] 1 ");
             p += sprintf(p, "] ");
         }
         p += sprintf(p, "]");
@@ -262,7 +266,8 @@ static void test_site_capacity(void) {
         strip_comments(src);
         r0_s1_parse(src, &err);
         if (over)
-            CHECK(err != 0, "site-table: 700 func sites (> CAP 640) is a clean parse error");
+            CHECK(err != 0 && r0_s1_parse_error_kind() == R0S1_PARSE_SITE_TABLE_FULL,
+                  "site-table: 700 func sites (> CAP 640) is a clean SITE_TABLE_FULL parse error");
         else
             CHECK(err == 0, "site-table: 500 func sites parse cleanly");
     }

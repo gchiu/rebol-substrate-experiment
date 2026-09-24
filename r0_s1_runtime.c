@@ -39,17 +39,32 @@ static cell r_alloc, r_collect, r_lookup;
 static char *dup_str(const char *s) {
     size_t n = strlen(s) + 1;
     char *p = malloc(n);
-    memcpy(p, s, n);
+    if (p) memcpy(p, s, n);
     return p;
 }
 
+/* Why the last r0_s1_parse failed (R0S1_PARSE_*; see r0_s1.h). Resource
+ * failures are recorded where they happen (intern, loader allocation, the
+ * site table, form limits); r0_s1_parse classifies any other failure as
+ * SYNTAX. The first failure recorded wins. */
+static int parse_fail;
+static void parse_fail_set(int kind) { if (!parse_fail) parse_fail = kind; }
+
+/* The symbol table has a fixed capacity (syms[]). When it is full, intern
+ * records R0S1_PARSE_SYMBOL_TABLE_FULL and returns a placeholder word; the
+ * parse then fails and is rolled back, so the placeholder is never run. */
+#define SYM_CAP ((int)(sizeof syms / sizeof syms[0]))
 static cell intern(const char *name) {
     for (int i = 0; i < nsyms; i++)
         if (strcmp(syms[i], name) == 0) return mk_word(i);
-    syms[nsyms] = dup_str(name);
+    char *copy = nsyms < SYM_CAP ? dup_str(name) : 0;
+    if (!copy) { parse_fail_set(R0S1_PARSE_SYMBOL_TABLE_FULL); return mk_word(0); }
+    syms[nsyms] = copy;
     return mk_word(nsyms++);
 }
 
+/* Loader-heap allocation. Returns -1 when the loader heap is exhausted; every
+ * caller checks, so no one writes through the failure value. */
 static cell lalloc(int n) {
     cell hp = M[GC_LOADER_HP];
     cell a = (hp + 15) & ~15L;
@@ -60,14 +75,18 @@ static cell lalloc(int n) {
 
 /* ============================= loader: objects ========================= */
 
+/* R0_NONE (after recording R0S1_PARSE_LOADER_EXHAUSTED) if the loader heap is
+ * exhausted; callers must check before writing into the block. */
 static cell make_block(cell cap) {
     cell p = lalloc(2 + (int)cap);   /* [count, site_id, elems...] */
+    if (p < 0) { parse_fail_set(R0S1_PARSE_LOADER_EXHAUSTED); return R0_NONE; }
     M[p] = 0;
     M[p + BLK_SITE] = 0;
     return mk_block(p);
 }
 static cell make_context(cell parent, cell cap) {
     cell p = lalloc(CTX_DATA + 3 * (int)cap);   /* data(2*cap) + hash(cap) */
+    if (p < 0) return R0_NONE;                   /* only r0_s1_init calls this */
     M[p + CTX_PARENT] = parent;
     M[p + CTX_COUNT] = 0;
     M[p + CTX_CAP] = cap;
@@ -361,12 +380,13 @@ static cell parse_string_literal(parser_t *P) {
     P->pos++;                            /* opening '"' */
     cell bytes[512]; int n = 0;
     while (P->s[P->pos] && P->s[P->pos] != '"') {
-        if (n >= 512) { P->err = 1; break; }
+        if (n >= 512) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; break; }
         bytes[n++] = mk_int((cell)(unsigned char)P->s[P->pos]);
         P->pos++;
     }
     if (P->s[P->pos] == '"') P->pos++; else P->err = 1;
     cell b = make_block((cell)n);
+    if (b == R0_NONE) { P->err = 1; return R0_NONE; }
     cell p = r0_untag(b);
     M[p] = (cell)n;
     M[p + BLK_SITE] = 0;
@@ -385,11 +405,12 @@ static cell parse_block(parser_t *P, int is_body) {
         char c = P->s[P->pos];
         if (c == ']') { P->pos++; break; }
         if (c == '\0') { P->err = 1; break; }
+        if (parse_fail) { P->err = 1; break; }   /* a resource failure ends the parse */
         /* quoted string literal: expand to `mk-string [bytes]` (two forms). */
         if (c == '"') {
             tmp[n++] = intern("mk-string");
             tmp[n++] = parse_string_literal(P);
-            if (n >= 512) { P->err = 1; break; }
+            if (n >= 512) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; break; }
             continue;
         }
         /* `func` keyword: assign a func-site-id; parse spec normally, parse
@@ -403,8 +424,10 @@ static cell parse_block(parser_t *P, int is_body) {
                 int sid = next_site++;
                 if (sid < SITE_PARENT_CAP)
                     M[SITE_PARENT_BASE + sid] = site_depth > 0 ? site_stack[site_depth - 1] : 0;
-                else
+                else {
+                    parse_fail_set(R0S1_PARSE_SITE_TABLE_FULL);
                     P->err = 1;                       /* site table exhausted */
+                }
                 tmp[n++] = intern("func");
                 /* spec (param block): its words NAME the new parameters, so
                  * they must never be lexically resolved against an enclosing
@@ -473,6 +496,11 @@ static cell parse_block(parser_t *P, int is_body) {
                 cell entry = assemble_raw(asm_block);
                 M[GC_LOADER_HP] = save_lhp;
                 cell p = lalloc(2);
+                if (p < 0) {
+                    parse_fail_set(R0S1_PARSE_LOADER_EXHAUSTED);
+                    P->err = 1;
+                    break;
+                }
                 M[p + RAW_ENTRY] = entry;
                 M[p + RAW_ARITY] = (cell)arity;
                 tmp[n++] = mk_raw(p);
@@ -497,9 +525,10 @@ static cell parse_block(parser_t *P, int is_body) {
             }
             tmp[n++] = form;
         }
-        if (n >= 512) { P->err = 1; break; }
+        if (n >= 512) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; break; }
     }
     cell b = make_block((cell)n);
+    if (b == R0_NONE) { P->err = 1; last_block_dep = 0; return R0_NONE; }
     cell p = r0_untag(b);
     M[p] = (cell)n;
     {
@@ -3288,6 +3317,10 @@ cell r0_s1_init(void) {
      * bundle has 129 top-level set-words + 13 natives = 142 bindings, so the
      * cap must exceed 142. */
     global_ctx = make_context(R0_NONE, 256);
+    if (global_ctx == R0_NONE) {             /* a fresh loader heap always fits it */
+        fprintf(stderr, "r0_s1: no room for the global context\n");
+        abort();
+    }
     bind(global_ctx, intern("+"),  mk_native(RN_ADD));
     bind(global_ctx, intern("-"),  mk_native(RN_SUB));
     bind(global_ctx, intern("*"),  mk_native(RN_MUL));
@@ -3397,34 +3430,62 @@ static void seed_datatype_heap(void) {
     M[REG_HP] = base + 13 * 32;
 }
 
-cell r0_s1_parse(const char *src, int *err) {
-    parser_t P; P.s = src; P.pos = 0; P.err = 0;
-    *err = 0;
-    site_depth = 0;
-    lex_depth = 0;
-    skip_ws(&P);
-    if (P.s[P.pos] == '[') { cell b = parse_block(&P, 0); if (P.err) *err = 1; return b; }
+static cell parse_program(parser_t *P) {
+    skip_ws(P);
+    if (P->s[P->pos] == '[') return parse_block(P, 0);
     cell tmp[512]; int n = 0;
-    while (P.s[P.pos] && !P.err) {
-        skip_ws(&P);
-        if (!P.s[P.pos]) break;
-        if (P.s[P.pos] == '"') {
+    while (P->s[P->pos] && !P->err && !parse_fail) {
+        skip_ws(P);
+        if (!P->s[P->pos]) break;
+        if (P->s[P->pos] == '"') {
             tmp[n++] = intern("mk-string");
-            tmp[n++] = parse_string_literal(&P);
-            if (n >= 512) { P.err = 1; break; }
+            tmp[n++] = parse_string_literal(P);
+            if (n >= 512) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; break; }
             continue;
         }
-        tmp[n++] = parse_form(&P);
-        if (n >= 512) { P.err = 1; break; }
+        tmp[n++] = parse_form(P);
+        if (n >= 512) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; break; }
     }
     cell b = make_block((cell)n);
+    if (b == R0_NONE) { P->err = 1; return R0_NONE; }
     cell p = r0_untag(b);
     M[p] = (cell)n;
     M[p + BLK_SITE] = 0;
     for (int i = 0; i < n; i++) M[p + BLK_DATA + i] = tmp[i];
-    if (P.err) *err = 1;
     return b;
 }
+
+/* Parse src into a loader block. On failure *err is set, r0_s1_parse_error_kind()
+ * says why, and the parse is rolled back completely: the loader heap, the
+ * func-site counter and the symbol table are restored to their state at entry,
+ * so a failed parse consumes nothing and earlier session state is untouched.
+ * The return value is then R0_NONE and must not be run. (Emitted code from a
+ * `masm` form inside the failed source is the one thing not reclaimed.) */
+cell r0_s1_parse(const char *src, int *err) {
+    parser_t P; P.s = src; P.pos = 0; P.err = 0;
+    cell save_lhp = M[GC_LOADER_HP];
+    int save_site = next_site;
+    int save_nsyms = nsyms;
+    *err = 0;
+    parse_fail = R0S1_PARSE_OK;
+    site_depth = 0;
+    lex_depth = 0;
+    parse_func_depth = 0;
+    cell b = parse_program(&P);
+    if (!P.err && !parse_fail) return b;
+    if (!parse_fail) parse_fail = R0S1_PARSE_SYNTAX;
+    M[GC_LOADER_HP] = save_lhp;
+    next_site = save_site;
+    while (nsyms > save_nsyms) free((void *)syms[--nsyms]);
+    site_depth = 0;
+    lex_depth = 0;
+    parse_func_depth = 0;
+    last_block_dep = 0;
+    *err = 1;
+    return R0_NONE;
+}
+
+int r0_s1_parse_error_kind(void) { return parse_fail; }
 
 /* STACK-SENTRY: after a run the SP/RP must be back inside the legal region of
  * the world the run ended in (main DS [code_end, DS_INIT], main RS

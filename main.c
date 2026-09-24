@@ -32,6 +32,7 @@ int run_r0_s1_case_tests(void);
 int run_r0_s1_escape_law_tests(void);
 int run_r0_s1_error_tests(void);
 int run_r0_s1_primer_tests(void);
+int run_r0_s1_parse_hardening_tests(void);
 int run_r0_s1_traffic_tests(void);
 int run_r0_s1_newell_tests(void);
 int run_r0_s1_ovm_tests(void);
@@ -70,6 +71,7 @@ int main(void) {
     failures += run_r0_s1_escape_law_tests();
     failures += run_r0_s1_error_tests();
     failures += run_r0_s1_primer_tests();
+    failures += run_r0_s1_parse_hardening_tests();
     failures += run_r0_s1_traffic_tests();
     failures += run_r0_s1_newell_tests();
     failures += run_r0_s1_ovm_tests();
