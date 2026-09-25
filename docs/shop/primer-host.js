@@ -9,7 +9,8 @@
  *     run starts from a clean machine (no namespace carried between examples
  *     or between runs: the page never approaches the 256-binding global limit);
  *   - glon_init, then glon_load the environment embedded in the page
- *     (bootstrap + case, plus the shipped task library for data-env="tasks");
+ *     (bootstrap + strings + case, plus the shipped task library for
+ *     data-env="tasks");
  *   - glon_run(source): the runtime runs the program and formats its outcome
  *     (r0_s1_show_run, the code the native primer doc-tests check);
  *   - show what Glon printed (host_print) and that outcome text, verbatim.
@@ -69,7 +70,7 @@
           return [p, bytes.length];
         }
         if (ex.glon_init() !== 0) return { printed: linesOf(out), error: "glon_init failed" };
-        var names = ["bootstrap", "case"].concat(env === "tasks" ? ["tasks"] : []);
+        var names = ["bootstrap", "strings", "case"].concat(env === "tasks" ? ["tasks"] : []);
         for (var i = 0; i < names.length; i++) {
           var src = envSource(names[i]);
           if (src === null) return { printed: linesOf(out), error: "missing environment block " + names[i] };

@@ -332,7 +332,37 @@ mk-string: masm 1 [
 
 
 
-str-eq: :s/=
+
+
+
+
+
+
+do [
+    s/raw-string?: masm 1 [ LIT 16 MOD LIT T_STRING EQ LIT 16 MUL ARITY 1 EXIT ]
+    s/raw-eq: masm 2 [
+        LIT T_STRING SUB LIT SCRATCH_B !
+        LIT T_STRING SUB LIT SCRATCH_A !
+        LIT SCRATCH_A @ @ LIT SCRATCH_C !
+        LIT SCRATCH_C @ LIT SCRATCH_B @ @ EQ ZBRANCH s-eq-no
+      s-eq-loop:
+        LIT SCRATCH_C @ ZBRANCH s-eq-yes
+        LIT SCRATCH_A @ LIT SCRATCH_C @ ADD @
+        LIT SCRATCH_B @ LIT SCRATCH_C @ ADD @
+        EQ ZBRANCH s-eq-no
+        LIT SCRATCH_C @ LIT 1 SUB LIT SCRATCH_C !
+        BRANCH s-eq-loop
+      s-eq-yes:
+        INT 1 ARITY 1 EXIT
+      s-eq-no:
+        INT 0 ARITY 1 EXIT
+    ]
+    str-eq: func [a b] [
+        either s/raw-string? a [
+            either s/raw-string? b [ s/raw-eq a b ] [ raise create-sin 'type 's/= b ]
+        ] [ raise create-sin 'type 's/= a ]
+    ]
+]
 
 
 get: masm 1 [ CALL lookup ARITY 1 EXIT ]
@@ -752,6 +782,93 @@ do-event: [
         either shop-loaded [ do-shop-event ] [ render-current ]
     ]
 ] ]</script>
+<script type="application/glon" data-env="strings">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[
+
+
+
+
+s/raw-cat: masm 2 [
+    LIT SCRATCH_B ! LIT SCRATCH_A !
+    LIT SCRATCH_A @ LIT SCRATCH_B @
+    LIT SCRATCH_A @ LIT T_STRING SUB @ LIT SCRATCH_B @ LIT T_STRING SUB @ ADD LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 16 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT SCRATCH_B ! LIT SCRATCH_A !
+    LIT SCRATCH_F @ LIT SCRATCH_C @ !
+    LIT SCRATCH_C @ LIT T_STRING ADD
+    LIT SCRATCH_A @ LIT T_STRING SUB LIT SCRATCH_A !
+  s-cat-pass:
+    LIT SCRATCH_A @ @ LIT SCRATCH_F !
+  s-cat-loop:
+    LIT SCRATCH_F @ ZBRANCH s-cat-next
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT SCRATCH_A @ @ LIT SCRATCH_C @ !
+    LIT SCRATCH_F @ LIT 1 SUB LIT SCRATCH_F !
+    BRANCH s-cat-loop
+  s-cat-next:
+    LIT SCRATCH_B @ ZBRANCH s-cat-done
+    LIT SCRATCH_B @ LIT T_STRING SUB LIT SCRATCH_A !
+    LIT 0 LIT SCRATCH_B !
+    BRANCH s-cat-pass
+  s-cat-done:
+    ARITY 1 EXIT
+]
+
+
+s/raw-length: masm 1 [ LIT T_STRING SUB @ LIT 16 MUL ARITY 1 EXIT ]
+
+
+s/raw-print: masm 1 [
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_C !
+  s-print-loop:
+    LIT SCRATCH_C @ ZBRANCH s-print-done
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ HOST HOST_PUTCHAR
+    LIT SCRATCH_C @ LIT 1 SUB LIT SCRATCH_C !
+    BRANCH s-print-loop
+  s-print-done:
+    LIT 10 HOST HOST_PUTCHAR
+    ARITY 0 EXIT
+]
+
+s/+: func [a b] [
+    either s/raw-string? a [
+        either s/raw-string? b [ s/raw-cat a b ] [ raise create-sin 'type 's/+ b ]
+    ] [ raise create-sin 'type 's/+ a ]
+]
+
+s/=: :str-eq
+
+s/length: func [a] [
+    either s/raw-string? a [ s/raw-length a ] [ raise create-sin 'type 's/length a ]
+]
+
+s/print: func [a] [
+    either s/raw-string? a [ s/raw-print a ] [ raise create-sin 'type 's/print a ]
+]
+
+]</script>
 <script type="application/glon" data-env="case">
 
 
