@@ -187,6 +187,39 @@ int run_r0_s1_parse_hardening_tests(void) {
               "T2: the site table was rolled back: a new func still parses and runs (42)");
     }
 
+    /* ---- 5. an empty token is malformed source ----------------------------- */
+    /* parse_word used to read buf[-1] when asked for a form at a `]` or at the
+     * end of the source. A stray top-level `]` then never advanced, so 511
+     * empty words were appended and the cell failed as TOO_LARGE; `func` or
+     * `masm` directly before `]` parsed "successfully" with an empty word (and
+     * masm assembled whatever that word's untagged value pointed at). No Glon
+     * value has an empty spelling: each is a SYNTAX failure, rolled back. */
+    fresh();
+    CHECK(cellv("[ x: 21  0 ]") == 0, "E0: session state defined (x)");
+    {
+        cell hp = M[GC_LOADER_HP];
+        int ns = nsyms();
+        static const char *bad[] = { "]", "1 ]", "+ ]", "x ] 2", "[ f: func ]", "[ func ] 1",
+                                     "[ m: masm ]", "[ 0 masm", NULL };
+        int all = 1;
+        char msg[48] = "";
+        for (int i = 0; bad[i]; i++)
+            if (cellv(bad[i]) != PARSE_FAILED || last_kind != R0S1_PARSE_SYNTAX) {
+                all = 0;
+                snprintf(msg, sizeof msg, " (`%s` gave kind %d)", bad[i], last_kind);
+            }
+        char m1[256];
+        snprintf(m1, sizeof m1, "E1: a stray top-level `]`, and `func` / `masm` with no operand before `]` "
+                 "or the end, fail as SYNTAX (not TOO_LARGE, not an empty word)%s", msg);
+        CHECK(all, m1);
+        CHECK(M[GC_LOADER_HP] == hp && nsyms() == ns,
+              "E2: they are rolled back: loader heap and symbol count unchanged (no empty symbol interned)");
+        CHECK(cellv("[ f: func [n] [ * n 2 ]  f x ]") == 42 && cellv("x: + x 1  x") == 22,
+              "E3: the session still parses and runs, bracketed and top-level (42, 22)");
+        CHECK(cellv("[ a: 1  :a ]") == 1 && cellv("- 5 7") == -2 && cellv("[ 7 ]") == 7,
+              "E4: non-empty tokens keep their meaning (set/get words, `-` as a word, integers)");
+    }
+
     if (failures == 0) printf("all parse hardening tests passed\n");
     return failures;
 }

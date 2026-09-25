@@ -187,6 +187,11 @@ static cell parse_word(parser_t *P) {
     while (P->s[P->pos] && !isspace((unsigned char)P->s[P->pos])
            && P->s[P->pos] != '[' && P->s[P->pos] != ']') P->pos++;
     int len = P->pos - start;
+    /* An empty token means a form was required at a `]` or at the end of the
+     * source: a stray top-level `]` (parse_program), or `func` / `masm` with
+     * nothing after them in a block. No Glon value has an empty spelling, so
+     * this is malformed source (SYNTAX); never index buf[len - 1] with len 0. */
+    if (len == 0) { P->err = 1; return R0_NONE; }
     char buf[64];
     if (len > 63) len = 63;
     memcpy(buf, P->s + start, (size_t)len);
@@ -494,6 +499,7 @@ static cell parse_block(parser_t *P, int is_body) {
                  * [entry, arity] needs to survive. */
                 cell save_lhp = M[GC_LOADER_HP];
                 cell asm_block = parse_form(P);           /* [ instr... ] */
+                if (P->err) break;                        /* no operand: never assemble it */
                 cell entry = assemble_raw(asm_block);
                 M[GC_LOADER_HP] = save_lhp;
                 cell p = lalloc(2);
