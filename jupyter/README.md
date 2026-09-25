@@ -67,9 +67,13 @@ separately, e.g. `pip install jupyterlab`), or in VS Code's kernel picker
 | a full session capacity | `error` `GlonResourceError`: `symbol_table_full`, `loader_exhausted`, `site_table_full` or `context_full` |
 | any other machine fail-stop | `error` `GlonHalt`: `machine` or `stack_sentry` |
 
-Error replies also carry the host's structured outcome under `glon`. After
-any of these errors the session keeps its earlier definitions (a failed parse
-or a rejected binding changes nothing).
+Notebook-visible outputs (`stream`, `execute_result`, `error`) carry only the
+standard nbformat fields, so saved notebooks always validate. The host's
+structured outcome (status, detail, values, SIN! fields, session counters) is
+available to programmatic clients in the `execute_reply` message's
+**metadata** under `glon` (message metadata is never saved into a notebook).
+After any of these errors the session keeps its earlier definitions (a failed
+parse or a rejected binding changes nothing).
 
 - **Restart** starts a fresh kernel and host: all definitions are gone.
 - **Interrupt** stops the running cell by killing the host and starting a new

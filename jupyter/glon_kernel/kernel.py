@@ -16,8 +16,14 @@ Rendering rules:
   - stdout/stderr: the bytes the cell wrote, as `stream` messages.
   - UNCAUGHT_SIN -> error "SIN!"; PARSE_ERROR -> "GlonParseError";
     RESOURCE_ERROR -> "GlonResourceError"; HALT -> "GlonHalt". evalue carries
-    the structured detail; content["glon"] carries the host's structured
-    outcome.
+    the structured detail.
+  - Notebook-visible outputs (stream, execute_result, error) carry ONLY the
+    nbformat-standard fields, because frontends persist their content into the
+    .ipynb: an extra field makes the saved notebook invalid. The host's
+    structured outcome (status/detail/values/sin/session) is kept on the
+    kernel (last_outcome) and exposed only in the execute_reply's message
+    METADATA under "glon" -- standard Jupyter message metadata, which is never
+    written into a notebook.
   - Interrupt: the host is killed and replaced (error "GlonInterrupted"); the
     Glon session state is lost. A host that dies mid-cell is replaced the same
     way (error "GlonSessionLost").
@@ -68,6 +74,8 @@ class GlonKernel(Kernel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.host = Host()
+        # the structured outcome of the latest execute (never put in outputs)
+        self.last_outcome = None
 
     # ---- host lifecycle -------------------------------------------------------
     def _replace_host(self):
@@ -82,25 +90,35 @@ class GlonKernel(Kernel):
             self.send_response(self.iopub_socket, "stream",
                                {"name": name, "text": data.decode("utf-8", errors="replace")})
 
-    def _error(self, ename, evalue, traceback, silent, glon=None):
+    def _error(self, ename, evalue, traceback, silent):
+        # exactly the nbformat error-output fields (output_type is added by
+        # the frontend from the message type)
         content = {"ename": ename, "evalue": evalue, "traceback": traceback}
-        if glon is not None:
-            content["glon"] = glon
         if not silent:
             self.send_response(self.iopub_socket, "error", content)
         return dict(content, status="error", execution_count=self.execution_count)
 
+    def finish_metadata(self, parent, metadata, reply_content):
+        # the structured outcome travels in the execute_reply's metadata only
+        metadata = super().finish_metadata(parent, metadata, reply_content)
+        if parent.get("header", {}).get("msg_type") == "execute_request" and self.last_outcome is not None:
+            metadata["glon"] = self.last_outcome
+        return metadata
+
     # ---- execute --------------------------------------------------------------
     async def do_execute(self, code, silent, store_history=True, user_expressions=None,
                          allow_stdin=False, *, cell_meta=None, cell_id=None):
+        self.last_outcome = None
         try:
             res = self.host.execute(code)
         except KeyboardInterrupt:
+            self.last_outcome = {"status": "INTERRUPTED"}
             self._replace_host()
             return self._error("GlonInterrupted", "interrupted: " + SESSION_LOST,
                                ["Interrupted: the Glon host was stopped and replaced.",
                                 SESSION_LOST + "."], silent)
         except HostDied as e:
+            self.last_outcome = {"status": "SESSION_LOST", "detail": str(e)}
             self._replace_host()
             return self._error("GlonSessionLost", "the Glon host died: " + SESSION_LOST,
                                ["The Glon host process ended unexpectedly (%s) and was replaced." % e,
@@ -108,7 +126,7 @@ class GlonKernel(Kernel):
 
         self._stream("stdout", res["stdout"], silent)
         self._stream("stderr", res["stderr"], silent)
-        glon = {k: res[k] for k in ("status", "detail", "values", "sin", "session")}
+        self.last_outcome = {k: res[k] for k in ("status", "detail", "values", "sin", "session")}
         status = res["status"]
 
         if status == "OK":
@@ -128,7 +146,7 @@ class GlonKernel(Kernel):
             return self._error("SIN!", molded,
                                ["** uncaught " + molded,
                                 "type: %s  id: %s  arg: %s" % (s["type"], s["id"], s["arg"])],
-                               silent, glon)
+                               silent)
 
         detail = res["detail"]
         explain = {
@@ -147,7 +165,7 @@ class GlonKernel(Kernel):
                 if status == "RESOURCE_ERROR" else "Earlier definitions are still available.")
         return self._error(ENAMES.get(status, "GlonError"), detail,
                            ["%s: %s" % (ENAMES.get(status, "GlonError"), explain), tail],
-                           silent, glon)
+                           silent)
 
     # ---- other requests ---------------------------------------------------------
     async def do_is_complete(self, code):
