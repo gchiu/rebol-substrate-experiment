@@ -17,11 +17,55 @@
 
 static char cellbuf[16400];
 
-int r0_s1_session_run(const char *src, unsigned int len, r0_s1_outcome *out) {
+static void outcome_reset(r0_s1_outcome *out) {
     out->status = R0S1_OUT_OK;
     out->detail = R0S1_DETAIL_NONE;
     out->count = 0;
     out->sin_type = out->sin_id = out->sin_arg = R0_NONE;
+}
+
+/* classify the parse failure recorded by r0_s1_parse_error_kind(). Shared by
+ * r0_s1_session_run and hosts that parse a whole source file themselves. */
+void r0_s1_session_parse_error(r0_s1_outcome *out) {
+    outcome_reset(out);
+    switch (r0_s1_parse_error_kind()) {
+    case R0S1_PARSE_SYMBOL_TABLE_FULL:
+        out->status = R0S1_OUT_RESOURCE_ERROR; out->detail = R0S1_DETAIL_SYMBOL_TABLE_FULL; break;
+    case R0S1_PARSE_LOADER_EXHAUSTED:
+        out->status = R0S1_OUT_RESOURCE_ERROR; out->detail = R0S1_DETAIL_LOADER_EXHAUSTED; break;
+    case R0S1_PARSE_SITE_TABLE_FULL:
+        out->status = R0S1_OUT_RESOURCE_ERROR; out->detail = R0S1_DETAIL_SITE_TABLE_FULL; break;
+    case R0S1_PARSE_TOO_LARGE:
+        out->status = R0S1_OUT_PARSE_ERROR; out->detail = R0S1_DETAIL_TOO_LARGE; break;
+    default:
+        out->status = R0S1_OUT_PARSE_ERROR; out->detail = R0S1_DETAIL_SYNTAX; break;
+    }
+}
+
+/* run an already-parsed program in the persistent session and classify the
+ * outcome from structured runtime state (exactly as r0_s1_session_run does). */
+int r0_s1_session_run_block(cell prog, r0_s1_outcome *out) {
+    outcome_reset(out);
+
+    int n = r0_s1_run_persistent(prog);
+    cell t, i, a;
+    if (r0_s1_stack_sentry_fired()) {
+        out->status = R0S1_OUT_HALT; out->detail = R0S1_DETAIL_STACK_SENTRY;
+    } else if (r0_s1_ran_cleanly() && n >= 0) {
+        out->status = R0S1_OUT_OK; out->count = n;
+    } else if (r0_s1_uncaught_error(&t, &i, &a)) {
+        out->status = R0S1_OUT_UNCAUGHT_SIN;
+        out->sin_type = t; out->sin_id = i; out->sin_arg = a;
+    } else if (r0_s1_halt_reason() == R0S1_HALT_CONTEXT_FULL) {
+        out->status = R0S1_OUT_RESOURCE_ERROR; out->detail = R0S1_DETAIL_CONTEXT_FULL;
+    } else {
+        out->status = R0S1_OUT_HALT; out->detail = R0S1_DETAIL_MACHINE;
+    }
+    return out->status;
+}
+
+int r0_s1_session_run(const char *src, unsigned int len, r0_s1_outcome *out) {
+    outcome_reset(out);
 
     if (len + 4 >= sizeof cellbuf) {
         out->status = R0S1_OUT_PARSE_ERROR;
@@ -45,36 +89,10 @@ int r0_s1_session_run(const char *src, unsigned int len, r0_s1_outcome *out) {
     int err = 0;
     cell prog = r0_s1_parse(cellbuf, &err);
     if (err) {
-        switch (r0_s1_parse_error_kind()) {
-        case R0S1_PARSE_SYMBOL_TABLE_FULL:
-            out->status = R0S1_OUT_RESOURCE_ERROR; out->detail = R0S1_DETAIL_SYMBOL_TABLE_FULL; break;
-        case R0S1_PARSE_LOADER_EXHAUSTED:
-            out->status = R0S1_OUT_RESOURCE_ERROR; out->detail = R0S1_DETAIL_LOADER_EXHAUSTED; break;
-        case R0S1_PARSE_SITE_TABLE_FULL:
-            out->status = R0S1_OUT_RESOURCE_ERROR; out->detail = R0S1_DETAIL_SITE_TABLE_FULL; break;
-        case R0S1_PARSE_TOO_LARGE:
-            out->status = R0S1_OUT_PARSE_ERROR; out->detail = R0S1_DETAIL_TOO_LARGE; break;
-        default:
-            out->status = R0S1_OUT_PARSE_ERROR; out->detail = R0S1_DETAIL_SYNTAX; break;
-        }
+        r0_s1_session_parse_error(out);
         return out->status;
     }
-
-    int n = r0_s1_run_persistent(prog);
-    cell t, i, a;
-    if (r0_s1_stack_sentry_fired()) {
-        out->status = R0S1_OUT_HALT; out->detail = R0S1_DETAIL_STACK_SENTRY;
-    } else if (r0_s1_ran_cleanly() && n >= 0) {
-        out->status = R0S1_OUT_OK; out->count = n;
-    } else if (r0_s1_uncaught_error(&t, &i, &a)) {
-        out->status = R0S1_OUT_UNCAUGHT_SIN;
-        out->sin_type = t; out->sin_id = i; out->sin_arg = a;
-    } else if (r0_s1_halt_reason() == R0S1_HALT_CONTEXT_FULL) {
-        out->status = R0S1_OUT_RESOURCE_ERROR; out->detail = R0S1_DETAIL_CONTEXT_FULL;
-    } else {
-        out->status = R0S1_OUT_HALT; out->detail = R0S1_DETAIL_MACHINE;
-    }
-    return out->status;
+    return r0_s1_session_run_block(prog, out);
 }
 
 const char *r0_s1_outcome_status_name(int status) {

@@ -114,6 +114,7 @@ fib-p10b-bench: r0_s1_p10b_bench.c r0_s1_runtime.c s1.c
 
 clean:
 	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench fib-p10b-bench traffic-bench-o0 traffic-bench-o2 $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
+	rm -rf glon glon-lib
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
 # Produces web/demo.js (Emscripten runtime + web/glue.js) and web/demo.wasm,
@@ -242,6 +243,30 @@ wasm-primer-test: demo/shop/glon.wasm primer.html
 	@grep -q "PRIMER_TEST PASS" /tmp/opencode_primer_test.out && \
 	 echo "wasm-primer-test: PASS (every primer example through glon_run on real WASM)"
 
+# ---- Native Glon command-line runner (distributable Linux ELF) --------------
+# A thin host over the persistent session facade (r0_s1_session_run_block):
+# one runtime, the shipped core libraries, then every FILE in one session.
+# glon-lib/ is copied beside the executable; it is not compiled in.
+GLON_SRCS = glon.c r0_s1_session.c r0_s1_show.c r0_s1_runtime.c s1.c
+GLON_LIB_DIR = glon-lib
+GLON_LIBS = $(GLON_LIB_DIR)/prelude.glon $(GLON_LIB_DIR)/strings.glon
+
+glon: $(GLON_SRCS) r0_s1.h s1.h m1_layout.h $(GLON_LIBS)
+	$(CC) $(CFLAGS) -I. -o $@ $(GLON_SRCS)
+
+$(GLON_LIB_DIR)/prelude.glon: jupyter/prelude.glon
+	@mkdir -p $(GLON_LIB_DIR)
+	cp $< $@
+
+$(GLON_LIB_DIR)/strings.glon: demo/shop/strings.glon
+	@mkdir -p $(GLON_LIB_DIR)
+	cp $< $@
+
+glon-lib: $(GLON_LIBS)
+
+glon-smoke: glon
+	./glon-smoke.sh
+
 # ---- Persistent native Glon session host (Jupyter milestone, phase 1) -------
 # One process = one Glon session: the runtime is initialised once and cells run
 # in it one after another (see jupyter/host/glon_kernel_host.c for the framed
@@ -284,4 +309,4 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test primer.html wasm-primer-test glon-kernel-host host-test kernel-test kernel-install kernelspec-test
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test

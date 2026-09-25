@@ -1,0 +1,48 @@
+# The native Glon Linux CLI: build the distributable x86-64 binary, verify the
+# frozen substrate, run the smoke test from a directory outside the source
+# tree, and publish the binary plus its library directory as an artifact.
+#
+# Ordinary Ubuntu runner (not WSL); the same artifact is also proven under WSL
+# locally. Independent of the WASM/Pages and Jupyter workflows.
+name: Glon Linux binary
+
+on:
+  push:
+    branches: [glon-shop-g1a]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-binary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Fetch and verify frozen-S1 tag
+        run: |
+          git fetch origin '+refs/tags/s1-frozen-v1:refs/tags/s1-frozen-v1'
+          test "$(git rev-parse 's1-frozen-v1^{commit}')" = "f90496c26dc45c7a387d8fc8639cd2781507d3d2"
+
+      - name: Frozen-S1 check
+        run: bash check-frozen-s1.sh
+
+      - name: Build the native glon CLI
+        run: make glon
+
+      - name: Smoke test from outside the source tree
+        run: bash glon-smoke.sh
+
+      - name: Upload the Linux x86-64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: glon-linux-x86_64
+          path: |
+            glon
+            glon-lib/

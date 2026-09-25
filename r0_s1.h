@@ -479,6 +479,12 @@ typedef struct {
     cell sin_type, sin_id, sin_arg;
 } r0_s1_outcome;
 int  r0_s1_session_run(const char *src, unsigned int len, r0_s1_outcome *out);
+/* Run an already-parsed program in the persistent session (same classification
+ * as r0_s1_session_run). Used by hosts that parse a whole source file with
+ * r0_s1_parse, e.g. the native `glon` CLI. */
+int  r0_s1_session_run_block(cell prog, r0_s1_outcome *out);
+/* Classify the parse failure recorded by r0_s1_parse_error_kind(). */
+void r0_s1_session_parse_error(r0_s1_outcome *out);
 const char *r0_s1_outcome_status_name(int status);
 const char *r0_s1_outcome_detail_name(int detail);
 int  r0_s1_stack_sentry_fired(void);  /* 1 iff the last run violated SP/RP bounds */
