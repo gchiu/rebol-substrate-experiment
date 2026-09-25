@@ -2,10 +2,10 @@
 // real WASM runtime, exactly as primer-host.js does in the browser.
 //
 // The examples and their expected outcomes come from demo/shop/primer.txt (the
-// primer's single source). The environment (bootstrap + case [+ task library])
-// comes from the <script type="application/glon" data-env> blocks embedded in
-// demo/shop/primer.html, so this also proves the page carries a working
-// environment and shows exactly the tested sources. Each example runs in a
+// primer's single source). The environment (bootstrap + strings + case [+ task
+// library]) comes from the <script type="application/glon" data-env> blocks
+// embedded in demo/shop/primer.html, so this also proves the page carries a
+// working environment and shows exactly the tested sources. Each example runs in a
 // FRESH instance: glon_init, glon_load the environment, glon_run the source,
 // then glon_result_ptr/len; the text must equal the example's @expect line
 // (where "<site>" stands for one positive integer, an internal site id).
@@ -61,7 +61,7 @@ const env = {};
 for (const m of HTML.matchAll(/<script type="application\/glon" data-env="([a-z]+)">([\s\S]*?)<\/script>/g)) {
   env[m[1]] = m[2];
 }
-for (const name of ["bootstrap", "case", "tasks"]) if (!env[name]) fail("primer.html has no data-env=\"" + name + "\" block");
+for (const name of ["bootstrap", "strings", "case", "tasks"]) if (!env[name]) fail("primer.html has no data-env=\"" + name + "\" block");
 const shown = [...HTML.matchAll(/<div class="ex" data-ex="([^"]+)" data-env="([a-z]+)">\n<textarea[^>]*>([\s\S]*?)<\/textarea>/g)]
   .map((m) => ({ id: m[1], env: m[2], source: unescape(m[3]) }));
 if (shown.length !== examples.length) fail("page shows " + shown.length + " examples, manifest has " + examples.length);
@@ -107,7 +107,7 @@ function run(source, envName) {
     return [p, b.length];
   };
   if (ex.glon_init() !== 0) fail("glon_init");
-  for (const name of ["bootstrap", "case"].concat(envName === "tasks" ? ["tasks"] : [])) {
+  for (const name of ["bootstrap", "strings", "case"].concat(envName === "tasks" ? ["tasks"] : [])) {
     const [p, n] = put(env[name]);
     const rc = ex.glon_load(p, n);
     if (rc !== 0) fail("environment " + name + " glon_load rc=" + rc);

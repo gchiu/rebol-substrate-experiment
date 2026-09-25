@@ -10,8 +10,10 @@
  * for now `s/+` and friends are ordinary (flat) words, parsed as one word
  * each, and a bare `/` is still integer division.
  *
- * Each group runs in a persistent session (bootstrap loaded, as the shop and
- * primer do), so string literals ("..." -> mk-string) work. */
+ * The operations are library code (demo/shop/strings.glon, over common.glon's
+ * str-eq); no runtime native is involved. Each group runs in a persistent
+ * session with bootstrap + strings loaded (as the primer does), so string
+ * literals ("..." -> mk-string) work. */
 
 #include "r0_s1.h"
 #include "m1_layout.h"
@@ -50,7 +52,8 @@ static int fresh(void) {
     M[M1_STRESS_CNT] = 0;
     for (int i = 0; i < M1_MAX_TASKS; i++)
         M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
-    return load_file("demo/shop/bootstrap.glon");
+    if (load_file("demo/shop/bootstrap.glon") != 0) return -1;
+    return load_file("demo/shop/strings.glon");
 }
 
 /* run a cell in the session; `text` gets the molded single result (or the
@@ -126,6 +129,9 @@ int run_r0_s1_string_ops_tests(void) {
           "B1: bytes are stored as-is: a string with a 0 byte and a 255 byte has length 4");
     CHECK(is("s/length s/+ z z", "8") && is("s/= s/+ z \"\" z", "1") && is("s/= z mk-string [104 0 255 106]", "0"),
           "B2: s/+ copies embedded 0/255 bytes exactly; s/= sees the last byte differ");
+    CHECK(is("dbl: func [s n] [ either > n 0 [ dbl s/+ s s  - n 1 ] [ s ] ]  w: dbl \"ab\" 7  s/length w", "256")
+          && is("s/= w dbl \"ab\" 7", "1") && is("s/= w s/+ dbl \"ab\" 6 dbl \"ac\" 6", "0"),
+          "B3: long strings (256 bytes) concatenate and compare, with no recursion per byte");
 
     /* ---- C: a closure captures a STRING! and uses it later ------------------ */
     CHECK(is("greet: func [name] [ does [ s/+ \"hi \" name ] ]  g: greet \"glon\"  g", "\"hi glon\""),
@@ -157,6 +163,9 @@ int run_r0_s1_string_ops_tests(void) {
           "G2: s/=, str-eq, s/length and s/print raise SIN! 'type too");
     CHECK(is("e: judge [ s/+ \"x\" 7 ]  sin-arg e", "7"), "G3: judge catches it; the SIN!'s arg is the offending value");
     CHECK(is("c", "\"red glon\"") && is("s/length acc", "60"), "G4: session state is untouched by the failures");
+    CHECK(sin_is("s/+ 1 s/length 2", "type", "s/length") && sin_is("str-eq 1 2", "type", "s/=")
+          && is("e: judge [ s/= 1 \"x\" ]  sin-arg e", "1") && is("e: judge [ s/= \"x\" 2 ]  sin-arg e", "2"),
+          "G5: the operations are functions: both arguments are evaluated, then the first non-string is reported");
 
     /* ---- H: strings survive later failed cells ---------------------------------- */
     cell_("y: [ unclosed");
@@ -169,6 +178,22 @@ int run_r0_s1_string_ops_tests(void) {
     /* ---- s/print returns no value --------------------------------------------- */
     CHECK(is("s/print \"\"", "<0 values>") && oc.status == R0S1_OUT_OK,
           "P: s/print returns no value (like print); its output is checked by the host tests");
+
+    /* ---- without strings.glon (bootstrap only, like the traffic page) -------- */
+    {
+        cell me = r0_s1_init();
+        M[M1_MAIN_ENTRY_CELL] = me;
+        M[M1_CURSOR] = 0;
+        M[M1_STRESS_CNT] = 0;
+        for (int i = 0; i < M1_MAX_TASKS; i++)
+            M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
+        CHECK(load_file("demo/shop/bootstrap.glon") == 0, "setup: bootstrap alone loads");
+        CHECK(is("str-eq \"abc\" \"abc\"", "1") && is("str-eq \"abc\" \"abd\"", "0")
+              && sin_is("str-eq \"a\" 'w", "type", "s/=") && sin_is("str-eq 5 \"a\"", "type", "s/="),
+              "W1: without strings.glon, str-eq still compares strings and raises SIN! 'type 's/=");
+        cell_("s/+ \"a\" \"b\"");
+        CHECK(oc.status == R0S1_OUT_HALT, "W2: without strings.glon, s/+ is not defined (the runtime has no string natives)");
+    }
 
     if (failures == 0) printf("all string operation tests passed\n");
     return failures;

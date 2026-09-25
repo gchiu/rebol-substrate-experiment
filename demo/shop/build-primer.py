@@ -49,7 +49,8 @@ SHELL_NAME = "Saturnine"
 SHELL_KIND = "A Glonbook"
 
 # the per-Run environment, in load order (primer-host.js glon_loads these)
-ENV = [("bootstrap", "bootstrap.glon"), ("case", "case.glon"), ("tasks", "demos/tuple-space.glon")]
+ENV = [("bootstrap", "bootstrap.glon"), ("strings", "strings.glon"), ("case", "case.glon"),
+       ("tasks", "demos/tuple-space.glon")]
 
 
 def parse(text):

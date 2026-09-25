@@ -90,9 +90,10 @@ parse or a rejected binding changes nothing).
 
 `prelude.glon` holds nine definitions copied verbatim from
 `demo/shop/common.glon` (`mk-string`, `str-eq`, `get`, `lambda`, `does`,
-`block-len`, `block-at`, `select`, `select-at`), and `demo/shop/case.glon`
-adds CASE. The shop's web view dialect is not loaded, and tasks are not
-included yet.
+`block-len`, `block-at`, `select`, `select-at`), `demo/shop/strings.glon`
+adds the string operations (`s/+ s/= s/length s/print`), and
+`demo/shop/case.glon` adds CASE. The shop's web view dialect is not loaded,
+and tasks are not included yet.
 
 ## Limits
 
@@ -100,11 +101,11 @@ The runtime's capacities are fixed for now. A fresh session uses:
 
 | resource | capacity | used by a fresh session |
 |---|---|---|
-| distinct words (symbols) | 512 | 79 |
-| global bindings | 256 | 37 |
+| distinct words (symbols) | 512 | 99 |
+| global bindings | 256 | 42 |
 | bindings per function | 16 | -- |
 | func literals (sites) | 640 per session | -- |
-| loader heap | ~14,000 cells | ~13,500 free |
+| loader heap | ~14,000 cells | ~13,000 free |
 | cell size | 16 KB, 512 values per block | -- |
 | call depth | roughly 100 nested calls | -- |
 

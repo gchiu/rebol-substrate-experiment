@@ -1,0 +1,87 @@
+;; demo/shop/strings.glon -- immutable STRING! operations, as loadable Glon.
+;;
+;;   s/+ a b       a NEW string: a's bytes then b's (neither input is changed)
+;;   s/= a b       1 if a and b hold the same bytes, else 0 (the same word as str-eq)
+;;   s/length a    the number of stored bytes (no Unicode semantics)
+;;   s/print a     a's bytes then a newline on stdout; no value
+;;
+;; A non-STRING! argument raises SIN! 'type with the operation's name as the id
+;; and the offending value as the arg (both arguments are evaluated first, as
+;; for any function; the first non-string is reported).
+;;
+;; A STRING! is an immutable managed payload [length, byte0 .. byteN-1], one raw
+;; byte per cell (T_STRING / GC_KIND_STRING). Requires common.glon (or the
+;; Jupyter prelude) for mk-string, str-eq and s/raw-string?.
+;;
+;; Mechanisms stay in the kernel (alloc, byte access, HOST_PUTCHAR from frozen
+;; S1); the meanings are here. Each operation is a checked func wrapper over an
+;; unchecked masm worker (s/raw-...), which is only called with STRING!s. The
+;; workers use the safe scratch cells (A/B/C/F) only, never SCRATCH_D/E (live
+;; output state), and loop in masm, so long strings cost no recursion depth.
+[
+
+;; s/raw-cat ( string! string! -> string! ): both inputs stay on the data stack
+;; (GC roots) across the allocation and are re-read after it; the new string is
+;; pushed at once (rooting it) and filled before it is returned.
+s/raw-cat: masm 2 [
+    LIT SCRATCH_B ! LIT SCRATCH_A !
+    LIT SCRATCH_A @ LIT SCRATCH_B @
+    LIT SCRATCH_A @ LIT T_STRING SUB @ LIT SCRATCH_B @ LIT T_STRING SUB @ ADD LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 16 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT SCRATCH_B ! LIT SCRATCH_A !
+    LIT SCRATCH_F @ LIT SCRATCH_C @ !
+    LIT SCRATCH_C @ LIT T_STRING ADD
+    LIT SCRATCH_A @ LIT T_STRING SUB LIT SCRATCH_A !
+  s-cat-pass:
+    LIT SCRATCH_A @ @ LIT SCRATCH_F !
+  s-cat-loop:
+    LIT SCRATCH_F @ ZBRANCH s-cat-next
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT SCRATCH_A @ @ LIT SCRATCH_C @ !
+    LIT SCRATCH_F @ LIT 1 SUB LIT SCRATCH_F !
+    BRANCH s-cat-loop
+  s-cat-next:
+    LIT SCRATCH_B @ ZBRANCH s-cat-done
+    LIT SCRATCH_B @ LIT T_STRING SUB LIT SCRATCH_A !
+    LIT 0 LIT SCRATCH_B !
+    BRANCH s-cat-pass
+  s-cat-done:
+    ARITY 1 EXIT
+]
+
+;; s/raw-length ( string! -> integer! )
+s/raw-length: masm 1 [ LIT T_STRING SUB @ LIT 16 MUL ARITY 1 EXIT ]
+
+;; s/raw-print ( string! -> ): each stored byte, then a newline; no value
+s/raw-print: masm 1 [
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_C !
+  s-print-loop:
+    LIT SCRATCH_C @ ZBRANCH s-print-done
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ HOST HOST_PUTCHAR
+    LIT SCRATCH_C @ LIT 1 SUB LIT SCRATCH_C !
+    BRANCH s-print-loop
+  s-print-done:
+    LIT 10 HOST HOST_PUTCHAR
+    ARITY 0 EXIT
+]
+
+s/+: func [a b] [
+    either s/raw-string? a [
+        either s/raw-string? b [ s/raw-cat a b ] [ raise create-sin 'type 's/+ b ]
+    ] [ raise create-sin 'type 's/+ a ]
+]
+
+s/=: :str-eq
+
+s/length: func [a] [
+    either s/raw-string? a [ s/raw-length a ] [ raise create-sin 'type 's/length a ]
+]
+
+s/print: func [a] [
+    either s/raw-string? a [ s/raw-print a ] [ raise create-sin 'type 's/print a ]
+]
+
+]

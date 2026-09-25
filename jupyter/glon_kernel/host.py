@@ -25,6 +25,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.environ.get("GLON_HOME") or os.path.normpath(os.path.join(HERE, "..", ".."))
 HOST = os.environ.get("GLON_KERNEL_HOST") or os.path.join(ROOT, "jupyter", "host", "glon-kernel-host")
 DEFAULT_LIBS = [os.path.join(ROOT, "jupyter", "prelude.glon"),
+                os.path.join(ROOT, "demo", "shop", "strings.glon"),
                 os.path.join(ROOT, "demo", "shop", "case.glon")]
 
 

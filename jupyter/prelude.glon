@@ -6,12 +6,14 @@
 ;; the SPA view dialect, HTML/emit/canvas helpers and string atoms -- is web
 ;; material a notebook does not use, and would only spend the session's fixed
 ;; symbol and loader capacity. The definitions sit inside one outer [ ] block,
-;; because the loader only recognises `masm` and `func` inside a block. CASE is
-;; loaded separately from demo/shop/case.glon (unchanged). Tasks
-;; (spawn/yield/run-tasks) are not included.
+;; because the loader only recognises `masm` and `func` inside a block. The
+;; string operations (s/+ s/= s/length s/print) are loaded separately from
+;; demo/shop/strings.glon, and CASE from demo/shop/case.glon (both unchanged).
+;; Tasks (spawn/yield/run-tasks) are not included.
 ;;
 ;;   mk-string  a quoted string literal "..." is read as `mk-string [bytes]`, so every string literal needs it
-;;   str-eq     string content equality (`=` is identity for strings)
+;;   str-eq     string content equality (`=` is identity for strings); a do [ ] group
+;;              with its internal helpers s/raw-string? and s/raw-eq
 ;;   get        `get 'word` looks up a word's value at run time
 ;;   lambda     runtime closure factory; `does` is built on it
 ;;   does       zero-argument closure, e.g. `does [ x ]` (primer, closures)
@@ -38,7 +40,31 @@ mk-string: masm 1 [
     LIT SCRATCH_C @ LIT T_STRING ADD ARITY 1 EXIT
 ]
 
-str-eq: :s/=
+do [
+    s/raw-string?: masm 1 [ LIT 16 MOD LIT T_STRING EQ LIT 16 MUL ARITY 1 EXIT ]
+    s/raw-eq: masm 2 [
+        LIT T_STRING SUB LIT SCRATCH_B !
+        LIT T_STRING SUB LIT SCRATCH_A !
+        LIT SCRATCH_A @ @ LIT SCRATCH_C !
+        LIT SCRATCH_C @ LIT SCRATCH_B @ @ EQ ZBRANCH s-eq-no
+      s-eq-loop:
+        LIT SCRATCH_C @ ZBRANCH s-eq-yes
+        LIT SCRATCH_A @ LIT SCRATCH_C @ ADD @
+        LIT SCRATCH_B @ LIT SCRATCH_C @ ADD @
+        EQ ZBRANCH s-eq-no
+        LIT SCRATCH_C @ LIT 1 SUB LIT SCRATCH_C !
+        BRANCH s-eq-loop
+      s-eq-yes:
+        INT 1 ARITY 1 EXIT
+      s-eq-no:
+        INT 0 ARITY 1 EXIT
+    ]
+    str-eq: func [a b] [
+        either s/raw-string? a [
+            either s/raw-string? b [ s/raw-eq a b ] [ raise create-sin 'type 's/= b ]
+        ] [ raise create-sin 'type 's/= a ]
+    ]
+]
 
 get: masm 1 [ CALL lookup ARITY 1 EXIT ]
 

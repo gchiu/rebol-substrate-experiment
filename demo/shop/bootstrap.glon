@@ -34,7 +34,37 @@ mk-string: masm 1 [
 
 
 
-str-eq: :s/=
+
+
+
+
+
+
+do [
+    s/raw-string?: masm 1 [ LIT 16 MOD LIT T_STRING EQ LIT 16 MUL ARITY 1 EXIT ]
+    s/raw-eq: masm 2 [
+        LIT T_STRING SUB LIT SCRATCH_B !
+        LIT T_STRING SUB LIT SCRATCH_A !
+        LIT SCRATCH_A @ @ LIT SCRATCH_C !
+        LIT SCRATCH_C @ LIT SCRATCH_B @ @ EQ ZBRANCH s-eq-no
+      s-eq-loop:
+        LIT SCRATCH_C @ ZBRANCH s-eq-yes
+        LIT SCRATCH_A @ LIT SCRATCH_C @ ADD @
+        LIT SCRATCH_B @ LIT SCRATCH_C @ ADD @
+        EQ ZBRANCH s-eq-no
+        LIT SCRATCH_C @ LIT 1 SUB LIT SCRATCH_C !
+        BRANCH s-eq-loop
+      s-eq-yes:
+        INT 1 ARITY 1 EXIT
+      s-eq-no:
+        INT 0 ARITY 1 EXIT
+    ]
+    str-eq: func [a b] [
+        either s/raw-string? a [
+            either s/raw-string? b [ s/raw-eq a b ] [ raise create-sin 'type 's/= b ]
+        ] [ raise create-sin 'type 's/= a ]
+    ]
+]
 
 
 get: masm 1 [ CALL lookup ARITY 1 EXIT ]

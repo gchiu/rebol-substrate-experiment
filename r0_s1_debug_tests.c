@@ -52,7 +52,10 @@ static int failures = 0;
  * Glon ABI or any runtime capacity. It was 12000 until the SIN! runtime code
  * pushed the code end past it (moved to 14000), and moved to 14500 when the
  * immutable STRING! natives (s/+ s/= s/length s/print) grew the emitted code
- * again. The debugger's own data stack runs from 16384 down to DBGEE_SP. */
+ * again. Those operations have since moved out of the runtime into loadable
+ * Glon (demo/shop/strings.glon), shrinking the code; DBGEE_SP deliberately
+ * stays at 14500. The debugger's own data stack runs from 16384 down to
+ * DBGEE_SP. */
 #define DBGEE_SP 14500
 #define DBGEE_RP 20000
 #define DBGEE_CODE_MARGIN 1024   /* room for the debugger/debuggee RAW fragments */

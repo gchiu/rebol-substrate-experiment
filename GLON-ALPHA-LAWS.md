@@ -191,9 +191,15 @@ An error value and error propagation are separate things.
   - `s/print a` writes `a`'s bytes and then a newline to the output and
     returns no value (`print` prints integers only).
 - A non-STRING! argument raises a SIN! of type `type` whose id is the
-  operation's name and whose arg is the offending value.
-- These are runtime natives, available in every session (native, Jupyter,
-  WebAssembly).
+  operation's name and whose arg is the offending value. These are ordinary
+  functions: both arguments are evaluated first, then the first non-string is
+  reported.
+- These are library code, not runtime natives: `str-eq` (the one equality
+  algorithm) is in `demo/shop/common.glon`, and `s/+ s/= s/length s/print` are
+  in `demo/shop/strings.glon`, built on the runtime's general mechanisms
+  (managed allocation, byte access, frozen S1's byte output). Jupyter and
+  Saturnine sessions load `strings.glon`; a page that needs only `str-eq`
+  (the shop, the traffic simulator) does not.
 
 ## 10. Truth
 

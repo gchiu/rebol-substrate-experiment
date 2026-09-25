@@ -39,7 +39,9 @@ def main():
     lines = prelude.split("\n")
     body = "\n".join(lines[lines.index("[") + 1:len(lines) - 1 - lines[::-1].index("]")])  # inside the outer [ ]
     defs = [d.strip("\n") for d in re.split(r"\n\s*\n", body) if d.strip()]
-    names = [d.split(":", 1)[0] for d in defs]
+    # a `do [ ]` group is named by its last (public) definition: str-eq's group
+    names = [re.findall(r"\n    ([^\s:]+): func", d)[-1] if d.startswith("do [") else d.split(":", 1)[0]
+             for d in defs]
     check(names == ["mk-string", "str-eq", "get", "lambda", "does", "block-len", "block-at",
                     "select", "select-at"] and all(d in common for d in defs),
           "P0: the prelude is exactly 9 definitions, each a verbatim copy from common.glon")

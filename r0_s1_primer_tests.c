@@ -43,7 +43,7 @@ static int load_file(const char *path) {
 }
 
 /* the page's per-Run environment (primer-host.js: fresh instance, glon_init,
- * glon_load bootstrap + case [+ tuple-space]) */
+ * glon_load bootstrap + strings + case [+ tuple-space]) */
 static int fresh_env(int tasks) {
     cell me = r0_s1_init();
     M[M1_MAIN_ENTRY_CELL] = me;
@@ -52,6 +52,7 @@ static int fresh_env(int tasks) {
     for (int i = 0; i < M1_MAX_TASKS; i++)
         M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
     if (load_file("demo/shop/bootstrap.glon") != 0) return -1;
+    if (load_file("demo/shop/strings.glon") != 0) return -1;
     if (load_file("demo/shop/case.glon") != 0) return -1;
     if (tasks && load_file("demo/shop/demos/tuple-space.glon") != 0) return -1;
     return 0;
