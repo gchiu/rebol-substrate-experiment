@@ -79,6 +79,11 @@ jobs:
           python3 demo/shop/build-primer.py --check
           make wasm-primer-test
 
+      - name: Build the Live Translate page and run its WASM/Node tests
+        run: |
+          python3 demo/shop/build-live.py
+          make wasm-live-test
+
       - name: Assemble site files
         run: |
           rm -rf /tmp/shop && mkdir -p /tmp/shop
@@ -87,6 +92,7 @@ jobs:
           cp demo/shop/traffic.html demo/shop/traffic-host.js /tmp/shop/
           cp demo/shop/linda.html demo/shop/linda-host.js /tmp/shop/
           cp demo/shop/primer.html demo/shop/primer-host.js /tmp/shop/
+          cp demo/shop/live.html demo/shop/live-host.js demo/shop/qwen-client.js demo/shop/glon-live.wasm /tmp/shop/
           cp -r demo/shop/demos /tmp/shop/demos
 
       - name: Checkout main (Pages source)

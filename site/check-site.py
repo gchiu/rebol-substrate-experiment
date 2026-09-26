@@ -29,6 +29,8 @@ REQUIRED = [
     "shop/primer.html", "shop/primer-host.js",
     "shop/traffic.html", "shop/traffic-host.js",
     "shop/linda.html", "shop/linda-host.js",
+    "shop/live.html", "shop/live-host.js", "shop/qwen-client.js",
+    "shop/glon-live.wasm",
 ]
 
 
