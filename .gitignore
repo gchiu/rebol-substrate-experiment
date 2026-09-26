@@ -2,6 +2,8 @@
 s1
 glon
 glon-lib/
+glon-live-native-test
+demo/shop/glon-live.wasm
 *.o
 jupyter/host/glon-kernel-host
 __pycache__/

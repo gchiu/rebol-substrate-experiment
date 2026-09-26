@@ -113,7 +113,7 @@ fib-p10b-bench: r0_s1_p10b_bench.c r0_s1_runtime.c s1.c
 	$(CC) $(CFLAGS) -o $@ r0_s1_p10b_bench.c r0_s1_runtime.c s1.c -ldl
 
 clean:
-	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench fib-p10b-bench traffic-bench-o0 traffic-bench-o2 $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
+	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench fib-p10b-bench traffic-bench-o0 traffic-bench-o2 glon-live-native-test demo/shop/glon-live.wasm $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
 	rm -rf glon glon-lib
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
@@ -230,6 +230,22 @@ wasm-binding-test: demo/shop/glon.wasm
 	@grep -q "BINDING_CASE_WASM_TEST PASS" /tmp/opencode_binding_test.out && \
 	 echo "wasm-binding-test: PASS (closure-origin binding law + CASE on real WASM)"
 
+# ---- Experimental GLON_LIVE host boundary (separate WASM + page) -----------
+# A separate -DGLON_LIVE build with a fifth host import (host_call) and a new
+# glon_event_bytes export.  Existing shop/browser builds keep the four-import
+# ABI and are untouched.  Requires emcc + node (CI); the native live test
+# (below) covers the C boundary without them.
+demo/shop/glon-live.wasm: standalone/glon.c r0_s1_g1a_live.c r0_s1_g1a_live.h r0_s1_g1a.c r0_s1_g1a.h s1.c s1.h r0_s1_runtime.c r0_s1_show.c r0_s1.h
+	$(EMCC) $(STANDALONE_FLAGS) -DGLON_LIVE standalone/glon.c r0_s1_g1a_live.c r0_s1_g1a.c s1.c r0_s1_runtime.c r0_s1_show.c -o $@
+
+demo/shop/live.html: demo/shop/common.glon demo/shop/strings.glon demo/shop/live.glon demo/shop/live-host.js demo/shop/build-live.py
+	python3 demo/shop/build-live.py
+
+wasm-live-test: demo/shop/glon-live.wasm demo/shop/live.html
+	node demo/shop/live_node_test.js | tee /tmp/opencode_live_test.out
+	@grep -q "LIVE_TEST PASS" /tmp/opencode_live_test.out && \
+	 echo "wasm-live-test: PASS (host_call -> glon_event_bytes >200-byte UTF-8 round trip)"
+
 # ---- Glon primer (newcomer onboarding; no language change) -----------------
 # demo/shop/primer.txt is the single source of the primer. build-primer.py
 # renders it into GLON-PRIMER.md and demo/shop/primer.html (`--check`, run by
@@ -266,6 +282,12 @@ glon-lib: $(GLON_LIBS)
 
 glon-smoke: glon
 	./glon-smoke.sh
+
+# ---- Experimental GLON_LIVE host boundary (native focused test) -------------
+# Builds only the live layer + runtime; does not touch the s1 test binary or
+# any WASM build. Run: make glon-live-native-test && ./glon-live-native-test
+glon-live-native-test: r0_s1_g1a_live_tests.c r0_s1_g1a_live.c r0_s1_g1a_live.h r0_s1_g1a.c r0_s1_g1a.h r0_s1_runtime.c s1.c r0_s1.h s1.h m1_layout.h
+	$(CC) $(CFLAGS) -DGLON_LIVE -I. -o $@ r0_s1_g1a_live_tests.c r0_s1_g1a_live.c r0_s1_g1a.c r0_s1_runtime.c s1.c
 
 # ---- Persistent native Glon session host (Jupyter milestone, phase 1) -------
 # One process = one Glon session: the runtime is initialised once and cells run
@@ -309,4 +331,4 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test

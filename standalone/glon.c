@@ -15,6 +15,9 @@
  */
 #include "r0_s1.h"
 #include "r0_s1_g1a.h"
+#ifdef GLON_LIVE
+#include "r0_s1_g1a_live.h"
+#endif
 #include "m1_layout.h"
 #include <stdarg.h>
 
@@ -34,6 +37,55 @@ void host_set_html(unsigned int handle, const unsigned char *ptr, unsigned int l
  * draws it; it never interprets the application semantics. */
 __attribute__((import_module("env"), import_name("host_canvas_script")))
 void host_canvas_script(const unsigned char *ptr, unsigned int len);
+
+#ifdef GLON_LIVE
+/* Experimental GLON_LIVE outbound capability request.  Glon renders a request
+ * fragment; the live dispatcher extracts op/arg and calls this import.  The
+ * JS host maps the generic op to a browser capability. */
+__attribute__((import_module("env"), import_name("host_call")))
+void host_call(const unsigned char *op, unsigned int op_len,
+               const unsigned char *arg, unsigned int arg_len);
+
+static unsigned char call_op[256];
+static unsigned char call_arg[8192];
+
+static void live_host_call(const char *op, int op_len,
+                           const char *arg, int arg_len, void *user) {
+    (void)user;
+    if (op_len < 0) op_len = 0;
+    if (op_len > (int)sizeof call_op) op_len = (int)sizeof call_op;
+    if (arg_len < 0) arg_len = 0;
+    if (arg_len > (int)sizeof call_arg) arg_len = (int)sizeof call_arg;
+    for (int i = 0; i < op_len; i++) call_op[i] = (unsigned char)op[i];
+    for (int i = 0; i < arg_len; i++) call_arg[i] = (unsigned char)arg[i];
+    host_call(call_op, (unsigned int)op_len, call_arg, (unsigned int)arg_len);
+}
+#endif
+
+/* The live build routes through the request-aware dispatcher and skips an
+ * empty host_set_html when a dispatch produced only a host-call request. Every
+ * other build keeps the original four-import dispatcher path unchanged. */
+#ifdef GLON_LIVE
+#define G1A_ROUTE(tok, buf, cap, out_len) \
+    r0_s1_g1a_live_route((tok), (buf), (cap), (out_len))
+#define G1A_EVENT(tok, buf, cap, out_len) \
+    r0_s1_g1a_live_event((tok), (buf), (cap), (out_len))
+/* glon_event_value keeps its exact original semantics (including the 200-byte
+ * cap); the new glon_event_bytes path is the mechanism for larger payloads. */
+#define G1A_EVENT_VALUE(tok, val, buf, cap, out_len) \
+    r0_s1_g1a_event_value((tok), (val), (buf), (cap), (out_len))
+#define G1A_WRITE_HTML(buf, out_len) \
+    do { if ((out_len) > 0) host_set_html(1u, (buf), (unsigned int)(out_len)); } while (0)
+#else
+#define G1A_ROUTE(tok, buf, cap, out_len) \
+    r0_s1_g1a_route((tok), (buf), (cap), (out_len))
+#define G1A_EVENT(tok, buf, cap, out_len) \
+    r0_s1_g1a_event((tok), (buf), (cap), (out_len))
+#define G1A_EVENT_VALUE(tok, val, buf, cap, out_len) \
+    r0_s1_g1a_event_value((tok), (val), (buf), (cap), (out_len))
+#define G1A_WRITE_HTML(buf, out_len) \
+    host_set_html(1u, (buf), (unsigned int)(out_len))
+#endif
 
 /* ---- minimal libc surface (no libc linked) ------------------------------- */
 
@@ -217,6 +269,9 @@ int glon_init(void) {
         M[M1_STRESS_CNT] = 0;
         for (int i = 0; i < M1_MAX_TASKS; i++)
             M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
+#ifdef GLON_LIVE
+        r0_s1_g1a_live_set_host_call(live_host_call, 0);
+#endif
         inited = 1;
     }
     return 0;
@@ -301,10 +356,10 @@ int glon_route(const unsigned char *token, unsigned int len) {
     tok[i] = 0;
 
     int out_len = 0;
-    if (r0_s1_g1a_route((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len) != 0)
+    if (G1A_ROUTE((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len) != 0)
         return -2;
 
-    host_set_html(1u, htmlbuf, (unsigned int)out_len);
+    G1A_WRITE_HTML(htmlbuf, out_len);
     emit_canvas_script();
     return 0;
 }
@@ -323,10 +378,10 @@ int glon_event(const unsigned char *token, unsigned int len) {
     tok[i] = 0;
 
     int out_len = 0;
-    if (r0_s1_g1a_event((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len) != 0)
+    if (G1A_EVENT((const char *)tok, (char *)htmlbuf, (int)sizeof htmlbuf, &out_len) != 0)
         return -2;
 
-    host_set_html(1u, htmlbuf, (unsigned int)out_len);
+    G1A_WRITE_HTML(htmlbuf, out_len);
     emit_canvas_script();
     return 0;
 }
@@ -350,14 +405,39 @@ int glon_event_value(const unsigned char *token, unsigned int tlen,
     val[i] = 0;
 
     int out_len = 0;
-    if (r0_s1_g1a_event_value((const char *)tok, (const char *)val,
-                              (char *)htmlbuf, (int)sizeof htmlbuf, &out_len) != 0)
+    if (G1A_EVENT_VALUE((const char *)tok, (const char *)val,
+                        (char *)htmlbuf, (int)sizeof htmlbuf, &out_len) != 0)
         return -2;
 
-    host_set_html(1u, htmlbuf, (unsigned int)out_len);
+    G1A_WRITE_HTML(htmlbuf, out_len);
     emit_canvas_script();
     return 0;
 }
+
+#ifdef GLON_LIVE
+/* Experimental raw-byte inbound event: JavaScript writes UTF-8/binary bytes
+ * into WASM memory and calls this export; the live dispatcher binds them to
+ * current-value and runs do-event.  Unlike glon_event_value there is no
+ * 200-byte value cap. */
+__attribute__((export_name("glon_event_bytes")))
+int glon_event_bytes(const unsigned char *token, unsigned int tlen,
+                     const unsigned char *data, unsigned int dlen) {
+    if (tlen == 0 || tlen > 63) return -1;
+    unsigned char tok[64];
+    unsigned int i;
+    for (i = 0; i < tlen; i++) tok[i] = token[i];
+    tok[i] = 0;
+
+    int out_len = 0;
+    if (r0_s1_g1a_live_event_bytes((const char *)tok, data, dlen,
+                                   (char *)htmlbuf, (int)sizeof htmlbuf, &out_len) != 0)
+        return -2;
+
+    G1A_WRITE_HTML(htmlbuf, out_len);
+    emit_canvas_script();
+    return 0;
+}
+#endif
 
 /* Primer: run one program (source WITHOUT the outer [ ]) persistently and
  * keep its outcome as text -- the molded results, "** uncaught #[SIN! ...]",

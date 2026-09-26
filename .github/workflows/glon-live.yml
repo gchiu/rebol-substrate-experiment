@@ -1,0 +1,56 @@
+# Experimental GLON_LIVE host-boundary round trip.
+#
+# Builds the separate -DGLON_LIVE WASM (a fifth host import: host_call; a new
+# export: glon_event_bytes) and proves the round trip on a headless Node host:
+# Glon requests a host capability, the host asynchronously returns >200 bytes
+# of UTF-8 (including Chinese) through glon_event_bytes, and Glon renders it.
+#
+# Also runs the focused native C test for the same boundary and the full
+# native regression suite.  The existing shop/Pages and Jupyter workflows are
+# unchanged and keep using the four-import ABI they already provide.
+name: Glon Live host boundary
+
+on:
+  push:
+    branches: [glon-shop-g1a]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Fetch and verify frozen-S1 tag
+        run: |
+          git fetch origin '+refs/tags/s1-frozen-v1:refs/tags/s1-frozen-v1'
+          test "$(git rev-parse 's1-frozen-v1^{commit}')" = "f90496c26dc45c7a387d8fc8639cd2781507d3d2"
+
+      - name: Frozen-S1 check
+        run: bash check-frozen-s1.sh
+
+      - name: Focused native GLON_LIVE boundary test
+        run: |
+          make glon-live-native-test
+          ./glon-live-native-test
+
+      - name: Full native regression
+        run: make test
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 6.0.9
+
+      - name: Build the GLON_LIVE WASM and page, run the Node round trip
+        run: |
+          python3 demo/shop/build-live.py
+          make wasm-live-test
