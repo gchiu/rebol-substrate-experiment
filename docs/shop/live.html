@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glon Live Translate boundary probe</title>
+</head>
+<body>
+<div id="app" data-glon-id="1"></div>
+<script type="application/glon" data-env="common">[ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+mk-string: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT SCRATCH_C @ !
+    LIT 0 LIT SCRATCH_A !
+  mk-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH mk-done
+    LIT SCRATCH_B @ LIT 2 ADD LIT SCRATCH_A @ ADD @ LIT 16 DIV
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_A @ ADD
+    !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH mk-loop
+  mk-done:
+    LIT SCRATCH_C @ LIT T_STRING ADD ARITY 1 EXIT
+]
+
+
+
+
+
+
+
+
+
+
+do [
+    s/raw-string?: masm 1 [ LIT 16 MOD LIT T_STRING EQ LIT 16 MUL ARITY 1 EXIT ]
+    s/raw-eq: masm 2 [
+        LIT T_STRING SUB LIT SCRATCH_B !
+        LIT T_STRING SUB LIT SCRATCH_A !
+        LIT SCRATCH_A @ @ LIT SCRATCH_C !
+        LIT SCRATCH_C @ LIT SCRATCH_B @ @ EQ ZBRANCH s-eq-no
+      s-eq-loop:
+        LIT SCRATCH_C @ ZBRANCH s-eq-yes
+        LIT SCRATCH_A @ LIT SCRATCH_C @ ADD @
+        LIT SCRATCH_B @ LIT SCRATCH_C @ ADD @
+        EQ ZBRANCH s-eq-no
+        LIT SCRATCH_C @ LIT 1 SUB LIT SCRATCH_C !
+        BRANCH s-eq-loop
+      s-eq-yes:
+        INT 1 ARITY 1 EXIT
+      s-eq-no:
+        INT 0 ARITY 1 EXIT
+    ]
+    str-eq: func [a b] [
+        either s/raw-string? a [
+            either s/raw-string? b [ s/raw-eq a b ] [ raise create-sin 'type 's/= b ]
+        ] [ raise create-sin 'type 's/= a ]
+    ]
+]
+
+
+get: masm 1 [ CALL lookup ARITY 1 EXIT ]
+
+
+
+
+
+lambda: func [spec body] [ func :spec :body ]
+does:   func [body] [ lambda [] body ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+emit-clear: masm [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
+emit-byte: masm 1 [
+    LIT SCRATCH_E @ LIT G1_OUT_DATA ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    ARITY 0 EXIT
+]
+emit-finish: masm [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
+
+
+
+
+
+
+
+
+
+
+vis-clear: masm [ LIT 0 LIT SCRATCH_D ! ARITY 0 EXIT ]
+vis-byte: masm 1 [
+    LIT SCRATCH_D @ LIT G1_VIS_DATA ADD !
+    LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
+    ARITY 0 EXIT
+]
+vis-text: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_A !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  vis-text-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH vis-text-done
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL
+    LIT G1_VIS_DATA LIT SCRATCH_D @ ADD
+    !
+    LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH vis-text-loop
+  vis-text-done:
+    ARITY 0 EXIT
+]
+vis-finish: masm [ LIT SCRATCH_D @ LIT G1_VIS ! LIT G1_VIS LIT T_BLOCK ADD ARITY 1 EXIT ]
+vis-int: func [n] [ either < n 0 [ vis-byte 45 vis-digits - 0 n ] [ vis-digits n ] ]
+vis-digits: func [n] [
+    either > n 9 [ vis-digits / n 10 ] [ none ]
+    vis-byte + 48 - n * 10 / n 10
+]
+
+
+
+
+vis-sp:  does [ vis-byte 32 ]
+vis-eol: does [ vis-byte 10 ]
+vis-int-field:  func [n]    [ vis-sp vis-int n ]
+vis-text-field: func [text] [ vis-sp vis-text text ]
+
+vis-box: func [x y w h label] [
+    vis-byte 66
+    vis-int-field x
+    vis-int-field y
+    vis-int-field w
+    vis-int-field h
+    vis-text-field label
+    vis-eol
+]
+vis-line: func [x1 y1 x2 y2] [
+    vis-byte 76
+    vis-int-field x1
+    vis-int-field y1
+    vis-int-field x2
+    vis-int-field y2
+    vis-eol
+]
+vis-dot: func [id x y] [
+    vis-byte 68
+    vis-int-field id
+    vis-int-field x
+    vis-int-field y
+    vis-eol
+]
+vis-move: func [id x1 y1 x2 y2] [
+    vis-byte 77
+    vis-int-field id
+    vis-int-field x1
+    vis-int-field y1
+    vis-int-field x2
+    vis-int-field y2
+    vis-eol
+]
+
+
+block-len: masm 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
+block-at: masm 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ]
+
+
+
+
+
+select: func [rows key] [ select-at rows 0 block-len rows key ]
+select-at: func [rows i n key] [
+    either < i n [
+        either = block-at block-at rows i 0 key [ block-at rows i ] [ select-at rows + i 1 n key ]
+    ] [ none ]
+]
+
+
+emit-int: func [n] [ either < n 0 [ emit-byte 45 emit-digits - 0 n ] [ emit-digits n ] ]
+emit-digits: func [n] [
+    either > n 9 [ emit-digits / n 10 ] [ none ]
+    emit-byte + 48 - n * 10 / n 10
+]
+
+
+
+
+
+
+emit-text: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_A !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  emit-text-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH emit-text-done
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL
+    LIT G1_OUT_DATA LIT SCRATCH_E @ ADD
+    !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH emit-text-loop
+  emit-text-done:
+    ARITY 0 EXIT
+]
+
+
+
+
+
+
+h1-open:   "<h1>"
+h1-close:  "</h1>"
+h2-open:   "<h2>"
+h2-close:  "</h2>"
+p-open:    "<p>"
+p-close:   "</p>"
+catalog-open:  "<ul class='catalog'>"
+catalog-close: "</ul>"
+basket-list-open:  "<ul class='basket-list'>"
+basket-list-close: "</ul>"
+li-open:   "<li>"
+li-close:  "</li>"
+span-open:  "<span class='item'>"
+span-close: "</span>"
+qty-open:  "<span class='qty'>"
+qty-close: "</span>"
+btn-open:  "<button class='btn' data-glon-route='"
+btn-mid:   "'>"
+btn-close: "</button>"
+event-open: "<button class='btn' data-glon-event='"
+input-open: "<input class='search-input' type='text' placeholder='Search' data-glon-input='"
+value-mid:  "' data-glon-value='"
+panel-open:  "<div class='panel'>"
+panel-close: "</div>"
+search-open:  "<div class='search-row'>"
+search-close: "</div>"
+basket-open:  "<div class='basket'>"
+basket-close: "</div>"
+total-open:  "<p class='total'>"
+total-close: "</p>"
+meta-open:   "<p class='meta'>"
+meta-close:  "</p>"
+tagline-open:  "<p class='tagline'>"
+tagline-close: "</p>"
+nav-open:   "<p class='nav'>"
+nav-close:  "</p>"
+pre-open:   "<pre>"
+pre-close:  "</pre>"
+load-btn-open: "<button class='btn' data-glon-route='"
+load-btn-mid:  "' data-glon-load='"
+
+
+
+
+
+
+
+wrap: func [open close] [
+    func [content] [ emit-text open do content emit-text close ]
+]
+heading: wrap h1-open h1-close
+subhead: wrap h2-open h2-close
+text:    wrap p-open p-close
+tagline: wrap tagline-open tagline-close
+meta:    wrap meta-open meta-close
+pre:     wrap pre-open pre-close
+link:    func [label route] [
+    emit-text nav-open
+    emit-text btn-open emit-text route emit-text btn-mid emit-text label emit-text btn-close
+    emit-text nav-close
+]
+
+
+
+load-link: func [label route path] [
+    emit-text nav-open
+    emit-text load-btn-open emit-text route emit-text load-btn-mid emit-text path emit-text btn-mid
+    emit-text label emit-text btn-close
+    emit-text nav-close
+]
+
+button:  func [content event] [
+    emit-text event-open emit-text event emit-text btn-mid do content emit-text btn-close
+]
+
+value-button: func [content event value] [
+    emit-text event-open emit-text event emit-text value-mid emit-text value emit-text btn-mid
+    do content emit-text btn-close
+]
+
+
+
+input:   func [name] [
+    emit-text input-open emit-text name emit-text btn-mid
+]
+
+
+
+
+
+
+products: func [items] [ emit-text catalog-open each-product items emit-text catalog-close ]
+each-product: func [items] [ emit-product-at items 0 block-len items ]
+emit-product-at: func [items i n] [
+    either < i n [
+        emit-text li-open
+        emit-text span-open emit-text get block-at items i emit-text span-close
+        value-button [ emit-text "Add" ] "add-product" get block-at items i
+        emit-text li-close
+        emit-product-at items + i 1 n
+    ] [ none ]
+] ]</script>
+<script type="application/glon" data-env="strings">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[
+
+
+
+
+s/raw-cat: masm 2 [
+    LIT SCRATCH_B ! LIT SCRATCH_A !
+    LIT SCRATCH_A @ LIT SCRATCH_B @
+    LIT SCRATCH_A @ LIT T_STRING SUB @ LIT SCRATCH_B @ LIT T_STRING SUB @ ADD LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 16 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT SCRATCH_B ! LIT SCRATCH_A !
+    LIT SCRATCH_F @ LIT SCRATCH_C @ !
+    LIT SCRATCH_C @ LIT T_STRING ADD
+    LIT SCRATCH_A @ LIT T_STRING SUB LIT SCRATCH_A !
+  s-cat-pass:
+    LIT SCRATCH_A @ @ LIT SCRATCH_F !
+  s-cat-loop:
+    LIT SCRATCH_F @ ZBRANCH s-cat-next
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT SCRATCH_A @ @ LIT SCRATCH_C @ !
+    LIT SCRATCH_F @ LIT 1 SUB LIT SCRATCH_F !
+    BRANCH s-cat-loop
+  s-cat-next:
+    LIT SCRATCH_B @ ZBRANCH s-cat-done
+    LIT SCRATCH_B @ LIT T_STRING SUB LIT SCRATCH_A !
+    LIT 0 LIT SCRATCH_B !
+    BRANCH s-cat-pass
+  s-cat-done:
+    ARITY 1 EXIT
+]
+
+
+s/raw-length: masm 1 [ LIT T_STRING SUB @ LIT 16 MUL ARITY 1 EXIT ]
+
+
+s/raw-print: masm 1 [
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_C !
+  s-print-loop:
+    LIT SCRATCH_C @ ZBRANCH s-print-done
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ HOST HOST_PUTCHAR
+    LIT SCRATCH_C @ LIT 1 SUB LIT SCRATCH_C !
+    BRANCH s-print-loop
+  s-print-done:
+    LIT 10 HOST HOST_PUTCHAR
+    ARITY 0 EXIT
+]
+
+s/+: func [a b] [
+    either s/raw-string? a [
+        either s/raw-string? b [ s/raw-cat a b ] [ raise create-sin 'type 's/+ b ]
+    ] [ raise create-sin 'type 's/+ a ]
+]
+
+s/=: :str-eq
+
+s/length: func [a] [
+    either s/raw-string? a [ s/raw-length a ] [ raise create-sin 'type 's/length a ]
+]
+
+s/print: func [a] [
+    either s/raw-string? a [ s/raw-print a ] [ raise create-sin 'type 's/print a ]
+]
+
+]</script>
+<script type="application/glon" data-env="live">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[
+empty: ""
+
+status-text: "Stopped"
+source-final: empty
+source-live: empty
+translation-text: empty
+error-text: none
+
+
+emit-host-call: func [op arg] [
+    emit-clear
+    emit-byte 1
+    emit-text op
+    emit-byte 0
+    emit-text arg
+    emit-finish
+]
+
+live-view: [
+    heading [ emit-text "Live Translate" ]
+    text [ emit-text status-text ]
+
+    subhead [ emit-text "Source" ]
+    text [ emit-text source-final emit-text source-live ]
+
+    subhead [ emit-text "Translation" ]
+    text [ emit-text translation-text ]
+
+    either error-text [
+        text [ emit-text "Error: " emit-text error-text ]
+    ] [ none ]
+
+    button [ emit-text "Start" ] "start"
+    button [ emit-text "Stop" ] "stop"
+]
+
+render-live: func [] [ emit-clear do live-view emit-finish ]
+render-current: func [] [ render-live ]
+
+do-event: [
+    either = current-event 'start [
+        emit-host-call "listen-start" "zh"
+    ] [
+        either = current-event 'stop [
+            emit-host-call "listen-stop" ""
+        ] [
+            either = current-event 'qwen-status [
+                status-text: current-value
+                error-text: none
+                render-current
+            ] [
+                either = current-event 'qwen-source-delta [
+                    source-live: s/+ source-live current-value
+                    render-current
+                ] [
+                    either = current-event 'qwen-source-done [
+                        source-final: s/+ source-final current-value
+                        source-live: empty
+                        render-current
+                    ] [
+                        either = current-event 'qwen-text-delta [
+                            translation-text: s/+ translation-text current-value
+                            render-current
+                        ] [
+                            either = current-event 'qwen-text-done [
+                                translation-text: current-value
+                                render-current
+                            ] [
+                                either = current-event 'qwen-error [
+                                    error-text: current-value
+                                    render-current
+                                ] [
+                                    render-current
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+]
+
+]</script>
+<script src="qwen-client.js"></script>
+<script src="live-host.js"></script>
+</body>
+</html>
