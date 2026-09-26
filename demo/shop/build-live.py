@@ -41,6 +41,7 @@ def main() -> None:
 <script type="application/glon" data-env="common">{common_block}</script>
 <script type="application/glon" data-env="strings">{strings}</script>
 <script type="application/glon" data-env="live">{live}</script>
+<script src="qwen-client.js"></script>
 <script src="live-host.js"></script>
 </body>
 </html>

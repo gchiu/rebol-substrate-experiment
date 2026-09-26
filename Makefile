@@ -238,13 +238,15 @@ wasm-binding-test: demo/shop/glon.wasm
 demo/shop/glon-live.wasm: standalone/glon.c r0_s1_g1a_live.c r0_s1_g1a_live.h r0_s1_g1a.c r0_s1_g1a.h s1.c s1.h r0_s1_runtime.c r0_s1_show.c r0_s1.h
 	$(EMCC) $(STANDALONE_FLAGS) -DGLON_LIVE standalone/glon.c r0_s1_g1a_live.c r0_s1_g1a.c s1.c r0_s1_runtime.c r0_s1_show.c -o $@
 
-demo/shop/live.html: demo/shop/common.glon demo/shop/strings.glon demo/shop/live.glon demo/shop/live-host.js demo/shop/build-live.py
+demo/shop/live.html: demo/shop/common.glon demo/shop/strings.glon demo/shop/live.glon demo/shop/live-host.js demo/shop/qwen-client.js demo/shop/build-live.py
 	python3 demo/shop/build-live.py
 
 wasm-live-test: demo/shop/glon-live.wasm demo/shop/live.html
+	node demo/shop/qwen_client_test.js | tee /tmp/opencode_qwen_client_test.out
+	@grep -q "QWEN_CLIENT_TEST PASS" /tmp/opencode_qwen_client_test.out
 	node demo/shop/live_node_test.js | tee /tmp/opencode_live_test.out
 	@grep -q "LIVE_TEST PASS" /tmp/opencode_live_test.out && \
-	 echo "wasm-live-test: PASS (host_call -> glon_event_bytes >200-byte UTF-8 round trip)"
+	 echo "wasm-live-test: PASS (Qwen protocol mapping + Glon append/replace + glon_event_bytes)"
 
 # ---- Glon primer (newcomer onboarding; no language change) -----------------
 # demo/shop/primer.txt is the single source of the primer. build-primer.py

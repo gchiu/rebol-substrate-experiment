@@ -1,14 +1,15 @@
 /* r0_s1_g1a_live_tests.c -- focused native test for the experimental
- * GLON_LIVE host boundary.  Build with -DGLON_LIVE and link r0_s1_g1a_live.c;
- * this is not part of the frozen `s1` test binary.
+ * GLON_LIVE host boundary and the text Live Translate application logic.
  *
- * It proves the round trip end to end in C:
- *   - Glon renders a host-call request fragment (the real demo/shop/live.glon
- *     app source, loaded with common.glon + strings.glon);
- *   - the registered host callback receives op/arg ("echo"/"roundtrip");
- *   - the callback's asynchronous reply is delivered back through
- *     r0_s1_g1a_live_event_bytes() with > 200 bytes of UTF-8 including Chinese;
- *   - Glon renders that reply into its page fragment.
+ * Build with -DGLON_LIVE and link r0_s1_g1a_live.c; this is not part of the
+ * frozen `s1` test binary.
+ *
+ * It loads the real demo/shop/live.glon application (with common.glon and
+ * strings.glon) and proves:
+ *   - Start emits host_call(qwen-connect, zh) and no HTML;
+ *   - Glon, not the host, decides the append-vs-replace semantics of the
+ *     qwen-source-* and qwen-text-* events;
+ *   - a >200-byte UTF-8 reply still arrives through glon_event_bytes.
  */
 
 #include "r0_s1.h"
@@ -79,12 +80,17 @@ static void record_host_call(const char *op, int op_len,
     got_calls++;
 }
 
-static const char *BASE =
-    "这是一个用于验证 Glon 主机调用和原始字节事件往返的中文测试字符串。"
-    "它包含中文、日本語、한국어、emoji 😀🎤🌐 以及 ASCII 边界。";
+static int dispatch_bytes(const char *token, const char *text, char *out, int cap) {
+    int out_len = 0;
+    int rc = r0_s1_g1a_live_event_bytes(token, (const unsigned char *)text,
+                                        (unsigned int)strlen(text), out, cap, &out_len);
+    if (rc != 0) return -1;
+    if (out_len < cap) out[out_len] = 0;
+    return out_len;
+}
 
 int main(void) {
-    printf("R0-S1 G1A live host boundary (GLON_LIVE native)\n");
+    printf("R0-S1 G1A live text application (GLON_LIVE native)\n");
 
     cell me = r0_s1_init();
     M[M1_MAIN_ENTRY_CELL] = me;
@@ -100,35 +106,65 @@ int main(void) {
 
     r0_s1_g1a_live_set_host_call(record_host_call, 0);
 
-    /* outbound: Glon requests the host capability */
+    /* Start emits the Qwen connect intent, no HTML. */
     int out_len = 0;
-    int rc = r0_s1_g1a_live_event("go", outbuf, (int)sizeof outbuf, &out_len);
-    CHECK(rc == 0 && out_len == 0, "outbound: host-call request dispatch yields no HTML");
-    CHECK(got_calls == 1 && strcmp(got_op, "echo") == 0 && strcmp(got_arg, "roundtrip") == 0,
-          "outbound: callback received op=echo arg=roundtrip");
+    int rc = r0_s1_g1a_live_event("start", outbuf, (int)sizeof outbuf, &out_len);
+    CHECK(rc == 0 && out_len == 0, "outbound: Start yields a host-call, no HTML");
+    CHECK(got_calls == 1 && strcmp(got_op, "listen-start") == 0 && strcmp(got_arg, "zh") == 0,
+          "outbound: host_call received listen-start/zh");
 
-    /* inbound: asynchronous reply > 200 bytes with non-ASCII UTF-8 */
+    /* Status event renders. */
+    CHECK(dispatch_bytes("qwen-status", "Listening", outbuf, (int)sizeof outbuf) > 0
+          && strstr(outbuf, "Listening") != 0, "event: qwen-status renders Listening");
+
+    /* Source deltas append, completed replaces (partial cleared). */
+    CHECK(dispatch_bytes("qwen-source-delta", "I'm speaking", outbuf, (int)sizeof outbuf) > 0
+          && strstr(outbuf, "I'm speaking") != 0, "event: source delta shown");
+    CHECK(dispatch_bytes("qwen-source-delta", " English", outbuf, (int)sizeof outbuf) > 0
+          && strstr(outbuf, "I'm speaking English") != 0, "event: source deltas append");
+    CHECK(dispatch_bytes("qwen-source-done", "I'm speaking English. ", outbuf, (int)sizeof outbuf) > 0
+          && strstr(outbuf, "I'm speaking English. ") != 0
+          && strstr(outbuf, "I'm speaking English. I'm speaking English") == 0,
+          "event: completed transcript replaces the streamed deltas");
+
+    /* Translation deltas append, done replaces. */
+    CHECK(dispatch_bytes("qwen-text-delta", "我在说", outbuf, (int)sizeof outbuf) > 0
+          && strstr(outbuf, "我在说") != 0, "event: translation delta shown");
+    const char *final = "我在说英语。";
+    CHECK(dispatch_bytes("qwen-text-done", final, outbuf, (int)sizeof outbuf) > 0
+          && strstr(outbuf, final) != 0
+          && strstr(outbuf, "我在说英语。我在说英语。") == 0,
+          "event: final translation replaces the deltas");
+
+    /* Error event renders. */
+    CHECK(dispatch_bytes("qwen-error", "401 InvalidApiKey", outbuf, (int)sizeof outbuf) > 0
+          && strstr(outbuf, "401 InvalidApiKey") != 0, "event: error rendered");
+
+    /* Stop emits the semantic stop intent, no HTML. */
+    out_len = 0;
+    rc = r0_s1_g1a_live_event("stop", outbuf, (int)sizeof outbuf, &out_len);
+    CHECK(rc == 0 && out_len == 0, "outbound: Stop yields a host-call, no HTML");
+    CHECK(got_calls == 2 && strcmp(got_op, "listen-stop") == 0 && got_arg[0] == 0,
+          "outbound: host_call received listen-stop");
+
+    /* The raw >200-byte inbound path is still exercised. */
     static char longbuf[16384];
     int len = 0;
+    const char *base =
+        "这是一个用于验证 Glon 主机调用和原始字节事件往返的中文测试字符串。"
+        "它包含中文、日本語、한국어、emoji 😀🎤🌐 以及 ASCII 边界。";
     for (int i = 0; i < 6; i++) {
-        size_t n = strlen(BASE);
+        size_t n = strlen(base);
         if (len + (int)n >= (int)sizeof longbuf) break;
-        memcpy(longbuf + len, BASE, n);
+        memcpy(longbuf + len, base, n);
         len += (int)n;
     }
     longbuf[len] = 0;
-    CHECK(len > 200, "inbound: test payload exceeds the old 200-byte value cap");
+    CHECK(len > 200, "inbound: payload exceeds the old 200-byte value cap");
+    CHECK(dispatch_bytes("qwen-text-done", longbuf, outbuf, (int)sizeof outbuf) > 0
+          && strstr(outbuf, longbuf) != 0,
+          "inbound: glon_event_bytes carries the full >200-byte UTF-8 payload");
 
-    out_len = 0;
-    rc = r0_s1_g1a_live_event_bytes("reply", (const unsigned char *)longbuf,
-                                    (unsigned int)len, outbuf, (int)sizeof outbuf, &out_len);
-    CHECK(rc == 0 && out_len > 0, "inbound: reply dispatch renders HTML");
-    if (out_len > 0 && out_len < (int)sizeof outbuf) outbuf[out_len] = 0;
-    CHECK(out_len > 0 && strstr(outbuf, longbuf) != 0,
-          "inbound: rendered page contains the full >200-byte UTF-8 reply");
-    CHECK(out_len > 0 && strstr(outbuf, "中文测试字符串") != 0,
-          "inbound: rendered page contains the Chinese text");
-
-    if (failures == 0) printf("all GLON_LIVE host-boundary tests passed\n");
+    if (failures == 0) printf("all GLON_LIVE text-application tests passed\n");
     return failures;
 }

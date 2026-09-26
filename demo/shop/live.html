@@ -452,8 +452,19 @@ s/print: func [a] [
 
 
 
+
+
+
+
+
 [
-reply-text: none
+empty: ""
+
+status-text: "Stopped"
+source-final: empty
+source-live: empty
+translation-text: empty
+error-text: none
 
 
 emit-host-call: func [op arg] [
@@ -466,33 +477,72 @@ emit-host-call: func [op arg] [
 ]
 
 live-view: [
-    heading [ emit-text "Live Translate host-boundary probe" ]
-    text [ emit-text "Glon requests a generic host capability; the host replies asynchronously with UTF-8 bytes through glon_event_bytes." ]
-    either reply-text [
-        text [ emit-text "Reply: " emit-text reply-text ]
-    ] [
-        text [ emit-text "Reply: (waiting for the host)" ]
-    ]
-    button [ emit-text "Request host capability" ] "go"
+    heading [ emit-text "Live Translate" ]
+    text [ emit-text status-text ]
+
+    subhead [ emit-text "Source" ]
+    text [ emit-text source-final emit-text source-live ]
+
+    subhead [ emit-text "Translation" ]
+    text [ emit-text translation-text ]
+
+    either error-text [
+        text [ emit-text "Error: " emit-text error-text ]
+    ] [ none ]
+
+    button [ emit-text "Start" ] "start"
+    button [ emit-text "Stop" ] "stop"
 ]
 
 render-live: func [] [ emit-clear do live-view emit-finish ]
 render-current: func [] [ render-live ]
 
 do-event: [
-    either = current-event 'go [
-        emit-host-call "echo" "roundtrip"
+    either = current-event 'start [
+        emit-host-call "listen-start" "zh"
     ] [
-        either = current-event 'reply [
-            reply-text: current-value
-            render-current
+        either = current-event 'stop [
+            emit-host-call "listen-stop" ""
         ] [
-            render-current
+            either = current-event 'qwen-status [
+                status-text: current-value
+                error-text: none
+                render-current
+            ] [
+                either = current-event 'qwen-source-delta [
+                    source-live: s/+ source-live current-value
+                    render-current
+                ] [
+                    either = current-event 'qwen-source-done [
+                        source-final: s/+ source-final current-value
+                        source-live: empty
+                        render-current
+                    ] [
+                        either = current-event 'qwen-text-delta [
+                            translation-text: s/+ translation-text current-value
+                            render-current
+                        ] [
+                            either = current-event 'qwen-text-done [
+                                translation-text: current-value
+                                render-current
+                            ] [
+                                either = current-event 'qwen-error [
+                                    error-text: current-value
+                                    render-current
+                                ] [
+                                    render-current
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
         ]
     ]
 ]
 
 ]</script>
+<script src="qwen-client.js"></script>
 <script src="live-host.js"></script>
 </body>
 </html>
