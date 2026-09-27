@@ -246,7 +246,7 @@ wasm-live-test: demo/shop/glon-live.wasm demo/shop/live.html
 	@grep -q "QWEN_CLIENT_TEST PASS" /tmp/opencode_qwen_client_test.out
 	node demo/shop/live_node_test.js | tee /tmp/opencode_live_test.out
 	@grep -q "LIVE_TEST PASS" /tmp/opencode_live_test.out && \
-	 echo "wasm-live-test: PASS (Qwen protocol mapping + Glon append/replace + glon_event_bytes)"
+	 echo "wasm-live-test: PASS (Qwen protocol mapping + Glon capture console + glon_event_bytes)"
 
 # ---- Glon primer (newcomer onboarding; no language change) -----------------
 # demo/shop/primer.txt is the single source of the primer. build-primer.py

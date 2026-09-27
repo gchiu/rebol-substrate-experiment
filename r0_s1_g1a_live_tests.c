@@ -6,9 +6,10 @@
  *
  * It loads the real demo/shop/live.glon application (with common.glon and
  * strings.glon) and proves:
- *   - Start emits host_call(qwen-connect, zh) and no HTML;
- *   - Glon, not the host, decides the append-vs-replace semantics of the
- *     qwen-source-* and qwen-text-* events;
+ *   - Start emits host_call(listen-start) with no language and no HTML;
+ *   - the capture console renders status/error but never source or translated
+ *     text;
+ *   - Stop emits host_call(listen-stop);
  *   - a >200-byte UTF-8 reply still arrives through glon_event_bytes.
  */
 
@@ -106,35 +107,22 @@ int main(void) {
 
     r0_s1_g1a_live_set_host_call(record_host_call, 0);
 
-    /* Start emits the Qwen connect intent, no HTML. */
+    /* Start emits the relay connect intent, no HTML and no language. */
     int out_len = 0;
     int rc = r0_s1_g1a_live_event("start", outbuf, (int)sizeof outbuf, &out_len);
     CHECK(rc == 0 && out_len == 0, "outbound: Start yields a host-call, no HTML");
-    CHECK(got_calls == 1 && strcmp(got_op, "listen-start") == 0 && strcmp(got_arg, "zh") == 0,
-          "outbound: host_call received listen-start/zh");
+    CHECK(got_calls == 1 && strcmp(got_op, "listen-start") == 0 && got_arg[0] == 0,
+          "outbound: host_call received listen-start with no language");
 
     /* Status event renders. */
     CHECK(dispatch_bytes("qwen-status", "Listening", outbuf, (int)sizeof outbuf) > 0
           && strstr(outbuf, "Listening") != 0, "event: qwen-status renders Listening");
 
-    /* Source deltas append, completed replaces (partial cleared). */
+    /* The capture console never shows source or translated text. */
     CHECK(dispatch_bytes("qwen-source-delta", "I'm speaking", outbuf, (int)sizeof outbuf) > 0
-          && strstr(outbuf, "I'm speaking") != 0, "event: source delta shown");
-    CHECK(dispatch_bytes("qwen-source-delta", " English", outbuf, (int)sizeof outbuf) > 0
-          && strstr(outbuf, "I'm speaking English") != 0, "event: source deltas append");
-    CHECK(dispatch_bytes("qwen-source-done", "I'm speaking English. ", outbuf, (int)sizeof outbuf) > 0
-          && strstr(outbuf, "I'm speaking English. ") != 0
-          && strstr(outbuf, "I'm speaking English. I'm speaking English") == 0,
-          "event: completed transcript replaces the streamed deltas");
-
-    /* Translation deltas append, done replaces. */
+          && strstr(outbuf, "I'm speaking") == 0, "event: source text is not displayed");
     CHECK(dispatch_bytes("qwen-text-delta", "我在说", outbuf, (int)sizeof outbuf) > 0
-          && strstr(outbuf, "我在说") != 0, "event: translation delta shown");
-    const char *final = "我在说英语。";
-    CHECK(dispatch_bytes("qwen-text-done", final, outbuf, (int)sizeof outbuf) > 0
-          && strstr(outbuf, final) != 0
-          && strstr(outbuf, "我在说英语。我在说英语。") == 0,
-          "event: final translation replaces the deltas");
+          && strstr(outbuf, "我在说") == 0, "event: translation text is not displayed");
 
     /* Error event renders. */
     CHECK(dispatch_bytes("qwen-error", "401 InvalidApiKey", outbuf, (int)sizeof outbuf) > 0
@@ -147,7 +135,7 @@ int main(void) {
     CHECK(got_calls == 2 && strcmp(got_op, "listen-stop") == 0 && got_arg[0] == 0,
           "outbound: host_call received listen-stop");
 
-    /* The raw >200-byte inbound path is still exercised. */
+    /* The raw >200-byte inbound path is still exercised (through the error line). */
     static char longbuf[16384];
     int len = 0;
     const char *base =
@@ -161,7 +149,7 @@ int main(void) {
     }
     longbuf[len] = 0;
     CHECK(len > 200, "inbound: payload exceeds the old 200-byte value cap");
-    CHECK(dispatch_bytes("qwen-text-done", longbuf, outbuf, (int)sizeof outbuf) > 0
+    CHECK(dispatch_bytes("qwen-error", longbuf, outbuf, (int)sizeof outbuf) > 0
           && strstr(outbuf, longbuf) != 0,
           "inbound: glon_event_bytes carries the full >200-byte UTF-8 payload");
 

@@ -1,33 +1,31 @@
-;; demo/shop/live.glon -- the smallest text Live Translate application.
+;; demo/shop/live.glon -- the Live Translate microphone capture application.
 ;;
-;; Glon owns the application: what the source and translation text mean, how
-;; deltas accumulate, when a completed utterance replaces them, and what the
-;; page shows.  JavaScript (demo/shop/qwen-client.js + live-host.js) owns only
-;; the Qwen WebSocket/wire mechanics.
+;; Glon owns the control semantics of the capture appliance: Start / Stop and
+;; the status / error line.  JavaScript (demo/shop/qwen-client.js +
+;; live-host.js) owns only the microphone, the relay WebSocket and the Qwen
+;; wire mechanics.
+;;
+;; This page is capture-only.  One microphone stream is fanned out by the relay
+;; to the English and Chinese output sessions; audience devices display the
+;; translation separately.  No source or translated text is shown here, and the
+;; page never names a translation language.
 ;;
 ;; Semantic intents sent to the host (host_call).  No audio, base64, WebSocket
 ;; or Qwen JSON ever appears at this layer:
-;;   listen-start <language>   start microphone + authenticated Qwen session
-;;   listen-stop  <ignored>    stop it
+;;   listen-start <ignored>   start microphone + relay connection
+;;   listen-stop  <ignored>   stop it
 ;;
 ;; Events returned by the host (glon_event_bytes):
-;;   qwen-status        status line (Listening/Stopped)
-;;   qwen-source-delta  incremental source transcription (append)
-;;   qwen-source-done   completed utterance (append to final, clear partial)
-;;   qwen-text-delta    incremental translation (append)
-;;   qwen-text-done     final translation (replace)
+;;   qwen-status        status line (Starting…/Listening/Stopped)
 ;;   qwen-error         error text
 ;;
-;; Needs common.glon (emit-*/heading/text/button/mk-string) and strings.glon
-;; (s/+).  Loaded only by the GLON_LIVE page and its focused tests.
+;; Needs common.glon (emit-*/button/mk-string) and strings.glon (s/=).  Loaded
+;; only by the GLON_LIVE page and its focused tests.
 
 [
 empty: ""
 
-status-text: "Stopped"
-source-final: empty
-source-live: empty
-translation-text: empty
+status-text: "Ready"
 error-text: none
 
 ;; Render a host-call request fragment: 1 op 0 arg.
@@ -41,21 +39,43 @@ emit-host-call: func [op arg] [
 ]
 
 live-view: [
-    heading [ emit-text "Live Translate" ]
-    text [ emit-text status-text ]
+    emit-text "<div class='console'>"
+    emit-text "<div class='brand'>LIVE TRANSLATE</div>"
 
-    subhead [ emit-text "Source" ]
-    text [ emit-text source-final emit-text source-live ]
+    emit-text "<div class='status'>"
+    either s/= status-text "Listening" [
+        emit-text "<span class='dot live'></span>"
+    ] [
+        emit-text "<span class='dot'></span>"
+    ]
+    emit-text "<span class='status-text'>"
+    emit-text status-text
+    emit-text "</span></div>"
 
-    subhead [ emit-text "Translation" ]
-    text [ emit-text translation-text ]
+    either s/= status-text "Listening" [
+        button [ emit-text "STOP" ] "stop"
+    ] [
+        button [ emit-text "START" ] "start"
+    ]
+
+    emit-text "<div class='hint'>"
+    either s/= status-text "Listening" [
+        emit-text "Translation active"
+    ] [
+        emit-text "Microphone idle"
+    ]
+    emit-text "</div>"
+
+    emit-text "<div class='meter'><span id='mic-level'></span></div>"
 
     either error-text [
-        text [ emit-text "Error: " emit-text error-text ]
+        emit-text "<div class='error'>"
+        emit-text error-text
+        emit-text "</div>"
     ] [ none ]
 
-    button [ emit-text "Start" ] "start"
-    button [ emit-text "Stop" ] "stop"
+    emit-text "<div class='foot'>Glon</div>"
+    emit-text "</div>"
 ]
 
 render-live: func [] [ emit-clear do live-view emit-finish ]
@@ -63,7 +83,7 @@ render-current: func [] [ render-live ]
 
 do-event: [
     either = current-event 'start [
-        emit-host-call "listen-start" "zh"
+        emit-host-call "listen-start" ""
     ] [
         either = current-event 'stop [
             emit-host-call "listen-stop" ""
@@ -73,32 +93,12 @@ do-event: [
                 error-text: none
                 render-current
             ] [
-                either = current-event 'qwen-source-delta [
-                    source-live: s/+ source-live current-value
+                either = current-event 'qwen-error [
+                    error-text: current-value
+                    status-text: "Error"
                     render-current
                 ] [
-                    either = current-event 'qwen-source-done [
-                        source-final: s/+ source-final current-value
-                        source-live: empty
-                        render-current
-                    ] [
-                        either = current-event 'qwen-text-delta [
-                            translation-text: s/+ translation-text current-value
-                            render-current
-                        ] [
-                            either = current-event 'qwen-text-done [
-                                translation-text: current-value
-                                render-current
-                            ] [
-                                either = current-event 'qwen-error [
-                                    error-text: current-value
-                                    render-current
-                                ] [
-                                    render-current
-                                ]
-                            ]
-                        ]
-                    ]
+                    render-current
                 ]
             ]
         ]

@@ -29,12 +29,123 @@ def main() -> None:
     # own outer [ ... ].
     common_block = "[ " + common + " ]"
 
+    style = """
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: #f4f4f5;
+    color: #18181b;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+.console {
+    width: min(92vw, 380px);
+    padding: 32px 28px 22px;
+    background: #ffffff;
+    border: 1px solid #e4e4e7;
+    border-radius: 18px;
+    box-shadow: 0 12px 40px rgba(24, 24, 27, 0.08);
+    text-align: center;
+}
+.brand {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    color: #52525b;
+}
+.status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    margin: 22px 0 24px;
+    font-size: 17px;
+    color: #3f3f46;
+}
+.dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #a1a1aa;
+    transition: background 0.2s ease;
+}
+.dot.live {
+    background: #dc2626;
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45);
+    animation: pulse 1.6s infinite;
+}
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
+    70% { box-shadow: 0 0 0 9px rgba(220, 38, 38, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
+.btn {
+    appearance: none;
+    width: 100%;
+    padding: 16px 20px;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: #ffffff;
+    background: #27272a;
+    border: 0;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.05s ease;
+}
+.btn:hover { background: #3f3f46; }
+.btn:active { transform: translateY(1px); }
+#app[data-state="listening"] .btn { background: #dc2626; }
+#app[data-state="listening"] .btn:hover { background: #b91c1c; }
+.hint {
+    margin-top: 14px;
+    min-height: 18px;
+    font-size: 13px;
+    color: #71717a;
+}
+.meter {
+    height: 4px;
+    margin: 16px 0 4px;
+    background: #e4e4e7;
+    border-radius: 999px;
+    overflow: hidden;
+}
+.meter > span {
+    display: block;
+    width: 0%;
+    height: 100%;
+    background: #dc2626;
+    border-radius: 999px;
+    transition: width 0.08s linear;
+}
+.error {
+    margin-top: 14px;
+    font-size: 13px;
+    color: #b91c1c;
+    overflow-wrap: anywhere;
+}
+.foot {
+    margin-top: 20px;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #a1a1aa;
+}
+"""
+
     page = f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Glon Live Translate boundary probe</title>
+<meta name="theme-color" content="#dc2626">
+<title>Live Translate</title>
+<style>{style}</style>
 </head>
 <body>
 <div id="app" data-glon-id="1"></div>
