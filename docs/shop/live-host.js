@@ -13,8 +13,10 @@
  * Relay URL: set window.LIVE_QWEN_WS_URL before this script runs, or open
  * live.html?relay=wss://localhost:8000/audio.  The relay is the proven
  * live-translate operator server (operator/server.py), which adds
- * Authorization: Bearer $DASHSCOPE_API_KEY and starts an English -> zh Qwen
- * session on connect.  A browser cannot set that header itself.
+ * Authorization: Bearer $DASHSCOPE_API_KEY and opens the permanent target=zh
+ * and target=en Qwen sessions.  The microphone page is capture-only: the relay
+ * fans the same PCM out to both sessions and audience devices display the
+ * translation.  A browser cannot set that header itself.
  */
 (function () {
   "use strict";
@@ -28,6 +30,7 @@
   var context = null;
   var sourceNode = null;
   var processor = null;
+  var failed = false;
 
   function view() {
     return new Uint8Array(ex.memory.buffer);
@@ -109,6 +112,23 @@
     return buffer;
   }
 
+  function updateMeter(input) {
+    var el = document.getElementById("mic-level");
+    if (!el) return;
+    var sum = 0;
+    for (var i = 0; i < input.length; i++) sum += input[i] * input[i];
+    var rms = Math.sqrt(sum / input.length);
+    var pct = Math.round(rms * 320);
+    if (pct > 100) pct = 100;
+    if (pct < 0) pct = 0;
+    el.style.width = pct + "%";
+  }
+
+  function clearMeter() {
+    var el = document.getElementById("mic-level");
+    if (el) el.style.width = "0%";
+  }
+
   function startMicrophone() {
     return navigator.mediaDevices.getUserMedia({
       audio: {
@@ -137,6 +157,7 @@
         var input = event.inputBuffer.getChannelData(0);
         var pcm = floatToPCM16(downsampleTo16k(input, inputRate));
         qwen.sendAudio(pcm);
+        updateMeter(input);
       };
     });
   }
@@ -159,6 +180,7 @@
       try { context.close(); } catch (e) {}
       context = null;
     }
+    clearMeter();
   }
 
   /* ---- semantic intents (Glon -> device layer) -------------------------- */
@@ -172,27 +194,51 @@
     return null;
   }
 
-  function startListening(language) {
+  function setStatus(state, text) {
+    var app = document.getElementById("app");
+    if (app) app.setAttribute("data-state", state);
+    deliver("qwen-status", text);
+  }
+
+  function startListening() {
     if (qwen) return;
 
     var url = relayUrl();
     if (!url) {
-      deliver("qwen-error",
-        "No authenticated relay configured. A browser WebSocket cannot set " +
-        "Authorization: Bearer, so run the proven live-translate relay and " +
-        "open live.html?relay=wss://<relay>/audio (or set " +
-        "window.LIVE_QWEN_WS_URL).");
+      console.error("live-host.js: no relay URL; set window.LIVE_QWEN_WS_URL or ?relay=");
+      setStatus("error", "Error");
+      deliver("qwen-error", "Relay not configured");
       return;
     }
 
-    deliver("qwen-status", "Starting " + (language || "zh") + "…");
+    setStatus("starting", "Starting…");
+    failed = false;
 
     qwen = QwenClient.create({
-      onEvent: function (token, text) { deliver(token, text); },
+      onEvent: function (token, text) {
+        if (token === "qwen-status") {
+          /* The relay names its internal target languages; this capture-only
+           * page never shows them.  Surface only a clean terminal stop. */
+          if (/stopped/i.test(text) && !failed) setStatus("stopped", "Stopped");
+          return;
+        }
+        if (token === "qwen-error") {
+          failed = true;
+          setStatus("error", "Error");
+          deliver(token, text);
+          return;
+        }
+        deliver(token, text);
+      },
       onOpen: function () {
-        startMicrophone().catch(function (err) {
-          deliver("qwen-error", "microphone: " + (err && err.message ? err.message : err));
+        startMicrophone().then(function () {
+          setStatus("listening", "Listening");
+        }).catch(function (err) {
+          console.error("live-host.js: microphone error", err);
+          failed = true;
           stopListening();
+          setStatus("error", "Error");
+          deliver("qwen-error", "Microphone unavailable");
         });
       }
     });
@@ -202,10 +248,11 @@
   function stopListening() {
     stopMicrophone();
     if (qwen) { qwen.close(); qwen = null; }
+    setStatus("stopped", "Stopped");
   }
 
   function onHostCall(op, arg) {
-    if (op === "listen-start" || op === "qwen-connect") { startListening(arg); return; }
+    if (op === "listen-start" || op === "qwen-connect") { startListening(); return; }
     if (op === "listen-stop" || op === "qwen-close") { stopListening(); return; }
     console.error("live-host.js: unknown host_call op '" + op + "' arg '" + arg + "'");
   }
