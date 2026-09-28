@@ -117,21 +117,6 @@ body {
 <body>
 <div id="app" data-glon-id="1"></div>
 <script type="application/glon" data-env="common">[ 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 mk-string: masm 1 [
     DUP LIT 16 MOD SUB LIT SCRATCH_B !
     LIT SCRATCH_B @ @ LIT SCRATCH_F !
@@ -148,15 +133,6 @@ mk-string: masm 1 [
   mk-done:
     LIT SCRATCH_C @ LIT T_STRING ADD ARITY 1 EXIT
 ]
-
-
-
-
-
-
-
-
-
 
 do [
     s/raw-string?: masm 1 [ LIT 16 MOD LIT T_STRING EQ LIT 16 MUL ARITY 1 EXIT ]
@@ -184,40 +160,10 @@ do [
     ]
 ]
 
-
 get: masm 1 [ CALL lookup ARITY 1 EXIT ]
-
-
-
-
 
 lambda: func [spec body] [ func :spec :body ]
 does:   func [body] [ lambda [] body ]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 emit-clear: masm [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
 emit-byte: masm 1 [
@@ -226,15 +172,6 @@ emit-byte: masm 1 [
     ARITY 0 EXIT
 ]
 emit-finish: masm [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
-
-
-
-
-
-
-
-
-
 
 vis-clear: masm [ LIT 0 LIT SCRATCH_D ! ARITY 0 EXIT ]
 vis-byte: masm 1 [
@@ -263,9 +200,6 @@ vis-digits: func [n] [
     either > n 9 [ vis-digits / n 10 ] [ none ]
     vis-byte + 48 - n * 10 / n 10
 ]
-
-
-
 
 vis-sp:  does [ vis-byte 32 ]
 vis-eol: does [ vis-byte 10 ]
@@ -306,13 +240,8 @@ vis-move: func [id x1 y1 x2 y2] [
     vis-eol
 ]
 
-
 block-len: masm 1 [ DUP LIT 16 MOD SUB @ LIT 16 MUL ARITY 1 EXIT ]
 block-at: masm 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ]
-
-
-
-
 
 select: func [rows key] [ select-at rows 0 block-len rows key ]
 select-at: func [rows i n key] [
@@ -321,17 +250,11 @@ select-at: func [rows i n key] [
     ] [ none ]
 ]
 
-
 emit-int: func [n] [ either < n 0 [ emit-byte 45 emit-digits - 0 n ] [ emit-digits n ] ]
 emit-digits: func [n] [
     either > n 9 [ emit-digits / n 10 ] [ none ]
     emit-byte + 48 - n * 10 / n 10
 ]
-
-
-
-
-
 
 emit-text: masm 1 [
     DUP LIT 16 MOD SUB LIT SCRATCH_B !
@@ -348,11 +271,6 @@ emit-text: masm 1 [
   emit-text-done:
     ARITY 0 EXIT
 ]
-
-
-
-
-
 
 h1-open:   "<h1>"
 h1-close:  "</h1>"
@@ -395,12 +313,6 @@ pre-close:  "</pre>"
 load-btn-open: "<button class='btn' data-glon-route='"
 load-btn-mid:  "' data-glon-load='"
 
-
-
-
-
-
-
 wrap: func [open close] [
     func [content] [ emit-text open do content emit-text close ]
 ]
@@ -415,8 +327,6 @@ link:    func [label route] [
     emit-text btn-open emit-text route emit-text btn-mid emit-text label emit-text btn-close
     emit-text nav-close
 ]
-
-
 
 load-link: func [label route path] [
     emit-text nav-open
@@ -434,16 +344,9 @@ value-button: func [content event value] [
     do content emit-text btn-close
 ]
 
-
-
 input:   func [name] [
     emit-text input-open emit-text name emit-text btn-mid
 ]
-
-
-
-
-
 
 products: func [items] [ emit-text catalog-open each-product items emit-text catalog-close ]
 each-product: func [items] [ emit-product-at items 0 block-len items ]
@@ -457,29 +360,7 @@ emit-product-at: func [items i n] [
     ] [ none ]
 ] ]</script>
 <script type="application/glon" data-env="strings">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 [
-
-
-
 
 s/raw-cat: masm 2 [
     LIT SCRATCH_B ! LIT SCRATCH_A !
@@ -508,9 +389,7 @@ s/raw-cat: masm 2 [
     ARITY 1 EXIT
 ]
 
-
 s/raw-length: masm 1 [ LIT T_STRING SUB @ LIT 16 MUL ARITY 1 EXIT ]
-
 
 s/raw-print: masm 1 [
     LIT T_STRING SUB LIT SCRATCH_A !
@@ -544,35 +423,11 @@ s/print: func [a] [
 
 ]</script>
 <script type="application/glon" data-env="live">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 [
 empty: ""
 
 status-text: "Ready"
 error-text: none
-
 
 emit-host-call: func [op arg] [
     emit-clear
