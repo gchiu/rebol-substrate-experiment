@@ -16,7 +16,20 @@ HERE = pathlib.Path(__file__).resolve().parent
 
 
 def strip_comments(text: str) -> str:
-    return "\n".join(line.split(";;", 1)[0] for line in text.splitlines())
+    """Strip ``;;`` comments, then collapse blank-line runs to a single blank.
+
+    Comment-only Glon lines become blank; leaving their newlines in place made
+    the generated page carry long vertical gaps.  Non-blank source lines and
+    their order are preserved exactly.
+    """
+    out = []
+    for line in text.splitlines():
+        code = line.split(";;", 1)[0]
+        if code.strip():
+            out.append(code)
+        elif not out or out[-1] != "":
+            out.append("")
+    return "\n".join(out)
 
 
 def main() -> None:
