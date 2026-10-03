@@ -1,0 +1,69 @@
+;; desktop/app.glon -- the native desktop Glon application (the server side).
+;;
+;; This is the application.  It is the CONTROL PLANE: it decides which local
+;; file a browser Glon View is asking for and how large replies are produced.
+;; The host (desktop/glon_desktop.c) only moves bytes.
+;;
+;; Two channels:
+;;
+;;   control channel (small values, through Glon's value heap):
+;;     outbound intents are rendered as request fragments (byte 1, op, byte 0,
+;;     arg) and recognised by the browser-agnostic r0_s1_g1a_live dispatcher:
+;;       fs-read <path>          native filesystem primitive
+;;       http-respond <bytes>    the response body (small; Glon-bounded)
+;;       serve-file <path>       stream this file on the DATA PLANE (host-side)
+;;     inbound events:
+;;       native-read     current-value = a logical key from the browser View
+;;       fs-read-reply   current-value = the bytes the filesystem returned
+;;       resource-path   current-value = a logical resource name; Glon maps it
+;;                       to a local path and asks the host to stream it.
+;;
+;;   data channel (arbitrary bytes, NEVER through a Glon value):
+;;     the host opens the path Glon chose and copies it straight to the socket.
+;;
+;; Requires prelude.glon (mk-string, str-eq, get, does) and emit.glon.
+
+[
+demo-path: "desktop/demo.txt"
+big-path:  "desktop/big.txt"
+
+host-request: func [op arg] [
+    emit-clear
+    emit-byte 1
+    emit-text op
+    emit-byte 0
+    emit-text arg
+    emit-finish
+]
+
+;; Small control-plane lookup. ONLY explicitly authorised logical names resolve
+;; to a filesystem path; everything else (including any path-like or traversal
+;; string the browser might send) yields the empty string, which the host
+;; rejects without reading. The logical-name -> path mapping exists ONLY here.
+map-path: func [key] [
+    either str-eq key "greeting" [ demo-path ] [ "" ]
+]
+
+;; Bulk resource lookup (data plane). Only known logical names resolve; an
+;; unknown name yields the empty string, which the host rejects. The host never
+;; sees the logical name -- only the path Glon decided on.
+map-resource: func [name] [
+    either str-eq name "large" [ big-path ] [ "" ]
+]
+
+do-event: [
+    either = current-event 'native-read [
+        host-request "fs-read" map-path current-value
+    ] [
+        either = current-event 'fs-read-reply [
+            host-request "http-respond" current-value
+        ] [
+            either = current-event 'resource-path [
+                host-request "serve-file" map-resource current-value
+            ] [ none ]
+        ]
+    ]
+]
+
+route: [ none ]
+]

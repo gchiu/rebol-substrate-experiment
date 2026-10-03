@@ -1,0 +1,8 @@
+Hello from the native Glon filesystem.
+
+This is the small control-channel value. It travels through Glon's
+managed value heap, so it is deliberately small; bulk bytes use the
+resource channel instead.
+
+control-channel payload, 64 bytes of filler: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+END-OF-CONTROL-FILE

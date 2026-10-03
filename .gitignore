@@ -4,6 +4,17 @@ glon
 glon-lib/
 glon-live-native-test
 demo/shop/glon-live.wasm
+demo/shop/glon.wasm
 *.o
+*.obj
 jupyter/host/glon-kernel-host
 __pycache__/
+
+# desktop proof (generated)
+glon-desktop
+glon-desktop.exe
+desktop-test
+desktop/glon.wasm
+desktop/prelude.glon
+desktop/strings.glon
+desktop/big.txt

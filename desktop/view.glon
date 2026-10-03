@@ -1,0 +1,75 @@
+;; desktop/view.glon -- the browser/WASM Glon View of the desktop application.
+;;
+;; This is Glon, running in the browser.  It owns the View: it decides the
+;; logical resource and renders the DOM.  It does NOT carry bytes.
+;;
+;;   control channel: a small file is fetched by the browser host and handed
+;;                    back to Glon through the existing event boundary (the D5
+;;                    proof); the bytes DO pass through Glon's value heap.
+;;   resource channel: for bulk bytes Glon only picks a logical name and emits
+;;                    a DOM element whose src/href points at /resource?name=...
+;;                    The browser fetches it directly; the native host streams
+;;                    the file from disk to the socket.  The bytes never enter
+;;                    Glon or JavaScript.
+;;
+;; Requires prelude.glon (mk-string) and emit.glon.
+
+[
+file-content: none
+selected: none
+
+home-view: [
+    emit-clear
+    emit-text "<h1>Glon Desktop</h1>"
+    emit-text "<p>Native Glon is the application. This page is Glon's View.</p>"
+
+    emit-text "<h2>Control channel</h2>"
+    emit-text "<p>A small value travels through Glon's value heap (bounded by the frozen S1 memory).</p>"
+    emit-text "<button data-glon-native='greeting' data-glon-event='native-reply'>Read a small file through native Glon</button>"
+    either file-content [
+        emit-text "<h3>Round trip complete</h3>"
+        emit-text "<p>filesystem &rarr; native Glon &rarr; browser Glon &rarr; DOM</p>"
+        emit-text "<pre>"
+        emit-text file-content
+        emit-text "</pre>"
+    ] [ none ]
+
+    emit-text "<h2>Resource channel</h2>"
+    emit-text "<p>Bulk bytes are streamed by the native host; Glon only chooses the logical resource.</p>"
+    emit-text "<button data-glon-event='select-large'>Select the large resource</button>"
+    emit-text "<button data-glon-event='select-none'>Clear</button>"
+    either selected [
+        emit-text "<p>Browser Glon selected the logical resource <code>"
+        emit-text selected
+        emit-text "</code>. The browser consumes it directly from the native host; the bytes never pass through Glon's value heap.</p>"
+        emit-text "<iframe class='big' src='/resource?name="
+        emit-text selected
+        emit-text "'></iframe>"
+        emit-text "<p><a href='/resource?name="
+        emit-text selected
+        emit-text "' download='big.txt'>Download the large file</a></p>"
+    ] [ none ]
+    emit-finish
+]
+
+render-home: func [] [ do home-view ]
+
+route: [ render-home ]
+
+do-event: [
+    either = current-event 'native-reply [
+        file-content: current-value
+        render-home
+    ] [
+        either = current-event 'select-large [
+            selected: "large"
+            render-home
+        ] [
+            either = current-event 'select-none [
+                selected: none
+                render-home
+            ] [ render-home ]
+        ]
+    ]
+]
+]

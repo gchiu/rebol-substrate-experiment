@@ -1,0 +1,35 @@
+;; desktop/emit.glon -- shared byte-output primitives for the desktop proof.
+;;
+;; Loaded by BOTH ends: the native application host (C, before app.glon) and the
+;; browser View (browser-host.js, before view.glon).  These are ordinary Glon
+;; RAW helpers that write bytes into the existing G1_OUT byte-list block; they
+;; add no S1 primitive and no native id.  They are the same mechanism the G1A
+;; view dialect uses (demo/shop/common.glon), reduced to what this proof needs.
+
+[
+emit-clear: masm [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
+
+emit-byte: masm 1 [
+    LIT SCRATCH_E @ LIT G1_OUT_DATA ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    ARITY 0 EXIT
+]
+
+emit-finish: masm [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
+
+emit-text: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_A !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  emit-text-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH emit-text-done
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL
+    LIT G1_OUT_DATA LIT SCRATCH_E @ ADD
+    !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH emit-text-loop
+  emit-text-done:
+    ARITY 0 EXIT
+]
+]
