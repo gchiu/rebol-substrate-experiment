@@ -20,7 +20,7 @@ if (-not (Test-Path (Join-Path $fx "big.bin"))) {
 }
 
 $fix = Start-Process -FilePath $py -ArgumentList @("-m","http.server","$fxport","--bind","127.0.0.1","--directory",$fx) -PassThru -WindowStyle Hidden
-$h = Start-Process -FilePath $exe -WorkingDirectory $root -ArgumentList @("--app",$app,"--no-browser","--port","$port") -PassThru -RedirectStandardOutput "$root\_win_host.out" -RedirectStandardError "$root\_win_host.err" -WindowStyle Hidden
+$h = Start-Process -FilePath $exe -WorkingDirectory $root -ArgumentList @("--install","org.glon.fetch","--no-browser","--port","$port") -PassThru -RedirectStandardOutput "$root\_win_host.out" -RedirectStandardError "$root\_win_host.err" -WindowStyle Hidden
 $ready = $false
 for ($i = 0; $i -lt 50; $i++) {
     Start-Sleep -Milliseconds 200
@@ -32,7 +32,7 @@ $perms = (Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$port/api/pe
 if ($perms -match "effective:.*process/spawn") { Write-Host "  FAIL: effective permissions include process/spawn"; $fail = 1 }
 else { Write-Host "  ok: effective permissions EXCLUDE process/spawn (brokered service)" }
 
-$dl = Join-Path $root "desktop\appdata\glon-fetch\downloads\win.bin"
+$dl = Join-Path $root "desktop\appdata\org.glon.fetch\downloads\win.bin"
 Remove-Item -Force $dl -ErrorAction SilentlyContinue
 $body = [System.Text.Encoding]::UTF8.GetBytes("http://127.0.0.1:$fxport/big.bin`nwin.bin")
 Write-Host "fetching 16 MB fixture through the app..."

@@ -346,6 +346,14 @@ desktop-app-test: glon-desktop
 desktop-fetch-test: glon-desktop
 	sh apps/glon-fetch/download_test.sh
 
+# D8: per-application identity + per-app authority.
+desktop-d8-test: glon-desktop
+	sh apps/d8_authority_test.sh
+
+# D9: semantic permission contracts + introspection.
+desktop-d9-test: glon-desktop
+	sh apps/d9_semantics_test.sh
+
 # ---- Experimental GLON_LIVE host boundary (native focused test) -------------
 # Builds only the live layer + runtime; does not touch the s1 test binary or
 # any WASM build. Run: make glon-live-native-test && ./glon-live-native-test
@@ -394,4 +402,4 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test

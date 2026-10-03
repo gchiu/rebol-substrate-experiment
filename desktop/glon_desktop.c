@@ -36,22 +36,55 @@ static int g_app_mode;
 static glon_app_t g_app;
 static char g_app_dir[1024];
 static char g_data_dir[1024];
-static char g_grants[GLON_APP_LIST_MAX][GLON_APP_NAME_MAX];
-static int  g_ngrants;
+static glon_grants_t g_grant_store;
+static char g_granted[GLON_APP_LIST_MAX][GLON_APP_NAME_MAX];
+static int  g_ngranted;
 static char g_eff[GLON_APP_LIST_MAX][GLON_APP_NAME_MAX];
 static int  g_neff;
 static char g_last_dest[2048];
 static int  g_last_dest_set;
 
-/* What this host can implement. Capability, not permission.
- * process/spawn is broad arbitrary child-process authority; it is an optional
- * privileged capability and is NOT required by the brokered fetch service. */
-static const char *const HOST_CAPS[] = {
-    "net/connect", "file/app-write", "process/spawn", "view/open", "open/folder", NULL
+/* The host's ACTUAL implementations, registered here, independent of the
+ * capability catalogue.  The catalogue supplies canonical SEMANTICS; this list
+ * supplies IMPLEMENTATION.  Effective authority requires BOTH:
+ *
+ *     host implementation  INTERSECT  catalogue-known semantics
+ *       INTERSECT  manifest request  INTERSECT  exact per-app grant
+ *
+ * A catalogue entry alone does not make a capability implemented; a host
+ * implementation without trusted catalogue metadata cannot be explained and
+ * therefore fails closed. */
+static const char *const HOST_IMPL[] = {
+    "net/connect", "file/app-write", "open/folder", "process/spawn", "view/open", NULL
 };
+
+static glon_catalogue_t g_catalogue;
+static const char *g_impl[GLON_CAT_MAX + 1];   /* implemented AND catalogue-known */
+
+static int host_implements(const char *cap) {
+    for (int i = 0; HOST_IMPL[i]; i++) if (strcmp(HOST_IMPL[i], cap) == 0) return 1;
+    return 0;
+}
+
+static const glon_capability_t *catalogue_known(const char *cap) {
+    return glon_catalogue_find(&g_catalogue, cap);
+}
+
+static void build_impl(void) {
+    int n = 0;
+    for (int i = 0; HOST_IMPL[i] && n < GLON_CAT_MAX; i++)
+        if (catalogue_known(HOST_IMPL[i]))
+            g_impl[n++] = HOST_IMPL[i];
+    g_impl[n] = NULL;
+}
 
 static int effective_has(const char *cap) {
     for (int i = 0; i < g_neff; i++) if (!strcmp(g_eff[i], cap)) return 1;
+    return 0;
+}
+
+static int granted_has(const char *cap) {
+    for (int i = 0; i < g_ngranted; i++) if (!strcmp(g_granted[i], cap)) return 1;
     return 0;
 }
 
@@ -393,16 +426,47 @@ static void spawn_progress_cb(const char *record, int len, void *user) {
 }
 
 static void handle_api_permissions(glon_socket fd) {
-    char buf[4096];
+    char buf[8192];
     int n = 0;
-    n += snprintf(buf + n, sizeof buf - (size_t)n, "package=%s version=%s\n", g_app.pkg_name, g_app.version);
+    n += snprintf(buf + n, sizeof buf - (size_t)n, "app-id: %s\n", g_app.app_id);
+    n += snprintf(buf + n, sizeof buf - (size_t)n, "name: %s\n", g_app.pkg_name);
+    n += snprintf(buf + n, sizeof buf - (size_t)n, "version: %s\n", g_app.version);
     n += snprintf(buf + n, sizeof buf - (size_t)n, "modules:");
     for (int i = 0; i < g_app.nmodules; i++) n += snprintf(buf + n, sizeof buf - (size_t)n, " %s", g_app.modules[i]);
     n += snprintf(buf + n, sizeof buf - (size_t)n, "\nrequested:");
     for (int i = 0; i < g_app.npermissions; i++) n += snprintf(buf + n, sizeof buf - (size_t)n, " %s", g_app.permissions[i]);
+    n += snprintf(buf + n, sizeof buf - (size_t)n, "\ngranted:");
+    for (int i = 0; i < g_ngranted; i++) n += snprintf(buf + n, sizeof buf - (size_t)n, " %s", g_granted[i]);
     n += snprintf(buf + n, sizeof buf - (size_t)n, "\neffective:");
     for (int i = 0; i < g_neff; i++) n += snprintf(buf + n, sizeof buf - (size_t)n, " %s", g_eff[i]);
     n += snprintf(buf + n, sizeof buf - (size_t)n, "\n");
+
+    /* Per-permission canonical semantics (trusted) + purpose (app claim) +
+     * local policy (granted/effective). */
+    for (int i = 0; i < g_app.npermissions; i++) {
+        const char *perm = g_app.permissions[i];
+        const glon_capability_t *c = glon_catalogue_find(&g_catalogue, perm);
+        const char *purpose = glon_app_purpose(&g_app, perm);
+        n += snprintf(buf + n, sizeof buf - (size_t)n, "permission:\n");
+        n += snprintf(buf + n, sizeof buf - (size_t)n, "  id: %s\n", perm);
+        if (c) {
+            n += snprintf(buf + n, sizeof buf - (size_t)n, "  label: %s\n", c->label);
+            n += snprintf(buf + n, sizeof buf - (size_t)n, "  class: %s\n", c->klass);
+            n += snprintf(buf + n, sizeof buf - (size_t)n, "  risk: %s\n", c->risk);
+            n += snprintf(buf + n, sizeof buf - (size_t)n, "  allows: %s\n", c->allows);
+            n += snprintf(buf + n, sizeof buf - (size_t)n, "  known: yes\n");
+        } else {
+            n += snprintf(buf + n, sizeof buf - (size_t)n, "  label: (unknown capability)\n");
+            n += snprintf(buf + n, sizeof buf - (size_t)n, "  class: unknown\n");
+            n += snprintf(buf + n, sizeof buf - (size_t)n, "  risk: unknown\n");
+            n += snprintf(buf + n, sizeof buf - (size_t)n, "  allows: \n");
+            n += snprintf(buf + n, sizeof buf - (size_t)n, "  known: no\n");
+        }
+        n += snprintf(buf + n, sizeof buf - (size_t)n, "  implemented: %s\n", host_implements(perm) ? "yes" : "no");
+        n += snprintf(buf + n, sizeof buf - (size_t)n, "  purpose: %s\n", purpose ? purpose : "");
+        n += snprintf(buf + n, sizeof buf - (size_t)n, "  granted: %s\n", granted_has(perm) ? "yes" : "no");
+        n += snprintf(buf + n, sizeof buf - (size_t)n, "  effective: %s\n", effective_has(perm) ? "yes" : "no");
+    }
     send_http(fd, 200, "text/plain; charset=utf-8", buf, n);
 }
 
@@ -433,7 +497,7 @@ static void handle_api_fetch(glon_socket fd, const char *body) {
     }
 
     char dest[2048];
-    if (glon_app_resolve_write(g_data_dir, name, dest, (int)sizeof dest) != 0) {
+    if (glon_app_resolve_write(g_data_dir, g_app.app_id, name, dest, (int)sizeof dest) != 0) {
         fprintf(stderr, "glon-desktop: rejected destination name '%s'\n", name);
         send_http(fd, 400, "text/plain", "bad destination", 15);
         return;
@@ -573,6 +637,9 @@ static void handle_connection(glon_socket fd) {
 
 int main(int argc, char **argv) {
     const char *core_app = "desktop/app.glon";
+    const char *install_id = NULL;
+    const char *install_conf = "desktop/install.conf";
+    const char *cap_conf = "desktop/capabilities.conf";
     const char *manifest = NULL;
     const char *grants = "desktop/grants.conf";
     int port = 0;
@@ -583,10 +650,9 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--port") && i + 1 < argc) port = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--no-browser")) no_browser = 1;
-        else if (!strcmp(argv[i], "--app") && i + 1 < argc) {
-            g_app_mode = 1;
-            snprintf(g_app_dir, sizeof g_app_dir, "%s", argv[++i]);
-        }
+        else if (!strcmp(argv[i], "--install") && i + 1 < argc) { install_id = argv[++i]; g_app_mode = 1; }
+        else if (!strcmp(argv[i], "--install-conf") && i + 1 < argc) install_conf = argv[++i];
+        else if (!strcmp(argv[i], "--capabilities") && i + 1 < argc) cap_conf = argv[++i];
         else if (!strcmp(argv[i], "--manifest") && i + 1 < argc) manifest = argv[++i];
         else if (!strcmp(argv[i], "--grants") && i + 1 < argc) grants = argv[++i];
         else if (!strcmp(argv[i], "--data") && i + 1 < argc) snprintf(g_data_dir, sizeof g_data_dir, "%s", argv[++i]);
@@ -602,24 +668,71 @@ int main(int argc, char **argv) {
         M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
 
     if (g_app_mode) {
-        char mpath[1200];
+        /* 1. Trusted installation state binds identity to an installed package.
+         *    The command line names an id, never a filesystem path. */
+        if (glon_install_resolve(install_conf, install_id, g_app_dir, (int)sizeof g_app_dir) != 0) {
+            fprintf(stderr, "glon-desktop: application id '%s' is not installed (registry: %s)\n",
+                    install_id, install_conf);
+            return 2;
+        }
+        /* 2. The manifest DECLARES identity; it must match the installed
+         *    identity.  A manifest may never authenticate itself. */
+        char mpath[1400];
         if (!manifest) { snprintf(mpath, sizeof mpath, "%s/glon-app.manifest", g_app_dir); manifest = mpath; }
-        if (glon_app_manifest_load(manifest, &g_app) != 0) {
+        int mrc = glon_app_manifest_load(manifest, &g_app);
+        if (mrc == -2) {
+            fprintf(stderr, "glon-desktop: manifest '%s' has a missing or malformed application id\n", manifest);
+            return 2;
+        }
+        if (mrc != 0) {
             fprintf(stderr, "glon-desktop: cannot read manifest '%s'\n", manifest);
             return 2;
         }
-        g_ngrants = glon_app_load_grants(grants, g_grants);
-        if (g_ngrants < 0) g_ngrants = 0;
-        g_neff = glon_app_effective(&g_app, g_grants, g_ngrants, HOST_CAPS, g_eff);
+        if (strcmp(g_app.app_id, install_id) != 0) {
+            fprintf(stderr, "glon-desktop: manifest identity '%s' does not match installed identity '%s'"
+                            " (a manifest may not authenticate itself)\n", g_app.app_id, install_id);
+            return 2;
+        }
+        /* 3. Trusted capability catalogue: canonical semantics and the set of
+         *    capabilities the host implements.  Unknown ids fail closed. */
+        if (glon_catalogue_load(cap_conf, &g_catalogue) != 0) {
+            fprintf(stderr, "glon-desktop: cannot read capability catalogue '%s'\n", cap_conf);
+            return 2;
+        }
+        build_impl();
+        for (int i = 0; i < g_app.npermissions; i++)
+            if (!catalogue_known(g_app.permissions[i]))
+                fprintf(stderr, "glon-desktop: unknown capability: %s\n", g_app.permissions[i]);
+        for (int i = 0; i < g_catalogue.ncaps; i++)
+            if (!host_implements(g_catalogue.caps[i].id))
+                fprintf(stderr, "glon-desktop: catalogue capability not implemented by host: %s\n",
+                        g_catalogue.caps[i].id);
+        for (int i = 0; HOST_IMPL[i]; i++)
+            if (!catalogue_known(HOST_IMPL[i]))
+                fprintf(stderr, "glon-desktop: host implementation without trusted catalogue metadata: %s (fail closed)\n",
+                        HOST_IMPL[i]);
+
+        /* 4. Authority is granted to the installed application id, exactly. */
+        if (glon_app_load_grants(grants, &g_grant_store) != 0) {
+            fprintf(stderr, "glon-desktop: cannot read grant store '%s'\n", grants);
+            return 2;
+        }
+        g_ngranted = glon_app_grants_for(&g_grant_store, install_id, g_granted);
+        if (g_ngranted > GLON_APP_LIST_MAX) g_ngranted = GLON_APP_LIST_MAX;
+        g_neff = glon_app_effective(&g_app, g_granted, g_ngranted, g_impl, g_eff);
         if (g_neff > GLON_APP_LIST_MAX) g_neff = GLON_APP_LIST_MAX;
         if (!*g_data_dir) snprintf(g_data_dir, sizeof g_data_dir, "desktop/appdata");
 
+        printf("glon-desktop: app-id %s\n", install_id);
         printf("glon-desktop: app '%s' %s\n", g_app.pkg_name, g_app.version);
         printf("glon-desktop: modules:");
         for (int i = 0; i < g_app.nmodules; i++) printf(" %s", g_app.modules[i]);
         printf("\n");
         printf("glon-desktop: requested permissions:");
         for (int i = 0; i < g_app.npermissions; i++) printf(" %s", g_app.permissions[i]);
+        printf("\n");
+        printf("glon-desktop: granted permissions:");
+        for (int i = 0; i < g_ngranted; i++) printf(" %s", g_granted[i]);
         printf("\n");
         printf("glon-desktop: EFFECTIVE permissions:");
         for (int i = 0; i < g_neff; i++) printf(" %s", g_eff[i]);
@@ -647,7 +760,7 @@ int main(int argc, char **argv) {
 
         glon_mkdirs(g_data_dir);
         char dl[1600];
-        snprintf(dl, sizeof dl, "%s/glon-fetch/downloads", g_data_dir);
+        snprintf(dl, sizeof dl, "%s/%s/downloads", g_data_dir, install_id);
         glon_mkdirs(dl);
     } else {
         const char *libs[8];

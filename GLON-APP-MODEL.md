@@ -143,6 +143,122 @@ If a required permission is unavailable, startup should fail cleanly with a usef
 
 Optional permissions may be supported later.
 
+### Application identity and per-app grants (D8)
+
+Permissions are granted to a **specific installed application identity**, not
+globally to "Glon applications".
+
+```text
+HOST IMPLEMENTS
+      ∩
+PLATFORM ALLOWS
+      ∩
+APPLICATION REQUESTS
+      ∩
+USER/POLICY GRANTS FOR THIS APP ID
+      =
+APPLICATION GETS
+```
+
+Rules:
+
+- Every packaged application has a **stable application id** (e.g.
+  `org.glon.fetch`).  It is mandatory and validated (simple reverse-DNS-like
+  grammar; exact, case-sensitive, no prefix/substring semantics).
+- The manifest **declares** its identity.  It may **never authenticate itself**.
+  Trusted host **installation state** binds an application id to an installed
+  package.  The host runs an app by installed id, and the manifest's declared id
+  must match the installed id or startup fails.
+- Trusted **grants are scoped by application id**, in a store outside every
+  package.  Exact `strcmp` matching only: no wildcards, no prefix/substring
+  matching, no global grants, no fallback.  Another application requesting the
+  same permission does not inherit another app's grant.
+- **Application name is display metadata, not authority identity.**
+- **Application version is not part of the D8 authority principal.**
+- App-local writable storage is derived from the application id
+  (`<data>/<app-id>/…`), not from a browser-supplied path; the id is validated
+  before being mapped to a path.
+- The manifest requests authority; trusted host state grants authority.
+
+Do not introduce signed packages or entitlement certificates yet.
+
+### Semantic permission contracts (D9)
+
+A permission must be:
+
+- **precise enough for the host to enforce**,
+- **understandable enough for a human to evaluate**,
+- **structured enough for an agent to reason about**.
+
+The canonical meaning of a capability is **trusted host/Glon metadata**, defined
+in a catalogue outside every application package (`desktop/capabilities.conf`).
+
+The catalogue describes **semantics only**; it does **not** make a capability
+implemented.  Effective authority requires the host to actually implement the
+capability **and** the catalogue to describe it:
+
+```text
+host implementation  INTERSECT  catalogue-known semantics
+  INTERSECT  manifest request  INTERSECT  exact per-app grant
+  = effective authority
+```
+
+A catalogue entry with no host implementation is never effective even if
+requested and granted; a host implementation with no trusted catalogue metadata
+fails closed because its meaning cannot be trusted.
+
+Each capability has canonical fields:
+
+```text
+id       the exact permission id
+label    human-readable description
+class    brokered-service | scoped | general | privileged
+risk     low | medium | high
+allows   the semantic action
+```
+
+Classes and risk are explanatory metadata. They are **not** an enforcement
+shortcut: the exact permission id still controls authority, and risk never
+overrides enforcement.
+
+An application may explain **why** it wants a permission:
+
+```glon
+permission: net/connect
+purpose:    net/connect Download URLs selected by the user
+```
+
+Canonical rule:
+
+```text
+capability semantics = trusted fact
+application purpose  = untrusted vendor claim
+grant                = user/policy/agent decision
+effective authority  = host enforcement
+```
+
+- The application may explain why it requests authority.  It may **not** define
+  what that authority means, and purpose text cannot alter
+  label/class/risk/allows.
+- A dishonest purpose is possible and changes nothing.
+- An **unknown capability fails closed**: it is never effective even if it
+  appears in the manifest, the grant store, or both.  The host reports
+  `unknown capability: <id>`.
+- `/api/permissions` exposes, per requested permission, the trusted canonical
+  fields, the application purpose, and local policy (`granted`/`effective`), so
+  a human or agent need not parse prose to discover canonical meaning.
+- The requested permission set is a data structure, so a future signed update
+  can be diffed into unchanged / added / removed permissions.
+
+The application may explain.  It may not define.  The host enforces.
+
+```text
+modules       -> functionality
+permissions   -> authority
+entitlements  -> licensing
+package       -> identity/integrity
+```
+
 ---
 
 ## 3. Package information

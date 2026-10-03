@@ -15,7 +15,7 @@ if [ ! -f "$fx/big.bin" ]; then
 fi
 python3 -m http.server 8795 --bind 127.0.0.1 --directory "$fx" >/tmp/glonfetch_fix.log 2>&1 &
 fix=$!
-"$bin" --app "$app" --no-browser --port 8828 >/tmp/glonfetch_host.out 2>/tmp/glonfetch_host.err &
+"$bin" --install org.glon.fetch --no-browser --port 8828 >/tmp/glonfetch_host.out 2>/tmp/glonfetch_host.err &
 h=$!
 trap 'kill "$fix" "$h" 2>/dev/null || true' EXIT INT TERM
 
@@ -33,12 +33,12 @@ else
     echo "  ok: effective permissions EXCLUDE process/spawn (brokered service)"
 fi
 
-rm -f desktop/appdata/glon-fetch/downloads/posix.bin
+rm -f desktop/appdata/org.glon.fetch/downloads/posix.bin
 out=$(curl -s --max-time 120 --data-binary "$(printf 'http://127.0.0.1:8795/big.bin\nposix.bin')" "http://127.0.0.1:8828/api/fetch")
 echo "$out" | tail -1
 fail=0
 echo "$out" | grep -q "DONE exit=0" && echo "  ok: streamed status reached DONE exit=0" || { echo "  FAIL: no DONE exit=0"; fail=1; }
-dl="desktop/appdata/glon-fetch/downloads/posix.bin"
+dl="desktop/appdata/org.glon.fetch/downloads/posix.bin"
 exp=$(sha256sum "$fx/big.bin" | cut -d' ' -f1)
 act=$(sha256sum "$dl" 2>/dev/null | cut -d' ' -f1)
 if [ "$exp" = "$act" ]; then

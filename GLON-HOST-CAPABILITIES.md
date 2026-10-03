@@ -505,6 +505,45 @@ Canonical rules:
 
 > **An entitlement can unlock functionality, but it can never manufacture host authority.**
 
+### Application identity and per-app grants
+
+Permissions are granted to a **stable application identity**, not globally.
+
+- A manifest **declares** an application id.  It never authenticates itself.
+- Trusted host **installation state** binds an application id to an installed
+  package; the manifest's declared id must match the installed id.
+- Trusted **grants are scoped to an exact application id** (no wildcard, prefix,
+  substring or global fallback).  Another application requesting the same
+  permission does not inherit another app's grant.
+- Application **name** is display metadata and has no authority meaning.
+  Application **version** is not part of the authority principal.
+- App-local storage is derived from the application id, never from a
+  browser-supplied path.
+
+> **Authority follows identity, not manifest text.**
+
+### Semantic permission contracts (D9)
+
+A trusted **capability catalogue** (`desktop/capabilities.conf`, outside every
+package) defines the canonical meaning of each capability: `id`, `label`,
+`class` (`brokered-service`/`scoped`/`general`/`privileged`), `risk`
+(`low`/`medium`/`high`) and `allows` (semantic action).  `process/spawn` is
+`privileged` / `high`.  Classes and risk are explanatory only; the exact id
+governs enforcement.
+
+The catalogue is **semantics only**, separate from host **implementation**:
+effective authority requires the host to actually implement the capability
+**and** the catalogue to describe it.  A catalogue entry with no host
+implementation is never effective even if requested and granted; a host
+implementation with no trusted catalogue metadata fails closed.
+
+An application manifest may add a `purpose: <permission-id> <text>` explanation.
+It is an **untrusted vendor claim**: it cannot change canonical semantics, and a
+dishonest purpose changes nothing.  An **unknown capability fails closed** even
+if it is both requested and granted.
+
+> **Host defines. App explains. User or agent decides. Host enforces.**
+
 Do not prematurely design every future host API. Add semantic capabilities only
 when a real application needs them.
 

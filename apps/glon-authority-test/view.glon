@@ -1,0 +1,18 @@
+;; apps/glon-authority-test/view.glon -- the second app's browser View.
+;;
+;; Display only. It requests the same permissions as Glon Fetch but has no
+;; grants, so it cannot download. Requires prelude.glon and emit.glon.
+
+[
+home-view: [
+    emit-clear
+    emit-text "<h1>Authority Test</h1>"
+    emit-text "<p>This application requests the same permissions as Glon Fetch, but trusted host state grants it nothing.</p>"
+    emit-text "<p>Same requested permissions + different application id != same authority.</p>"
+    emit-finish
+]
+
+route: [ do home-view ]
+
+do-event: [ do home-view ]
+]

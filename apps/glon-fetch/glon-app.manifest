@@ -14,6 +14,7 @@
 # implements it (internally with curl) and never exposes arbitrary child-process
 # authority to the application. SHA-256 is likewise a host service.
 
+id: org.glon.fetch
 name: Glon Fetch
 version: 0.1.0
 entry: app.glon
@@ -25,5 +26,12 @@ module: fetch
 permission: net/connect
 permission: file/app-write
 permission: open/folder
+
+# Purpose (D9): WHY this application wants each permission. This is an
+# untrusted application claim; it never changes canonical capability meaning
+# (label/class/risk/allows) and it never grants authority.
+purpose: net/connect Download URLs selected by the user
+purpose: file/app-write Save downloaded files in Glon Fetch private storage
+purpose: open/folder Open the download folder at the user's request
 
 # entitlements: (none for D7)

@@ -248,17 +248,75 @@ static void phase_app_model(void) {
     for (int i = 0; i < ne3; i++) if (!strcmp(eff[i], "process/spawn")) spawn3 = 1;
     CHECK(!spawn3, "permission not requested by the app is not effective");
 
-    /* path authority */
+    /* application id validation */
+    CHECK(glon_app_id_valid("org.glon.fetch") == 1, "a well-formed app id is accepted");
+    CHECK(glon_app_id_valid("org.glon.authority-test") == 1, "hyphenated segments are accepted");
+    CHECK(glon_app_id_valid("org") == 0, "a single-segment id is rejected");
+    CHECK(glon_app_id_valid("org.") == 0, "a trailing dot is rejected");
+    CHECK(glon_app_id_valid(".org") == 0, "a leading dot is rejected");
+    CHECK(glon_app_id_valid("org..glon") == 0, "an empty segment is rejected");
+    CHECK(glon_app_id_valid("Org.glon") == 0, "uppercase is rejected");
+    CHECK(glon_app_id_valid("org/glon") == 0, "a path separator is rejected");
+    CHECK(glon_app_id_valid("../evil") == 0, "traversal is rejected");
+    CHECK(glon_app_id_valid("") == 0, "an empty id is rejected");
+
+    /* identity-scoped path authority */
     char out[512];
-    CHECK(glon_app_resolve_write("/data", "ok.bin", out, sizeof out) == 0 &&
-          strcmp(out, "/data/glon-fetch/downloads/ok.bin") == 0,
-          "an authorised save name resolves inside the app-write area");
-    CHECK(glon_app_resolve_write("/data", "../../etc/passwd", out, sizeof out) != 0,
+    CHECK(glon_app_resolve_write("/data", "org.glon.fetch", "ok.bin", out, sizeof out) == 0 &&
+          strcmp(out, "/data/org.glon.fetch/downloads/ok.bin") == 0,
+          "an authorised save name resolves inside the app's identity area");
+    CHECK(glon_app_resolve_write("/data", "org.glon.authority-test", "ok.bin", out, sizeof out) == 0 &&
+          strcmp(out, "/data/org.glon.authority-test/downloads/ok.bin") == 0,
+          "a different identity maps to a different area");
+    CHECK(glon_app_resolve_write("/data", "org.glon.fetch", "../../etc/passwd", out, sizeof out) != 0,
           "a traversal save name is rejected");
-    CHECK(glon_app_resolve_write("/data", "a/b", out, sizeof out) != 0,
+    CHECK(glon_app_resolve_write("/data", "org.glon.fetch", "a/b", out, sizeof out) != 0,
           "a save name with a separator is rejected");
-    CHECK(glon_app_resolve_write("/data", "/etc/passwd", out, sizeof out) != 0,
-          "an absolute save name is rejected");
+    CHECK(glon_app_resolve_write("/data", "../evil", "ok.bin", out, sizeof out) != 0,
+          "a malformed app id is rejected for storage");
+}
+
+static void phase_d9_semantics(void) {
+    printf("D9: capability semantics + purpose + permission delta\n");
+
+    glon_catalogue_t cat;
+    CHECK(glon_catalogue_load("desktop/capabilities.conf", &cat) == 0,
+          "trusted capability catalogue loads");
+    const glon_capability_t *c = glon_catalogue_find(&cat, "net/connect");
+    CHECK(c && strcmp(c->klass, "general") == 0 && strcmp(c->risk, "medium") == 0 &&
+          strcmp(c->allows, "outbound-network") == 0,
+          "net/connect canonical semantics are trusted");
+    c = glon_catalogue_find(&cat, "process/spawn");
+    CHECK(c && strcmp(c->klass, "privileged") == 0 && strcmp(c->risk, "high") == 0,
+          "process/spawn is privileged/high-risk");
+    CHECK(glon_catalogue_find(&cat, "teleport/moon") == NULL,
+          "a capability unknown to the catalogue is not found (fail closed)");
+
+    glon_app_t a;
+    memset(&a, 0, sizeof a);
+    snprintf(a.permissions[0], GLON_APP_NAME_MAX, "%s", "net/connect");
+    a.npermissions = 1;
+    snprintf(a.purposes[0].permission, GLON_APP_NAME_MAX, "%s", "net/connect");
+    snprintf(a.purposes[0].text, GLON_PURPOSE_TEXT_MAX, "%s", "Download URLs");
+    a.npurposes = 1;
+    CHECK(glon_app_purpose(&a, "net/connect") != NULL &&
+          strcmp(glon_app_purpose(&a, "net/connect"), "Download URLs") == 0,
+          "application purpose is exposed as a claim");
+    CHECK(glon_app_purpose(&a, "file/app-write") == NULL,
+          "no purpose is invented for an unrequested permission");
+
+    char oldp[2][GLON_APP_NAME_MAX], newp[2][GLON_APP_NAME_MAX];
+    char added[4][GLON_APP_NAME_MAX], removed[4][GLON_APP_NAME_MAX], unchanged[4][GLON_APP_NAME_MAX];
+    int na = 0, nr = 0, nu = 0;
+    snprintf(oldp[0], GLON_APP_NAME_MAX, "%s", "net/connect");
+    snprintf(oldp[1], GLON_APP_NAME_MAX, "%s", "file/app-write");
+    snprintf(newp[0], GLON_APP_NAME_MAX, "%s", "net/connect");
+    snprintf(newp[1], GLON_APP_NAME_MAX, "%s", "open/folder");
+    glon_perms_diff(oldp, 2, newp, 2, added, &na, removed, &nr, unchanged, &nu);
+    CHECK(na == 1 && strcmp(added[0], "open/folder") == 0 &&
+          nr == 1 && strcmp(removed[0], "file/app-write") == 0 &&
+          nu == 1 && strcmp(unchanged[0], "net/connect") == 0,
+          "permission delta identifies added/removed/unchanged");
 }
 
 int main(void) {
@@ -266,6 +324,7 @@ int main(void) {
     phase_native_app();
     phase_browser_view();
     phase_app_model();
+    phase_d9_semantics();
     if (failures == 0) printf("DESKTOP_TEST PASS\n");
     else printf("DESKTOP_TEST FAIL (%d)\n", failures);
     return failures;

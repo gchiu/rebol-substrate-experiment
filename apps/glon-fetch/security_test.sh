@@ -29,7 +29,7 @@ done
 
 start() {
     name="$1"; port="$2"; shift 2
-    "$bin" --app "$app" --no-browser --port "$port" "$@" >"$tmp/$name.out" 2>"$tmp/$name.err" &
+    "$bin" --install org.glon.fetch --no-browser --port "$port" "$@" >"$tmp/$name.out" 2>"$tmp/$name.err" &
     pids="$pids $!"
     i=0
     while [ "$i" -lt 50 ]; do
@@ -60,7 +60,7 @@ has_perm() { echo "$1" | grep -q "effective:.*$2" && return 0 || return 1; }
 # ---- manifest variants ----------------------------------------------------
 mk_manifest() { # file perms...
     f="$1"; shift
-    { echo "name: Variant"; echo "version: 0.0"; echo "entry: app.glon"; echo "view: view.glon";
+    { echo "id: org.glon.fetch"; echo "name: Variant"; echo "version: 0.0"; echo "entry: app.glon"; echo "view: view.glon";
       echo "module: strings"; echo "module: fetch";
       for p in "$@"; do echo "permission: $p"; done; } > "$f"
 }
@@ -69,7 +69,7 @@ mk_manifest "$tmp/m_no_write"  net/connect open/folder
 mk_manifest "$tmp/m_no_folder" net/connect file/app-write
 mk_manifest "$tmp/m_extra"     net/connect file/app-write open/folder process/spawn bluetooth root/all
 mk_manifest "$tmp/m_missing"   net/connect
-{ echo "name: Missing"; echo "version: 0.0"; echo "entry: app.glon"; echo "view: view.glon";
+{ echo "id: org.glon.fetch"; echo "name: Missing"; echo "version: 0.0"; echo "entry: app.glon"; echo "view: view.glon";
   echo "module: strings"; echo "module: pdf"; echo "permission: net/connect"; } > "$tmp/m_missing_module"
 
 # ---- A: default -- no process/spawn, but download + SHA still work --------
@@ -80,10 +80,10 @@ has_perm "$perms" "net/connect"    && ok "effective includes net/connect"     ||
 has_perm "$perms" "file/app-write" && ok "effective includes file/app-write" || bad "effective lacks file/app-write"
 has_perm "$perms" "open/folder"    && ok "effective includes open/folder"    || bad "effective lacks open/folder"
 has_perm "$perms" "process/spawn"  && bad "effective includes process/spawn (should not)" || ok "effective excludes process/spawn"
-rm -f desktop/appdata/glon-fetch/downloads/a.bin
+rm -f desktop/appdata/org.glon.fetch/downloads/a.bin
 fetch_to 8811 a.bin "$tmp/a.out"
 grep -q "DONE exit=0" "$tmp/a.out" && ok "download succeeded without process/spawn" || bad "download failed"
-act=$(sha256sum desktop/appdata/glon-fetch/downloads/a.bin 2>/dev/null | cut -d' ' -f1)
+act=$(sha256sum desktop/appdata/org.glon.fetch/downloads/a.bin 2>/dev/null | cut -d' ' -f1)
 [ "$act" = "$exp_sha" ] && ok "SHA-256 succeeded via host service" || bad "SHA-256/file mismatch ($act)"
 status "traversal destination -> 400" 400 "http://127.0.0.1:8811/api/fetch" POST "$(printf 'http://127.0.0.1:1/x\n../../etc/passwd')"
 status "absolute destination -> 400" 400 "http://127.0.0.1:8811/api/fetch" POST "$(printf 'http://127.0.0.1:1/x\n/etc/passwd')"
@@ -108,7 +108,7 @@ echo "app-model: open/folder is separate from download"
 start nofolder 8814 --manifest "$tmp/m_no_folder"
 perms=$(curl -s "http://127.0.0.1:8814/api/permissions")
 has_perm "$perms" "open/folder" && bad "open/folder became effective" || ok "open/folder is not effective"
-rm -f desktop/appdata/glon-fetch/downloads/d.bin
+rm -f desktop/appdata/org.glon.fetch/downloads/d.bin
 fetch_to 8814 d.bin "$tmp/d.out"
 grep -q "DONE exit=0" "$tmp/d.out" && ok "download still succeeds without open/folder" || bad "download blocked by missing open/folder"
 status "open denied without open/folder" 403 "http://127.0.0.1:8814/api/open" POST "x"
@@ -135,7 +135,7 @@ stopall
 # ---- G: missing required module -------------------------------------------
 echo "app-model: missing required module"
 set +e
-"$bin" --app "$app" --no-browser --port 8817 --manifest "$tmp/m_missing_module" >"$tmp/missing.out" 2>"$tmp/missing.err"
+"$bin" --install org.glon.fetch --no-browser --port 8817 --manifest "$tmp/m_missing_module" >"$tmp/missing.out" 2>"$tmp/missing.err"
 rc=$?
 set -e
 [ "$rc" -ne 0 ] && ok "missing required module exits nonzero ($rc)" || bad "missing module did not fail"

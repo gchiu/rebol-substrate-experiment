@@ -11,7 +11,7 @@ $tmp = Join-Path $env:TEMP ("glonsec_" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $tmp | Out-Null
 
 function Start-Host([int]$port, [string[]]$extra) {
-    $a = @("--app", $app, "--no-browser", "--port", "$port") + $extra
+    $a = @("--install", "org.glon.fetch", "--no-browser", "--port", "$port") + $extra
     $p = Start-Process -FilePath $exe -WorkingDirectory $root -ArgumentList $a -PassThru -WindowStyle Hidden
     Start-Sleep -Seconds 2
     return $p
@@ -30,7 +30,7 @@ function Check([string]$desc, [int]$want, [string]$url, [string]$body) {
 function Perms([int]$port) { return (Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$port/api/permissions").Content }
 
 function Mk-Manifest([string]$file, [string[]]$perms) {
-    $lines = @("name: Variant","version: 0.0","entry: app.glon","view: view.glon","module: strings","module: fetch")
+    $lines = @("id: org.glon.fetch","name: Variant","version: 0.0","entry: app.glon","view: view.glon","module: strings","module: fetch")
     foreach ($p in $perms) { $lines += "permission: $p" }
     Set-Content -Path $file -Encoding ascii -Value $lines
 }
@@ -39,7 +39,7 @@ $m_no_write  = Join-Path $tmp "m_no_write";  Mk-Manifest $m_no_write  @("net/con
 $m_no_folder = Join-Path $tmp "m_no_folder"; Mk-Manifest $m_no_folder @("net/connect","file/app-write")
 $m_extra     = Join-Path $tmp "m_extra";     Mk-Manifest $m_extra     @("net/connect","file/app-write","open/folder","process/spawn","bluetooth","root/all")
 $m_missing   = Join-Path $tmp "m_missing_module"
-Set-Content -Path $m_missing -Encoding ascii -Value @("name: Missing","version: 0.0","entry: app.glon","view: view.glon","module: strings","module: pdf","permission: net/connect")
+Set-Content -Path $m_missing -Encoding ascii -Value @("id: org.glon.fetch","name: Missing","version: 0.0","entry: app.glon","view: view.glon","module: strings","module: pdf","permission: net/connect")
 
 Write-Host "app-model: brokered default (no process/spawn)"
 $p = Start-Host 8831 @()
@@ -73,7 +73,7 @@ if ($perms -match "effective:.*root/all") { Write-Host "  FAIL: root/all became 
 Stop-Host $p
 
 Write-Host "app-model: missing required module"
-$proc = Start-Process -FilePath $exe -WorkingDirectory $root -ArgumentList @("--app",$app,"--no-browser","--port","8836","--manifest",$m_missing) -PassThru -Wait -WindowStyle Hidden
+$proc = Start-Process -FilePath $exe -WorkingDirectory $root -ArgumentList @("--install","org.glon.fetch","--no-browser","--port","8836","--manifest",$m_missing) -PassThru -Wait -WindowStyle Hidden
 if ($proc.ExitCode -ne 0) { Write-Host "  ok: missing required module exits nonzero ($($proc.ExitCode))" } else { Write-Host "  FAIL: missing module did not fail"; $fail = 1 }
 
 Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

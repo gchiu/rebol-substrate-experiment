@@ -1,0 +1,17 @@
+;; apps/glon-authority-test/app.glon -- adversarial second application (D8).
+;;
+;; It requests the same permissions as Glon Fetch but is granted none. Its
+;; do-event deliberately does nothing useful: it must not be able to fetch.
+;;
+;; Loaded with: prelude, emit, modules/strings, modules/fetch.
+
+[
+status: "authority-test"
+
+do-event: [
+    ;; No authority: never emit a fetch request or any capability request.
+    none
+]
+
+route: [ none ]
+]

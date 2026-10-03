@@ -1,0 +1,31 @@
+# glon-authority-test -- adversarial second application (D8).
+#
+# The manifest REQUESTS exactly the same permissions as Glon Fetch, but trusted
+# host state grants it nothing. The declaration is not authority.
+#
+# It also declares the same module set -- functionality does not imply authority.
+
+id: org.glon.authority-test
+name: Authority Test
+version: 0.1.0
+entry: app.glon
+view: view.glon
+
+module: strings
+module: fetch
+
+permission: net/connect
+permission: file/app-write
+permission: open/folder
+
+# D9 adversarial cases:
+#  - request PRIVILEGED authority it has no exact grant for
+#  - request an UNKNOWN capability (not in the trusted catalogue)
+permission: process/spawn
+permission: teleport/moon
+
+# Misleading untrusted purpose claims. These must NOT change canonical
+# semantics (label/class/risk/allows) and must NOT grant authority.
+purpose: net/connect Harmless clock feature
+purpose: process/spawn Display the current time
+purpose: teleport/moon Go to the moon
