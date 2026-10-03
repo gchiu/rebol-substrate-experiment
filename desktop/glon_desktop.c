@@ -411,8 +411,10 @@ static int dispatch_value(const char *token, const char *value) {
                                       out, (int)sizeof out, &out_len);
 }
 
-/* Forward one downloader output record through native Glon to the browser. */
-static void spawn_progress_cb(const char *record, int len, void *user) {
+/* Forward one downloader output record through native Glon to the browser.
+ * Returns nonzero when the browser has gone away (cancellation): the write to
+ * the client socket fails, which signals the spawn layer to kill the child. */
+static int spawn_progress_cb(const char *record, int len, void *user) {
     glon_socket fd = (glon_socket)(intptr_t)user;
     static char out[8192];
     int out_len = 0;
@@ -420,9 +422,10 @@ static void spawn_progress_cb(const char *record, int len, void *user) {
     if (r0_s1_g1a_live_event_bytes("fetch-output", (const unsigned char *)record,
                                    (unsigned int)len, out, (int)sizeof out, &out_len) == 0 &&
         hc_have && strcmp(hc_op, "progress") == 0) {
-        glon_tcp_write_all(fd, hc_arg, hc_arg_len);
-        glon_tcp_write_all(fd, "\n", 1);
+        if (glon_tcp_write_all(fd, hc_arg, hc_arg_len) != 0) return 1;
+        if (glon_tcp_write_all(fd, "\n", 1) != 0) return 1;
     }
+    return 0;
 }
 
 static void handle_api_permissions(glon_socket fd) {
@@ -535,19 +538,35 @@ static void handle_api_fetch(glon_socket fd, const char *body) {
     glon_tcp_write_all(fd, hdr, (int)strlen(hdr));
 
     int exit_code = 0;
-    glon_spawn_stream("curl", argv, spawn_progress_cb, (void *)(intptr_t)fd, &exit_code);
+    int rc = glon_spawn_stream("curl", argv, spawn_progress_cb, (void *)(intptr_t)fd, &exit_code);
+
+    if (rc == 1) {
+        /* Client cancelled. Terminate the partial download and leave no partial
+         * file behind: the app-write area contains complete files only. */
+        remove(dest);
+        fprintf(stderr, "glon-desktop: download cancelled; removed partial '%s'\n", dest);
+        return;
+    }
+    if (rc != 0 || exit_code != 0) {
+        remove(dest);
+        fprintf(stderr, "glon-desktop: download failed (exit %d); removed partial '%s'\n", exit_code, dest);
+        glon_tcp_write_all(fd, "error download failed\n", 21);
+        return;
+    }
+
+    /* Report completion first (the download is on disk); the SHA-256 follows
+     * once computed, so the View reaches "done" promptly. */
+    glon_tcp_write_all(fd, "done\n", 5);
 
     char hex[128];
     if (glon_sha256(dest, hex, (int)sizeof hex) != 0)
         snprintf(hex, sizeof hex, "unavailable");
+    char line[256];
+    int ln = snprintf(line, sizeof line, "sha256 %s\n", hex);
+    glon_tcp_write_all(fd, line, ln);
 
-    char done[512];
-    snprintf(done, sizeof done, "DONE exit=%d sha256=%s", exit_code, hex);
-    dispatch_value("fetch-done", done);
-    if (hc_have && strcmp(hc_op, "progress") == 0) {
-        glon_tcp_write_all(fd, hc_arg, hc_arg_len);
-        glon_tcp_write_all(fd, "\n", 1);
-    }
+    capture_reset();
+    dispatch_value("fetch-done", "done");
 
     snprintf(g_last_dest, sizeof g_last_dest, "%s", dest);
     g_last_dest_set = 1;

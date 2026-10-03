@@ -1,11 +1,16 @@
-;; apps/glon-fetch/view.glon -- the browser/WASM Glon View.
+;; apps/glon-fetch/view.glon -- the browser/WASM Glon View (D10 usable UI).
 ;;
-;; Presentation only. It renders the form and progress, and emits small
-;; requests; it never touches bytes or the filesystem. JavaScript is transport.
-;; Requires prelude.glon (mk-string) and emit.glon.
+;; Presentation + small app state. The browser host (browser-host.js) is thin
+;; transport: it carries the request, streams progress/final lines back, and
+;; aborts the in-flight request on Cancel. It never carries file bytes.
+;; Requires prelude.glon (mk-string, str-eq) and emit.glon.
 
 [
-status: "idle"
+url: ""
+name: "download.bin"
+phase: "idle"
+status: "Paste a URL and press Download."
+sha: ""
 
 host-request: func [op arg] [
     emit-clear
@@ -19,15 +24,26 @@ host-request: func [op arg] [
 home-view: [
     emit-clear
     emit-text "<h1>Glon Fetch</h1>"
-    emit-text "<p>Native Glon is the application. This page is Glon's View.</p>"
-    emit-text "<p>URL: <input data-glon-input='url' size='64' value=''></p>"
+    emit-text "<p>URL: <input data-glon-input='url' size='64'></p>"
     emit-text "<p>Save as: <input data-glon-input='name' size='32' value='download.bin'></p>"
-    emit-text "<button data-glon-event='fetch-start' data-glon-inputs='url,name'>Download</button>"
+    either str-eq phase "downloading" [
+        emit-text "<button data-glon-event='cancel'>Cancel</button>"
+    ] [
+        emit-text "<button data-glon-event='fetch-start' data-glon-inputs='url,name'>Download</button>"
+    ]
     emit-text " <button data-glon-event='open-folder'>Open Folder</button>"
     emit-text "<h2>Status</h2>"
+    emit-text "<p class='phase'>State: "
+    emit-text phase
+    emit-text "</p>"
     emit-text "<pre class='status'>"
     emit-text status
     emit-text "</pre>"
+    either sha [
+        emit-text "<p>SHA-256: <code>"
+        emit-text sha
+        emit-text "</code></p>"
+    ] [ none ]
     emit-finish
 ]
 
@@ -37,20 +53,44 @@ route: [ render-home ]
 
 do-event: [
     either = current-event 'fetch-start [
+        phase: "downloading"
         status: "starting..."
+        sha: ""
         host-request "fetch" current-value
     ] [
         either = current-event 'fetch-progress [
             status: current-value
             render-home
         ] [
-            either = current-event 'fetch-done [
-                status: current-value
+            either = current-event 'fetch-sha [
+                sha: current-value
                 render-home
             ] [
-                either = current-event 'open-folder [
-                    host-request "open-folder" ""
-                ] [ render-home ]
+                either = current-event 'fetch-done [
+                    phase: "done"
+                    status: "Download complete."
+                    render-home
+                ] [
+                    either = current-event 'fetch-error [
+                        phase: "error"
+                        status: current-value
+                        render-home
+                    ] [
+                        either = current-event 'fetch-cancelled [
+                            phase: "cancelled"
+                            status: "Cancelled. The partial file was removed."
+                            render-home
+                        ] [
+                            either = current-event 'cancel [
+                                host-request "cancel" ""
+                            ] [
+                                either = current-event 'open-folder [
+                                    host-request "open-folder" ""
+                                ] [ render-home ]
+                            ]
+                        ]
+                    ]
+                ]
             ]
         ]
     ]

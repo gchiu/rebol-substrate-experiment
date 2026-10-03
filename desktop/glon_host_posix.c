@@ -108,7 +108,7 @@ int glon_mkdirs(const char *path) {
 /* Generic process/spawn: fork + execvp with a pipe, no shell.  Output records
  * are split on LF or CR and delivered as they arrive. */
 int glon_spawn_stream(const char *exe, char *const argv[],
-                      void (*cb)(const char *record, int len, void *user),
+                      int (*cb)(const char *record, int len, void *user),
                       void *user, int *exit_code) {
     int p[2];
     if (pipe(p) != 0) return -1;
@@ -126,14 +126,15 @@ int glon_spawn_stream(const char *exe, char *const argv[],
     char buf[4096];
     char rec[8192];
     int rlen = 0;
+    int cancelled = 0;
     ssize_t n;
-    while ((n = read(p[0], buf, sizeof buf)) > 0) {
+    while (!cancelled && (n = read(p[0], buf, sizeof buf)) > 0) {
         for (ssize_t i = 0; i < n; i++) {
             char c = buf[i];
             if (c == '\n' || c == '\r') {
                 if (rlen > 0) {
                     rec[rlen] = 0;
-                    if (cb) cb(rec, rlen, user);
+                    if (cb && cb(rec, rlen, user)) { cancelled = 1; break; }
                     rlen = 0;
                 }
             } else if (rlen < (int)sizeof rec - 1) {
@@ -141,20 +142,22 @@ int glon_spawn_stream(const char *exe, char *const argv[],
             }
         }
     }
-    if (rlen > 0) { rec[rlen] = 0; if (cb) cb(rec, rlen, user); }
+    if (!cancelled && rlen > 0) { rec[rlen] = 0; if (cb) cb(rec, rlen, user); }
     close(p[0]);
+    if (cancelled) kill(pid, SIGTERM);
     int status = 0;
     if (waitpid(pid, &status, 0) < 0) return -1;
-    if (exit_code) *exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-    return 0;
+    if (exit_code) *exit_code = cancelled ? -1 : (WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    return cancelled ? 1 : 0;
 }
 
 struct sha_capture { char *buf; int n; int cap; };
 
-static void sha_cb(const char *record, int len, void *user) {
+static int sha_cb(const char *record, int len, void *user) {
     struct sha_capture *c = (struct sha_capture *)user;
     for (int i = 0; i < len && c->n < c->cap - 1; i++) c->buf[c->n++] = record[i];
     c->buf[c->n] = 0;
+    return 0;
 }
 
 int glon_sha256(const char *path, char *out_hex, int cap) {

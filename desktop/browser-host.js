@@ -31,7 +31,10 @@
       },
       host_set_html: function (handle, ptr, len) {
         var el = document.querySelector('[data-glon-id="' + handle + '"]');
-        if (el) el.innerHTML = dec.decode(view().subarray(ptr, ptr + len));
+        if (el) {
+          el.innerHTML = dec.decode(view().subarray(ptr, ptr + len));
+          restoreInputs();   /* DOM glue: keep form values across re-renders */
+        }
       },
       host_canvas_script: function () { /* no canvas in this proof */ },
       /* The GLON_LIVE build imports env.host_call. Glon emits a host-call when
@@ -40,6 +43,7 @@
         var op = dec.decode(view().subarray(opPtr, opPtr + opLen));
         var arg = dec.decode(view().subarray(argPtr, argPtr + argLen));
         if (op === "fetch") startFetch(arg);
+        else if (op === "cancel") cancelFetch();
         else if (op === "open-folder") openFolder();
         else console.error("browser-host: unknown host_call op '" + op + "'");
       }
@@ -118,25 +122,63 @@
    * an outbound host-call request (e.g. start a download). */
   function glonEventValue(token, value) { deliver(token, value); }
 
-  /* Start a download: Glon decided the action; JS only carries the request and
+  /* The in-flight download, if any. JS owns the AbortController because
+   * aborting the HTTP request is browser transport; Glon owns the decision to
+   * cancel and the resulting state. Each download has its own session object
+   * so a cancelled session can never block the next one. */
+  var activeFetch = null;
+
+  function handleFetchLine(session, line) {
+    if (!session) return;
+    if (line.indexOf("sha256 ") === 0) {       /* SHA may follow "done" */
+      deliver("fetch-sha", line.slice(7));
+      return;
+    }
+    if (line === "done") {
+      if (!session.terminal) { session.terminal = true; deliver("fetch-done", ""); }
+      return;
+    }
+    if (session.terminal) return;
+    if (line.indexOf("error ") === 0) {
+      session.terminal = true;
+      deliver("fetch-error", line.slice(6));
+    } else {
+      deliver("fetch-progress", line);
+    }
+  }
+
+  /* Start a download: Glon decided the action; JS carries the request and
    * streams the newline-delimited progress records back to Glon. */
   function startFetch(spec) {
-    fetch("/api/fetch", { method: "POST", body: spec })
+    if (activeFetch && !activeFetch.cancelled) return;
+    var session = { controller: new AbortController(), cancelled: false, terminal: false };
+    activeFetch = session;
+    fetch("/api/fetch", { method: "POST", body: spec, signal: session.controller.signal })
       .then(function (resp) {
-        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        if (!resp.ok) {
+          session.terminal = true;
+          var msg = resp.status === 403 ? "not authorised"
+                  : resp.status === 400 ? "invalid request or destination"
+                  : "server error " + resp.status;
+          deliver("fetch-error", msg);
+          return;
+        }
         var reader = resp.body.getReader();
         var buf = "";
         function pump() {
           return reader.read().then(function (r) {
             if (r.done) {
-              if (buf) deliver("fetch-progress", buf);
-              glonEvent("fetch-done");
+              if (buf) handleFetchLine(session, buf);
+              if (!session.terminal && !session.cancelled) {
+                session.terminal = true;
+                deliver("fetch-done", "");
+              }
               return;
             }
             buf += dec.decode(r.value, { stream: true });
             var i;
             while ((i = buf.indexOf("\n")) >= 0) {
-              deliver("fetch-progress", buf.slice(0, i));
+              handleFetchLine(session, buf.slice(0, i));
               buf = buf.slice(i + 1);
             }
             return pump();
@@ -145,9 +187,22 @@
         return pump();
       })
       .catch(function (err) {
-        console.error("browser-host: fetch failed", err);
-        deliver("fetch-progress", "ERROR " + err);
-      });
+        if (session.cancelled) return;  /* cancel already handled */
+        if (err && err.name === "AbortError") deliver("fetch-cancelled", "");
+        else deliver("fetch-error", "download failed");
+      })
+      .then(function () { if (activeFetch === session) activeFetch = null; });
+  }
+
+  function cancelFetch() {
+    if (activeFetch && !activeFetch.cancelled) {
+      var session = activeFetch;
+      session.cancelled = true;
+      session.terminal = true;
+      session.controller.abort();
+      deliver("fetch-cancelled", "");
+      if (activeFetch === session) activeFetch = null;   /* allow a new download now */
+    }
   }
 
   function openFolder() {
@@ -155,14 +210,26 @@
       .catch(function (err) { console.error("browser-host: open folder failed", err); });
   }
 
+  /* Preserve form input values across Glon re-renders (DOM glue only). */
+  var lastInputs = {};
   function inputValues(spec) {
     var parts = spec.split(",");
     var vals = [];
     for (var i = 0; i < parts.length; i++) {
-      var inp = document.querySelector('[data-glon-input="' + parts[i].replace(/^\s+|\s+$/g, "") + '"]');
-      vals.push(inp && inp.value !== undefined ? inp.value : "");
+      var key = parts[i].replace(/^\s+|\s+$/g, "");
+      var inp = document.querySelector('[data-glon-input="' + key + '"]');
+      var v = inp && inp.value !== undefined ? inp.value : "";
+      lastInputs[key] = v;
+      vals.push(v);
     }
     return vals.join("\n");
+  }
+  function restoreInputs() {
+    for (var k in lastInputs) {
+      if (!Object.prototype.hasOwnProperty.call(lastInputs, k)) continue;
+      var inp = document.querySelector('[data-glon-input="' + k + '"]');
+      if (inp) inp.value = lastInputs[k];
+    }
   }
 
   function wireClicks() {

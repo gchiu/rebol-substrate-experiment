@@ -35,10 +35,11 @@ int glon_mkdirs(const char *path);
 
 /* Generic process/spawn.  Runs `exe` with a separate argv array (NULL
  * terminated) -- never a shell.  stdout+stderr are captured and delivered as
- * records (split on LF or CR) to cb as they arrive.  Returns 0 and sets
- * *exit_code when the child finished. */
+ * records (split on LF or CR) to cb as they arrive.  If cb returns nonzero the
+ * child is terminated (cancellation) and the call returns 1.  Returns 0 when
+ * the child finished (sets *exit_code), -1 on spawn error. */
 int glon_spawn_stream(const char *exe, char *const argv[],
-                      void (*cb)(const char *record, int len, void *user),
+                      int (*cb)(const char *record, int len, void *user),
                       void *user, int *exit_code);
 
 /* SHA-256 of a file using the platform facility (sha256sum / certutil).

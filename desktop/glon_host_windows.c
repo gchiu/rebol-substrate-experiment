@@ -130,7 +130,7 @@ static void wappend_quoted(wchar_t *buf, int *n, int cap, const wchar_t *s) {
 }
 
 int glon_spawn_stream(const char *exe, char *const argv[],
-                      void (*cb)(const char *record, int len, void *user),
+                      int (*cb)(const char *record, int len, void *user),
                       void *user, int *exit_code) {
     (void)exe;
     int cap = 32768;
@@ -174,34 +174,41 @@ int glon_spawn_stream(const char *exe, char *const argv[],
     char buf[4096];
     char rec[8192];
     int rlen = 0;
+    int cancelled = 0;
     DWORD got = 0;
-    while (ReadFile(rd, buf, sizeof buf, &got, NULL) && got > 0) {
+    while (!cancelled && ReadFile(rd, buf, sizeof buf, &got, NULL) && got > 0) {
         for (DWORD i = 0; i < got; i++) {
             char c = buf[i];
             if (c == '\n' || c == '\r') {
-                if (rlen > 0) { rec[rlen] = 0; if (cb) cb(rec, rlen, user); rlen = 0; }
+                if (rlen > 0) {
+                    rec[rlen] = 0;
+                    if (cb && cb(rec, rlen, user)) { cancelled = 1; break; }
+                    rlen = 0;
+                }
             } else if (rlen < (int)sizeof rec - 1) {
                 rec[rlen++] = c;
             }
         }
     }
-    if (rlen > 0) { rec[rlen] = 0; if (cb) cb(rec, rlen, user); }
+    if (!cancelled && rlen > 0) { rec[rlen] = 0; if (cb) cb(rec, rlen, user); }
     CloseHandle(rd);
+    if (cancelled) TerminateProcess(pi.hProcess, 1);
     WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD code = 0;
     GetExitCodeProcess(pi.hProcess, &code);
-    if (exit_code) *exit_code = (int)code;
+    if (exit_code) *exit_code = cancelled ? -1 : (int)code;
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
-    return 0;
+    return cancelled ? 1 : 0;
 }
 
 struct sha_capture { char *buf; int n; int cap; };
 
-static void sha_cb(const char *record, int len, void *user) {
+static int sha_cb(const char *record, int len, void *user) {
     struct sha_capture *c = (struct sha_capture *)user;
     for (int i = 0; i < len && c->n < c->cap - 1; i++) c->buf[c->n++] = record[i];
     c->buf[c->n] = 0;
+    return 0;
 }
 
 int glon_sha256(const char *path, char *out_hex, int cap) {

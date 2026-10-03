@@ -82,7 +82,7 @@ has_perm "$perms" "open/folder"    && ok "effective includes open/folder"    || 
 has_perm "$perms" "process/spawn"  && bad "effective includes process/spawn (should not)" || ok "effective excludes process/spawn"
 rm -f desktop/appdata/org.glon.fetch/downloads/a.bin
 fetch_to 8811 a.bin "$tmp/a.out"
-grep -q "DONE exit=0" "$tmp/a.out" && ok "download succeeded without process/spawn" || bad "download failed"
+grep -q "^done$" "$tmp/a.out" && ok "download succeeded without process/spawn" || bad "download failed"
 act=$(sha256sum desktop/appdata/org.glon.fetch/downloads/a.bin 2>/dev/null | cut -d' ' -f1)
 [ "$act" = "$exp_sha" ] && ok "SHA-256 succeeded via host service" || bad "SHA-256/file mismatch ($act)"
 status "traversal destination -> 400" 400 "http://127.0.0.1:8811/api/fetch" POST "$(printf 'http://127.0.0.1:1/x\n../../etc/passwd')"
@@ -110,7 +110,7 @@ perms=$(curl -s "http://127.0.0.1:8814/api/permissions")
 has_perm "$perms" "open/folder" && bad "open/folder became effective" || ok "open/folder is not effective"
 rm -f desktop/appdata/org.glon.fetch/downloads/d.bin
 fetch_to 8814 d.bin "$tmp/d.out"
-grep -q "DONE exit=0" "$tmp/d.out" && ok "download still succeeds without open/folder" || bad "download blocked by missing open/folder"
+grep -q "^done$" "$tmp/d.out" && ok "download still succeeds without open/folder" || bad "download blocked by missing open/folder"
 status "open denied without open/folder" 403 "http://127.0.0.1:8814/api/open" POST "x"
 stopall
 

@@ -39,8 +39,8 @@ Write-Host "fetching 16 MB fixture through the app..."
 $resp = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$port/api/fetch" -Method Post -Body $body -ContentType "text/plain" -TimeoutSec 120
 $content = $resp.Content
 
-if ($content -match "DONE exit=0") { Write-Host "  ok: streamed status reached DONE exit=0" } else { Write-Host "  FAIL: no DONE exit=0"; $fail = 1 }
-if ($content -match "sha256=[0-9a-f]{64}") { Write-Host "  ok: streamed status includes a SHA-256" } else { Write-Host "  FAIL: no SHA-256 in status"; $fail = 1 }
+if ($content -match "(?m)^done$") { Write-Host "  ok: streamed status reached DONE exit=0" } else { Write-Host "  FAIL: no DONE exit=0"; $fail = 1 }
+if ($content -match "(?m)^sha256 [0-9a-f]{64}$") { Write-Host "  ok: streamed status includes a SHA-256" } else { Write-Host "  FAIL: no SHA-256 in status"; $fail = 1 }
 
 if (Test-Path $dl) {
     $len = (Get-Item $dl).Length

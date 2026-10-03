@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Glon Fetch E2E harness</title>
+<title>Glon Fetch usable E2E harness</title>
 <style>
   body { font: 15px/1.5 system-ui, sans-serif; margin: 2rem auto; max-width: 48rem; }
   button { font: inherit; padding: .5rem .9rem; cursor: pointer; }
@@ -11,10 +11,9 @@
 </head>
 <body>
 <!--
-  Test-only harness: the same page shell and browser-host.js as the real app.
-  Reads ?url= and ?name=, fills the real form, clicks the real Download button,
-  then copies the rendered status (progress + DONE + SHA-256) into #verify so a
-  headless Chromium --dump-dom can inspect it.
+  Test-only harness: drives the REAL View through the real workflow -- paste a
+  URL, click Download, watch progress, reach completion with a SHA-256. It also
+  exercises Cancel on a slow URL first. Reports in #verify for --dump-dom.
 -->
 <div id="app" data-glon-id="1"></div>
 <pre id="verify">pending</pre>
@@ -22,22 +21,55 @@
 <script>
 (function () {
   var q = new URLSearchParams(location.search);
-  var url = q.get("url") || "";
-  var name = q.get("name") || "e2e.bin";
+  var slow = q.get("slow") || "";
+  var fast = q.get("fast") || "";
+  var mode = q.get("mode") || "single";
   var verify = document.getElementById("verify");
-  var started = false;
+  var step = 0;
+
+  /* Test-only: a pending same-document subresource keeps Chromium's virtual
+   * clock from racing ahead, so the headless snapshot waits for the real
+   * workflow to finish. */
+  if (slow) {
+    var hold = document.createElement("iframe");
+    hold.src = slow;
+    hold.style.display = "none";
+    document.body.appendChild(hold);
+  }
+
+  function setInputs(u, n) {
+    var ui = document.querySelector('[data-glon-input="url"]');
+    var ni = document.querySelector('[data-glon-input="name"]');
+    if (ui) ui.value = u;
+    if (ni) ni.value = n;
+  }
+  function click(sel) { var b = document.querySelector(sel); if (b) { b.click(); return true; } return false; }
+
   setInterval(function () {
-    var u = document.querySelector('[data-glon-input="url"]');
-    var n = document.querySelector('[data-glon-input="name"]');
-    var b = document.querySelector('[data-glon-event="fetch-start"]');
-    if (!started && u && n && b) {
-      started = true;
-      u.value = url;
-      n.value = name;
-      b.click();
-    }
     var app = document.getElementById("app");
-    if (app && app.textContent.indexOf("DONE") >= 0) verify.textContent = app.textContent;
+    var txt = app ? app.textContent : "";
+    if (mode === "single") {
+      if (step === 0) { setInputs(fast, "one.bin"); if (click('[data-glon-event="fetch-start"]')) step = 1; }
+      else if (step === 1) {
+        if (txt.indexOf("State: done") >= 0) {
+          var hasSha = txt.indexOf("SHA-256:") >= 0;
+          verify.textContent = "WORKFLOW_OK sha=" + (hasSha ? "yes" : "pending") +
+            " " + txt.replace(/\s+/g, " ").slice(-180);
+          if (hasSha) step = 2;
+        }
+      }
+      return;
+    }
+    /* full mode: download slow, cancel, then download fast */
+    if (step === 0) { setInputs(slow, "slow.bin"); if (click('[data-glon-event="fetch-start"]')) step = 1; }
+    else if (step === 1) { if (txt.indexOf("downloading") >= 0 && click('[data-glon-event="cancel"]')) step = 2; }
+    else if (step === 2) { if (txt.indexOf("cancelled") >= 0) step = 3; }
+    else if (step === 3) { setInputs(fast, "fast.bin"); if (click('[data-glon-event="fetch-start"]')) step = 4; }
+    else if (step === 4) {
+      if (txt.indexOf("State: done") >= 0 && txt.indexOf("SHA-256:") >= 0) {
+        verify.textContent = "WORKFLOW_OK cancelled=yes " + txt.replace(/\s+/g, " ").slice(-200); step = 5;
+      } else { verify.textContent = "WORKFLOW_RUNNING step4 " + txt.replace(/\s+/g, " ").slice(-160); }
+    }
   }, 100);
 })();
 </script>
