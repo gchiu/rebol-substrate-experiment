@@ -28,7 +28,7 @@ copy /Y demo\shop\strings.glon desktop\strings.glon >nul
 if not exist desktop\big.txt call desktop\make-big.bat
 
 cl /nologo /std:c17 /O2 /D_CRT_SECURE_NO_WARNINGS /I. /Fe:glon-desktop.exe ^
-    desktop\glon_desktop.c desktop\glon_host_windows.c ^
+    desktop\glon_desktop.c desktop\glon_host_windows.c desktop\glon_app.c ^
     r0_s1_g1a_live.c r0_s1_g1a.c r0_s1_show.c r0_s1_runtime.c s1.c ^
     ws2_32.lib shell32.lib
 if errorlevel 1 (

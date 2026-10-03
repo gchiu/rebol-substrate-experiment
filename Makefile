@@ -293,7 +293,7 @@ glon-smoke: glon
 # primitive capabilities (TCP, filesystem read, process/open); the application
 # and protocol decisions live in Glon (desktop/app.glon, desktop/view.glon).
 DESKTOP_CORE = r0_s1_g1a_live.c r0_s1_g1a.c r0_s1_show.c r0_s1_runtime.c s1.c
-DESKTOP_SRCS = desktop/glon_desktop.c desktop/glon_host_posix.c $(DESKTOP_CORE)
+DESKTOP_SRCS = desktop/glon_desktop.c desktop/glon_host_posix.c desktop/glon_app.c $(DESKTOP_CORE)
 WINDOWS_CC ?= x86_64-w64-mingw32-gcc
 
 # Stage the shared Glon libraries beside the page. The browser wasm is a real
@@ -304,7 +304,7 @@ desktop-assets:
 	cp jupyter/prelude.glon desktop/prelude.glon
 	cp demo/shop/strings.glon desktop/strings.glon
 
-glon-desktop: $(DESKTOP_SRCS) desktop/glon_host.h r0_s1.h r0_s1_g1a.h r0_s1_g1a_live.h s1.h m1_layout.h | desktop-assets
+glon-desktop: $(DESKTOP_SRCS) desktop/glon_host.h desktop/glon_app.h r0_s1.h r0_s1_g1a.h r0_s1_g1a_live.h s1.h m1_layout.h | desktop-assets
 	$(CC) $(CFLAGS) -I. -o $@ $(DESKTOP_SRCS)
 
 # The browser runtime uses the GLON_LIVE ABI (raw-byte glon_event_bytes). Build
@@ -324,19 +324,27 @@ desktop-live: glon-desktop desktop/glon.wasm desktop/big.txt
 
 # Native Windows executable (cross-compiled with MinGW-w64). The Windows host
 # implementation links Winsock2 and shell32; see desktop/glon_host_windows.c.
-glon-desktop.exe: desktop/glon_desktop.c desktop/glon_host_windows.c desktop/glon_host.h \
+glon-desktop.exe: desktop/glon_desktop.c desktop/glon_host_windows.c desktop/glon_app.c desktop/glon_host.h desktop/glon_app.h \
                   $(DESKTOP_CORE) r0_s1.h r0_s1_g1a.h r0_s1_g1a_live.h s1.h m1_layout.h | desktop-assets
-	$(WINDOWS_CC) $(CFLAGS) -I. -o $@ desktop/glon_desktop.c desktop/glon_host_windows.c \
+	$(WINDOWS_CC) $(CFLAGS) -I. -o $@ desktop/glon_desktop.c desktop/glon_host_windows.c desktop/glon_app.c \
 		$(DESKTOP_CORE) -lws2_32 -lshell32
 
-desktop-test: desktop/desktop_tests.c r0_s1_g1a_live.c r0_s1_g1a.c r0_s1_runtime.c s1.c \
-              r0_s1.h r0_s1_g1a.h r0_s1_g1a_live.h s1.h m1_layout.h
-	$(CC) $(CFLAGS) -I. -o $@ desktop/desktop_tests.c r0_s1_g1a_live.c r0_s1_g1a.c r0_s1_runtime.c s1.c
+desktop-test: desktop/desktop_tests.c desktop/glon_app.c r0_s1_g1a_live.c r0_s1_g1a.c r0_s1_runtime.c s1.c \
+              desktop/glon_app.h r0_s1.h r0_s1_g1a.h r0_s1_g1a_live.h s1.h m1_layout.h
+	$(CC) $(CFLAGS) -I. -o $@ desktop/desktop_tests.c desktop/glon_app.c r0_s1_g1a_live.c r0_s1_g1a.c r0_s1_runtime.c s1.c
 	./desktop-test
 
 # HTTP-level authority regression: only Glon-authorised logical names resolve.
 desktop-security-test: glon-desktop desktop/big.txt
 	sh desktop/security_test.sh
+
+# Glon app model: manifest -> modules/permissions; trusted grants; enforcement.
+desktop-app-test: glon-desktop
+	sh apps/glon-fetch/security_test.sh
+
+# Real download through the app (bulk bytes bypass the Glon heap).
+desktop-fetch-test: glon-desktop
+	sh apps/glon-fetch/download_test.sh
 
 # ---- Experimental GLON_LIVE host boundary (native focused test) -------------
 # Builds only the live layer + runtime; does not touch the s1 test binary or
@@ -386,4 +394,4 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test

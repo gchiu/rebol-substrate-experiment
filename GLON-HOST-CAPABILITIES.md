@@ -28,7 +28,19 @@ Conceptually:
 
 The browser is Glon's View system. Glon does not need to reproduce a GUI toolkit, widget library, font system, Unicode handling, accessibility stack, multimedia stack, etc.
 
-The native host supplies only capabilities that genuinely require access to the underlying operating system.
+The native host supplies only capabilities that genuinely require access to
+the underlying operating system.
+
+In this document, **capability** has a narrow meaning: a semantic operation the
+host can implement on a platform. It is not a Glon language module, not an app
+permission grant, and not a commercial entitlement.
+
+```text
+host capability  = what the host can implement
+permission       = what an app may be allowed to use
+module           = functionality/code loaded by the app
+entitlement      = licensed functionality the user may activate
+```
 
 ## Proven desktop milestone
 
@@ -208,6 +220,36 @@ Desktop Windows/Linux/macOS can expose more of these than sandboxed mobile platf
 
 An application should not silently assume they exist.
 
+### Brokered services vs broad authority
+
+A host implementation may internally reuse privileged OS machinery **without
+exposing that machinery as an application permission**.
+
+For example, the Glon Fetch download service internally launches `curl`, and
+SHA-256 internally reuses `sha256sum`/`certutil`. Neither of those exposes
+`process/spawn` to the application. The application asks for a logical
+operation; the trusted host service chooses and runs the implementation.
+
+`process/spawn` is **broad arbitrary child-process authority**. It is an
+optional privileged permission for applications that genuinely need to run
+arbitrary programs. It should not be required merely because a service
+implementation happens to launch a helper executable.
+
+This preserves the canonical distinction:
+
+```text
+modules       -> functionality
+permissions   -> authority
+entitlements  -> licensing
+package       -> identity/integrity
+```
+
+and the rule:
+
+> **A manifest requests authority; it never grants authority.**
+
+> **An entitlement can unlock functionality, but it can never manufacture host authority.**
+
 ## Browser-owned capabilities
 
 Where practical, capabilities already well supplied by the browser should remain browser responsibilities rather than native Glon responsibilities.
@@ -257,15 +299,23 @@ might return something such as:
 ]
 ```
 
-Applications could eventually declare requirements conceptually like:
+Applications should not declare raw host capabilities as authority. Instead,
+the Glon app model declares **permissions** that are resolved against host
+capabilities.
+
+Conceptually:
 
 ```glon
-requires [
-    file/app
+permissions [
+    file/app-read
     net/connect
-    view
+    view/open
 ]
 ```
+
+The host capability table answers whether those semantic operations exist on
+the current platform; trusted host/user/policy state decides whether the
+permission is actually granted.
 
 The exact syntax/API is not yet decided and should not be prematurely frozen.
 
@@ -406,40 +456,65 @@ The browser should continue to own microphone capture. Native Glon should not ac
 5. **Bulk data bypasses the Glon heap.**
 6. **Reuse operating-system and browser facilities rather than rebuilding them.**
 7. **Do not force desktop-only capabilities into the universal host contract.**
-8. **Applications discover/declare optional capabilities instead of assuming them.**
+8. **Applications declare permissions; hosts expose capabilities. Do not conflate the two.**
 9. **The same Glon/browser-WASM application should survive across platforms.**
 10. **Port the host, not the application.**
 
-## Next architectural task
+## Relationship to the Glon app model
 
-Before building many more applications, define and document the Glon host capability model.
+The host capability model and the app model are deliberately separate.
 
-Suggested future repository document:
+The host says what semantic operations it can implement:
 
 ```text
-GLON-HOST-CAPABILITIES.md
+file/app-read
+net/connect
+process/spawn
+view/open
 ```
 
-It should specify:
+The app manifest may request permissions for some of those operations, but the
+manifest is not itself authority.
 
-- capability names and semantics;
-- which capabilities are mandatory;
-- which are optional;
-- browser-owned vs native-host-owned responsibilities;
-- capability discovery;
-- error behaviour when a capability is absent;
-- streaming semantics;
-- authority/security rules;
-- mobile lifecycle/WebView considerations;
-- how application requirements are declared without tying code to Windows, Android, HarmonyOS or Apple APIs.
+Effective authority is:
 
-Do not prematurely design every future API. Start with the capabilities already needed by real applications and extend the contract only when a genuine use case demands it.
+```text
+HOST IMPLEMENTS
+      ∩
+PLATFORM ALLOWS
+      ∩
+APPLICATION REQUESTS
+      ∩
+USER / POLICY GRANTS
+      =
+APPLICATION GETS
+```
+
+Modules and entitlements are separate concerns handled by the Glon app model:
+
+```text
+modules       → functionality
+permissions   → authority
+entitlements  → licensing
+package       → identity/integrity
+```
+
+Canonical rules:
+
+> **A manifest requests authority; it never grants authority.**
+
+> **An entitlement can unlock functionality, but it can never manufacture host authority.**
+
+Do not prematurely design every future host API. Add semantic capabilities only
+when a real application needs them.
 
 ## Short formulation
 
 > **Glon everywhere = one app, many hosts.**  
 > Same Glon/browser-WASM application on Windows, Android, HarmonyOS, Apple and beyond; only the tiny native host changes.
 
-And the implementation rule remains:
+And the implementation rules remain:
 
 > **Glon decides. The host moves bytes. The browser presents them.**
+
+> **Modules provide functionality. Permissions grant authority. Entitlements unlock licensed functionality. Packages establish identity and integrity.**

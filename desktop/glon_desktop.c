@@ -20,6 +20,7 @@
 #include "r0_s1_g1a_live.h"
 #include "m1_layout.h"
 #include "glon_host.h"
+#include "glon_app.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,6 +29,31 @@
 #define MAX_SOURCE  (1u << 20)
 #define MAX_REQUEST 65536
 #define MAX_BODY    (1u << 20)
+
+/* ---- app model state (host machinery; no application policy) ------------- */
+
+static int g_app_mode;
+static glon_app_t g_app;
+static char g_app_dir[1024];
+static char g_data_dir[1024];
+static char g_grants[GLON_APP_LIST_MAX][GLON_APP_NAME_MAX];
+static int  g_ngrants;
+static char g_eff[GLON_APP_LIST_MAX][GLON_APP_NAME_MAX];
+static int  g_neff;
+static char g_last_dest[2048];
+static int  g_last_dest_set;
+
+/* What this host can implement. Capability, not permission.
+ * process/spawn is broad arbitrary child-process authority; it is an optional
+ * privileged capability and is NOT required by the brokered fetch service. */
+static const char *const HOST_CAPS[] = {
+    "net/connect", "file/app-write", "process/spawn", "view/open", "open/folder", NULL
+};
+
+static int effective_has(const char *cap) {
+    for (int i = 0; i < g_neff; i++) if (!strcmp(g_eff[i], cap)) return 1;
+    return 0;
+}
 
 /* ---- host-call capture --------------------------------------------------- */
 
@@ -189,20 +215,45 @@ static int query_get(const char *q, const char *key, char *out, int cap) {
     return 1;
 }
 
-static void handle_static(glon_socket fd, const char *root, const char *target) {
-    char rel[2048];
-    if (!strcmp(target, "/") || target[0] == 0) strcpy(rel, "index.html");
-    else snprintf(rel, sizeof rel, "%s", target + 1);
-    if (strstr(rel, "..")) { send_http(fd, 404, "text/plain", "not found", 9); return; }
+/* Map a URL to a served file.  In D6 core mode this is the desktop/ root.  In
+ * app mode it mounts the app's View plus the host core and the requested
+ * modules.  This is host transport configuration, not application policy. */
+static int resolve_file_path(const char *target, char *out, int cap) {
+    if (strstr(target, "..")) return -1;
+    if (!g_app_mode) {
+        char rel[2048];
+        if (!strcmp(target, "/") || target[0] == 0) strcpy(rel, "index.html");
+        else snprintf(rel, sizeof rel, "%s", target + 1);
+        snprintf(out, cap, "desktop/%s", rel);
+        return 0;
+    }
+    if (!strcmp(target, "/") || !strcmp(target, "/index.html")) snprintf(out, cap, "desktop/index.html");
+    else if (!strcmp(target, "/view.glon")) snprintf(out, cap, "%s/%s", g_app_dir, g_app.view);
+    else if (!strcmp(target, "/e2e.html")) snprintf(out, cap, "%s/e2e.html", g_app_dir);
+    else if (!strcmp(target, "/strings.glon")) snprintf(out, cap, "modules/strings.glon");
+    else if (!strcmp(target, "/fetch.glon")) snprintf(out, cap, "modules/fetch.glon");
+    else if (!strcmp(target, "/glon.wasm")) snprintf(out, cap, "desktop/glon.wasm");
+    else if (!strcmp(target, "/browser-host.js")) snprintf(out, cap, "desktop/browser-host.js");
+    else if (!strcmp(target, "/emit.glon")) snprintf(out, cap, "desktop/emit.glon");
+    else if (!strcmp(target, "/prelude.glon")) snprintf(out, cap, "desktop/prelude.glon");
+    else if (target[0] == '/') snprintf(out, cap, "desktop/%s", target + 1);
+    else return -1;
+    return 0;
+}
+
+static void handle_static(glon_socket fd, const char *target) {
     char path[4096];
-    snprintf(path, sizeof path, "%s/%s", root, rel);
+    if (resolve_file_path(target, path, (int)sizeof path) != 0) {
+        send_http(fd, 404, "text/plain", "not found", 9);
+        return;
+    }
     static char body[MAX_BODY];
     int blen = 0;
     if (fs_read(path, body, (int)sizeof body, &blen) != 0) {
         send_http(fd, 404, "text/plain", "not found", 9);
         return;
     }
-    send_http(fd, 200, content_type(rel), body, blen);
+    send_http(fd, 200, content_type(path), body, blen);
 }
 
 /* ---- DATA PLANE: stream a file straight to the socket -------------------- */
@@ -316,7 +367,148 @@ static void handle_native_read(glon_socket fd, const char *key) {
     send_http(fd, 200, "text/plain; charset=utf-8", hc_arg, hc_arg_len);
 }
 
-static void handle_connection(glon_socket fd, const char *root) {
+/* ---- app endpoints ------------------------------------------------------- */
+
+static int dispatch_value(const char *token, const char *value) {
+    static char out[8192];
+    int out_len = 0;
+    capture_reset();
+    return r0_s1_g1a_live_event_bytes(token, (const unsigned char *)value,
+                                      (unsigned int)strlen(value),
+                                      out, (int)sizeof out, &out_len);
+}
+
+/* Forward one downloader output record through native Glon to the browser. */
+static void spawn_progress_cb(const char *record, int len, void *user) {
+    glon_socket fd = (glon_socket)(intptr_t)user;
+    static char out[8192];
+    int out_len = 0;
+    capture_reset();
+    if (r0_s1_g1a_live_event_bytes("fetch-output", (const unsigned char *)record,
+                                   (unsigned int)len, out, (int)sizeof out, &out_len) == 0 &&
+        hc_have && strcmp(hc_op, "progress") == 0) {
+        glon_tcp_write_all(fd, hc_arg, hc_arg_len);
+        glon_tcp_write_all(fd, "\n", 1);
+    }
+}
+
+static void handle_api_permissions(glon_socket fd) {
+    char buf[4096];
+    int n = 0;
+    n += snprintf(buf + n, sizeof buf - (size_t)n, "package=%s version=%s\n", g_app.pkg_name, g_app.version);
+    n += snprintf(buf + n, sizeof buf - (size_t)n, "modules:");
+    for (int i = 0; i < g_app.nmodules; i++) n += snprintf(buf + n, sizeof buf - (size_t)n, " %s", g_app.modules[i]);
+    n += snprintf(buf + n, sizeof buf - (size_t)n, "\nrequested:");
+    for (int i = 0; i < g_app.npermissions; i++) n += snprintf(buf + n, sizeof buf - (size_t)n, " %s", g_app.permissions[i]);
+    n += snprintf(buf + n, sizeof buf - (size_t)n, "\neffective:");
+    for (int i = 0; i < g_neff; i++) n += snprintf(buf + n, sizeof buf - (size_t)n, " %s", g_eff[i]);
+    n += snprintf(buf + n, sizeof buf - (size_t)n, "\n");
+    send_http(fd, 200, "text/plain; charset=utf-8", buf, n);
+}
+
+/* The download endpoint.  Body = "url\nname".  Authority is checked against
+ * the effective permission set (net/connect + file/app-write; NOT
+ * process/spawn).  The application decides the logical fetch; the host's
+ * trusted service implements it (internally with curl) and streams progress
+ * back through Glon.  The app never names an executable. */
+static void handle_api_fetch(glon_socket fd, const char *body) {
+    if (!g_app_mode) { send_http(fd, 404, "text/plain", "no app", 6); return; }
+
+    char url[2048] = {0}, name[512] = {0};
+    const char *nl = strchr(body, '\n');
+    if (nl) {
+        int ulen = (int)(nl - body);
+        if (ulen >= (int)sizeof url) ulen = (int)sizeof url - 1;
+        memcpy(url, body, (size_t)ulen);
+        url[ulen] = 0;
+        snprintf(name, sizeof name, "%s", nl + 1);
+    } else {
+        snprintf(url, sizeof url, "%s", body);
+    }
+
+    if (!effective_has("net/connect") || !effective_has("file/app-write")) {
+        fprintf(stderr, "glon-desktop: fetch denied: effective permissions lack net/connect or file/app-write\n");
+        send_http(fd, 403, "text/plain", "forbidden: net/connect or file/app-write not effective", 55);
+        return;
+    }
+
+    char dest[2048];
+    if (glon_app_resolve_write(g_data_dir, name, dest, (int)sizeof dest) != 0) {
+        fprintf(stderr, "glon-desktop: rejected destination name '%s'\n", name);
+        send_http(fd, 400, "text/plain", "bad destination", 15);
+        return;
+    }
+    fprintf(stderr, "glon-desktop: fetch url='%s' dest='%s'\n", url, dest);
+
+    dispatch_value("fetch-dest", dest);
+    dispatch_value("fetch-url", url);
+    dispatch_value("fetch-go", "");
+
+    /* The application must authorise the logical fetch.  It names no exe. */
+    if (!hc_have || strcmp(hc_op, "fetch-run") != 0 ||
+        hc_arg_len == 0 || (size_t)strlen(hc_arg) + 1 >= (size_t)hc_arg_len) {
+        send_http(fd, 400, "text/plain", "application did not authorise fetch", 34);
+        return;
+    }
+
+    /* Trusted host service implementation detail: curl, with a fixed vector.
+     * The destination is the host-resolved path (never the app's echo). */
+    char *argv[9];
+    argv[0] = (char *)"curl";
+    argv[1] = (char *)"--location";
+    argv[2] = (char *)"--fail";
+    argv[3] = (char *)"--proto";
+    argv[4] = (char *)"=http,https";
+    argv[5] = (char *)"--output";
+    argv[6] = dest;
+    argv[7] = url;
+    argv[8] = NULL;
+
+    const char *hdr = "HTTP/1.1 200 OK\r\n"
+                      "Content-Type: text/plain; charset=utf-8\r\n"
+                      "Connection: close\r\n"
+                      "Cache-Control: no-store\r\n\r\n";
+    glon_tcp_write_all(fd, hdr, (int)strlen(hdr));
+
+    int exit_code = 0;
+    glon_spawn_stream("curl", argv, spawn_progress_cb, (void *)(intptr_t)fd, &exit_code);
+
+    char hex[128];
+    if (glon_sha256(dest, hex, (int)sizeof hex) != 0)
+        snprintf(hex, sizeof hex, "unavailable");
+
+    char done[512];
+    snprintf(done, sizeof done, "DONE exit=%d sha256=%s", exit_code, hex);
+    dispatch_value("fetch-done", done);
+    if (hc_have && strcmp(hc_op, "progress") == 0) {
+        glon_tcp_write_all(fd, hc_arg, hc_arg_len);
+        glon_tcp_write_all(fd, "\n", 1);
+    }
+
+    snprintf(g_last_dest, sizeof g_last_dest, "%s", dest);
+    g_last_dest_set = 1;
+    fprintf(stderr, "glon-desktop: fetch complete exit=%d sha256=%s\n", exit_code, hex);
+}
+
+static void handle_api_open(glon_socket fd) {
+    if (!g_app_mode) { send_http(fd, 404, "text/plain", "no app", 6); return; }
+    /* Authority is checked before state: an unauthorised caller always 403s. */
+    if (!effective_has("open/folder")) { send_http(fd, 403, "text/plain", "forbidden", 9); return; }
+    if (!g_last_dest_set) {
+        send_http(fd, 400, "text/plain", "nothing downloaded", 18);
+        return;
+    }
+    char dir[2048];
+    snprintf(dir, sizeof dir, "%s", g_last_dest);
+    char *slash = strrchr(dir, '/');
+    if (!slash) { send_http(fd, 400, "text/plain", "bad path", 8); return; }
+    *slash = 0;
+    fprintf(stderr, "glon-desktop: opening folder '%s'\n", dir);
+    glon_open_path(dir);
+    send_http(fd, 200, "text/plain", "opened", 6);
+}
+
+static void handle_connection(glon_socket fd) {
     static char req[MAX_REQUEST];
     int n = 0;
     while (n < (int)sizeof req - 1) {
@@ -328,12 +520,31 @@ static void handle_connection(glon_socket fd, const char *root) {
     }
     if (n <= 0) return;
 
+    /* read the request body if Content-Length is present */
+    const char *body = "";
+    const char *hdr_end = strstr(req, "\r\n\r\n");
+    int hdr_len = hdr_end ? (int)(hdr_end - req) + 4 : n;
+    if (!hdr_end) { const char *he2 = strstr(req, "\n\n"); hdr_len = he2 ? (int)(he2 - req) + 2 : n; }
+    const char *cl = strstr(req, "Content-Length:");
+    if (!cl) cl = strstr(req, "content-length:");
+    if (cl) {
+        int clen = atoi(cl + 15);
+        if (clen < 0) clen = 0;
+        if (clen > (int)sizeof req - hdr_len - 1) clen = (int)sizeof req - hdr_len - 1;
+        while (n - hdr_len < clen) {
+            int r = glon_tcp_read(fd, req + n, (int)sizeof req - 1 - n);
+            if (r <= 0) break;
+            n += r;
+            req[n] = 0;
+        }
+        body = req + hdr_len;
+    }
+
     char method[16] = {0}, target[4096] = {0};
     if (sscanf(req, "%15s %4095s", method, target) != 2) {
         send_http(fd, 400, "text/plain", "bad request", 11);
         return;
     }
-    (void)method;
 
     char *q = strchr(target, '?');
     int is_native = 0, is_resource = 0;
@@ -350,35 +561,36 @@ static void handle_connection(glon_socket fd, const char *root) {
         }
     }
 
-    if (is_native) handle_native_read(fd, key);
+    if (!strcmp(target, "/api/permissions")) handle_api_permissions(fd);
+    else if (!strcmp(target, "/api/fetch")) handle_api_fetch(fd, body);
+    else if (!strcmp(target, "/api/open")) handle_api_open(fd);
+    else if (is_native) handle_native_read(fd, key);
     else if (is_resource) handle_resource(fd, key);
-    else handle_static(fd, root, target);
+    else handle_static(fd, target);
 }
 
 /* ---- main ---------------------------------------------------------------- */
 
 int main(int argc, char **argv) {
-    const char *app = "desktop/app.glon";
-    const char *root = "desktop";
+    const char *core_app = "desktop/app.glon";
+    const char *manifest = NULL;
+    const char *grants = "desktop/grants.conf";
     int port = 0;
     int no_browser = 0;
-    const char *libs[8];
-    int nlibs = 0;
-    libs[nlibs++] = "glon-lib/prelude.glon";
-    libs[nlibs++] = "glon-lib/strings.glon";
-    libs[nlibs++] = "desktop/emit.glon";
+
+    glon_host_init();
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--port") && i + 1 < argc) port = atoi(argv[++i]);
-        else if (!strcmp(argv[i], "--root") && i + 1 < argc) root = argv[++i];
         else if (!strcmp(argv[i], "--no-browser")) no_browser = 1;
-        else if (!strcmp(argv[i], "--lib") && i + 1 < argc && nlibs < 8) libs[nlibs++] = argv[++i];
-        else app = argv[i];
-    }
-
-    if (glon_host_init() != 0) {
-        fprintf(stderr, "glon-desktop: network initialisation failed\n");
-        return 2;
+        else if (!strcmp(argv[i], "--app") && i + 1 < argc) {
+            g_app_mode = 1;
+            snprintf(g_app_dir, sizeof g_app_dir, "%s", argv[++i]);
+        }
+        else if (!strcmp(argv[i], "--manifest") && i + 1 < argc) manifest = argv[++i];
+        else if (!strcmp(argv[i], "--grants") && i + 1 < argc) grants = argv[++i];
+        else if (!strcmp(argv[i], "--data") && i + 1 < argc) snprintf(g_data_dir, sizeof g_data_dir, "%s", argv[++i]);
+        else core_app = argv[i];
     }
     glon_ignore_sigpipe();
 
@@ -389,9 +601,64 @@ int main(int argc, char **argv) {
     for (int i = 0; i < M1_MAX_TASKS; i++)
         M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
 
-    for (int i = 0; i < nlibs; i++)
-        if (load_file(libs[i]) != 0) return 2;
-    if (load_file(app) != 0) return 2;
+    if (g_app_mode) {
+        char mpath[1200];
+        if (!manifest) { snprintf(mpath, sizeof mpath, "%s/glon-app.manifest", g_app_dir); manifest = mpath; }
+        if (glon_app_manifest_load(manifest, &g_app) != 0) {
+            fprintf(stderr, "glon-desktop: cannot read manifest '%s'\n", manifest);
+            return 2;
+        }
+        g_ngrants = glon_app_load_grants(grants, g_grants);
+        if (g_ngrants < 0) g_ngrants = 0;
+        g_neff = glon_app_effective(&g_app, g_grants, g_ngrants, HOST_CAPS, g_eff);
+        if (g_neff > GLON_APP_LIST_MAX) g_neff = GLON_APP_LIST_MAX;
+        if (!*g_data_dir) snprintf(g_data_dir, sizeof g_data_dir, "desktop/appdata");
+
+        printf("glon-desktop: app '%s' %s\n", g_app.pkg_name, g_app.version);
+        printf("glon-desktop: modules:");
+        for (int i = 0; i < g_app.nmodules; i++) printf(" %s", g_app.modules[i]);
+        printf("\n");
+        printf("glon-desktop: requested permissions:");
+        for (int i = 0; i < g_app.npermissions; i++) printf(" %s", g_app.permissions[i]);
+        printf("\n");
+        printf("glon-desktop: EFFECTIVE permissions:");
+        for (int i = 0; i < g_neff; i++) printf(" %s", g_eff[i]);
+        printf("\n");
+        fflush(stdout);
+
+        /* core host libraries, then exactly the requested modules */
+        if (load_file("glon-lib/prelude.glon") != 0) return 2;
+        if (load_file("desktop/emit.glon") != 0) return 2;
+        for (int i = 0; i < g_app.nmodules; i++) {
+            char mfile[512];
+            snprintf(mfile, sizeof mfile, "modules/%s.glon", g_app.modules[i]);
+            FILE *probe = fopen(mfile, "rb");
+            if (!probe) {
+                fprintf(stderr, "glon-desktop: required module '%s' not found in the local module store (%s)\n",
+                        g_app.modules[i], mfile);
+                return 2;
+            }
+            fclose(probe);
+            if (load_file(mfile) != 0) return 2;
+        }
+        char entry[1400];
+        snprintf(entry, sizeof entry, "%s/%s", g_app_dir, g_app.entry);
+        if (load_file(entry) != 0) return 2;
+
+        glon_mkdirs(g_data_dir);
+        char dl[1600];
+        snprintf(dl, sizeof dl, "%s/glon-fetch/downloads", g_data_dir);
+        glon_mkdirs(dl);
+    } else {
+        const char *libs[8];
+        int nlibs = 0;
+        libs[nlibs++] = "glon-lib/prelude.glon";
+        libs[nlibs++] = "glon-lib/strings.glon";
+        libs[nlibs++] = "desktop/emit.glon";
+        for (int i = 0; i < nlibs; i++)
+            if (load_file(libs[i]) != 0) return 2;
+        if (load_file(core_app) != 0) return 2;
+    }
 
     r0_s1_g1a_live_set_host_call(capture_host_call, 0);
 
@@ -413,7 +680,7 @@ int main(int argc, char **argv) {
     for (;;) {
         glon_socket conn = glon_tcp_accept(srv);
         if (conn == GLON_INVALID_SOCKET) break;
-        handle_connection(conn, root);
+        handle_connection(conn);
         glon_tcp_close(conn);
     }
     glon_tcp_close(srv);

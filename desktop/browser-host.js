@@ -34,10 +34,15 @@
         if (el) el.innerHTML = dec.decode(view().subarray(ptr, ptr + len));
       },
       host_canvas_script: function () { /* no canvas in this proof */ },
-      /* The GLON_LIVE build imports env.host_call. This proof does not use
-       * outbound capability requests from the browser (it asks native Glon via
-       * the same-origin fetch), so the import is a no-op. */
-      host_call: function () { /* unused by this view */ }
+      /* The GLON_LIVE build imports env.host_call. Glon emits a host-call when
+       * it wants a native action; this is browser transport only. */
+      host_call: function (opPtr, opLen, argPtr, argLen) {
+        var op = dec.decode(view().subarray(opPtr, opPtr + opLen));
+        var arg = dec.decode(view().subarray(argPtr, argPtr + argLen));
+        if (op === "fetch") startFetch(arg);
+        else if (op === "open-folder") openFolder();
+        else console.error("browser-host: unknown host_call op '" + op + "'");
+      }
     }
   };
 
@@ -97,13 +102,79 @@
       .catch(function (err) { console.error("browser-host: native read failed", err); });
   }
 
+  /* Deliver a raw-byte event to Glon (prefer glon_event_bytes). */
+  function deliver(token, text) {
+    var t = alloc(token);
+    if (typeof ex.glon_event_bytes === "function") {
+      var d = alloc(text);
+      var rc = ex.glon_event_bytes(t[0], t[1], d[0], d[1]);
+      if (rc !== 0) console.error("browser-host: glon_event_bytes('" + token + "') rc=" + rc);
+      return;
+    }
+    deliverReply(token, text);
+  }
+
+  /* An event carrying a value.  Must use the live dispatcher so Glon can emit
+   * an outbound host-call request (e.g. start a download). */
+  function glonEventValue(token, value) { deliver(token, value); }
+
+  /* Start a download: Glon decided the action; JS only carries the request and
+   * streams the newline-delimited progress records back to Glon. */
+  function startFetch(spec) {
+    fetch("/api/fetch", { method: "POST", body: spec })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        var reader = resp.body.getReader();
+        var buf = "";
+        function pump() {
+          return reader.read().then(function (r) {
+            if (r.done) {
+              if (buf) deliver("fetch-progress", buf);
+              glonEvent("fetch-done");
+              return;
+            }
+            buf += dec.decode(r.value, { stream: true });
+            var i;
+            while ((i = buf.indexOf("\n")) >= 0) {
+              deliver("fetch-progress", buf.slice(0, i));
+              buf = buf.slice(i + 1);
+            }
+            return pump();
+          });
+        }
+        return pump();
+      })
+      .catch(function (err) {
+        console.error("browser-host: fetch failed", err);
+        deliver("fetch-progress", "ERROR " + err);
+      });
+  }
+
+  function openFolder() {
+    fetch("/api/open", { method: "POST" })
+      .catch(function (err) { console.error("browser-host: open folder failed", err); });
+  }
+
+  function inputValues(spec) {
+    var parts = spec.split(",");
+    var vals = [];
+    for (var i = 0; i < parts.length; i++) {
+      var inp = document.querySelector('[data-glon-input="' + parts[i].replace(/^\s+|\s+$/g, "") + '"]');
+      vals.push(inp && inp.value !== undefined ? inp.value : "");
+    }
+    return vals.join("\n");
+  }
+
   function wireClicks() {
     document.addEventListener("click", function (e) {
       var el = e.target && e.target.closest
         ? e.target.closest("[data-glon-native], [data-glon-event]") : null;
       if (!el) return;
       e.preventDefault();
-      if (el.hasAttribute("data-glon-native")) {
+      if (el.hasAttribute("data-glon-inputs")) {
+        glonEventValue(el.getAttribute("data-glon-event"),
+                       inputValues(el.getAttribute("data-glon-inputs")));
+      } else if (el.hasAttribute("data-glon-native")) {
         nativeRead(el.getAttribute("data-glon-native"),
                    el.getAttribute("data-glon-event") || "native-reply");
       } else {

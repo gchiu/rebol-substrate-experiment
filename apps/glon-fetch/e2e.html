@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Glon Fetch E2E harness</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 2rem auto; max-width: 48rem; }
+  button { font: inherit; padding: .5rem .9rem; cursor: pointer; }
+  pre { background: #f4f4f4; border: 1px solid #ddd; padding: 1rem; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<!--
+  Test-only harness: the same page shell and browser-host.js as the real app.
+  Reads ?url= and ?name=, fills the real form, clicks the real Download button,
+  then copies the rendered status (progress + DONE + SHA-256) into #verify so a
+  headless Chromium --dump-dom can inspect it.
+-->
+<div id="app" data-glon-id="1"></div>
+<pre id="verify">pending</pre>
+<script src="browser-host.js"></script>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var url = q.get("url") || "";
+  var name = q.get("name") || "e2e.bin";
+  var verify = document.getElementById("verify");
+  var started = false;
+  setInterval(function () {
+    var u = document.querySelector('[data-glon-input="url"]');
+    var n = document.querySelector('[data-glon-input="name"]');
+    var b = document.querySelector('[data-glon-event="fetch-start"]');
+    if (!started && u && n && b) {
+      started = true;
+      u.value = url;
+      n.value = name;
+      b.click();
+    }
+    var app = document.getElementById("app");
+    if (app && app.textContent.indexOf("DONE") >= 0) verify.textContent = app.textContent;
+  }, 100);
+})();
+</script>
+</body>
+</html>

@@ -28,5 +28,21 @@ int  glon_tcp_write_all(glon_socket c, const void *buf, int n);
 void glon_tcp_close(glon_socket c);
 
 void glon_open_browser(const char *url);
+void glon_open_path(const char *path);
+
+/* Create a directory and any missing parents (best effort). */
+int glon_mkdirs(const char *path);
+
+/* Generic process/spawn.  Runs `exe` with a separate argv array (NULL
+ * terminated) -- never a shell.  stdout+stderr are captured and delivered as
+ * records (split on LF or CR) to cb as they arrive.  Returns 0 and sets
+ * *exit_code when the child finished. */
+int glon_spawn_stream(const char *exe, char *const argv[],
+                      void (*cb)(const char *record, int len, void *user),
+                      void *user, int *exit_code);
+
+/* SHA-256 of a file using the platform facility (sha256sum / certutil).
+ * Writes 64 lowercase hex chars + NUL to out_hex.  A service, not authority. */
+int glon_sha256(const char *path, char *out_hex, int cap);
 
 #endif /* GLON_HOST_H */

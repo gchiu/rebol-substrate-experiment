@@ -18,7 +18,7 @@ copy /Y demo\shop\strings.glon desktop\strings.glon >nul
 if not exist desktop\big.txt call desktop\make-big.bat
 
 gcc -std=c17 -O2 -I. -o glon-desktop.exe ^
-    desktop\glon_desktop.c desktop\glon_host_windows.c ^
+    desktop\glon_desktop.c desktop\glon_host_windows.c desktop\glon_app.c ^
     r0_s1_g1a_live.c r0_s1_g1a.c r0_s1_show.c r0_s1_runtime.c s1.c ^
     -lws2_32 -lshell32
 if errorlevel 1 (

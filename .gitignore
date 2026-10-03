@@ -18,3 +18,4 @@ desktop/glon.wasm
 desktop/prelude.glon
 desktop/strings.glon
 desktop/big.txt
+desktop/appdata/

@@ -14,6 +14,7 @@
 #include <shellapi.h>
 #include <process.h>
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -76,12 +77,154 @@ int glon_tcp_write_all(glon_socket c, const void *buf, int n) {
 
 void glon_tcp_close(glon_socket c) { closesocket((SOCKET)c); }
 
-void glon_open_browser(const char *url) {
-    int n = MultiByteToWideChar(CP_UTF8, 0, url, -1, NULL, 0);
+static void shell_open(const char *arg) {
+    int n = MultiByteToWideChar(CP_UTF8, 0, arg, -1, NULL, 0);
     if (n <= 0) return;
     wchar_t *wide = (wchar_t *)malloc((size_t)n * sizeof(wchar_t));
     if (!wide) return;
-    MultiByteToWideChar(CP_UTF8, 0, url, -1, wide, n);
+    MultiByteToWideChar(CP_UTF8, 0, arg, -1, wide, n);
     ShellExecuteW(NULL, L"open", wide, NULL, NULL, SW_SHOWNORMAL);
     free(wide);
+}
+
+void glon_open_browser(const char *url) { shell_open(url); }
+void glon_open_path(const char *path) { shell_open(path); }
+
+int glon_mkdirs(const char *path) {
+    char tmp[1024];
+    if (!path || strlen(path) >= sizeof tmp) return -1;
+    strcpy(tmp, path);
+    for (int i = 1; tmp[i]; i++) {
+        if (tmp[i] == '/' || tmp[i] == '\\') {
+            char save = tmp[i];
+            tmp[i] = 0;
+            CreateDirectoryA(tmp, NULL);
+            tmp[i] = save;
+        }
+    }
+    CreateDirectoryA(tmp, NULL);
+    return 0;
+}
+
+/* Append one argument to a Windows command line, quoted and backslash-escaped
+ * so it survives CreateProcess intact.  This is argument passing, not a shell. */
+static void wappend_quoted(wchar_t *buf, int *n, int cap, const wchar_t *s) {
+    #define PUT(ch) do { if (*n < cap - 1) buf[(*n)++] = (wchar_t)(ch); } while (0)
+    PUT(L'"');
+    int bs = 0;
+    for (const wchar_t *p = s; *p; p++) {
+        if (*p == L'\\') { bs++; continue; }
+        if (*p == L'"') {
+            for (int i = 0; i < 2 * bs + 1; i++) PUT(L'\\');
+            PUT(L'"');
+            bs = 0;
+        } else {
+            for (int i = 0; i < bs; i++) PUT(L'\\');
+            PUT(*p);
+            bs = 0;
+        }
+    }
+    for (int i = 0; i < 2 * bs; i++) PUT(L'\\');
+    PUT(L'"');
+    #undef PUT
+}
+
+int glon_spawn_stream(const char *exe, char *const argv[],
+                      void (*cb)(const char *record, int len, void *user),
+                      void *user, int *exit_code) {
+    (void)exe;
+    int cap = 32768;
+    wchar_t *cmd = (wchar_t *)malloc((size_t)cap * sizeof(wchar_t));
+    if (!cmd) return -1;
+    int cn = 0;
+    for (int i = 0; argv[i]; i++) {
+        int need = MultiByteToWideChar(CP_UTF8, 0, argv[i], -1, NULL, 0);
+        wchar_t *w = (wchar_t *)malloc((size_t)(need > 0 ? need : 1) * sizeof(wchar_t));
+        if (!w) { free(cmd); return -1; }
+        MultiByteToWideChar(CP_UTF8, 0, argv[i], -1, w, need);
+        if (i) { if (cn < cap - 1) cmd[cn++] = L' '; }
+        wappend_quoted(cmd, &cn, cap, w);
+        free(w);
+    }
+    cmd[cn] = 0;
+
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength = sizeof sa;
+    sa.lpSecurityDescriptor = NULL;
+    sa.bInheritHandle = TRUE;
+    HANDLE rd = NULL, wr = NULL;
+    if (!CreatePipe(&rd, &wr, &sa, 0)) { free(cmd); return -1; }
+    SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
+
+    STARTUPINFOW si;
+    PROCESS_INFORMATION pi;
+    memset(&si, 0, sizeof si);
+    memset(&pi, 0, sizeof pi);
+    si.cb = sizeof si;
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdOutput = wr;
+    si.hStdError = wr;
+    si.hStdInput = NULL;
+
+    BOOL ok = CreateProcessW(NULL, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
+    free(cmd);
+    CloseHandle(wr);
+    if (!ok) { CloseHandle(rd); return -1; }
+
+    char buf[4096];
+    char rec[8192];
+    int rlen = 0;
+    DWORD got = 0;
+    while (ReadFile(rd, buf, sizeof buf, &got, NULL) && got > 0) {
+        for (DWORD i = 0; i < got; i++) {
+            char c = buf[i];
+            if (c == '\n' || c == '\r') {
+                if (rlen > 0) { rec[rlen] = 0; if (cb) cb(rec, rlen, user); rlen = 0; }
+            } else if (rlen < (int)sizeof rec - 1) {
+                rec[rlen++] = c;
+            }
+        }
+    }
+    if (rlen > 0) { rec[rlen] = 0; if (cb) cb(rec, rlen, user); }
+    CloseHandle(rd);
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 0;
+    GetExitCodeProcess(pi.hProcess, &code);
+    if (exit_code) *exit_code = (int)code;
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return 0;
+}
+
+struct sha_capture { char *buf; int n; int cap; };
+
+static void sha_cb(const char *record, int len, void *user) {
+    struct sha_capture *c = (struct sha_capture *)user;
+    for (int i = 0; i < len && c->n < c->cap - 1; i++) c->buf[c->n++] = record[i];
+    c->buf[c->n] = 0;
+}
+
+int glon_sha256(const char *path, char *out_hex, int cap) {
+    char *argv[5];
+    argv[0] = (char *)"certutil";
+    argv[1] = (char *)"-hashfile";
+    argv[2] = (char *)path;
+    argv[3] = (char *)"SHA256";
+    argv[4] = NULL;
+    char acc[8192];
+    struct sha_capture c = { acc, 0, (int)sizeof acc };
+    acc[0] = 0;
+    int code = 0;
+    if (glon_spawn_stream("certutil", argv, sha_cb, &c, &code) != 0) return -1;
+    for (int i = 0; acc[i]; i++) {
+        int j = 0;
+        while (j < 64 && isxdigit((unsigned char)acc[i + j])) j++;
+        if (j == 64) {
+            int k = 0;
+            for (; k < 64 && k < cap - 1; k++) out_hex[k] = acc[i + k];
+            out_hex[k] = 0;
+            return 0;
+        }
+    }
+    return -1;
 }

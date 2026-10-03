@@ -1,0 +1,58 @@
+;; apps/glon-fetch/view.glon -- the browser/WASM Glon View.
+;;
+;; Presentation only. It renders the form and progress, and emits small
+;; requests; it never touches bytes or the filesystem. JavaScript is transport.
+;; Requires prelude.glon (mk-string) and emit.glon.
+
+[
+status: "idle"
+
+host-request: func [op arg] [
+    emit-clear
+    emit-byte 1
+    emit-text op
+    emit-byte 0
+    emit-text arg
+    emit-finish
+]
+
+home-view: [
+    emit-clear
+    emit-text "<h1>Glon Fetch</h1>"
+    emit-text "<p>Native Glon is the application. This page is Glon's View.</p>"
+    emit-text "<p>URL: <input data-glon-input='url' size='64' value=''></p>"
+    emit-text "<p>Save as: <input data-glon-input='name' size='32' value='download.bin'></p>"
+    emit-text "<button data-glon-event='fetch-start' data-glon-inputs='url,name'>Download</button>"
+    emit-text " <button data-glon-event='open-folder'>Open Folder</button>"
+    emit-text "<h2>Status</h2>"
+    emit-text "<pre class='status'>"
+    emit-text status
+    emit-text "</pre>"
+    emit-finish
+]
+
+render-home: func [] [ do home-view ]
+
+route: [ render-home ]
+
+do-event: [
+    either = current-event 'fetch-start [
+        status: "starting..."
+        host-request "fetch" current-value
+    ] [
+        either = current-event 'fetch-progress [
+            status: current-value
+            render-home
+        ] [
+            either = current-event 'fetch-done [
+                status: current-value
+                render-home
+            ] [
+                either = current-event 'open-folder [
+                    host-request "open-folder" ""
+                ] [ render-home ]
+            ]
+        ]
+    ]
+]
+]

@@ -1,0 +1,38 @@
+;; modules/fetch.glon -- the "fetch" functionality module (native Glon side).
+;;
+;; Functionality only. This module holds NO authority: loading it does not grant
+;; net/connect, file/app-write, open/folder or process/spawn.
+;;
+;; The module asks for a LOGICAL fetch; it never names an executable. The
+;; trusted host implements the fetch service internally (with curl) and exposes
+;; only the semantic request. This is deliberate: a fetch app must not receive
+;; broad process/spawn authority merely because the service uses a helper
+;; executable.
+;;
+;; Requires emit.glon (emit-clear/emit-byte/emit-text/emit-finish).
+
+[
+;; A generic host-call request fragment: byte 1, op, 0, arg.
+host-request: func [op arg] [
+    emit-clear
+    emit-byte 1
+    emit-text op
+    emit-byte 0
+    emit-text arg
+    emit-finish
+]
+
+;; Ask the trusted host fetch service to download `url` to `dest`.
+;; The host checks net/connect and file/app-write authority, then implements the
+;; transfer itself. No executable name is sent from Glon.
+fetch-request: func [dest url] [
+    emit-clear
+    emit-byte 1
+    emit-text "fetch-run"
+    emit-byte 0
+    emit-text dest
+    emit-byte 0
+    emit-text url
+    emit-finish
+]
+]

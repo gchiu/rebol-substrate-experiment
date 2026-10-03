@@ -1,0 +1,29 @@
+# Glon Fetch -- application manifest (D7).
+#
+# The manifest REQUESTS authority; it never grants it. Trusted host-side grant
+# state (desktop/grants.conf) is the only source of authority. Effective
+# authority = host implements INTERSECT manifest requests INTERSECT grants.
+#
+# modules      -> functionality (loaded from the local module store, modules/)
+# permissions  -> authority
+# entitlements -> licensing (present, intentionally empty for D7)
+# package      -> identity
+#
+# Glon Fetch does NOT request process/spawn. Downloading is a BROKERED host
+# service: the application asks for a logical fetch; the trusted host service
+# implements it (internally with curl) and never exposes arbitrary child-process
+# authority to the application. SHA-256 is likewise a host service.
+
+name: Glon Fetch
+version: 0.1.0
+entry: app.glon
+view: view.glon
+
+module: strings
+module: fetch
+
+permission: net/connect
+permission: file/app-write
+permission: open/folder
+
+# entitlements: (none for D7)

@@ -16,6 +16,7 @@
 #include "r0_s1_g1a.h"
 #include "r0_s1_g1a_live.h"
 #include "m1_layout.h"
+#include "glon_app.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -200,10 +201,71 @@ static void phase_browser_view(void) {
           "clearing removes the resource consumer");
 }
 
+static void phase_app_model(void) {
+    printf("app model: effective authority + path authority\n");
+    glon_app_t app;
+    memset(&app, 0, sizeof app);
+    snprintf(app.pkg_name, sizeof app.pkg_name, "%s", "Test App");
+    app.npermissions = 0;
+    snprintf(app.permissions[app.npermissions++], GLON_APP_NAME_MAX, "%s", "net/connect");
+    snprintf(app.permissions[app.npermissions++], GLON_APP_NAME_MAX, "%s", "process/spawn");
+    snprintf(app.permissions[app.npermissions++], GLON_APP_NAME_MAX, "%s", "bluetooth");
+
+    char grants[GLON_APP_LIST_MAX][GLON_APP_NAME_MAX];
+    int ng = 0;
+    snprintf(grants[ng++], GLON_APP_NAME_MAX, "%s", "net/connect");
+    snprintf(grants[ng++], GLON_APP_NAME_MAX, "%s", "process/spawn");
+    snprintf(grants[ng++], GLON_APP_NAME_MAX, "%s", "bluetooth");
+
+    const char *const caps[] = { "net/connect", "file/app-write", "process/spawn", "view/open", NULL };
+    char eff[GLON_APP_LIST_MAX][GLON_APP_NAME_MAX];
+    int ne = glon_app_effective(&app, grants, ng, caps, eff);
+    int has_net = 0, has_spawn = 0, has_bt = 0;
+    for (int i = 0; i < ne; i++) {
+        if (!strcmp(eff[i], "net/connect")) has_net = 1;
+        if (!strcmp(eff[i], "process/spawn")) has_spawn = 1;
+        if (!strcmp(eff[i], "bluetooth")) has_bt = 1;
+    }
+    CHECK(has_net, "effective includes a requested+implemented+granted permission");
+    CHECK(has_spawn, "effective includes a fully-granted permission");
+    CHECK(!has_bt, "adding a permission the host does not implement is not granted");
+
+    /* requested but not granted */
+    char grants2[GLON_APP_LIST_MAX][GLON_APP_NAME_MAX];
+    int ng2 = 0;
+    snprintf(grants2[ng2++], GLON_APP_NAME_MAX, "%s", "net/connect");
+    int ne2 = glon_app_effective(&app, grants2, ng2, caps, eff);
+    int spawn2 = 0;
+    for (int i = 0; i < ne2; i++) if (!strcmp(eff[i], "process/spawn")) spawn2 = 1;
+    CHECK(!spawn2, "requested but ungranted permission is not effective");
+
+    /* unrequested */
+    glon_app_t app3;
+    memset(&app3, 0, sizeof app3);
+    snprintf(app3.permissions[app3.npermissions++], GLON_APP_NAME_MAX, "%s", "net/connect");
+    int ne3 = glon_app_effective(&app3, grants, ng, caps, eff);
+    int spawn3 = 0;
+    for (int i = 0; i < ne3; i++) if (!strcmp(eff[i], "process/spawn")) spawn3 = 1;
+    CHECK(!spawn3, "permission not requested by the app is not effective");
+
+    /* path authority */
+    char out[512];
+    CHECK(glon_app_resolve_write("/data", "ok.bin", out, sizeof out) == 0 &&
+          strcmp(out, "/data/glon-fetch/downloads/ok.bin") == 0,
+          "an authorised save name resolves inside the app-write area");
+    CHECK(glon_app_resolve_write("/data", "../../etc/passwd", out, sizeof out) != 0,
+          "a traversal save name is rejected");
+    CHECK(glon_app_resolve_write("/data", "a/b", out, sizeof out) != 0,
+          "a save name with a separator is rejected");
+    CHECK(glon_app_resolve_write("/data", "/etc/passwd", out, sizeof out) != 0,
+          "an absolute save name is rejected");
+}
+
 int main(void) {
     printf("Glon desktop application split (native, headless)\n");
     phase_native_app();
     phase_browser_view();
+    phase_app_model();
     if (failures == 0) printf("DESKTOP_TEST PASS\n");
     else printf("DESKTOP_TEST FAIL (%d)\n", failures);
     return failures;

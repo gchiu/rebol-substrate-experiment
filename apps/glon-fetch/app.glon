@@ -1,0 +1,55 @@
+;; apps/glon-fetch/app.glon -- the native Glon application (control plane).
+;;
+;; Glon decides. It receives small values (url, destination, exit status,
+;; SHA-256) and decides which authorised action runs. It never carries the
+;; downloaded bytes: the host/curl writes them straight to disk.
+;;
+;; Events the host sends to this application:
+;;   fetch-dest   current-value = an absolute path inside the app-write area
+;;   fetch-url    current-value = the requested URL
+;;   fetch-go     (no value)   -> decide the authorised action
+;;   fetch-output current-value = one line of the downloader's progress output
+;;   fetch-done   current-value = final status (exit status + SHA-256)
+;;
+;; The application requests authority by emitting host-calls (here, the
+;; downloader spawn request and progress forwards); the host enforces it.
+;;
+;; Loaded with: prelude, emit, modules/strings, modules/fetch.
+
+[
+url: ""
+dest: ""
+status: "idle"
+
+do-event: [
+    either = current-event 'fetch-dest [
+        dest: current-value
+        none
+    ] [
+        either = current-event 'fetch-url [
+            url: current-value
+            none
+        ] [
+            either = current-event 'fetch-go [
+                ;; The application decides the logical action (fetch url -> dest).
+                ;; The host has checked net/connect and file/app-write, and its
+                ;; trusted service performs the transfer. Glon names no exe.
+                fetch-request dest url
+            ] [
+                either = current-event 'fetch-output [
+                    ;; Forward one small progress line to the View.
+                    status: current-value
+                    host-request "progress" status
+                ] [
+                    either = current-event 'fetch-done [
+                        status: current-value
+                        host-request "progress" status
+                    ] [ none ]
+                ]
+            ]
+        ]
+    ]
+]
+
+route: [ none ]
+]

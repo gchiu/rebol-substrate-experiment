@@ -8,13 +8,16 @@
 #include "glon_host.h"
 
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <errno.h>
 #include <netinet/in.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 int glon_host_init(void) { return 0; }
@@ -71,15 +74,108 @@ int glon_tcp_write_all(glon_socket c, const void *buf, int n) {
 
 void glon_tcp_close(glon_socket c) { close((int)c); }
 
-void glon_open_browser(const char *url) {
+static void spawn_opener(const char *arg) {
     const char *candidates[] = { "xdg-open", "open", NULL };
     for (int i = 0; candidates[i]; i++) {
         pid_t p = fork();
         if (p == 0) {
-            execlp(candidates[i], candidates[i], url, (char *)0);
+            execlp(candidates[i], candidates[i], arg, (char *)0);
             _exit(127);
         }
         if (p > 0) return;
     }
-    fprintf(stderr, "glon-desktop: no browser opener found (xdg-open/open)\n");
+    fprintf(stderr, "glon-desktop: no opener found (xdg-open/open)\n");
+}
+
+void glon_open_browser(const char *url) { spawn_opener(url); }
+void glon_open_path(const char *path) { spawn_opener(path); }
+
+int glon_mkdirs(const char *path) {
+    char tmp[1024];
+    if (!path || strlen(path) >= sizeof tmp) return -1;
+    strcpy(tmp, path);
+    for (char *p = tmp + 1; *p; p++) {
+        if (*p == '/') {
+            *p = 0;
+            mkdir(tmp, 0700);
+            *p = '/';
+        }
+    }
+    mkdir(tmp, 0700);
+    return 0;
+}
+
+/* Generic process/spawn: fork + execvp with a pipe, no shell.  Output records
+ * are split on LF or CR and delivered as they arrive. */
+int glon_spawn_stream(const char *exe, char *const argv[],
+                      void (*cb)(const char *record, int len, void *user),
+                      void *user, int *exit_code) {
+    int p[2];
+    if (pipe(p) != 0) return -1;
+    pid_t pid = fork();
+    if (pid < 0) { close(p[0]); close(p[1]); return -1; }
+    if (pid == 0) {
+        dup2(p[1], 1);
+        dup2(p[1], 2);
+        close(p[0]);
+        close(p[1]);
+        execvp(exe, argv);
+        _exit(127);
+    }
+    close(p[1]);
+    char buf[4096];
+    char rec[8192];
+    int rlen = 0;
+    ssize_t n;
+    while ((n = read(p[0], buf, sizeof buf)) > 0) {
+        for (ssize_t i = 0; i < n; i++) {
+            char c = buf[i];
+            if (c == '\n' || c == '\r') {
+                if (rlen > 0) {
+                    rec[rlen] = 0;
+                    if (cb) cb(rec, rlen, user);
+                    rlen = 0;
+                }
+            } else if (rlen < (int)sizeof rec - 1) {
+                rec[rlen++] = c;
+            }
+        }
+    }
+    if (rlen > 0) { rec[rlen] = 0; if (cb) cb(rec, rlen, user); }
+    close(p[0]);
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) return -1;
+    if (exit_code) *exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    return 0;
+}
+
+struct sha_capture { char *buf; int n; int cap; };
+
+static void sha_cb(const char *record, int len, void *user) {
+    struct sha_capture *c = (struct sha_capture *)user;
+    for (int i = 0; i < len && c->n < c->cap - 1; i++) c->buf[c->n++] = record[i];
+    c->buf[c->n] = 0;
+}
+
+int glon_sha256(const char *path, char *out_hex, int cap) {
+    char *argv[3];
+    argv[0] = (char *)"sha256sum";
+    argv[1] = (char *)path;
+    argv[2] = NULL;
+    char acc[8192];
+    struct sha_capture c = { acc, 0, (int)sizeof acc };
+    acc[0] = 0;
+    int code = 0;
+    if (glon_spawn_stream("sha256sum", argv, sha_cb, &c, &code) != 0) return -1;
+    for (int i = 0; acc[i]; i++) {
+        int j = 0;
+        while (j < 64 && isxdigit((unsigned char)acc[i + j])) j++;
+        if (j == 64) {
+            int k = 0;
+            for (; k < 64 && k < cap - 1; k++) out_hex[k] = acc[i + k];
+            out_hex[k] = 0;
+            return 0;
+        }
+    }
+    return -1;
 }
