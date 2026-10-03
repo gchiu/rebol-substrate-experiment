@@ -587,11 +587,12 @@ static void handle_api_open(glon_socket fd) {
     if (!slash) { send_http(fd, 400, "text/plain", "bad path", 8); return; }
     *slash = 0;
     if (glon_open_path(dir) != 0) {
-        fprintf(stderr, "glon-desktop: failed to open folder '%s'\n", dir);
+        fprintf(stderr, "glon-desktop: failed to launch explorer for folder '%s'\n", dir);
         send_http(fd, 500, "text/plain", "could not open folder", 21);
         return;
     }
-    send_http(fd, 200, "text/plain", "opened", 6);
+    /* The process was created; visibility is not asserted here. */
+    send_http(fd, 200, "text/plain", "requested", 9);
 }
 
 static void handle_connection(glon_socket fd) {

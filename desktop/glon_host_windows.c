@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
 
 #include "glon_host.h"
 
@@ -88,6 +89,56 @@ static int shell_open(const wchar_t *arg) {
     return 0;
 }
 
+/* Quote one argument into a Windows command line (defined with the spawn
+ * machinery below). */
+static void wappend_quoted(wchar_t *buf, int *n, int cap, const wchar_t *s);
+
+/* Open a folder by explicitly launching the trusted executable explorer.exe
+ * with the normalized absolute directory as a separate argument:
+ *
+ *     explorer.exe "<absolute directory>"
+ *
+ * This is a direct CreateProcessW call (no cmd.exe, no shell command string);
+ * argv is quoted with the normal Windows rules so spaces are preserved.  The
+ * executable is fixed by the host and cannot be chosen by the application or
+ * browser.  Returns 0 if the process was created, -1 otherwise.  A created
+ * process is NOT proof of a visible window. */
+static int run_explorer(const wchar_t *abs) {
+    wchar_t windir[MAX_PATH];
+    if (GetSystemWindowsDirectoryW(windir, MAX_PATH) == 0) {
+        fprintf(stderr, "glon-desktop: GetSystemWindowsDirectoryW failed (error %lu)\n", GetLastError());
+        return -1;
+    }
+    wchar_t exe[MAX_PATH];
+    if (_snwprintf(exe, MAX_PATH, L"%ls\\explorer.exe", windir) < 0) return -1;
+
+    wchar_t cmd[32768];
+    int cap = (int)(sizeof cmd / sizeof cmd[0]);
+    int cn = 0;
+    wappend_quoted(cmd, &cn, cap, exe);            /* argv[0]: explorer.exe */
+    if (cn < cap - 1) cmd[cn++] = L' ';
+    wappend_quoted(cmd, &cn, cap, abs);            /* argv[1]: the directory */
+    cmd[cn] = 0;
+
+    STARTUPINFOW si;
+    PROCESS_INFORMATION pi;
+    memset(&si, 0, sizeof si);
+    memset(&pi, 0, sizeof pi);
+    si.cb = sizeof si;
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_SHOWNORMAL;   /* normal, visible interactive window */
+
+    BOOL ok = CreateProcessW(exe, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
+    if (!ok) {
+        fprintf(stderr, "glon-desktop: CreateProcessW(explorer.exe) failed (error %lu)\n", GetLastError());
+        return -1;
+    }
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    fprintf(stderr, "glon-desktop: launched explorer.exe %ls\n", cmd);
+    return 0;
+}
+
 void glon_open_browser(const char *url) {
     int n = MultiByteToWideChar(CP_UTF8, 0, url, -1, NULL, 0);
     if (n <= 0) return;
@@ -123,11 +174,11 @@ int glon_open_path(const char *path) {
         return -1;
     }
 
-    int rc = shell_open(full);
+    int rc = run_explorer(full);
     if (rc != 0)
-        fprintf(stderr, "glon-desktop: could not open folder '%ls'\n", full);
+        fprintf(stderr, "glon-desktop: could not launch explorer for folder '%ls'\n", full);
     else
-        fprintf(stderr, "glon-desktop: opened folder '%ls'\n", full);
+        fprintf(stderr, "glon-desktop: explorer.exe launched for folder '%ls' (process created; visibility not asserted)\n", full);
     free(full);
     return rc;
 }
