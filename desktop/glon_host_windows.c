@@ -77,18 +77,60 @@ int glon_tcp_write_all(glon_socket c, const void *buf, int n) {
 
 void glon_tcp_close(glon_socket c) { closesocket((SOCKET)c); }
 
-static void shell_open(const char *arg) {
-    int n = MultiByteToWideChar(CP_UTF8, 0, arg, -1, NULL, 0);
+/* ShellExecuteW with a result check.  Returns 0 on success, -1 if Windows
+ * rejected the request ((INT_PTR)result <= 32).  Logs the failure code. */
+static int shell_open(const wchar_t *arg) {
+    HINSTANCE r = ShellExecuteW(NULL, L"open", arg, NULL, NULL, SW_SHOWNORMAL);
+    if ((INT_PTR)r <= 32) {
+        fprintf(stderr, "glon-desktop: ShellExecuteW failed (code %lld)\n", (long long)(INT_PTR)r);
+        return -1;
+    }
+    return 0;
+}
+
+void glon_open_browser(const char *url) {
+    int n = MultiByteToWideChar(CP_UTF8, 0, url, -1, NULL, 0);
     if (n <= 0) return;
     wchar_t *wide = (wchar_t *)malloc((size_t)n * sizeof(wchar_t));
     if (!wide) return;
-    MultiByteToWideChar(CP_UTF8, 0, arg, -1, wide, n);
-    ShellExecuteW(NULL, L"open", wide, NULL, NULL, SW_SHOWNORMAL);
+    MultiByteToWideChar(CP_UTF8, 0, url, -1, wide, n);
+    shell_open(wide);
     free(wide);
 }
 
-void glon_open_browser(const char *url) { shell_open(url); }
-void glon_open_path(const char *path) { shell_open(path); }
+int glon_open_path(const char *path) {
+    /* Resolve to a proper absolute Windows path before opening it; a relative
+     * path with forward slashes is not reliably accepted by ShellExecuteW. */
+    int n = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
+    if (n <= 0) { fprintf(stderr, "glon-desktop: cannot convert path '%s'\n", path); return -1; }
+    wchar_t *w = (wchar_t *)malloc((size_t)n * sizeof(wchar_t));
+    if (!w) return -1;
+    MultiByteToWideChar(CP_UTF8, 0, path, -1, w, n);
+
+    DWORD need = GetFullPathNameW(w, 0, NULL, NULL);
+    if (need == 0) {
+        fprintf(stderr, "glon-desktop: GetFullPathNameW failed for '%s' (error %lu)\n", path, GetLastError());
+        free(w);
+        return -1;
+    }
+    wchar_t *full = (wchar_t *)malloc((size_t)(need + 1) * sizeof(wchar_t));
+    if (!full) { free(w); return -1; }
+    DWORD got = GetFullPathNameW(w, need + 1, full, NULL);
+    free(w);
+    if (got == 0 || got > need) {
+        fprintf(stderr, "glon-desktop: GetFullPathNameW failed for '%s' (error %lu)\n", path, GetLastError());
+        free(full);
+        return -1;
+    }
+
+    int rc = shell_open(full);
+    if (rc != 0)
+        fprintf(stderr, "glon-desktop: could not open folder '%ls'\n", full);
+    else
+        fprintf(stderr, "glon-desktop: opened folder '%ls'\n", full);
+    free(full);
+    return rc;
+}
 
 int glon_mkdirs(const char *path) {
     char tmp[1024];

@@ -74,7 +74,7 @@ int glon_tcp_write_all(glon_socket c, const void *buf, int n) {
 
 void glon_tcp_close(glon_socket c) { close((int)c); }
 
-static void spawn_opener(const char *arg) {
+static int spawn_opener(const char *arg) {
     const char *candidates[] = { "xdg-open", "open", NULL };
     for (int i = 0; candidates[i]; i++) {
         pid_t p = fork();
@@ -82,13 +82,14 @@ static void spawn_opener(const char *arg) {
             execlp(candidates[i], candidates[i], arg, (char *)0);
             _exit(127);
         }
-        if (p > 0) return;
+        if (p > 0) return 0;
     }
     fprintf(stderr, "glon-desktop: no opener found (xdg-open/open)\n");
+    return -1;
 }
 
-void glon_open_browser(const char *url) { spawn_opener(url); }
-void glon_open_path(const char *path) { spawn_opener(path); }
+void glon_open_browser(const char *url) { (void)spawn_opener(url); }
+int glon_open_path(const char *path) { return spawn_opener(path); }
 
 int glon_mkdirs(const char *path) {
     char tmp[1024];

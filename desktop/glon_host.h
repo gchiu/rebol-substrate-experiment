@@ -28,7 +28,11 @@ int  glon_tcp_write_all(glon_socket c, const void *buf, int n);
 void glon_tcp_close(glon_socket c);
 
 void glon_open_browser(const char *url);
-void glon_open_path(const char *path);
+
+/* Open a path (usually a folder) with the platform mechanism.  Returns 0 on
+ * success, -1 if the platform rejected it.  On Windows the path is resolved to
+ * an absolute path first. */
+int glon_open_path(const char *path);
 
 /* Create a directory and any missing parents (best effort). */
 int glon_mkdirs(const char *path);

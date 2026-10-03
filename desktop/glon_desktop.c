@@ -586,8 +586,11 @@ static void handle_api_open(glon_socket fd) {
     char *slash = strrchr(dir, '/');
     if (!slash) { send_http(fd, 400, "text/plain", "bad path", 8); return; }
     *slash = 0;
-    fprintf(stderr, "glon-desktop: opening folder '%s'\n", dir);
-    glon_open_path(dir);
+    if (glon_open_path(dir) != 0) {
+        fprintf(stderr, "glon-desktop: failed to open folder '%s'\n", dir);
+        send_http(fd, 500, "text/plain", "could not open folder", 21);
+        return;
+    }
     send_http(fd, 200, "text/plain", "opened", 6);
 }
 
