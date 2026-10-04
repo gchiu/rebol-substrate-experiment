@@ -3,8 +3,9 @@
 <head><meta charset="utf-8"><title>Glon Patrol E2E</title></head>
 <body>
 <!-- Test-only harness: same page + patrol-host.js as patrol.html. Verifies the
-     default world, the Glon-rendered selector, frame clearing, a Velikovsky
-     lurch, and restart. -->
+     default world with aria/active state, the Glon-rendered selector, world
+     switching, movement/firing, blur key-reset + recovery, frame clearing, a
+     Velikovsky lurch, and restart preserving the world with input still live. -->
 <div id="status" data-glon-id="1"></div>
 <canvas id="glon-canvas" width="640" height="480" tabindex="0"></canvas>
 <pre id="verify">pending</pre>
@@ -15,12 +16,19 @@
   var step = 0, startX = null, moved = false, fired = false, restartOk = false,
       canvasDrawn = false, noTrails = false, moonDefault = false, gravityChange = false,
       selectorPresent = false, velikovsky = false, lurchOccurred = false,
-      trailT0 = 0, trailA = 0;
+      trailT0 = 0, trailA = 0,
+      worldLabel = false, moonActive = false, earthInactive = false,
+      earthActive = false, moonInactive = false,
+      blurStopX = 0, blurCleared = false, recovered = false,
+      restartInputOk = false, restartFireOk = false;
   function state() { var e = document.getElementById("patrol-state"); return e ? e.textContent.trim() : ""; }
   function press(code, down) {
     window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { code: code, bubbles: true, cancelable: true }));
   }
   function click(sel) { var b = document.querySelector(sel); if (b) { b.click(); return true; } return false; }
+  function btn(id) { return document.querySelector("[data-glon-event='gravity-" + id + "']"); }
+  function isActive(b) { return !!b && (" " + b.className + " ").indexOf(" active ") >= 0; }
+  function aria(b) { return b ? b.getAttribute("aria-pressed") : null; }
   function canvasOk() {
     var c = document.getElementById("glon-canvas");
     var d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
@@ -39,37 +47,71 @@
     var s = state();
     var a = s ? s.split(" ") : [];
     if (step === 0 && a.length >= 8) {
+      /* startup: Moon selected in Glon state and rendered as active/aria-pressed */
       moonDefault = (+a[6] === 8);
-      selectorPresent = !!document.querySelector("[data-glon-event='gravity-earth']");
+      selectorPresent = !!btn("earth");
+      worldLabel = document.getElementById("status").textContent.indexOf("World: Moon") >= 0;
+      var moon = btn("moon"), earth = btn("earth");
+      moonActive = isActive(moon) && aria(moon) === "true";
+      earthInactive = !isActive(earth) && aria(earth) === "false";
       startX = +a[0];
       click("[data-glon-event='gravity-earth']"); step = 1;
     } else if (step === 1) {
+      /* Earth active, Moon inactive, gravity rule applied in Glon (rate 32) */
       gravityChange = (+a[6] === 32 && +a[3] === 8);
+      var eb = btn("earth"), mb = btn("moon");
+      earthActive = isActive(eb) && aria(eb) === "true";
+      moonInactive = !isActive(mb) && aria(mb) === "false";
       press("ArrowRight", true); step = 2;
     } else if (step === 2) {
       if (+a[0] > startX) { moved = true; press("ArrowRight", false); press("Space", true); step = 3; }
     } else if (step === 3) {
-      if (+a[5] === 1) { fired = true; press("Space", false); step = 4; }
+      if (+a[5] === 1) { fired = true; press("Space", false); press("ArrowRight", true); step = 4; }
     } else if (step === 4) {
+      /* hold a key, then lose window focus: Glon must clear the held key */
+      if (+a[0] > startX + 20) { window.dispatchEvent(new Event("blur")); step = 5; }
+    } else if (step === 5) {
+      blurStopX = +a[0]; step = 6;
+    } else if (step === 6) {
+      if (+a[0] <= blurStopX) { blurCleared = true; press("ArrowRight", true); step = 7; }
+    } else if (step === 7) {
+      /* controls recover without a reload */
+      if (+a[0] > blurStopX) { recovered = true; press("ArrowRight", false); step = 8; }
+    } else if (step === 8) {
       canvasDrawn = canvasOk();
       if (trailT0 === 0) { press("Space", true); trailA = countNonBg(); trailT0 = Date.now(); }
       else if (Date.now() - trailT0 > 1200) {
         noTrails = (countNonBg() <= trailA + 800);
         press("Space", false);
-        click("[data-glon-event='patrol-restart']"); step = 5;
+        click("[data-glon-event='patrol-restart']"); step = 9;
       }
-    } else if (step === 5) {
-      if (+a[0] === 300 && +a[2] === 0 && +a[3] === 8 && +a[6] === 32) { restartOk = true; click("[data-glon-event='gravity-velikovsky']"); step = 6; }
-    } else if (step === 6) {
-      if (+a[6] === 20) { velikovsky = true; step = 7; }   /* Velikovsky selected (rule in Glon) */
+    } else if (step === 9) {
+      /* restart keeps the selected world (Earth, rate 32) and resets the run */
+      if (+a[0] === 300 && +a[2] === 0 && +a[3] === 8 && +a[6] === 32) {
+        restartOk = true; press("ArrowRight", true); step = 10;
+      }
+    } else if (step === 10) {
+      if (+a[0] > 300) { restartInputOk = true; press("ArrowRight", false); press("Space", true); step = 11; }
+    } else if (step === 11) {
+      if (+a[5] === 1) { restartFireOk = true; press("Space", false); click("[data-glon-event='gravity-velikovsky']"); step = 12; }
+    } else if (step === 12) {
+      if (+a[6] === 20) { velikovsky = true; step = 13; }   /* Velikovsky selected (rule in Glon) */
+    } else if (step === 13) {
+      if (+a[7] > 0) { lurchOccurred = true; step = 14; }   /* deterministic lurch timer > 0 */
     }
     if (step >= 1) {
-      var ok = step === 7 && moonDefault && gravityChange && moved && fired && canvasDrawn &&
-               noTrails && restartOk && velikovsky;
+      var ok = step === 14 && moonDefault && selectorPresent && worldLabel && moonActive && earthInactive &&
+               gravityChange && earthActive && moonInactive && moved && fired &&
+               blurCleared && recovered && canvasDrawn && noTrails && restartOk &&
+               restartInputOk && restartFireOk && velikovsky && lurchOccurred;
       v.textContent = (ok ? "PATROL_BROWSER_OK" : "RUNNING") +
-        " moonDefault=" + moonDefault + " selector=" + selectorPresent + " gravityChange=" + gravityChange +
-        " moved=" + moved + " fired=" + fired + " canvas=" + canvasDrawn + " noTrails=" + noTrails +
-        " restart=" + restartOk + " velikovsky=" + velikovsky + " lurch=" + lurchOccurred + " state=" + s;
+        " moonDefault=" + moonDefault + " selector=" + selectorPresent + " worldLabel=" + worldLabel +
+        " moonActive=" + moonActive + " earthInactive=" + earthInactive +
+        " gravityChange=" + gravityChange + " earthActive=" + earthActive + " moonInactive=" + moonInactive +
+        " moved=" + moved + " fired=" + fired + " blurCleared=" + blurCleared + " recovered=" + recovered +
+        " canvas=" + canvasDrawn + " noTrails=" + noTrails + " restart=" + restartOk +
+        " restartInput=" + restartInputOk + " restartFire=" + restartFireOk +
+        " velikovsky=" + velikovsky + " lurch=" + lurchOccurred + " step=" + step + " state=" + s;
     }
   }, 100);
 })();
