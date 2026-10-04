@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Glon Patrol Long-Session Regression</title></head>
+<body>
+<!-- Long-session browser regression (D11.6). Same page + patrol-host.js as the
+     live game. It autoplays through real key events to at least 150 points and
+     past the historical long-session failure threshold, confirming movement and
+     fire never die, Restart preserves the selected world with input still live,
+     there are no trails, no JS/WASM exceptions, and the host ABI allocator never
+     fails. Drive it with long_session_cdp.js (real-time Chrome via CDP); it
+     writes its verdict to #verify. -->
+<div id="status" data-glon-id="1"></div>
+<canvas id="glon-canvas" width="640" height="480" tabindex="0"></canvas>
+<pre id="verify">pending</pre>
+
+<script>
+window.__long = {
+  frame: 0, playing: true, done: false, errors: [], canvas: "",
+  instr: { keydown: 0, keyup: 0, ev: 0, evValue: 0, evValueRcBad: 0, tick: 0, alloc: 0, allocFail: 0 }
+};
+window.addEventListener("error", function (e) { window.__long.errors.push("error: " + e.message); });
+window.addEventListener("unhandledrejection", function (e) { window.__long.errors.push("rejection: " + e.reason); });
+
+(function () {
+  var origInstantiate = WebAssembly.instantiate.bind(WebAssembly);
+  WebAssembly.instantiate = function (bytes, imports) {
+    if (imports && imports.env && imports.env.host_canvas_script) {
+      var hc = imports.env.host_canvas_script;
+      imports.env.host_canvas_script = function (ptr, len) {
+        try { window.__long.canvas = new TextDecoder().decode(new Uint8Array(window.__ex.memory.buffer, ptr, len)); } catch (e) {}
+        return hc(ptr, len);
+      };
+    }
+    return origInstantiate(bytes, imports).then(function (res) {
+      var exp = res.instance.exports;
+      window.__ex = exp;
+      function wrap(name, fn) {
+        return function () {
+          var d = window.__long.instr;
+          try {
+            if (name === "glon_alloc") { d.alloc++; var p = fn.apply(exp, arguments); if (p === 0) d.allocFail++; return p; }
+            if (name === "glon_event_value") { d.evValue++; var rc = fn.apply(exp, arguments); if (rc !== 0) d.evValueRcBad++; return rc; }
+            if (name === "glon_event") {
+              d.ev++;
+              try { var tok = new TextDecoder().decode(new Uint8Array(exp.memory.buffer, arguments[0], arguments[1])); if (tok === "patrol-tick") d.tick++; } catch (e) {}
+              return fn.apply(exp, arguments);
+            }
+          } catch (e) { window.__long.errors.push(name + ": " + e); throw e; }
+          return fn.apply(exp, arguments);
+        };
+      }
+      var copy = {};
+      Object.getOwnPropertyNames(exp).forEach(function (k) { copy[k] = exp[k]; });
+      ["glon_alloc", "glon_event", "glon_event_value"].forEach(function (k) { if (typeof copy[k] === "function") copy[k] = wrap(k, copy[k]); });
+      return { instance: { exports: copy } };
+    });
+  };
+})();
+</script>
+<script src="patrol-host.js"></script>
+<script>
+(function () {
+  var MIN_SCORE = 150;      /* real hits, no score injection */
+  var MIN_TICKS = 4000;     /* comfortably past the old ~2500-tick HUD failure */
+  var MAX_FRAMES = 60 * 150;
+  var D = window.__long;
+  var v = document.getElementById("verify");
+  function state() { var e = document.getElementById("patrol-state"); return e ? e.textContent.trim().split(/\s+/).map(Number) : []; }
+  function status() { return document.getElementById("status").textContent; }
+  function press(code, down) { window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { code: code, bubbles: true, cancelable: true })); }
+  function clickEv(tok) { var b = document.querySelector("[data-glon-event='" + tok + "']"); if (b) b.click(); }
+  var CODES = { left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp", down: "ArrowDown", fire: "Space" };
+  var held = { left: false, right: false, up: false, down: false, fire: false };
+  function setKey(name, down) { if (held[name] !== down) { held[name] = down; press(CODES[name], down); } }
+  function releaseAll() { ["left", "right", "up", "down", "fire"].forEach(function (k) { setKey(k, false); }); }
+  function frame() { return new Promise(function (r) { requestAnimationFrame(r); }); }
+  function sval(i) { var s = state(); return s.length > i ? s[i] : null; }
+  function bricks() {
+    var res = [], lines = (D.canvas || "").split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      var p = lines[i].trim().split(/\s+/);
+      if (p[0] === "O" && p[3] === "9" && p[4] === "3") res.push({ x: +p[1], y: +p[2] });
+    }
+    return res;
+  }
+  function autopilot() {
+    var st = state(); if (st.length < 9) return;
+    var sx = st[0], sy = st[1], bs = bricks(), target = null;
+    for (var i = 0; i < bs.length; i++) if (bs[i].y < sy - 6 && bs[i].y < 360) if (!target || bs[i].y > target.y) target = bs[i];
+    if (!target) { setKey("left", false); setKey("right", false); }
+    else {
+      var dx = target.x - sx;
+      if (dx > 5) { setKey("right", true); setKey("left", false); }
+      else if (dx < -5) { setKey("left", true); setKey("right", false); }
+      else { setKey("left", false); setKey("right", false); }
+    }
+    setKey("fire", true);
+  }
+  var probeCount = 0;
+  async function probeMove() {
+    var sy0 = sval(1);
+    var dir = (probeCount++ % 2 === 0) ? "up" : "down";
+    if (dir === "up" && sy0 <= 62) dir = "down";
+    if (dir === "down" && sy0 >= 422) dir = "up";
+    setKey("up", dir === "up"); setKey("down", dir === "down");
+    for (var i = 0; i < 8; i++) await frame();
+    setKey("up", false); setKey("down", false);
+    var sy1 = sval(1);
+    return dir === "up" ? (sy1 < sy0 - 6) : (sy1 > sy0 + 6);
+  }
+  async function fireOnce() {
+    releaseAll();
+    for (var i = 0; i < 45 && sval(5) === 1; i++) await frame();
+    setKey("fire", true);
+    var saw = false;
+    for (var j = 0; j < 25; j++) { if (sval(5) === 1) saw = true; await frame(); }
+    setKey("fire", false);
+    return saw;
+  }
+  function nonBg() {
+    var c = document.getElementById("glon-canvas");
+    var d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    var n = 0;
+    for (var i = 0; i < d.length; i += 4) if (Math.abs(d[i] - 11) > 18 || Math.abs(d[i + 1] - 16) > 18 || Math.abs(d[i + 2] - 32) > 18) n++;
+    return n;
+  }
+  function finish(ok, detail) {
+    D.playing = false; D.done = true; releaseAll();
+    v.textContent = (ok ? "PATROL_LONG_SESSION_OK" : "PATROL_LONG_SESSION_FAIL") + " " + detail;
+  }
+  function snap() {
+    return "ticks=" + D.instr.tick + " alloc=" + D.instr.alloc + " allocFail=" + D.instr.allocFail +
+      " evValue=" + D.instr.evValue + " rcBad=" + D.instr.evValueRcBad + " errors=" + D.errors.length +
+      " state=" + state().join(",");
+  }
+
+  (async function () {
+    /* wait for boot */
+    while (D.frame < MAX_FRAMES) { if (state().length >= 9 && D.instr.tick > 0) break; D.frame++; await frame(); }
+    if (state().length < 9) { finish(false, "boot timeout"); return; }
+
+    clickEv("gravity-earth");
+    for (var i = 0; i < 20; i++) await frame();
+
+    var reached = false;
+    while (D.frame < MAX_FRAMES) {
+      D.frame++;
+      if (sval(4) === 1) clickEv("patrol-restart");
+      autopilot();
+      if (D.frame % 45 === 0) {
+        if (!(await probeMove())) { finish(false, "movement died during play @" + snap()); return; }
+      }
+      if (sval(2) >= MIN_SCORE && D.instr.tick >= MIN_TICKS) { reached = true; break; }
+      await frame();
+    }
+    if (!reached) { finish(false, "goal not reached @" + snap()); return; }
+
+    /* explicit checks after the long session */
+    var moveOk = await probeMove();
+    var fireOk = await fireOnce();
+
+    clickEv("patrol-restart");
+    for (var r = 0; r < 6; r++) await frame();
+    var after = state();
+    var resetOk = after[0] === 300 && after[2] === 0 && after[3] === 8 && after[4] === 0;
+    var worldOk = after[6] === 32 && status().indexOf("World: Earth") >= 0 &&
+      (function () { var b = document.querySelector("[data-glon-event='gravity-earth']"); return !!b && (" " + b.className + " ").indexOf(" active ") >= 0; })();
+
+    var moveAfterOk = await probeMove();
+    var fireAfterOk = await fireOnce();
+
+    /* noTrails: hold fire, non-background pixel count must not grow without bound */
+    setKey("fire", true);
+    for (var t = 0; t < 5; t++) await frame();
+    var a = nonBg();
+    for (var w = 0; w < 72; w++) await frame();
+    var b = nonBg();
+    setKey("fire", false);
+    var noTrailsOk = b <= a + 800;
+
+    var ok = moveOk && fireOk && resetOk && worldOk && moveAfterOk && fireAfterOk && noTrailsOk &&
+      D.instr.allocFail === 0 && D.errors.length === 0;
+    finish(ok, "score150=true ticks=" + D.instr.tick + " alloc=" + D.instr.alloc + " allocFail=" + D.instr.allocFail +
+      " move=" + moveOk + " fire=" + fireOk + " reset=" + resetOk + " world=" + worldOk +
+      " moveAfter=" + moveAfterOk + " fireAfter=" + fireAfterOk + " noTrails=" + noTrailsOk +
+      " errors=" + D.errors.length);
+  })();
+})();
+</script>
+</body>
+</html>

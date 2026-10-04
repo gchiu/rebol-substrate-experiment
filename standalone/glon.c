@@ -191,7 +191,7 @@ __attribute__((noreturn)) void abort(void) { __builtin_trap(); }
 
 /* ---- memory -------------------------------------------------------------- */
 
-static unsigned char heap[1 << 16];   /* 64 KiB bump heap */
+static unsigned char heap[1 << 16];   /* 64 KiB bump heap (persistent) */
 static unsigned int heap_used = 0;
 
 void *malloc(unsigned int n) {
@@ -202,6 +202,20 @@ void *malloc(unsigned int n) {
 }
 
 void free(void *p) { (void)p; }
+
+/* Host ABI arena for glon_alloc argument buffers.  Kept SEPARATE from `heap`
+ * above, which is persistent: the runtime's interner stores interned symbol
+ * spellings there (dup_str -> malloc) for the life of the machine, so `heap`
+ * must never be reclaimed wholesale.  Host argument buffers have a transient
+ * life cycle (see glon_alloc) and are reclaimed at each execution entry, so a
+ * long-lived 60 Hz host -- Glon Patrol forwards one `patrol-tick` per animation
+ * frame -- cannot exhaust memory over a session.  64 KiB matches the previous
+ * bump-heap size, so the maximum single glon_load source (capped at 16 KiB by
+ * srcbuf) and the largest key/value payloads are no smaller than before. */
+static unsigned char abi_heap[1 << 16];
+static unsigned int abi_used = 0;
+
+static void abi_reset(void) { abi_used = 0; }
 
 void *memcpy(void *d, const void *s, unsigned int n) {
     unsigned char *dd = (unsigned char *)d;
@@ -253,8 +267,28 @@ static int inited = 0;
  * heap (static buffers live in linear memory, not the bump heap). */
 static unsigned char srcbuf[16384];
 
+/* Host -> WASM argument buffers.
+ *
+ * Lifetime contract:
+ *   - a glon_alloc result is a TRANSIENT argument buffer: it is valid only
+ *     until the next Glon execution entry (glon_load / glon_call / glon_route /
+ *     glon_event / glon_event_value / glon_event_bytes / glon_run);
+ *   - several glon_alloc calls made BEFORE one execution entry must all remain
+ *     valid simultaneously (e.g. a token and a value handed to
+ *     glon_event_value), so the arena is bumped, not shared;
+ *   - an execution entry resets this arena only after it has copied the host
+ *     buffers it was given into local storage, so the caller's buffers are
+ *     consumed before anything is reclaimed;
+ *   - callers must not hold an argument buffer across an execution entry.
+ * This is deliberately distinct from malloc(), whose allocations (interned
+ * symbol spellings) persist for the life of the machine. */
 __attribute__((export_name("glon_alloc")))
-int glon_alloc(unsigned int len) { return (int)(intptr_t)malloc(len + 1); }
+int glon_alloc(unsigned int len) {
+    unsigned int a = (abi_used + 7u) & ~7u;
+    if ((unsigned long)a + len + 1 > sizeof(abi_heap)) return 0;
+    abi_used = a + len + 1;
+    return (int)(intptr_t)(abi_heap + a);
+}
 
 __attribute__((export_name("glon_init")))
 int glon_init(void) {
@@ -289,6 +323,7 @@ static void strip_comments(unsigned char *s) {
 
 __attribute__((export_name("glon_load")))
 int glon_load(const unsigned char *src, unsigned int len) {
+    abi_reset();
     if (len >= sizeof(srcbuf)) return -1;
     unsigned int i;
     for (i = 0; i < len; i++) srcbuf[i] = src[i];
@@ -309,6 +344,7 @@ int glon_load(const unsigned char *src, unsigned int len) {
 
 __attribute__((export_name("glon_call")))
 int glon_call(const unsigned char *name, unsigned int len) {
+    abi_reset();
     if (len == 0 || len > 60) return -1;
     unsigned char src[128];
     unsigned int i = 0;
@@ -349,6 +385,7 @@ static void emit_canvas_script(void) {
 
 __attribute__((export_name("glon_route")))
 int glon_route(const unsigned char *token, unsigned int len) {
+    abi_reset();
     if (len == 0 || len > 63) return -1;
     unsigned char tok[64];
     unsigned int i;
@@ -371,6 +408,7 @@ int glon_route(const unsigned char *token, unsigned int len) {
  * host_set_html.  JS holds no application semantics. */
 __attribute__((export_name("glon_event")))
 int glon_event(const unsigned char *token, unsigned int len) {
+    abi_reset();
     if (len == 0 || len > 63) return -1;
     unsigned char tok[64];
     unsigned int i;
@@ -394,6 +432,7 @@ int glon_event(const unsigned char *token, unsigned int len) {
 __attribute__((export_name("glon_event_value")))
 int glon_event_value(const unsigned char *token, unsigned int tlen,
                      const unsigned char *value, unsigned int vlen) {
+    abi_reset();
     if (tlen == 0 || tlen > 63) return -1;
     if (vlen > 200) return -1;
     unsigned char tok[64];
@@ -422,6 +461,7 @@ int glon_event_value(const unsigned char *token, unsigned int tlen,
 __attribute__((export_name("glon_event_bytes")))
 int glon_event_bytes(const unsigned char *token, unsigned int tlen,
                      const unsigned char *data, unsigned int dlen) {
+    abi_reset();
     if (tlen == 0 || tlen > 63) return -1;
     unsigned char tok[64];
     unsigned int i;
@@ -450,6 +490,7 @@ static int resultlen = 0;
 
 __attribute__((export_name("glon_run")))
 int glon_run(const unsigned char *src, unsigned int len) {
+    abi_reset();
     resultlen = 0;
     if (len >= sizeof(srcbuf)) return -1;
     resultlen = r0_s1_show_run((const char *)src, len, resultbuf, (int)sizeof resultbuf);

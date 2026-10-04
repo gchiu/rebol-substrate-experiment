@@ -231,6 +231,17 @@ wasm-binding-test: demo/shop/glon.wasm
 	@grep -q "BINDING_CASE_WASM_TEST PASS" /tmp/opencode_binding_test.out && \
 	 echo "wasm-binding-test: PASS (closure-origin binding law + CASE on real WASM)"
 
+# ---- Generic WASM host-ABI arena regression ---------------------------------
+# Sustained host->WASM event traffic through the generic ABI: >=10k iterations
+# of glon_alloc(token) + glon_alloc(value) + glon_event_value, plus >=10k
+# value-less glon_event calls.  Verifies zero allocation failures, no token/value
+# aliasing, correct dispatch throughout, and that a large argument buffer still
+# fits.  Independent of any single application (D11.6).
+wasm-abi-test: demo/shop/glon.wasm
+	node demo/shop/abi_arena_wasm_test.js | tee /tmp/opencode_abi_test.out
+	@grep -q "ABI_ARENA_WASM_TEST PASS" /tmp/opencode_abi_test.out && \
+	 echo "wasm-abi-test: PASS (10k valued + 10k value-less events, no alloc failure/aliasing)"
+
 # ---- Experimental GLON_LIVE host boundary (separate WASM + page) -----------
 # A separate -DGLON_LIVE build with a fifth host import (host_call) and a new
 # glon_event_bytes export.  Existing shop/browser builds keep the four-import
@@ -423,4 +434,4 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve
