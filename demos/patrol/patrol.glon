@@ -19,8 +19,15 @@ PFH: 480
 BBQY: 440
 
 sx: 300 sy: 380
-score: 0 health: 5 over: 0 tick: 0
+score: 0 health: 8 over: 0 tick: 0
 kl: 0 kr: 0 ku: 0 kd: 0 kf: 0
+;; gameplay-scaled gravity (arcade fixed-point descent). Moon is default.
+grav-name: "Moon"
+grav-rate: 8
+grav-space: 300
+grav-lurch: 0
+b0f: 0 b1f: 0 b2f: 0
+lurch-timer: 0 lurch-n: 0 lurch-side: 0
 
 p0x: 0 p0y: 0 p0v: 0
 p1x: 0 p1y: 0 p1v: 0
@@ -39,12 +46,41 @@ hit?: func [px py bx by] [
 hit-ship?: func [bx by] [
     either < abs - bx sx 18 [ either < abs - by sy 16 [ 1 ] [ 0 ] ] [ 0 ]
 ]
+
+;; Gravity presets: gameplay-scaled descent speed and arrival spacing, roughly
+;; proportional to sqrt(surface gravity).  Glon owns the rule; JS only forwards
+;; the click.  Higher gravity = faster fall and more frequent arrivals.
+set-gravity: func [name] [
+    either str-eq name "moon" [
+        grav-name: "Moon" grav-rate: 8 grav-space: 300 grav-lurch: 0
+    ] [
+    either str-eq name "mercury" [
+        grav-name: "Mercury" grav-rate: 12 grav-space: 200 grav-lurch: 0
+    ] [
+    either str-eq name "mars" [
+        grav-name: "Mars" grav-rate: 12 grav-space: 200 grav-lurch: 0
+    ] [
+    either str-eq name "earth" [
+        grav-name: "Earth" grav-rate: 32 grav-space: 80 grav-lurch: 0
+    ] [
+    either str-eq name "jupiter" [
+        grav-name: "Jupiter" grav-rate: 64 grav-space: 45 grav-lurch: 0
+    ] [
+    either str-eq name "blackhole" [
+        grav-name: "Black Hole" grav-rate: 128 grav-space: 18 grav-lurch: 0
+    ] [
+    either str-eq name "velikovsky" [
+        grav-name: "Velikovsky" grav-rate: 20 grav-space: 120 grav-lurch: 1
+    ] [ none ] ] ] ] ] ] ]
+]
 reset: func [] [
-    sx: 300 sy: 380 score: 0 health: 5 over: 0 tick: 0
+    sx: 300 sy: 380 score: 0 health: 8 over: 0 tick: 0
     kl: 0 kr: 0 ku: 0 kd: 0 kf: 0
     p0v: 0 p1v: 0 p0x: 0 p0y: 0 p1x: 0 p1y: 0
     b0v: 0 b1v: 0 b2v: 0 b0y: 0 b1y: 0 b2y: 0
     b0x: 60 b1x: 300 b2x: 540
+    b0f: 0 b1f: 0 b2f: 0
+    lurch-timer: 0 lurch-n: 0 lurch-side: 0
 ]
 
 ;; ---- canvas script output (to G1_VIS) ------------------------------------
@@ -139,14 +175,52 @@ move-proj: func [] [
     ] [ none ]
 ]
 move-brick: func [] [
-    either = b0v 1 [ b0y: + b0y 3 either > b0y 428 [ b0v: 0 health: - health 1 ] [ none ] ] [ none ]
-    either = b1v 1 [ b1y: + b1y 4 either > b1y 428 [ b1v: 0 health: - health 1 ] [ none ] ] [ none ]
-    either = b2v 1 [ b2y: + b2y 3 either > b2y 428 [ b2v: 0 health: - health 1 ] [ none ] ] [ none ]
+    either = b0v 1 [
+        b0f: + b0f grav-rate
+        b0y: + b0y / b0f 16
+        b0f: - b0f * / b0f 16 16
+        either > b0y 428 [ b0v: 0 b0f: 0 health: - health 1 ] [ none ]
+    ] [ none ]
+    either = b1v 1 [
+        b1f: + b1f grav-rate
+        b1y: + b1y / b1f 16
+        b1f: - b1f * / b1f 16 16
+        either > b1y 428 [ b1v: 0 b1f: 0 health: - health 1 ] [ none ]
+    ] [ none ]
+    either = b2v 1 [
+        b2f: + b2f grav-rate
+        b2y: + b2y / b2f 16
+        b2f: - b2f * / b2f 16 16
+        either > b2y 428 [ b2v: 0 b2f: 0 health: - health 1 ] [ none ]
+    ] [ none ]
+]
+
+;; Velikovsky world: deterministic "lurch" -- every 200 ticks a 60-tick lurch
+;; alternates left/right and drifts the falling briquettes sideways.
+do-lurch: func [] [
+    either = grav-lurch 1 [
+        either > lurch-timer 0 [
+            lurch-timer: - lurch-timer 1
+            either = b0v 1 [ b0x: + b0x * lurch-side 2 either < b0x 12 [ b0x: 12 ] [ none ] either > b0x 628 [ b0x: 628 ] [ none ] ] [ none ]
+            either = b1v 1 [ b1x: + b1x * lurch-side 2 either < b1x 12 [ b1x: 12 ] [ none ] either > b1x 628 [ b1x: 628 ] [ none ] ] [ none ]
+            either = b2v 1 [ b2x: + b2x * lurch-side 2 either < b2x 12 [ b2x: 12 ] [ none ] either > b2x 628 [ b2x: 628 ] [ none ] ] [ none ]
+        ] [
+            either = 0 mod tick 200 [
+                either > tick 0 [
+                    lurch-timer: 60
+                    lurch-n: + lurch-n 1
+                    lurch-side: either = 0 mod - lurch-n 1 2 [ 1 ] [ -1 ]
+                ] [ none ]
+            ] [ none ]
+        ]
+    ] [ none ]
 ]
 spawn-brick: func [] [
-    either = b0v 0 [ either = 0 mod + tick 10 34 [ b0x: 40 b0y: 0 b0v: 1 ] [ none ] ] [ none ]
-    either = b1v 0 [ either = 0 mod + tick 23 41 [ b1x: 260 b1y: 0 b1v: 1 ] [ none ] ] [ none ]
-    either = b2v 0 [ either = 0 mod + tick 31 47 [ b2x: 500 b2y: 0 b2v: 1 ] [ none ] ] [ none ]
+    ;; one briquette starts every grav-space ticks, staggered across the three
+    ;; slots (period 3*grav-space) so arrivals do not cluster.
+    either = b0v 0 [ either = 0 mod tick * 3 grav-space [ b0x: 40 b0y: 0 b0f: 0 b0v: 1 ] [ none ] ] [ none ]
+    either = b1v 0 [ either = 0 mod + tick * 2 grav-space * 3 grav-space [ b1x: 260 b1y: 0 b1f: 0 b1v: 1 ] [ none ] ] [ none ]
+    either = b2v 0 [ either = 0 mod + tick grav-space * 3 grav-space [ b2x: 500 b2y: 0 b2f: 0 b2v: 1 ] [ none ] ] [ none ]
 ]
 collide: func [] [
     either = p0v 1 [
@@ -169,6 +243,7 @@ step: func [] [
     fire
     move-proj
     move-brick
+    do-lurch
     spawn-brick
     collide
     either < health 1 [ over: 1 ] [ none ]
@@ -177,6 +252,7 @@ step: func [] [
 ;; ---- deterministic rule self-test (runs in Glon; C/JS only reads the text) -
 selftest: func [] [
     fails: 0
+    set-gravity "moon"
     reset
     kr: 1 move-ship
     either = sx 307 [ none ] [ fails: + fails 1 ]
@@ -189,13 +265,49 @@ selftest: func [] [
         either = p0v 0 [ either = b0v 0 [ none ] [ fails: + fails 1 ] ] [ fails: + fails 1 ]
     ] [ fails: + fails 1 ]
     reset b0v: 1 b0x: sx b0y: sy collide
-    either = health 4 [ either = b0v 0 [ none ] [ fails: + fails 1 ] ] [ fails: + fails 1 ]
-    reset b0v: 1 b0y: 429 move-brick
-    either = health 4 [ none ] [ fails: + fails 1 ]
-    reset health: 1 b0v: 1 b0y: 429 step
+    either = health 7 [ either = b0v 0 [ none ] [ fails: + fails 1 ] ] [ fails: + fails 1 ]
+    ;; Moon cadenced sub-pixel movement: rate 8/16 = 0.5 px/tick
+    reset b0v: 1 b0y: 0 b0f: 0 move-brick
+    either = b0y 0 [ none ] [ fails: + fails 1 ]
+    move-brick
+    either = b0y 1 [ none ] [ fails: + fails 1 ]
+    ;; Earth is faster than Moon
+    set-gravity "earth"
+    either = grav-rate 32 [ none ] [ fails: + fails 1 ]
+    reset b0v: 1 b0y: 0 b0f: 0 move-brick
+    either = b0y 2 [ none ] [ fails: + fails 1 ]
+    reset b0v: 1 b0y: 429 b0f: 0 move-brick
+    either = health 7 [ none ] [ fails: + fails 1 ]
+    reset health: 1 b0v: 1 b0y: 429 b0f: 0 step
     either = over 1 [ none ] [ fails: + fails 1 ]
+    ;; Mercury and Mars equivalent; Jupiter faster than Earth
+    set-gravity "mercury"
+    either = grav-rate 12 [ none ] [ fails: + fails 1 ]
+    set-gravity "mars"
+    either = grav-rate 12 [ none ] [ fails: + fails 1 ]
+    set-gravity "jupiter"
+    either > grav-rate 32 [ none ] [ fails: + fails 1 ]
+    ;; Velikovsky lurch: deterministic sideways motion, then normal resumes
+    set-gravity "velikovsky"
+    either = grav-lurch 1 [ none ] [ fails: + fails 1 ]
+    tick: 200 lurch-timer: 0 lurch-n: 0 lurch-side: 0 b0v: 1 b0x: 300 b0y: 100
+    do-lurch
+    either = lurch-n 1 [ none ] [ fails: + fails 1 ]
+    either = lurch-timer 60 [ none ] [ fails: + fails 1 ]
+    either = lurch-side 1 [ none ] [ fails: + fails 1 ]
+    do-lurch
+    either = b0x 302 [ none ] [ fails: + fails 1 ]
+    tick: 201 lurch-timer: 0 b0x: 300
+    do-lurch
+    either = b0x 300 [ none ] [ fails: + fails 1 ]
+    ;; restart clears lurch state but keeps the selected world
+    lurch-timer: 30 lurch-n: 2 lurch-side: -1
     reset
-    either = health 5 [ either = over 0 [ none ] [ fails: + fails 1 ] ] [ fails: + fails 1 ]
+    either str-eq grav-name "Velikovsky" [ none ] [ fails: + fails 1 ]
+    either = lurch-timer 0 [ either = lurch-n 0 [ either = lurch-side 0 [ none ] [ fails: + fails 1 ] ] [ fails: + fails 1 ] ] [ fails: + fails 1 ]
+    set-gravity "moon"
+    reset
+    either = health 8 [ either = over 0 [ none ] [ fails: + fails 1 ] ] [ fails: + fails 1 ]
     e-clear
     either = fails 0 [ e-text "PATROL-SELFTEST PASS" ] [ e-text "PATROL-SELFTEST FAIL " e-int fails ]
     e-finish
@@ -222,35 +334,55 @@ render-status: func [] [
     e-clear
     e-text "<h1>Glon Patrol</h1>"
     e-text "<p class='hud'>Score: " e-int score e-text "  BBQ health: " e-int health
+    e-text "  Gravity: " e-text grav-name
+    either > lurch-timer 0 [ e-text "  <b>WORLD LURCH</b>" ] [ none ]
     either = over 1 [ e-text "  <b>GAME OVER</b>" ] [ none ]
+    e-text "</p>"
+    e-text "<p>Gravity: "
+    e-text "<button data-glon-event='gravity-moon'>Moon</button> "
+    e-text "<button data-glon-event='gravity-mercury'>Mercury</button> "
+    e-text "<button data-glon-event='gravity-mars'>Mars</button> "
+    e-text "<button data-glon-event='gravity-earth'>Earth</button> "
+    e-text "<button data-glon-event='gravity-jupiter'>Jupiter</button> "
+    e-text "<button data-glon-event='gravity-blackhole'>Black Hole</button> "
+    e-text "<button data-glon-event='gravity-velikovsky'>Velikovsky</button>"
+    e-text " <span class='muted'>(Velikovsky: orbital stability not guaranteed)</span>"
     e-text "</p>"
     e-text "<p><button data-glon-event='patrol-restart'>Restart</button></p>"
     e-text "<span id='patrol-state' style='display:none'>"
-    e-int sx e-text " " e-int sy e-text " " e-int score e-text " " e-int health e-text " " e-int over e-text " " e-int p0v
+    e-int sx e-text " " e-int sy e-text " " e-int score e-text " " e-int health e-text " " e-int over e-text " " e-int p0v e-text " " e-int grav-rate e-text " " e-int lurch-timer e-text " " e-int lurch-n e-text " " e-int tick
     e-text "</span>"
     e-finish
 ]
 render: func [] [ render-canvas render-status ]
 
 do-event: [
-    either = current-event 'patrol-selftest [ selftest ] [
-        either = current-event 'patrol-tick [
-            tick: + tick 1
-            either = over 1 [ none ] [ step ]
-            render
-        ] [
-            either = current-event 'patrol-key-down [ set-key current-value 1 render ]
-            [
-                either = current-event 'patrol-key-up [ set-key current-value 0 render ]
+    either = current-event 'gravity-moon [ set-gravity "moon" reset render ] [
+    either = current-event 'gravity-mercury [ set-gravity "mercury" reset render ] [
+    either = current-event 'gravity-mars [ set-gravity "mars" reset render ] [
+    either = current-event 'gravity-earth [ set-gravity "earth" reset render ] [
+    either = current-event 'gravity-jupiter [ set-gravity "jupiter" reset render ] [
+    either = current-event 'gravity-blackhole [ set-gravity "blackhole" reset render ] [
+    either = current-event 'gravity-velikovsky [ set-gravity "velikovsky" reset render ] [
+        either = current-event 'patrol-selftest [ selftest ] [
+            either = current-event 'patrol-tick [
+                tick: + tick 1
+                either = over 1 [ none ] [ step ]
+                render
+            ] [
+                either = current-event 'patrol-key-down [ set-key current-value 1 render ]
                 [
-                    either = current-event 'patrol-restart [ reset render ]
+                    either = current-event 'patrol-key-up [ set-key current-value 0 render ]
                     [
-                        either = current-event 'patrol-start [ reset render ] [ render ]
+                        either = current-event 'patrol-restart [ reset render ]
+                        [
+                            either = current-event 'patrol-start [ reset render ] [ render ]
+                        ]
                     ]
                 ]
             ]
         ]
-    ]
+    ] ] ] ] ] ] ]
 ]
 
 route: [ reset render ]
