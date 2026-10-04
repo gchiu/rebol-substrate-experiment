@@ -144,6 +144,9 @@ set-key: func [name v] [
     either str-eq name "fire" [ kf: v ] [ none ] ] ] ] ]
 ]
 
+;; Clear all held keys (browser tells Glon on blur / tab hide).
+reset-input: func [] [ kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 ]
+
 ;; ---- rules ---------------------------------------------------------------
 move-ship: func [] [
     either = kl 1 [ sx: - sx 7 ] [ none ]
@@ -252,6 +255,9 @@ step: func [] [
 ;; ---- deterministic rule self-test (runs in Glon; C/JS only reads the text) -
 selftest: func [] [
     fails: 0
+    set-key "left" 1 set-key "fire" 1
+    reset-input
+    either = kl 0 [ either = kf 0 [ none ] [ fails: + fails 1 ] ] [ fails: + fails 1 ]
     set-gravity "moon"
     reset
     kr: 1 move-ship
@@ -330,27 +336,37 @@ render-canvas: func [] [
     either = b2v 1 [ p-circ b2x b2y 9 3 p-circ b2x b2y 4 5 ] [ none ]
     p-finish
 ]
+world-button: func [id label] [
+    e-text "<button data-glon-event='gravity-"
+    e-text id
+    e-text "'"
+    either str-eq grav-name label [ e-text " class='active' aria-pressed='true'" ] [ e-text " aria-pressed='false'" ]
+    e-text ">"
+    e-text label
+    e-text "</button> "
+]
+
 render-status: func [] [
     e-clear
     e-text "<h1>Glon Patrol</h1>"
     e-text "<p class='hud'>Score: " e-int score e-text "  BBQ health: " e-int health
-    e-text "  Gravity: " e-text grav-name
+    e-text "  World: " e-text grav-name
     either > lurch-timer 0 [ e-text "  <b>WORLD LURCH</b>" ] [ none ]
     either = over 1 [ e-text "  <b>GAME OVER</b>" ] [ none ]
     e-text "</p>"
-    e-text "<p>Gravity: "
-    e-text "<button data-glon-event='gravity-moon'>Moon</button> "
-    e-text "<button data-glon-event='gravity-mercury'>Mercury</button> "
-    e-text "<button data-glon-event='gravity-mars'>Mars</button> "
-    e-text "<button data-glon-event='gravity-earth'>Earth</button> "
-    e-text "<button data-glon-event='gravity-jupiter'>Jupiter</button> "
-    e-text "<button data-glon-event='gravity-blackhole'>Black Hole</button> "
-    e-text "<button data-glon-event='gravity-velikovsky'>Velikovsky</button>"
-    e-text " <span class='muted'>(Velikovsky: orbital stability not guaranteed)</span>"
+    e-text "<p>World: "
+    world-button "moon" "Moon"
+    world-button "mercury" "Mercury"
+    world-button "mars" "Mars"
+    world-button "earth" "Earth"
+    world-button "jupiter" "Jupiter"
+    world-button "blackhole" "Black Hole"
+    world-button "velikovsky" "Velikovsky"
+    e-text "<span class='muted'>(Velikovsky: orbital stability not guaranteed)</span>"
     e-text "</p>"
     e-text "<p><button data-glon-event='patrol-restart'>Restart</button></p>"
     e-text "<span id='patrol-state' style='display:none'>"
-    e-int sx e-text " " e-int sy e-text " " e-int score e-text " " e-int health e-text " " e-int over e-text " " e-int p0v e-text " " e-int grav-rate e-text " " e-int lurch-timer e-text " " e-int lurch-n e-text " " e-int tick
+    e-int sx e-text " " e-int sy e-text " " e-int score e-text " " e-int health e-text " " e-int over e-text " " e-int p0v e-text " " e-int grav-rate e-text " " e-int lurch-timer e-text " " e-int lurch-n
     e-text "</span>"
     e-finish
 ]
@@ -364,6 +380,7 @@ do-event: [
     either = current-event 'gravity-jupiter [ set-gravity "jupiter" reset render ] [
     either = current-event 'gravity-blackhole [ set-gravity "blackhole" reset render ] [
     either = current-event 'gravity-velikovsky [ set-gravity "velikovsky" reset render ] [
+        either = current-event 'patrol-input-reset [ reset-input render ] [
         either = current-event 'patrol-selftest [ selftest ] [
             either = current-event 'patrol-tick [
                 tick: + tick 1
@@ -382,7 +399,7 @@ do-event: [
                 ]
             ]
         ]
-    ] ] ] ] ] ] ]
+    ] ] ] ] ] ] ] ]
 ]
 
 route: [ reset render ]
