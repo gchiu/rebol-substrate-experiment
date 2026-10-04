@@ -134,8 +134,8 @@
         /* losing focus/tab can drop the keyup: clear held keys so input cannot stick or die */
         window.addEventListener("blur", function () { resetInput(); });
         document.addEventListener("visibilitychange", function () {
-          resetInput();
-          if (document.visibilityState === "visible") focusGame();
+          if (document.visibilityState === "hidden") resetInput();
+          else focusGame();
         });
         document.addEventListener("mousedown", function (e) {
           if (e.target && e.target.id === "glon-canvas") e.preventDefault();
