@@ -87,11 +87,23 @@
     var k = KEY[e.code];
     if (!k) return;
     e.preventDefault();
+    /* a focused button must not swallow Space/arrow keys */
+    if (e.target && e.target.tagName === "BUTTON" && e.target.blur) e.target.blur();
     evVal(down ? "patrol-key-down" : "patrol-key-up", k);
   }
 
+  /* Tell Glon to clear all held keys (after a lost keyup / blur / tab hide). */
+  function resetInput() { try { ev("patrol-input-reset"); } catch (err) { console.error("patrol: input reset failed", err); } }
+
+  function focusGame() {
+    var cv = document.querySelector("#glon-canvas");
+    if (cv) cv.focus();
+  }
+
   function frame() {
-    ev("patrol-tick");
+    /* Never let one bad frame kill the animation loop. */
+    try { ev("patrol-tick"); }
+    catch (err) { console.error("patrol: tick failed", err); }
     requestAnimationFrame(frame);
   }
 
@@ -101,6 +113,7 @@
       if (!el) return;
       e.preventDefault();
       ev(el.getAttribute("data-glon-event"));
+      focusGame();   /* return keyboard focus to the game after any selector/Restart click */
     });
   }
 
@@ -118,7 +131,17 @@
         wireClicks();
         window.addEventListener("keydown", function (e) { key(e, true); });
         window.addEventListener("keyup", function (e) { key(e, false); });
+        /* losing focus/tab can drop the keyup: clear held keys so input cannot stick or die */
+        window.addEventListener("blur", function () { resetInput(); });
+        document.addEventListener("visibilitychange", function () {
+          resetInput();
+          if (document.visibilityState === "visible") focusGame();
+        });
+        document.addEventListener("mousedown", function (e) {
+          if (e.target && e.target.id === "glon-canvas") e.preventDefault();
+        });
         route("home");
+        focusGame();
         requestAnimationFrame(frame);
       })
       .catch(function (err) { console.error("patrol: boot failed", err); });
