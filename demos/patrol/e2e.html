@@ -2,8 +2,9 @@
 <html lang="en">
 <head><meta charset="utf-8"><title>Glon Patrol E2E</title></head>
 <body>
-<!-- Test-only harness: same page + patrol-host.js as patrol.html, plus
-     automation that flies, fires, checks the canvas rendered, and restarts. -->
+<!-- Test-only harness: same page + patrol-host.js as patrol.html. It flies,
+     fires, checks the canvas rendered, checks that frames do NOT accumulate
+     (trail detector), and restarts. -->
 <div id="status" data-glon-id="1"></div>
 <canvas id="glon-canvas" width="640" height="480"></canvas>
 <pre id="verify">pending</pre>
@@ -11,7 +12,8 @@
 <script>
 (function () {
   var v = document.getElementById("verify");
-  var step = 0, startX = null, moved = false, fired = false, restartOk = false, canvasDrawn = false;
+  var step = 0, startX = null, moved = false, fired = false, restartOk = false,
+      canvasDrawn = false, noTrails = false, trailT0 = 0, trailA = 0;
   function state() { var e = document.getElementById("patrol-state"); return e ? e.textContent.trim() : ""; }
   function press(code, down) {
     window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { code: code, bubbles: true, cancelable: true }));
@@ -22,6 +24,16 @@
     for (var i = 0; i < d.length; i += 4) if (d[i] > 40 || d[i + 1] > 40 || d[i + 2] > 40) return true;
     return false;
   }
+  /* count pixels that are not the dark background (#0b1020); a stale-frame
+   * bug makes this grow without bound. */
+  function countNonBg() {
+    var c = document.getElementById("glon-canvas");
+    var d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    var n = 0;
+    for (var i = 0; i < d.length; i += 4)
+      if (Math.abs(d[i] - 11) > 18 || Math.abs(d[i + 1] - 16) > 18 || Math.abs(d[i + 2] - 32) > 18) n++;
+    return n;
+  }
   setInterval(function () {
     var s = state();
     var a = s ? s.split(" ") : [];
@@ -30,14 +42,22 @@
     else if (step === 2) { if (+a[5] === 1) { fired = true; press("Space", false); step = 3; } }
     else if (step === 3) {
       canvasDrawn = canvasOk();
-      var btn = document.querySelector("[data-glon-event='patrol-restart']");
-      if (btn) { btn.click(); step = 4; }
+      if (trailT0 === 0) { press("Space", true); trailA = countNonBg(); trailT0 = Date.now(); }
+      else if (Date.now() - trailT0 > 1200) {
+        var tb = countNonBg();
+        noTrails = (tb <= trailA + 800);
+        press("Space", false);
+        var btn = document.querySelector("[data-glon-event='patrol-restart']");
+        if (btn) { btn.click(); step = 4; }
+      }
     } else if (step === 4) {
       if (+a[0] === 300 && +a[2] === 0 && +a[3] === 5) { restartOk = true; step = 5; }
     }
     if (step >= 1) {
-      v.textContent = (step === 5 ? "PATROL_BROWSER_OK" : "RUNNING") +
-        " moved=" + moved + " fired=" + fired + " canvas=" + canvasDrawn + " restart=" + restartOk + " state=" + s;
+      var ok = step === 5 && moved && fired && canvasDrawn && restartOk && noTrails;
+      v.textContent = (ok ? "PATROL_BROWSER_OK" : "RUNNING") +
+        " moved=" + moved + " fired=" + fired + " canvas=" + canvasDrawn +
+        " noTrails=" + noTrails + " restart=" + restartOk + " state=" + s;
     }
   }, 100);
 })();

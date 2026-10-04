@@ -48,7 +48,10 @@ reset: func [] [
 ]
 
 ;; ---- canvas script output (to G1_VIS) ------------------------------------
-p-clear: masm [ LIT 0 LIT SCRATCH_D ! ARITY 0 EXIT ]
+p-reset: masm [ LIT 0 LIT SCRATCH_D ! ARITY 0 EXIT ]
+;; Start every frame with an explicit clear opcode (byte 67 = 'C') so the
+;; browser replaces the previous frame instead of drawing over it.
+p-clear: func [] [ p-reset p-byte 67 p-eol ]
 p-byte: masm 1 [
     LIT SCRATCH_D @ LIT G1_VIS_DATA ADD !
     LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
