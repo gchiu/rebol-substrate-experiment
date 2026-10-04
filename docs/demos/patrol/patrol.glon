@@ -35,6 +35,10 @@ abs: func [n] [ either < n 0 [ - 0 n ] [ n ] ]
 hit?: func [px py bx by] [
     either < abs - px bx 16 [ either < abs - py by 16 [ 1 ] [ 0 ] ] [ 0 ]
 ]
+;; the patrol craft is wider than a projectile; use a gentler radius
+hit-ship?: func [bx by] [
+    either < abs - bx sx 18 [ either < abs - by sy 16 [ 1 ] [ 0 ] ] [ 0 ]
+]
 reset: func [] [
     sx: 300 sy: 380 score: 0 health: 5 over: 0 tick: 0
     kl: 0 kr: 0 ku: 0 kd: 0 kf: 0
@@ -60,6 +64,7 @@ p-eol: does [ p-byte 10 ]
 p-num: func [n] [ p-sp p-int n ]
 p-rect: func [x y w h c] [ p-byte 82 p-num x p-num y p-num w p-num h p-num c p-eol ]
 p-circ: func [x y r c] [ p-byte 79 p-num x p-num y p-num r p-num c p-eol ]
+p-tri: func [x1 y1 x2 y2 x3 y3 c] [ p-byte 84 p-num x1 p-num y1 p-num x2 p-num y2 p-num x3 p-num y3 p-num c p-eol ]
 p-finish: masm [ LIT SCRATCH_D @ LIT G1_VIS ! LIT G1_VIS LIT T_BLOCK ADD ARITY 1 EXIT ]
 
 ;; ---- HTML status output (to G1_OUT) --------------------------------------
@@ -151,6 +156,10 @@ collide: func [] [
         either = 1 hit? p1x p1y b1x b1y [ p1v: 0 b1v: 0 score: + score 10 ] [
         either = 1 hit? p1x p1y b2x b2y [ p1v: 0 b2v: 0 score: + score 10 ] [ none ] ] ]
     ] [ none ]
+    ;; player craft hit by a falling briquette: remove it, lose one health
+    either = b0v 1 [ either = 1 hit-ship? b0x b0y [ b0v: 0 health: - health 1 ] [ none ] ] [ none ]
+    either = b1v 1 [ either = 1 hit-ship? b1x b1y [ b1v: 0 health: - health 1 ] [ none ] ] [ none ]
+    either = b2v 1 [ either = 1 hit-ship? b2x b2y [ b2v: 0 health: - health 1 ] [ none ] ] [ none ]
 ]
 step: func [] [
     move-ship
@@ -176,6 +185,8 @@ selftest: func [] [
     either = score 10 [
         either = p0v 0 [ either = b0v 0 [ none ] [ fails: + fails 1 ] ] [ fails: + fails 1 ]
     ] [ fails: + fails 1 ]
+    reset b0v: 1 b0x: sx b0y: sy collide
+    either = health 4 [ either = b0v 0 [ none ] [ fails: + fails 1 ] ] [ fails: + fails 1 ]
     reset b0v: 1 b0y: 429 move-brick
     either = health 4 [ none ] [ fails: + fails 1 ]
     reset health: 1 b0v: 1 b0y: 429 step
@@ -191,12 +202,17 @@ selftest: func [] [
 render-canvas: func [] [
     p-clear
     p-rect 0 440 640 40 2
-    p-rect - sx 8 - sy 6 16 12 1
-    either = p0v 1 [ p-rect - p0x 2 - p0y 10 4 12 4 ] [ none ]
-    either = p1v 1 [ p-rect - p1x 2 - p1y 10 4 12 4 ] [ none ]
-    either = b0v 1 [ p-circ b0x b0y 9 3 ] [ none ]
-    either = b1v 1 [ p-circ b1x b1y 9 3 ] [ none ]
-    either = b2v 1 [ p-circ b2x b2y 9 3 ] [ none ]
+    ;; the patrol craft: a small nose-up spacecraft (triangle + body + engine)
+    p-tri sx - sy 14 - sx 9 + sy 8 + sx 9 + sy 8 1
+    p-rect - sx 4 - sy 2 8 10 6
+    p-circ sx + sy 8 4 7
+    ;; fired projectiles: bright bolts travelling upward, with a hot tip
+    either = p0v 1 [ p-rect - p0x 2 - p0y 14 4 14 7 p-circ p0x - p0y 15 3 7 ] [ none ]
+    either = p1v 1 [ p-rect - p1x 2 - p1y 14 4 14 7 p-circ p1x - p1y 15 3 7 ] [ none ]
+    ;; falling barbecue briquettes (orange with a hot core)
+    either = b0v 1 [ p-circ b0x b0y 9 3 p-circ b0x b0y 4 5 ] [ none ]
+    either = b1v 1 [ p-circ b1x b1y 9 3 p-circ b1x b1y 4 5 ] [ none ]
+    either = b2v 1 [ p-circ b2x b2y 9 3 p-circ b2x b2y 4 5 ] [ none ]
     p-finish
 ]
 render-status: func [] [
