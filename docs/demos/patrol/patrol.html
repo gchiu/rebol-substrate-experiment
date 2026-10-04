@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glon Patrol</title>
+<style>
+  body { font: 15px/1.4 system-ui, sans-serif; margin: 1rem auto; max-width: 660px; background: #0b1020; color: #e8e8e8; }
+  h1 { margin: .2rem 0; }
+  .hud { font-size: 1.1rem; }
+  #glon-canvas { display: block; width: 640px; height: 480px; border: 1px solid #334; background: #0b1020; }
+  button { font: inherit; padding: .4rem .8rem; cursor: pointer; }
+  .keys { color: #9aa0a6; font-size: .9rem; }
+</style>
+</head>
+<body>
+<!-- Glon renders the HUD/status here (data-glon-id="1"); JS only draws the
+     canvas script Glon emits.  The game is Glon-owned. -->
+<div id="status" data-glon-id="1"></div>
+<canvas id="glon-canvas" width="640" height="480"></canvas>
+<p class="keys">Arrow keys or WASD to fly, Space to fire, Restart after game over.</p>
+<script src="patrol-host.js"></script>
+</body>
+</html>

@@ -1,0 +1,238 @@
+;; demos/patrol/patrol.glon -- Glon Patrol, the game logic (Glon owns it).
+;;
+;; Browser supplies input + Canvas + requestAnimationFrame; Glon owns all game
+;; state and rules and emits a tiny render script (canvas commands + HTML
+;; status).  JS only feeds keys/frames in and draws the script out.
+;;
+;; Canvas script commands (to G1_VIS, drawn by patrol-host.js):
+;;   C                 clear
+;;   R x y w h c       rectangle (colour index c)
+;;   O x y r c         circle
+;; HTML status (to G1_OUT) shows score/health/game-over/restart.
+;;
+;; Requires prelude.glon (mk-string, str-eq) and strings.glon.
+
+[
+;; ---- playfield state (all integers; Glon owns it) ------------------------
+PFW: 640
+PFH: 480
+BBQY: 440
+
+sx: 300 sy: 380
+score: 0 health: 5 over: 0 tick: 0
+kl: 0 kr: 0 ku: 0 kd: 0 kf: 0
+
+p0x: 0 p0y: 0 p0v: 0
+p1x: 0 p1y: 0 p1v: 0
+
+b0x: 60  b0y: 0 b0v: 0
+b1x: 300 b1y: 0 b1v: 0
+b2x: 540 b2y: 0 b2v: 0
+
+;; ---- small helpers -------------------------------------------------------
+mod: func [a b] [ - a * b / a b ]
+abs: func [n] [ either < n 0 [ - 0 n ] [ n ] ]
+hit?: func [px py bx by] [
+    either < abs - px bx 16 [ either < abs - py by 16 [ 1 ] [ 0 ] ] [ 0 ]
+]
+reset: func [] [
+    sx: 300 sy: 380 score: 0 health: 5 over: 0 tick: 0
+    kl: 0 kr: 0 ku: 0 kd: 0 kf: 0
+    p0v: 0 p1v: 0 p0x: 0 p0y: 0 p1x: 0 p1y: 0
+    b0v: 0 b1v: 0 b2v: 0 b0y: 0 b1y: 0 b2y: 0
+    b0x: 60 b1x: 300 b2x: 540
+]
+
+;; ---- canvas script output (to G1_VIS) ------------------------------------
+p-clear: masm [ LIT 0 LIT SCRATCH_D ! ARITY 0 EXIT ]
+p-byte: masm 1 [
+    LIT SCRATCH_D @ LIT G1_VIS_DATA ADD !
+    LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
+    ARITY 0 EXIT
+]
+p-digits: func [n] [
+    either > n 9 [ p-digits / n 10 ] [ none ]
+    p-byte + 48 - n * 10 / n 10
+]
+p-int: func [n] [ either < n 0 [ p-byte 45 p-digits - 0 n ] [ p-digits n ] ]
+p-sp: does [ p-byte 32 ]
+p-eol: does [ p-byte 10 ]
+p-num: func [n] [ p-sp p-int n ]
+p-rect: func [x y w h c] [ p-byte 82 p-num x p-num y p-num w p-num h p-num c p-eol ]
+p-circ: func [x y r c] [ p-byte 79 p-num x p-num y p-num r p-num c p-eol ]
+p-finish: masm [ LIT SCRATCH_D @ LIT G1_VIS ! LIT G1_VIS LIT T_BLOCK ADD ARITY 1 EXIT ]
+
+;; ---- HTML status output (to G1_OUT) --------------------------------------
+e-clear: masm [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
+e-byte: masm 1 [
+    LIT SCRATCH_E @ LIT G1_OUT_DATA ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    ARITY 0 EXIT
+]
+e-digits: func [n] [
+    either > n 9 [ e-digits / n 10 ] [ none ]
+    e-byte + 48 - n * 10 / n 10
+]
+e-int: func [n] [ either < n 0 [ e-byte 45 e-digits - 0 n ] [ e-digits n ] ]
+e-text: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_A !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  e-text-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH e-text-done
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL
+    LIT G1_OUT_DATA LIT SCRATCH_E @ ADD
+    !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH e-text-loop
+  e-text-done:
+    ARITY 0 EXIT
+]
+e-finish: masm [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
+
+;; ---- input ---------------------------------------------------------------
+set-key: func [name v] [
+    either str-eq name "left" [ kl: v ] [
+    either str-eq name "right" [ kr: v ] [
+    either str-eq name "up" [ ku: v ] [
+    either str-eq name "down" [ kd: v ] [
+    either str-eq name "fire" [ kf: v ] [ none ] ] ] ] ]
+]
+
+;; ---- rules ---------------------------------------------------------------
+move-ship: func [] [
+    either = kl 1 [ sx: - sx 7 ] [ none ]
+    either = kr 1 [ sx: + sx 7 ] [ none ]
+    either = ku 1 [ sy: - sy 7 ] [ none ]
+    either = kd 1 [ sy: + sy 7 ] [ none ]
+    either < sx 12 [ sx: 12 ] [ none ]
+    either > sx 628 [ sx: 628 ] [ none ]
+    either < sy 60 [ sy: 60 ] [ none ]
+    either > sy 424 [ sy: 424 ] [ none ]
+]
+fire: func [] [
+    either = kf 1 [
+        either = p0v 0 [
+            p0x: sx p0y: - sy 12 p0v: 1
+        ] [
+            either = p1v 0 [ p1x: sx p1y: - sy 12 p1v: 1 ] [ none ]
+        ]
+    ] [ none ]
+]
+move-proj: func [] [
+    either = p0v 1 [
+        p0y: - p0y 12
+        either < p0y 0 [ p0v: 0 ] [ none ]
+    ] [ none ]
+    either = p1v 1 [
+        p1y: - p1y 12
+        either < p1y 0 [ p1v: 0 ] [ none ]
+    ] [ none ]
+]
+move-brick: func [] [
+    either = b0v 1 [ b0y: + b0y 3 either > b0y 428 [ b0v: 0 health: - health 1 ] [ none ] ] [ none ]
+    either = b1v 1 [ b1y: + b1y 4 either > b1y 428 [ b1v: 0 health: - health 1 ] [ none ] ] [ none ]
+    either = b2v 1 [ b2y: + b2y 3 either > b2y 428 [ b2v: 0 health: - health 1 ] [ none ] ] [ none ]
+]
+spawn-brick: func [] [
+    either = b0v 0 [ either = 0 mod + tick 10 34 [ b0x: 40 b0y: 0 b0v: 1 ] [ none ] ] [ none ]
+    either = b1v 0 [ either = 0 mod + tick 23 41 [ b1x: 260 b1y: 0 b1v: 1 ] [ none ] ] [ none ]
+    either = b2v 0 [ either = 0 mod + tick 31 47 [ b2x: 500 b2y: 0 b2v: 1 ] [ none ] ] [ none ]
+]
+collide: func [] [
+    either = p0v 1 [
+        either = 1 hit? p0x p0y b0x b0y [ p0v: 0 b0v: 0 score: + score 10 ] [
+        either = 1 hit? p0x p0y b1x b1y [ p0v: 0 b1v: 0 score: + score 10 ] [
+        either = 1 hit? p0x p0y b2x b2y [ p0v: 0 b2v: 0 score: + score 10 ] [ none ] ] ]
+    ] [ none ]
+    either = p1v 1 [
+        either = 1 hit? p1x p1y b0x b0y [ p1v: 0 b0v: 0 score: + score 10 ] [
+        either = 1 hit? p1x p1y b1x b1y [ p1v: 0 b1v: 0 score: + score 10 ] [
+        either = 1 hit? p1x p1y b2x b2y [ p1v: 0 b2v: 0 score: + score 10 ] [ none ] ] ]
+    ] [ none ]
+]
+step: func [] [
+    move-ship
+    fire
+    move-proj
+    move-brick
+    spawn-brick
+    collide
+    either < health 1 [ over: 1 ] [ none ]
+]
+
+;; ---- deterministic rule self-test (runs in Glon; C/JS only reads the text) -
+selftest: func [] [
+    fails: 0
+    reset
+    kr: 1 move-ship
+    either = sx 307 [ none ] [ fails: + fails 1 ]
+    reset sx: 20 kl: 1 move-ship move-ship
+    either = sx 12 [ none ] [ fails: + fails 1 ]
+    reset kf: 1 fire
+    either = p0v 1 [ none ] [ fails: + fails 1 ]
+    reset p0v: 1 p0x: 60 p0y: 0 b0v: 1 b0x: 60 b0y: 0 collide
+    either = score 10 [
+        either = p0v 0 [ either = b0v 0 [ none ] [ fails: + fails 1 ] ] [ fails: + fails 1 ]
+    ] [ fails: + fails 1 ]
+    reset b0v: 1 b0y: 429 move-brick
+    either = health 4 [ none ] [ fails: + fails 1 ]
+    reset health: 1 b0v: 1 b0y: 429 step
+    either = over 1 [ none ] [ fails: + fails 1 ]
+    reset
+    either = health 5 [ either = over 0 [ none ] [ fails: + fails 1 ] ] [ fails: + fails 1 ]
+    e-clear
+    either = fails 0 [ e-text "PATROL-SELFTEST PASS" ] [ e-text "PATROL-SELFTEST FAIL " e-int fails ]
+    e-finish
+]
+
+;; ---- render --------------------------------------------------------------
+render-canvas: func [] [
+    p-clear
+    p-rect 0 440 640 40 2
+    p-rect - sx 8 - sy 6 16 12 1
+    either = p0v 1 [ p-rect - p0x 2 - p0y 10 4 12 4 ] [ none ]
+    either = p1v 1 [ p-rect - p1x 2 - p1y 10 4 12 4 ] [ none ]
+    either = b0v 1 [ p-circ b0x b0y 9 3 ] [ none ]
+    either = b1v 1 [ p-circ b1x b1y 9 3 ] [ none ]
+    either = b2v 1 [ p-circ b2x b2y 9 3 ] [ none ]
+    p-finish
+]
+render-status: func [] [
+    e-clear
+    e-text "<h1>Glon Patrol</h1>"
+    e-text "<p class='hud'>Score: " e-int score e-text "  BBQ health: " e-int health
+    either = over 1 [ e-text "  <b>GAME OVER</b>" ] [ none ]
+    e-text "</p>"
+    e-text "<p><button data-glon-event='patrol-restart'>Restart</button></p>"
+    e-text "<span id='patrol-state' style='display:none'>"
+    e-int sx e-text " " e-int sy e-text " " e-int score e-text " " e-int health e-text " " e-int over e-text " " e-int p0v
+    e-text "</span>"
+    e-finish
+]
+render: func [] [ render-canvas render-status ]
+
+do-event: [
+    either = current-event 'patrol-selftest [ selftest ] [
+        either = current-event 'patrol-tick [
+            tick: + tick 1
+            either = over 1 [ none ] [ step ]
+            render
+        ] [
+            either = current-event 'patrol-key-down [ set-key current-value 1 render ]
+            [
+                either = current-event 'patrol-key-up [ set-key current-value 0 render ]
+                [
+                    either = current-event 'patrol-restart [ reset render ]
+                    [
+                        either = current-event 'patrol-start [ reset render ] [ render ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+]
+
+route: [ reset render ]
+]
