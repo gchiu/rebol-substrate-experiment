@@ -31,6 +31,9 @@ REQUIRED = [
     "shop/linda.html", "shop/linda-host.js",
     "shop/live.html", "shop/live-host.js", "shop/qwen-client.js",
     "shop/glon-live.wasm",
+    "demos/patrol/patrol.html", "demos/patrol/patrol-host.js",
+    "demos/patrol/patrol.glon", "demos/patrol/glon.wasm",
+    "demos/patrol/prelude.glon", "demos/patrol/strings.glon",
 ]
 
 

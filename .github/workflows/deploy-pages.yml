@@ -107,11 +107,19 @@ jobs:
           cp -r /tmp/shop/. pages/docs/shop/
           cp site/index.html pages/docs/index.html
           cp docs/r0-counter.html docs/demo.js docs/demo.wasm pages/docs/
+          # Glon Patrol: stage the browser demo plus the runtime files it loads.
+          # The WASM is the shop build above; prelude/strings are the same shared
+          # sources.  Generated runtime files are published, never committed here.
+          mkdir -p pages/docs/demos/patrol
+          cp demos/patrol/patrol.html demos/patrol/patrol-host.js demos/patrol/patrol.glon pages/docs/demos/patrol/
+          cp demo/shop/glon.wasm pages/docs/demos/patrol/glon.wasm
+          cp jupyter/prelude.glon pages/docs/demos/patrol/prelude.glon
+          cp demo/shop/strings.glon pages/docs/demos/patrol/strings.glon
           python3 site/check-site.py pages/docs
           cd pages
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/shop docs/index.html docs/r0-counter.html docs/demo.js docs/demo.wasm
+          git add docs/shop docs/demos/patrol docs/index.html docs/r0-counter.html docs/demo.js docs/demo.wasm
           if git diff --cached --quiet; then
             echo "docs/ unchanged; nothing to commit"
           else
