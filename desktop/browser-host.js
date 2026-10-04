@@ -232,13 +232,26 @@
     }
   }
 
+  /* A demo target fills the URL and file-name fields ONLY.  It never starts a
+   * download; the user must still press Download. */
+  function pickTarget(el) {
+    var ui = document.querySelector('[data-glon-input="url"]');
+    var ni = document.querySelector('[data-glon-input="name"]');
+    if (ui) ui.value = el.getAttribute("data-url") || "";
+    if (ni) ni.value = el.getAttribute("data-name") || "";
+    lastInputs.url = ui ? ui.value : "";
+    lastInputs.name = ni ? ni.value : "";
+  }
+
   function wireClicks() {
     document.addEventListener("click", function (e) {
       var el = e.target && e.target.closest
-        ? e.target.closest("[data-glon-native], [data-glon-event]") : null;
+        ? e.target.closest("[data-glon-native], [data-glon-event], [data-glon-pick]") : null;
       if (!el) return;
       e.preventDefault();
-      if (el.hasAttribute("data-glon-inputs")) {
+      if (el.hasAttribute("data-glon-pick")) {
+        pickTarget(el);
+      } else if (el.hasAttribute("data-glon-inputs")) {
         glonEventValue(el.getAttribute("data-glon-event"),
                        inputValues(el.getAttribute("data-glon-inputs")));
       } else if (el.hasAttribute("data-glon-native")) {

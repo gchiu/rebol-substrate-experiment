@@ -3,10 +3,17 @@ rem apps/glon-fetch/run-glon-fetch.bat -- one-click launcher for Glon Fetch.
 rem Double-click this file to run the application. No command line needed.
 rem (Optional extra arguments are forwarded to glon-desktop.exe for testing.)
 setlocal
-set "ROOT=%~dp0..\.."
+rem Works both in the source tree (apps\glon-fetch\run-glon-fetch.bat) and in
+rem the portable bundle (run-glon-fetch.bat beside glon-desktop.exe).
+set "HERE=%~dp0"
+if exist "%HERE%glon-desktop.exe" (
+    set "ROOT=%HERE%"
+) else (
+    set "ROOT=%HERE%..\.."
+)
 pushd "%ROOT%"
 if errorlevel 1 (
-    echo Could not find the repository root next to this launcher.
+    echo Could not find glon-desktop.exe next to this launcher.
     pause
     exit /b 1
 )

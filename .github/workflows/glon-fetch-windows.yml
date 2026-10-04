@@ -1,0 +1,108 @@
+# Portable Windows Glon Fetch bundle.
+#
+# From a CLEAN checkout: build the GLON_LIVE WASM (Ubuntu + Emscripten), build
+# glon-desktop.exe (Windows + MSVC), assemble the portable bundle, smoke test
+# it, and upload the ZIP as the "glon-fetch-windows" Actions artifact.
+#
+# On tags matching glon-fetch-*, the same ZIP is attached to a GitHub Release
+# (which the app's built-in self-download target points at). No signing.
+name: Glon Fetch Windows bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [glon-shop-g1a]
+    tags: ['glon-fetch-*']
+
+permissions:
+  contents: write
+
+jobs:
+  wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 6.0.9
+
+      - name: Build the GLON_LIVE WASM
+        run: make demo/shop/glon-live.wasm
+
+      - name: Upload wasm
+        uses: actions/upload-artifact@v4
+        with:
+          name: glon-live-wasm
+          path: demo/shop/glon-live.wasm
+
+  bundle:
+    needs: wasm
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Fetch the built WASM
+        uses: actions/download-artifact@v4
+        with:
+          name: glon-live-wasm
+          path: demo/shop
+
+      - name: Build glon-desktop.exe
+        shell: cmd
+        run: desktop\build-windows-msvc.bat
+
+      - name: Assemble the portable bundle
+        shell: cmd
+        run: apps\glon-fetch\make-portable-windows.bat
+
+      - name: Smoke test the extracted bundle
+        shell: pwsh
+        run: |
+          $zip = "dist\glon-fetch-windows.zip"
+          $out = Join-Path $env:RUNNER_TEMP "portable"
+          Expand-Archive -Path $zip -DestinationPath $out -Force
+          $root = Join-Path $out "glon-fetch-windows"
+          $p = Start-Process -FilePath (Join-Path $root "glon-desktop.exe") `
+               -WorkingDirectory $root `
+               -ArgumentList @("--install","org.glon.fetch","--no-browser","--port","8890") `
+               -PassThru -WindowStyle Hidden
+          $ok = $false
+          for ($i = 0; $i -lt 50; $i++) {
+            Start-Sleep -Milliseconds 200
+            try { Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:8890/" -TimeoutSec 1 | Out-Null; $ok = $true; break } catch {}
+          }
+          if (-not $ok) { throw "bundle host did not start" }
+          (Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:8890/api/permissions").Content
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+
+      - name: Upload the portable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: glon-fetch-windows
+          path: dist/glon-fetch-windows.zip
+
+  release:
+    needs: bundle
+    if: startsWith(github.ref, 'refs/tags/glon-fetch-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the portable ZIP
+        uses: actions/download-artifact@v4
+        with:
+          name: glon-fetch-windows
+          path: dist
+
+      - name: Attach the ZIP to a GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/glon-fetch-windows.zip \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "Portable Windows Glon Fetch bundle (unsigned development build). Unzip and double-click run-glon-fetch.bat."

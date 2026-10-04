@@ -19,3 +19,6 @@ desktop/prelude.glon
 desktop/strings.glon
 desktop/big.txt
 desktop/appdata/
+
+# portable distribution (generated)
+dist/

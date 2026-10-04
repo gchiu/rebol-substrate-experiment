@@ -32,6 +32,14 @@ home-view: [
         emit-text "<button data-glon-event='fetch-start' data-glon-inputs='url,name'>Download</button>"
     ]
     emit-text " <button data-glon-event='open-folder'>Open Folder</button>"
+    emit-text "<h3>Try a test download</h3>"
+    emit-text "<p>Pick a target to fill the URL and file name. Nothing downloads until you press Download. Sizes are approximate.</p>"
+    emit-text "<p>"
+    emit-text "<button data-glon-pick data-url='http://ipv4.download.thinkbroadband.com:8080/100MB.zip' data-name='100MB.zip'>100 MB test</button> "
+    emit-text "<button data-glon-pick data-url='http://ipv4.download.thinkbroadband.com:8080/1GB.zip' data-name='1GB.zip'>1 GB test</button> "
+    emit-text "<button data-glon-pick data-url='https://cdimage.ubuntu.com/releases/26.04.1/release/ubuntu-26.04.1-desktop-arm64.iso' data-name='ubuntu-26.04.1-desktop-arm64.iso'>Ubuntu Desktop ARM64 ISO (~3 GB)</button> "
+    emit-text "<button data-glon-pick data-url='https://github.com/gchiu/rebol-substrate-experiment/releases/latest/download/glon-fetch-windows.zip' data-name='glon-fetch-windows.zip'>Glon Fetch portable ZIP (~0.2 MB)</button>"
+    emit-text "</p>"
     emit-text "<h2>Status</h2>"
     emit-text "<p class='phase'>State: "
     emit-text phase
