@@ -15,7 +15,7 @@
   function view() { return new Uint8Array(ex.memory.buffer); }
 
   /* colour index -> CSS (Glon chooses the index; JS only maps it) */
-  var COL = ["#0b1020", "#e8e8e8", "#8a8f98", "#ff8c1a", "#3dff7a", "#ff5252", "#5aa9ff", "#c8a2ff"];
+  var COL = ["#0b1020", "#e8e8e8", "#8a8f98", "#ff8c1a", "#3dff7a", "#ff5252", "#5aa9ff", "#ffe066"];
 
   function drawScript(script) {
     var canvas = document.querySelector("#glon-canvas");
@@ -38,6 +38,14 @@
         ctx.fillStyle = COL[+p[4]] || "#fff";
         ctx.beginPath();
         ctx.arc(+p[1], +p[2], +p[3], 0, 2 * Math.PI);
+        ctx.fill();
+      } else if (op === "T") {
+        ctx.fillStyle = COL[+p[7]] || "#fff";
+        ctx.beginPath();
+        ctx.moveTo(+p[1], +p[2]);
+        ctx.lineTo(+p[3], +p[4]);
+        ctx.lineTo(+p[5], +p[6]);
+        ctx.closePath();
         ctx.fill();
       }
     }
