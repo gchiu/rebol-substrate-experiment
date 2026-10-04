@@ -22,3 +22,9 @@ desktop/appdata/
 
 # portable distribution (generated)
 dist/
+
+# Glon Patrol demo (generated runtime) 
+demos/patrol/glon.wasm
+demos/patrol/prelude.glon
+demos/patrol/strings.glon
+patrol-test
