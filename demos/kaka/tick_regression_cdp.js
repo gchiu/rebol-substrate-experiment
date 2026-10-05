@@ -69,6 +69,8 @@ const INJECT = `(function(){
   await new Promise((r) => ws.addEventListener("open", r));
   await send("Page.enable");
   await send("Runtime.enable");
+  await send("Network.enable");
+  await send("Network.setCacheDisabled", { cacheDisabled: true });  /* always test fresh assets */
   await send("Page.addScriptToEvaluateOnNewDocument", { source: INJECT });
   await send("Page.navigate", { url: target });
 
