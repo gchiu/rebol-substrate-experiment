@@ -1,22 +1,17 @@
 ;; demos/kaka/kaka-selftest.glon -- deterministic Glon rule self-test for
 ;; Attack of the Mutant Kaka. Dispatched by the kaka-selftest event; the C and
-;; WASM test harnesses read the emitted PASS/FAIL text.
+;; WASM test harnesses read the emitted PASS/FAIL text. The assertions are split
+;; across three functions because the parser caps one block at 511 elements.
 [
-;; soak/test hook: destroy every tree and mark game over, to prove the browser
-;; page keeps animating in the game-over state (see tick_regression_cdp.js).
-dmg-all-trees: func [i] [
-    either < i NTS [
-        either = ts-k i K_TREE [ block-set! ts-t i F_A 0 ] [ none ]
-        dmg-all-trees + i 1
-    ] [ none ]
-]
-on-debug-over: func [] [ dmg-all-trees 0  over: 1  tally  render ]
+move-n: func [n] [ either > n 0 [ move-player  move-n - n 1 ] [ none ] ]
+fly-n: func [n t] [ either > n 0 [ kaka-step t  fly-n - n 1 t ] [ none ] ]
 
-;; ---- deterministic rule self-test (Glon runs it; the harness reads PASS) --
-selftest: func [] [
-    fails: 0
-    reset
+fails: 0
+
+;; ---- tests 1-5: berries, damage, game over -------------------------------
+test-a: func [] [
     ;; 1. berry diverts kaka (never damages it)
+    reset
     k: ts-claim K_KAKA
     block-set! k F_STATE KS_EAT
     block-set! k F_TARGET 0
@@ -31,7 +26,6 @@ selftest: func [] [
     either = block-at k F_STATE KS_DIVERT [ none ] [ fails: + fails 1 ]
     either = score 10 [ none ] [ fails: + fails 1 ]
     either > ts-count K_KAKA 0 [ none ] [ fails: + fails 1 ]
-    ;;
     ;; 2. undiverted kaka damages its tree
     reset
     k: ts-claim K_KAKA
@@ -42,13 +36,11 @@ selftest: func [] [
     block-set! k F_A 35
     kaka-eat k
     either < block-at ts-t 0 F_A TREE_MAX [ none ] [ fails: + fails 1 ]
-    ;;
     ;; 3. all trees destroyed => game over
     reset
     damage-tree 0 100  damage-tree 1 100  damage-tree 2 100
     step
     either = over 1 [ none ] [ fails: + fails 1 ]
-    ;;
     ;; 4. Glon Berry creates mutant state
     reset
     k: ts-claim K_KAKA
@@ -63,12 +55,14 @@ selftest: func [] [
     berry-hit g 0
     either = block-at k F_STATE KS_MUTANT [ none ] [ fails: + fails 1 ]
     either > block-at k F_B tick [ none ] [ fails: + fails 1 ]
-    ;;
     ;; 5. mutant state expires
     block-set! k F_B -1
     kaka-mutant k
     either = block-at k F_STATE KS_MUTANT [ fails: + fails 1 ] [ none ]
-    ;;
+]
+
+;; ---- tests 6-10: mutant kill, no bird harm, poop, restart, aliasing -------
+test-b: func [] [
     ;; 6. mutant kaka zaps a rat
     reset
     k: ts-claim K_KAKA
@@ -83,7 +77,6 @@ selftest: func [] [
     kaka-mutant k
     either = ts-count K_RAT 0 [ none ] [ fails: + fails 1 ]
     either = score + sc0 25 [ none ] [ fails: + fails 1 ]
-    ;;
     ;; 7. the player cannot damage kaka (berries divert, never remove)
     reset
     k: ts-claim K_KAKA
@@ -96,7 +89,6 @@ selftest: func [] [
     block-set! b F_A 0
     berry-hit b 0
     either = ts-count K_KAKA 1 [ none ] [ fails: + fails 1 ]
-    ;;
     ;; 8. droppings regenerate a damaged tree
     reset
     damage-tree 0 40
@@ -107,7 +99,6 @@ selftest: func [] [
     block-set! p F_VY 3
     poop-step p
     either > block-at ts-t 0 F_A h0 [ none ] [ fails: + fails 1 ]
-    ;;
     ;; 9. restart returns a clean initial state
     score: 999  berries: 0  over: 1  tick: 500
     reset
@@ -117,7 +108,6 @@ selftest: func [] [
     either = tick 0 [ none ] [ fails: + fails 1 ]
     either = tree-live 3 [ none ] [ fails: + fails 1 ]
     either = ts-count K_KAKA 0 [ none ] [ fails: + fails 1 ]
-    ;;
     ;; 10. dynamic create/remove does not alias or corrupt state
     reset
     a: ts-claim K_KAKA
@@ -135,7 +125,10 @@ selftest: func [] [
     either = block-at a F_X 111 [ none ] [ fails: + fails 1 ]
     either = block-at c F_X 333 [ none ] [ fails: + fails 1 ]
     either = block-at d F_X 444 [ none ] [ fails: + fails 1 ]
-    ;;
+]
+
+;; ---- tests 11-15: game-over advance, movement, curved flight -------------
+test-c: func [] [
     ;; 11. the world keeps advancing after game over (must not freeze)
     reset
     damage-tree 0 100  damage-tree 1 100  damage-tree 2 100
@@ -145,7 +138,67 @@ selftest: func [] [
     on-tick
     on-tick
     either > tick t0 [ none ] [ fails: + fails 1 ]
-    ;;
+    ;; 12. held movement covers useful ground at 25 Hz; release stops promptly
+    reset
+    px: 100  kr: 1
+    move-n 25
+    either = px 350 [ none ] [ fails: + fails 1 ]
+    kr: 0
+    move-n 5
+    either = px 350 [ none ] [ fails: + fails 1 ]
+    ;; 13. kaka flight path is curved (samples are not collinear)
+    reset
+    k: ts-claim K_KAKA
+    block-set! k F_STATE KS_SWEEP
+    block-set! k F_TARGET 2
+    block-set! k F_X 100
+    block-set! k F_Y 20
+    block-set! k F_VY 3
+    sx0: block-at k F_X  sy0: block-at k F_Y
+    kaka-step k  kaka-step k  kaka-step k
+    mx: block-at k F_X  my: block-at k F_Y
+    kaka-step k  kaka-step k  kaka-step k  kaka-step k
+    ex: block-at k F_X  ey: block-at k F_Y
+    cross: - * - mx sx0 - ey sy0  * - my sy0 - ex sx0
+    either > abs cross 8 [ none ] [ fails: + fails 1 ]
+    ;; 14. diversion changes heading progressively, not instantly
+    reset
+    k: ts-claim K_KAKA
+    block-set! k F_STATE KS_EAT
+    block-set! k F_X 200
+    block-set! k F_Y 300
+    block-set! k F_VY 6
+    px: 300
+    b: ts-claim K_BERRY
+    block-set! b F_X 200
+    block-set! b F_Y 300
+    block-set! b F_A 0
+    berry-hit b 0
+    either = block-at k F_STATE KS_DIVERT [ none ] [ fails: + fails 1 ]
+    either = block-at k F_VY 6 [ none ] [ fails: + fails 1 ]
+    kaka-divert k
+    either = block-at k F_VY 4 [ none ] [ fails: + fails 1 ]
+    kaka-divert k
+    either = block-at k F_VY 2 [ none ] [ fails: + fails 1 ]
+    ;; 15. a kaka flies in, swoops, reaches and damages its tree
+    reset
+    k: ts-claim K_KAKA
+    block-set! k F_STATE KS_SWEEP
+    block-set! k F_TARGET 0
+    block-set! k F_X 120
+    block-set! k F_Y 20
+    block-set! k F_VY 0
+    block-set! k F_E 2
+    fly-n 40 k  fly-n 40 k  fly-n 40 k
+    either < block-at ts-t 0 F_A TREE_MAX [ none ] [ fails: + fails 1 ]
+]
+
+selftest: func [] [
+    fails: 0
+    reset
+    test-a
+    test-b
+    test-c
     reset
     e-clear
     either = fails 0 [ e-text "KAKA-SELFTEST PASS" ] [ e-text "KAKA-SELFTEST FAIL " e-int fails ]

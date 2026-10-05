@@ -2,6 +2,137 @@
 ;; Split out of kaka.glon to stay within the 16 KiB Glon source buffer; the
 ;; game state and rules live in kaka.glon (loaded first).
 [
+;; ---- kaka flight: velocity + bounded steering gives curved bird paths -----
+;; Each bird carries its own x/y velocity (F_VY/F_E). Every tick it steers one
+;; bounded step toward a phase waypoint, so heading changes lag the target and
+;; the path banks rather than drawing straight segments. Per-bird id variation
+;; and the tick counter keep individual birds distinct. All of it is Glon.
+KSPD: 6
+SACC: 2
+SNEG: -2
+steer: func [v d] [
+    e: - d v
+    either > e SACC [ + v SACC ] [ either < e SNEG [ - v SACC ] [ d ] ]
+]
+k-move: func [t wx wy sx sy] [
+    vx: steer block-at t F_VY * sign - wx block-at t F_X sx
+    vy: steer block-at t F_E * sign - wy block-at t F_Y sy
+    block-set! t F_VY vx
+    block-set! t F_E vy
+    block-set! t F_X + block-at t F_X vx
+    block-set! t F_Y + block-at t F_Y vy
+]
+kaka-pick: func [t] [ kp 0 t ]
+kp: func [i t] [
+    either < i NTS [
+        either = ts-k i K_TREE [
+            either > block-at ts-t i F_A 0 [ block-set! t F_TARGET i ] [ kp + i 1 t ]
+        ] [ kp + i 1 t ]
+    ] [ block-set! t F_STATE KS_LEAVE ]
+]
+spawn-kaka: func [] [
+    t: ts-claim K_KAKA
+    either = t none [ none ] [
+        block-set! t F_X + 60 mod rnd 520
+        block-set! t F_Y 20
+        block-set! t F_STATE KS_SWEEP
+        block-set! t F_D either = 0 mod block-at t F_ID 2 [ 1 ] [ -1 ]
+        block-set! t F_VY * block-at t F_D 3
+        block-set! t F_E 2
+        kaka-pick t
+    ]
+]
+kaka-step: func [t] [
+    s: block-at t F_STATE
+    either = s KS_MUTANT [ kaka-mutant t ] [
+    either = s KS_DIVERT [ kaka-divert t ] [
+    either = s KS_EAT [ kaka-eat t ] [
+    either = s KS_LEAVE [ kaka-leave t ] [
+    either = s KS_SWOOP [ kaka-swoop t ] [ kaka-sweep t ] ] ] ] ]
+]
+;; entry + approach: a shallow gliding arc across to the tree (broad curve)
+kaka-sweep: func [t] [
+    ti: block-at t F_TARGET
+    tx: block-at ts-t ti F_X
+    wy: + 74 mod block-at t F_ID 36
+    k-move t tx wy 6 3
+    either < abs - block-at t F_X tx 24 [ block-set! t F_STATE KS_SWOOP ] [ none ]
+]
+;; steeper dive onto the canopy (steering rounds the turn into a bank)
+kaka-swoop: func [t] [
+    ti: block-at t F_TARGET
+    tx: block-at ts-t ti F_X
+    k-move t tx 250 3 7
+    either > block-at t F_Y 242 [
+        block-set! t F_STATE KS_EAT
+        block-set! t F_A 0
+    ] [ none ]
+]
+kaka-eat: func [t] [
+    ti: block-at t F_TARGET
+    either < block-at ts-t ti F_A 1 [ kaka-pick t ] [
+        tx: block-at ts-t ti F_X
+        k-move t tx + 250 mod tick 8 3 2
+        a: + block-at t F_A 1
+        block-set! t F_A a
+        either = 0 mod a 36 [ either = over 1 [ none ] [ damage-tree ti 10 ] ] [ none ]
+        ;; fed enough: pull away and leave (kaka-leave curves up and out)
+        either > a 108 [ block-set! t F_STATE KS_LEAVE ] [ none ]
+    ]
+]
+kaka-leave: func [t] [
+    k-move t either > block-at t F_D 0 [ 780 ] [ -140 ] 16 7 4
+    either > block-at t F_X 700 [ ts-free t ] [
+        either < block-at t F_X -70 [ ts-free t ] [ none ]
+    ]
+]
+kaka-divert: func [t] [
+    either = block-at t F_C 0 [ drop-poop t ] [ none ]
+    k-move t + block-at t F_X * block-at t F_D 180 -50 6 5
+    either < block-at t F_Y -24 [ ts-free t ] [ none ]
+]
+drop-poop: func [t] [
+    p: ts-claim K_POOP
+    either = p none [ none ] [
+        block-set! p F_X block-at t F_X
+        block-set! p F_Y block-at t F_Y
+        block-set! p F_VY 3
+        block-set! t F_C 1
+        poops: + poops 1
+    ]
+]
+nearest-rat: func [t] [ nr 0 none 99999 t ]
+nr: func [i best bd t] [
+    either < i NTS [
+        either = ts-k i K_RAT [
+            d: + abs - block-at ts-t i F_X block-at t F_X abs - block-at ts-t i F_Y block-at t F_Y
+            either < d bd [ nr + i 1 ts-t i d t ] [ nr + i 1 best bd t ]
+        ] [ nr + i 1 best bd t ]
+    ] [ best ]
+]
+kaka-mutant: func [t] [
+    either > tick block-at t F_B [ block-set! t F_STATE KS_LEAVE ] [
+        r: nearest-rat t
+        either = r none [
+            k-move t block-at t F_X 130 0 4
+        ] [
+            rx: block-at r F_X
+            ry: block-at r F_Y
+            k-move t rx ry 6 6
+            either < + abs - block-at t F_X rx abs - block-at t F_Y ry 40 [
+                laser: tick
+                laser-ox: block-at t F_X
+                laser-oy: - block-at t F_Y 18
+                laser-x: rx
+                laser-y: ry
+                ts-free r
+                score: + score 25
+                mutant-kills: + mutant-kills 1
+            ] [ none ]
+        ]
+    ]
+]
+
 ;; ---- rendering (Glon -> compact Canvas script; JS only paints) -----------
 tree-art: func [t] [
     x: block-at t F_X
@@ -21,24 +152,27 @@ tree-art: func [t] [
 kaka-art: func [t] [
     x: block-at t F_X
     y: block-at t F_Y
+    ;; face the direction of travel (mirror x offsets) with a small bank from vy
+    s: either < block-at t F_VY 0 [ -1 ] [ 1 ]
+    b: / block-at t F_E 3
     either = block-at t F_STATE KS_MUTANT [
         p-ell x y 42 28 4
-        p-ell + x 8 - y 6 22 18 5
-        p-circ + x 22 - y 22 10 13
-        p-tri + x 30 - y 22 + x 42 - y 12 + x 30 - y 2 7
-        p-circ + x 16 - y 24 5 14
-        p-circ + x 27 - y 22 4 14
-        p-ell - x 20 + y 4 26 12 9
-        p-tri - x 42 y - x 66 + y 10 - x 38 + y 16 5
+        p-ell + x * s 8 - y 6 22 18 5
+        p-circ + x * s 22 - y 22 10 13
+        p-tri + x * s 30 - y 22 + x * s 42 - y 12 + x * s 30 - y 2 7
+        p-circ + x * s 16 - y 24 5 14
+        p-circ + x * s 27 - y 22 4 14
+        p-ell - x * s 20 + y 4 26 12 9
+        p-tri - x * s 42 y - x * s 66 + y b - x * s 38 + y 16 5
     ] [
         p-ell x y 22 14 4
-        p-ell + x 4 - y 6 12 10 5
-        p-circ + x 16 - y 12 8 13
-        p-tri + x 22 - y 14 + x 32 - y 8 + x 22 - y 2 7
-        p-circ + x 12 - y 14 3 15
-        p-circ + x 20 - y 13 3 15
-        p-ell - x 12 + y 2 14 8 9
-        p-tri - x 20 y - x 34 + y 8 - x 16 + y 12 5
+        p-ell + x * s 4 - y 6 12 10 5
+        p-circ + x * s 16 - y 12 8 13
+        p-tri + x * s 22 - y 14 + x * s 32 - y 8 + x * s 22 - y 2 7
+        p-circ + x * s 12 - y 14 3 15
+        p-circ + x * s 20 - y 13 3 15
+        p-ell - x * s 12 + y 2 14 8 9
+        p-tri - x * s 20 y - x * s 34 + y b - x * s 16 + y 12 5
     ]
 ]
 rat-art: func [t] [
@@ -140,7 +274,7 @@ render-status: func [] [
     e-int tick e-text " " e-int score e-text " " e-int over e-text " " e-int berries e-text " "
     e-int px e-text " " e-int kl e-text " " e-int kr e-text " " e-int kf e-text " " e-int kg e-text " "
     e-int n-kaka e-text " " e-int n-rat e-text " "
-    e-int mutant-active e-text " " e-int mutant-left
+    e-int mutant-active e-text " " e-int mutant-left e-text " " e-int py
     e-text "</span>"
     e-finish
 ]
