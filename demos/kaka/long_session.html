@@ -14,6 +14,7 @@
 <button id="dbg-mutant" data-glon-event="kaka-debug-mutant" style="display:none"></button>
 <button id="dbg-give" data-glon-event="kaka-debug-give" style="display:none"></button>
 <button id="dbg-restart" data-glon-event="kaka-restart" style="display:none"></button>
+<button id="dbg-over" data-glon-event="kaka-debug-over" style="display:none"></button>
 <pre id="verify">pending</pre>
 
 <script>
@@ -155,12 +156,24 @@ window.addEventListener("unhandledrejection", function (e) { window.__long.error
        genuine trail while tolerating gameplay churn. */
     var noTrails = b <= a + 9000;
 
-    var ok = moveOk && resetOk && moveAfter && noTrails &&
+    /* game over must NOT freeze the world: force it and confirm the tick keeps
+       advancing (the old build skipped step() when over=1 and looked frozen). */
+    releaseAll();
+    var dbgOver = document.getElementById("dbg-over");
+    if (dbgOver) dbgOver.click();
+    for (var q = 0; q < 4; q++) await frame();
+    var overTick = sval(0);
+    var wasOver = sval(2) === 1;
+    for (var z = 0; z < 40; z++) await frame();
+    var overAdvance = wasOver && sval(0) > overTick;
+
+    var ok = moveOk && resetOk && moveAfter && noTrails && overAdvance &&
       D.instr.allocFail === 0 && D.errors.length === 0;
     finish(ok, "ticks=" + D.instr.tick + " mutants=" + mutants + " restarts=" + restarts +
       " alloc=" + D.instr.alloc + " allocFail=" + D.instr.allocFail +
       " move=" + moveOk + " reset=" + resetOk + " moveAfter=" + moveAfter +
-      " noTrails=" + noTrails + " pxA=" + a + " pxB=" + b + " errors=" + D.errors.length);
+      " noTrails=" + noTrails + " overAdvance=" + overAdvance + " pxA=" + a + " pxB=" + b +
+      " errors=" + D.errors.length);
   })();
 })();
 </script>

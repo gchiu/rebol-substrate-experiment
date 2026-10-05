@@ -11,7 +11,7 @@
  *
  * Exits 0 and prints KAKA_LONG_SESSION_OK when the page's #verify says so.
  */
-const base = process.env.CDP_BASE || "http://127.0.0.1:9222";
+const base = process.env.CDP_BASE || process.argv[2] || "http://127.0.0.1:9222";
 const pageMatch = /long_session\.html/;
 const deadlineMs = Number(process.env.CDP_DEADLINE_MS || 600000);
 
