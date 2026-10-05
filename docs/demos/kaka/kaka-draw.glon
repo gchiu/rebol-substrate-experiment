@@ -216,15 +216,12 @@ actor-art: func [i] [
         actor-art + i 1
     ] [ none ]
 ]
-draw-bg: func [] [
-    p-rect 0 330 640 150 9
-    p-tri 0 330 140 210 280 330 4
-    p-tri 220 330 400 190 580 330 4
-    p-tri 480 330 640 230 640 330 9
-    p-ell 110 200 46 20 13
-    p-ell 420 180 56 22 13
-    p-circ 560 110 26 7
-]
+;; Camera markers: `p-cam 66` makes the host paint the three background
+;; parallax layers (sky/hills, native bush, orchard) and scroll the gameplay
+;; plane; `p-cam 70` paints the foreground foliage after the actors. Only the
+;; camera scalar crosses the boundary -- the PNG bytes never enter Glon and no
+;; image is reproduced as drawing primitives.
+p-cam: func [b] [ p-byte b p-num cam p-eol ]
 draw-trees: func [i] [
     either < i NTS [
         either = ts-k i K_TREE [ tree-art ts-t i ] [ none ]
@@ -246,11 +243,12 @@ draw-lasers: func [] [
 ]
 render-canvas: func [] [
     p-clear
-    draw-bg
+    p-cam 66
     draw-trees 0
     actor-art 0
     draw-player
     draw-lasers
+    p-cam 70
     p-finish
 ]
 
