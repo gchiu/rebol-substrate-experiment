@@ -1,0 +1,134 @@
+;; demos/kaka/kaka-selftest.glon -- deterministic Glon rule self-test for
+;; Attack of the Mutant Kaka. Dispatched by the kaka-selftest event; the C and
+;; WASM test harnesses read the emitted PASS/FAIL text.
+[
+;; ---- deterministic rule self-test (Glon runs it; the harness reads PASS) --
+selftest: func [] [
+    fails: 0
+    reset
+    ;; 1. berry diverts kaka (never damages it)
+    k: ts-claim K_KAKA
+    block-set! k F_STATE KS_EAT
+    block-set! k F_TARGET 0
+    block-set! k F_X 200
+    block-set! k F_Y 300
+    b: ts-claim K_BERRY
+    block-set! b F_X 200
+    block-set! b F_Y 300
+    block-set! b F_VY -9
+    block-set! b F_A 0
+    berry-hit b 0
+    either = block-at k F_STATE KS_DIVERT [ none ] [ fails: + fails 1 ]
+    either = score 10 [ none ] [ fails: + fails 1 ]
+    either > ts-count K_KAKA 0 [ none ] [ fails: + fails 1 ]
+    ;;
+    ;; 2. undiverted kaka damages its tree
+    reset
+    k: ts-claim K_KAKA
+    block-set! k F_STATE KS_EAT
+    block-set! k F_TARGET 0
+    block-set! k F_X 120
+    block-set! k F_Y 300
+    block-set! k F_A 35
+    kaka-eat k
+    either < block-at ts-t 0 F_A TREE_MAX [ none ] [ fails: + fails 1 ]
+    ;;
+    ;; 3. all trees destroyed => game over
+    reset
+    damage-tree 0 100  damage-tree 1 100  damage-tree 2 100
+    step
+    either = over 1 [ none ] [ fails: + fails 1 ]
+    ;;
+    ;; 4. Glon Berry creates mutant state
+    reset
+    k: ts-claim K_KAKA
+    block-set! k F_STATE KS_SWEEP
+    block-set! k F_X 200
+    block-set! k F_Y 200
+    g: ts-claim K_BERRY
+    block-set! g F_X 200
+    block-set! g F_Y 200
+    block-set! g F_VY -8
+    block-set! g F_A 1
+    berry-hit g 0
+    either = block-at k F_STATE KS_MUTANT [ none ] [ fails: + fails 1 ]
+    either > block-at k F_B tick [ none ] [ fails: + fails 1 ]
+    ;;
+    ;; 5. mutant state expires
+    block-set! k F_B -1
+    kaka-mutant k
+    either = block-at k F_STATE KS_MUTANT [ fails: + fails 1 ] [ none ]
+    ;;
+    ;; 6. mutant kaka zaps a rat
+    reset
+    k: ts-claim K_KAKA
+    block-set! k F_STATE KS_MUTANT
+    block-set! k F_B + tick 540
+    block-set! k F_X 300
+    block-set! k F_Y 320
+    r: ts-claim K_RAT
+    block-set! r F_X 305
+    block-set! r F_Y 330
+    sc0: score
+    kaka-mutant k
+    either = ts-count K_RAT 0 [ none ] [ fails: + fails 1 ]
+    either = score + sc0 25 [ none ] [ fails: + fails 1 ]
+    ;;
+    ;; 7. the player cannot damage kaka (berries divert, never remove)
+    reset
+    k: ts-claim K_KAKA
+    block-set! k F_STATE KS_SWEEP
+    block-set! k F_X 200
+    block-set! k F_Y 200
+    b: ts-claim K_BERRY
+    block-set! b F_X 200
+    block-set! b F_Y 200
+    block-set! b F_A 0
+    berry-hit b 0
+    either = ts-count K_KAKA 1 [ none ] [ fails: + fails 1 ]
+    ;;
+    ;; 8. droppings regenerate a damaged tree
+    reset
+    damage-tree 0 40
+    h0: block-at ts-t 0 F_A
+    p: ts-claim K_POOP
+    block-set! p F_X 120
+    block-set! p F_Y 329
+    block-set! p F_VY 3
+    poop-step p
+    either > block-at ts-t 0 F_A h0 [ none ] [ fails: + fails 1 ]
+    ;;
+    ;; 9. restart returns a clean initial state
+    score: 999  berries: 0  over: 1  tick: 500
+    reset
+    either = score 0 [ none ] [ fails: + fails 1 ]
+    either = berries 1 [ none ] [ fails: + fails 1 ]
+    either = over 0 [ none ] [ fails: + fails 1 ]
+    either = tick 0 [ none ] [ fails: + fails 1 ]
+    either = tree-live 3 [ none ] [ fails: + fails 1 ]
+    either = ts-count K_KAKA 0 [ none ] [ fails: + fails 1 ]
+    ;;
+    ;; 10. dynamic create/remove does not alias or corrupt state
+    reset
+    a: ts-claim K_KAKA
+    bb: ts-claim K_RAT
+    c: ts-claim K_BERRY
+    either = a bb [ fails: + fails 1 ] [ none ]
+    either = bb c [ fails: + fails 1 ] [ none ]
+    block-set! a F_X 111
+    block-set! bb F_X 222
+    block-set! c F_X 333
+    ts-free bb
+    d: ts-claim K_POOP
+    either = d bb [ none ] [ fails: + fails 1 ]
+    block-set! d F_X 444
+    either = block-at a F_X 111 [ none ] [ fails: + fails 1 ]
+    either = block-at c F_X 333 [ none ] [ fails: + fails 1 ]
+    either = block-at d F_X 444 [ none ] [ fails: + fails 1 ]
+    ;;
+    reset
+    e-clear
+    either = fails 0 [ e-text "KAKA-SELFTEST PASS" ] [ e-text "KAKA-SELFTEST FAIL " e-int fails ]
+    e-finish
+]
+]
