@@ -127,7 +127,7 @@ render-status: func [] [
     e-text "<p class='tag'>Eco-Warriors of Karori, Unite!</p>"
     e-text "<p class='hud'>SCORE: " e-int score
     e-text "    Trees: " e-int trees-live e-text "/" e-int NTREES
-    e-text "    Habitat: " e-int tree-sum e-text "/" e-int * trees-live TREE_MAX
+    e-text "    Habitat: " e-int tree-sum e-text "/" e-int * NTREES TREE_MAX
     e-text "    Glon Berries: " e-int berries
     either = over 1 [ e-text "    <b>GAME OVER &mdash; press R</b>" ] [ none ]
     e-text "</p>"

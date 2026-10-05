@@ -2,6 +2,16 @@
 ;; Attack of the Mutant Kaka. Dispatched by the kaka-selftest event; the C and
 ;; WASM test harnesses read the emitted PASS/FAIL text.
 [
+;; soak/test hook: destroy every tree and mark game over, to prove the browser
+;; page keeps animating in the game-over state (see tick_regression_cdp.js).
+dmg-all-trees: func [i] [
+    either < i NTS [
+        either = ts-k i K_TREE [ block-set! ts-t i F_A 0 ] [ none ]
+        dmg-all-trees + i 1
+    ] [ none ]
+]
+on-debug-over: func [] [ dmg-all-trees 0  over: 1  tally  render ]
+
 ;; ---- deterministic rule self-test (Glon runs it; the harness reads PASS) --
 selftest: func [] [
     fails: 0
@@ -125,6 +135,16 @@ selftest: func [] [
     either = block-at a F_X 111 [ none ] [ fails: + fails 1 ]
     either = block-at c F_X 333 [ none ] [ fails: + fails 1 ]
     either = block-at d F_X 444 [ none ] [ fails: + fails 1 ]
+    ;;
+    ;; 11. the world keeps advancing after game over (must not freeze)
+    reset
+    damage-tree 0 100  damage-tree 1 100  damage-tree 2 100
+    on-tick
+    either = over 1 [ none ] [ fails: + fails 1 ]
+    t0: tick
+    on-tick
+    on-tick
+    either > tick t0 [ none ] [ fails: + fails 1 ]
     ;;
     reset
     e-clear

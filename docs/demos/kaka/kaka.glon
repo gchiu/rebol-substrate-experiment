@@ -418,9 +418,9 @@ step: func [] [
     move-player
     fire
     fire-glon
-    spawn-timers
+    either = over 0 [ spawn-timers ] [ none ]
     move-all 0
-    either >= tick next-milestone [ score: + score 50  next-milestone: + next-milestone 600 ] [ none ]
+    either = over 0 [ either >= tick next-milestone [ score: + score 50  next-milestone: + next-milestone 600 ] [ none ] ] [ none ]
     either = tree-live 0 [ over: 1 ] [ none ]
 ]
 reset: func [] [
@@ -480,7 +480,8 @@ set-key: func [name v] [
 ]
 reset-input: func [] [ kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0 ]
 
-on-tick: func [] [ either = over 1 [ none ] [ step ]  tally  render ]
+;; always step: game over gates new threats/score inside step, never the world
+on-tick: func [] [ step  tally  render ]
 on-start: func [] [ reset tally render ]
 on-key-down: func [] [ set-key current-value 1 render ]
 on-key-up: func [] [ set-key current-value 0 render ]
@@ -507,6 +508,7 @@ events: [
     ['kaka-selftest [ selftest ]]
     ['kaka-debug-mutant [ on-debug-mutant ]]
     ['kaka-debug-give [ on-debug-give ]]
+    ['kaka-debug-over [ on-debug-over ]]
 ]
 do-event: [
     event-row: select events current-event
