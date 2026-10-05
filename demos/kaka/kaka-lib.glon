@@ -1,0 +1,146 @@
+;; demos/kaka/kaka-lib.glon -- support vocabulary for Attack of the Mutant Kaka.
+;;
+;; Loaded after prelude.glon + strings.glon and before kaka.glon. It carries
+;; only generic mechanisms: mutable managed blocks (the actor tuple pool uses
+;; them) and the compact Glon->Canvas / Glon->HTML byte emitters. It holds no
+;; game state and no rules; the game lives entirely in kaka.glon.
+;;
+;; Canvas script commands (byte code, drawn by kaka-host.js):
+;;   C                    clear
+;;   R x y w h c          rectangle
+;;   O x y r c            circle
+;;   T x1 y1 x2 y2 x3 y3 c  triangle
+;;   L x1 y1 x2 y2 w c    line (width w; ocular lasers, tails)
+;;   E x y rx ry c        ellipse (kaka body, rat body)
+;; HTML status goes to G1_OUT and is written into the DOM by the host.
+
+[
+mod: func [a b] [ - a * b / a b ]
+abs: func [n] [ either < n 0 [ - 0 n ] [ n ] ]
+
+;; new-block: allocate a managed BLOCK of n elements (all none). The actor
+;; tuple pool is built from these at load time, so spawning an actor never
+;; allocates: it claims a pre-built tuple (see ts-claim in kaka.glon).
+new-block: masm 1 [
+    LIT 16 DIV LIT SCRATCH_C !
+    LIT SCRATCH_C @ LIT 2 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL
+    LIT GC_KIND_BLOCK CALL alloc LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT SCRATCH_A @ ! LIT 0 LIT SCRATCH_A @ LIT 1 ADD !
+    LIT 0 LIT SCRATCH_B !
+  nb-loop:
+    LIT SCRATCH_B @ LIT SCRATCH_C @ LT ZBRANCH nb-done
+    NONE LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ ADD !
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B !
+    BRANCH nb-loop
+  nb-done:
+    LIT SCRATCH_A @ LIT T_BLOCK ADD ARITY 1 EXIT
+]
+
+block-set!: masm 3 [
+    LIT SCRATCH_C ! LIT SCRATCH_B !
+    DUP LIT 16 MOD SUB LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD !
+    ARITY 0 EXIT
+]
+
+p-reset: masm [ LIT 0 LIT SCRATCH_D ! ARITY 0 EXIT ]
+p-clear: func [] [ p-reset p-byte 67 p-eol ]
+p-byte: masm 1 [
+    LIT SCRATCH_D @ LIT G1_VIS_DATA ADD !
+    LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
+    ARITY 0 EXIT
+]
+p-eol: does [ p-byte 10 ]
+;; p-num / e-int: append " " + a signed decimal in ONE masm word each. The
+;; digits are built least-significant-first in a small fixed scratch buffer
+;; (24700, free between the profiler counters and the D1 buffers) and copied out
+;; in reverse, so a canvas command or HUD number costs one interpreted call per
+;; argument rather than a call chain per digit byte. Note the loop shape: forward
+;; ZBRANCH to the body, unconditional BRANCH back (the interpreter's backward
+;; conditional branch is unreliable here; every other masm loop in the tree uses
+;; the same forward-test/backward-BRANCH shape).
+p-num: masm 1 [
+    LIT 16 DIV LIT SCRATCH_A !
+    LIT 512 LIT G1_VIS_DATA LIT SCRATCH_D @ ADD !
+    LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
+    LIT SCRATCH_A @ LIT 0 LT ZBRANCH pn-pos
+    LIT 720 LIT G1_VIS_DATA LIT SCRATCH_D @ ADD !
+    LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
+    LIT 0 LIT SCRATCH_A @ SUB LIT SCRATCH_A !
+  pn-pos:
+    LIT 0 LIT SCRATCH_B !
+    LIT 1 LIT SCRATCH_C !
+  pn-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_C @ ADD LIT 0 GT ZBRANCH pn-emit
+    LIT SCRATCH_A @ LIT 10 MOD LIT 48 ADD LIT 16 MUL
+    LIT 24700 LIT SCRATCH_B @ ADD !
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B !
+    LIT SCRATCH_A @ LIT 10 DIV LIT SCRATCH_A !
+    LIT 0 LIT SCRATCH_C !
+    BRANCH pn-loop
+  pn-emit:
+    LIT SCRATCH_B @ LIT 0 LE ZBRANCH pn-ebody
+    ARITY 0 EXIT
+  pn-ebody:
+    LIT SCRATCH_B @ LIT 1 SUB LIT SCRATCH_B !
+    LIT 24700 LIT SCRATCH_B @ ADD @
+    LIT G1_VIS_DATA LIT SCRATCH_D @ ADD !
+    LIT SCRATCH_D @ LIT 1 ADD LIT SCRATCH_D !
+    BRANCH pn-emit
+]
+p-rect: func [x y w h c] [ p-byte 82 p-num x p-num y p-num w p-num h p-num c p-eol ]
+p-circ: func [x y r c] [ p-byte 79 p-num x p-num y p-num r p-num c p-eol ]
+p-tri: func [x1 y1 x2 y2 x3 y3 c] [ p-byte 84 p-num x1 p-num y1 p-num x2 p-num y2 p-num x3 p-num y3 p-num c p-eol ]
+p-line: func [x1 y1 x2 y2 w c] [ p-byte 76 p-num x1 p-num y1 p-num x2 p-num y2 p-num w p-num c p-eol ]
+p-ell: func [x y rx ry c] [ p-byte 69 p-num x p-num y p-num rx p-num ry p-num c p-eol ]
+p-finish: masm [ LIT SCRATCH_D @ LIT G1_VIS ! LIT G1_VIS LIT T_BLOCK ADD ARITY 1 EXIT ]
+
+e-clear: masm [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
+e-byte: masm 1 [
+    LIT SCRATCH_E @ LIT G1_OUT_DATA ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    ARITY 0 EXIT
+]
+e-int: masm 1 [
+    LIT 16 DIV LIT SCRATCH_A !
+    LIT SCRATCH_A @ LIT 0 LT ZBRANCH ei-pos
+    LIT 720 LIT G1_OUT_DATA LIT SCRATCH_E @ ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    LIT 0 LIT SCRATCH_A @ SUB LIT SCRATCH_A !
+  ei-pos:
+    LIT 0 LIT SCRATCH_B !
+    LIT 1 LIT SCRATCH_C !
+  ei-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_C @ ADD LIT 0 GT ZBRANCH ei-emit
+    LIT SCRATCH_A @ LIT 10 MOD LIT 48 ADD LIT 16 MUL
+    LIT 24720 LIT SCRATCH_B @ ADD !
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B !
+    LIT SCRATCH_A @ LIT 10 DIV LIT SCRATCH_A !
+    LIT 0 LIT SCRATCH_C !
+    BRANCH ei-loop
+  ei-emit:
+    LIT SCRATCH_B @ LIT 0 LE ZBRANCH ei-ebody
+    ARITY 0 EXIT
+  ei-ebody:
+    LIT SCRATCH_B @ LIT 1 SUB LIT SCRATCH_B !
+    LIT 24720 LIT SCRATCH_B @ ADD @
+    LIT G1_OUT_DATA LIT SCRATCH_E @ ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    BRANCH ei-emit
+]
+e-text: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_A !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  e-text-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH e-text-done
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL
+    LIT G1_OUT_DATA LIT SCRATCH_E @ ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH e-text-loop
+  e-text-done:
+    ARITY 0 EXIT
+]
+e-finish: masm [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
+]

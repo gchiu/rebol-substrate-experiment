@@ -1,0 +1,149 @@
+;; demos/kaka/kaka-draw.glon -- rendering for Attack of the Mutant Kaka.
+;; Split out of kaka.glon to stay within the 16 KiB Glon source buffer; the
+;; game state and rules live in kaka.glon (loaded first).
+[
+;; ---- rendering (Glon -> compact Canvas script; JS only paints) -----------
+tree-art: func [t] [
+    x: block-at t F_X
+    h: block-at t F_A
+    p-rect - x 8 300 16 60 8
+    either < h 1 [
+        p-rect - x 6 300 12 60 2
+    ] [
+        r: + 18 / * h 22 TREE_MAX
+        c: either > h 60 [ 4 ] [ either > h 30 [ 3 ] [ 5 ] ]
+        p-circ x 292 r c
+        p-circ - x 20 282 14 9
+        p-circ + x 20 282 14 9
+        either > h 70 [ p-circ - x 12 278 4 7  p-circ + x 16 274 4 7 ] [ none ]
+    ]
+]
+kaka-art: func [t] [
+    x: block-at t F_X
+    y: block-at t F_Y
+    either = block-at t F_STATE KS_MUTANT [
+        p-ell x y 42 28 4
+        p-ell + x 8 - y 6 22 18 5
+        p-circ + x 22 - y 22 10 13
+        p-tri + x 30 - y 22 + x 42 - y 12 + x 30 - y 2 7
+        p-circ + x 16 - y 24 5 14
+        p-circ + x 27 - y 22 4 14
+        p-ell - x 20 + y 4 26 12 9
+        p-tri - x 42 y - x 66 + y 10 - x 38 + y 16 5
+    ] [
+        p-ell x y 22 14 4
+        p-ell + x 4 - y 6 12 10 5
+        p-circ + x 16 - y 12 8 13
+        p-tri + x 22 - y 14 + x 32 - y 8 + x 22 - y 2 7
+        p-circ + x 12 - y 14 3 15
+        p-circ + x 20 - y 13 3 15
+        p-ell - x 12 + y 2 14 8 9
+        p-tri - x 20 y - x 34 + y 8 - x 16 + y 12 5
+    ]
+]
+rat-art: func [t] [
+    x: block-at t F_X
+    y: block-at t F_Y
+    p-ell x y 9 5 2
+    p-circ + x 6 - y 5 3 2
+    p-line x - y 2 - x 14 + y 7 1 2
+    p-circ - x 7 - y 2 2 5
+]
+berry-art: func [t] [
+    x: block-at t F_X
+    y: block-at t F_Y
+    either = block-at t F_A 1 [
+        p-circ x y 9 14
+        p-circ x y 4 1
+        p-circ x y 2 14
+    ] [
+        p-circ x y 5 5
+        p-circ x y 2 7
+    ]
+]
+pick-art: func [t] [
+    x: block-at t F_X
+    y: block-at t F_Y
+    p-circ x y 11 14
+    p-circ x y 6 1
+    p-circ x y 3 14
+]
+poop-art: func [t] [
+    p-circ block-at t F_X block-at t F_Y 4 8
+]
+actor-art: func [i] [
+    either < i NTS [
+        k: ts-k i
+        either = k K_KAKA [ kaka-art ts-t i ] [
+        either = k K_RAT [ rat-art ts-t i ] [
+        either = k K_BERRY [ berry-art ts-t i ] [
+        either = k K_PICK [ pick-art ts-t i ] [
+        either = k K_POOP [ poop-art ts-t i ] [ none ] ] ] ] ]
+        actor-art + i 1
+    ] [ none ]
+]
+draw-bg: func [] [
+    p-rect 0 330 640 150 9
+    p-tri 0 330 140 210 280 330 4
+    p-tri 220 330 400 190 580 330 4
+    p-tri 480 330 640 230 640 330 9
+    p-ell 110 200 46 20 13
+    p-ell 420 180 56 22 13
+    p-circ 560 110 26 7
+]
+draw-trees: func [i] [
+    either < i NTS [
+        either = ts-k i K_TREE [ tree-art ts-t i ] [ none ]
+        draw-trees + i 1
+    ] [ none ]
+]
+draw-player: func [] [
+    p-ell px 324 9 9 1
+    p-rect - px 7 332 14 22 6
+    p-tri px 332 + px 4 342 - px 4 342 8
+    p-circ + px 8 - py 4 3 7
+]
+draw-lasers: func [] [
+    either < - tick laser 9 [
+        p-line laser-ox laser-oy laser-x laser-y 3 14
+        p-circ laser-x laser-y 7 14
+        p-circ laser-x laser-y 3 1
+    ] [ none ]
+]
+render-canvas: func [] [
+    p-clear
+    draw-bg
+    draw-trees 0
+    actor-art 0
+    draw-player
+    draw-lasers
+    p-finish
+]
+
+;; ---- HTML status (Glon builds it; JS writes the element) ------------------
+render-status: func [] [
+    e-clear
+    e-text "<h1>Attack of the Mutant Kaka</h1>"
+    e-text "<p class='tag'>Eco-Warriors of Karori, Unite!</p>"
+    e-text "<p class='hud'>SCORE: " e-int score
+    e-text "    Trees: " e-int trees-live e-text "/" e-int NTREES
+    e-text "    Habitat: " e-int tree-sum e-text "/" e-int * trees-live TREE_MAX
+    e-text "    Glon Berries: " e-int berries
+    either = over 1 [ e-text "    <b>GAME OVER &mdash; press R</b>" ] [ none ]
+    e-text "</p>"
+    either = mutant-active 1 [
+        e-text "<p class='mutant'>MUTANT KAKA &mdash; OCULAR LASERS ACTIVE ("
+        e-int / mutant-left 60 e-text "s)</p>"
+    ] [ e-text "<p class='muted'>Kaka are native wildlife: berries divert, lasers only zap rats.</p>" ]
+    e-text "<p class='keys'>Arrow keys / WASD move &middot; Space fire berry &middot; G Mystery Glon Berry &middot; R restart</p>"
+    e-text "<span id='kaka-state' style='display:none'>"
+    e-int tick e-text " " e-int score e-text " " e-int over e-text " " e-int berries e-text " "
+    e-int px e-text " " e-int kl e-text " " e-int kr e-text " " e-int kf e-text " " e-int kg e-text " "
+    e-int n-kaka e-text " " e-int n-rat e-text " "
+    e-int mutant-active e-text " " e-int mutant-left
+    e-text "</span>"
+    e-finish
+]
+render: func [] [ render-canvas render-status ]
+
+]

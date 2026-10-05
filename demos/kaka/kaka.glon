@@ -1,0 +1,507 @@
+;; demos/kaka/kaka.glon -- Attack of the Mutant Kaka (Glon owns all state/rules).
+;;
+;; The kaka are native wildlife and must never be shot; the player fires
+;; BERRIES that divert them away from the trees. Introduced rats damage the
+;; habitat. A rare Mystery Glon Berry turns one kaka into a giant mutant whose
+;; ocular lasers zap rats (not birds). Berry-fed kaka occasionally poop, which
+;; regenerates a damaged tree. All actors live in a shared, pre-built Glon
+;; tuple space (kaka-lib.glon provides new-block/block-set!); JS only paints.
+;;
+;; Requires prelude.glon, strings.glon, kaka-lib.glon (loaded first).
+
+[
+PFW: 640
+PFH: 480
+GROUND: 360
+NTREES: 3
+NTS: 32
+TW: 12
+TREE_MAX: 100
+KAKA_MAX: 4
+RAT_MAX: 5
+BERRY_MAX: 6
+POOP_MAX: 4
+
+;; tuple space kinds
+K_EMPTY: 0
+K_KAKA: 1
+K_RAT: 2
+K_BERRY: 3
+K_PICK: 4
+K_POOP: 5
+K_TREE: 6
+
+;; tuple field indices (every tuple is TW=12 cells wide)
+F_KIND: 0
+F_ID: 1
+F_X: 2
+F_Y: 3
+F_VY: 4
+F_STATE: 5
+F_TARGET: 6
+F_A: 7
+F_B: 8
+F_C: 9
+F_D: 10
+F_E: 11
+
+;; kaka states
+KS_SWEEP: 0
+KS_EAT: 1
+KS_DIVERT: 2
+KS_MUTANT: 3
+KS_LEAVE: 4
+
+;; ---- globals -------------------------------------------------------------
+tick: 0 score: 0 over: 0
+kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
+px: 320 py: 330
+cd: 0 glon-cd: 0
+berries: 1
+next-kaka: 60 next-rat: 150 next-pick: 1100 next-milestone: 600
+mutant-kills: 0 diverts: 0 poops: 0
+laser: -99 laser-x: 0 laser-y: 0 laser-ox: 0 laser-oy: 0
+idc: 0 rng: 12345
+;; aggregate actor/tree tallies, refreshed once per tick by `tally` so the
+;; spawn logic, HUD and game-over test never re-scan the tuple space.
+mutant-active: 0 mutant-left: 0
+n-kaka: 0 n-rat: 0 n-berry: 0 n-pick: 0 n-poop: 0
+trees-live: 0 tree-sum: 0
+
+sign: func [n] [ either < n 0 [ -1 ] [ either > n 0 [ 1 ] [ 0 ] ] ]
+rnd: func [] [ rng: mod + * rng 1103 12345 32768  rng ]
+
+;; ---- shared tuple space --------------------------------------------------
+;; ts holds NTS pre-built 12-cell tuples. The actor IS its tuple: spawn claims a
+;; free tuple, despawn clears its kind. No arena allocation at runtime, so a
+;; long session cannot exhaust the managed heap.
+ts: new-block NTS
+
+ts-init: func [i] [
+    either < i NTS [ block-set! ts i new-block TW  ts-init + i 1 ] [ none ]
+]
+ts-t: func [i] [ block-at ts i ]
+ts-k: func [i] [ block-at ts-t i F_KIND ]
+ts-clear: func [] [ tc 0 ]
+tc: func [i] [
+    either < i NTS [ block-set! ts-t i F_KIND 0  tc + i 1 ] [ none ]
+]
+tclaim: func [i k] [
+    either < i NTS [
+        either = block-at ts-t i F_KIND K_EMPTY [
+            t: ts-t i
+            block-set! t F_KIND k
+            idc: + idc 1
+            block-set! t F_ID idc
+            t
+        ] [ tclaim + i 1 k ]
+    ] [ none ]
+]
+ts-claim: func [k] [ tclaim 0 k ]
+ts-free: func [t] [ block-set! t F_KIND K_EMPTY ]
+
+ts-count: func [k] [ tcount 0 0 k ]
+tcount: func [i n k] [
+    either < i NTS [
+        tcount + i 1 either = ts-k i k [ + n 1 ] [ n ] k
+    ] [ n ]
+]
+
+;; ---- trees ---------------------------------------------------------------
+spawn-tree: func [i x] [
+    t: ts-claim K_TREE
+    either = t none [ none ] [
+        block-set! t F_X x
+        block-set! t F_Y 300
+        block-set! t F_A TREE_MAX
+        block-set! t F_B i
+    ]
+]
+tree-live: func [] [ tl 0 0 ]
+tl: func [i n] [
+    either < i NTS [
+        tl + i 1 either = ts-k i K_TREE [
+            either > block-at ts-t i F_A 0 [ + n 1 ] [ n ]
+        ] [ n ]
+    ] [ n ]
+]
+tree-sum: func [] [ tsum 0 0 ]
+tsum: func [i n] [
+    either < i NTS [
+        tsum + i 1 either = ts-k i K_TREE [ + n block-at ts-t i F_A ] [ n ]
+    ] [ n ]
+]
+tree-total: func [] [ tt 0 0 ]
+tt: func [i n] [
+    either < i NTS [
+        tt + i 1 either = ts-k i K_TREE [ + n block-at ts-t i F_B ] [ n ]
+    ] [ n ]
+]
+damage-tree: func [ti d] [
+    bt: ts-t ti
+    h: - block-at bt F_A d
+    block-set! bt F_A either < h 0 [ 0 ] [ h ]
+]
+
+;; ---- kaka rules ----------------------------------------------------------
+kaka-pick: func [t] [ kp 0 t ]
+kp: func [i t] [
+    either < i NTS [
+        either = ts-k i K_TREE [
+            either > block-at ts-t i F_A 0 [ block-set! t F_TARGET i ] [ kp + i 1 t ]
+        ] [ kp + i 1 t ]
+    ] [ block-set! t F_STATE KS_LEAVE ]
+]
+spawn-kaka: func [] [
+    t: ts-claim K_KAKA
+    either = t none [ none ] [
+        block-set! t F_X + 60 mod rnd 520
+        block-set! t F_Y 20
+        block-set! t F_STATE KS_SWEEP
+        block-set! t F_A 0
+        block-set! t F_C 0
+        kaka-pick t
+    ]
+]
+kaka-step: func [t] [
+    either = block-at t F_STATE KS_MUTANT [ kaka-mutant t ] [
+    either = block-at t F_STATE KS_DIVERT [ kaka-divert t ] [
+    either = block-at t F_STATE KS_EAT [ kaka-eat t ] [
+    either = block-at t F_STATE KS_LEAVE [ kaka-leave t ] [ kaka-sweep t ] ] ] ]
+]
+kaka-sweep: func [t] [
+    ti: block-at t F_TARGET
+    tx: block-at ts-t ti F_X
+    x: block-at t F_X
+    either < x tx [ block-set! t F_X + x 3 ] [ either > x tx [ block-set! t F_X - x 3 ] [ none ] ]
+    y: + block-at t F_Y 4
+    block-set! t F_Y y
+    either < 282 y [
+        block-set! t F_STATE KS_EAT
+        block-set! t F_A 0
+    ] [ none ]
+]
+kaka-eat: func [t] [
+    ti: block-at t F_TARGET
+    either < block-at ts-t ti F_A 1 [ kaka-pick t ] [
+        a: + block-at t F_A 1
+        block-set! t F_A a
+        either = 0 mod a 36 [
+            either = over 1 [ none ] [ damage-tree ti 10 ]
+        ] [ none ]
+    ]
+]
+kaka-divert: func [t] [
+    either = block-at t F_C 0 [ drop-poop t ] [ none ]
+    block-set! t F_Y - block-at t F_Y 5
+    block-set! t F_X + block-at t F_X * block-at t F_D 4
+    either < block-at t F_Y 0 [ ts-free t ] [ none ]
+]
+kaka-leave: func [t] [
+    block-set! t F_Y - block-at t F_Y 5
+    either < block-at t F_Y 0 [ ts-free t ] [ none ]
+]
+drop-poop: func [t] [
+    p: ts-claim K_POOP
+    either = p none [ none ] [
+        block-set! p F_X block-at t F_X
+        block-set! p F_Y block-at t F_Y
+        block-set! p F_VY 3
+        block-set! t F_C 1
+        poops: + poops 1
+    ]
+]
+
+;; ---- mutant kaka: hunt and zap rats -------------------------------------
+nearest-rat: func [t] [ nr 0 none 99999 t ]
+nr: func [i best bd t] [
+    either < i NTS [
+        either = ts-k i K_RAT [
+            d: + abs - block-at ts-t i F_X block-at t F_X abs - block-at ts-t i F_Y block-at t F_Y
+            either < d bd [ nr + i 1 ts-t i d t ] [ nr + i 1 best bd t ]
+        ] [ nr + i 1 best bd t ]
+    ] [ best ]
+]
+kaka-mutant: func [t] [
+    either > tick block-at t F_B [ block-set! t F_STATE KS_LEAVE ] [
+        r: nearest-rat t
+        either = r none [
+            block-set! t F_Y 140
+        ] [
+            rx: block-at r F_X
+            ry: block-at r F_Y
+            either < block-at t F_X rx [ block-set! t F_X + block-at t F_X 6 ] [ block-set! t F_X - block-at t F_X 6 ]
+            either < block-at t F_Y ry [ block-set! t F_Y + block-at t F_Y 5 ] [ block-set! t F_Y - block-at t F_Y 5 ]
+            dx: abs - block-at t F_X rx
+            dy: abs - block-at t F_Y ry
+            either < dx 34 [
+                either < dy 34 [
+                    laser: tick
+                    laser-ox: block-at t F_X
+                    laser-oy: - block-at t F_Y 18
+                    laser-x: rx
+                    laser-y: ry
+                    ts-free r
+                    score: + score 25
+                    mutant-kills: + mutant-kills 1
+                ] [ none ]
+            ] [ none ]
+        ]
+    ]
+]
+
+;; ---- rats ----------------------------------------------------------------
+spawn-rat: func [] [
+    t: ts-claim K_RAT
+    either = t none [ none ] [
+        block-set! t F_X + 40 mod rnd 560
+        block-set! t F_Y 345
+        block-set! t F_A either = 0 mod rnd 2 [ 1 ] [ -1 ]
+        block-set! t F_B 0
+    ]
+]
+rat-step: func [t] [
+    x: + block-at t F_X * block-at t F_A 2
+    either < x 20 [ block-set! t F_A 1  x: 20 ] [ either > x 620 [ block-set! t F_A -1  x: 620 ] [ none ] ]
+    block-set! t F_X x
+    d: + block-at t F_B 1
+    block-set! t F_B d
+    either = 0 mod d 120 [ rat-gnaw 0 t ] [ none ]
+]
+rat-gnaw: func [i t] [
+    either < i NTS [
+        either = ts-k i K_TREE [
+            either < abs - block-at ts-t i F_X block-at t F_X 44 [
+                either = over 1 [ none ] [ damage-tree i 5 ]
+            ] [ rat-gnaw + i 1 t ]
+        ] [ rat-gnaw + i 1 t ]
+    ] [ none ]
+]
+
+;; ---- berries and the Mystery Glon Berry ----------------------------------
+fire: func [] [
+    either = kf 1 [
+        either < cd 1 [
+            either < ts-count K_BERRY BERRY_MAX [
+                b: ts-claim K_BERRY
+                either = b none [ none ] [
+                    block-set! b F_X px
+                    block-set! b F_Y - py 14
+                    block-set! b F_VY -9
+                    block-set! b F_A 0
+                    cd: 9
+                ]
+            ] [ none ]
+        ] [ none ]
+    ] [ none ]
+]
+fire-glon: func [] [
+    either = kg 1 [
+        either < glon-cd 1 [
+            either > berries 0 [
+                b: ts-claim K_BERRY
+                either = b none [ none ] [
+                    block-set! b F_X px
+                    block-set! b F_Y - py 14
+                    block-set! b F_VY -8
+                    block-set! b F_A 1
+                    berries: - berries 1
+                    glon-cd: 20
+                ]
+            ] [ none ]
+        ] [ none ]
+    ] [ none ]
+]
+divert: func [kt bt] [
+    block-set! kt F_STATE KS_DIVERT
+    block-set! kt F_C 0
+    block-set! kt F_D sign - block-at kt F_X px
+    ts-free bt
+    score: + score 10
+    diverts: + diverts 1
+]
+mutate: func [kt bt] [
+    block-set! kt F_STATE KS_MUTANT
+    block-set! kt F_B + tick 540
+    ts-free bt
+]
+berry-step: func [t] [
+    block-set! t F_Y + block-at t F_Y block-at t F_VY
+    berry-hit t 0
+    either > block-at t F_Y 480 [ ts-free t ] [ none ]
+]
+berry-hit: func [t i] [
+    either < i NTS [
+        either = ts-k i K_KAKA [
+            either < + abs - block-at ts-t i F_X block-at t F_X abs - block-at ts-t i F_Y block-at t F_Y 34 [
+                either = block-at t F_A 1 [ mutate ts-t i t ] [ divert ts-t i t ]
+            ] [ berry-hit t + i 1 ]
+        ] [ berry-hit t + i 1 ]
+    ] [ none ]
+]
+spawn-pick: func [] [
+    t: ts-claim K_PICK
+    either = t none [ none ] [
+        block-set! t F_X + 60 mod rnd 520
+        block-set! t F_Y 20
+        block-set! t F_VY 2
+    ]
+]
+pick-step: func [t] [
+    y: + block-at t F_Y block-at t F_VY
+    block-set! t F_Y y
+    either < abs - px block-at t F_X 26 [
+        either < abs - py y 30 [ berries: + berries 1  ts-free t ] [ either > y 470 [ ts-free t ] [ none ] ]
+    ] [ either > y 470 [ ts-free t ] [ none ] ]
+]
+poop-step: func [t] [
+    y: + block-at t F_Y block-at t F_VY
+    block-set! t F_Y y
+    either >= y 330 [ poop-land 0 t ] [ none ]
+]
+poop-land: func [i t] [
+    either < i NTS [
+        either = ts-k i K_TREE [
+            either < abs - block-at ts-t i F_X block-at t F_X 44 [
+                either < block-at ts-t i F_A TREE_MAX [
+                    h: + block-at ts-t i F_A 25
+                    block-set! ts-t i F_A either > h TREE_MAX [ TREE_MAX ] [ h ]
+                    score: + score 25
+                    ts-free t
+                ] [ ts-free t ]
+            ] [ poop-land + i 1 t ]
+        ] [ poop-land + i 1 t ]
+    ] [ ts-free t ]
+]
+
+;; ---- one world tick (deterministic; no randomness beyond Glon's own rng) --
+move-player: func [] [
+    either = kl 1 [ px: - px 6 ] [ none ]
+    either = kr 1 [ px: + px 6 ] [ none ]
+    either = ku 1 [ py: - py 4 ] [ none ]
+    either = kd 1 [ py: + py 4 ] [ none ]
+    either < px 24 [ px: 24 ] [ none ]
+    either > px 616 [ px: 616 ] [ none ]
+    either < py 300 [ py: 300 ] [ none ]
+    either > py 348 [ py: 348 ] [ none ]
+]
+move-all: func [i] [
+    either < i NTS [
+        k: ts-k i
+        either = k K_KAKA [ kaka-step ts-t i ] [
+        either = k K_RAT [ rat-step ts-t i ] [
+        either = k K_BERRY [ berry-step ts-t i ] [
+        either = k K_PICK [ pick-step ts-t i ] [
+        either = k K_POOP [ poop-step ts-t i ] [ none ] ] ] ] ]
+        move-all + i 1
+    ] [ none ]
+]
+spawn-timers: func [] [
+    next-kaka: - next-kaka 1
+    either < next-kaka 1 [
+        either < n-kaka KAKA_MAX [ spawn-kaka  next-kaka: + 150 mod tick 120 ] [ next-kaka: 60 ]
+    ] [ none ]
+    next-rat: - next-rat 1
+    either < next-rat 1 [
+        either < n-rat RAT_MAX [ spawn-rat  next-rat: + 220 mod tick 90 ] [ next-rat: 80 ]
+    ] [ none ]
+    next-pick: - next-pick 1
+    either < next-pick 1 [
+        either < berries 3 [ either = 0 n-pick [ spawn-pick ] [ none ] ] [ none ]
+        next-pick: + 1100 mod tick 400
+    ] [ none ]
+]
+step: func [] [
+    tick: + tick 1
+    either > cd 0 [ cd: - cd 1 ] [ none ]
+    either > glon-cd 0 [ glon-cd: - glon-cd 1 ] [ none ]
+    move-player
+    fire
+    fire-glon
+    spawn-timers
+    move-all 0
+    either >= tick next-milestone [ score: + score 50  next-milestone: + next-milestone 600 ] [ none ]
+    either = tree-live 0 [ over: 1 ] [ none ]
+]
+reset: func [] [
+    tick: 0 score: 0 over: 0
+    kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
+    px: 320 py: 330 cd: 0 glon-cd: 0
+    berries: 1
+    next-kaka: 60 next-rat: 150 next-pick: 1100 next-milestone: 600
+    mutant-kills: 0 diverts: 0 poops: 0
+    laser: -99 laser-x: 0 laser-y: 0 laser-ox: 0 laser-oy: 0
+    idc: 0 rng: 12345
+    ts-clear
+    spawn-tree 0 120
+    spawn-tree 1 320
+    spawn-tree 2 520
+    tally
+]
+;; one pass over the tuple space, refreshing every aggregate the spawn logic,
+;; HUD and tests read. Replaces Patrol's hard-coded per-entity variables.
+tally: func [] [
+    mutant-active: 0  mutant-left: 0
+    n-kaka: 0  n-rat: 0  n-berry: 0  n-pick: 0  n-poop: 0
+    trees-live: 0  tree-sum: 0
+    tly 0
+]
+tly: func [i] [
+    either < i NTS [
+        k: ts-k i
+        either = k K_KAKA [
+            n-kaka: + n-kaka 1
+            either = block-at ts-t i F_STATE KS_MUTANT [
+                mutant-active: 1
+                l: - block-at ts-t i F_B tick
+                either > l mutant-left [ mutant-left: l ] [ none ]
+            ] [ none ]
+        ] [
+        either = k K_RAT [ n-rat: + n-rat 1 ] [
+        either = k K_BERRY [ n-berry: + n-berry 1 ] [
+        either = k K_PICK [ n-pick: + n-pick 1 ] [
+        either = k K_POOP [ n-poop: + n-poop 1 ] [
+        either = k K_TREE [
+            tree-sum: + tree-sum block-at ts-t i F_A
+            either > block-at ts-t i F_A 0 [ trees-live: + trees-live 1 ] [ none ]
+        ] [ none ] ] ] ] ] ]
+        tly + i 1
+    ] [ none ]
+]
+
+;; ---- input / events ------------------------------------------------------
+set-key: func [name v] [
+    either str-eq name "left" [ kl: v ] [
+    either str-eq name "right" [ kr: v ] [
+    either str-eq name "up" [ ku: v ] [
+    either str-eq name "down" [ kd: v ] [
+    either str-eq name "fire" [ kf: v ] [
+    either str-eq name "glon" [ kg: v ] [ none ] ] ] ] ] ]
+]
+reset-input: func [] [ kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0 ]
+
+on-tick: func [] [ either = over 1 [ none ] [ step ]  tally  render ]
+on-start: func [] [ reset tally render ]
+on-key-down: func [] [ set-key current-value 1 render ]
+on-key-up: func [] [ set-key current-value 0 render ]
+on-input-reset: func [] [ reset-input render ]
+
+;; the dispatcher is a table lookup (the same shape traffic.glon uses), so the
+;; game reads as data and the routing stays in Glon.
+events: [
+    ['kaka-tick [ on-tick ]]
+    ['kaka-start [ on-start ]]
+    ['kaka-restart [ on-start ]]
+    ['kaka-key-down [ on-key-down ]]
+    ['kaka-key-up [ on-key-up ]]
+    ['kaka-input-reset [ on-input-reset ]]
+    ['kaka-selftest [ selftest ]]
+]
+do-event: [
+    event-row: select events current-event
+    either event-row [ do block-at event-row 1 ] [ render ]
+]
+route: [ reset tally render ]
+
+ts-init 0
+]

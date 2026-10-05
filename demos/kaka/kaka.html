@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attack of the Mutant Kaka</title>
+<style>
+  body { font: 15px/1.4 system-ui, sans-serif; margin: 1rem auto; max-width: 680px; background: #0b1020; color: #e8e8e8; }
+  h1 { margin: .2rem 0; }
+  .tag { color: #7fd18a; font-weight: 700; margin: .1rem 0 .6rem; }
+  .hud { font-size: 1.05rem; }
+  .mutant { color: #ff3df0; font-weight: 800; letter-spacing: .04em; animation: pulse .5s steps(2) infinite; }
+  @keyframes pulse { 50% { opacity: .55; } }
+  .muted { color: #9aa1ad; }
+  #glon-canvas { display: block; width: 640px; height: 480px; border: 1px solid #334; background: #0b1020; }
+  #glon-canvas:focus { outline: 2px solid #556; outline-offset: 2px; }
+  button { font: inherit; padding: .4rem .8rem; cursor: pointer; }
+  .keys { color: #ffe066; font-size: 1rem; font-weight: 600; margin: .4rem 0 .7rem; }
+  .keys strong { color: #fff; }
+  a { color: #7fa7ec; }
+</style>
+</head>
+<body>
+<!-- Glon renders the HUD/status into data-glon-id="1"; JS only paints the canvas
+     script Glon emits. The game is Glon-owned. -->
+<p class="keys"><strong>Arrow keys / WASD</strong> move &middot; <strong>Space</strong> fire berry &middot;
+   <strong>G</strong> Mystery Glon Berry &middot; <strong>R</strong> restart</p>
+<div id="status" data-glon-id="1"></div>
+<canvas id="glon-canvas" width="640" height="480" tabindex="0"></canvas>
+<p class="muted">The kaka are native wildlife and must never be shot; berries divert them.
+   Lasers only zap introduced rats. Arcade fiction: do not feed real wild kaka.
+   &middot; <a href="../patrol/patrol.html">Glon Patrol</a></p>
+<script src="kaka-host.js"></script>
+</body>
+</html>
