@@ -485,6 +485,15 @@ on-start: func [] [ reset tally render ]
 on-key-down: func [] [ set-key current-value 1 render ]
 on-key-up: func [] [ set-key current-value 0 render ]
 on-input-reset: func [] [ reset-input render ]
+;; soak/test hooks (deterministic; they change state, not rules): force the
+;; first kaka into mutant state, and grant a Mystery Glon Berry.
+on-debug-mutant: func [] [ dm 0  tally  render ]
+dm: func [i] [
+    either < i NTS [
+        either = ts-k i K_KAKA [ block-set! ts-t i F_STATE KS_MUTANT  block-set! ts-t i F_B + tick 300 ] [ dm + i 1 ]
+    ] [ none ]
+]
+on-debug-give: func [] [ berries: + berries 1  render ]
 
 ;; the dispatcher is a table lookup (the same shape traffic.glon uses), so the
 ;; game reads as data and the routing stays in Glon.
@@ -496,6 +505,8 @@ events: [
     ['kaka-key-up [ on-key-up ]]
     ['kaka-input-reset [ on-input-reset ]]
     ['kaka-selftest [ selftest ]]
+    ['kaka-debug-mutant [ on-debug-mutant ]]
+    ['kaka-debug-give [ on-debug-give ]]
 ]
 do-event: [
     event-row: select events current-event

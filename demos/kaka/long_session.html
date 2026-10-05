@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Attack of the Mutant Kaka Long-Session Regression</title></head>
+<body>
+<!-- Real-time long-session / soak regression for Attack of the Mutant Kaka.
+     It runs the actual game (same kaka-host.js) under real requestAnimationFrame
+     and drives it with real key events: continuous berry fire, movement probes,
+     forced mutant cycles (multiple), restarts, and post-restart controls. It
+     checks no WASM allocation failures, no frame trails and no console errors.
+     Drive it with long_session_cdp.js (real Chrome via CDP); the verdict is
+     written to #verify. -->
+<div id="status" data-glon-id="1"></div>
+<canvas id="glon-canvas" width="640" height="480" tabindex="0"></canvas>
+<button id="dbg-mutant" data-glon-event="kaka-debug-mutant" style="display:none"></button>
+<button id="dbg-give" data-glon-event="kaka-debug-give" style="display:none"></button>
+<button id="dbg-restart" data-glon-event="kaka-restart" style="display:none"></button>
+<pre id="verify">pending</pre>
+
+<script>
+window.__long = {
+  frame: 0, done: false, errors: [], canvas: "",
+  instr: { keydown: 0, keyup: 0, ev: 0, evValue: 0, evValueRcBad: 0, tick: 0, alloc: 0, allocFail: 0 }
+};
+window.addEventListener("error", function (e) { window.__long.errors.push("error: " + e.message); });
+window.addEventListener("unhandledrejection", function (e) { window.__long.errors.push("rejection: " + e.reason); });
+
+(function () {
+  var origInstantiate = WebAssembly.instantiate.bind(WebAssembly);
+  WebAssembly.instantiate = function (bytes, imports) {
+    if (imports && imports.env && imports.env.host_canvas_script) {
+      var hc = imports.env.host_canvas_script;
+      imports.env.host_canvas_script = function (ptr, len) {
+        try { window.__long.canvas = new TextDecoder().decode(new Uint8Array(window.__ex.memory.buffer, ptr, len)); } catch (e) {}
+        return hc(ptr, len);
+      };
+    }
+    return origInstantiate(bytes, imports).then(function (res) {
+      var exp = res.instance.exports;
+      window.__ex = exp;
+      function wrap(name, fn) {
+        return function () {
+          var d = window.__long.instr;
+          try {
+            if (name === "glon_alloc") { d.alloc++; var p = fn.apply(exp, arguments); if (p === 0) d.allocFail++; return p; }
+            if (name === "glon_event_value") { d.evValue++; var rc = fn.apply(exp, arguments); if (rc !== 0) d.evValueRcBad++; return rc; }
+            if (name === "glon_event") {
+              d.ev++;
+              try { var tok = new TextDecoder().decode(new Uint8Array(exp.memory.buffer, arguments[0], arguments[1])); if (tok === "kaka-tick") d.tick++; } catch (e) {}
+              return fn.apply(exp, arguments);
+            }
+          } catch (e) { window.__long.errors.push(name + ": " + e); throw e; }
+          return fn.apply(exp, arguments);
+        };
+      }
+      var copy = {};
+      Object.getOwnPropertyNames(exp).forEach(function (k) { copy[k] = exp[k]; });
+      ["glon_alloc", "glon_event", "glon_event_value"].forEach(function (k) { if (typeof copy[k] === "function") copy[k] = wrap(k, copy[k]); });
+      return { instance: { exports: copy } };
+    });
+  };
+})();
+</script>
+<script src="kaka-host.js"></script>
+<script>
+(function () {
+  var MIN_TICKS = 1500;      /* real ticks through the game loop */
+  var MIN_MUTANTS = 3;       /* distinct forced mutant cycles observed */
+  var MAX_FRAMES = 8000;
+  var D = window.__long;
+  var v = document.getElementById("verify");
+  var btn = {
+    mutant: document.getElementById("dbg-mutant"),
+    give: document.getElementById("dbg-give"),
+    restart: document.getElementById("dbg-restart")
+  };
+  function state() { var e = document.getElementById("kaka-state"); return e ? e.textContent.trim().split(/\s+/).map(Number) : []; }
+  function status() { return document.getElementById("status").textContent; }
+  function press(code, down) { window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { code: code, bubbles: true, cancelable: true })); }
+  var CODES = { left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp", down: "ArrowDown", fire: "Space", glon: "KeyG" };
+  var held = {};
+  function setKey(name, down) { if (held[name] !== down) { held[name] = down; press(CODES[name], down); } }
+  function releaseAll() { ["left", "right", "up", "down", "fire", "glon"].forEach(function (k) { setKey(k, false); }); }
+  function frame() { return new Promise(function (r) { requestAnimationFrame(r); }); }
+  function sval(i) { var s = state(); return s.length > i ? s[i] : null; }
+  function nonBg() {
+    var c = document.getElementById("glon-canvas");
+    var d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    var n = 0;
+    for (var i = 0; i < d.length; i += 4) if (Math.abs(d[i] - 11) > 18 || Math.abs(d[i + 1] - 16) > 18 || Math.abs(d[i + 2] - 32) > 18) n++;
+    return n;
+  }
+  function finish(ok, detail) {
+    D.done = true; releaseAll();
+    v.textContent = (ok ? "KAKA_LONG_SESSION_OK" : "KAKA_LONG_SESSION_FAIL") + " " + detail;
+  }
+  function snap() {
+    return "ticks=" + D.instr.tick + " alloc=" + D.instr.alloc + " allocFail=" + D.instr.allocFail +
+      " evValue=" + D.instr.evValue + " rcBad=" + D.instr.evValueRcBad + " errors=" + D.errors.length +
+      " state=" + state().join(",");
+  }
+  async function probeMove() {
+    var x0 = sval(4); var dir = (D.frame % 2 === 0) ? "right" : "left";
+    if (dir === "right" && x0 >= 614) dir = "left";
+    if (dir === "left" && x0 <= 26) dir = "right";
+    setKey(dir, true);
+    for (var i = 0; i < 6; i++) await frame();
+    setKey(dir, false);
+    var x1 = sval(4);
+    return dir === "right" ? (x1 > x0) : (x1 < x0);
+  }
+
+  (async function () {
+    while (D.frame < MAX_FRAMES) { if (state().length >= 13 && D.instr.tick > 0) break; D.frame++; await frame(); }
+    if (state().length < 13) { finish(false, "boot timeout"); return; }
+
+    var mutants = 0, lastMutant = 0, restarts = 0, srcOk = true;
+    setKey("fire", true);
+    while (D.frame < MAX_FRAMES) {
+      D.frame++;
+      if (D.frame % 250 === 0) {
+        btn.give.click();                 /* award a Glon Berry (hook) */
+        setKey("glon", true);
+      }
+      if (D.frame % 250 === 12) setKey("glon", false);
+      if (D.frame % 400 === 0) { btn.mutant.click(); }   /* force a mutant cycle */
+      if (sval(11) === 1 && lastMutant === 0) { mutants++; lastMutant = 1; }
+      if (sval(11) === 0) lastMutant = 0;
+      if (D.frame % 300 === 0) { if (!(await probeMove())) { finish(false, "movement died @" + snap()); return; } }
+      if (D.frame % 900 === 899) { btn.restart.click(); restarts++; }
+      if (D.instr.tick >= MIN_TICKS && mutants >= MIN_MUTANTS) { srcOk = true; break; }
+      await frame();
+    }
+    if (D.instr.tick < MIN_TICKS) { finish(false, "tick goal not reached @" + snap()); return; }
+    if (mutants < MIN_MUTANTS) { finish(false, "mutant cycles=" + mutants + " @" + snap()); return; }
+
+    /* explicit post-soak checks: controls and restart still live */
+    var moveOk = await probeMove();
+    btn.restart.click();
+    for (var r = 0; r < 6; r++) await frame();
+    var after = state();
+    var resetOk = after.length >= 13 && after[1] === 0 && after[2] === 0 && after[3] === 1 && after[4] === 320;
+    var moveAfter = await probeMove();
+
+    /* noTrails: hold fire, non-background pixels must not grow without bound */
+    releaseAll();
+    setKey("fire", true);
+    for (var t = 0; t < 5; t++) await frame();
+    var a = nonBg();
+    for (var w = 0; w < 60; w++) await frame();
+    var b = nonBg();
+    setKey("fire", false);
+    var noTrails = b <= a + 1200;
+
+    var ok = moveOk && resetOk && moveAfter && noTrails &&
+      D.instr.allocFail === 0 && D.errors.length === 0;
+    finish(ok, "ticks=" + D.instr.tick + " mutants=" + mutants + " restarts=" + restarts +
+      " alloc=" + D.instr.alloc + " allocFail=" + D.instr.allocFail +
+      " move=" + moveOk + " reset=" + resetOk + " moveAfter=" + moveAfter +
+      " noTrails=" + noTrails + " errors=" + D.errors.length);
+  })();
+})();
+</script>
+</body>
+</html>
