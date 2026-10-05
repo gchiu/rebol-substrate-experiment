@@ -420,6 +420,11 @@ kaka-browser-regression:
 kaka-refresh-regression:
 	node demos/kaka/refresh_rate_regression_cdp.js
 
+# D12A: real-browser long-session regression for "Space eventually stopped
+# firing ordinary berries" (a leaked BERRY_MAX pool). Needs a debug Chrome + node.
+kaka-berry-regression:
+	node demos/kaka/berry_regression_cdp.js
+
 # ---- Experimental GLON_LIVE host boundary (native focused test) -------------
 # Builds only the live layer + runtime; does not touch the s1 test binary or
 # any WASM build. Run: make glon-live-native-test && ./glon-live-native-test

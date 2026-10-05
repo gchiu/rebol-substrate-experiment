@@ -228,7 +228,10 @@ mutate: func [kt bt] [
 berry-step: func [t] [
     block-set! t F_Y + block-at t F_Y block-at t F_VY
     berry-hit t 0
-    either > block-at t F_Y 480 [ ts-free t ] [ none ]
+    ;; berries are fired upward (F_VY < 0), so they leave the playfield at the
+    ;; TOP. Freeing on Y > 480 (which only a downward-moving actor can reach)
+    ;; leaked every missed berry in the fixed BERRY_MAX pool until firing died.
+    either < block-at t F_Y 0 [ ts-free t ] [ none ]
 ]
 berry-hit: func [t i] [
     either < i NTS [

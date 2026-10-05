@@ -89,6 +89,11 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
     return m ? m[1].trim().split(/\s+/).map(Number) : [];
   };
 
+  /* Ordinary berries are the only actor that paints "O x y 5 5" (see
+     berry-art in kaka-draw.glon), so this counts live ordinary berry tuples
+     straight from the real render without any game-source instrumentation. */
+  const countOrdinary = (s) => (s.match(/^O -?\d+ -?\d+ 5 5$/gm) || []).length;
+
   if (e.glon_init() !== 0) fail("glon_init");
 
   load(fs.readFileSync(path.join(ROOT, "glon-lib", "prelude.glon"), "utf8"));
@@ -115,6 +120,7 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   eventValue("kaka-key-down", "fire");
   const SOAK = Number(process.env.KAKA_SOAK_TICKS || 1200);
   let maxBerries = 0, mutants = 0, restarts = 0, drawTicks = 0;
+  let prevOrd = 0, ordSpawns = 0, maxOrd = 0;
   const t0 = process.hrtime.bigint();
   for (let i = 0; i < SOAK; i++) {
     if (i % 300 === 150) eventValue("kaka-key-down", "glon");
@@ -122,17 +128,42 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
     canvasScripts.length = 0;
     event("kaka-tick");
     instr.tick++;
-    if (canvasScripts.join("").indexOf("\n") >= 0) drawTicks++;
+    const script = canvasScripts.join("");
+    if (script.indexOf("\n") >= 0) drawTicks++;
+    const ord = countOrdinary(script);
+    if (ord > prevOrd) ordSpawns += ord - prevOrd;
+    if (ord > maxOrd) maxOrd = ord;
+    prevOrd = ord;
     const s = state();
     if (s.length >= 14) {
       if (s[3] > maxBerries) maxBerries = s[3];
       if (s[11] === 1) mutants++;
     }
-    if (i % 500 === 499) { event("kaka-restart"); restarts++; }
+    if (i % 500 === 499) { event("kaka-restart"); eventValue("kaka-key-down", "fire"); restarts++; }
   }
   eventValue("kaka-key-up", "fire");
   const t1 = process.hrtime.bigint();
   const msPerTick = Number(t1 - t0) / 1e6 / SOAK;
+
+  /* Long-session berry-pool regression (the "Space stopped firing" bug). The
+     fixed BERRY_MAX pool must recycle: after fire is released, every in-flight
+     ordinary berry leaves the TOP of the field, so the live count drains to 0.
+     The old Y>480 despawn only matched downward actors, so misses leaked and
+     the pool pinned at BERRY_MAX, silently killing fire. */
+  for (let i = 0; i < 80; i++) { canvasScripts.length = 0; event("kaka-tick"); }
+  const settledOrd = countOrdinary(canvasScripts.join(""));
+  if (settledOrd !== 0)
+    fail("berry pool leaked: " + settledOrd + " ordinary tuple(s) still live after fire released (spawns=" + ordSpawns + ")");
+  if (ordSpawns < 40)
+    fail("ordinary berry firing stalled: only " + ordSpawns + " spawns over " + SOAK + " ticks (pool likely pinned)");
+  eventValue("kaka-key-down", "fire");
+  let revived = 0;
+  for (let i = 0; i < 20; i++) {
+    canvasScripts.length = 0; event("kaka-tick");
+    if (countOrdinary(canvasScripts.join("")) > 0) revived++;
+  }
+  eventValue("kaka-key-up", "fire");
+  if (revived === 0) fail("ordinary berry firing did not resume after long-session churn");
 
   if (instr.allocFail !== 0) fail("allocFail=" + instr.allocFail);
   if (drawTicks < SOAK) fail("drawing stopped: " + drawTicks + "/" + SOAK + " ticks drew");
@@ -148,6 +179,7 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
 
   console.log("KAKA_WASM_TEST PASS (selftest + " + SOAK + " tick soak, allocFail=0, " +
     msPerTick.toFixed(3) + " ms/tick, " + restarts + " restarts, mutants-seen=" + mutants +
-    ", ticks-drew=" + drawTicks + ", maxBerries=" + maxBerries + ")");
+    ", ticks-drew=" + drawTicks + ", maxBerries=" + maxBerries +
+    ", berrySpawns=" + ordSpawns + ", maxOrdLive=" + maxOrd + ")");
   process.exit(0);
 }).catch((e) => fail(e && e.stack ? e.stack : e));
