@@ -14,6 +14,17 @@
   var enc = new TextEncoder();
   var lastHtml = "";
 
+  /* Fixed-timestep driver. requestAnimationFrame is only the browser clock and
+   * render driver; the Glon simulation advances at a fixed wall-clock rate so
+   * game speed is independent of the display refresh rate (60/120/144 Hz).
+   * The WASM tick measured ~23/s idle and ~13/s under heavy load, so the target
+   * is 25 Hz (not 60). Catch-up is capped, a long stall (hidden tab) is clamped,
+   * and any leftover backlog is dropped, so the loop can never spiral. */
+  var SIM_HZ = 25;
+  var SIM_DT = 1000 / SIM_HZ;
+  var MAX_CATCHUP = 5;
+  var lastTime = 0, acc = 0;
+
   function view() { return new Uint8Array(ex.memory.buffer); }
 
   /* colour index -> CSS (Glon chooses the index; JS only maps it) */
@@ -101,7 +112,7 @@
               ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down",
               Space: "fire", KeyG: "glon" };
   function key(e, down) {
-    if (e.code === "KeyR") { if (down) ev("kaka-restart"); e.preventDefault(); return; }
+    if (e.code === "KeyR") { if (down) { acc = 0; ev("kaka-restart"); } e.preventDefault(); return; }
     var k = KEY[e.code];
     if (!k) return;
     e.preventDefault();
@@ -116,9 +127,20 @@
     if (cv) cv.focus();
   }
 
-  function frame() {
-    try { ev("kaka-tick"); }
-    catch (err) { console.error("kaka: tick failed", err); }
+  function frame(now) {
+    if (!lastTime) lastTime = now;      /* first callback: start the clock */
+    var dt = now - lastTime;
+    lastTime = now;
+    if (dt > 500) dt = 500;             /* hidden/stalled tab: do not accrue a backlog */
+    acc += dt;
+    var steps = 0;
+    while (acc >= SIM_DT && steps < MAX_CATCHUP) {
+      try { ev("kaka-tick"); }
+      catch (err) { console.error("kaka: tick failed", err); acc = 0; break; }
+      acc -= SIM_DT;
+      steps++;
+    }
+    if (acc >= SIM_DT) acc = 0;         /* still behind: drop it, never spiral */
     requestAnimationFrame(frame);
   }
 
@@ -151,6 +173,8 @@
         window.addEventListener("keyup", function (e) { key(e, false); });
         window.addEventListener("blur", function () { resetInput(); });
         document.addEventListener("visibilitychange", function () {
+          /* drop any time that passed while hidden so we resume cleanly */
+          lastTime = 0; acc = 0;
           if (document.visibilityState === "hidden") resetInput();
           else focusGame();
         });
