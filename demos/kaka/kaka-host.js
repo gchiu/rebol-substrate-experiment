@@ -32,47 +32,94 @@
              "#3b6ea5", "#ffd23f", "#6b4a2b", "#1f5c2e", "#e08fb0", "#4fd1c5",
              "#8e6bd8", "#7fd18a", "#ff3df0", "#ffffff"];
 
+  /* ---- parallax scenery (host-side presentation only) --------------------
+   * The four generated PNGs are painted by JS; Glon owns the camera scalar it
+   * emits as `B <cam>` (backgrounds + scroll gameplay) and `F <cam>`
+   * (foreground). Factors are the presentation mapping of the supplied art to
+   * the requested depths. The art is 3:1 and each layer is drawn wider than the
+   * viewport, so the small +/-120 px camera pan never reaches an image edge:
+   * no tiling and no seams. Nothing here is gameplay. */
+  var LAYERS = [
+    { src: "assets/ChatGPT Image Oct 6, 2026, 08_56_38 AM-1.png", factor: 0.12, h: 480, yb: 480, alpha: 1.0 },
+    { src: "assets/ChatGPT Image Oct 6, 2026, 08_56_40 AM-2.png", factor: 0.35, h: 430, yb: 470, alpha: 1.0 },
+    { src: "assets/ChatGPT Image Oct 6, 2026, 08_56_41 AM-3.png", factor: 0.70, h: 440, yb: 500, alpha: 1.0 },
+    { src: "assets/ChatGPT Image Oct 6, 2026, 08_56_43 AM-4.png", factor: 1.20, h: 560, yb: 540, alpha: 1.0 }
+  ];
+  var layerImg = [null, null, null, null];
+
+  function loadImage(url) {
+    return new Promise(function (res) {
+      var im = new Image();
+      im.onload = function () { res(im); };
+      im.onerror = function () { console.error("kaka: parallax asset failed: " + url); res(null); };
+      im.src = url;
+    });
+  }
+  function loadParallax() {
+    return Promise.all(LAYERS.map(function (l) { return loadImage(l.src); }))
+      .then(function (imgs) { layerImg = imgs; });
+  }
+  function paintLayer(ctx, W, idx, cam) {
+    var img = layerImg[idx];
+    if (!img) return;
+    var L = LAYERS[idx];
+    var w = img.naturalWidth * (L.h / img.naturalHeight);
+    var x = (W - w) / 2 - cam * L.factor;
+    ctx.globalAlpha = L.alpha;
+    ctx.drawImage(img, x, L.yb - L.h, w, L.h);
+    ctx.globalAlpha = 1;
+  }
+
   function drawScript(script) {
     var canvas = document.querySelector("#glon-canvas");
     if (!canvas) return;
     var ctx = canvas.getContext("2d");
     var W = canvas.width, H = canvas.height;
     var lines = script.split("\n");
+    var cam = 0, tx = 0;              /* tx: gameplay plane scrolls 1:1 with cam */
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i].replace(/^\s+|\s+$/g, "");
       if (!line) continue;
       var p = line.split(" ");
       var op = p[0];
-      if (op === "C") {
+      if (op === "B") {
+        cam = +p[1];
+        tx = -cam;
+        paintLayer(ctx, W, 0, cam);   /* distant sky / hills  (slowest) */
+        paintLayer(ctx, W, 1, cam);   /* native bush / treeline           */
+        paintLayer(ctx, W, 2, cam);   /* orchard / fence / near landscape */
+      } else if (op === "F") {
+        paintLayer(ctx, W, 3, cam);   /* foreground foliage   (fastest)   */
+      } else if (op === "C") {
         ctx.fillStyle = COL[0];
         ctx.fillRect(0, 0, W, H);
       } else if (op === "R") {
         ctx.fillStyle = COL[+p[5]] || "#fff";
-        ctx.fillRect(+p[1], +p[2], +p[3], +p[4]);
+        ctx.fillRect(+p[1] + tx, +p[2], +p[3], +p[4]);
       } else if (op === "O") {
         ctx.fillStyle = COL[+p[4]] || "#fff";
         ctx.beginPath();
-        ctx.arc(+p[1], +p[2], +p[3], 0, 2 * Math.PI);
+        ctx.arc(+p[1] + tx, +p[2], +p[3], 0, 2 * Math.PI);
         ctx.fill();
       } else if (op === "T") {
         ctx.fillStyle = COL[+p[7]] || "#fff";
         ctx.beginPath();
-        ctx.moveTo(+p[1], +p[2]);
-        ctx.lineTo(+p[3], +p[4]);
-        ctx.lineTo(+p[5], +p[6]);
+        ctx.moveTo(+p[1] + tx, +p[2]);
+        ctx.lineTo(+p[3] + tx, +p[4]);
+        ctx.lineTo(+p[5] + tx, +p[6]);
         ctx.closePath();
         ctx.fill();
       } else if (op === "L") {
         ctx.strokeStyle = COL[+p[6]] || "#fff";
         ctx.lineWidth = +p[5] || 1;
         ctx.beginPath();
-        ctx.moveTo(+p[1], +p[2]);
-        ctx.lineTo(+p[3], +p[4]);
+        ctx.moveTo(+p[1] + tx, +p[2]);
+        ctx.lineTo(+p[3] + tx, +p[4]);
         ctx.stroke();
       } else if (op === "E") {
         ctx.fillStyle = COL[+p[5]] || "#fff";
         ctx.beginPath();
-        ctx.ellipse(+p[1], +p[2], +p[3], +p[4], 0, 0, 2 * Math.PI);
+        ctx.ellipse(+p[1] + tx, +p[2], +p[3], +p[4], 0, 0, 2 * Math.PI);
         ctx.fill();
       }
     }
@@ -168,6 +215,7 @@
       .then(function () { return fetchText("kaka-draw.glon"); }).then(load)
       /* kaka-selftest.glon is test-only and is intentionally not loaded here:
          the production page needs the loader budget for input dispatch. */
+      .then(loadParallax)            /* PNG scenery is presentation-only */
       .then(function () {
         wireClicks();
         window.addEventListener("keydown", function (e) { key(e, true); });

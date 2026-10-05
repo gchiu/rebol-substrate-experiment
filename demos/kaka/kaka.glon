@@ -57,6 +57,10 @@ KS_SWOOP: 5
 tick: 0 score: 0 over: 0
 kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
 px: 320 py: 330
+;; camera: a small smoothed horizontal offset used ONLY for presentation. The
+;; world/logic coordinates stay absolute; the render emits `cam` so the browser
+;; can scroll the parallax PNGs (and the host scrolls the gameplay plane 1:1).
+cam: 0
 cd: 0 glon-cd: 0
 berries: 1
 next-kaka: 60 next-rat: 150 next-pick: 1100 next-milestone: 600
@@ -135,12 +139,6 @@ tree-sum: func [] [ tsum 0 0 ]
 tsum: func [i n] [
     either < i NTS [
         tsum + i 1 either = ts-k i K_TREE [ + n block-at ts-t i F_A ] [ n ]
-    ] [ n ]
-]
-tree-total: func [] [ tt 0 0 ]
-tt: func [i n] [
-    either < i NTS [
-        tt + i 1 either = ts-k i K_TREE [ + n block-at ts-t i F_B ] [ n ]
     ] [ n ]
 ]
 damage-tree: func [ti d] [
@@ -288,6 +286,13 @@ move-player: func [] [
     either > px 616 [ px: 616 ] [ none ]
     either < py 300 [ py: 300 ] [ none ]
     either > py 348 [ py: 348 ] [ none ]
+    ;; camera follow (presentation only; world coordinates are never changed):
+    ;; dead zone of 60 px, target clamped to +/-120 so the whole 640-wide
+    ;; playfield stays framed, then eased by at most 2 px/tick (no jitter).
+    dx: - px 320
+    dx: either > abs dx 60 [ - dx * 60 sign dx ] [ 0 ]
+    dx: either > dx 120 [ 120 ] [ either < dx -120 [ -120 ] [ dx ] ]
+    either > abs - dx cam 2 [ cam: + cam * 2 sign - dx cam ] [ cam: dx ]
 ]
 move-all: func [i] [
     either < i NTS [
@@ -331,6 +336,7 @@ reset: func [] [
     tick: 0 score: 0 over: 0
     kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
     px: 320 py: 330 cd: 0 glon-cd: 0
+    cam: 0
     berries: 1
     next-kaka: 60 next-rat: 150 next-pick: 1100 next-milestone: 600
     mutant-kills: 0 diverts: 0 poops: 0
