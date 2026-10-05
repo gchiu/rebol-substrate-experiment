@@ -124,7 +124,7 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
     instr.tick++;
     if (canvasScripts.join("").indexOf("\n") >= 0) drawTicks++;
     const s = state();
-    if (s.length >= 13) {
+    if (s.length >= 14) {
       if (s[3] > maxBerries) maxBerries = s[3];
       if (s[11] === 1) mutants++;
     }
@@ -144,7 +144,7 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   const moved = event("kaka-tick");
   if (!/Trees: 3\/3/.test(after)) fail("restart did not reset trees");
   const s2 = state();
-  if (s2.length < 13 || s2[4] !== 326) fail("controls dead after restart (px=" + (s2[4]) + ")");
+  if (s2.length < 14 || s2[4] !== 330) fail("controls dead after restart (px=" + (s2[4]) + ")");
 
   console.log("KAKA_WASM_TEST PASS (selftest + " + SOAK + " tick soak, allocFail=0, " +
     msPerTick.toFixed(3) + " ms/tick, " + restarts + " restarts, mutants-seen=" + mutants +

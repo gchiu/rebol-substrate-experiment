@@ -166,7 +166,8 @@
       .then(function () { return fetchText("kaka-lib.glon"); }).then(load)
       .then(function () { return fetchText("kaka.glon"); }).then(load)
       .then(function () { return fetchText("kaka-draw.glon"); }).then(load)
-      .then(function () { return fetchText("kaka-selftest.glon"); }).then(load)
+      /* kaka-selftest.glon is test-only and is intentionally not loaded here:
+         the production page needs the loader budget for input dispatch. */
       .then(function () {
         wireClicks();
         window.addEventListener("keydown", function (e) { key(e, true); });

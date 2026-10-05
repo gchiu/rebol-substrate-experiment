@@ -45,12 +45,13 @@ F_C: 9
 F_D: 10
 F_E: 11
 
-;; kaka states
+;; kaka flight phases
 KS_SWEEP: 0
 KS_EAT: 1
 KS_DIVERT: 2
 KS_MUTANT: 3
 KS_LEAVE: 4
+KS_SWOOP: 5
 
 ;; ---- globals -------------------------------------------------------------
 tick: 0 score: 0 over: 0
@@ -93,6 +94,11 @@ tclaim: func [i k] [
             block-set! t F_KIND k
             idc: + idc 1
             block-set! t F_ID idc
+            ;; clear every field so a reused slot never inherits stale state
+            block-set! t F_X 0  block-set! t F_Y 0  block-set! t F_VY 0
+            block-set! t F_STATE 0  block-set! t F_TARGET 0
+            block-set! t F_A 0  block-set! t F_B 0  block-set! t F_C 0
+            block-set! t F_D 0  block-set! t F_E 0
             t
         ] [ tclaim + i 1 k ]
     ] [ none ]
@@ -141,113 +147,6 @@ damage-tree: func [ti d] [
     bt: ts-t ti
     h: - block-at bt F_A d
     block-set! bt F_A either < h 0 [ 0 ] [ h ]
-]
-
-;; ---- kaka rules ----------------------------------------------------------
-kaka-pick: func [t] [ kp 0 t ]
-kp: func [i t] [
-    either < i NTS [
-        either = ts-k i K_TREE [
-            either > block-at ts-t i F_A 0 [ block-set! t F_TARGET i ] [ kp + i 1 t ]
-        ] [ kp + i 1 t ]
-    ] [ block-set! t F_STATE KS_LEAVE ]
-]
-spawn-kaka: func [] [
-    t: ts-claim K_KAKA
-    either = t none [ none ] [
-        block-set! t F_X + 60 mod rnd 520
-        block-set! t F_Y 20
-        block-set! t F_STATE KS_SWEEP
-        block-set! t F_A 0
-        block-set! t F_C 0
-        kaka-pick t
-    ]
-]
-kaka-step: func [t] [
-    either = block-at t F_STATE KS_MUTANT [ kaka-mutant t ] [
-    either = block-at t F_STATE KS_DIVERT [ kaka-divert t ] [
-    either = block-at t F_STATE KS_EAT [ kaka-eat t ] [
-    either = block-at t F_STATE KS_LEAVE [ kaka-leave t ] [ kaka-sweep t ] ] ] ]
-]
-kaka-sweep: func [t] [
-    ti: block-at t F_TARGET
-    tx: block-at ts-t ti F_X
-    x: block-at t F_X
-    either < x tx [ block-set! t F_X + x 3 ] [ either > x tx [ block-set! t F_X - x 3 ] [ none ] ]
-    y: + block-at t F_Y 4
-    block-set! t F_Y y
-    either < 282 y [
-        block-set! t F_STATE KS_EAT
-        block-set! t F_A 0
-    ] [ none ]
-]
-kaka-eat: func [t] [
-    ti: block-at t F_TARGET
-    either < block-at ts-t ti F_A 1 [ kaka-pick t ] [
-        a: + block-at t F_A 1
-        block-set! t F_A a
-        either = 0 mod a 36 [
-            either = over 1 [ none ] [ damage-tree ti 10 ]
-        ] [ none ]
-    ]
-]
-kaka-divert: func [t] [
-    either = block-at t F_C 0 [ drop-poop t ] [ none ]
-    block-set! t F_Y - block-at t F_Y 5
-    block-set! t F_X + block-at t F_X * block-at t F_D 4
-    either < block-at t F_Y 0 [ ts-free t ] [ none ]
-]
-kaka-leave: func [t] [
-    block-set! t F_Y - block-at t F_Y 5
-    either < block-at t F_Y 0 [ ts-free t ] [ none ]
-]
-drop-poop: func [t] [
-    p: ts-claim K_POOP
-    either = p none [ none ] [
-        block-set! p F_X block-at t F_X
-        block-set! p F_Y block-at t F_Y
-        block-set! p F_VY 3
-        block-set! t F_C 1
-        poops: + poops 1
-    ]
-]
-
-;; ---- mutant kaka: hunt and zap rats -------------------------------------
-nearest-rat: func [t] [ nr 0 none 99999 t ]
-nr: func [i best bd t] [
-    either < i NTS [
-        either = ts-k i K_RAT [
-            d: + abs - block-at ts-t i F_X block-at t F_X abs - block-at ts-t i F_Y block-at t F_Y
-            either < d bd [ nr + i 1 ts-t i d t ] [ nr + i 1 best bd t ]
-        ] [ nr + i 1 best bd t ]
-    ] [ best ]
-]
-kaka-mutant: func [t] [
-    either > tick block-at t F_B [ block-set! t F_STATE KS_LEAVE ] [
-        r: nearest-rat t
-        either = r none [
-            block-set! t F_Y 140
-        ] [
-            rx: block-at r F_X
-            ry: block-at r F_Y
-            either < block-at t F_X rx [ block-set! t F_X + block-at t F_X 6 ] [ block-set! t F_X - block-at t F_X 6 ]
-            either < block-at t F_Y ry [ block-set! t F_Y + block-at t F_Y 5 ] [ block-set! t F_Y - block-at t F_Y 5 ]
-            dx: abs - block-at t F_X rx
-            dy: abs - block-at t F_Y ry
-            either < dx 34 [
-                either < dy 34 [
-                    laser: tick
-                    laser-ox: block-at t F_X
-                    laser-oy: - block-at t F_Y 18
-                    laser-x: rx
-                    laser-y: ry
-                    ts-free r
-                    score: + score 25
-                    mutant-kills: + mutant-kills 1
-                ] [ none ]
-            ] [ none ]
-        ]
-    ]
 ]
 
 ;; ---- rats ----------------------------------------------------------------
@@ -315,7 +214,8 @@ fire-glon: func [] [
 divert: func [kt bt] [
     block-set! kt F_STATE KS_DIVERT
     block-set! kt F_C 0
-    block-set! kt F_D sign - block-at kt F_X px
+    ;; keep momentum; steer away so the turn is an arc, never an instant flip
+    block-set! kt F_D either < - block-at kt F_X px 0 [ -1 ] [ 1 ]
     ts-free bt
     score: + score 10
     diverts: + diverts 1
@@ -376,10 +276,11 @@ poop-land: func [i t] [
 
 ;; ---- one world tick (deterministic; no randomness beyond Glon's own rng) --
 move-player: func [] [
-    either = kl 1 [ px: - px 6 ] [ none ]
-    either = kr 1 [ px: + px 6 ] [ none ]
-    either = ku 1 [ py: - py 4 ] [ none ]
-    either = kd 1 [ py: + py 4 ] [ none ]
+    dx: - kr kl
+    dy: - kd ku
+    ;; cardinal 10 px/tick (~3 s to cross at 25 Hz); diagonal 7/7 so it is not
+    ;; faster than a straight line. Reacts within one tick; no acceleration.
+    either = 0 * dx dy [ px: + px * dx 10  py: + py * dy 7 ] [ px: + px * dx 7  py: + py * dy 7 ]
     either < px 24 [ px: 24 ] [ none ]
     either > px 616 [ px: 616 ] [ none ]
     either < py 300 [ py: 300 ] [ none ]
@@ -495,6 +396,14 @@ dm: func [i] [
     ] [ none ]
 ]
 on-debug-give: func [] [ berries: + berries 1  render ]
+;; soak/test hook: destroy every tree and mark game over (tick_regression_cdp.js)
+dmg-all-trees: func [i] [
+    either < i NTS [
+        either = ts-k i K_TREE [ block-set! ts-t i F_A 0 ] [ none ]
+        dmg-all-trees + i 1
+    ] [ none ]
+]
+on-debug-over: func [] [ dmg-all-trees 0  over: 1  tally  render ]
 
 ;; the dispatcher is a table lookup (the same shape traffic.glon uses), so the
 ;; game reads as data and the routing stays in Glon.
