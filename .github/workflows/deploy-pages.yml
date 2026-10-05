@@ -46,6 +46,9 @@ jobs:
       - name: Native tests
         run: make test
 
+      - name: Glon Kaka rule tests (native)
+        run: make kaka-test
+
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
@@ -87,6 +90,9 @@ jobs:
           python3 demo/shop/build-live.py
           make wasm-live-test
 
+      - name: WASM verification + tick soak for Glon Kaka
+        run: make wasm-kaka-test
+
       - name: Assemble site files
         run: |
           rm -rf /tmp/shop && mkdir -p /tmp/shop
@@ -118,11 +124,19 @@ jobs:
           cp demo/shop/glon.wasm pages/docs/demos/patrol/glon.wasm
           cp jupyter/prelude.glon pages/docs/demos/patrol/prelude.glon
           cp demo/shop/strings.glon pages/docs/demos/patrol/strings.glon
+          # Attack of the Mutant Kaka: same shared runtime + libraries, split game source.
+          mkdir -p pages/docs/demos/kaka
+          cp demos/kaka/kaka.html demos/kaka/kaka-host.js demos/kaka/kaka.glon \
+             demos/kaka/kaka-lib.glon demos/kaka/kaka-draw.glon demos/kaka/kaka-selftest.glon \
+             pages/docs/demos/kaka/
+          cp demo/shop/glon.wasm pages/docs/demos/kaka/glon.wasm
+          cp jupyter/prelude.glon pages/docs/demos/kaka/prelude.glon
+          cp demo/shop/strings.glon pages/docs/demos/kaka/strings.glon
           python3 site/check-site.py pages/docs
           cd pages
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/shop docs/demos/patrol docs/index.html docs/r0-counter.html docs/demo.js docs/demo.wasm
+          git add docs/shop docs/demos/patrol docs/demos/kaka docs/index.html docs/r0-counter.html docs/demo.js docs/demo.wasm
           if git diff --cached --quiet; then
             echo "docs/ unchanged; nothing to commit"
           else

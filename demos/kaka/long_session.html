@@ -149,14 +149,18 @@ window.addEventListener("unhandledrejection", function (e) { window.__long.error
     for (var w = 0; w < 60; w++) await frame();
     var b = nonBg();
     setKey("fire", false);
-    var noTrails = b <= a + 1200;
+    /* A real frame-trail bug leaves the previous frame painted, so over 60
+       frames the count would climb toward the whole canvas (~300k px). Normal
+       actor movement/spawning varies by a few thousand; 9000 still catches a
+       genuine trail while tolerating gameplay churn. */
+    var noTrails = b <= a + 9000;
 
     var ok = moveOk && resetOk && moveAfter && noTrails &&
       D.instr.allocFail === 0 && D.errors.length === 0;
     finish(ok, "ticks=" + D.instr.tick + " mutants=" + mutants + " restarts=" + restarts +
       " alloc=" + D.instr.alloc + " allocFail=" + D.instr.allocFail +
       " move=" + moveOk + " reset=" + resetOk + " moveAfter=" + moveAfter +
-      " noTrails=" + noTrails + " errors=" + D.errors.length);
+      " noTrails=" + noTrails + " pxA=" + a + " pxB=" + b + " errors=" + D.errors.length);
   })();
 })();
 </script>
