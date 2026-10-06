@@ -149,70 +149,47 @@ tree-art: func [t] [
         either > h 70 [ p-circ - x 12 278 4 7  p-circ + x 16 274 4 7 ] [ none ]
     ]
 ]
-kaka-art: func [t] [
+;; ---- sprite actors (Glon names the frame; the host paints it) -------------
+;; `S id x y dir` -- id selects a frame on a host-owned sheet, dir is +1/-1 for
+;; facing. Glon chooses id from actor kind + state + a deterministic flap/run
+;; cycle; it never sends bitmap bytes and never inspects image data.
+p-spr: func [id x y d] [ p-byte 83 p-num id p-num x p-num y p-num d p-eol ]
+
+spr-kaka: func [t] [
     x: block-at t F_X
     y: block-at t F_Y
-    ;; face the direction of travel (mirror x offsets) with a small bank from vy
-    s: either < block-at t F_VY 0 [ -1 ] [ 1 ]
-    b: / block-at t F_E 3
-    either = block-at t F_STATE KS_MUTANT [
-        p-ell x y 42 28 4
-        p-ell + x * s 8 - y 6 22 18 5
-        p-circ + x * s 22 - y 22 10 13
-        p-tri + x * s 30 - y 22 + x * s 42 - y 12 + x * s 30 - y 2 7
-        p-circ + x * s 16 - y 24 5 14
-        p-circ + x * s 27 - y 22 4 14
-        p-ell - x * s 20 + y 4 26 12 9
-        p-tri - x * s 42 y - x * s 66 + y b - x * s 38 + y 16 5
+    d: either < block-at t F_VY 0 [ -1 ] [ 1 ]
+    st: block-at t F_STATE
+    either = st KS_MUTANT [
+        either < - tick laser 9 [ p-spr 12 x y d ] [
+            p-spr either < mod tick 10 5 [ 10 ] [ 11 ] x y d
+        ]
     ] [
-        p-ell x y 22 14 4
-        p-ell + x * s 4 - y 6 12 10 5
-        p-circ + x * s 16 - y 12 8 13
-        p-tri + x * s 22 - y 14 + x * s 32 - y 8 + x * s 22 - y 2 7
-        p-circ + x * s 12 - y 14 3 15
-        p-circ + x * s 20 - y 13 3 15
-        p-ell - x * s 12 + y 2 14 8 9
-        p-tri - x * s 20 y - x * s 34 + y b - x * s 16 + y 12 5
-    ]
+    either = st KS_SWOOP [ p-spr 3 x y d ] [
+    either = st KS_EAT [ p-spr 2 x y d ] [
+    either = st KS_DIVERT [ p-spr 0 x y d ] [
+    either = st KS_LEAVE [ p-spr 1 x y d ] [
+        p-spr either < mod tick 12 6 [ 0 ] [ 1 ] x y d
+    ] ] ] ] ]
 ]
-rat-art: func [t] [
+spr-rat: func [t] [
     x: block-at t F_X
     y: block-at t F_Y
-    p-ell x y 9 5 2
-    p-circ + x 6 - y 5 3 2
-    p-line x - y 2 - x 14 + y 7 1 2
-    p-circ - x 7 - y 2 2 5
+    p-spr either < mod tick 8 4 [ 20 ] [ 21 ] x y block-at t F_A
 ]
-berry-art: func [t] [
+spr-berry: func [t] [
     x: block-at t F_X
     y: block-at t F_Y
-    either = block-at t F_A 1 [
-        p-circ x y 9 14
-        p-circ x y 4 1
-        p-circ x y 2 14
-    ] [
-        p-circ x y 5 5
-        p-circ x y 2 7
-    ]
-]
-pick-art: func [t] [
-    x: block-at t F_X
-    y: block-at t F_Y
-    p-circ x y 11 14
-    p-circ x y 6 1
-    p-circ x y 3 14
-]
-poop-art: func [t] [
-    p-circ block-at t F_X block-at t F_Y 4 8
+    either = block-at t F_A 1 [ p-spr 31 x y 1 ] [ p-spr 30 x y 1 ]
 ]
 actor-art: func [i] [
     either < i NTS [
         k: ts-k i
-        either = k K_KAKA [ kaka-art ts-t i ] [
-        either = k K_RAT [ rat-art ts-t i ] [
-        either = k K_BERRY [ berry-art ts-t i ] [
-        either = k K_PICK [ pick-art ts-t i ] [
-        either = k K_POOP [ poop-art ts-t i ] [ none ] ] ] ] ]
+        either = k K_KAKA [ spr-kaka ts-t i ] [
+        either = k K_RAT [ spr-rat ts-t i ] [
+        either = k K_BERRY [ spr-berry ts-t i ] [
+        either = k K_PICK [ p-spr 31 block-at ts-t i F_X block-at ts-t i F_Y 1 ] [
+        either = k K_POOP [ p-spr 32 block-at ts-t i F_X block-at ts-t i F_Y 1 ] [ none ] ] ] ] ]
         actor-art + i 1
     ] [ none ]
 ]
@@ -234,20 +211,12 @@ draw-player: func [] [
     p-tri px 332 + px 4 342 - px 4 342 8
     p-circ + px 8 - py 4 3 7
 ]
-draw-lasers: func [] [
-    either < - tick laser 9 [
-        p-line laser-ox laser-oy laser-x laser-y 3 14
-        p-circ laser-x laser-y 7 14
-        p-circ laser-x laser-y 3 1
-    ] [ none ]
-]
 render-canvas: func [] [
     p-clear
     p-cam 66
     draw-trees 0
     actor-art 0
     draw-player
-    draw-lasers
     p-cam 70
     p-finish
 ]
