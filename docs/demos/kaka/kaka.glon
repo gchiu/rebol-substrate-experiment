@@ -58,9 +58,9 @@ KS_SWOOP: 5
 
 ;; ---- globals -------------------------------------------------------------
 tick: 0 score: 0 over: 0
-;; `over`: no more threats (also all trees down). `dead`: last life lost; only
-;; `dead` stops player input.
-lives: 3 invuln: 0 highscore: 0 dead: 0
+;; `over` is the ONE authoritative terminal state (no lives OR no tree). tally
+;; recomputes it; HUD, splash and step all read this single flag.
+lives: 3 invuln: 0 highscore: 0
 kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
 px: 320 py: 330
 ;; camera: a small smoothed horizontal offset used ONLY for presentation. The
@@ -132,14 +132,6 @@ spawn-tree: func [i x] [
         block-set! t F_A TREE_MAX
         block-set! t F_B i
     ]
-]
-tree-live: func [] [ tl 0 0 ]
-tl: func [i n] [
-    either < i NTS [
-        tl + i 1 either = ts-k i K_TREE [
-            either > block-at ts-t i F_A 0 [ + n 1 ] [ n ]
-        ] [ n ]
-    ] [ n ]
 ]
 tree-sum: func [] [ tsum 0 0 ]
 tsum: func [i n] [
@@ -237,8 +229,9 @@ mutate: func [kt bt] [
 berry-step: func [t] [
     block-set! t F_Y + block-at t F_Y block-at t F_VY
     ;; after the terminal life loss, berries still travel and despawn but have
-    ;; no effect; a tree-fall `over` (not `dead`) keeps the original behaviour
-    either = dead 0 [ berry-hit t 0 ] [ none ]
+    ;; after the single terminal state, berries travel and despawn but
+    ;; have no effect
+    either = over 0 [ berry-hit t 0 ] [ none ]
     ;; berries are fired upward (F_VY < 0), so they leave the playfield at the
     ;; TOP. Freeing on Y > 480 (which only a downward-moving actor can reach)
     ;; leaked every missed berry in the fixed BERRY_MAX pool until firing died.
@@ -265,13 +258,13 @@ pick-step: func [t] [
     y: + block-at t F_Y block-at t F_VY
     block-set! t F_Y y
     either < abs - px block-at t F_X 26 [
-        either < abs - py y 30 [ either = dead 1 [ none ] [ berries: + berries 1 ]  ts-free t ] [ either > y 470 [ ts-free t ] [ none ] ]
+        either < abs - py y 30 [ either = over 1 [ none ] [ berries: + berries 1 ]  ts-free t ] [ either > y 470 [ ts-free t ] [ none ] ]
     ] [ either > y 470 [ ts-free t ] [ none ] ]
 ]
 poop-step: func [t] [
     y: + block-at t F_Y block-at t F_VY
     block-set! t F_Y y
-    either >= y 330 [ either = dead 1 [ ts-free t ] [ poop-land 0 t ] ] [ none ]
+    either >= y 330 [ either = over 1 [ ts-free t ] [ poop-land 0 t ] ] [ none ]
 ]
 poop-land: func [i t] [
     either < i NTS [
@@ -338,19 +331,22 @@ step: func [] [
     either > cd 0 [ cd: - cd 1 ] [ none ]
     either > glon-cd 0 [ glon-cd: - glon-cd 1 ] [ none ]
     either > invuln 0 [ invuln: - invuln 1 ] [ none ]
-    ;; `over` stops new threats/score; `dead` also stops the player. The world
-    ;; keeps moving/rendering in both (never frozen; in-flight berries clear).
-    either = over 0 [ spawn-timers ] [ none ]
-    either = dead 0 [ move-player  fire  fire-glon ] [ none ]
+    ;; terminal: input, spawns and scoring stop; the world keeps moving and
+    ;; rendering (never frozen) so in-flight berries clear.
+    either = over 0 [
+        spawn-timers
+        move-player
+        fire
+        fire-glon
+    ] [ none ]
     move-all 0
     either = over 0 [
         either >= tick next-milestone [ score: + score 50  next-milestone: + next-milestone 600 ] [ none ]
-        either = tree-live 0 [ over: 1 ] [ none ]
     ] [ none ]
 ]
 reset: func [] [
     tick: 0 score: 0 over: 0
-    lives: LIVES_MAX invuln: 0 dead: 0
+    lives: LIVES_MAX invuln: 0
     kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
     px: 320 py: 330 cd: 0 glon-cd: 0
     cam: 0
@@ -373,6 +369,9 @@ tally: func [] [
     n-kaka: 0  n-rat: 0  n-berry: 0  n-pick: 0  n-poop: 0
     trees-live: 0  tree-sum: 0
     tly 0
+    ;; ONE terminal predicate: no lives, or no gameplay tree. HUD, splash and
+    ;; step gating all read this single `over`.
+    over: either = lives 0 [ 1 ] [ either = trees-live 0 [ 1 ] [ 0 ] ]
 ]
 tly: func [i] [
     either < i NTS [
@@ -438,13 +437,13 @@ dmg-all-trees: func [i] [
         dmg-all-trees + i 1
     ] [ none ]
 ]
-on-debug-over: func [] [ dmg-all-trees 0  over: 1  tally  render ]
+on-debug-over: func [] [ dmg-all-trees 0  tally  render ]
 ;; deterministic test hooks: force one life loss, and set the current score
 on-debug-hit: func [] [ lose-life  tally  render ]
 on-debug-score: func [] [ score: str-int current-value  tally  render ]
 ;; soak hook: pin the life count so long-session berry/actor soaks do not end
 ;; the game and stop firing (the life rules have their own tests).
-on-debug-lives: func [] [ lives: str-int current-value  over: 0  dead: 0  tally  render ]
+on-debug-lives: func [] [ lives: str-int current-value  tally  render ]
 
 ;; the dispatcher is a table lookup (the same shape traffic.glon uses), so the
 ;; game reads as data and the routing stays in Glon.

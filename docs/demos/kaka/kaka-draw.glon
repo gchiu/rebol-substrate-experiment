@@ -34,7 +34,7 @@ respawn: func [] [ px: 320 py: 330 cam: 0 invuln: INVULN_TICKS ]
 lose-life: func [] [
     either < lives 1 [ none ] [
         lives: - lives 1
-        either < lives 1 [ lives: 0  over: 1  dead: 1 ] [ respawn ]
+        either < lives 1 [ lives: 0 ] [ respawn ]
     ]
 ]
 ;; Called by a mutant kaka each tick it holds a beam on its target rat. A
@@ -194,7 +194,7 @@ kaka-mutant: func [t] [
             laser-y: ry
             laser-hazard
             either < + abs - block-at t F_X rx abs - block-at t F_Y ry 40 [
-                either = dead 1 [ none ] [
+                either = over 1 [ none ] [
                     ts-free r
                     score: + score 25
                     mutant-kills: + mutant-kills 1
@@ -299,11 +299,11 @@ spr-rat: func [t] [
 ;; gnawed tree, so it is obvious which tree just lost health.
 gnaw-cue: func [t] [
     either > block-at t F_C 0 [
-        tl: block-at t F_E
-        p-circ - tl 6 - 330 mod tick 5 2 8
-        p-circ + tl 4 + 334 mod tick 7 2 8
-        p-circ + tl 10 + 326 mod tick 6 2 8
-        either > block-at t F_C - GNAW_TICKS 6 [ p-line tl 296 tl 344 2 15 ] [ none ]
+        gx: block-at t F_E
+        p-circ - gx 6 - 330 mod tick 5 2 8
+        p-circ + gx 4 + 334 mod tick 7 2 8
+        p-circ + gx 10 + 326 mod tick 6 2 8
+        either > block-at t F_C - GNAW_TICKS 6 [ p-line gx 296 gx 344 2 15 ] [ none ]
     ] [ none ]
 ]
 spr-berry: func [t] [
@@ -389,9 +389,9 @@ render-status: func [] [
     e-int px e-text " " e-int kl e-text " " e-int kr e-text " " e-int kf e-text " " e-int kg e-text " "
     e-int n-kaka e-text " " e-int n-rat e-text " "
     e-int mutant-active e-text " " e-int mutant-left e-text " " e-int py e-text " "
-    e-int lives e-text " " e-int invuln e-text " " e-int highscore e-text " " e-int dead
+    e-int lives e-text " " e-int invuln e-text " " e-int highscore
     e-text "</span>"
-    either = dead 1 [
+    either = over 1 [
         e-text "<div class='kaka-gameover'><div class='kaka-go-title'>GAME OVER!!!</div>"
         e-text "<div class='kaka-go-sub'>THE FOREST HAS FALLEN</div>"
         e-text "<div class='kaka-go-line'>SCORE: " e-int score "</div>"

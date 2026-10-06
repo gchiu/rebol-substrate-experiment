@@ -14,7 +14,7 @@
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
   var BUILD = "D12A.6";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12b2";
+  var VER = "d12b3";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
