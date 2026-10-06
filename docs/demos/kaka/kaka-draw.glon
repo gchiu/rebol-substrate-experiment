@@ -134,11 +134,12 @@ kaka-mutant: func [t] [
 ]
 
 ;; ---- rendering (Glon -> compact Canvas script; JS only paints) -----------
-;; NZ beech (mast) tree: a slender forked trunk carrying many small, irregular
-;; foliage clumps and fine beech seed -- never a round lollipop canopy. The
-;; health `h` (F_A, 0..100) drives five readable stages: intact, partly
-;; shredded, badly shredded, bare branches, and dead. Lives purely in Glon;
-;; kaka/rat damage reads as fewer leaves and more exposed branch.
+;; NZ beech (mast) tree. A visible forked trunk with a root flare carries an
+;; irregular crown of overlapping fine-foliage clumps and small pale beech seed
+;; -- never a round lollipop canopy. The health `h` (F_A, 0..100) drives five
+;; readable stages: intact, partly shredded, badly shredded, bare branches, and
+;; dead. Lives purely in Glon; kaka/rat damage reads as a thinner crown and more
+;; exposed branch.
 tree-art: func [t] [
     x: block-at t F_X
     h: block-at t F_A
@@ -147,44 +148,45 @@ tree-art: func [t] [
         p-line x 306 - x 17 286 2 2
         p-line x 306 + x 15 282 2 2
     ] [
-        p-rect - x 5 300 10 60 8
-        p-line x 302 - x 24 254 3 8
-        p-line x 302 + x 22 248 3 8
-        p-line x 300 - x 7 232 2 8
-        p-line x 300 + x 7 228 2 8
+        p-rect - x 6 300 12 60 8
+        p-tri - x 10 360 + x 10 360 x 336 8
+        p-line x 300 - x 30 250 3 8
+        p-line x 300 + x 27 244 3 8
+        p-line x 300 - x 6 228 2 8
+        p-line x 300 + x 8 224 2 8
         either > h 70 [
-            p-circ - x 26 252 6 4
-            p-circ + x 24 246 6 9
-            p-circ - x 9 232 6 4
-            p-circ + x 9 228 6 13
-            p-circ x 300 5 9
-            p-circ - x 10 244 5 13
-            p-circ + x 12 238 5 4
-            p-circ - x 17 240 2 1
-            p-circ + x 3 230 2 1
-            p-circ + x 25 250 1 1
-            p-circ x 296 6 1 1
-            p-circ + x 18 258 1 1
-            p-circ + x 6 + 258 mod + tick x 50 1 1
-            p-circ - x 10 + 282 mod + tick * x 3 50 1 1
+            p-circ - x 16 244 14 9
+            p-circ + x 14 236 14 4
+            p-circ x 226 13 9
+            p-circ - x 28 254 10 4
+            p-circ + x 28 248 10 13
+            p-circ x 252 10 13
+            p-circ - x 6 232 11 4
+            p-circ + x 8 224 10 9
+            p-circ x 240 12 4
+            p-circ - x 10 238 2 1
+            p-circ + x 12 232 2 1
+            p-circ x 250 2 1
+            p-circ - x 22 252 1 1
         ] [
             either > h 40 [
-                p-circ - x 24 252 5 4
-                p-circ + x 22 246 5 9
-                p-circ - x 8 232 5 13
-                p-circ + x 10 226 4 4
-                p-circ x 300 4 9
-                p-circ + x 14 240 2 1
-                p-circ - x 12 244 1 1
+                p-circ - x 18 248 11 9
+                p-circ + x 16 240 10 4
+                p-circ x 230 9 13
+                p-circ + x 26 250 7 4
+                p-circ - x 26 254 7 9
+                p-circ x 248 7 13
+                p-circ - x 12 244 2 1
+                p-circ + x 8 238 1 1
             ] [
                 either > h 10 [
-                    p-circ - x 20 252 4 9
-                    p-circ + x 18 246 3 4
-                    p-circ x 300 3 13
+                    p-circ - x 14 248 8 9
+                    p-circ + x 12 240 7 4
+                    p-circ x 232 6 13
                 ] [
-                    p-line - x 24 254 - x 34 240 2 8
-                    p-line + x 22 248 + x 34 236 2 8
-                    p-line - x 7 232 - x 14 220 2 8
+                    p-line - x 24 250 - x 34 236 2 8
+                    p-line + x 22 244 + x 34 232 2 8
+                    p-line - x 6 230 - x 14 218 2 8
                 ]
             ]
         ]
