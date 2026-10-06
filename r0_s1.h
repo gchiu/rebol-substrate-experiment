@@ -83,8 +83,12 @@ enum {
  * 54200, giving the loader heap [40000, 54200) = 14200 cells. The tuple-space
  * /dataflow demo + its canvas visualisation outgrew that, so the per-task RS
  * was trimmed (3200 -> 3000) and the arena base moved up to 54800, giving the
- * loader heap [40000, 54800) = 14800 cells. */
+ * loader heap [40000, 54800) = 14800 cells. A program that does not use the M1
+ * task arena (e.g. the standalone browser Kaka game) may override this on the
+ * compiler command line to reclaim the reserved arena as loader space. */
+#ifndef R0S1_HEAP_LIMIT
 #define R0S1_HEAP_LIMIT 54800L
+#endif
 #define R0S1_CTX_CAP   16      /* max bindings per child context */
 
 /* FIB-OPT-P8: contexts with fewer than this many bindings are resolved by the

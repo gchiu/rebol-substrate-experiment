@@ -13,11 +13,35 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var VER = "d12a8";
+  var VER = "d12b1";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
   var lastHtml = "";
+
+  /* High score bridge. Glon owns the current score and the comparison; the
+   * host only (a) reads the single persisted number and hands it to Glon at
+   * boot and (b) mirrors Glon's `#kaka-hs` value back into localStorage when
+   * it changes. JS never invents score rules. */
+  var HS_KEY = "glon.kaka.highscore.v1";
+  function sanitizeHigh(v) {
+    v = parseInt(v, 10);
+    if (!isFinite(v) || v < 0) return 0;
+    return Math.floor(v);
+  }
+  function readStoredHigh() {
+    try { return sanitizeHigh(localStorage.getItem(HS_KEY)); } catch (e) { return 0; }
+  }
+  var lastSaved = readStoredHigh();
+  function persistHighFromHtml(html) {
+    var m = /id='kaka-hs'[^>]*>(\d+)</.exec(html);
+    if (!m) return;
+    var v = sanitizeHigh(m[1]);
+    if (v !== lastSaved) {
+      try { localStorage.setItem(HS_KEY, String(v)); } catch (e) {}
+      lastSaved = v;
+    }
+  }
 
   /* Fixed-timestep driver. requestAnimationFrame is only the browser clock and
    * render driver; the Glon simulation advances at a fixed wall-clock rate so
@@ -198,8 +222,9 @@
       },
       host_set_html: function (h, ptr, len) {
         var el = document.querySelector('[data-glon-id="' + h + '"]');
-        if (!el) return;
         var html = dec.decode(view().subarray(ptr, ptr + len));
+        persistHighFromHtml(html);
+        if (!el) return;
         if (html !== lastHtml) { el.innerHTML = html; lastHtml = html; }
       },
       host_canvas_script: function (ptr, len) {
@@ -296,6 +321,8 @@
         document.addEventListener("mousedown", function (e) {
           if (e.target && e.target.id === "glon-canvas") e.preventDefault();
         });
+        /* Hand the one persisted number to Glon; Glon decides what it means. */
+        evVal("kaka-highscore", String(readStoredHigh()));
         route("home");
         focusGame();
         requestAnimationFrame(frame);

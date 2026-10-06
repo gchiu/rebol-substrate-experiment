@@ -4,6 +4,7 @@ glon
 glon-lib/
 glon-live-native-test
 demo/shop/glon-live.wasm
+demo/shop/glon-kaka.wasm
 demo/shop/glon.wasm
 *.o
 *.obj

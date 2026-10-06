@@ -2,6 +2,51 @@
 ;; Split out of kaka.glon to stay within the 16 KiB Glon source buffer; the
 ;; game state and rules live in kaka.glon (loaded first).
 [
+;; ---- lives, laser hazard and high score ----------------------------------
+;; Split out of kaka.glon to stay within the 16 KiB source buffer; the game
+;; state and globals live in kaka.glon (loaded first), functions resolve at call.
+imin: func [a b] [ either < a b [ a ] [ b ] ]
+imax: func [a b] [ either > a b [ a ] [ b ] ]
+;; Does the beam (ax,ay)-(bx,by) touch the axis-aligned box
+;; [x0,y0,x1,y1]? Integer separating-axis test, no division: overlap on X, on
+;; Y, and on the beam normal. Used for the powered kaka's ocular laser only.
+;; (Kept to 13 bindings: an activation context holds at most R0S1_CTX_CAP=16.)
+seg-rect?: func [ax ay bx by x0 y0 x1 y1] [
+    dx: - bx ax
+    dy: - by ay
+    p: - * dx ay * dy ax
+    rl: imin imin - * dx y0 * dy x0 - * dx y0 * dy x1 imin - * dx y1 * dy x0 - * dx y1 * dy x1
+    rh: imax imax - * dx y0 * dy x0 - * dx y0 * dy x1 imax - * dx y1 * dy x0 - * dx y1 * dy x1
+    either > imin ax bx x1 [ 0 ] [
+    either < imax ax bx x0 [ 0 ] [
+    either > imin ay by y1 [ 0 ] [
+    either < imax ay by y0 [ 0 ] [
+        either < p rl [ 0 ] [ either > p rh [ 0 ] [ 1 ] ]
+    ] ] ] ]
+]
+;; The ranger's hitbox in world coordinates (matches draw-player: head + body).
+laser-hits-player?: func [] [
+    seg-rect? laser-ox laser-oy laser-x laser-y - px 10 - py 14 + px 10 + py 22
+]
+respawn: func [] [ px: 320 py: 330 cam: 0 invuln: INVULN_TICKS ]
+;; One life, exactly: a non-terminal hit respawns with brief invulnerability;
+;; the last life is terminal (over). `over` gates all further loss.
+lose-life: func [] [
+    either < lives 1 [ none ] [
+        lives: - lives 1
+        either < lives 1 [ lives: 0  over: 1  dead: 1 ] [ respawn ]
+    ]
+]
+;; Called by a mutant kaka each tick it holds a beam on its target rat. A
+;; crossing during invulnerability or after game over changes nothing.
+laser-hazard: func [] [
+    either = over 0 [
+        either < invuln 1 [ either laser-hits-player? [ lose-life ] [ none ] ] [ none ]
+    ] [ none ]
+]
+;; The high score is Glon's: it only ever rises from the current score.
+update-high: func [] [ either > score highscore [ highscore: score ] [ none ] ]
+
 ;; ---- kaka flight: velocity + bounded steering gives curved bird paths -----
 ;; Each bird carries its own x/y velocity (F_VY/F_E). Every tick it steers one
 ;; bounded step toward a phase waypoint, so heading changes lag the target and
@@ -111,23 +156,30 @@ nr: func [i best bd t] [
     ] [ best ]
 ]
 kaka-mutant: func [t] [
-    either > tick block-at t F_B [ block-set! t F_STATE KS_LEAVE ] [
+    either > tick block-at t F_B [ block-set! t F_STATE KS_LEAVE  laser: -99 ] [
         r: nearest-rat t
         either = r none [
+            laser: -99
             k-move t block-at t F_X 130 0 4
         ] [
             rx: block-at r F_X
             ry: block-at r F_Y
             k-move t rx ry 6 6
+            ;; The ocular laser runs from the kaka's eye to its target rat for
+            ;; as long as it is targeting. It only ever aims at a rat; the
+            ;; ranger is hit only if the actual beam segment crosses its hitbox.
+            laser: tick
+            laser-ox: block-at t F_X
+            laser-oy: - block-at t F_Y 18
+            laser-x: rx
+            laser-y: ry
+            laser-hazard
             either < + abs - block-at t F_X rx abs - block-at t F_Y ry 40 [
-                laser: tick
-                laser-ox: block-at t F_X
-                laser-oy: - block-at t F_Y 18
-                laser-x: rx
-                laser-y: ry
-                ts-free r
-                score: + score 25
-                mutant-kills: + mutant-kills 1
+                either = dead 1 [ none ] [
+                    ts-free r
+                    score: + score 25
+                    mutant-kills: + mutant-kills 1
+                ]
             ] [ none ]
         ]
     ]
@@ -248,17 +300,29 @@ draw-trees: func [i] [
         draw-trees + i 1
     ] [ none ]
 ]
-draw-player: func [] [
+draw-player-solid: func [] [
     p-ell px 324 9 9 1
     p-rect - px 7 332 14 22 6
     p-tri px 332 + px 4 342 - px 4 342 8
     p-circ + px 8 - py 4 3 7
+]
+;; post-respawn invulnerability is shown by blinking the ranger (presentation
+;; only; the rule lives in Glon state).
+draw-player: func [] [
+    either > invuln 0 [
+        either < mod tick 8 4 [ draw-player-solid ] [ none ]
+    ] [ draw-player-solid ]
+]
+;; The mutant's ocular beam, drawn from its eye to its target rat.
+draw-laser: func [] [
+    either > laser 0 [ p-line laser-ox laser-oy laser-x laser-y 2 14 ] [ none ]
 ]
 render-canvas: func [] [
     p-clear
     p-cam 66
     draw-trees 0
     actor-art 0
+    draw-laser
     draw-player
     p-cam 70
     p-finish
@@ -270,22 +334,38 @@ render-status: func [] [
     e-text "<h1>Attack of the Mutant Kaka</h1>"
     e-text "<p class='tag'>Eco-Warriors of Karori, Unite!</p>"
     e-text "<p class='hud'>SCORE: " e-int score
+    e-text "    Lives: " e-int lives
     e-text "    Trees: " e-int trees-live e-text "/" e-int NTREES
     e-text "    Habitat: " e-int tree-sum e-text "/" e-int * NTREES TREE_MAX
     e-text "    Glon Berries: " e-int berries
-    either = over 1 [ e-text "    <b>GAME OVER &mdash; press R</b>" ] [ none ]
+    e-text "    HIGH SCORE: " e-int highscore
+    either > invuln 0 [ e-text "    <b class='invuln'>INVULNERABLE</b>" ] [ none ]
+    either = over 1 [ e-text "    <b>GAME OVER</b>" ] [ none ]
     e-text "</p>"
     either = mutant-active 1 [
         e-text "<p class='mutant'>MUTANT KAKA &mdash; OCULAR LASERS ACTIVE ("
         e-int / mutant-left 60 e-text "s)</p>"
     ] [ e-text "<p class='muted'>Kaka are native wildlife: berries divert, lasers only zap rats.</p>" ]
     e-text "<p class='keys'>Arrow keys / WASD move &middot; Space fire berry &middot; G Mystery Glon Berry &middot; R restart</p>"
+    ;; The host mirrors this numeric value into localStorage (small semantic
+    ;; bridge); Glon owns the value and the comparison.
+    e-text "<span id='kaka-hs' style='display:none'>" e-int highscore e-text "</span>"
     e-text "<span id='kaka-state' style='display:none'>"
     e-int tick e-text " " e-int score e-text " " e-int over e-text " " e-int berries e-text " "
     e-int px e-text " " e-int kl e-text " " e-int kr e-text " " e-int kf e-text " " e-int kg e-text " "
     e-int n-kaka e-text " " e-int n-rat e-text " "
-    e-int mutant-active e-text " " e-int mutant-left e-text " " e-int py
+    e-int mutant-active e-text " " e-int mutant-left e-text " " e-int py e-text " "
+    e-int lives e-text " " e-int invuln e-text " " e-int highscore e-text " " e-int dead
     e-text "</span>"
+    either = dead 1 [
+        e-text "<div class='kaka-gameover'><div class='kaka-go-title'>GAME OVER!!!</div>"
+        e-text "<div class='kaka-go-sub'>THE FOREST HAS FALLEN</div>"
+        e-text "<div class='kaka-go-line'>SCORE: " e-int score "</div>"
+        e-text "<div class='kaka-go-line'>HIGH SCORE: " e-int highscore "</div>"
+        e-text "<div class='kaka-go-again'>PRESS R TO PLAY AGAIN</div>"
+        e-text "<button class='kaka-go-btn' data-glon-event='kaka-restart'>PLAY AGAIN</button>"
+        e-text "</div>"
+    ] [ none ]
     e-finish
 ]
 render: func [] [ render-canvas render-status ]

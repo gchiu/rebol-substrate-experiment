@@ -24,6 +24,15 @@ window.__long = {
 };
 window.addEventListener("error", function (e) { window.__long.errors.push("error: " + e.message); });
 window.addEventListener("unhandledrejection", function (e) { window.__long.errors.push("rejection: " + e.reason); });
+/* deliver a valued event through the page's own exports (the Kaka host's DOM
+   delegation carries no value) */
+window.__sendVal = function (tok, val) {
+  var ex = window.__ex; if (!ex) return -1;
+  var enc = new TextEncoder();
+  function put(s) { var b = enc.encode(s); var p = ex.glon_alloc(b.length); new Uint8Array(ex.memory.buffer).set(b, p); return [p, b.length]; }
+  var a = put(tok), b = put(val);
+  return ex.glon_event_value(a[0], a[1], b[0], b[1]);
+};
 
 (function () {
   var origInstantiate = WebAssembly.instantiate.bind(WebAssembly);
@@ -113,6 +122,11 @@ window.addEventListener("unhandledrejection", function (e) { window.__long.error
   (async function () {
     while (D.frame < MAX_FRAMES) { if (state().length >= 13 && D.instr.tick > 0) break; D.frame++; await frame(); }
     if (state().length < 13) { finish(false, "boot timeout"); return; }
+
+    /* Pin the life count: the mutant-laser hazard can otherwise end the game
+       mid-soak and stop input. This soak tests long-session stability, not the
+       life rules (which have their own deterministic tests). */
+    window.__sendVal("kaka-debug-lives", "999999");
 
     var mutants = 0, lastMutant = 0, restarts = 0, srcOk = true;
     setKey("fire", true);

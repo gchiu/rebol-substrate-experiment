@@ -114,7 +114,7 @@ fib-p10b-bench: r0_s1_p10b_bench.c r0_s1_runtime.c s1.c
 
 clean:
 	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench fib-p10b-bench traffic-bench-o0 traffic-bench-o2 glon-live-native-test demo/shop/glon-live.wasm $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
-	rm -f glon-desktop glon-desktop.exe desktop-test patrol-test kaka-test kaka-render-test desktop/glon.wasm desktop/prelude.glon desktop/strings.glon desktop/big.txt
+	rm -f glon-desktop glon-desktop.exe desktop-test patrol-test kaka-test kaka-render-test kaka-life-test desktop/glon.wasm desktop/prelude.glon desktop/strings.glon desktop/big.txt
 	rm -rf glon glon-lib
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
@@ -387,26 +387,41 @@ patrol-serve: demos/patrol/glon.wasm demos/patrol/prelude.glon demos/patrol/stri
 	sh demos/patrol/run.sh
 
 # ---- D12A: Attack of the Mutant Kaka rule tests (game asserts in Glon) -----
+# Kaka uses no M1 multitasking tasks, so its runtime reclaims the reserved M1
+# task arena as loader heap (R0S1_HEAP_LIMIT override). The shared shop WASM
+# keeps the default 14800-cell loader heap (Linda does use tasks).
+KAKA_HEAP_LIMIT = 64000
+KAKA_LIMIT_FLAG = -DR0S1_HEAP_LIMIT=$(KAKA_HEAP_LIMIT)
+
+demo/shop/glon-kaka.wasm: standalone/glon.c r0_s1_g1a.c r0_s1_g1a.h s1.c s1.h r0_s1_runtime.c r0_s1_show.c r0_s1.h
+	$(EMCC) $(STANDALONE_FLAGS) $(KAKA_LIMIT_FLAG) standalone/glon.c r0_s1_g1a.c s1.c r0_s1_runtime.c r0_s1_show.c -o $@
+
 kaka-test: demos/kaka/kaka_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c \
            r0_s1.h r0_s1_g1a.h s1.h m1_layout.h kaka-render-test | glon-lib
-	$(CC) $(CFLAGS) -I. -o $@ demos/kaka/kaka_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c
+	$(CC) $(CFLAGS) $(KAKA_LIMIT_FLAG) -I. -o $@ demos/kaka/kaka_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c
 	./kaka-test
 
 # D12A.7: render-binding regression -- damages each gameplay tree separately
 # and proves only that tree's rendered instance changes (test-only overlay).
 kaka-render-test: demos/kaka/kaka_render_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c \
                   r0_s1.h r0_s1_g1a.h s1.h m1_layout.h | glon-lib
-	$(CC) $(CFLAGS) -I. -o $@ demos/kaka/kaka_render_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c
+	$(CC) $(CFLAGS) $(KAKA_LIMIT_FLAG) -I. -o $@ demos/kaka/kaka_render_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c
 	./kaka-render-test
 
-# D12A: headless WASM verification + tick soak (the real shop WASM + node).
-wasm-kaka-test:
+# D12A: lives / laser hazard / game-over / high-score rendered-output tests.
+kaka-life-test: demos/kaka/kaka_life_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c \
+                r0_s1.h r0_s1_g1a.h s1.h m1_layout.h | glon-lib
+	$(CC) $(CFLAGS) $(KAKA_LIMIT_FLAG) -I. -o $@ demos/kaka/kaka_life_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c
+	./kaka-life-test
+
+# D12A: headless WASM verification + tick soak (the Kaka WASM + node).
+wasm-kaka-test: demo/shop/glon-kaka.wasm
 	node demos/kaka/kaka_wasm_test.js | tee /tmp/opencode_kaka_wasm.out
 	@grep -q "KAKA_WASM_TEST PASS" /tmp/opencode_kaka_wasm.out && \
 	 echo "wasm-kaka-test: PASS (kaka selftest + tick soak on real WASM)"
 
 # D12A: stage and serve the browser/WASM Kaka demo (no native host).
-demos/kaka/glon.wasm: demo/shop/glon.wasm
+demos/kaka/glon.wasm: demo/shop/glon-kaka.wasm
 	cp $< $@
 demos/kaka/prelude.glon: jupyter/prelude.glon
 	cp $< $@
@@ -480,4 +495,4 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve kaka-test kaka-render-test kaka-serve wasm-kaka-test kaka-browser-regression kaka-refresh-regression
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve kaka-test kaka-render-test kaka-life-test kaka-serve wasm-kaka-test kaka-browser-regression kaka-refresh-regression

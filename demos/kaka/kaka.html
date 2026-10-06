@@ -18,6 +18,22 @@
   .keys { color: #ffe066; font-size: 1rem; font-weight: 600; margin: .4rem 0 .7rem; }
   .keys strong { color: #fff; }
   a { color: #7fa7ec; }
+  .invuln { color: #4fd1c5; }
+  /* Large terminal game-over splash: a fixed, full-viewport overlay so it
+     dominates rather than reading as another HUD label. */
+  .kaka-gameover { position: fixed; inset: 0; z-index: 100; display: flex;
+    flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    padding: 1rem; background: radial-gradient(circle at 50% 38%, rgba(90,12,12,.96), rgba(5,2,8,.99));
+    color: #ffd23f; }
+  .kaka-go-title { font-size: clamp(3rem, 13vw, 9rem); font-weight: 900; letter-spacing: .06em;
+    color: #ff3d3d; text-shadow: 0 0 36px rgba(255,60,60,.85); line-height: 1; }
+  .kaka-go-sub { font-size: clamp(1.2rem, 4.5vw, 3.2rem); font-weight: 800; color: #f2e9d8;
+    margin: .4em 0 1em; }
+  .kaka-go-line { font-size: clamp(1.1rem, 3.4vw, 2.4rem); font-weight: 700; margin: .12em 0; }
+  .kaka-go-again { font-size: clamp(1rem, 2.8vw, 1.9rem); font-weight: 800; color: #7fd18a;
+    margin: 1.1em 0 .5em; animation: pulse 1s steps(2) infinite; }
+  .kaka-go-btn { font: inherit; font-size: 1.3rem; font-weight: 700; padding: .55em 1.5em;
+    cursor: pointer; border-radius: .4rem; }
 </style>
 </head>
 <body>
@@ -30,6 +46,6 @@
 <p class="muted">The kaka are native wildlife and must never be shot; berries divert them.
    Lasers only zap introduced rats. Arcade fiction: do not feed real wild kaka.
    &middot; <a href="../patrol/patrol.html">Glon Patrol</a></p>
-<script src="kaka-host.js?v=d12a8"></script>
+<script src="kaka-host.js?v=d12b1"></script>
 </body>
 </html>

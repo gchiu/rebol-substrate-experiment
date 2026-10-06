@@ -39,6 +39,10 @@ static int load_file(const char *path) {
     if (err) { fprintf(stderr, "kaka-test: parse error in %s (%d)\n", path, err); return -2; }
     r0_s1_run_persistent(b);
     if (!r0_s1_ran_cleanly()) { fprintf(stderr, "kaka-test: run failed in %s\n", path); return -3; }
+    printf("loader after %-22s: used %ld / %ld cells (%ld free)\n",
+           path, (long)(M[GC_LOADER_HP] - R0S1_HEAP_BASE),
+           (long)(R0S1_HEAP_LIMIT - R0S1_HEAP_BASE),
+           (long)(R0S1_HEAP_LIMIT - M[GC_LOADER_HP]));
     return 0;
 }
 

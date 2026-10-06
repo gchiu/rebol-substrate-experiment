@@ -1,7 +1,9 @@
 // demos/kaka/kaka_wasm_test.js -- headless WASM verification + soak for
 // Attack of the Mutant Kaka (no DOM, no browser, no Emscripten runtime).
 //
-// Instantiates the real demo/shop/glon.wasm with the four host imports, loads
+// Instantiates the real Kaka WASM (demo/shop/glon-kaka.wasm, the runtime with
+// the loader limit raised to reclaim the unused M1 arena) with the four host
+// imports, loads
 // prelude + strings + kaka-lib + kaka + kaka-draw + kaka-selftest exactly as
 // kaka-host.js does, dispatches kaka-start / kaka-selftest, then sustains many
 // kaka-tick events while holding fire and periodically launching a Glon Berry.
@@ -14,7 +16,7 @@ const path = require("path");
 
 const HERE = __dirname;
 const ROOT = path.resolve(HERE, "..", "..");
-const WASM = path.join(ROOT, "demo", "shop", "glon.wasm");
+const WASM = path.join(ROOT, "demo", "shop", "glon-kaka.wasm");
 
 const rendered = [];
 const canvasScripts = [];
@@ -117,6 +119,9 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   }
 
   // soak: hold fire + glon berry and run many real ticks, cycling restarts.
+  // Pin the lives so the mutant-laser hazard cannot end the game and stop
+  // firing mid-soak (the life rules have their own deterministic tests).
+  eventValue("kaka-debug-lives", "999999");
   eventValue("kaka-key-down", "fire");
   const SOAK = Number(process.env.KAKA_SOAK_TICKS || 1200);
   let maxBerries = 0, mutants = 0, restarts = 0, drawTicks = 0;

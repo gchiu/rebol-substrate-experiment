@@ -21,6 +21,8 @@ KAKA_MAX: 4
 RAT_MAX: 5
 BERRY_MAX: 6
 POOP_MAX: 4
+LIVES_MAX: 3
+INVULN_TICKS: 50
 
 ;; tuple space kinds
 K_EMPTY: 0
@@ -55,6 +57,9 @@ KS_SWOOP: 5
 
 ;; ---- globals -------------------------------------------------------------
 tick: 0 score: 0 over: 0
+;; `over`: no more threats (also all trees down). `dead`: last life lost; only
+;; `dead` stops player input.
+lives: 3 invuln: 0 highscore: 0 dead: 0
 kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
 px: 320 py: 330
 ;; camera: a small smoothed horizontal offset used ONLY for presentation. The
@@ -225,7 +230,9 @@ mutate: func [kt bt] [
 ]
 berry-step: func [t] [
     block-set! t F_Y + block-at t F_Y block-at t F_VY
-    berry-hit t 0
+    ;; after the terminal life loss, berries still travel and despawn but have
+    ;; no effect; a tree-fall `over` (not `dead`) keeps the original behaviour
+    either = dead 0 [ berry-hit t 0 ] [ none ]
     ;; berries are fired upward (F_VY < 0), so they leave the playfield at the
     ;; TOP. Freeing on Y > 480 (which only a downward-moving actor can reach)
     ;; leaked every missed berry in the fixed BERRY_MAX pool until firing died.
@@ -252,13 +259,13 @@ pick-step: func [t] [
     y: + block-at t F_Y block-at t F_VY
     block-set! t F_Y y
     either < abs - px block-at t F_X 26 [
-        either < abs - py y 30 [ berries: + berries 1  ts-free t ] [ either > y 470 [ ts-free t ] [ none ] ]
+        either < abs - py y 30 [ either = dead 1 [ none ] [ berries: + berries 1 ]  ts-free t ] [ either > y 470 [ ts-free t ] [ none ] ]
     ] [ either > y 470 [ ts-free t ] [ none ] ]
 ]
 poop-step: func [t] [
     y: + block-at t F_Y block-at t F_VY
     block-set! t F_Y y
-    either >= y 330 [ poop-land 0 t ] [ none ]
+    either >= y 330 [ either = dead 1 [ ts-free t ] [ poop-land 0 t ] ] [ none ]
 ]
 poop-land: func [i t] [
     either < i NTS [
@@ -324,16 +331,20 @@ step: func [] [
     tick: + tick 1
     either > cd 0 [ cd: - cd 1 ] [ none ]
     either > glon-cd 0 [ glon-cd: - glon-cd 1 ] [ none ]
-    move-player
-    fire
-    fire-glon
+    either > invuln 0 [ invuln: - invuln 1 ] [ none ]
+    ;; `over` stops new threats/score; `dead` also stops the player. The world
+    ;; keeps moving/rendering in both (never frozen; in-flight berries clear).
     either = over 0 [ spawn-timers ] [ none ]
+    either = dead 0 [ move-player  fire  fire-glon ] [ none ]
     move-all 0
-    either = over 0 [ either >= tick next-milestone [ score: + score 50  next-milestone: + next-milestone 600 ] [ none ] ] [ none ]
-    either = tree-live 0 [ over: 1 ] [ none ]
+    either = over 0 [
+        either >= tick next-milestone [ score: + score 50  next-milestone: + next-milestone 600 ] [ none ]
+        either = tree-live 0 [ over: 1 ] [ none ]
+    ] [ none ]
 ]
 reset: func [] [
     tick: 0 score: 0 over: 0
+    lives: LIVES_MAX invuln: 0 dead: 0
     kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
     px: 320 py: 330 cd: 0 glon-cd: 0
     cam: 0
@@ -351,6 +362,7 @@ reset: func [] [
 ;; one pass over the tuple space, refreshing every aggregate the spawn logic,
 ;; HUD and tests read. Replaces Patrol's hard-coded per-entity variables.
 tally: func [] [
+    update-high
     mutant-active: 0  mutant-left: 0
     n-kaka: 0  n-rat: 0  n-berry: 0  n-pick: 0  n-poop: 0
     trees-live: 0  tree-sum: 0
@@ -396,6 +408,14 @@ on-start: func [] [ reset tally render ]
 on-key-down: func [] [ set-key current-value 1 render ]
 on-key-up: func [] [ set-key current-value 0 render ]
 on-input-reset: func [] [ reset-input render ]
+;; The persisted high score is handed in as an event value at boot. Glon owns
+;; the comparison: a stored value can only ever raise the high score, so lower
+;; junk can never overwrite a better one.
+on-highscore: func [] [
+    v: str-int current-value
+    either > v highscore [ highscore: v ] [ none ]
+    render
+]
 ;; soak/test hooks (deterministic; they change state, not rules): force the
 ;; first kaka into mutant state, and grant a Mystery Glon Berry.
 on-debug-mutant: func [] [ dm 0  tally  render ]
@@ -413,6 +433,12 @@ dmg-all-trees: func [i] [
     ] [ none ]
 ]
 on-debug-over: func [] [ dmg-all-trees 0  over: 1  tally  render ]
+;; deterministic test hooks: force one life loss, and set the current score
+on-debug-hit: func [] [ lose-life  tally  render ]
+on-debug-score: func [] [ score: str-int current-value  tally  render ]
+;; soak hook: pin the life count so long-session berry/actor soaks do not end
+;; the game and stop firing (the life rules have their own tests).
+on-debug-lives: func [] [ lives: str-int current-value  over: 0  dead: 0  tally  render ]
 
 ;; the dispatcher is a table lookup (the same shape traffic.glon uses), so the
 ;; game reads as data and the routing stays in Glon.
@@ -424,9 +450,13 @@ events: [
     ['kaka-key-up [ on-key-up ]]
     ['kaka-input-reset [ on-input-reset ]]
     ['kaka-selftest [ selftest ]]
+    ['kaka-highscore [ on-highscore ]]
     ['kaka-debug-mutant [ on-debug-mutant ]]
     ['kaka-debug-give [ on-debug-give ]]
     ['kaka-debug-over [ on-debug-over ]]
+    ['kaka-debug-hit [ on-debug-hit ]]
+    ['kaka-debug-score [ on-debug-score ]]
+    ['kaka-debug-lives [ on-debug-lives ]]
 ]
 do-event: [
     event-row: select events current-event

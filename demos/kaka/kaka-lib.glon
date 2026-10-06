@@ -18,6 +18,28 @@
 mod: func [a b] [ - a * b / a b ]
 abs: func [n] [ either < n 0 [ - 0 n ] [ n ] ]
 
+;; str-int: parse a decimal STRING! ("1234") into an integer!. The host
+;; sanitises the persisted high score to digits only before crossing the ABI,
+;; so this reads bytes 0..9 and accumulates; an empty string parses as 0. RAW
+;; HOST arithmetic is untagged, so the result is tagged with *16 like p-num.
+str-int: masm 1 [
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT 0 LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_C !
+    LIT SCRATCH_A @ @ LIT SCRATCH_F !
+  si-loop:
+    LIT SCRATCH_C @ LIT SCRATCH_F @ LT ZBRANCH si-done
+    LIT SCRATCH_B @ LIT 10 MUL
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_C @ ADD @
+    LIT 48 SUB
+    ADD
+    LIT SCRATCH_B !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    BRANCH si-loop
+  si-done:
+    LIT SCRATCH_B @ LIT 16 MUL ARITY 1 EXIT
+]
+
 ;; new-block: allocate a managed BLOCK of n elements (all none). The actor
 ;; tuple pool is built from these at load time, so spawning an actor never
 ;; allocates: it claims a pre-built tuple (see ts-claim in kaka.glon).

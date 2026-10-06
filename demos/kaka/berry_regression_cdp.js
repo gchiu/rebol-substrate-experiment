@@ -46,6 +46,15 @@ const INJECT = `(function(){
       return res;
     });
   };
+  /* deliver a valued event through the page's own exports (the Kaka host's
+     DOM delegation carries no value) */
+  window.__sendVal = function(tok, val){
+    var ex = window.__ex; if (!ex) return -1;
+    var enc = new TextEncoder();
+    function put(s){ var b = enc.encode(s); var p = ex.glon_alloc(b.length); new Uint8Array(ex.memory.buffer).set(b, p); return [p, b.length]; }
+    var a = put(tok), b = put(val);
+    return ex.glon_event_value(a[0], a[1], b[0], b[1]);
+  };
 })();`;
 
 (async () => {
@@ -104,6 +113,11 @@ const INJECT = `(function(){
     await sleep(500);
   }
   if (!tick0) fail("boot timeout: game state / render never appeared");
+
+  /* Pin the life count: the mutant-laser hazard would otherwise end the game
+     during this long soak and stop firing. Berry-pool behaviour is what this
+     regression tests; the life rules have their own tests. */
+  await evalv("window.__sendVal('kaka-debug-lives','999999')");
 
   /* create the churn button once (forces a kaka into mutant state each click) */
   await evalv("(function(){var b=document.createElement('button');b.setAttribute('data-glon-event','kaka-debug-mutant');b.style.display='none';document.body.appendChild(b);})()");

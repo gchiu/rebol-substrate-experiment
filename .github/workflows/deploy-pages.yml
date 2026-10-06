@@ -93,6 +93,9 @@ jobs:
       - name: WASM verification + tick soak for Glon Kaka
         run: make wasm-kaka-test
 
+      - name: Kaka lives / game-over / high-score tests
+        run: make kaka-life-test
+
       - name: Assemble site files
         run: |
           rm -rf /tmp/shop && mkdir -p /tmp/shop
@@ -129,7 +132,7 @@ jobs:
           cp demos/kaka/kaka.html demos/kaka/kaka-host.js demos/kaka/kaka.glon \
              demos/kaka/kaka-lib.glon demos/kaka/kaka-draw.glon demos/kaka/kaka-selftest.glon \
              pages/docs/demos/kaka/
-          cp demo/shop/glon.wasm pages/docs/demos/kaka/glon.wasm
+          cp demo/shop/glon-kaka.wasm pages/docs/demos/kaka/glon.wasm
           cp jupyter/prelude.glon pages/docs/demos/kaka/prelude.glon
           cp demo/shop/strings.glon pages/docs/demos/kaka/strings.glon
           # Parallax + sprite scenery: the PNGs are served verbatim and painted

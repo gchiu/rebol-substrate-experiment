@@ -193,12 +193,69 @@ test-c: func [] [
     either < block-at ts-t 0 F_A TREE_MAX [ none ] [ fails: + fails 1 ]
 ]
 
+;; ---- tests 16-21: lives, laser hazard, invulnerability, game over ---------
+test-d: func [] [
+    ;; 16. a new game starts with three lives and is not over
+    reset
+    either = lives 3 [ none ] [ fails: + fails 1 ]
+    either = over 0 [ none ] [ fails: + fails 1 ]
+    ;; 17. a beam that misses the ranger hitbox changes nothing
+    laser-ox: 100 laser-oy: 180 laser-x: 100 laser-y: 340
+    either = laser-hits-player? 0 [ none ] [ fails: + fails 1 ]
+    invuln: 0  laser-hazard
+    either = lives 3 [ none ] [ fails: + fails 1 ]
+    ;; 18. a beam crossing the ranger removes exactly one life
+    laser-ox: 320 laser-oy: 180 laser-x: 320 laser-y: 340
+    either = laser-hits-player? 1 [ none ] [ fails: + fails 1 ]
+    invuln: 0  laser-hazard
+    either = lives 2 [ none ] [ fails: + fails 1 ]
+    ;; 19. invulnerability blocks a repeated crossing
+    either > invuln 0 [ none ] [ fails: + fails 1 ]
+    laser-hazard
+    either = lives 2 [ none ] [ fails: + fails 1 ]
+    ;; 20. once invulnerability expires a crossing removes another life
+    invuln: 0  laser-hazard
+    either = lives 1 [ none ] [ fails: + fails 1 ]
+    ;; 21. the final life is terminal game over; crossings then change nothing
+    invuln: 0  laser-hazard
+    either = lives 0 [ none ] [ fails: + fails 1 ]
+    either = over 1 [ none ] [ fails: + fails 1 ]
+    invuln: 0  laser-hazard
+    either = lives 0 [ none ] [ fails: + fails 1 ]
+]
+
+;; ---- tests 22-25: restart, high score, decimal parse ---------------------
+test-e: func [] [
+    ;; 22. restart resets lives and clears game over, but keeps the high score
+    reset
+    highscore: 777
+    score: 123
+    tally
+    over: 1
+    either = highscore 777 [ none ] [ fails: + fails 1 ]
+    reset
+    either = lives 3 [ none ] [ fails: + fails 1 ]
+    either = over 0 [ none ] [ fails: + fails 1 ]
+    either = highscore 777 [ none ] [ fails: + fails 1 ]
+    ;; 23. a lower score never lowers the high score
+    highscore: 500  score: 100  tally
+    either = highscore 500 [ none ] [ fails: + fails 1 ]
+    ;; 24. a higher score raises the high score
+    highscore: 100  score: 500  tally
+    either = highscore 500 [ none ] [ fails: + fails 1 ]
+    ;; 25. the persisted decimal parser is exact
+    either = str-int "4096" 4096 [ none ] [ fails: + fails 1 ]
+    either = str-int "0" 0 [ none ] [ fails: + fails 1 ]
+]
+
 selftest: func [] [
     fails: 0
     reset
     test-a
     test-b
     test-c
+    test-d
+    test-e
     reset
     e-clear
     either = fails 0 [ e-text "KAKA-SELFTEST PASS" ] [ e-text "KAKA-SELFTEST FAIL " e-int fails ]
