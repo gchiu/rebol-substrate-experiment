@@ -13,7 +13,7 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var VER = "d12a5";
+  var VER = "d12a7";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -73,6 +73,46 @@
     ctx.globalAlpha = L.alpha;
     ctx.drawImage(img, x, L.yb - L.h, w, L.h);
     ctx.globalAlpha = 1;
+  }
+
+  /* ---- kowhai background scenery (host-side decoration only) -------------
+   * NZ kowhai: an open, airy branch form hung with yellow flowers. They are
+   * pure background art -- no tuple, no collision, no mast mechanic -- drawn
+   * after the parallax layers and before the gameplay plane, on a slower
+   * scroll factor so they read as distant vegetation behind the foreground
+   * beech trees. Colours match the Glon palette (brown #6b4a2b, yellow
+   * #ffd23f). Nothing here is gameplay. */
+  var KOWHAI = [
+    { x: 55,  y: 150, s: 0.70 },
+    { x: 235, y: 134, s: 0.58 },
+    { x: 420, y: 152, s: 0.68 },
+    { x: 610, y: 136, s: 0.56 }
+  ];
+  var KOW_FLOWERS = [[-27, 0], [27, -7], [-9, -26], [12, -23], [0, 4], [-18, -16], [19, -17]];
+  function drawKowhai(ctx, W, cam) {
+    for (var i = 0; i < KOWHAI.length; i++) {
+      var k = KOWHAI[i], sx = k.x - cam * 0.5, y = k.y, s = k.s;
+      ctx.strokeStyle = "#6b4a2b";
+      ctx.lineCap = "round";
+      ctx.lineWidth = Math.max(1.5, 2.6 * s);
+      ctx.beginPath();
+      ctx.moveTo(sx, y + 96 * s);
+      ctx.lineTo(sx + 2 * s, y + 12 * s);
+      ctx.stroke();
+      ctx.lineWidth = Math.max(1, 1.7 * s);
+      ctx.beginPath();
+      ctx.moveTo(sx + 2 * s, y + 26 * s); ctx.lineTo(sx - 27 * s, y);
+      ctx.moveTo(sx + 2 * s, y + 26 * s); ctx.lineTo(sx + 27 * s, y - 7 * s);
+      ctx.moveTo(sx + 2 * s, y + 12 * s); ctx.lineTo(sx - 9 * s, y - 26 * s);
+      ctx.moveTo(sx + 2 * s, y + 12 * s); ctx.lineTo(sx + 12 * s, y - 23 * s);
+      ctx.stroke();
+      ctx.fillStyle = "#ffd23f";
+      for (var j = 0; j < KOW_FLOWERS.length; j++) {
+        ctx.beginPath();
+        ctx.arc(sx + KOW_FLOWERS[j][0] * s, y + KOW_FLOWERS[j][1] * s, 4.2 * s, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+    }
   }
 
   /* ---- actor sprites (host-side presentation only) -----------------------
@@ -150,6 +190,7 @@
         paintLayer(ctx, W, 0, cam);   /* distant sky / hills  (slowest) */
         paintLayer(ctx, W, 1, cam);   /* native bush / treeline           */
         paintLayer(ctx, W, 2, cam);   /* orchard / fence / near landscape */
+        drawKowhai(ctx, W, cam);      /* decorative kowhai behind gameplay */
       } else if (op === "F") {
         paintLayer(ctx, W, 3, cam);   /* foreground foliage   (fastest)   */
       } else if (op === "S") {
