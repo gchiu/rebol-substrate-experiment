@@ -114,7 +114,7 @@ fib-p10b-bench: r0_s1_p10b_bench.c r0_s1_runtime.c s1.c
 
 clean:
 	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench fib-p10b-bench traffic-bench-o0 traffic-bench-o2 glon-live-native-test demo/shop/glon-live.wasm $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
-	rm -f glon-desktop glon-desktop.exe desktop-test patrol-test kaka-test desktop/glon.wasm desktop/prelude.glon desktop/strings.glon desktop/big.txt
+	rm -f glon-desktop glon-desktop.exe desktop-test patrol-test kaka-test kaka-render-test desktop/glon.wasm desktop/prelude.glon desktop/strings.glon desktop/big.txt
 	rm -rf glon glon-lib
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
@@ -388,9 +388,16 @@ patrol-serve: demos/patrol/glon.wasm demos/patrol/prelude.glon demos/patrol/stri
 
 # ---- D12A: Attack of the Mutant Kaka rule tests (game asserts in Glon) -----
 kaka-test: demos/kaka/kaka_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c \
-           r0_s1.h r0_s1_g1a.h s1.h m1_layout.h | glon-lib
+           r0_s1.h r0_s1_g1a.h s1.h m1_layout.h kaka-render-test | glon-lib
 	$(CC) $(CFLAGS) -I. -o $@ demos/kaka/kaka_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c
 	./kaka-test
+
+# D12A.7: render-binding regression -- damages each gameplay tree separately
+# and proves only that tree's rendered instance changes (test-only overlay).
+kaka-render-test: demos/kaka/kaka_render_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c \
+                  r0_s1.h r0_s1_g1a.h s1.h m1_layout.h | glon-lib
+	$(CC) $(CFLAGS) -I. -o $@ demos/kaka/kaka_render_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c
+	./kaka-render-test
 
 # D12A: headless WASM verification + tick soak (the real shop WASM + node).
 wasm-kaka-test:
@@ -473,4 +480,4 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve kaka-test kaka-serve wasm-kaka-test kaka-browser-regression kaka-refresh-regression
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve kaka-test kaka-render-test kaka-serve wasm-kaka-test kaka-browser-regression kaka-refresh-regression
