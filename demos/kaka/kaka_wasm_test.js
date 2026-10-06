@@ -103,6 +103,7 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   load(fs.readFileSync(path.join(HERE, "kaka-lib.glon"), "utf8"));
   load(fs.readFileSync(path.join(HERE, "kaka.glon"), "utf8"));
   load(fs.readFileSync(path.join(HERE, "kaka-draw.glon"), "utf8"));
+  load(fs.readFileSync(path.join(HERE, "kaka-wave.glon"), "utf8"));
   load(fs.readFileSync(path.join(HERE, "kaka-selftest.glon"), "utf8"));
 
   const start = route("home");
@@ -176,11 +177,12 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
 
   // restart must return a clean, still-live game with controls still wired
   const after = event("kaka-restart");
+  const px0 = state()[4];
   eventValue("kaka-key-down", "right");
   const moved = event("kaka-tick");
   if (!/Trees: 3\/3/.test(after)) fail("restart did not reset trees");
   const s2 = state();
-  if (s2.length < 14 || s2[4] !== 330) fail("controls dead after restart (px=" + (s2[4]) + ")");
+  if (s2.length < 14 || s2[4] !== px0 + 10) fail("controls dead after restart (px=" + s2[4] + " from " + px0 + ")");
 
   console.log("KAKA_WASM_TEST PASS (selftest + " + SOAK + " tick soak, allocFail=0, " +
     msPerTick.toFixed(3) + " ms/tick, " + restarts + " restarts, mutants-seen=" + mutants +

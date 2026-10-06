@@ -1,0 +1,106 @@
+;; demos/kaka/kaka-wave.glon -- D12B gameplay layer, loaded after kaka-draw.glon.
+;;
+;; Adds: rats advancing in escalating waves from the left edge; rats that climb
+;; a tree and gnaw it (driving off any kaka feeding there); and tree canopies
+;; that block fired berries. Berries still only divert/power kakas (no berry
+;; damage to rats). The base tuple model and spawn helpers live in kaka.glon.
+;;
+;; Rat phases (in F_STATE): 0 march, 1 climb, 2 gnaw, 3 descend+leave. The
+;; global context has a hard 256-binding ceiling, so constants are inlined and
+;; the tree/kaka scans are single self-recursive functions.
+[
+wave: 0  wave-left: 0  wave-cd: 0  breaches: 0
+
+;; spawn a rat just off the left edge, marching right
+spawn-rat: func [] [
+    t: ts-claim K_RAT
+    either = t none [ none ] [
+        block-set! t F_X -24
+        block-set! t F_Y 345
+        block-set! t F_A 1
+        block-set! t F_B 0
+    ]
+]
+;; wave controller: send a batch in from the left, then a lull; caps at RAT_MAX
+wave-step: func [] [
+    either > wave-left 0 [
+        either < wave-cd 1 [
+            either < n-rat RAT_MAX [ spawn-rat  wave-left: - wave-left 1  wave-cd: 34 ] [ none ]
+        ] [ wave-cd: - wave-cd 1 ]
+    ] [
+        either < n-rat 1 [
+            either < wave-cd 1 [
+                wave: + wave 1
+                wave-left: either > wave 6 [ 9 ] [ + wave 2 ]
+                wave-cd: 80
+            ] [ wave-cd: - wave-cd 1 ]
+        ] [ none ]
+    ]
+]
+;; live tree beside the rat (within 16 px); -1 if none
+rat-tree: func [i t] [
+    either < i NTREES [
+        either = ts-k i K_TREE [
+            either > block-at ts-t i F_A 0 [
+                either < abs - block-at ts-t i F_X block-at t F_X 16 [ i ] [ rat-tree + i 1 t ]
+            ] [ rat-tree + i 1 t ]
+        ] [ rat-tree + i 1 t ]
+    ] [ -1 ]
+]
+;; drive any kaka feeding on tree ti off the tree (a climbing rat threatens it)
+rat-disturb: func [i ti] [
+    either < i NTS [
+        either = ts-k i K_KAKA [
+            either = block-at ts-t i F_TARGET ti [
+                either = block-at ts-t i F_STATE KS_EAT [ block-set! ts-t i F_STATE KS_LEAVE ] [ none ]
+                rat-disturb + i 1 ti
+            ] [ rat-disturb + i 1 ti ]
+        ] [ rat-disturb + i 1 ti ]
+    ] [ none ]
+]
+rat-step: func [t] [
+    st: block-at t F_STATE
+    either = st 0 [
+        n: rat-tree 0 t
+        either < n 0 [
+            block-set! t F_X + block-at t F_X 2
+            either > block-at t F_X 660 [ breaches: + breaches 1  ts-free t ] [ none ]
+        ] [
+            block-set! t F_TARGET n
+            block-set! t F_E block-at ts-t n F_X
+            block-set! t F_C 0
+            block-set! t F_STATE 1
+        ]
+    ] [
+    either = st 1 [
+        block-set! t F_Y - block-at t F_Y 2
+        either < block-at t F_Y 250 [
+            block-set! t F_STATE 2
+            block-set! t F_C GNAW_TICKS
+            rat-disturb 0 block-at t F_TARGET
+            either = over 1 [ none ] [ damage-tree block-at t F_TARGET 5 ]
+        ] [ none ]
+    ] [
+    either = st 2 [
+        block-set! t F_C - block-at t F_C 1
+        either < block-at t F_C 1 [ block-set! t F_STATE 3 ] [ none ]
+    ] [
+        block-set! t F_Y + block-at t F_Y 2
+        either > block-at t F_Y 344 [ block-set! t F_Y 345  block-set! t F_STATE 0 ] [ none ]
+    ] ] ]
+]
+;; branch cover: absorb a berry whose rising path enters a live tree's canopy
+berry-blocked?: func [i t] [
+    either < i NTREES [
+        either = ts-k i K_TREE [
+            either > block-at ts-t i F_A 0 [
+                either < abs - block-at ts-t i F_X block-at t F_X 30 [
+                    either < block-at t F_Y 264 [
+                        either > block-at t F_Y 216 [ ts-free t  1 ] [ berry-blocked? + i 1 t ]
+                    ] [ berry-blocked? + i 1 t ]
+                ] [ berry-blocked? + i 1 t ]
+            ] [ berry-blocked? + i 1 t ]
+        ] [ berry-blocked? + i 1 t ]
+    ] [ 0 ]
+]
+]

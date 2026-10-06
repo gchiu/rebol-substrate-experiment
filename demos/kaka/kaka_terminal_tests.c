@@ -83,6 +83,7 @@ int main(void) {
     if (load_file("demos/kaka/kaka-lib.glon")) return 2;
     if (load_file("demos/kaka/kaka.glon")) return 2;
     if (load_file("demos/kaka/kaka-draw.glon")) return 2;
+    if (load_file("demos/kaka/kaka-wave.glon")) return 2;
 
     printf("kaka terminal-state test (one authoritative predicate)\n");
 

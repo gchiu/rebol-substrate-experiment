@@ -109,6 +109,7 @@ int main(void) {
     if (load_file("demos/kaka/kaka-lib.glon") != 0) return 2;
     if (load_file("demos/kaka/kaka.glon") != 0) return 2;
     if (load_file("demos/kaka/kaka-draw.glon") != 0) return 2;
+    if (load_file("demos/kaka/kaka-wave.glon") != 0) return 2;
     if (run_source(OVERLAY) != 0) return 2;
 
     const int X[3] = { 120, 320, 520 };   /* spawn-tree 0/1/2 world x */

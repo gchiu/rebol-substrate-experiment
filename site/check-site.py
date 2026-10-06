@@ -36,7 +36,7 @@ REQUIRED = [
     "demos/patrol/prelude.glon", "demos/patrol/strings.glon",
     "demos/kaka/kaka.html", "demos/kaka/kaka-host.js",
     "demos/kaka/kaka.glon", "demos/kaka/kaka-lib.glon",
-    "demos/kaka/kaka-draw.glon", "demos/kaka/kaka-selftest.glon",
+    "demos/kaka/kaka-draw.glon", "demos/kaka/kaka-wave.glon", "demos/kaka/kaka-selftest.glon",
     "demos/kaka/glon.wasm", "demos/kaka/prelude.glon", "demos/kaka/strings.glon",
     "demos/kaka/assets/ChatGPT Image Oct 6, 2026, 08_56_38 AM-1.png",
     "demos/kaka/assets/ChatGPT Image Oct 6, 2026, 08_56_40 AM-2.png",

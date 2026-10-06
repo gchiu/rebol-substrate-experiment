@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12A.7";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12b4";
+  var BUILD = "D12B";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12b5";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -304,6 +304,7 @@
       .then(function () { return fetchText("kaka-lib.glon"); }).then(load)
       .then(function () { return fetchText("kaka.glon"); }).then(load)
       .then(function () { return fetchText("kaka-draw.glon"); }).then(load)
+      .then(function () { return fetchText("kaka-wave.glon"); }).then(load)
       /* kaka-selftest.glon is test-only and is intentionally not loaded here:
          the production page needs the loader budget for input dispatch. */
       .then(loadParallax)            /* PNG scenery is presentation-only */

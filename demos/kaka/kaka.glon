@@ -20,7 +20,6 @@ TREE_MAX: 100
 KAKA_MAX: 4
 RAT_MAX: 5
 BERRY_MAX: 6
-POOP_MAX: 4
 LIVES_MAX: 3
 INVULN_TICKS: 50
 GNAW_TICKS: 18
@@ -62,15 +61,15 @@ tick: 0 score: 0 over: 0
 ;; recomputes it; HUD, splash and step all read this single flag.
 lives: 3 invuln: 0 highscore: 0
 kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
-px: 320 py: 330
+px: 220 py: 330
 ;; camera: a small smoothed horizontal offset used ONLY for presentation. The
 ;; world/logic coordinates stay absolute; the render emits `cam` so the browser
 ;; can scroll the parallax PNGs (and the host scrolls the gameplay plane 1:1).
 cam: 0
 cd: 0 glon-cd: 0
 berries: 1
-next-kaka: 60 next-rat: 150 next-pick: 1100 next-milestone: 600
-mutant-kills: 0 diverts: 0 poops: 0
+    next-kaka: 60 next-pick: 1100 next-milestone: 600
+    wave: 0 wave-left: 0 wave-cd: 0 breaches: 0
 laser: -99 laser-x: 0 laser-y: 0 laser-ox: 0 laser-oy: 0
 idc: 0 rng: 12345
 ;; aggregate actor/tree tallies, refreshed once per tick by `tally` so the
@@ -145,38 +144,7 @@ damage-tree: func [ti d] [
     block-set! bt F_A either < h 0 [ 0 ] [ h ]
 ]
 
-;; ---- rats ----------------------------------------------------------------
-spawn-rat: func [] [
-    t: ts-claim K_RAT
-    either = t none [ none ] [
-        block-set! t F_X + 40 mod rnd 560
-        block-set! t F_Y 345
-        block-set! t F_A either = 0 mod rnd 2 [ 1 ] [ -1 ]
-        block-set! t F_B 0
-    ]
-]
-rat-step: func [t] [
-    ;; a gnawing rat pauses at the trunk while its gnaw state shows
-    either > block-at t F_C 0 [
-        block-set! t F_C - block-at t F_C 1
-    ] [
-        x: + block-at t F_X * block-at t F_A 2
-        either < x 20 [ block-set! t F_A 1  x: 20 ] [ either > x 620 [ block-set! t F_A -1  x: 620 ] [ none ] ]
-        block-set! t F_X x
-        d: + block-at t F_B 1
-        block-set! t F_B d
-        either = 0 mod d 120 [ rat-gnaw-prep 0 t  rat-gnaw 0 t ] [ none ]
-    ]
-]
-rat-gnaw: func [i t] [
-    either < i NTS [
-        either = ts-k i K_TREE [
-            either < abs - block-at ts-t i F_X block-at t F_X 44 [
-                either = over 1 [ none ] [ damage-tree i 5 ]
-            ] [ rat-gnaw + i 1 t ]
-        ] [ rat-gnaw + i 1 t ]
-    ] [ none ]
-]
+;; ---- rats (D12B wave/climb logic lives in kaka-wave.glon) -----------------
 
 ;; ---- berries and the Mystery Glon Berry ----------------------------------
 fire: func [] [
@@ -219,7 +187,6 @@ divert: func [kt bt] [
     block-set! kt F_D either < - block-at kt F_X px 0 [ -1 ] [ 1 ]
     ts-free bt
     score: + score 10
-    diverts: + diverts 1
 ]
 mutate: func [kt bt] [
     block-set! kt F_STATE KS_MUTANT
@@ -231,7 +198,11 @@ berry-step: func [t] [
     ;; after the terminal life loss, berries still travel and despawn but have
     ;; after the single terminal state, berries travel and despawn but
     ;; have no effect
-    either = over 0 [ berry-hit t 0 ] [ none ]
+    either = over 0 [
+        either < block-at t F_Y 265 [
+            either > block-at t F_Y 215 [ either = 1 berry-blocked? 0 t [ none ] [ berry-hit t 0 ] ] [ berry-hit t 0 ]
+        ] [ berry-hit t 0 ]
+    ] [ none ]
     ;; berries are fired upward (F_VY < 0), so they leave the playfield at the
     ;; TOP. Freeing on Y > 480 (which only a downward-moving actor can reach)
     ;; leaked every missed berry in the fixed BERRY_MAX pool until firing died.
@@ -316,10 +287,7 @@ spawn-timers: func [] [
     either < next-kaka 1 [
         either < n-kaka KAKA_MAX [ spawn-kaka  next-kaka: + 150 mod tick 120 ] [ next-kaka: 60 ]
     ] [ none ]
-    next-rat: - next-rat 1
-    either < next-rat 1 [
-        either < n-rat RAT_MAX [ spawn-rat  next-rat: + 220 mod tick 90 ] [ next-rat: 80 ]
-    ] [ none ]
+    wave-step
     next-pick: - next-pick 1
     either < next-pick 1 [
         either < berries 3 [ either = 0 n-pick [ spawn-pick ] [ none ] ] [ none ]
@@ -348,12 +316,11 @@ reset: func [] [
     tick: 0 score: 0 over: 0
     lives: LIVES_MAX invuln: 0
     kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
-    px: 320 py: 330 cd: 0 glon-cd: 0
+    px: 220 py: 330 cd: 0 glon-cd: 0
     cam: 0
     berries: 1
-    next-kaka: 60 next-rat: 150 next-pick: 1100 next-milestone: 600
-    mutant-kills: 0 diverts: 0 poops: 0
-    laser: -99 laser-x: 0 laser-y: 0 laser-ox: 0 laser-oy: 0
+next-kaka: 60 next-pick: 1100 next-milestone: 600
+        laser: -99 laser-x: 0 laser-y: 0 laser-ox: 0 laser-oy: 0
     idc: 0 rng: 12345
     ts-clear
     spawn-tree 0 120

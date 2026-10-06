@@ -28,7 +28,7 @@ seg-rect?: func [ax ay bx by x0 y0 x1 y1] [
 laser-hits-player?: func [] [
     seg-rect? laser-ox laser-oy laser-x laser-y - px 10 - py 14 + px 10 + py 22
 ]
-respawn: func [] [ px: 320 py: 330 cam: 0 invuln: INVULN_TICKS ]
+respawn: func [] [ px: 220 py: 330 cam: 0 invuln: INVULN_TICKS ]
 ;; One life, exactly: a non-terminal hit respawns with brief invulnerability;
 ;; the last life is terminal (over). `over` gates all further loss.
 lose-life: func [] [
@@ -78,21 +78,6 @@ kp: func [n t] [
             either > block-at ts-t i F_A 0 [ block-set! t F_TARGET i ] [ kp + n 1 t ]
         ] [ kp + n 1 t ]
     ] [ block-set! t F_STATE KS_LEAVE ]
-]
-;; presentation only: snap a gnawing rat to the trunk and start its gnaw state.
-;; rat-gnaw still applies the unchanged damage after this.
-rat-gnaw-prep: func [i t] [
-    either < i NTS [
-        either = ts-k i K_TREE [
-            either < abs - block-at ts-t i F_X block-at t F_X 44 [
-                either = over 1 [ none ] [
-                    block-set! t F_X - block-at ts-t i F_X 12
-                    block-set! t F_E block-at ts-t i F_X
-                    block-set! t F_C GNAW_TICKS
-                ]
-            ] [ rat-gnaw-prep + i 1 t ]
-        ] [ rat-gnaw-prep + i 1 t ]
-    ] [ none ]
 ]
 spawn-kaka: func [] [
     t: ts-claim K_KAKA
@@ -162,7 +147,6 @@ drop-poop: func [t] [
         block-set! p F_Y block-at t F_Y
         block-set! p F_VY 3
         block-set! t F_C 1
-        poops: + poops 1
     ]
 ]
 nearest-rat: func [t] [ nr 0 none 99999 t ]
@@ -201,7 +185,6 @@ kaka-mutant: func [t] [
                 either = over 1 [ none ] [
                     ts-free r
                     score: + score 25
-                    mutant-kills: + mutant-kills 1
                 ]
             ] [ none ]
         ]
@@ -376,6 +359,7 @@ render-status: func [] [
     e-text "    Trees: " e-int trees-live e-text "/" e-int NTREES
     e-text "    Habitat: " e-int tree-sum e-text "/" e-int * NTREES TREE_MAX
     e-text "    Glon Berries: " e-int berries
+    e-text "    Wave: " e-int wave
     e-text "    HIGH SCORE: " e-int highscore
     either > invuln 0 [ e-text "    <b class='invuln'>INVULNERABLE</b>" ] [ none ]
     either = over 1 [ e-text "    <b>GAME OVER</b>" ] [ none ]
