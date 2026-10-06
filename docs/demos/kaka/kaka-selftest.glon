@@ -205,7 +205,7 @@ test-d: func [] [
     invuln: 0  laser-hazard
     either = lives 3 [ none ] [ fails: + fails 1 ]
     ;; 18. a beam crossing the ranger removes exactly one life
-    laser-ox: 320 laser-oy: 180 laser-x: 320 laser-y: 340
+    laser-ox: px laser-oy: 180 laser-x: px laser-y: 340
     either = laser-hits-player? 1 [ none ] [ fails: + fails 1 ]
     invuln: 0  laser-hazard
     either = lives 2 [ none ] [ fails: + fails 1 ]
