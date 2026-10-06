@@ -19,20 +19,25 @@
   .keys strong { color: #fff; }
   a { color: #7fa7ec; }
   .invuln { color: #4fd1c5; }
-  /* Large terminal game-over splash: a fixed, full-viewport overlay so it
-     dominates rather than reading as another HUD label. */
+  /* Terminal game-over: a translucent dim over the whole scene plus a centred
+     panel, so the final gameplay scene (trees, actors, ranger, scenery) stays
+     visible behind it. */
   .kaka-gameover { position: fixed; inset: 0; z-index: 100; display: flex;
-    flex-direction: column; align-items: center; justify-content: center; text-align: center;
-    padding: 1rem; background: radial-gradient(circle at 50% 38%, rgba(90,12,12,.96), rgba(5,2,8,.99));
-    color: #ffd23f; }
-  .kaka-go-title { font-size: clamp(3rem, 13vw, 9rem); font-weight: 900; letter-spacing: .06em;
-    color: #ff3d3d; text-shadow: 0 0 36px rgba(255,60,60,.85); line-height: 1; }
-  .kaka-go-sub { font-size: clamp(1.2rem, 4.5vw, 3.2rem); font-weight: 800; color: #f2e9d8;
-    margin: .4em 0 1em; }
-  .kaka-go-line { font-size: clamp(1.1rem, 3.4vw, 2.4rem); font-weight: 700; margin: .12em 0; }
-  .kaka-go-again { font-size: clamp(1rem, 2.8vw, 1.9rem); font-weight: 800; color: #7fd18a;
-    margin: 1.1em 0 .5em; animation: pulse 1s steps(2) infinite; }
-  .kaka-go-btn { font: inherit; font-size: 1.3rem; font-weight: 700; padding: .55em 1.5em;
+    align-items: center; justify-content: center; padding: 1rem;
+    background: rgba(6,3,12,.34); }
+  .kaka-go-panel { display: flex; flex-direction: column; align-items: center;
+    text-align: center; padding: clamp(.8rem,2.2vw,1.4rem) clamp(1.2rem,4vw,2.6rem);
+    border-radius: 1rem; background: rgba(12,4,14,.8);
+    border: 2px solid rgba(255,60,60,.5); box-shadow: 0 0 50px rgba(0,0,0,.65);
+    color: #ffd23f; max-width: 90vw; }
+  .kaka-go-title { font-size: clamp(2.2rem, 8vw, 5rem); font-weight: 900; letter-spacing: .05em;
+    color: #ff3d3d; text-shadow: 0 0 30px rgba(255,60,60,.85); line-height: 1; }
+  .kaka-go-sub { font-size: clamp(1rem, 3.2vw, 2.1rem); font-weight: 800; color: #f2e9d8;
+    margin: .35em 0 .7em; }
+  .kaka-go-line { font-size: clamp(1rem, 2.6vw, 1.7rem); font-weight: 700; margin: .1em 0; }
+  .kaka-go-again { font-size: clamp(.95rem, 2.2vw, 1.4rem); font-weight: 800; color: #7fd18a;
+    margin: .9em 0 .4em; animation: pulse 1s steps(2) infinite; }
+  .kaka-go-btn { font: inherit; font-size: 1.15rem; font-weight: 700; padding: .5em 1.4em;
     cursor: pointer; border-radius: .4rem; }
   .build { color: #6b7280; font-size: .8rem; margin: .5rem 0 0; }
 </style>
@@ -47,8 +52,8 @@
 <p class="muted">The kaka are native wildlife and must never be shot; berries divert them.
    Lasers only zap introduced rats. Arcade fiction: do not feed real wild kaka.
    &middot; <a href="../patrol/patrol.html">Glon Patrol</a></p>
-<p class="build" id="kaka-build">Kākā D12A.6</p>
-<script>window.__BUILD_SHA='0f23dd0';</script>
-<script src="kaka-host.js?v=d12b3"></script>
+<p class="build" id="kaka-build">Kākā D12A.7</p>
+<script>window.__BUILD_SHA='440213c';</script>
+<script src="kaka-host.js?v=d12b4"></script>
 </body>
 </html>
