@@ -13,7 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var VER = "d12b1";
+  var BUILD = "D12A.6";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12b2";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -323,6 +324,10 @@
         });
         /* Hand the one persisted number to Glon; Glon decides what it means. */
         evVal("kaka-highscore", String(readStoredHigh()));
+        /* Visible build identifier: the deploy workflow injects the source SHA
+           as window.__BUILD_SHA; locally it reads "dev". */
+        var be = document.getElementById("kaka-build");
+        if (be) be.textContent = "Kākā " + BUILD + " \u00b7 " + (window.__BUILD_SHA || "dev");
         route("home");
         focusGame();
         requestAnimationFrame(frame);

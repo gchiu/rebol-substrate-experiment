@@ -68,12 +68,31 @@ k-move: func [t wx wy sx sy] [
     block-set! t F_Y + block-at t F_Y vy
 ]
 kaka-pick: func [t] [ kp 0 t ]
-kp: func [i t] [
+;; Pick the first live tree starting from the kaka's id-derived offset, wrapping
+;; around. Distinct ids therefore spread across the live trees instead of every
+;; kaka piling onto the lowest-index tree (which made damage march 0 -> 1 -> 2).
+kp: func [n t] [
+    either < n NTS [
+        i: mod + mod block-at t F_ID NTS n NTS
+        either = ts-k i K_TREE [
+            either > block-at ts-t i F_A 0 [ block-set! t F_TARGET i ] [ kp + n 1 t ]
+        ] [ kp + n 1 t ]
+    ] [ block-set! t F_STATE KS_LEAVE ]
+]
+;; presentation only: snap a gnawing rat to the trunk and start its gnaw state.
+;; rat-gnaw still applies the unchanged damage after this.
+rat-gnaw-prep: func [i t] [
     either < i NTS [
         either = ts-k i K_TREE [
-            either > block-at ts-t i F_A 0 [ block-set! t F_TARGET i ] [ kp + i 1 t ]
-        ] [ kp + i 1 t ]
-    ] [ block-set! t F_STATE KS_LEAVE ]
+            either < abs - block-at ts-t i F_X block-at t F_X 44 [
+                either = over 1 [ none ] [
+                    block-set! t F_X - block-at ts-t i F_X 12
+                    block-set! t F_E block-at ts-t i F_X
+                    block-set! t F_C GNAW_TICKS
+                ]
+            ] [ rat-gnaw-prep + i 1 t ]
+        ] [ rat-gnaw-prep + i 1 t ]
+    ] [ none ]
 ]
 spawn-kaka: func [] [
     t: ts-claim K_KAKA
@@ -270,7 +289,22 @@ spr-kaka: func [t] [
 spr-rat: func [t] [
     x: block-at t F_X
     y: block-at t F_Y
-    p-spr either < mod tick 8 4 [ 20 ] [ 21 ] x y block-at t F_A
+    either > block-at t F_C 0 [
+        p-spr 22 x - y mod tick 6 block-at t F_A
+    ] [
+        p-spr either < mod tick 8 4 [ 20 ] [ 21 ] x y block-at t F_A
+    ]
+]
+;; A rat chewing at a trunk: a few bark flecks and a brief hit flash at the
+;; gnawed tree, so it is obvious which tree just lost health.
+gnaw-cue: func [t] [
+    either > block-at t F_C 0 [
+        tl: block-at t F_E
+        p-circ - tl 6 - 330 mod tick 5 2 8
+        p-circ + tl 4 + 334 mod tick 7 2 8
+        p-circ + tl 10 + 326 mod tick 6 2 8
+        either > block-at t F_C - GNAW_TICKS 6 [ p-line tl 296 tl 344 2 15 ] [ none ]
+    ] [ none ]
 ]
 spr-berry: func [t] [
     x: block-at t F_X
@@ -281,7 +315,7 @@ actor-art: func [i] [
     either < i NTS [
         k: ts-k i
         either = k K_KAKA [ spr-kaka ts-t i ] [
-        either = k K_RAT [ spr-rat ts-t i ] [
+        either = k K_RAT [ spr-rat ts-t i  gnaw-cue ts-t i ] [
         either = k K_BERRY [ spr-berry ts-t i ] [
         either = k K_PICK [ p-spr 31 block-at ts-t i F_X block-at ts-t i F_Y 1 ] [
         either = k K_POOP [ p-spr 32 block-at ts-t i F_X block-at ts-t i F_Y 1 ] [ none ] ] ] ] ]

@@ -23,6 +23,7 @@ BERRY_MAX: 6
 POOP_MAX: 4
 LIVES_MAX: 3
 INVULN_TICKS: 50
+GNAW_TICKS: 18
 
 ;; tuple space kinds
 K_EMPTY: 0
@@ -163,12 +164,17 @@ spawn-rat: func [] [
     ]
 ]
 rat-step: func [t] [
-    x: + block-at t F_X * block-at t F_A 2
-    either < x 20 [ block-set! t F_A 1  x: 20 ] [ either > x 620 [ block-set! t F_A -1  x: 620 ] [ none ] ]
-    block-set! t F_X x
-    d: + block-at t F_B 1
-    block-set! t F_B d
-    either = 0 mod d 120 [ rat-gnaw 0 t ] [ none ]
+    ;; a gnawing rat pauses at the trunk while its gnaw state shows
+    either > block-at t F_C 0 [
+        block-set! t F_C - block-at t F_C 1
+    ] [
+        x: + block-at t F_X * block-at t F_A 2
+        either < x 20 [ block-set! t F_A 1  x: 20 ] [ either > x 620 [ block-set! t F_A -1  x: 620 ] [ none ] ]
+        block-set! t F_X x
+        d: + block-at t F_B 1
+        block-set! t F_B d
+        either = 0 mod d 120 [ rat-gnaw-prep 0 t  rat-gnaw 0 t ] [ none ]
+    ]
 ]
 rat-gnaw: func [i t] [
     either < i NTS [
