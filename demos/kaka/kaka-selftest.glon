@@ -39,7 +39,7 @@ test-a: func [] [
     ;; 3. all trees destroyed => game over
     reset
     damage-tree 0 100  damage-tree 1 100  damage-tree 2 100
-    step
+    on-tick
     either = over 1 [ none ] [ fails: + fails 1 ]
     ;; 4. Glon Berry creates mutant state
     reset
@@ -106,7 +106,7 @@ test-b: func [] [
     either = berries 1 [ none ] [ fails: + fails 1 ]
     either = over 0 [ none ] [ fails: + fails 1 ]
     either = tick 0 [ none ] [ fails: + fails 1 ]
-    either = tree-live 3 [ none ] [ fails: + fails 1 ]
+    either = trees-live 3 [ none ] [ fails: + fails 1 ]
     either = ts-count K_KAKA 0 [ none ] [ fails: + fails 1 ]
     ;; 10. dynamic create/remove does not alias or corrupt state
     reset
@@ -217,7 +217,7 @@ test-d: func [] [
     invuln: 0  laser-hazard
     either = lives 1 [ none ] [ fails: + fails 1 ]
     ;; 21. the final life is terminal game over; crossings then change nothing
-    invuln: 0  laser-hazard
+    invuln: 0  laser-hazard  tally
     either = lives 0 [ none ] [ fails: + fails 1 ]
     either = over 1 [ none ] [ fails: + fails 1 ]
     invuln: 0  laser-hazard

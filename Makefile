@@ -114,7 +114,7 @@ fib-p10b-bench: r0_s1_p10b_bench.c r0_s1_runtime.c s1.c
 
 clean:
 	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench fib-p10b-bench traffic-bench-o0 traffic-bench-o2 glon-live-native-test demo/shop/glon-live.wasm $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
-	rm -f glon-desktop glon-desktop.exe desktop-test patrol-test kaka-test kaka-render-test kaka-life-test kaka-damage-test desktop/glon.wasm desktop/prelude.glon desktop/strings.glon desktop/big.txt
+	rm -f glon-desktop glon-desktop.exe desktop-test patrol-test kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test desktop/glon.wasm desktop/prelude.glon desktop/strings.glon desktop/big.txt
 	rm -rf glon glon-lib
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
@@ -397,7 +397,7 @@ demo/shop/glon-kaka.wasm: standalone/glon.c r0_s1_g1a.c r0_s1_g1a.h s1.c s1.h r0
 	$(EMCC) $(STANDALONE_FLAGS) $(KAKA_LIMIT_FLAG) standalone/glon.c r0_s1_g1a.c s1.c r0_s1_runtime.c r0_s1_show.c -o $@
 
 kaka-test: demos/kaka/kaka_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c \
-           r0_s1.h r0_s1_g1a.h s1.h m1_layout.h kaka-render-test kaka-damage-test | glon-lib
+           r0_s1.h r0_s1_g1a.h s1.h m1_layout.h kaka-render-test kaka-damage-test kaka-terminal-test | glon-lib
 	$(CC) $(CFLAGS) $(KAKA_LIMIT_FLAG) -I. -o $@ demos/kaka/kaka_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c
 	./kaka-test
 
@@ -415,6 +415,12 @@ kaka-damage-test: demos/kaka/kaka_damage_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.
                   r0_s1.h r0_s1_g1a.h s1.h m1_layout.h | glon-lib
 	$(CC) $(CFLAGS) $(KAKA_LIMIT_FLAG) -I. -o $@ demos/kaka/kaka_damage_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c
 	./kaka-damage-test
+
+# D12A: one authoritative terminal-state predicate; HUD and splash must agree.
+kaka-terminal-test: demos/kaka/kaka_terminal_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c \
+                    r0_s1.h r0_s1_g1a.h s1.h m1_layout.h | glon-lib
+	$(CC) $(CFLAGS) $(KAKA_LIMIT_FLAG) -I. -o $@ demos/kaka/kaka_terminal_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c
+	./kaka-terminal-test
 
 # D12A: lives / laser hazard / game-over / high-score rendered-output tests.
 kaka-life-test: demos/kaka/kaka_life_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c \
@@ -503,4 +509,4 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-serve wasm-kaka-test kaka-browser-regression kaka-refresh-regression
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test kaka-serve wasm-kaka-test kaka-browser-regression kaka-refresh-regression
