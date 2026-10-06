@@ -89,10 +89,10 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
     return m ? m[1].trim().split(/\s+/).map(Number) : [];
   };
 
-  /* Ordinary berries are the only actor that paints "O x y 5 5" (see
-     berry-art in kaka-draw.glon), so this counts live ordinary berry tuples
-     straight from the real render without any game-source instrumentation. */
-  const countOrdinary = (s) => (s.match(/^O -?\d+ -?\d+ 5 5$/gm) || []).length;
+  /* Ordinary berries are the only actor whose sprite opcode is `S 30`, so this
+     counts live ordinary berry tuples straight from the real render without
+     any game-source instrumentation. */
+  const countOrdinary = (s) => (s.match(/^S 30(?: |$)/gm) || []).length;
 
   if (e.glon_init() !== 0) fail("glon_init");
 

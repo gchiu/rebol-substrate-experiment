@@ -9,6 +9,11 @@
  */
 (function () {
   "use strict";
+  /* Build token. GitHub Pages serves with Cache-Control: max-age=600, so a
+   * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
+   * frame (e.g. the flat background or geometric actors) alive for minutes.
+   * Bump this whenever published game assets change. */
+  var VER = "d12a5";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -51,8 +56,8 @@
     return new Promise(function (res) {
       var im = new Image();
       im.onload = function () { res(im); };
-      im.onerror = function () { console.error("kaka: parallax asset failed: " + url); res(null); };
-      im.src = url;
+      im.onerror = function () { console.error("kaka: asset failed: " + url); res(null); };
+      im.src = url + "?v=" + VER;    /* bust the Pages 10-minute cache */
     });
   }
   function loadParallax() {
@@ -68,6 +73,63 @@
     ctx.globalAlpha = L.alpha;
     ctx.drawImage(img, x, L.yb - L.h, w, L.h);
     ctx.globalAlpha = 1;
+  }
+
+  /* ---- actor sprites (host-side presentation only) -----------------------
+   * Four supplied sheets; Glon emits `S id x y dir` and this table maps the id
+   * to a source rectangle. Kaka/mutant/rat use the full sheet height so every
+   * frame shares one art scale (bodies stay consistent); the small-asset items
+   * use tight rects. ax/ay are the fraction of the frame placed at the actor's
+   * logical (x,y); a rat's long tail sits left of its body, hence ax > 0.5.
+   * Gameplay collision never reads these rectangles. */
+  var SPRITE_SRC = [
+    "assets/ChatGPT Image Oct 6, 2026, 12_37_49 PM-1.png",   /* normal kaka  */
+    "assets/ChatGPT Image Oct 6, 2026, 12_37_51 PM-2.png",   /* mutant kaka  */
+    "assets/ChatGPT Image Oct 6, 2026, 12_37_53 PM-3.png",   /* rat          */
+    "assets/ChatGPT Image Oct 6, 2026, 12_37_54 PM-4.png"    /* small assets */
+  ];
+  var SPRITES = {
+    0:  { s: 0, sx: 14,   sy: 0, sw: 604, sh: 724, sc: 0.11 },              /* glide */
+    1:  { s: 0, sx: 650,  sy: 0, sw: 414, sh: 724, sc: 0.11 },              /* flap  */
+    2:  { s: 0, sx: 1160, sy: 0, sw: 428, sh: 724, sc: 0.11 },              /* perch */
+    3:  { s: 0, sx: 1588, sy: 0, sw: 573, sh: 724, sc: 0.11 },              /* swoop */
+    10: { s: 1, sx: 14,   sy: 0, sw: 544, sh: 724, sc: 0.12 },              /* mutant powered */
+    11: { s: 1, sx: 590,  sy: 0, sw: 470, sh: 724, sc: 0.12 },              /* mutant flap    */
+    12: { s: 1, sx: 1060, sy: 0, sw: 640, sh: 724, sc: 0.12 },              /* mutant laser   */
+    13: { s: 1, sx: 1700, sy: 0, sw: 461, sh: 724, sc: 0.12 },              /* mutant attack  */
+    20: { s: 2, sx: 14,   sy: 0, sw: 636, sh: 724, sc: 0.11, ax: 0.72, ay: 0.55 }, /* rat run  */
+    21: { s: 2, sx: 650,  sy: 0, sw: 638, sh: 724, sc: 0.11, ax: 0.72, ay: 0.55 }, /* rat run2 */
+    22: { s: 2, sx: 1288, sy: 0, sw: 452, sh: 724, sc: 0.11, ax: 0.60, ay: 0.55 }, /* rat sniff */
+    23: { s: 2, sx: 1740, sy: 0, sw: 411, sh: 724, sc: 0.11, ax: 0.62, ay: 0.55 }, /* rat startle */
+    30: { s: 3, sx: 20,   sy: 340, sw: 220, sh: 115, dh: 16 },             /* ordinary berry */
+    31: { s: 3, sx: 268,  sy: 240, sw: 245, sh: 275, dh: 22 },             /* Mystery Glon Berry */
+    32: { s: 3, sx: 812,  sy: 330, sw: 126, sh: 145, dh: 15 }              /* poop/seed drop */
+  };
+  var spriteImg = [null, null, null, null];
+  function loadSprites() {
+    return Promise.all(SPRITE_SRC.map(loadImage))
+      .then(function (imgs) { spriteImg = imgs; });
+  }
+  function drawSprite(ctx, id, x, y, dir, tx) {
+    var S = SPRITES[id];
+    if (!S) return;
+    var img = spriteImg[S.s];
+    if (!img) return;
+    var scale = S.sc || (S.dh / S.sh);
+    var dw = S.sw * scale, dh = S.sh * scale;
+    var ax = (S.ax === undefined) ? 0.5 : S.ax;
+    var ay = (S.ay === undefined) ? 0.5 : S.ay;
+    var cx = x + tx;                       /* gameplay plane scrolls 1:1 */
+    var dx = cx - dw * ax, dy = y - dh * ay;
+    if (dir < 0) {
+      ctx.save();
+      ctx.translate(2 * cx, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, S.sx, S.sy, S.sw, S.sh, dx, dy, dw, dh);
+      ctx.restore();
+    } else {
+      ctx.drawImage(img, S.sx, S.sy, S.sw, S.sh, dx, dy, dw, dh);
+    }
   }
 
   function drawScript(script) {
@@ -90,6 +152,8 @@
         paintLayer(ctx, W, 2, cam);   /* orchard / fence / near landscape */
       } else if (op === "F") {
         paintLayer(ctx, W, 3, cam);   /* foreground foliage   (fastest)   */
+      } else if (op === "S") {
+        drawSprite(ctx, +p[1], +p[2], +p[3], +p[4], tx);
       } else if (op === "C") {
         ctx.fillStyle = COL[0];
         ctx.fillRect(0, 0, W, H);
@@ -202,7 +266,8 @@
   }
 
   function fetchText(u) {
-    return fetch(u).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status + " " + u); return r.text(); });
+    var v = u + "?v=" + VER;         /* bust the Pages 10-minute cache */
+    return fetch(v).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status + " " + v); return r.text(); });
   }
 
   function boot() {
@@ -216,6 +281,7 @@
       /* kaka-selftest.glon is test-only and is intentionally not loaded here:
          the production page needs the loader budget for input dispatch. */
       .then(loadParallax)            /* PNG scenery is presentation-only */
+      .then(loadSprites)             /* actor sheets are presentation-only */
       .then(function () {
         wireClicks();
         window.addEventListener("keydown", function (e) { key(e, true); });
@@ -237,7 +303,7 @@
       .catch(function (err) { console.error("kaka: boot failed", err); });
   }
 
-  fetch("glon.wasm")
+  fetch("glon.wasm?v=" + VER)
     .then(function (r) { return r.arrayBuffer(); })
     .then(function (b) { return WebAssembly.instantiate(b, imports); })
     .then(function (res) { ex = res.instance.exports; boot(); })

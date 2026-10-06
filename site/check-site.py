@@ -42,6 +42,10 @@ REQUIRED = [
     "demos/kaka/assets/ChatGPT Image Oct 6, 2026, 08_56_40 AM-2.png",
     "demos/kaka/assets/ChatGPT Image Oct 6, 2026, 08_56_41 AM-3.png",
     "demos/kaka/assets/ChatGPT Image Oct 6, 2026, 08_56_43 AM-4.png",
+    "demos/kaka/assets/ChatGPT Image Oct 6, 2026, 12_37_49 PM-1.png",
+    "demos/kaka/assets/ChatGPT Image Oct 6, 2026, 12_37_51 PM-2.png",
+    "demos/kaka/assets/ChatGPT Image Oct 6, 2026, 12_37_53 PM-3.png",
+    "demos/kaka/assets/ChatGPT Image Oct 6, 2026, 12_37_54 PM-4.png",
 ]
 
 

@@ -91,7 +91,7 @@ const INJECT = `(function(){
     "(function(){if(!window.__ex||!window.__berry)return -1;" +
     "var p=window.__berry.p,l=window.__berry.l;" +
     "var s=new TextDecoder().decode(new Uint8Array(window.__ex.memory.buffer,p,l));" +
-    "var m=s.match(/^O -?\\d+ -?\\d+ 5 5$/gm);return m?m.length:0;})()");
+    "var m=s.match(/^S 30(?: |$)/gm);return m?m.length:0;})()");
   const key = (down) => evalv("window.dispatchEvent(new KeyboardEvent('" + (down ? "keydown" : "keyup") + "',{code:'Space',bubbles:true,cancelable:true}))");
 
   function fail(msg) { console.log("KAKA_BERRY_REGRESSION_FAIL " + msg); process.exit(1); }
