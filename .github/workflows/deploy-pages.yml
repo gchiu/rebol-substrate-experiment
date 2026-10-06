@@ -132,9 +132,12 @@ jobs:
           cp demo/shop/glon.wasm pages/docs/demos/kaka/glon.wasm
           cp jupyter/prelude.glon pages/docs/demos/kaka/prelude.glon
           cp demo/shop/strings.glon pages/docs/demos/kaka/strings.glon
-          # Parallax scenery: the four supplied PNGs are served verbatim and
-          # painted by kaka-host.js (host-side presentation only).
-          cp -r demos/kaka/assets pages/docs/demos/kaka/assets
+          # Parallax + sprite scenery: the PNGs are served verbatim and painted
+          # by kaka-host.js (host-side presentation only). Merge into the
+          # directory that already exists on main -- `cp -r src dst` would nest
+          # src as dst/assets on a later publish.
+          mkdir -p pages/docs/demos/kaka/assets
+          cp -r demos/kaka/assets/. pages/docs/demos/kaka/assets/
           python3 site/check-site.py pages/docs
           cd pages
           git config user.name "github-actions[bot]"
