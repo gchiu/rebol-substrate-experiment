@@ -1,11 +1,12 @@
-;; demos/kaka/kaka-wave.glon -- D12B gameplay layer, loaded after kaka-draw.glon.
+;; demos/kaka/kaka-wave.glon -- D12S.1 pest layer, loaded after kaka-draw.glon.
 ;;
-;; Adds: rats advancing in escalating waves from the left edge; rats that climb
-;; a tree and gnaw it (driving off any kaka feeding there); and tree canopies
-;; that block fired berries. Berries still only divert/power kakas (no berry
-;; damage to rats). The base tuple model and spawn helpers live in kaka.glon.
+;; Adds: an advancing rat front that enters from the world edge nearest the
+;; ranger and marches toward the habitat in growing waves; rats that climb a
+;; tree and gnaw it; and tree canopies that block fired berries. Rats are killed
+;; by the player's ROCKS (kaka.glon damage-pest), never by berries. The base
+;; tuple model and spawn helpers live in kaka.glon.
 ;;
-;; Rat phases (in F_STATE): 0 march, 1 climb, 2 gnaw, 3 descend+leave. The
+;; Rat phases (in F_STATE): 0 march, 1 climb, 2 gnaw, 3 descend+leave, 9 dead. The
 ;; global context has a hard 256-binding ceiling, so constants are inlined and
 ;; the tree/kaka scans are single self-recursive functions.
 [
@@ -25,7 +26,8 @@ spawn-rat: func [] [
         block-set! t F_D d
     ]
 ]
-;; wave controller: send a batch in from the left, then a lull; caps at RAT_MAX
+;; wave controller: an advancing front. Wave w sends 2w+2 rats (4, 6, 8, ...),
+;; capped, then a lull. Difficulty grows by NUMBERS, never by rat toughness.
 wave-step: func [] [
     either > wave-left 0 [
         either < wave-cd 1 [
@@ -35,7 +37,7 @@ wave-step: func [] [
         either < n-rat 1 [
             either < wave-cd 1 [
                 wave: + wave 1
-                wave-left: either > wave 6 [ 9 ] [ + wave 2 ]
+                wave-left: either > wave 6 [ 14 ] [ + * 2 wave 2 ]
                 wave-cd: 80
             ] [ wave-cd: - wave-cd 1 ]
         ] [ none ]
@@ -64,6 +66,11 @@ rat-disturb: func [i ti] [
 ]
 rat-step: func [t] [
     st: block-at t F_STATE
+    ;; state 9: killed by a rock, playing the death burst (F_C timer) then free
+    either = st 9 [
+        block-set! t F_C - block-at t F_C 1
+        either < block-at t F_C 1 [ ts-free t ] [ none ]
+    ] [
     either = st 0 [
         n: rat-tree 0 t
         either < n 0 [
@@ -93,7 +100,7 @@ rat-step: func [t] [
     ] [
         block-set! t F_Y + block-at t F_Y 2
         either > block-at t F_Y 344 [ block-set! t F_Y 345  block-set! t F_STATE 0 ] [ none ]
-    ] ] ]
+    ] ] ] ]
 ]
 ;; branch cover: absorb a berry whose rising path enters a live tree's canopy
 berry-blocked?: func [i t] [
@@ -109,4 +116,168 @@ berry-blocked?: func [i t] [
         ] [ berry-blocked? + i 1 t ]
     ] [ 0 ]
 ]
+
+;; ---- ROCKS: the player's anti-pest projectile (never feeds kaka/trees) -----
+;; Fires horizontally in the ranger's facing direction. Rock tuple: F_VY is the
+;; signed horizontal velocity (rocks do not fall), F_A is unused. A rock is a
+;; distinct K_ROCK kind, so it can never be mistaken for a berry by berry-hit.
+fire-rock: func [] [
+    either = krock 1 [
+        either < rock-cd 1 [
+            either < ts-count K_ROCK 5 [
+                b: ts-claim K_ROCK
+                either = b none [ none ] [
+                    block-set! b F_X + px * pf 18
+                    block-set! b F_Y - py 2
+                    block-set! b F_VY * pf 12
+                    rock-cd: 6
+                ]
+            ] [ none ]
+        ] [ none ]
+    ] [ none ]
+]
+;; Generic pest damage: every pest carries hp in F_B (rat = 1). A rock deals 1.
+;; On death the tuple enters a short RS_DEAD state (F_C timer) so the kill is
+;; legible, then reclaims cleanly. Future stoats/possums just get more F_B hp.
+damage-pest: func [t d] [
+    h: - block-at t F_B d
+    either < h 1 [
+        block-set! t F_STATE 9
+        block-set! t F_C 8
+        score: + score 20
+    ] [
+        block-set! t F_B h
+        block-set! t F_X + block-at t F_X * 8 sign block-at t F_VY
+    ]
+]
+rock-hit: func [t i] [
+    either < i ts-hi [
+        either = ts-k i K_RAT [
+            either < block-at ts-t i F_STATE 9 [
+                either < + abs - block-at ts-t i F_X block-at t F_X abs - block-at ts-t i F_Y block-at t F_Y 30 [
+                    ;; shove the pest one step along the rock's travel direction
+                    ;; (a hit reaction), then apply damage; a lethal rat hit
+                    ;; shows the flinch then the death burst.
+                    block-set! ts-t i F_X + block-at ts-t i F_X * 10 sign block-at t F_VY
+                    damage-pest ts-t i 1
+                    ts-free t
+                ] [ rock-hit t + i 1 ]
+            ] [ rock-hit t + i 1 ]
+        ] [ rock-hit t + i 1 ]
+    ] [ none ]
+]
+rock-step: func [t] [
+    block-set! t F_X + block-at t F_X block-at t F_VY
+    either > block-at t F_X + WORLD_W 24 [ ts-free t ] [
+        either < block-at t F_X -24 [ ts-free t ] [ rock-hit t 0 ]
+    ]
+]
+
+
+;; ---- berries and the Mystery Glon Berry ----------------------------------
+fire: func [] [
+    either = kf 1 [
+        either < cd 1 [
+            either < ts-count K_BERRY BERRY_MAX [
+                b: ts-claim K_BERRY
+                either = b none [ none ] [
+                    block-set! b F_X px
+                    block-set! b F_Y - py 14
+                    block-set! b F_VY -9
+                    block-set! b F_A 0
+                    cd: 9
+                ]
+            ] [ none ]
+        ] [ none ]
+    ] [ none ]
+]
+fire-glon: func [] [
+    either = kg 1 [
+        either < glon-cd 1 [
+            either > berries 0 [
+                b: ts-claim K_BERRY
+                either = b none [ none ] [
+                    block-set! b F_X px
+                    block-set! b F_Y - py 14
+                    block-set! b F_VY -8
+                    block-set! b F_A 1
+                    berries: - berries 1
+                    glon-cd: 20
+                ]
+            ] [ none ]
+        ] [ none ]
+    ] [ none ]
+]
+divert: func [kt bt] [
+    block-set! kt F_STATE KS_DIVERT
+    block-set! kt F_C 0
+    ;; keep momentum; steer away so the turn is an arc, never an instant flip
+    block-set! kt F_D either < - block-at kt F_X px 0 [ -1 ] [ 1 ]
+    ts-free bt
+    score: + score 10
+]
+mutate: func [kt bt] [
+    block-set! kt F_STATE KS_MUTANT
+    block-set! kt F_B + tick 540
+    ts-free bt
+]
+berry-step: func [t] [
+    block-set! t F_Y + block-at t F_Y block-at t F_VY
+    ;; after the terminal life loss, berries still travel and despawn but have
+    ;; after the single terminal state, berries travel and despawn but
+    ;; have no effect
+    either = over 0 [
+        either < block-at t F_Y 265 [
+            either > block-at t F_Y 215 [ either = 1 berry-blocked? 0 t [ none ] [ berry-hit t 0 ] ] [ berry-hit t 0 ]
+        ] [ berry-hit t 0 ]
+    ] [ none ]
+    ;; berries are fired upward (F_VY < 0), so they leave the playfield at the
+    ;; TOP. Freeing on Y > 480 (which only a downward-moving actor can reach)
+    ;; leaked every missed berry in the fixed BERRY_MAX pool until firing died.
+    either < block-at t F_Y 0 [ ts-free t ] [ none ]
+]
+berry-hit: func [t i] [
+    either < i ts-hi [
+        either = ts-k i K_KAKA [
+            either < + abs - block-at ts-t i F_X block-at t F_X abs - block-at ts-t i F_Y block-at t F_Y 34 [
+                either = block-at t F_A 1 [ mutate ts-t i t ] [ divert ts-t i t ]
+            ] [ berry-hit t + i 1 ]
+        ] [ berry-hit t + i 1 ]
+    ] [ none ]
+]
+spawn-pick: func [] [
+    t: ts-claim K_PICK
+    either = t none [ none ] [
+        block-set! t F_X + 60 mod rnd - WORLD_W 120
+        block-set! t F_Y 20
+        block-set! t F_VY 2
+    ]
+]
+pick-step: func [t] [
+    y: + block-at t F_Y block-at t F_VY
+    block-set! t F_Y y
+    either < abs - px block-at t F_X 26 [
+        either < abs - py y 30 [ either = over 1 [ none ] [ berries: + berries 1 ]  ts-free t ] [ either > y 470 [ ts-free t ] [ none ] ]
+    ] [ either > y 470 [ ts-free t ] [ none ] ]
+]
+poop-step: func [t] [
+    y: + block-at t F_Y block-at t F_VY
+    block-set! t F_Y y
+    either >= y 330 [ either = over 1 [ ts-free t ] [ poop-land 0 t ] ] [ none ]
+]
+poop-land: func [i t] [
+    either < i NTREES [
+        either = ts-k i K_TREE [
+            either < abs - block-at ts-t i F_X block-at t F_X 44 [
+                either < block-at ts-t i F_A TREE_MAX [
+                    h: + block-at ts-t i F_A 25
+                    block-set! ts-t i F_A either > h TREE_MAX [ TREE_MAX ] [ h ]
+                    score: + score 25
+                    ts-free t
+                ] [ ts-free t ]
+            ] [ poop-land + i 1 t ]
+        ] [ poop-land + i 1 t ]
+    ] [ ts-free t ]
+]
+
 ]

@@ -116,9 +116,10 @@
       bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); display: flex;
       gap: .5rem; pointer-events: auto; }
     #kaka-touch .tc-right { position: absolute; right: .45rem;
-      bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); display: flex;
-      flex-direction: column; align-items: flex-end; gap: .5rem; pointer-events: auto; }
-    .tc-btn { padding: .85rem 1.1rem; font-size: 1.05rem; pointer-events: auto; }
+      bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); display: grid;
+      grid-template-columns: 1fr 1fr; gap: .5rem; pointer-events: auto; }
+    .tc-btn { padding: .8rem 1rem; font-size: 1rem; pointer-events: auto; }
+    .tc-btn.rock { color: #d8dde6; border-color: rgba(200,210,225,.55); }
     .build { position: absolute; left: 50%; bottom: calc(.08rem + env(safe-area-inset-bottom, 0px));
       transform: translateX(-50%); z-index: 9; margin: 0; font-size: .62rem; opacity: .72;
       color: #cfe3ff; text-shadow: 0 0 3px #000; pointer-events: none; white-space: nowrap; }
@@ -131,8 +132,9 @@
 <!-- Glon renders the HUD/status into data-glon-id="1"; JS only paints the canvas
      script Glon emits. The game is Glon-owned. -->
 <div id="kaka-app">
-  <p class="keys"><strong>Arrow keys / WASD</strong> move &middot; <strong>Space</strong> fire berry &middot;
-     <strong>G</strong> Mystery Glon Berry &middot; <strong>R</strong> restart</p>
+  <p class="keys"><strong>Arrow keys / WASD</strong> move &middot; <strong>F</strong> throw rock &middot;
+     <strong>Space</strong> berry (feed/divert k&#257;k&#257;) &middot;
+     <strong>G</strong> Mystery Glon Berry (power) &middot; <strong>R</strong> restart</p>
   <h1>Attack of the Mutant Kaka</h1>
   <p class="tag">Eco-Warriors of Karori, Unite!</p>
   <div id="status" data-glon-id="1"></div>
@@ -144,6 +146,7 @@
         <button class="tc-btn" data-kaka-hold="right" aria-label="move right">&#9654;</button>
       </div>
       <div class="tc-right">
+        <button class="tc-btn rock" data-kaka-hold="rock" aria-label="throw rock">ROCK</button>
         <button class="tc-btn" data-kaka-hold="fire" aria-label="fire berry">BERRY</button>
         <button class="tc-btn" data-kaka-hold="glon" aria-label="fire glon berry">GLON</button>
         <button class="tc-btn" data-glon-event="kaka-restart" aria-label="restart">RESTART</button>
@@ -153,10 +156,10 @@
   <p class="muted">The kaka are native wildlife and must never be shot; berries divert them.
      Lasers only zap introduced rats. Arcade fiction: do not feed real wild kaka.
      &middot; <a href="../patrol/patrol.html">Glon Patrol</a></p>
-  <p class="build" id="kaka-build">Kākā D12M.6</p>
+  <p class="build" id="kaka-build">Kākā D12S.1</p>
   <button id="kaka-fs" class="fs-btn" type="button" hidden>FULLSCREEN</button>
 </div>
-<script>window.__BUILD_SHA='a34d7c8';</script>
-<script src="kaka-host.js?v=d12m6"></script>
+<script>window.__BUILD_SHA='b67dc22';</script>
+<script src="kaka-host.js?v=d12s1"></script>
 </body>
 </html>
