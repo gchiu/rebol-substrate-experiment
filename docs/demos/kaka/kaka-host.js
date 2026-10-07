@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12B";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12b5";
+  var BUILD = "D12M.1";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12m1";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -291,6 +291,35 @@
     });
   }
 
+  /* Touch controls: map Pointer Events onto the SAME Glon key events the
+     keyboard emits (kaka-key-down/up). Press-and-hold moves/fires; pointer
+     capture + pointercancel/lostpointercapture guarantee a release is never
+     lost, so movement can never get stuck. No mobile-specific game rules. */
+  function wireTouch() {
+    var hold = document.querySelectorAll("[data-kaka-hold]");
+    for (var i = 0; i < hold.length; i++) {
+      (function (b) {
+        var name = b.getAttribute("data-kaka-hold");
+        function down(e) {
+          e.preventDefault();
+          if (b.setPointerCapture && e.pointerId !== undefined) { try { b.setPointerCapture(e.pointerId); } catch (err) {} }
+          b.classList.add("on");
+          evVal("kaka-key-down", name);
+        }
+        function up(e) {
+          e.preventDefault();
+          b.classList.remove("on");
+          evVal("kaka-key-up", name);
+        }
+        b.addEventListener("pointerdown", down);
+        b.addEventListener("pointerup", up);
+        b.addEventListener("pointercancel", up);
+        b.addEventListener("lostpointercapture", up);
+        b.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+      })(hold[i]);
+    }
+  }
+
   function fetchText(u) {
     var v = u + "?v=" + VER;         /* bust the Pages 10-minute cache */
     return fetch(v).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status + " " + v); return r.text(); });
@@ -311,6 +340,7 @@
       .then(loadSprites)             /* actor sheets are presentation-only */
       .then(function () {
         wireClicks();
+        wireTouch();
         window.addEventListener("keydown", function (e) { key(e, true); });
         window.addEventListener("keyup", function (e) { key(e, false); });
         window.addEventListener("blur", function () { resetInput(); });
