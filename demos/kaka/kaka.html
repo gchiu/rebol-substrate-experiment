@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Attack of the Mutant Kaka</title>
 <style>
   body { font: 15px/1.4 system-ui, sans-serif; margin: 1rem auto; max-width: 680px; background: #0b1020; color: #e8e8e8; }
@@ -12,7 +12,8 @@
   .mutant { color: #ff3df0; font-weight: 800; letter-spacing: .04em; animation: pulse .5s steps(2) infinite; }
   @keyframes pulse { 50% { opacity: .55; } }
   .muted { color: #9aa1ad; }
-  #glon-canvas { display: block; width: 640px; height: 480px; border: 1px solid #334; background: #0b1020; }
+  #glon-canvas { display: block; width: 640px; height: 480px; border: 1px solid #334; background: #0b1020;
+    touch-action: none; }
   #glon-canvas:focus { outline: 2px solid #556; outline-offset: 2px; }
   button { font: inherit; padding: .4rem .8rem; cursor: pointer; }
   .keys { color: #ffe066; font-size: 1rem; font-weight: 600; margin: .4rem 0 .7rem; }
@@ -40,20 +41,83 @@
   .kaka-go-btn { font: inherit; font-size: 1.15rem; font-weight: 700; padding: .5em 1.4em;
     cursor: pointer; border-radius: .4rem; }
   .build { color: #6b7280; font-size: .8rem; margin: .5rem 0 0; }
+
+  /* Touch controls and the portrait hint are host-only plumbing: they emit the
+     SAME Glon key events as the keyboard. Hidden unless the device is coarse. */
+  .touch-only { display: none; }
+  .tc-btn { touch-action: none; -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent; font: inherit; font-weight: 800;
+    background: rgba(20,26,44,.6); color: #ffe066; border: 1px solid rgba(255,255,255,.3);
+    border-radius: .7rem; padding: .8rem 1rem; }
+  .tc-btn.on, .tc-btn:active { background: rgba(70,95,160,.8); }
+
+  /* --- touch devices: compact chrome, show controls --------------------- */
+  @media (pointer: coarse) {
+    body { margin: 0; max-width: none; }
+    .keys { display: none; }
+    .build { text-align: center; margin: .25rem 0; }
+    #kaka-touch { display: flex; }
+  }
+
+  /* --- portrait phone: prefer landscape, but still render ---------------- */
+  @media (pointer: coarse) and (orientation: portrait) {
+    #kaka-rotate { display: block; text-align: center; font-weight: 700; color: #ffe066;
+      background: #1a2138; padding: .6rem; border-bottom: 1px solid #2a3350; }
+    #kaka-app { max-width: 96vw; margin: 0 auto; }
+    #glon-canvas { width: 96vw; height: auto; max-height: 58vh; margin: 0 auto; }
+    #kaka-touch { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center;
+      padding: .5rem; }
+    #kaka-touch .tc-left, #kaka-touch .tc-right { display: flex; gap: .5rem; }
+  }
+
+  /* --- landscape phone: canvas fills the height, controls use the sides -- */
+  @media (pointer: coarse) and (orientation: landscape) {
+    html, body { height: 100%; }
+    body { margin: 0; overflow: hidden; }
+    #status h1, #status .tag, #status .keys, #status .muted,
+    #kaka-app > .keys, #kaka-app > .muted { display: none; }
+    #kaka-app { display: flex; flex-direction: column; height: 100dvh; }
+    #status { flex: 0 0 auto; padding: 0 .45rem; }
+    .hud { font-size: .82rem; margin: .15rem 0; }
+    #kaka-stage { position: relative; flex: 1 1 auto; min-height: 0; display: flex;
+      align-items: center; justify-content: center; gap: .5rem; padding: 0 .4rem; }
+    #glon-canvas { width: auto; height: auto; max-width: 100%; max-height: 100%; border: 0; }
+    #kaka-touch { position: absolute; inset: 0; display: flex; align-items: flex-end;
+      justify-content: space-between; padding: .5rem; pointer-events: none; }
+    .tc-left, .tc-right { display: flex; gap: .5rem; pointer-events: auto; }
+    .tc-right { flex-direction: column; align-items: flex-end; }
+    .build { text-align: center; margin: .15rem 0; font-size: .72rem; }
+  }
 </style>
 </head>
 <body>
+<div id="kaka-rotate" class="touch-only">Turn your phone sideways to play</div>
 <!-- Glon renders the HUD/status into data-glon-id="1"; JS only paints the canvas
      script Glon emits. The game is Glon-owned. -->
-<p class="keys"><strong>Arrow keys / WASD</strong> move &middot; <strong>Space</strong> fire berry &middot;
-   <strong>G</strong> Mystery Glon Berry &middot; <strong>R</strong> restart</p>
-<div id="status" data-glon-id="1"></div>
-<canvas id="glon-canvas" width="640" height="480" tabindex="0"></canvas>
-<p class="muted">The kaka are native wildlife and must never be shot; berries divert them.
-   Lasers only zap introduced rats. Arcade fiction: do not feed real wild kaka.
-   &middot; <a href="../patrol/patrol.html">Glon Patrol</a></p>
-<p class="build" id="kaka-build">Kākā D12B</p>
+<div id="kaka-app">
+  <p class="keys"><strong>Arrow keys / WASD</strong> move &middot; <strong>Space</strong> fire berry &middot;
+     <strong>G</strong> Mystery Glon Berry &middot; <strong>R</strong> restart</p>
+  <div id="status" data-glon-id="1"></div>
+  <div id="kaka-stage">
+    <canvas id="glon-canvas" width="640" height="480" tabindex="0"></canvas>
+    <div id="kaka-touch" class="touch-only" aria-label="touch controls">
+      <div class="tc-left">
+        <button class="tc-btn" data-kaka-hold="left" aria-label="move left">&#9664;</button>
+        <button class="tc-btn" data-kaka-hold="right" aria-label="move right">&#9654;</button>
+      </div>
+      <div class="tc-right">
+        <button class="tc-btn" data-kaka-hold="fire" aria-label="fire berry">BERRY</button>
+        <button class="tc-btn" data-kaka-hold="glon" aria-label="fire glon berry">GLON</button>
+        <button class="tc-btn" data-glon-event="kaka-restart" aria-label="restart">RESTART</button>
+      </div>
+    </div>
+  </div>
+  <p class="muted">The kaka are native wildlife and must never be shot; berries divert them.
+     Lasers only zap introduced rats. Arcade fiction: do not feed real wild kaka.
+     &middot; <a href="../patrol/patrol.html">Glon Patrol</a></p>
+  <p class="build" id="kaka-build">Kākā D12M.1</p>
+</div>
 <!-- KAKA_BUILD_SHA -->
-<script src="kaka-host.js?v=d12b5"></script>
+<script src="kaka-host.js?v=d12m1"></script>
 </body>
 </html>
