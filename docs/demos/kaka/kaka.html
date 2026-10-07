@@ -55,8 +55,7 @@
   @media (pointer: coarse) {
     body { margin: 0; max-width: none; }
     .keys { display: none; }
-    .build { text-align: center; margin: .25rem 0; }
-    #kaka-touch { display: flex; }
+    #kaka-touch { display: block; }
   }
 
   /* --- portrait phone: prefer landscape, but still render ---------------- */
@@ -64,28 +63,41 @@
     #kaka-rotate { display: block; text-align: center; font-weight: 700; color: #ffe066;
       background: #1a2138; padding: .6rem; border-bottom: 1px solid #2a3350; }
     #kaka-app { max-width: 96vw; margin: 0 auto; }
-    #glon-canvas { width: 96vw; height: auto; max-height: 58vh; margin: 0 auto; }
+    #glon-canvas { width: 96vw; height: auto; max-height: 70vh; margin: 0 auto; }
     #kaka-touch { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center;
-      padding: .5rem; }
+      padding: .6rem; }
     #kaka-touch .tc-left, #kaka-touch .tc-right { display: flex; gap: .5rem; }
   }
 
-  /* --- landscape phone: canvas fills the height, controls use the sides -- */
+  /* --- landscape phone: the CANVAS is the layout; HUD/controls overlay it.
+     Nothing but the canvas consumes layout height, so the 4:3 playfield gets
+     ~96% of the visible viewport height and is centred horizontally. -------- */
   @media (pointer: coarse) and (orientation: landscape) {
     html, body { height: 100%; }
     body { margin: 0; overflow: hidden; }
     #kaka-app > h1, #kaka-app > .tag, #kaka-app > .keys, #kaka-app > .muted { display: none; }
-    #kaka-app { display: flex; flex-direction: column; height: 100dvh; }
-    #status { flex: 0 0 auto; padding: 0 .45rem; }
-    .hud { font-size: .82rem; margin: .15rem 0; }
-    #kaka-stage { position: relative; flex: 1 1 auto; min-height: 0; display: flex;
-      align-items: center; justify-content: center; gap: .5rem; padding: 0 .4rem; }
-    #glon-canvas { width: auto; height: auto; max-width: 100%; max-height: 100%; border: 0; }
-    #kaka-touch { position: absolute; inset: 0; display: flex; align-items: flex-end;
-      justify-content: space-between; padding: .5rem; pointer-events: none; }
-    .tc-left, .tc-right { display: flex; gap: .5rem; pointer-events: auto; }
-    .tc-right { flex-direction: column; align-items: flex-end; }
-    .build { text-align: center; margin: .15rem 0; font-size: .72rem; }
+    #kaka-rotate { display: none; }
+    #kaka-app { position: relative; height: var(--app-h, 100dvh); overflow: hidden; }
+    /* HUD overlays the top edge; consumes zero external layout height */
+    #status { position: absolute; left: 0; right: 0; top: 0; z-index: 5; padding: 0;
+      pointer-events: none;
+      background: linear-gradient(rgba(6,8,18,.62), rgba(6,8,18,0)); }
+    #status .hud { margin: 0; padding: .15rem .5rem; font-size: clamp(.6rem, 2.3vw, .95rem);
+      color: #ffe066; text-shadow: 0 0 3px #000; }
+    #status .mutant { margin: 0; padding: 0 .5rem .15rem; font-size: clamp(.6rem, 2.2vw, .9rem); }
+    #kaka-stage { position: absolute; inset: 0; }
+    /* size from available height first, then derive width; keep 4:3, centre */
+    #glon-canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+      width: auto; height: min(96%, calc(98vw * 0.75)); aspect-ratio: 4 / 3; border: 0; }
+    /* controls overlay the lower corners; they never shrink the canvas */
+    #kaka-touch { position: absolute; inset: 0; display: block; pointer-events: none; }
+    #kaka-touch .tc-left { position: absolute; left: .45rem; bottom: .45rem; display: flex;
+      gap: .5rem; pointer-events: auto; }
+    #kaka-touch .tc-right { position: absolute; right: .45rem; bottom: .45rem; display: flex;
+      flex-direction: column; align-items: flex-end; gap: .5rem; pointer-events: auto; }
+    .tc-btn { padding: .85rem 1.1rem; font-size: 1.05rem; }
+    .build { position: absolute; right: .4rem; bottom: .05rem; z-index: 6; margin: 0;
+      font-size: .6rem; opacity: .5; pointer-events: none; }
   }
 </style>
 </head>
@@ -116,9 +128,9 @@
   <p class="muted">The kaka are native wildlife and must never be shot; berries divert them.
      Lasers only zap introduced rats. Arcade fiction: do not feed real wild kaka.
      &middot; <a href="../patrol/patrol.html">Glon Patrol</a></p>
-  <p class="build" id="kaka-build">Kākā D12M.2</p>
+  <p class="build" id="kaka-build">Kākā D12M.3</p>
 </div>
-<script>window.__BUILD_SHA='1621f2a';</script>
-<script src="kaka-host.js?v=d12m2"></script>
+<script>window.__BUILD_SHA='9bd6fe3';</script>
+<script src="kaka-host.js?v=d12m3"></script>
 </body>
 </html>
