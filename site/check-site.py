@@ -35,6 +35,8 @@ REQUIRED = [
     "demos/patrol/patrol.glon", "demos/patrol/glon.wasm",
     "demos/patrol/prelude.glon", "demos/patrol/strings.glon",
     "demos/kaka/kaka.html", "demos/kaka/kaka-host.js",
+    "demos/kaka/manifest.webmanifest",
+    "demos/kaka/assets/icon-192.png", "demos/kaka/assets/icon-512.png",
     "demos/kaka/kaka.glon", "demos/kaka/kaka-lib.glon",
     "demos/kaka/kaka-draw.glon", "demos/kaka/kaka-wave.glon", "demos/kaka/kaka-selftest.glon",
     "demos/kaka/glon.wasm", "demos/kaka/prelude.glon", "demos/kaka/strings.glon",

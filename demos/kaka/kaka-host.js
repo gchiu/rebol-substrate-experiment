@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12M.4";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12m4";
+  var BUILD = "D12M.5";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12m5";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -373,6 +373,45 @@
     }
   }
 
+  /* Optional fullscreen affordance for normal browser tabs. Hidden when the app
+     is already installed/standalone or the API is unavailable; never automatic. */
+  function isStandalone() {
+    try {
+      return window.matchMedia("(display-mode: standalone)").matches
+          || window.matchMedia("(display-mode: fullscreen)").matches
+          || window.navigator.standalone === true;
+    } catch (e) { return false; }
+  }
+  function fsElement() { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+  function setupFullscreen() {
+    var btn = document.getElementById("kaka-fs");
+    if (!btn) return;
+    var supported = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+    function refresh() {
+      if (!supported || (isStandalone() && !fsElement())) { btn.hidden = true; return; }
+      btn.hidden = false;
+      btn.textContent = fsElement() ? "\u2715 EXIT" : "\u26f6 FULLSCREEN";
+    }
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      try {
+        if (fsElement()) {
+          var x = document.exitFullscreen || document.webkitExitFullscreen; x.call(document);
+        } else {
+          var el = document.getElementById("kaka-stage") || document.documentElement;
+          var rq = el.requestFullscreen || el.webkitRequestFullscreen;
+          var p = rq.call(el);
+          if (p && p.catch) p.catch(function () {});
+        }
+      } catch (err) { console.error("kaka: fullscreen failed", err); }
+      setTimeout(fitView, 50);
+      focusGame();
+    });
+    document.addEventListener("fullscreenchange", refresh);
+    document.addEventListener("webkitfullscreenchange", refresh);
+    refresh();
+  }
+
   function boot() {
     if (ex.glon_init() !== 0) { console.error("kaka: glon_init failed"); return; }
     Promise.resolve()
@@ -399,6 +438,7 @@
           window.visualViewport.addEventListener("resize", fitView);
           window.visualViewport.addEventListener("scroll", fitView);
         }
+        setupFullscreen();
         window.addEventListener("keydown", function (e) { key(e, true); });
         window.addEventListener("keyup", function (e) { key(e, false); });
         window.addEventListener("blur", function () { resetInput(); });

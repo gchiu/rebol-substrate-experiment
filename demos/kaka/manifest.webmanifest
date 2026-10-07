@@ -1,0 +1,16 @@
+{
+  "name": "Attack of the Mutant Kākā",
+  "short_name": "Kākā",
+  "description": "A Glon eco-arcade: divert kākā and defend Karori's forest from introduced rats.",
+  "start_url": "./kaka.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone", "minimal-ui"],
+  "orientation": "landscape",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

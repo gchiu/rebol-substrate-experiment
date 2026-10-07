@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Attack of the Mutant Kaka</title>
+<!-- PWA / app-like launch (presentation only; no offline caching) -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b1020">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kākā">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
 <style>
   body { font: 15px/1.4 system-ui, sans-serif; margin: 1rem auto; max-width: 680px; background: #0b1020; color: #e8e8e8; }
   h1 { margin: .2rem 0; }
@@ -40,6 +48,13 @@
   .kaka-go-btn { font: inherit; font-size: 1.15rem; font-weight: 700; padding: .5em 1.4em;
     cursor: pointer; border-radius: .4rem; }
   .build { color: #6b7280; font-size: .8rem; margin: .5rem 0 0; }
+  /* Optional fullscreen affordance (normal browser tabs only; hidden in an
+     installed/standalone app). Never auto-enters fullscreen. */
+  .fs-btn { position: fixed; top: .35rem; right: .35rem; z-index: 8;
+    font: inherit; font-size: .7rem; font-weight: 700; padding: .35rem .6rem;
+    color: #cfe3ff; background: rgba(20,26,44,.6); border: 1px solid rgba(255,255,255,.28);
+    border-radius: .5rem; cursor: pointer; touch-action: manipulation; }
+  .fs-btn[hidden] { display: none; }
 
   /* Touch controls and the portrait hint are host-only plumbing: they emit the
      SAME Glon key events as the keyboard. Hidden unless the device is coarse. */
@@ -95,8 +110,9 @@
     #kaka-touch .tc-right { position: absolute; right: .45rem; bottom: .45rem; display: flex;
       flex-direction: column; align-items: flex-end; gap: .5rem; pointer-events: auto; }
     .tc-btn { padding: .85rem 1.1rem; font-size: 1.05rem; }
-    .build { position: absolute; right: .35rem; top: .1rem; z-index: 7; margin: 0;
-      font-size: .55rem; opacity: .5; pointer-events: none; }
+    .build { position: absolute; left: 50%; bottom: .05rem; transform: translateX(-50%);
+      z-index: 7; margin: 0; font-size: .55rem; opacity: .5; pointer-events: none; }
+    .fs-btn { top: .1rem; right: .35rem; }
   }
 </style>
 </head>
@@ -127,9 +143,10 @@
   <p class="muted">The kaka are native wildlife and must never be shot; berries divert them.
      Lasers only zap introduced rats. Arcade fiction: do not feed real wild kaka.
      &middot; <a href="../patrol/patrol.html">Glon Patrol</a></p>
-  <p class="build" id="kaka-build">Kākā D12M.4</p>
+  <p class="build" id="kaka-build">Kākā D12M.5</p>
+  <button id="kaka-fs" class="fs-btn" type="button" hidden>FULLSCREEN</button>
 </div>
 <!-- KAKA_BUILD_SHA -->
-<script src="kaka-host.js?v=d12m4"></script>
+<script src="kaka-host.js?v=d12m5"></script>
 </body>
 </html>
