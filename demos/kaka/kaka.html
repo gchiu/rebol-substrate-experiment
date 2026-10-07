@@ -74,8 +74,7 @@
   @media (pointer: coarse) and (orientation: landscape) {
     html, body { height: 100%; }
     body { margin: 0; overflow: hidden; }
-    #status h1, #status .tag, #status .keys, #status .muted,
-    #kaka-app > .keys, #kaka-app > .muted { display: none; }
+    #kaka-app > h1, #kaka-app > .tag, #kaka-app > .keys, #kaka-app > .muted { display: none; }
     #kaka-app { display: flex; flex-direction: column; height: 100dvh; }
     #status { flex: 0 0 auto; padding: 0 .45rem; }
     .hud { font-size: .82rem; margin: .15rem 0; }
@@ -97,6 +96,8 @@
 <div id="kaka-app">
   <p class="keys"><strong>Arrow keys / WASD</strong> move &middot; <strong>Space</strong> fire berry &middot;
      <strong>G</strong> Mystery Glon Berry &middot; <strong>R</strong> restart</p>
+  <h1>Attack of the Mutant Kaka</h1>
+  <p class="tag">Eco-Warriors of Karori, Unite!</p>
   <div id="status" data-glon-id="1"></div>
   <div id="kaka-stage">
     <canvas id="glon-canvas" width="640" height="480" tabindex="0"></canvas>
@@ -115,9 +116,9 @@
   <p class="muted">The kaka are native wildlife and must never be shot; berries divert them.
      Lasers only zap introduced rats. Arcade fiction: do not feed real wild kaka.
      &middot; <a href="../patrol/patrol.html">Glon Patrol</a></p>
-  <p class="build" id="kaka-build">Kākā D12M.1</p>
+  <p class="build" id="kaka-build">Kākā D12M.2</p>
 </div>
 <!-- KAKA_BUILD_SHA -->
-<script src="kaka-host.js?v=d12m1"></script>
+<script src="kaka-host.js?v=d12m2"></script>
 </body>
 </html>

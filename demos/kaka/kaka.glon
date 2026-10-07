@@ -77,6 +77,10 @@ idc: 0 rng: 12345
 mutant-active: 0 mutant-left: 0
 n-kaka: 0 n-rat: 0 n-berry: 0 n-pick: 0 n-poop: 0
 trees-live: 0 tree-sum: 0
+;; occupied high-water: the per-tick scans (move-all / tally / actor-art) only
+;; walk slots < ts-hi, so empty tail slots cost nothing. Raised on claim and
+;; lowered (bounded) once per tick by `ch-hi` while the top slots are empty.
+ts-hi: 0
 
 sign: func [n] [ either < n 0 [ -1 ] [ either > n 0 [ 1 ] [ 0 ] ] ]
 rnd: func [] [ rng: mod + * rng 1103 12345 32768  rng ]
@@ -101,6 +105,7 @@ tclaim: func [i k] [
         either = block-at ts-t i F_KIND K_EMPTY [
             t: ts-t i
             block-set! t F_KIND k
+            either > + i 1 ts-hi [ ts-hi: + i 1 ] [ none ]
             idc: + idc 1
             block-set! t F_ID idc
             ;; clear every field so a reused slot never inherits stale state
@@ -117,7 +122,7 @@ ts-free: func [t] [ block-set! t F_KIND K_EMPTY ]
 
 ts-count: func [k] [ tcount 0 0 k ]
 tcount: func [i n k] [
-    either < i NTS [
+    either < i ts-hi [
         tcount + i 1 either = ts-k i k [ + n 1 ] [ n ] k
     ] [ n ]
 ]
@@ -134,7 +139,7 @@ spawn-tree: func [i x] [
 ]
 tree-sum: func [] [ tsum 0 0 ]
 tsum: func [i n] [
-    either < i NTS [
+    either < i NTREES [
         tsum + i 1 either = ts-k i K_TREE [ + n block-at ts-t i F_A ] [ n ]
     ] [ n ]
 ]
@@ -209,7 +214,7 @@ berry-step: func [t] [
     either < block-at t F_Y 0 [ ts-free t ] [ none ]
 ]
 berry-hit: func [t i] [
-    either < i NTS [
+    either < i ts-hi [
         either = ts-k i K_KAKA [
             either < + abs - block-at ts-t i F_X block-at t F_X abs - block-at ts-t i F_Y block-at t F_Y 34 [
                 either = block-at t F_A 1 [ mutate ts-t i t ] [ divert ts-t i t ]
@@ -238,7 +243,7 @@ poop-step: func [t] [
     either >= y 330 [ either = over 1 [ ts-free t ] [ poop-land 0 t ] ] [ none ]
 ]
 poop-land: func [i t] [
-    either < i NTS [
+    either < i NTREES [
         either = ts-k i K_TREE [
             either < abs - block-at ts-t i F_X block-at t F_X 44 [
                 either < block-at ts-t i F_A TREE_MAX [
@@ -272,7 +277,7 @@ move-player: func [] [
     either > abs - dx cam 2 [ cam: + cam * 2 sign - dx cam ] [ cam: dx ]
 ]
 move-all: func [i] [
-    either < i NTS [
+    either < i ts-hi [
         k: ts-k i
         either = k K_KAKA [ kaka-step ts-t i ] [
         either = k K_RAT [ rat-step ts-t i ] [
@@ -322,6 +327,7 @@ reset: func [] [
 next-kaka: 60 next-pick: 1100 next-milestone: 600
         laser: -99 laser-x: 0 laser-y: 0 laser-ox: 0 laser-oy: 0
     idc: 0 rng: 12345
+    ts-hi: 0
     ts-clear
     spawn-tree 0 120
     spawn-tree 1 320
@@ -332,6 +338,7 @@ next-kaka: 60 next-pick: 1100 next-milestone: 600
 ;; HUD and tests read. Replaces Patrol's hard-coded per-entity variables.
 tally: func [] [
     update-high
+    ch-hi 6
     mutant-active: 0  mutant-left: 0
     n-kaka: 0  n-rat: 0  n-berry: 0  n-pick: 0  n-poop: 0
     trees-live: 0  tree-sum: 0
@@ -341,7 +348,7 @@ tally: func [] [
     over: either = lives 0 [ 1 ] [ either = trees-live 0 [ 1 ] [ 0 ] ]
 ]
 tly: func [i] [
-    either < i NTS [
+    either < i ts-hi [
         k: ts-k i
         either = k K_KAKA [
             n-kaka: + n-kaka 1
@@ -360,6 +367,15 @@ tly: func [i] [
             either > block-at ts-t i F_A 0 [ trees-live: + trees-live 1 ] [ none ]
         ] [ none ] ] ] ] ] ]
         tly + i 1
+    ] [ none ]
+]
+;; lower the occupied high-water while the top slots are empty (bounded so the
+;; clamp itself stays cheap); keeps the per-tick scans proportional to actors.
+ch-hi: func [n] [
+    either > n 0 [
+        either > ts-hi 0 [
+            either = ts-k - ts-hi 1 K_EMPTY [ ts-hi: - ts-hi 1  ch-hi - n 1 ] [ none ]
+        ] [ none ]
     ] [ none ]
 ]
 

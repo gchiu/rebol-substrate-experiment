@@ -87,7 +87,7 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   };
 
   const state = () => {
-    const m = /<span id='kaka-state'[^>]*>([^<]*)<\/span>/.exec(rendered.join(""));
+    const m = /<[a-z]+ id='kaka-state'[^>]*>([^<]*)<\/[a-z]+>/.exec(rendered.join(""));
     return m ? m[1].trim().split(/\s+/).map(Number) : [];
   };
 
@@ -107,7 +107,7 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   load(fs.readFileSync(path.join(HERE, "kaka-selftest.glon"), "utf8"));
 
   const start = route("home");
-  if (!/Attack of the Mutant Kaka/.test(start) || !/Eco-Warriors of Karori/.test(start))
+  if (!/SCORE:/.test(start) || !/Lives: 3/.test(start) || !/id='kaka-state'/.test(start))
     fail("initial render: " + start.slice(0, 160));
 
   const st = event("kaka-start");

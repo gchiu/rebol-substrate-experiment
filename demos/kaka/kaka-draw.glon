@@ -151,7 +151,7 @@ drop-poop: func [t] [
 ]
 nearest-rat: func [t] [ nr 0 none 99999 t ]
 nr: func [i best bd t] [
-    either < i NTS [
+    either < i ts-hi [
         either = ts-k i K_RAT [
             d: + abs - block-at ts-t i F_X block-at t F_X abs - block-at ts-t i F_Y block-at t F_Y
             either < d bd [ nr + i 1 ts-t i d t ] [ nr + i 1 best bd t ]
@@ -299,7 +299,7 @@ spr-berry: func [t] [
     either = block-at t F_A 1 [ p-spr 31 x y 1 ] [ p-spr 30 x y 1 ]
 ]
 actor-art: func [i] [
-    either < i NTS [
+    either < i ts-hi [
         k: ts-k i
         either = k K_KAKA [ spr-kaka ts-t i ] [
         either = k K_RAT [ spr-rat ts-t i  gnaw-cue ts-t i ] [
@@ -316,7 +316,7 @@ actor-art: func [i] [
 ;; image is reproduced as drawing primitives.
 p-cam: func [b] [ p-byte b p-num cam p-eol ]
 draw-trees: func [i] [
-    either < i NTS [
+    either < i NTREES [
         either = ts-k i K_TREE [ tree-art ts-t i ] [ none ]
         draw-trees + i 1
     ] [ none ]
@@ -349,11 +349,10 @@ render-canvas: func [] [
     p-finish
 ]
 
-;; ---- HTML status (Glon builds it; JS writes the element) ------------------
+;; ---- HTML status (Glon builds only the dynamic part; the static head/tag/
+;; keyboard/muted markup lives in kaka.html so it is not re-emitted every tick) --
 render-status: func [] [
     e-clear
-    e-text "<h1>Attack of the Mutant Kaka</h1>"
-    e-text "<p class='tag'>Eco-Warriors of Karori, Unite!</p>"
     e-text "<p class='hud'>SCORE: " e-int score
     e-text "    Lives: " e-int lives
     e-text "    Trees: " e-int trees-live e-text "/" e-int NTREES
@@ -367,18 +366,17 @@ render-status: func [] [
     either = mutant-active 1 [
         e-text "<p class='mutant'>MUTANT KAKA &mdash; OCULAR LASERS ACTIVE ("
         e-int / mutant-left 60 e-text "s)</p>"
-    ] [ e-text "<p class='muted'>Kaka are native wildlife: berries divert, lasers only zap rats.</p>" ]
-    e-text "<p class='keys'>Arrow keys / WASD move &middot; Space fire berry &middot; G Mystery Glon Berry &middot; R restart</p>"
+    ] [ none ]
     ;; The host mirrors this numeric value into localStorage (small semantic
     ;; bridge); Glon owns the value and the comparison.
-    e-text "<span id='kaka-hs' style='display:none'>" e-int highscore e-text "</span>"
-    e-text "<span id='kaka-state' style='display:none'>"
+    e-text "<i id='kaka-hs'>" e-int highscore e-text "</i>"
+    e-text "<i id='kaka-state'>"
     e-int tick e-text " " e-int score e-text " " e-int over e-text " " e-int berries e-text " "
     e-int px e-text " " e-int kl e-text " " e-int kr e-text " " e-int kf e-text " " e-int kg e-text " "
     e-int n-kaka e-text " " e-int n-rat e-text " "
     e-int mutant-active e-text " " e-int mutant-left e-text " " e-int py e-text " "
     e-int lives e-text " " e-int invuln e-text " " e-int highscore
-    e-text "</span>"
+    e-text "</i>"
     either = over 1 [
         e-text "<div class='kaka-gameover'><div class='kaka-go-panel'>"
         e-text "<div class='kaka-go-title'>GAME OVER!!!</div>"
