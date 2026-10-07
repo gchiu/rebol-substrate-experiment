@@ -9,7 +9,7 @@
 ;; global context has a hard 256-binding ceiling, so constants are inlined and
 ;; the tree/kaka scans are single self-recursive functions.
 [
-wave: 0  wave-left: 0  wave-cd: 0  breaches: 0
+wave: 0  wave-left: 0  wave-cd: 0
 
 ;; spawn a rat just off the left edge, marching right
 spawn-rat: func [] [
@@ -64,7 +64,7 @@ rat-step: func [t] [
         n: rat-tree 0 t
         either < n 0 [
             block-set! t F_X + block-at t F_X 2
-            either > block-at t F_X 660 [ breaches: + breaches 1  ts-free t ] [ none ]
+            either > block-at t F_X 660 [ ts-free t ] [ none ]
         ] [
             block-set! t F_TARGET n
             block-set! t F_E block-at ts-t n F_X

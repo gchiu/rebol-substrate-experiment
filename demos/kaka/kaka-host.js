@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12M.3";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12m3";
+  var BUILD = "D12M.4";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12m4";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -95,6 +95,8 @@
     var L = LAYERS[idx];
     var w = img.naturalWidth * (L.h / img.naturalHeight);
     var x = (W - w) / 2 - cam * L.factor;
+    /* never expose an image edge when the viewport is very wide / panned far */
+    if (w >= W) x = Math.max(W - w, Math.min(0, x));
     ctx.globalAlpha = L.alpha;
     ctx.drawImage(img, x, L.yb - L.h, w, L.h);
     ctx.globalAlpha = 1;
@@ -344,10 +346,31 @@
   /* Track the real visible viewport (mobile browser chrome can show/hide) as a
      CSS variable, so the landscape layout can size the canvas from available
      height instead of guessing. Desktop ignores it. */
+  var viewW = 0;                       /* logical viewport width currently applied */
   function fitView() {
     var vv = window.visualViewport;
-    var h = (vv && vv.height) ? vv.height : window.innerHeight;
-    document.documentElement.style.setProperty("--app-h", Math.round(h) + "px");
+    var W = Math.round((vv && vv.width) || window.innerWidth);
+    var H = Math.round((vv && vv.height) || window.innerHeight);
+    document.documentElement.style.setProperty("--app-h", H + "px");
+    var canvas = document.querySelector("#glon-canvas");
+    if (!canvas) return;
+    /* landscape phones use a WIDER logical viewport (more world, not stretched):
+       visible height stays 480, width follows the display aspect. */
+    var landscape = window.matchMedia("(pointer: coarse) and (orientation: landscape)").matches;
+    var vw = 640;
+    if (landscape) vw = Math.max(640, Math.min(1600, Math.round(480 * (W / H) / 32) * 32));
+    if (canvas.width !== vw || canvas.height !== 480) { canvas.width = vw; canvas.height = 480; }
+    if (landscape) {
+      var scale = Math.min((W * 0.98) / vw, (H * 0.98) / 480);
+      canvas.style.width = Math.round(vw * scale) + "px";
+      canvas.style.height = Math.round(480 * scale) + "px";
+    } else {
+      canvas.style.width = ""; canvas.style.height = "";
+    }
+    if (vw !== viewW) {
+      viewW = vw;
+      try { evVal("kaka-viewport", String(vw)); } catch (e) {}
+    }
   }
 
   function boot() {
@@ -366,6 +389,9 @@
       .then(function () {
         wireClicks();
         wireTouch();
+        /* Hand the one persisted number to Glon BEFORE the viewport-driven
+           render below, so it cannot mirror a stale 0 over the stored high score. */
+        evVal("kaka-highscore", String(readStoredHigh()));
         fitView();
         window.addEventListener("resize", fitView);
         window.addEventListener("orientationchange", fitView);
@@ -385,8 +411,6 @@
         document.addEventListener("mousedown", function (e) {
           if (e.target && e.target.id === "glon-canvas") e.preventDefault();
         });
-        /* Hand the one persisted number to Glon; Glon decides what it means. */
-        evVal("kaka-highscore", String(readStoredHigh()));
         /* Visible build identifier: the deploy workflow injects the source SHA
            as window.__BUILD_SHA; locally it reads "dev". */
         var be = document.getElementById("kaka-build");

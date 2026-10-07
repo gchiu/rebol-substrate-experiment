@@ -46,6 +46,13 @@ laser-hazard: func [] [
 ]
 ;; The high score is Glon's: it only ever rises from the current score.
 update-high: func [] [ either > score highscore [ highscore: score ] [ none ] ]
+;; The host reports the logical presentation width (from the display aspect) so
+;; the camera can show more world on wide landscape screens.
+on-viewport: func [] [
+    v: str-int current-value
+    view-w: either < v 320 [ 320 ] [ either > v 1600 [ 1600 ] [ v ] ]
+    render
+]
 
 ;; ---- kaka flight: velocity + bounded steering gives curved bird paths -----
 ;; Each bird carries its own x/y velocity (F_VY/F_E). Every tick it steers one
