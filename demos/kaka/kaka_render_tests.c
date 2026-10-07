@@ -112,7 +112,7 @@ int main(void) {
     if (load_file("demos/kaka/kaka-wave.glon") != 0) return 2;
     if (run_source(OVERLAY) != 0) return 2;
 
-    const int X[3] = { 240, 720, 1200 };  /* spawn-tree 0/1/2 world x */
+    const int X[3] = { 240, 960, 1680 };  /* spawn-tree 0/1/2 world x */
     int base[3], fails = 0;
 
     if (route("home") != 0) return 2;
