@@ -11,14 +11,18 @@
 [
 wave: 0  wave-left: 0  wave-cd: 0
 
-;; spawn a rat just off the left edge, marching right
+;; spawn a rat just off the world edge nearest the ranger, marching inward. The
+;; world is 1440 wide, so rats must enter from the appropriate side/front rather
+;; than always from a fixed left edge. F_D carries the march direction (+1/-1).
 spawn-rat: func [] [
     t: ts-claim K_RAT
     either = t none [ none ] [
-        block-set! t F_X -24
+        d: either < px / WORLD_W 2 [ 1 ] [ -1 ]
+        block-set! t F_X either > d 0 [ -24 ] [ + WORLD_W 24 ]
         block-set! t F_Y 345
         block-set! t F_A 1
         block-set! t F_B 0
+        block-set! t F_D d
     ]
 ]
 ;; wave controller: send a batch in from the left, then a lull; caps at RAT_MAX
@@ -63,8 +67,10 @@ rat-step: func [t] [
     either = st 0 [
         n: rat-tree 0 t
         either < n 0 [
-            block-set! t F_X + block-at t F_X 2
-            either > block-at t F_X 660 [ ts-free t ] [ none ]
+            block-set! t F_X + block-at t F_X * 2 block-at t F_D
+            either > block-at t F_X + WORLD_W 40 [ ts-free t ] [
+                either < block-at t F_X -40 [ ts-free t ] [ none ]
+            ]
         ] [
             block-set! t F_TARGET n
             block-set! t F_E block-at ts-t n F_X

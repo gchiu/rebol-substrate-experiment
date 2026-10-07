@@ -112,12 +112,12 @@ int main(void) {
     if (load_file("demos/kaka/kaka-wave.glon") != 0) return 2;
     if (run_source(OVERLAY) != 0) return 2;
 
-    const int X[3] = { 120, 320, 520 };   /* spawn-tree 0/1/2 world x */
+    const int X[3] = { 240, 720, 1200 };  /* spawn-tree 0/1/2 world x */
     int base[3], fails = 0;
 
     if (route("home") != 0) return 2;
     for (int i = 0; i < 3; i++) base[i] = foliage_near(X[i]);
-    printf("baseline foliage@[120,320,520] = [%d,%d,%d]\n", base[0], base[1], base[2]);
+    printf("baseline foliage@[240,720,1200] = [%d,%d,%d]\n", base[0], base[1], base[2]);
 
     for (int t = 0; t < 3; t++) {
         char tok[32];
@@ -125,7 +125,7 @@ int main(void) {
         if (route("home") != 0) return 2;         /* fresh reset */
         if (route(tok) != 0) return 2;            /* damage only tree t */
         int c0 = foliage_near(X[0]), c1 = foliage_near(X[1]), c2 = foliage_near(X[2]);
-        printf("damage tree %d -> foliage@[120,320,520] = [%d,%d,%d]\n", t, c0, c1, c2);
+        printf("damage tree %d -> foliage@[240,720,1200] = [%d,%d,%d]\n", t, c0, c1, c2);
         int c[3] = { c0, c1, c2 };
         for (int i = 0; i < 3; i++) {
             int changed = c[i] != base[i];

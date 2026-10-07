@@ -77,7 +77,7 @@ int main(void) {
 
     /* 3. a rat climbs the tree it reaches and gnaws it */
     run_source("reset");
-    run_source("ts-claim K_RAT block-set! ts-t 3 F_X 120 block-set! ts-t 3 F_Y 345 block-set! ts-t 3 F_STATE 0 block-set! ts-t 3 F_A 1");
+    run_source("ts-claim K_RAT block-set! ts-t 3 F_X 240 block-set! ts-t 3 F_Y 345 block-set! ts-t 3 F_STATE 0 block-set! ts-t 3 F_A 1 block-set! ts-t 3 F_D 1");
     ticks("rat-step ts-t 3", 60);
     check(run_int("block-at ts-t 3 F_Y") <= 250, "3 rat climbed the trunk (y<=250)");
     check(run_int("block-at ts-t 0 F_A") < 100, "3 climbed rat gnawed tree0");
@@ -85,25 +85,25 @@ int main(void) {
 
     /* 4. a climbing rat drives a feeding kaka off that tree */
     run_source("reset");
-    run_source("ts-claim K_KAKA block-set! ts-t 3 F_STATE KS_EAT block-set! ts-t 3 F_TARGET 0 block-set! ts-t 3 F_X 120 block-set! ts-t 3 F_Y 250 block-set! ts-t 3 F_A 0");
-    run_source("ts-claim K_RAT block-set! ts-t 4 F_X 120 block-set! ts-t 4 F_Y 345 block-set! ts-t 4 F_STATE 0 block-set! ts-t 4 F_A 1");
+    run_source("ts-claim K_KAKA block-set! ts-t 3 F_STATE KS_EAT block-set! ts-t 3 F_TARGET 0 block-set! ts-t 3 F_X 240 block-set! ts-t 3 F_Y 250 block-set! ts-t 3 F_A 0");
+    run_source("ts-claim K_RAT block-set! ts-t 4 F_X 240 block-set! ts-t 4 F_Y 345 block-set! ts-t 4 F_STATE 0 block-set! ts-t 4 F_A 1 block-set! ts-t 4 F_D 1");
     ticks("rat-step ts-t 4", 60);
     check(run_int("block-at ts-t 3 F_STATE") == 4 /*KS_LEAVE*/, "4 rat drove the feeding kaka off (KS_LEAVE)");
 
     /* 5. a live canopy absorbs a berry; open air does not; a dead tree does not */
     run_source("reset");
-    run_source("ts-claim K_BERRY block-set! ts-t 3 F_X 120 block-set! ts-t 3 F_Y 240 block-set! ts-t 3 F_VY -9");
+    run_source("ts-claim K_BERRY block-set! ts-t 3 F_X 240 block-set! ts-t 3 F_Y 240 block-set! ts-t 3 F_VY -9");
     run_source("berry-step ts-t 3");
     check(run_int("ts-count K_BERRY") == 0, "5 berry blocked by tree0 canopy");
 
     run_source("reset");
-    run_source("ts-claim K_BERRY block-set! ts-t 3 F_X 220 block-set! ts-t 3 F_Y 240 block-set! ts-t 3 F_VY -9");
+    run_source("ts-claim K_BERRY block-set! ts-t 3 F_X 420 block-set! ts-t 3 F_Y 240 block-set! ts-t 3 F_VY -9");
     run_source("berry-step ts-t 3");
     check(run_int("ts-count K_BERRY") == 1, "5 berry in open air is not blocked");
 
     run_source("reset");
     run_source("damage-tree 0 100");
-    run_source("ts-claim K_BERRY block-set! ts-t 3 F_X 120 block-set! ts-t 3 F_Y 240 block-set! ts-t 3 F_VY -9");
+    run_source("ts-claim K_BERRY block-set! ts-t 3 F_X 240 block-set! ts-t 3 F_Y 240 block-set! ts-t 3 F_VY -9");
     run_source("berry-step ts-t 3");
     check(run_int("ts-count K_BERRY") == 1, "5 dead tree does not block the berry");
 

@@ -10,7 +10,11 @@
 ;; Requires prelude.glon, strings.glon, kaka-lib.glon (loaded first).
 
 [
-PFW: 640
+;; Viewport width and world width are separate: WORLD_W is the gameplay world,
+;; view-w is the window onto it (host-set). A wide phone shows more of the SAME
+;; world; actor coordinates never depend on the screen. 1440 = the 3:1 art's
+;; natural 1440x480 scale.
+WORLD_W: 1440
 PFH: 480
 GROUND: 360
 NTREES: 3
@@ -61,9 +65,8 @@ tick: 0 score: 0 over: 0
 ;; recomputes it; HUD, splash and step all read this single flag.
 lives: 3 invuln: 0 highscore: 0
 kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
-px: 220 py: 330
-;; cam = world x at the view's left edge; view-w = logical viewport width
-;; (640 = classic 4:3; wider on landscape phones). Host-set; presentation only.
+px: 480 py: 330
+;; cam = world x at the view's left edge; view-w = logical viewport width.
 cam: 0 view-w: 640
 cd: 0 glon-cd: 0
 berries: 1
@@ -224,7 +227,7 @@ berry-hit: func [t i] [
 spawn-pick: func [] [
     t: ts-claim K_PICK
     either = t none [ none ] [
-        block-set! t F_X + 60 mod rnd 520
+        block-set! t F_X + 60 mod rnd - WORLD_W 120
         block-set! t F_Y 20
         block-set! t F_VY 2
     ]
@@ -264,22 +267,16 @@ move-player: func [] [
     ;; faster than a straight line. Reacts within one tick; no acceleration.
     either = 0 * dx dy [ px: + px * dx 10  py: + py * dy 7 ] [ px: + px * dx 7  py: + py * dy 7 ]
     either < px 24 [ px: 24 ] [ none ]
-    either > px 616 [ px: 616 ] [ none ]
+    either > px - WORLD_W 24 [ px: - WORLD_W 24 ] [ none ]
     either < py 300 [ py: 300 ] [ none ]
     either > py 348 [ py: 348 ] [ none ]
-    ;; camera: follow the ranger (60 px dead zone), clamp to the 640-wide world
-    ;; (120 overscroll); a viewport wider than the world is centred. Extra width
-    ;; shows real world, never stretched. Presentation only.
+    ;; camera: follow the ranger, clamp the view to the world edges (centre the
+    ;; world if the viewport is wider); ease by <=2 px/tick. Presentation only.
     half: / view-w 2
-    either > half - 640 half [ c: 320 ] [
-        dx: - px half
-        dx: either > abs dx 60 [ - dx * 60 sign dx ] [ 0 ]
-        c: + half dx
-        cmin: - half 120
-        cmax: + - 640 half 120
-        c: either < c cmin [ cmin ] [ either > c cmax [ cmax ] [ c ] ]
-    ]
-    t: - c half
+    t: - px half
+    t: either < t 0 [ 0 ] [ t ]
+    t: either > t - WORLD_W view-w [ - WORLD_W view-w ] [ t ]
+    either >= view-w WORLD_W [ t: / - WORLD_W view-w 2 ] [ none ]
     either > abs - t cam 2 [ cam: + cam * 2 sign - t cam ] [ cam: t ]
 ]
 move-all: func [i] [
@@ -327,7 +324,7 @@ reset: func [] [
     tick: 0 score: 0 over: 0
     lives: LIVES_MAX invuln: 0
     kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
-    px: 220 py: 330 cd: 0 glon-cd: 0
+    px: 480 py: 330 cd: 0 glon-cd: 0
     cam: 0
     berries: 1
 next-kaka: 60 next-pick: 1100 next-milestone: 600
@@ -335,9 +332,11 @@ next-kaka: 60 next-pick: 1100 next-milestone: 600
     idc: 0 rng: 12345
     ts-hi: 0
     ts-clear
-    spawn-tree 0 120
-    spawn-tree 1 320
-    spawn-tree 2 520
+    ;; stable WIDER-WORLD tree coordinates; a device/orientation change never
+    ;; relocates gameplay, only how much of this world is visible.
+    spawn-tree 0 240
+    spawn-tree 1 720
+    spawn-tree 2 1200
     tally
 ]
 ;; one pass over the tuple space, refreshing every aggregate the spawn logic,

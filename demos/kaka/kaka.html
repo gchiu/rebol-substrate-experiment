@@ -12,6 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Kākā">
 <link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="icon" href="assets/icon-192.png">
 <style>
   body { font: 15px/1.4 system-ui, sans-serif; margin: 1rem auto; max-width: 680px; background: #0b1020; color: #e8e8e8; }
   h1 { margin: .2rem 0; }
@@ -32,7 +33,10 @@
      visible behind it. */
   .kaka-gameover { position: fixed; inset: 0; z-index: 100; display: flex;
     align-items: center; justify-content: center; padding: 1rem;
-    background: rgba(6,3,12,.34); }
+    background: rgba(6,3,12,.34);
+    /* the overlay lives inside #status, which is pointer-events:none in
+       landscape; restore interaction so PLAY AGAIN is actually tappable */
+    pointer-events: auto; }
   .kaka-go-panel { display: flex; flex-direction: column; align-items: center;
     text-align: center; padding: clamp(.8rem,2.2vw,1.4rem) clamp(1.2rem,4vw,2.6rem);
     border-radius: 1rem; background: rgba(12,4,14,.8);
@@ -103,15 +107,21 @@
     /* canvas size is set by the host from the display aspect (variable width,
        480 tall) so a wide phone shows more world; JS sets inline width/height */
     #glon-canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); border: 0; }
-    /* controls overlay the lower corners; they never shrink the canvas */
-    #kaka-touch { position: absolute; inset: 0; display: block; pointer-events: none; }
-    #kaka-touch .tc-left { position: absolute; left: .45rem; bottom: .45rem; display: flex;
+    /* controls overlay the lower corners; they never shrink the canvas. A
+       z-index keeps them above the canvas and env(safe-area-inset-bottom)
+       keeps the bottom buttons clear of the system home/gesture area, so a
+       tap on RESTART is not swallowed by the OS. */
+    #kaka-touch { position: absolute; inset: 0; display: block; pointer-events: none; z-index: 6; }
+    #kaka-touch .tc-left { position: absolute; left: .45rem;
+      bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); display: flex;
       gap: .5rem; pointer-events: auto; }
-    #kaka-touch .tc-right { position: absolute; right: .45rem; bottom: .45rem; display: flex;
+    #kaka-touch .tc-right { position: absolute; right: .45rem;
+      bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); display: flex;
       flex-direction: column; align-items: flex-end; gap: .5rem; pointer-events: auto; }
-    .tc-btn { padding: .85rem 1.1rem; font-size: 1.05rem; }
-    .build { position: absolute; left: 50%; bottom: .05rem; transform: translateX(-50%);
-      z-index: 7; margin: 0; font-size: .55rem; opacity: .5; pointer-events: none; }
+    .tc-btn { padding: .85rem 1.1rem; font-size: 1.05rem; pointer-events: auto; }
+    .build { position: absolute; left: 50%; bottom: calc(.08rem + env(safe-area-inset-bottom, 0px));
+      transform: translateX(-50%); z-index: 9; margin: 0; font-size: .62rem; opacity: .72;
+      color: #cfe3ff; text-shadow: 0 0 3px #000; pointer-events: none; white-space: nowrap; }
     .fs-btn { top: .1rem; right: .35rem; }
   }
 </style>
@@ -143,10 +153,10 @@
   <p class="muted">The kaka are native wildlife and must never be shot; berries divert them.
      Lasers only zap introduced rats. Arcade fiction: do not feed real wild kaka.
      &middot; <a href="../patrol/patrol.html">Glon Patrol</a></p>
-  <p class="build" id="kaka-build">Kākā D12M.5</p>
+  <p class="build" id="kaka-build">Kākā D12M.6</p>
   <button id="kaka-fs" class="fs-btn" type="button" hidden>FULLSCREEN</button>
 </div>
 <!-- KAKA_BUILD_SHA -->
-<script src="kaka-host.js?v=d12m5"></script>
+<script src="kaka-host.js?v=d12m6"></script>
 </body>
 </html>
