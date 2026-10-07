@@ -49,7 +49,7 @@ rat-tree: func [i t] [
 ]
 ;; drive any kaka feeding on tree ti off the tree (a climbing rat threatens it)
 rat-disturb: func [i ti] [
-    either < i NTS [
+    either < i ts-hi [
         either = ts-k i K_KAKA [
             either = block-at ts-t i F_TARGET ti [
                 either = block-at ts-t i F_STATE KS_EAT [ block-set! ts-t i F_STATE KS_LEAVE ] [ none ]

@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12M.1";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12m1";
+  var BUILD = "D12M.2";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12m2";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -257,12 +257,21 @@
     evVal(down ? "kaka-key-down" : "kaka-key-up", k);
   }
 
-  function resetInput() { try { ev("kaka-input-reset"); } catch (err) { console.error("kaka: input reset failed", err); } }
+  function resetInput() { pendingUp = {}; try { ev("kaka-input-reset"); } catch (err) { console.error("kaka: input reset failed", err); } }
 
   function focusGame() {
     var cv = document.querySelector("#glon-canvas");
     if (cv) cv.focus();
   }
+
+  /* Discrete BERRY/GLON taps must not be lost when pointerdown+pointerup both
+     land between two fixed simulation ticks. We latch: if no tick has run since
+     the press, the key-up is deferred until after the next tick, so exactly one
+     tick always sees the press (the game's own cooldown/pool still gate firing).
+     LEFT/RIGHT stay plain held-state controls. */
+  var tickCount = 0;
+  var pressTick = {};
+  var pendingUp = {};
 
   function frame(now) {
     if (!lastTime) lastTime = now;      /* first callback: start the clock */
@@ -276,8 +285,12 @@
       catch (err) { console.error("kaka: tick failed", err); acc = 0; break; }
       acc -= SIM_DT;
       steps++;
+      tickCount++;
     }
     if (acc >= SIM_DT) acc = 0;         /* still behind: drop it, never spiral */
+    for (var nm in pendingUp) {
+      if (pendingUp[nm]) { pendingUp[nm] = false; evVal("kaka-key-up", nm); }
+    }
     requestAnimationFrame(frame);
   }
 
@@ -304,12 +317,15 @@
           e.preventDefault();
           if (b.setPointerCapture && e.pointerId !== undefined) { try { b.setPointerCapture(e.pointerId); } catch (err) {} }
           b.classList.add("on");
+          pressTick[name] = tickCount;
           evVal("kaka-key-down", name);
         }
         function up(e) {
           e.preventDefault();
           b.classList.remove("on");
-          evVal("kaka-key-up", name);
+          var discrete = (name === "fire" || name === "glon");
+          if (discrete && tickCount === pressTick[name]) pendingUp[name] = true;  /* let one tick see it */
+          else evVal("kaka-key-up", name);
         }
         b.addEventListener("pointerdown", down);
         b.addEventListener("pointerup", up);
