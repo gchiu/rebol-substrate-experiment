@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12M.5";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12m5";
+  var BUILD = "D12M.6";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12m6";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -66,9 +66,11 @@
    * The four generated PNGs are painted by JS; Glon owns the camera scalar it
    * emits as `B <cam>` (backgrounds + scroll gameplay) and `F <cam>`
    * (foreground). Factors are the presentation mapping of the supplied art to
-   * the requested depths. The art is 3:1 and each layer is drawn wider than the
-   * viewport, so the small +/-120 px camera pan never reaches an image edge:
-   * no tiling and no seams. Nothing here is gameplay. */
+   * the requested depths. The art is 3:1 and is drawn as one image per layer
+   * (no tiling, so no repeat seam). Each layer is anchored at world x=0 and
+   * scrolled by its factor; `paintLayer` guarantees the image always covers the
+   * whole viewport at any width, so a wide viewport can never expose an image
+   * edge or an uncovered strip. Nothing here is gameplay. */
   var LAYERS = [
     { src: "assets/ChatGPT Image Oct 6, 2026, 08_56_38 AM-1.png", factor: 0.12, h: 480, yb: 480, alpha: 1.0 },
     { src: "assets/ChatGPT Image Oct 6, 2026, 08_56_40 AM-2.png", factor: 0.35, h: 430, yb: 470, alpha: 1.0 },
@@ -94,11 +96,19 @@
     if (!img) return;
     var L = LAYERS[idx];
     var w = img.naturalWidth * (L.h / img.naturalHeight);
-    var x = (W - w) / 2 - cam * L.factor;
-    /* never expose an image edge when the viewport is very wide / panned far */
-    if (w >= W) x = Math.max(W - w, Math.min(0, x));
+    var dh = L.h;
+    /* Full coverage at ANY viewport width: if the layer is narrower than the
+       viewport, scale it up (same aspect) instead of exposing an uncovered
+       strip or an image edge. */
+    if (w < W) { var s = W / w; w *= s; dh *= s; }
+    /* Anchor at world x=0 (left edge at screen 0 when cam=0) and scroll by the
+       layer factor. x<=0 never exposes the left edge; the right clamp then
+       guarantees the right edge is never exposed either. One drawImage. */
+    var x = -cam * L.factor;
+    if (x > 0) x = 0;
+    if (x + w < W) x = W - w;
     ctx.globalAlpha = L.alpha;
-    ctx.drawImage(img, x, L.yb - L.h, w, L.h);
+    ctx.drawImage(img, x, L.yb - dh, w, dh);
     ctx.globalAlpha = 1;
   }
 
@@ -296,13 +306,32 @@
     requestAnimationFrame(frame);
   }
 
+  function fireGon(el) {
+    var tok = el.getAttribute("data-glon-event");
+    if (!tok) return;
+    try { ev(tok); } catch (err) { console.error("kaka: event failed", err); }
+    focusGame();
+  }
+  /* Buttons that map to a Glon event (RESTART during play, PLAY AGAIN after
+     game over). Pointer Events are the reliable mobile path, so act on
+     pointerup directly rather than assuming a synthesised click will arrive.
+     The trailing click is de-duplicated so one tap fires exactly one event;
+     `click` is kept as a fallback for keyboard/assistive activation. */
   function wireClicks() {
+    document.addEventListener("pointerup", function (e) {
+      var el = e.target && e.target.closest ? e.target.closest("[data-glon-event]") : null;
+      if (!el) return;
+      if (e.cancelable) e.preventDefault();
+      el.__glonFiredAt = Date.now();
+      fireGon(el);
+    });
     document.addEventListener("click", function (e) {
       var el = e.target && e.target.closest ? e.target.closest("[data-glon-event]") : null;
       if (!el) return;
       e.preventDefault();
-      ev(el.getAttribute("data-glon-event"));
-      focusGame();
+      /* pointerup already handled this press a moment ago */
+      if (el.__glonFiredAt && Date.now() - el.__glonFiredAt < 700) return;
+      fireGon(el);
     });
   }
 

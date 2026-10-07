@@ -94,7 +94,7 @@ test-b: func [] [
     damage-tree 0 40
     h0: block-at ts-t 0 F_A
     p: ts-claim K_POOP
-    block-set! p F_X 120
+    block-set! p F_X 240
     block-set! p F_Y 329
     block-set! p F_VY 3
     poop-step p
@@ -146,6 +146,14 @@ test-c: func [] [
     kr: 0
     move-n 5
     either = px 350 [ none ] [ fails: + fails 1 ]
+    ;; 12b. the gameplay world is wider than the old 640 arena and the ranger can
+    ;; actually travel beyond it (coordinates are device-independent).
+    either > WORLD_W 640 [ none ] [ fails: + fails 1 ]
+    reset
+    px: 1400  kr: 1
+    move-n 5
+    either > px 1000 [ none ] [ fails: + fails 1 ]
+    either = px - WORLD_W 24 [ none ] [ fails: + fails 1 ]
     ;; 13. kaka flight path is curved (samples are not collinear)
     reset
     k: ts-claim K_KAKA
@@ -246,6 +254,26 @@ test-e: func [] [
     ;; 25. the persisted decimal parser is exact
     either = str-int "4096" 4096 [ none ] [ fails: + fails 1 ]
     either = str-int "0" 0 [ none ] [ fails: + fails 1 ]
+    ;; 26. same world, different viewport: view-w is presentation only and must
+    ;; never relocate gameplay actors or the ranger.
+    reset
+    v0: block-at ts-t 0 F_X
+    view-w: 1056  move-player
+    either = block-at ts-t 0 F_X v0 [ none ] [ fails: + fails 1 ]
+    either = block-at ts-t 1 F_X 720 [ none ] [ fails: + fails 1 ]
+    either = block-at ts-t 2 F_X 1200 [ none ] [ fails: + fails 1 ]
+    either = px 480 [ none ] [ fails: + fails 1 ]
+    view-w: 640  move-player
+    either = block-at ts-t 0 F_X v0 [ none ] [ fails: + fails 1 ]
+    ;; 27. restart clears transient actors and returns the ranger to the start
+    r: ts-claim K_RAT
+    b: ts-claim K_BERRY
+    px: 900
+    reset
+    either = ts-count K_RAT 0 [ none ] [ fails: + fails 1 ]
+    either = ts-count K_BERRY 0 [ none ] [ fails: + fails 1 ]
+    either = px 480 [ none ] [ fails: + fails 1 ]
+    either = cam 0 [ none ] [ fails: + fails 1 ]
 ]
 
 selftest: func [] [

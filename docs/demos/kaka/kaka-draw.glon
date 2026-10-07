@@ -28,7 +28,7 @@ seg-rect?: func [ax ay bx by x0 y0 x1 y1] [
 laser-hits-player?: func [] [
     seg-rect? laser-ox laser-oy laser-x laser-y - px 10 - py 14 + px 10 + py 22
 ]
-respawn: func [] [ px: 220 py: 330 cam: 0 invuln: INVULN_TICKS ]
+respawn: func [] [ px: 480 py: 330 cam: 0 invuln: INVULN_TICKS ]
 ;; One life, exactly: a non-terminal hit respawns with brief invulnerability;
 ;; the last life is terminal (over). `over` gates all further loss.
 lose-life: func [] [
@@ -89,7 +89,7 @@ kp: func [n t] [
 spawn-kaka: func [] [
     t: ts-claim K_KAKA
     either = t none [ none ] [
-        block-set! t F_X + 60 mod rnd 520
+        block-set! t F_X + 60 mod rnd - WORLD_W 120
         block-set! t F_Y 20
         block-set! t F_STATE KS_SWEEP
         block-set! t F_D either = 0 mod block-at t F_ID 2 [ 1 ] [ -1 ]
@@ -137,9 +137,9 @@ kaka-eat: func [t] [
     ]
 ]
 kaka-leave: func [t] [
-    k-move t either > block-at t F_D 0 [ 780 ] [ -140 ] 16 7 4
-    either > block-at t F_X 700 [ ts-free t ] [
-        either < block-at t F_X -70 [ ts-free t ] [ none ]
+    k-move t either > block-at t F_D 0 [ + WORLD_W 80 ] [ -140 ] 16 7 4
+    either > block-at t F_X + WORLD_W 60 [ ts-free t ] [
+        either < block-at t F_X -60 [ ts-free t ] [ none ]
     ]
 ]
 kaka-divert: func [t] [
