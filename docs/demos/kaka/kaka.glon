@@ -62,20 +62,19 @@ tick: 0 score: 0 over: 0
 lives: 3 invuln: 0 highscore: 0
 kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
 px: 220 py: 330
-;; camera: a small smoothed horizontal offset used ONLY for presentation. The
-;; world/logic coordinates stay absolute; the render emits `cam` so the browser
-;; can scroll the parallax PNGs (and the host scrolls the gameplay plane 1:1).
-cam: 0
+;; cam = world x at the view's left edge; view-w = logical viewport width
+;; (640 = classic 4:3; wider on landscape phones). Host-set; presentation only.
+cam: 0 view-w: 640
 cd: 0 glon-cd: 0
 berries: 1
     next-kaka: 60 next-pick: 1100 next-milestone: 600
-    wave: 0 wave-left: 0 wave-cd: 0 breaches: 0
+    wave: 0 wave-left: 0 wave-cd: 0
 laser: -99 laser-x: 0 laser-y: 0 laser-ox: 0 laser-oy: 0
 idc: 0 rng: 12345
 ;; aggregate actor/tree tallies, refreshed once per tick by `tally` so the
 ;; spawn logic, HUD and game-over test never re-scan the tuple space.
 mutant-active: 0 mutant-left: 0
-n-kaka: 0 n-rat: 0 n-berry: 0 n-pick: 0 n-poop: 0
+n-kaka: 0 n-rat: 0 n-pick: 0
 trees-live: 0 tree-sum: 0
 ;; occupied high-water: the per-tick scans (move-all / tally / actor-art) only
 ;; walk slots < ts-hi, so empty tail slots cost nothing. Raised on claim and
@@ -268,13 +267,20 @@ move-player: func [] [
     either > px 616 [ px: 616 ] [ none ]
     either < py 300 [ py: 300 ] [ none ]
     either > py 348 [ py: 348 ] [ none ]
-    ;; camera follow (presentation only; world coordinates are never changed):
-    ;; dead zone of 60 px, target clamped to +/-120 so the whole 640-wide
-    ;; playfield stays framed, then eased by at most 2 px/tick (no jitter).
-    dx: - px 320
-    dx: either > abs dx 60 [ - dx * 60 sign dx ] [ 0 ]
-    dx: either > dx 120 [ 120 ] [ either < dx -120 [ -120 ] [ dx ] ]
-    either > abs - dx cam 2 [ cam: + cam * 2 sign - dx cam ] [ cam: dx ]
+    ;; camera: follow the ranger (60 px dead zone), clamp to the 640-wide world
+    ;; (120 overscroll); a viewport wider than the world is centred. Extra width
+    ;; shows real world, never stretched. Presentation only.
+    half: / view-w 2
+    either > half - 640 half [ c: 320 ] [
+        dx: - px half
+        dx: either > abs dx 60 [ - dx * 60 sign dx ] [ 0 ]
+        c: + half dx
+        cmin: - half 120
+        cmax: + - 640 half 120
+        c: either < c cmin [ cmin ] [ either > c cmax [ cmax ] [ c ] ]
+    ]
+    t: - c half
+    either > abs - t cam 2 [ cam: + cam * 2 sign - t cam ] [ cam: t ]
 ]
 move-all: func [i] [
     either < i ts-hi [
@@ -340,7 +346,7 @@ tally: func [] [
     update-high
     ch-hi 6
     mutant-active: 0  mutant-left: 0
-    n-kaka: 0  n-rat: 0  n-berry: 0  n-pick: 0  n-poop: 0
+    n-kaka: 0  n-rat: 0  n-pick: 0
     trees-live: 0  tree-sum: 0
     tly 0
     ;; ONE terminal predicate: no lives, or no gameplay tree. HUD, splash and
@@ -359,9 +365,9 @@ tly: func [i] [
             ] [ none ]
         ] [
         either = k K_RAT [ n-rat: + n-rat 1 ] [
-        either = k K_BERRY [ n-berry: + n-berry 1 ] [
+        either = k K_BERRY [ none ] [
         either = k K_PICK [ n-pick: + n-pick 1 ] [
-        either = k K_POOP [ n-poop: + n-poop 1 ] [
+        either = k K_POOP [ none ] [
         either = k K_TREE [
             tree-sum: + tree-sum block-at ts-t i F_A
             either > block-at ts-t i F_A 0 [ trees-live: + trees-live 1 ] [ none ]
@@ -439,6 +445,7 @@ events: [
     ['kaka-input-reset [ on-input-reset ]]
     ['kaka-selftest [ selftest ]]
     ['kaka-highscore [ on-highscore ]]
+    ['kaka-viewport [ on-viewport ]]
     ['kaka-debug-mutant [ on-debug-mutant ]]
     ['kaka-debug-give [ on-debug-give ]]
     ['kaka-debug-over [ on-debug-over ]]
