@@ -124,9 +124,11 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   // firing mid-soak (the life rules have their own deterministic tests).
   eventValue("kaka-debug-lives", "999999");
   eventValue("kaka-key-down", "fire");
+  eventValue("kaka-key-down", "rock");
   const SOAK = Number(process.env.KAKA_SOAK_TICKS || 1200);
   let maxBerries = 0, mutants = 0, restarts = 0, drawTicks = 0;
   let prevOrd = 0, ordSpawns = 0, maxOrd = 0;
+  let maxRat = 0, maxKaka = 0, maxRock = 0, rockSpawns = 0, prevRock = 0, maxClaimFail = 0;
   const t0 = process.hrtime.bigint();
   for (let i = 0; i < SOAK; i++) {
     if (i % 300 === 150) eventValue("kaka-key-down", "glon");
@@ -144,10 +146,26 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
     if (s.length >= 14) {
       if (s[3] > maxBerries) maxBerries = s[3];
       if (s[11] === 1) mutants++;
+      if (s[9] > maxKaka) maxKaka = s[9];
+      if (s[10] > maxRat) maxRat = s[10];
+      if (s.length >= 18) {
+        if (s[17] > maxRock) maxRock = s[17];
+        if (s[18] > maxClaimFail) maxClaimFail = s[18];
+        if (s[17] > prevRock) rockSpawns += s[17] - prevRock;
+        prevRock = s[17];
+      }
     }
-    if (i % 500 === 499) { event("kaka-restart"); eventValue("kaka-key-down", "fire"); restarts++; }
+    if (i % 500 === 499) {
+      event("kaka-restart"); eventValue("kaka-key-down", "fire");
+      eventValue("kaka-key-down", "rock"); prevRock = 0; restarts++;
+    }
   }
+  const claimFails = maxClaimFail;
+  if (maxRock < 1) fail("rock never spawned during soak");
+  if (maxRat < 1) fail("rat wave never spawned during soak");
+  if (claimFails !== 0) fail("tuple-claim failures during soak: " + claimFails);
   eventValue("kaka-key-up", "fire");
+  eventValue("kaka-key-up", "rock");
   const t1 = process.hrtime.bigint();
   const msPerTick = Number(t1 - t0) / 1e6 / SOAK;
 
@@ -187,6 +205,8 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   console.log("KAKA_WASM_TEST PASS (selftest + " + SOAK + " tick soak, allocFail=0, " +
     msPerTick.toFixed(3) + " ms/tick, " + restarts + " restarts, mutants-seen=" + mutants +
     ", ticks-drew=" + drawTicks + ", maxBerries=" + maxBerries +
-    ", berrySpawns=" + ordSpawns + ", maxOrdLive=" + maxOrd + ")");
+    ", berrySpawns=" + ordSpawns + ", maxOrdLive=" + maxOrd +
+    ", maxRats=" + maxRat + ", maxKaka=" + maxKaka + ", maxRocks=" + maxRock +
+    ", rockSpawns=" + rockSpawns + ", claimFails=" + claimFails + ")");
   process.exit(0);
 }).catch((e) => fail(e && e.stack ? e.stack : e));

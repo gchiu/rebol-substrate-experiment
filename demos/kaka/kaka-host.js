@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12M.6";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12m6";
+  var BUILD = "D12S.1";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s1";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -259,7 +259,7 @@
 
   var KEY = { ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right",
               ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down",
-              Space: "fire", KeyG: "glon" };
+              Space: "fire", KeyG: "glon", KeyF: "rock" };
   function key(e, down) {
     if (e.code === "KeyR") { if (down) { acc = 0; ev("kaka-restart"); } e.preventDefault(); return; }
     var k = KEY[e.code];
@@ -354,7 +354,7 @@
         function up(e) {
           e.preventDefault();
           b.classList.remove("on");
-          var discrete = (name === "fire" || name === "glon");
+          var discrete = (name === "fire" || name === "glon" || name === "rock");
           if (discrete && tickCount === pressTick[name]) pendingUp[name] = true;  /* let one tick see it */
           else evVal("kaka-key-up", name);
         }

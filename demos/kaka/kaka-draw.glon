@@ -28,13 +28,12 @@ seg-rect?: func [ax ay bx by x0 y0 x1 y1] [
 laser-hits-player?: func [] [
     seg-rect? laser-ox laser-oy laser-x laser-y - px 10 - py 14 + px 10 + py 22
 ]
-respawn: func [] [ px: 480 py: 330 cam: 0 invuln: INVULN_TICKS ]
-;; One life, exactly: a non-terminal hit respawns with brief invulnerability;
-;; the last life is terminal (over). `over` gates all further loss.
+;; One life, exactly: a non-terminal hit respawns the ranger at the start with
+;; brief invulnerability; the last life is terminal (over).
 lose-life: func [] [
     either < lives 1 [ none ] [
         lives: - lives 1
-        either < lives 1 [ lives: 0 ] [ respawn ]
+        either < lives 1 [ lives: 0 ] [ px: 480 py: 330 cam: 0 invuln: INVULN_TICKS ]
     ]
 ]
 ;; Called by a mutant kaka each tick it holds a beam on its target rat. A
@@ -44,8 +43,6 @@ laser-hazard: func [] [
         either < invuln 1 [ either laser-hits-player? [ lose-life ] [ none ] ] [ none ]
     ] [ none ]
 ]
-;; The high score is Glon's: it only ever rises from the current score.
-update-high: func [] [ either > score highscore [ highscore: score ] [ none ] ]
 ;; The host reports the logical presentation width (from the display aspect) so
 ;; the camera can show more world on wide landscape screens.
 on-viewport: func [] [
@@ -59,7 +56,6 @@ on-viewport: func [] [
 ;; bounded step toward a phase waypoint, so heading changes lag the target and
 ;; the path banks rather than drawing straight segments. Per-bird id variation
 ;; and the tick counter keep individual birds distinct. All of it is Glon.
-KSPD: 6
 SACC: 2
 SNEG: -2
 steer: func [v d] [
@@ -74,7 +70,6 @@ k-move: func [t wx wy sx sy] [
     block-set! t F_X + block-at t F_X vx
     block-set! t F_Y + block-at t F_Y vy
 ]
-kaka-pick: func [t] [ kp 0 t ]
 ;; Pick the first live tree starting from the kaka's id-derived offset, wrapping
 ;; around. Distinct ids therefore spread across the live trees instead of every
 ;; kaka piling onto the lowest-index tree (which made damage march 0 -> 1 -> 2).
@@ -95,7 +90,7 @@ spawn-kaka: func [] [
         block-set! t F_D either = 0 mod block-at t F_ID 2 [ 1 ] [ -1 ]
         block-set! t F_VY * block-at t F_D 3
         block-set! t F_E 2
-        kaka-pick t
+        kp 0 t
     ]
 ]
 kaka-step: func [t] [
@@ -126,7 +121,7 @@ kaka-swoop: func [t] [
 ]
 kaka-eat: func [t] [
     ti: block-at t F_TARGET
-    either < block-at ts-t ti F_A 1 [ kaka-pick t ] [
+    either < block-at ts-t ti F_A 1 [ kp 0 t ] [
         tx: block-at ts-t ti F_X
         k-move t tx + 250 mod tick 8 3 2
         a: + block-at t F_A 1
@@ -143,20 +138,18 @@ kaka-leave: func [t] [
     ]
 ]
 kaka-divert: func [t] [
-    either = block-at t F_C 0 [ drop-poop t ] [ none ]
+    either = block-at t F_C 0 [
+        p: ts-claim K_POOP
+        either = p none [ none ] [
+            block-set! p F_X block-at t F_X
+            block-set! p F_Y block-at t F_Y
+            block-set! p F_VY 3
+            block-set! t F_C 1
+        ]
+    ] [ none ]
     k-move t + block-at t F_X * block-at t F_D 180 -50 6 5
     either < block-at t F_Y -24 [ ts-free t ] [ none ]
 ]
-drop-poop: func [t] [
-    p: ts-claim K_POOP
-    either = p none [ none ] [
-        block-set! p F_X block-at t F_X
-        block-set! p F_Y block-at t F_Y
-        block-set! p F_VY 3
-        block-set! t F_C 1
-    ]
-]
-nearest-rat: func [t] [ nr 0 none 99999 t ]
 nr: func [i best bd t] [
     either < i ts-hi [
         either = ts-k i K_RAT [
@@ -171,7 +164,7 @@ EYE_DX: 11
 EYE_DY: -7
 kaka-mutant: func [t] [
     either > tick block-at t F_B [ block-set! t F_STATE KS_LEAVE  laser: -99 ] [
-        r: nearest-rat t
+        r: nr 0 none 99999 t
         either = r none [
             laser: -99
             k-move t block-at t F_X 130 0 4
@@ -179,15 +172,22 @@ kaka-mutant: func [t] [
             rx: block-at r F_X
             ry: block-at r F_Y
             k-move t rx ry 6 6
-            ;; ocular beam runs from the kaka's eye to its target rat; the same
-            ;; segment is drawn and tested for ranger crossing.
+            ;; Ocular beam from the eye to the target rat, plus the same segment
+            ;; tested for a ranger crossing. OFF-SCREEN RULE: a bird outside the
+            ;; viewport (+40 margin) may keep flying, targeting and killing, but
+            ;; must NOT draw a visible beam or zap the ranger until it is on/near
+            ;; screen. Simulated, never frozen.
             d: either < block-at t F_VY 0 [ -1 ] [ 1 ]
-            laser: tick
-            laser-ox: + block-at t F_X * d EYE_DX
-            laser-oy: + block-at t F_Y EYE_DY
-            laser-x: rx
-            laser-y: ry
-            laser-hazard
+            laser: -99
+            either < block-at t F_X - cam 40 [ none ] [
+            either > block-at t F_X + + cam view-w 40 [ none ] [
+                laser: tick
+                laser-ox: + block-at t F_X * d EYE_DX
+                laser-oy: + block-at t F_Y EYE_DY
+                laser-x: rx
+                laser-y: ry
+                laser-hazard
+            ] ]
             either < + abs - block-at t F_X rx abs - block-at t F_Y ry 40 [
                 either = over 1 [ none ] [
                     ts-free r
@@ -283,11 +283,17 @@ spr-kaka: func [t] [
 spr-rat: func [t] [
     x: block-at t F_X
     y: block-at t F_Y
+    either = block-at t F_STATE 9 [
+        ;; death: an expanding red burst plus the startle frame, so a kill reads
+        ;; instantly at phone scale (then the tuple is reclaimed).
+        p-circ x y + 4 - 9 block-at t F_C 5
+        p-spr 23 x y block-at t F_A
+   ] [
     either > block-at t F_C 0 [
         p-spr 22 x - y mod tick 6 block-at t F_A
     ] [
         p-spr either < mod tick 8 4 [ 20 ] [ 21 ] x y block-at t F_A
-    ]
+    ] ]
 ]
 ;; A rat chewing at a trunk: a few bark flecks and a brief hit flash at the
 ;; gnawed tree, so it is obvious which tree just lost health.
@@ -311,8 +317,12 @@ actor-art: func [i] [
         either = k K_KAKA [ spr-kaka ts-t i ] [
         either = k K_RAT [ spr-rat ts-t i  gnaw-cue ts-t i ] [
         either = k K_BERRY [ spr-berry ts-t i ] [
+        either = k K_ROCK [
+            p-circ block-at ts-t i F_X block-at ts-t i F_Y 5 0
+            p-circ block-at ts-t i F_X block-at ts-t i F_Y 3 2
+        ] [
         either = k K_PICK [ p-spr 31 block-at ts-t i F_X block-at ts-t i F_Y 1 ] [
-        either = k K_POOP [ p-spr 32 block-at ts-t i F_X block-at ts-t i F_Y 1 ] [ none ] ] ] ] ]
+        either = k K_POOP [ p-spr 32 block-at ts-t i F_X block-at ts-t i F_Y 1 ] [ none ] ] ] ] ] ]
         actor-art + i 1
     ] [ none ]
 ]
@@ -332,7 +342,7 @@ draw-player-solid: func [] [
     p-ell px 324 9 9 1
     p-rect - px 7 332 14 22 6
     p-tri px 332 + px 4 342 - px 4 342 8
-    p-circ + px 8 - py 4 3 7
+    p-circ + px * pf 8 - py 4 3 7
 ]
 ;; post-respawn invulnerability is shown by blinking the ranger (presentation
 ;; only; the rule lives in Glon state).
@@ -382,7 +392,8 @@ render-status: func [] [
     e-int px e-text " " e-int kl e-text " " e-int kr e-text " " e-int kf e-text " " e-int kg e-text " "
     e-int n-kaka e-text " " e-int n-rat e-text " "
     e-int mutant-active e-text " " e-int mutant-left e-text " " e-int py e-text " "
-    e-int lives e-text " " e-int invuln e-text " " e-int highscore
+    e-int lives e-text " " e-int invuln e-text " " e-int highscore e-text " "
+    e-int n-rock e-text " " e-int tcfail
     e-text "</i>"
     either = over 1 [
         e-text "<div class='kaka-gameover'><div class='kaka-go-panel'>"

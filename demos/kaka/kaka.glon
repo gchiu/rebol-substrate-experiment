@@ -1,28 +1,20 @@
 ;; demos/kaka/kaka.glon -- Attack of the Mutant Kaka (Glon owns all state/rules).
-;;
-;; The kaka are native wildlife and must never be shot; the player fires
-;; BERRIES that divert them away from the trees. Introduced rats damage the
-;; habitat. A rare Mystery Glon Berry turns one kaka into a giant mutant whose
-;; ocular lasers zap rats (not birds). Berry-fed kaka occasionally poop, which
-;; regenerates a damaged tree. All actors live in a shared, pre-built Glon
-;; tuple space (kaka-lib.glon provides new-block/block-set!); JS only paints.
-;;
+;; D12S.1: RATS ADVANCE -> player SHOOTS ROCKS (rocks kill rats) -> BERRIES feed
+;; or divert kaka (a Glon Berry powers one into an aerial laser platform) -> rats
+;; that reach a tree gnaw it. ROCKS and BERRIES are distinct kinds: rocks never
+;; feed kaka or hurt trees; berries never hurt rats. Shared pre-built tuple space.
 ;; Requires prelude.glon, strings.glon, kaka-lib.glon (loaded first).
 
 [
-;; Viewport width and world width are separate: WORLD_W is the gameplay world,
-;; view-w is the window onto it (host-set). A wide phone shows more of the SAME
-;; world; actor coordinates never depend on the screen. 1440 = the 3:1 art's
-;; natural 1440x480 scale.
+;; WORLD_W (gameplay world) and view-w (viewport) are separate: a wide phone
+;; sees more of the SAME world; actor coordinates never depend on the screen.
 WORLD_W: 1440
-PFH: 480
-GROUND: 360
 NTREES: 3
-NTS: 32
+NTS: 48
 TW: 12
 TREE_MAX: 100
 KAKA_MAX: 4
-RAT_MAX: 5
+RAT_MAX: 8
 BERRY_MAX: 6
 LIVES_MAX: 3
 INVULN_TICKS: 50
@@ -36,6 +28,7 @@ K_BERRY: 3
 K_PICK: 4
 K_POOP: 5
 K_TREE: 6
+K_ROCK: 7
 
 ;; tuple field indices (every tuple is TW=12 cells wide)
 F_KIND: 0
@@ -65,19 +58,25 @@ tick: 0 score: 0 over: 0
 ;; recomputes it; HUD, splash and step all read this single flag.
 lives: 3 invuln: 0 highscore: 0
 kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
+;; krock = ROCK action held; pf = ranger facing (+1 right / -1 left); rock-cd =
+;; anti-pest fire cooldown. pf follows the last horizontal input.
+krock: 0 pf: 1 rock-cd: 0
 px: 480 py: 330
 ;; cam = world x at the view's left edge; view-w = logical viewport width.
 cam: 0 view-w: 640
 cd: 0 glon-cd: 0
 berries: 1
-    next-kaka: 60 next-pick: 1100 next-milestone: 600
+    next-kaka: 40 next-pick: 1100 next-milestone: 600
     wave: 0 wave-left: 0 wave-cd: 0
 laser: -99 laser-x: 0 laser-y: 0 laser-ox: 0 laser-oy: 0
 idc: 0 rng: 12345
 ;; aggregate actor/tree tallies, refreshed once per tick by `tally` so the
 ;; spawn logic, HUD and game-over test never re-scan the tuple space.
 mutant-active: 0 mutant-left: 0
-n-kaka: 0 n-rat: 0 n-pick: 0
+n-kaka: 0 n-rat: 0 n-pick: 0 n-rock: 0
+;; cumulative tuple-claim failures (capacity pressure); never reset by tally,
+;; only by a full restart. Zero means no kind ever starved for a slot.
+tcfail: 0
 trees-live: 0 tree-sum: 0
 ;; occupied high-water: the per-tick scans (move-all / tally / actor-art) only
 ;; walk slots < ts-hi, so empty tail slots cost nothing. Raised on claim and
@@ -98,7 +97,6 @@ ts-init: func [i] [
 ]
 ts-t: func [i] [ block-at ts i ]
 ts-k: func [i] [ block-at ts-t i F_KIND ]
-ts-clear: func [] [ tc 0 ]
 tc: func [i] [
     either < i NTS [ block-set! ts-t i F_KIND 0  tc + i 1 ] [ none ]
 ]
@@ -119,7 +117,10 @@ tclaim: func [i k] [
         ] [ tclaim + i 1 k ]
     ] [ none ]
 ]
-ts-claim: func [k] [ tclaim 0 k ]
+ts-claim: func [k] [
+    t: tclaim 0 k
+    either = t none [ tcfail: + tcfail 1  none ] [ t ]
+]
 ts-free: func [t] [ block-set! t F_KIND K_EMPTY ]
 
 ts-count: func [k] [ tcount 0 0 k ]
@@ -139,12 +140,6 @@ spawn-tree: func [i x] [
         block-set! t F_B i
     ]
 ]
-tree-sum: func [] [ tsum 0 0 ]
-tsum: func [i n] [
-    either < i NTREES [
-        tsum + i 1 either = ts-k i K_TREE [ + n block-at ts-t i F_A ] [ n ]
-    ] [ n ]
-]
 damage-tree: func [ti d] [
     bt: ts-t ti
     h: - block-at bt F_A d
@@ -153,116 +148,12 @@ damage-tree: func [ti d] [
 
 ;; ---- rats (D12B wave/climb logic lives in kaka-wave.glon) -----------------
 
-;; ---- berries and the Mystery Glon Berry ----------------------------------
-fire: func [] [
-    either = kf 1 [
-        either < cd 1 [
-            either < ts-count K_BERRY BERRY_MAX [
-                b: ts-claim K_BERRY
-                either = b none [ none ] [
-                    block-set! b F_X px
-                    block-set! b F_Y - py 14
-                    block-set! b F_VY -9
-                    block-set! b F_A 0
-                    cd: 9
-                ]
-            ] [ none ]
-        ] [ none ]
-    ] [ none ]
-]
-fire-glon: func [] [
-    either = kg 1 [
-        either < glon-cd 1 [
-            either > berries 0 [
-                b: ts-claim K_BERRY
-                either = b none [ none ] [
-                    block-set! b F_X px
-                    block-set! b F_Y - py 14
-                    block-set! b F_VY -8
-                    block-set! b F_A 1
-                    berries: - berries 1
-                    glon-cd: 20
-                ]
-            ] [ none ]
-        ] [ none ]
-    ] [ none ]
-]
-divert: func [kt bt] [
-    block-set! kt F_STATE KS_DIVERT
-    block-set! kt F_C 0
-    ;; keep momentum; steer away so the turn is an arc, never an instant flip
-    block-set! kt F_D either < - block-at kt F_X px 0 [ -1 ] [ 1 ]
-    ts-free bt
-    score: + score 10
-]
-mutate: func [kt bt] [
-    block-set! kt F_STATE KS_MUTANT
-    block-set! kt F_B + tick 540
-    ts-free bt
-]
-berry-step: func [t] [
-    block-set! t F_Y + block-at t F_Y block-at t F_VY
-    ;; after the terminal life loss, berries still travel and despawn but have
-    ;; after the single terminal state, berries travel and despawn but
-    ;; have no effect
-    either = over 0 [
-        either < block-at t F_Y 265 [
-            either > block-at t F_Y 215 [ either = 1 berry-blocked? 0 t [ none ] [ berry-hit t 0 ] ] [ berry-hit t 0 ]
-        ] [ berry-hit t 0 ]
-    ] [ none ]
-    ;; berries are fired upward (F_VY < 0), so they leave the playfield at the
-    ;; TOP. Freeing on Y > 480 (which only a downward-moving actor can reach)
-    ;; leaked every missed berry in the fixed BERRY_MAX pool until firing died.
-    either < block-at t F_Y 0 [ ts-free t ] [ none ]
-]
-berry-hit: func [t i] [
-    either < i ts-hi [
-        either = ts-k i K_KAKA [
-            either < + abs - block-at ts-t i F_X block-at t F_X abs - block-at ts-t i F_Y block-at t F_Y 34 [
-                either = block-at t F_A 1 [ mutate ts-t i t ] [ divert ts-t i t ]
-            ] [ berry-hit t + i 1 ]
-        ] [ berry-hit t + i 1 ]
-    ] [ none ]
-]
-spawn-pick: func [] [
-    t: ts-claim K_PICK
-    either = t none [ none ] [
-        block-set! t F_X + 60 mod rnd - WORLD_W 120
-        block-set! t F_Y 20
-        block-set! t F_VY 2
-    ]
-]
-pick-step: func [t] [
-    y: + block-at t F_Y block-at t F_VY
-    block-set! t F_Y y
-    either < abs - px block-at t F_X 26 [
-        either < abs - py y 30 [ either = over 1 [ none ] [ berries: + berries 1 ]  ts-free t ] [ either > y 470 [ ts-free t ] [ none ] ]
-    ] [ either > y 470 [ ts-free t ] [ none ] ]
-]
-poop-step: func [t] [
-    y: + block-at t F_Y block-at t F_VY
-    block-set! t F_Y y
-    either >= y 330 [ either = over 1 [ ts-free t ] [ poop-land 0 t ] ] [ none ]
-]
-poop-land: func [i t] [
-    either < i NTREES [
-        either = ts-k i K_TREE [
-            either < abs - block-at ts-t i F_X block-at t F_X 44 [
-                either < block-at ts-t i F_A TREE_MAX [
-                    h: + block-at ts-t i F_A 25
-                    block-set! ts-t i F_A either > h TREE_MAX [ TREE_MAX ] [ h ]
-                    score: + score 25
-                    ts-free t
-                ] [ ts-free t ]
-            ] [ poop-land + i 1 t ]
-        ] [ poop-land + i 1 t ]
-    ] [ ts-free t ]
-]
-
 ;; ---- one world tick (deterministic; no randomness beyond Glon's own rng) --
 move-player: func [] [
     dx: - kr kl
     dy: - kd ku
+    ;; facing follows the last horizontal input (rocks fire in this direction)
+    either > kr kl [ pf: 1 ] [ either > kl kr [ pf: -1 ] [ none ] ]
     ;; cardinal 10 px/tick (~3 s to cross at 25 Hz); diagonal 7/7 so it is not
     ;; faster than a straight line. Reacts within one tick; no acceleration.
     either = 0 * dx dy [ px: + px * dx 10  py: + py * dy 7 ] [ px: + px * dx 7  py: + py * dy 7 ]
@@ -285,15 +176,16 @@ move-all: func [i] [
         either = k K_KAKA [ kaka-step ts-t i ] [
         either = k K_RAT [ rat-step ts-t i ] [
         either = k K_BERRY [ berry-step ts-t i ] [
+        either = k K_ROCK [ rock-step ts-t i ] [
         either = k K_PICK [ pick-step ts-t i ] [
-        either = k K_POOP [ poop-step ts-t i ] [ none ] ] ] ] ]
+        either = k K_POOP [ poop-step ts-t i ] [ none ] ] ] ] ] ]
         move-all + i 1
     ] [ none ]
 ]
 spawn-timers: func [] [
     next-kaka: - next-kaka 1
     either < next-kaka 1 [
-        either < n-kaka KAKA_MAX [ spawn-kaka  next-kaka: + 150 mod tick 120 ] [ next-kaka: 60 ]
+        either < n-kaka KAKA_MAX [ spawn-kaka  next-kaka: + 70 mod tick 60 ] [ next-kaka: 40 ]
     ] [ none ]
     wave-step
     next-pick: - next-pick 1
@@ -306,14 +198,16 @@ step: func [] [
     tick: + tick 1
     either > cd 0 [ cd: - cd 1 ] [ none ]
     either > glon-cd 0 [ glon-cd: - glon-cd 1 ] [ none ]
+    either > rock-cd 0 [ rock-cd: - rock-cd 1 ] [ none ]
     either > invuln 0 [ invuln: - invuln 1 ] [ none ]
     ;; terminal: input, spawns and scoring stop; the world keeps moving and
-    ;; rendering (never frozen) so in-flight berries clear.
+    ;; rendering (never frozen) so in-flight rocks/berries clear.
     either = over 0 [
         spawn-timers
         move-player
         fire
         fire-glon
+        fire-rock
     ] [ none ]
     move-all 0
     either = over 0 [
@@ -324,14 +218,16 @@ reset: func [] [
     tick: 0 score: 0 over: 0
     lives: LIVES_MAX invuln: 0
     kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
+    krock: 0 pf: 1 rock-cd: 0
     px: 480 py: 330 cd: 0 glon-cd: 0
     cam: 0
     berries: 1
-next-kaka: 60 next-pick: 1100 next-milestone: 600
+    next-kaka: 40 next-pick: 1100 next-milestone: 600
         laser: -99 laser-x: 0 laser-y: 0 laser-ox: 0 laser-oy: 0
+    tcfail: 0
     idc: 0 rng: 12345
     ts-hi: 0
-    ts-clear
+    tc 0
     ;; stable WIDER-WORLD tree coordinates; a device/orientation change never
     ;; relocates gameplay, only how much of this world is visible.
     spawn-tree 0 240
@@ -342,10 +238,10 @@ next-kaka: 60 next-pick: 1100 next-milestone: 600
 ;; one pass over the tuple space, refreshing every aggregate the spawn logic,
 ;; HUD and tests read. Replaces Patrol's hard-coded per-entity variables.
 tally: func [] [
-    update-high
+    either > score highscore [ highscore: score ] [ none ]
     ch-hi 6
     mutant-active: 0  mutant-left: 0
-    n-kaka: 0  n-rat: 0  n-pick: 0
+    n-kaka: 0  n-rat: 0  n-pick: 0  n-rock: 0
     trees-live: 0  tree-sum: 0
     tly 0
     ;; ONE terminal predicate: no lives, or no gameplay tree. HUD, splash and
@@ -364,13 +260,14 @@ tly: func [i] [
             ] [ none ]
         ] [
         either = k K_RAT [ n-rat: + n-rat 1 ] [
+        either = k K_ROCK [ n-rock: + n-rock 1 ] [
         either = k K_BERRY [ none ] [
         either = k K_PICK [ n-pick: + n-pick 1 ] [
         either = k K_POOP [ none ] [
         either = k K_TREE [
             tree-sum: + tree-sum block-at ts-t i F_A
             either > block-at ts-t i F_A 0 [ trees-live: + trees-live 1 ] [ none ]
-        ] [ none ] ] ] ] ] ]
+        ] [ none ] ] ] ] ] ] ]
         tly + i 1
     ] [ none ]
 ]
@@ -391,9 +288,10 @@ set-key: func [name v] [
     either str-eq name "up" [ ku: v ] [
     either str-eq name "down" [ kd: v ] [
     either str-eq name "fire" [ kf: v ] [
-    either str-eq name "glon" [ kg: v ] [ none ] ] ] ] ] ]
+    either str-eq name "glon" [ kg: v ] [
+    either str-eq name "rock" [ krock: v ] [ none ] ] ] ] ] ] ]
 ]
-reset-input: func [] [ kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0 ]
+reset-input: func [] [ kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0  krock: 0 ]
 
 ;; always step: game over gates new threats/score inside step, never the world
 on-tick: func [] [ step  tally  render ]

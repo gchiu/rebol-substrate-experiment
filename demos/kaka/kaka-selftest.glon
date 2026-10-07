@@ -276,6 +276,90 @@ test-e: func [] [
     either = cam 0 [ none ] [ fails: + fails 1 ]
 ]
 
+;; ---- tests 28-35: D12S.1 rock vs rat combat + pest front ------------------
+test-f: func [] [
+    ;; 28. ROCK fires from the ranger in the facing direction
+    reset
+    px: 300  pf: 1  krock: 1  rock-cd: 0
+    fire-rock
+    either = ts-count K_ROCK 1 [ none ] [ fails: + fails 1 ]
+    either > block-at ts-t 3 F_VY 0 [ none ] [ fails: + fails 1 ]
+    either > block-at ts-t 3 F_X 300 [ none ] [ fails: + fails 1 ]
+    reset
+    px: 300  pf: -1  krock: 1  rock-cd: 0
+    fire-rock
+    either < block-at ts-t 3 F_VY 0 [ none ] [ fails: + fails 1 ]
+    either < block-at ts-t 3 F_X 300 [ none ] [ fails: + fails 1 ]
+    ;; 29. ROCK kills a 1-hp rat, scores, and the tuple reclaims after the burst
+    reset
+    r: ts-claim K_RAT
+    block-set! r F_X 330  block-set! r F_Y 330
+    block-set! r F_B 1  block-set! r F_STATE 0  block-set! r F_D 1
+    px: 300  pf: 1  krock: 1  rock-cd: 0
+    fire-rock
+    rock-step ts-t 4
+    either = block-at r F_STATE 9 [ none ] [ fails: + fails 1 ]
+    either = score 20 [ none ] [ fails: + fails 1 ]
+    either = ts-count K_ROCK 0 [ none ] [ fails: + fails 1 ]
+    rat-step r  rat-step r  rat-step r  rat-step r
+    rat-step r  rat-step r  rat-step r  rat-step r
+    either = ts-count K_RAT 0 [ none ] [ fails: + fails 1 ]
+    ;; 30. a ROCK does not damage a tree
+    reset
+    b: ts-claim K_ROCK
+    block-set! b F_X 200  block-set! b F_Y 330  block-set! b F_VY 12
+    rock-step b  rock-step b  rock-step b
+    either = block-at ts-t 0 F_A 100 [ none ] [ fails: + fails 1 ]
+    ;; 31. a ROCK does not feed/alter a kaka
+    reset
+    k: ts-claim K_KAKA
+    block-set! k F_STATE KS_SWEEP  block-set! k F_X 200  block-set! k F_Y 330
+    b: ts-claim K_ROCK
+    block-set! b F_X 190  block-set! b F_Y 330  block-set! b F_VY 12
+    rock-step b
+    either = block-at k F_STATE KS_SWEEP [ none ] [ fails: + fails 1 ]
+    ;; 32. a BERRY does not damage a rat
+    reset
+    r: ts-claim K_RAT
+    block-set! r F_X 200  block-set! r F_Y 330  block-set! r F_B 1  block-set! r F_D -1
+    b: ts-claim K_BERRY
+    block-set! b F_X 200  block-set! b F_Y 330  block-set! b F_VY -9  block-set! b F_A 0
+    berry-step b
+    either = block-at r F_B 1 [ none ] [ fails: + fails 1 ]
+    either = block-at r F_STATE 0 [ none ] [ fails: + fails 1 ]
+    ;; 33. the wave controller opens a fresh wave and sends an advancing rat
+    reset
+    wave: 0  wave-left: 0  wave-cd: 0
+    wave-step
+    either >= wave 1 [ none ] [ fails: + fails 1 ]
+    wave-cd: 0
+    wave-step
+    either >= ts-count K_RAT 1 [ none ] [ fails: + fails 1 ]
+    ;; 34. an OFF-SCREEN powered kaka keeps simulating but emits no visible beam
+    reset
+    tick: 5  view-w: 640  cam: 0
+    k: ts-claim K_KAKA
+    block-set! k F_STATE KS_MUTANT  block-set! k F_X -200  block-set! k F_Y 100
+    block-set! k F_B + tick 300  block-set! k F_VY 3
+    r: ts-claim K_RAT
+    block-set! r F_X -150  block-set! r F_Y 110
+    kaka-mutant k
+    either < laser 1 [ none ] [ fails: + fails 1 ]
+    block-set! k F_X 200
+    kaka-mutant k
+    either > laser 0 [ none ] [ fails: + fails 1 ]
+    ;; 35. a fresh game supports three independent kaka, and restart clears pests
+    reset
+    spawn-kaka  spawn-kaka  spawn-kaka
+    either >= ts-count K_KAKA 3 [ none ] [ fails: + fails 1 ]
+    r: ts-claim K_RAT
+    b: ts-claim K_ROCK
+    reset
+    either = ts-count K_ROCK 0 [ none ] [ fails: + fails 1 ]
+    either = ts-count K_RAT 0 [ none ] [ fails: + fails 1 ]
+    either = mutant-active 0 [ none ] [ fails: + fails 1 ]
+]
+
 selftest: func [] [
     fails: 0
     reset
@@ -284,6 +368,7 @@ selftest: func [] [
     test-c
     test-d
     test-e
+    test-f
     reset
     e-clear
     either = fails 0 [ e-text "KAKA-SELFTEST PASS" ] [ e-text "KAKA-SELFTEST FAIL " e-int fails ]
