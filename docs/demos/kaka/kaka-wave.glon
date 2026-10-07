@@ -1,37 +1,51 @@
-;; demos/kaka/kaka-wave.glon -- D12S.1 pest layer, loaded after kaka-draw.glon.
+;; demos/kaka/kaka-wave.glon -- D12S.2 "Into the Invasion" pest layer.
 ;;
-;; Adds: an advancing rat front that enters from the world edge nearest the
-;; ranger and marches toward the habitat in growing waves; rats that climb a
-;; tree and gnaw it; and tree canopies that block fired berries. Rats are killed
-;; by the player's ROCKS (kaka.glon damage-pest), never by berries. The base
-;; tuple model and spawn helpers live in kaka.glon.
+;; PERMANENT GRAMMAR: GRAHAM GOES RIGHT. The invasion is always ahead/RIGHT;
+;; every pest enters from the right edge and marches LEFT toward the habitat.
+;; There is no nearest-edge spawn and no direction flip by ranger position.
 ;;
-;; Rat phases (in F_STATE): 0 march, 1 climb, 2 gnaw, 3 descend+leave, 9 dead. The
-;; global context has a hard 256-binding ceiling, so constants are inlined and
-;; the tree/kaka scans are single self-recursive functions.
+;; Pests are one actor kind (K_RAT) carrying a SPECIES in F_A (0 rat, 1 stoat,
+;; 2 possum); HP/score/knockback come from the generic damage-pest path in
+;; kaka.glon. Species escalate with progress (`dist`), not wall-clock.
+;;
+;; Bounded state: pests that pass the ranger keep marching until they reach a
+;; tree to gnaw, or fall behind the cull line and are reclaimed. Trees are
+;; planted ahead and reclaimed behind (kaka.glon spawn-timers / tr-cull), and
+;; kaka/rocks/berries/picks are culled relative to the ranger, so live tuple
+;; occupancy stays flat no matter how far right the player travels.
+;;
+;; Pest phases (F_STATE): 0 march, 1 climb, 2 gnaw, 3 descend, 9 dead.
+;; F_D is reused as the non-lethal hit-flash timer (direction is always left).
 [
 wave: 0  wave-left: 0  wave-cd: 0
 
-;; spawn a rat just off the world edge nearest the ranger, marching inward. The
-;; world is 1440 wide, so rats must enter from the appropriate side/front rather
-;; than always from a fixed left edge. F_D carries the march direction (+1/-1).
-spawn-rat: func [] [
+;; spawn a pest just off the RIGHT edge, marching left. Species escalates with
+;; progress: rats first, then rats+stoats, then +possums, then a mixed invasion.
+spawn-pest: func [] [
     t: ts-claim K_RAT
     either = t none [ none ] [
-        d: either < px / WORLD_W 2 [ 1 ] [ -1 ]
-        block-set! t F_X either > d 0 [ -24 ] [ + WORLD_W 24 ]
+        sp: 0
+        either < dist 1800 [ none ] [
+        either < dist 4200 [ either = 0 mod rnd 4 [ sp: 1 ] [ none ] ] [
+        either < dist 8000 [ either = 0 mod rnd 3 [ sp: 1 ] [ none ] ] [
+        either < dist 13000 [
+            either = 0 mod rnd 4 [ sp: 2 ] [ either = 0 mod rnd 3 [ sp: 1 ] [ none ] ]
+        ] [
+            either = 0 mod rnd 3 [ sp: 2 ] [ either = 0 mod rnd 2 [ sp: 1 ] [ none ] ]
+        ] ] ] ]
+        block-set! t F_A sp
+        block-set! t F_X + + cam view-w 90
         block-set! t F_Y 345
-        block-set! t F_A 1
-        block-set! t F_B 0
-        block-set! t F_D d
+        block-set! t F_B either = sp 2 [ 5 ] [ either = sp 1 [ 2 ] [ 1 ] ]
+        block-set! t F_VY either = sp 2 [ 1 ] [ either = sp 1 [ 3 ] [ 2 ] ]
     ]
 ]
-;; wave controller: an advancing front. Wave w sends 2w+2 rats (4, 6, 8, ...),
-;; capped, then a lull. Difficulty grows by NUMBERS, never by rat toughness.
+;; wave controller: wave w sends 2w+2 pests (4, 6, 8, ...); difficulty grows by
+;; NUMBERS, never by toughness. Species mix is chosen per-spawn from progress.
 wave-step: func [] [
     either > wave-left 0 [
         either < wave-cd 1 [
-            either < n-rat RAT_MAX [ spawn-rat  wave-left: - wave-left 1  wave-cd: 34 ] [ none ]
+            either < n-rat RAT_MAX [ spawn-pest  wave-left: - wave-left 1  wave-cd: 34 ] [ none ]
         ] [ wave-cd: - wave-cd 1 ]
     ] [
         either < n-rat 1 [
@@ -43,9 +57,10 @@ wave-step: func [] [
         ] [ none ]
     ]
 ]
-;; live tree beside the rat (within 16 px); -1 if none
+;; live tree beside the pest (within 16 px); -1 if none. Scans the whole space
+;; because trees are now planted/recycled anywhere ahead of the ranger.
 rat-tree: func [i t] [
-    either < i NTREES [
+    either < i ts-hi [
         either = ts-k i K_TREE [
             either > block-at ts-t i F_A 0 [
                 either < abs - block-at ts-t i F_X block-at t F_X 16 [ i ] [ rat-tree + i 1 t ]
@@ -53,7 +68,7 @@ rat-tree: func [i t] [
         ] [ rat-tree + i 1 t ]
     ] [ -1 ]
 ]
-;; drive any kaka feeding on tree ti off the tree (a climbing rat threatens it)
+;; drive any kaka feeding on tree ti off the tree (a climbing pest threatens it)
 rat-disturb: func [i ti] [
     either < i ts-hi [
         either = ts-k i K_KAKA [
@@ -66,7 +81,7 @@ rat-disturb: func [i ti] [
 ]
 rat-step: func [t] [
     st: block-at t F_STATE
-    ;; state 9: killed by a rock, playing the death burst (F_C timer) then free
+    either > block-at t F_D 0 [ block-set! t F_D - block-at t F_D 1 ] [ none ]
     either = st 9 [
         block-set! t F_C - block-at t F_C 1
         either < block-at t F_C 1 [ ts-free t ] [ none ]
@@ -74,9 +89,9 @@ rat-step: func [t] [
     either = st 0 [
         n: rat-tree 0 t
         either < n 0 [
-            block-set! t F_X + block-at t F_X * 2 block-at t F_D
-            either > block-at t F_X + WORLD_W 40 [ ts-free t ] [
-                either < block-at t F_X -40 [ ts-free t ] [ none ]
+            block-set! t F_X - block-at t F_X block-at t F_VY
+            either > block-at t F_X + px 1500 [ ts-free t ] [
+                either < block-at t F_X - px 1200 [ ts-free t ] [ none ]
             ]
         ] [
             block-set! t F_TARGET n
@@ -91,7 +106,9 @@ rat-step: func [t] [
             block-set! t F_STATE 2
             block-set! t F_C GNAW_TICKS
             rat-disturb 0 block-at t F_TARGET
-            either = over 1 [ none ] [ damage-tree block-at t F_TARGET 5 ]
+            either = over 1 [ none ] [
+                damage-tree block-at t F_TARGET either = block-at t F_A 2 [ 15 ] [ either = block-at t F_A 1 [ 7 ] [ 5 ] ]
+            ]
         ] [ none ]
     ] [
     either = st 2 [
@@ -104,7 +121,7 @@ rat-step: func [t] [
 ]
 ;; branch cover: absorb a berry whose rising path enters a live tree's canopy
 berry-blocked?: func [i t] [
-    either < i NTREES [
+    either < i ts-hi [
         either = ts-k i K_TREE [
             either > block-at ts-t i F_A 0 [
                 either < abs - block-at ts-t i F_X block-at t F_X 30 [
@@ -136,18 +153,20 @@ fire-rock: func [] [
         ] [ none ]
     ] [ none ]
 ]
-;; Generic pest damage: every pest carries hp in F_B (rat = 1). A rock deals 1.
-;; On death the tuple enters a short RS_DEAD state (F_C timer) so the kill is
-;; legible, then reclaims cleanly. Future stoats/possums just get more F_B hp.
+;; generic pest damage: HP in F_B (rat 1, stoat 2, possum 5). A rock deals 1.
+;; On death the tuple plays an 8-tick burst (F_C) then reclaims; the kill score
+;; scales with species (rat 20, stoat 35, possum 60). A non-lethal hit sets the
+;; F_D flash timer so the player sees "that one took a hit but is not dead".
 damage-pest: func [t d] [
     h: - block-at t F_B d
     either < h 1 [
         block-set! t F_STATE 9
         block-set! t F_C 8
-        score: + score 20
+        sp: block-at t F_A
+        score: + score either = sp 2 [ 60 ] [ either = sp 1 [ 35 ] [ 20 ] ]
     ] [
         block-set! t F_B h
-        block-set! t F_X + block-at t F_X * 8 sign block-at t F_VY
+        block-set! t F_D 8
     ]
 ]
 rock-hit: func [t i] [
@@ -155,10 +174,9 @@ rock-hit: func [t i] [
         either = ts-k i K_RAT [
             either < block-at ts-t i F_STATE 9 [
                 either < + abs - block-at ts-t i F_X block-at t F_X abs - block-at ts-t i F_Y block-at t F_Y 30 [
-                    ;; shove the pest one step along the rock's travel direction
-                    ;; (a hit reaction), then apply damage; a lethal rat hit
-                    ;; shows the flinch then the death burst.
-                    block-set! ts-t i F_X + block-at ts-t i F_X * 10 sign block-at t F_VY
+                    ;; shove the pest along the rock's travel direction (heavier
+                    ;; pests move less), then apply damage.
+                    block-set! ts-t i F_X + block-at ts-t i F_X * either = block-at ts-t i F_A 2 [ 6 ] [ either = block-at ts-t i F_A 1 [ 14 ] [ 10 ] ] sign block-at t F_VY
                     damage-pest ts-t i 1
                     ts-free t
                 ] [ rock-hit t + i 1 ]
@@ -168,8 +186,8 @@ rock-hit: func [t i] [
 ]
 rock-step: func [t] [
     block-set! t F_X + block-at t F_X block-at t F_VY
-    either > block-at t F_X + WORLD_W 24 [ ts-free t ] [
-        either < block-at t F_X -24 [ ts-free t ] [ rock-hit t 0 ]
+    either > block-at t F_X + px 1500 [ ts-free t ] [
+        either < block-at t F_X - px 1200 [ ts-free t ] [ rock-hit t 0 ]
     ]
 ]
 
@@ -223,18 +241,18 @@ mutate: func [kt bt] [
 ]
 berry-step: func [t] [
     block-set! t F_Y + block-at t F_Y block-at t F_VY
-    ;; after the terminal life loss, berries still travel and despawn but have
-    ;; after the single terminal state, berries travel and despawn but
-    ;; have no effect
+    ;; after the single terminal state, berries travel and despawn but have no
+    ;; effect
     either = over 0 [
         either < block-at t F_Y 265 [
             either > block-at t F_Y 215 [ either = 1 berry-blocked? 0 t [ none ] [ berry-hit t 0 ] ] [ berry-hit t 0 ]
         ] [ berry-hit t 0 ]
     ] [ none ]
     ;; berries are fired upward (F_VY < 0), so they leave the playfield at the
-    ;; TOP. Freeing on Y > 480 (which only a downward-moving actor can reach)
-    ;; leaked every missed berry in the fixed BERRY_MAX pool until firing died.
-    either < block-at t F_Y 0 [ ts-free t ] [ none ]
+    ;; TOP; free there, or if they somehow fall behind the ranger's cull line.
+    either < block-at t F_Y 0 [ ts-free t ] [
+        either < block-at t F_X - px 1200 [ ts-free t ] [ none ]
+    ]
 ]
 berry-hit: func [t i] [
     either < i ts-hi [
@@ -248,7 +266,7 @@ berry-hit: func [t i] [
 spawn-pick: func [] [
     t: ts-claim K_PICK
     either = t none [ none ] [
-        block-set! t F_X + 60 mod rnd - WORLD_W 120
+        block-set! t F_X + - px 60 mod rnd 500
         block-set! t F_Y 20
         block-set! t F_VY 2
     ]
@@ -256,9 +274,11 @@ spawn-pick: func [] [
 pick-step: func [t] [
     y: + block-at t F_Y block-at t F_VY
     block-set! t F_Y y
-    either < abs - px block-at t F_X 26 [
-        either < abs - py y 30 [ either = over 1 [ none ] [ berries: + berries 1 ]  ts-free t ] [ either > y 470 [ ts-free t ] [ none ] ]
-    ] [ either > y 470 [ ts-free t ] [ none ] ]
+    either > abs - block-at t F_X px 1200 [ ts-free t ] [
+        either < abs - px block-at t F_X 26 [
+            either < abs - py y 30 [ either = over 1 [ none ] [ berries: + berries 1 ]  ts-free t ] [ either > y 470 [ ts-free t ] [ none ] ]
+        ] [ either > y 470 [ ts-free t ] [ none ] ]
+    ]
 ]
 poop-step: func [t] [
     y: + block-at t F_Y block-at t F_VY
@@ -266,7 +286,7 @@ poop-step: func [t] [
     either >= y 330 [ either = over 1 [ ts-free t ] [ poop-land 0 t ] ] [ none ]
 ]
 poop-land: func [i t] [
-    either < i NTREES [
+    either < i ts-hi [
         either = ts-k i K_TREE [
             either < abs - block-at ts-t i F_X block-at t F_X 44 [
                 either < block-at ts-t i F_A TREE_MAX [

@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.1";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s1";
+  var BUILD = "D12S.2";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s2";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -65,12 +65,11 @@
   /* ---- parallax scenery (host-side presentation only) --------------------
    * The four generated PNGs are painted by JS; Glon owns the camera scalar it
    * emits as `B <cam>` (backgrounds + scroll gameplay) and `F <cam>`
-   * (foreground). Factors are the presentation mapping of the supplied art to
-   * the requested depths. The art is 3:1 and is drawn as one image per layer
-   * (no tiling, so no repeat seam). Each layer is anchored at world x=0 and
-   * scrolled by its factor; `paintLayer` guarantees the image always covers the
-   * whole viewport at any width, so a wide viewport can never expose an image
-   * edge or an uncovered strip. Nothing here is gameplay. */
+   * (foreground). Because the world scrolls right forever, each layer is
+   * mirror-tiled: alternate copies are flipped so tile edges are C0-continuous
+   * (no hard repeat seam and no uncovered strip at any camera x or width). The
+   * gameplay plane itself scrolls 1:1 with the same cam. Nothing here is game
+   * logic. */
   var LAYERS = [
     { src: "assets/ChatGPT Image Oct 6, 2026, 08_56_38 AM-1.png", factor: 0.12, h: 480, yb: 480, alpha: 1.0 },
     { src: "assets/ChatGPT Image Oct 6, 2026, 08_56_40 AM-2.png", factor: 0.35, h: 430, yb: 470, alpha: 1.0 },
@@ -97,18 +96,37 @@
     var L = LAYERS[idx];
     var w = img.naturalWidth * (L.h / img.naturalHeight);
     var dh = L.h;
-    /* Full coverage at ANY viewport width: if the layer is narrower than the
-       viewport, scale it up (same aspect) instead of exposing an uncovered
-       strip or an image edge. */
+    /* Keep tiles at least viewport-wide so no uncovered strip can appear. */
     if (w < W) { var s = W / w; w *= s; dh *= s; }
-    /* Anchor at world x=0 (left edge at screen 0 when cam=0) and scroll by the
-       layer factor. x<=0 never exposes the left edge; the right clamp then
-       guarantees the right edge is never exposed either. One drawImage. */
-    var x = -cam * L.factor;
-    if (x > 0) x = 0;
-    if (x + w < W) x = W - w;
+    /* World point X maps to screen X*factor - cam*factor, so tile n (world span
+       w/factor) starts at screen n*w - cam*factor. Alternate tiles are mirrored:
+       each mirror tile starts on the previous tile's right edge and is flipped,
+       so edges are C0-continuous (content matches) -- no hard repeat seam. */
+    var base = cam * L.factor;
+    var n = Math.floor(base / w);
+    /* Foreground foliage is clipped to the ground band so a dense tile can
+       never cover the ranger or the incoming pests (readability). */
+    var clip = (idx === 3);
+    if (clip) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 360, W, ctx.canvas.height - 360);
+      ctx.clip();
+    }
     ctx.globalAlpha = L.alpha;
-    ctx.drawImage(img, x, L.yb - dh, w, dh);
+    for (var px = n * w - base; px < W; px += w, n++) {
+      if (px + w <= 0) continue;
+      if ((n & 1) === 0) {
+        ctx.drawImage(img, px, L.yb - dh, w, dh);
+      } else {
+        ctx.save();
+        ctx.translate(px + w, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, 0, L.yb - dh, w, dh);
+        ctx.restore();
+      }
+    }
+    if (clip) ctx.restore();
     ctx.globalAlpha = 1;
   }
 

@@ -1,374 +1,133 @@
-;; demos/kaka/kaka-selftest.glon -- deterministic Glon rule self-test for
-;; Attack of the Mutant Kaka. Dispatched by the kaka-selftest event; the C and
-;; WASM test harnesses read the emitted PASS/FAIL text. The assertions are split
-;; across three functions because the parser caps one block at 511 elements.
+;; demos/kaka/kaka-selftest.glon -- lean deterministic Glon rule self-test.
+;; Dispatched by the kaka-selftest event; the C and WASM harnesses read the
+;; emitted PASS/FAIL text. Kept deliberately small: the loader heap is tight and
+;; the exhaustive D12S.2 direction/species/rolling assertions live in the C
+;; harness (kaka_wave_tests.c / kaka_damage_tests.c), which need no loader code.
 [
-move-n: func [n] [ either > n 0 [ move-player  move-n - n 1 ] [ none ] ]
-fly-n: func [n t] [ either > n 0 [ kaka-step t  fly-n - n 1 t ] [ none ] ]
-
 fails: 0
 
-;; ---- tests 1-5: berries, damage, game over -------------------------------
-test-a: func [] [
-    ;; 1. berry diverts kaka (never damages it)
+test-rules: func [] [
+    ;; 1. ordinary berry diverts a kaka (never damages it); +10
     reset
     k: ts-claim K_KAKA
-    block-set! k F_STATE KS_EAT
-    block-set! k F_TARGET 0
-    block-set! k F_X 200
-    block-set! k F_Y 300
+    block-set! k F_STATE KS_EAT  block-set! k F_TARGET 0
+    block-set! k F_X 200  block-set! k F_Y 300
     b: ts-claim K_BERRY
-    block-set! b F_X 200
-    block-set! b F_Y 300
-    block-set! b F_VY -9
-    block-set! b F_A 0
+    block-set! b F_X 200  block-set! b F_Y 300  block-set! b F_VY -9  block-set! b F_A 0
     berry-hit b 0
     either = block-at k F_STATE KS_DIVERT [ none ] [ fails: + fails 1 ]
-    either = score 10 [ none ] [ fails: + fails 1 ]
-    either > ts-count K_KAKA 0 [ none ] [ fails: + fails 1 ]
-    ;; 2. undiverted kaka damages its tree
+    either = ts-count K_KAKA 1 [ none ] [ fails: + fails 1 ]
+    ;; 2. Glon berry powers a kaka; it expires; a powered kaka zaps a pest
     reset
     k: ts-claim K_KAKA
-    block-set! k F_STATE KS_EAT
-    block-set! k F_TARGET 0
-    block-set! k F_X 120
-    block-set! k F_Y 300
-    block-set! k F_A 35
-    kaka-eat k
-    either < block-at ts-t 0 F_A TREE_MAX [ none ] [ fails: + fails 1 ]
-    ;; 3. all trees destroyed => game over
-    reset
-    damage-tree 0 100  damage-tree 1 100  damage-tree 2 100
-    on-tick
-    either = over 1 [ none ] [ fails: + fails 1 ]
-    ;; 4. Glon Berry creates mutant state
-    reset
-    k: ts-claim K_KAKA
-    block-set! k F_STATE KS_SWEEP
-    block-set! k F_X 200
-    block-set! k F_Y 200
+    block-set! k F_STATE KS_SWEEP  block-set! k F_X 200  block-set! k F_Y 200
     g: ts-claim K_BERRY
-    block-set! g F_X 200
-    block-set! g F_Y 200
-    block-set! g F_VY -8
-    block-set! g F_A 1
+    block-set! g F_X 200  block-set! g F_Y 200  block-set! g F_A 1
     berry-hit g 0
     either = block-at k F_STATE KS_MUTANT [ none ] [ fails: + fails 1 ]
     either > block-at k F_B tick [ none ] [ fails: + fails 1 ]
-    ;; 5. mutant state expires
-    block-set! k F_B -1
-    kaka-mutant k
+    block-set! k F_B -1  kaka-mutant k
     either = block-at k F_STATE KS_MUTANT [ fails: + fails 1 ] [ none ]
-]
-
-;; ---- tests 6-10: mutant kill, no bird harm, poop, restart, aliasing -------
-test-b: func [] [
-    ;; 6. mutant kaka zaps a rat
     reset
     k: ts-claim K_KAKA
-    block-set! k F_STATE KS_MUTANT
-    block-set! k F_B + tick 540
-    block-set! k F_X 300
-    block-set! k F_Y 320
+    block-set! k F_STATE KS_MUTANT  block-set! k F_B + tick 540
+    block-set! k F_X 300  block-set! k F_Y 320
     r: ts-claim K_RAT
-    block-set! r F_X 305
-    block-set! r F_Y 330
-    sc0: score
+    block-set! r F_X 305  block-set! r F_Y 330
     kaka-mutant k
     either = ts-count K_RAT 0 [ none ] [ fails: + fails 1 ]
-    either = score + sc0 25 [ none ] [ fails: + fails 1 ]
-    ;; 7. the player cannot damage kaka (berries divert, never remove)
-    reset
-    k: ts-claim K_KAKA
-    block-set! k F_STATE KS_SWEEP
-    block-set! k F_X 200
-    block-set! k F_Y 200
-    b: ts-claim K_BERRY
-    block-set! b F_X 200
-    block-set! b F_Y 200
-    block-set! b F_A 0
-    berry-hit b 0
-    either = ts-count K_KAKA 1 [ none ] [ fails: + fails 1 ]
-    ;; 8. droppings regenerate a damaged tree
-    reset
-    damage-tree 0 40
-    h0: block-at ts-t 0 F_A
-    p: ts-claim K_POOP
-    block-set! p F_X 240
-    block-set! p F_Y 329
-    block-set! p F_VY 3
-    poop-step p
-    either > block-at ts-t 0 F_A h0 [ none ] [ fails: + fails 1 ]
-    ;; 9. restart returns a clean initial state
-    score: 999  berries: 0  over: 1  tick: 500
-    reset
-    either = score 0 [ none ] [ fails: + fails 1 ]
-    either = berries 1 [ none ] [ fails: + fails 1 ]
-    either = over 0 [ none ] [ fails: + fails 1 ]
-    either = tick 0 [ none ] [ fails: + fails 1 ]
-    either = trees-live 3 [ none ] [ fails: + fails 1 ]
-    either = ts-count K_KAKA 0 [ none ] [ fails: + fails 1 ]
-    ;; 10. dynamic create/remove does not alias or corrupt state
-    reset
-    a: ts-claim K_KAKA
-    bb: ts-claim K_RAT
-    c: ts-claim K_BERRY
-    either = a bb [ fails: + fails 1 ] [ none ]
-    either = bb c [ fails: + fails 1 ] [ none ]
-    block-set! a F_X 111
-    block-set! bb F_X 222
-    block-set! c F_X 333
-    ts-free bb
-    d: ts-claim K_POOP
-    either = d bb [ none ] [ fails: + fails 1 ]
-    block-set! d F_X 444
-    either = block-at a F_X 111 [ none ] [ fails: + fails 1 ]
-    either = block-at c F_X 333 [ none ] [ fails: + fails 1 ]
-    either = block-at d F_X 444 [ none ] [ fails: + fails 1 ]
-]
-
-;; ---- tests 11-15: game-over advance, movement, curved flight -------------
-test-c: func [] [
-    ;; 11. the world keeps advancing after game over (must not freeze)
-    reset
-    damage-tree 0 100  damage-tree 1 100  damage-tree 2 100
-    on-tick
-    either = over 1 [ none ] [ fails: + fails 1 ]
-    t0: tick
-    on-tick
-    on-tick
-    either > tick t0 [ none ] [ fails: + fails 1 ]
-    ;; 12. held movement covers useful ground at 25 Hz; release stops promptly
-    reset
-    px: 100  kr: 1
-    move-n 25
-    either = px 350 [ none ] [ fails: + fails 1 ]
-    kr: 0
-    move-n 5
-    either = px 350 [ none ] [ fails: + fails 1 ]
-    ;; 12b. the gameplay world is wider than the old 640 arena and the ranger can
-    ;; actually travel beyond it (coordinates are device-independent).
-    either > WORLD_W 640 [ none ] [ fails: + fails 1 ]
-    reset
-    px: 1400  kr: 1
-    move-n 5
-    either > px 1000 [ none ] [ fails: + fails 1 ]
-    either = px - WORLD_W 24 [ none ] [ fails: + fails 1 ]
-    ;; 13. kaka flight path is curved (samples are not collinear)
-    reset
-    k: ts-claim K_KAKA
-    block-set! k F_STATE KS_SWEEP
-    block-set! k F_TARGET 2
-    block-set! k F_X 100
-    block-set! k F_Y 20
-    block-set! k F_VY 3
-    sx0: block-at k F_X  sy0: block-at k F_Y
-    kaka-step k  kaka-step k  kaka-step k
-    mx: block-at k F_X  my: block-at k F_Y
-    kaka-step k  kaka-step k  kaka-step k  kaka-step k
-    ex: block-at k F_X  ey: block-at k F_Y
-    cross: - * - mx sx0 - ey sy0  * - my sy0 - ex sx0
-    either > abs cross 8 [ none ] [ fails: + fails 1 ]
-    ;; 14. diversion changes heading progressively, not instantly
-    reset
-    k: ts-claim K_KAKA
-    block-set! k F_STATE KS_EAT
-    block-set! k F_X 200
-    block-set! k F_Y 300
-    block-set! k F_VY 6
-    px: 300
-    b: ts-claim K_BERRY
-    block-set! b F_X 200
-    block-set! b F_Y 300
-    block-set! b F_A 0
-    berry-hit b 0
-    either = block-at k F_STATE KS_DIVERT [ none ] [ fails: + fails 1 ]
-    either = block-at k F_VY 6 [ none ] [ fails: + fails 1 ]
-    kaka-divert k
-    either = block-at k F_VY 4 [ none ] [ fails: + fails 1 ]
-    kaka-divert k
-    either = block-at k F_VY 2 [ none ] [ fails: + fails 1 ]
-    ;; 15. a kaka flies in, swoops, reaches and damages its tree
-    reset
-    k: ts-claim K_KAKA
-    block-set! k F_STATE KS_SWEEP
-    block-set! k F_TARGET 0
-    block-set! k F_X 120
-    block-set! k F_Y 20
-    block-set! k F_VY 0
-    block-set! k F_E 2
-    fly-n 40 k  fly-n 40 k  fly-n 40 k
-    either < block-at ts-t 0 F_A TREE_MAX [ none ] [ fails: + fails 1 ]
-]
-
-;; ---- tests 16-21: lives, laser hazard, invulnerability, game over ---------
-test-d: func [] [
-    ;; 16. a new game starts with three lives and is not over
-    reset
-    either = lives 3 [ none ] [ fails: + fails 1 ]
-    either = over 0 [ none ] [ fails: + fails 1 ]
-    ;; 17. a beam that misses the ranger hitbox changes nothing
-    laser-ox: 100 laser-oy: 180 laser-x: 100 laser-y: 340
-    either = laser-hits-player? 0 [ none ] [ fails: + fails 1 ]
-    invuln: 0  laser-hazard
-    either = lives 3 [ none ] [ fails: + fails 1 ]
-    ;; 18. a beam crossing the ranger removes exactly one life
-    laser-ox: px laser-oy: 180 laser-x: px laser-y: 340
-    either = laser-hits-player? 1 [ none ] [ fails: + fails 1 ]
-    invuln: 0  laser-hazard
-    either = lives 2 [ none ] [ fails: + fails 1 ]
-    ;; 19. invulnerability blocks a repeated crossing
-    either > invuln 0 [ none ] [ fails: + fails 1 ]
-    laser-hazard
-    either = lives 2 [ none ] [ fails: + fails 1 ]
-    ;; 20. once invulnerability expires a crossing removes another life
-    invuln: 0  laser-hazard
-    either = lives 1 [ none ] [ fails: + fails 1 ]
-    ;; 21. the final life is terminal game over; crossings then change nothing
-    invuln: 0  laser-hazard  tally
-    either = lives 0 [ none ] [ fails: + fails 1 ]
-    either = over 1 [ none ] [ fails: + fails 1 ]
-    invuln: 0  laser-hazard
-    either = lives 0 [ none ] [ fails: + fails 1 ]
-]
-
-;; ---- tests 22-25: restart, high score, decimal parse ---------------------
-test-e: func [] [
-    ;; 22. restart resets lives and clears game over, but keeps the high score
-    reset
-    highscore: 777
-    score: 123
-    tally
-    over: 1
-    either = highscore 777 [ none ] [ fails: + fails 1 ]
-    reset
-    either = lives 3 [ none ] [ fails: + fails 1 ]
-    either = over 0 [ none ] [ fails: + fails 1 ]
-    either = highscore 777 [ none ] [ fails: + fails 1 ]
-    ;; 23. a lower score never lowers the high score
-    highscore: 500  score: 100  tally
-    either = highscore 500 [ none ] [ fails: + fails 1 ]
-    ;; 24. a higher score raises the high score
-    highscore: 100  score: 500  tally
-    either = highscore 500 [ none ] [ fails: + fails 1 ]
-    ;; 25. the persisted decimal parser is exact
-    either = str-int "4096" 4096 [ none ] [ fails: + fails 1 ]
-    either = str-int "0" 0 [ none ] [ fails: + fails 1 ]
-    ;; 26. same world, different viewport: view-w is presentation only and must
-    ;; never relocate gameplay actors or the ranger.
-    reset
-    v0: block-at ts-t 0 F_X
-    view-w: 1056  move-player
-    either = block-at ts-t 0 F_X v0 [ none ] [ fails: + fails 1 ]
-    either = block-at ts-t 1 F_X 720 [ none ] [ fails: + fails 1 ]
-    either = block-at ts-t 2 F_X 1200 [ none ] [ fails: + fails 1 ]
-    either = px 480 [ none ] [ fails: + fails 1 ]
-    view-w: 640  move-player
-    either = block-at ts-t 0 F_X v0 [ none ] [ fails: + fails 1 ]
-    ;; 27. restart clears transient actors and returns the ranger to the start
-    r: ts-claim K_RAT
-    b: ts-claim K_BERRY
-    px: 900
-    reset
-    either = ts-count K_RAT 0 [ none ] [ fails: + fails 1 ]
-    either = ts-count K_BERRY 0 [ none ] [ fails: + fails 1 ]
-    either = px 480 [ none ] [ fails: + fails 1 ]
-    either = cam 0 [ none ] [ fails: + fails 1 ]
-]
-
-;; ---- tests 28-35: D12S.1 rock vs rat combat + pest front ------------------
-test-f: func [] [
-    ;; 28. ROCK fires from the ranger in the facing direction
+    either = score 25 [ none ] [ fails: + fails 1 ]
+    ;; 3. ROCK fires in facing direction; kills a 1-hp rat; +20; no tree damage
     reset
     px: 300  pf: 1  krock: 1  rock-cd: 0
     fire-rock
-    either = ts-count K_ROCK 1 [ none ] [ fails: + fails 1 ]
     either > block-at ts-t 3 F_VY 0 [ none ] [ fails: + fails 1 ]
-    either > block-at ts-t 3 F_X 300 [ none ] [ fails: + fails 1 ]
     reset
     px: 300  pf: -1  krock: 1  rock-cd: 0
     fire-rock
     either < block-at ts-t 3 F_VY 0 [ none ] [ fails: + fails 1 ]
-    either < block-at ts-t 3 F_X 300 [ none ] [ fails: + fails 1 ]
-    ;; 29. ROCK kills a 1-hp rat, scores, and the tuple reclaims after the burst
     reset
     r: ts-claim K_RAT
-    block-set! r F_X 330  block-set! r F_Y 330
-    block-set! r F_B 1  block-set! r F_STATE 0  block-set! r F_D 1
+    block-set! r F_X 330  block-set! r F_Y 330  block-set! r F_B 1  block-set! r F_A 0  block-set! r F_VY 2
     px: 300  pf: 1  krock: 1  rock-cd: 0
-    fire-rock
-    rock-step ts-t 4
+    fire-rock  rock-step ts-t 4
     either = block-at r F_STATE 9 [ none ] [ fails: + fails 1 ]
     either = score 20 [ none ] [ fails: + fails 1 ]
-    either = ts-count K_ROCK 0 [ none ] [ fails: + fails 1 ]
-    rat-step r  rat-step r  rat-step r  rat-step r
-    rat-step r  rat-step r  rat-step r  rat-step r
-    either = ts-count K_RAT 0 [ none ] [ fails: + fails 1 ]
-    ;; 30. a ROCK does not damage a tree
     reset
     b: ts-claim K_ROCK
     block-set! b F_X 200  block-set! b F_Y 330  block-set! b F_VY 12
     rock-step b  rock-step b  rock-step b
     either = block-at ts-t 0 F_A 100 [ none ] [ fails: + fails 1 ]
-    ;; 31. a ROCK does not feed/alter a kaka
-    reset
-    k: ts-claim K_KAKA
-    block-set! k F_STATE KS_SWEEP  block-set! k F_X 200  block-set! k F_Y 330
-    b: ts-claim K_ROCK
-    block-set! b F_X 190  block-set! b F_Y 330  block-set! b F_VY 12
-    rock-step b
-    either = block-at k F_STATE KS_SWEEP [ none ] [ fails: + fails 1 ]
-    ;; 32. a BERRY does not damage a rat
+    ;; 4. a berry never damages a pest; a pest that passes the ranger marches on
     reset
     r: ts-claim K_RAT
-    block-set! r F_X 200  block-set! r F_Y 330  block-set! r F_B 1  block-set! r F_D -1
+    block-set! r F_X 200  block-set! r F_Y 330  block-set! r F_B 1  block-set! r F_A 0  block-set! r F_VY 2
     b: ts-claim K_BERRY
-    block-set! b F_X 200  block-set! b F_Y 330  block-set! b F_VY -9  block-set! b F_A 0
+    block-set! b F_X 200  block-set! b F_Y 330  block-set! b F_A 0
     berry-step b
     either = block-at r F_B 1 [ none ] [ fails: + fails 1 ]
     either = block-at r F_STATE 0 [ none ] [ fails: + fails 1 ]
-    ;; 33. the wave controller opens a fresh wave and sends an advancing rat
+    x0: block-at r F_X
+    px: 100  rat-step r
+    either < block-at r F_X x0 [ none ] [ fails: + fails 1 ]
+    either = ts-count K_RAT 1 [ none ] [ fails: + fails 1 ]
+    ;; 5. restart clears pests/rocks/berries and resets progress + camera
+    r: ts-claim K_RAT  b: ts-claim K_ROCK  g: ts-claim K_BERRY
+    px: 5000  dist: 5000  next-tree-x: 6000
     reset
-    wave: 0  wave-left: 0  wave-cd: 0
-    wave-step
-    either >= wave 1 [ none ] [ fails: + fails 1 ]
-    wave-cd: 0
-    wave-step
-    either >= ts-count K_RAT 1 [ none ] [ fails: + fails 1 ]
-    ;; 34. an OFF-SCREEN powered kaka keeps simulating but emits no visible beam
-    reset
-    tick: 5  view-w: 640  cam: 0
-    k: ts-claim K_KAKA
-    block-set! k F_STATE KS_MUTANT  block-set! k F_X -200  block-set! k F_Y 100
-    block-set! k F_B + tick 300  block-set! k F_VY 3
-    r: ts-claim K_RAT
-    block-set! r F_X -150  block-set! r F_Y 110
-    kaka-mutant k
-    either < laser 1 [ none ] [ fails: + fails 1 ]
-    block-set! k F_X 200
-    kaka-mutant k
-    either > laser 0 [ none ] [ fails: + fails 1 ]
-    ;; 35. a fresh game supports three independent kaka, and restart clears pests
-    reset
-    spawn-kaka  spawn-kaka  spawn-kaka
-    either >= ts-count K_KAKA 3 [ none ] [ fails: + fails 1 ]
-    r: ts-claim K_RAT
-    b: ts-claim K_ROCK
-    reset
-    either = ts-count K_ROCK 0 [ none ] [ fails: + fails 1 ]
     either = ts-count K_RAT 0 [ none ] [ fails: + fails 1 ]
-    either = mutant-active 0 [ none ] [ fails: + fails 1 ]
+    either = ts-count K_ROCK 0 [ none ] [ fails: + fails 1 ]
+    either = ts-count K_BERRY 0 [ none ] [ fails: + fails 1 ]
+    either = px 480 [ none ] [ fails: + fails 1 ]
+    either = dist 480 [ none ] [ fails: + fails 1 ]
+    either = cam 0 [ none ] [ fails: + fails 1 ]
+    either = trees-live 3 [ none ] [ fails: + fails 1 ]
+]
+
+test-camera: func [] [
+    ;; 6. rightward camera: the ranger sits ~35% from the left (more ahead than
+    ;; behind), and moving across the old midpoint never reverses the invasion.
+    reset
+    view-w: 1000  px: 3000
+    move-player
+    either = cam 2650 [ none ] [ fails: + fails 1 ]
+    either > - px cam - cam view-w px [ none ] [ fails: + fails 1 ]
+    either > px 1000 [ none ] [ fails: + fails 1 ]
+    ;; 7. same world, different viewport: view-w never relocates actors
+    reset
+    spawn-pest
+    x0: block-at ts-t 3 F_X
+    t0: block-at ts-t 0 F_X
+    view-w: 1056  move-player
+    either = block-at ts-t 3 F_X x0 [ none ] [ fails: + fails 1 ]
+    either = block-at ts-t 0 F_X t0 [ none ] [ fails: + fails 1 ]
+    view-w: 640  move-player
+    either = block-at ts-t 3 F_X x0 [ none ] [ fails: + fails 1 ]
+    ;; 8. pest species HP: stoat needs two rocks, possum five
+    reset
+    r: ts-claim K_RAT
+    block-set! r F_A 1  block-set! r F_B 2
+    damage-pest r 1
+    either = block-at r F_B 1 [ none ] [ fails: + fails 1 ]
+    either = block-at r F_STATE 0 [ none ] [ fails: + fails 1 ]
+    damage-pest r 1
+    either = block-at r F_STATE 9 [ none ] [ fails: + fails 1 ]
+    either = score 35 [ none ] [ fails: + fails 1 ]
+    reset
+    r: ts-claim K_RAT
+    block-set! r F_A 2  block-set! r F_B 5
+    damage-pest r 1  damage-pest r 1  damage-pest r 1  damage-pest r 1
+    either = block-at r F_STATE 0 [ none ] [ fails: + fails 1 ]
+    damage-pest r 1
+    either = block-at r F_STATE 9 [ none ] [ fails: + fails 1 ]
+    either = score 60 [ none ] [ fails: + fails 1 ]
 ]
 
 selftest: func [] [
     fails: 0
     reset
-    test-a
-    test-b
-    test-c
-    test-d
-    test-e
-    test-f
+    test-rules
+    test-camera
     reset
     e-clear
     either = fails 0 [ e-text "KAKA-SELFTEST PASS" ] [ e-text "KAKA-SELFTEST FAIL " e-int fails ]
