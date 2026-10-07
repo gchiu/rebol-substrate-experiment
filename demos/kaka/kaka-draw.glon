@@ -369,8 +369,8 @@ render-status: func [] [
     ] [ none ]
     ;; The host mirrors this numeric value into localStorage (small semantic
     ;; bridge); Glon owns the value and the comparison.
-    e-text "<i id='kaka-hs'>" e-int highscore e-text "</i>"
-    e-text "<i id='kaka-state'>"
+    e-text "<i id='kaka-hs' style='display:none'>" e-int highscore e-text "</i>"
+    e-text "<i id='kaka-state' style='display:none'>"
     e-int tick e-text " " e-int score e-text " " e-int over e-text " " e-int berries e-text " "
     e-int px e-text " " e-int kl e-text " " e-int kr e-text " " e-int kf e-text " " e-int kg e-text " "
     e-int n-kaka e-text " " e-int n-rat e-text " "

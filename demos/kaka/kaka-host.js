@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12M.2";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12m2";
+  var BUILD = "D12M.3";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12m3";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -341,6 +341,15 @@
     return fetch(v).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status + " " + v); return r.text(); });
   }
 
+  /* Track the real visible viewport (mobile browser chrome can show/hide) as a
+     CSS variable, so the landscape layout can size the canvas from available
+     height instead of guessing. Desktop ignores it. */
+  function fitView() {
+    var vv = window.visualViewport;
+    var h = (vv && vv.height) ? vv.height : window.innerHeight;
+    document.documentElement.style.setProperty("--app-h", Math.round(h) + "px");
+  }
+
   function boot() {
     if (ex.glon_init() !== 0) { console.error("kaka: glon_init failed"); return; }
     Promise.resolve()
@@ -357,6 +366,13 @@
       .then(function () {
         wireClicks();
         wireTouch();
+        fitView();
+        window.addEventListener("resize", fitView);
+        window.addEventListener("orientationchange", fitView);
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener("resize", fitView);
+          window.visualViewport.addEventListener("scroll", fitView);
+        }
         window.addEventListener("keydown", function (e) { key(e, true); });
         window.addEventListener("keyup", function (e) { key(e, false); });
         window.addEventListener("blur", function () { resetInput(); });
