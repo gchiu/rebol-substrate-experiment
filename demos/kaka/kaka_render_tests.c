@@ -65,7 +65,8 @@ static const char *OVERLAY =
     "  either = current-route 'kaka-possum [ q: ts-claim K_RAT  block-set! q F_X 300  block-set! q F_Y 250  block-set! q F_STATE 0  block-set! q F_A 2 ] ["
     "  either = current-route 'kaka-air [ py: 270  jt: 11 ] ["
     "  either = current-route 'kaka-run [ kr: 1  move-player ] ["
-    "  either = current-route 'kaka-hit [ invuln: 10  tick: 1  kr: 0 ] [ reset ]]]]]]]]]]"
+    "  either = current-route 'kaka-hit [ invuln: 10  tick: 1  kr: 0 ] ["
+    "  either = current-route 'kaka-over [ lives: 0  py: 270  kr: 1 ] [ reset ]]]]]]]]]]]"
     "  tally render ] ]";
 
 static char out[65536];
@@ -270,6 +271,12 @@ int main(void) {
     if (!rok || !(rp == 1 || rp == 2)) { printf("  FAIL: run pose not emitted\n"); fails++; }
     if (!aok || ap != 3 || ay != 270) { printf("  FAIL: jump pose/translation wrong\n"); fails++; }
     if (!hok || hp != 4) { printf("  FAIL: hit pose not emitted\n"); fails++; }
+    /* terminal: still fallen pose forced to the ground baseline */
+    if (route("home") != 0) return 2;
+    if (route("kaka-over") != 0) return 2;
+    int op, ox, oy, od, ook = player_op(&op, &ox, &oy, &od);
+    printf("  player over pose=%d y=%d\n", op, oy);
+    if (!ook || op != 5 || oy != 330) { printf("  FAIL: terminal pose not fallen/grounded\n"); fails++; }
     /* no old primitive ranger must remain (the host is the only painter) */
     {
         int prim = 0; char *q = vis;
