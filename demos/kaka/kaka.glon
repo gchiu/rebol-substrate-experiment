@@ -276,9 +276,13 @@ tly: func [i] [
             ] [ none ]
         ] [
         either = k K_RAT [
-            n-rat: + n-rat 1
-            either = block-at ts-t i F_A 1 [ n-stoat: + n-stoat 1 ] [
-            either = block-at ts-t i F_A 2 [ n-possum: + n-possum 1 ] [ none ] ]
+            ;; ghosts (F_STATE 9) are transient presentation and are NOT counted
+            ;; as live pests, so a fading corpse never blocks the next wave.
+            either < block-at ts-t i F_STATE 9 [
+                n-rat: + n-rat 1
+                either = block-at ts-t i F_A 1 [ n-stoat: + n-stoat 1 ] [
+                either = block-at ts-t i F_A 2 [ n-possum: + n-possum 1 ] [ none ] ]
+            ] [ none ]
         ] [
         either = k K_ROCK [ n-rock: + n-rock 1 ] [
         either = k K_BERRY [ none ] [

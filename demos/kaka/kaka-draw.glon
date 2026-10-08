@@ -1,5 +1,4 @@
 ;; demos/kaka/kaka-draw.glon -- rendering for Attack of the Mutant Kaka.
-;; Split from kaka.glon for the 16 KiB source buffer; game state is in kaka.glon.
 [
 ;; ---- lives, laser hazard and high score ----------------------------------
 imin: func [a b] [ either < a b [ a ] [ b ] ]
@@ -141,8 +140,11 @@ kaka-divert: func [t] [
 nr: func [i best bd t] [
     either < i ts-hi [
         either = ts-k i K_RAT [
-            d: + abs - block-at ts-t i F_X block-at t F_X abs - block-at ts-t i F_Y block-at t F_Y
-            either < d bd [ nr + i 1 ts-t i d t ] [ nr + i 1 best bd t ]
+            ;; skip ghosts (F_STATE 9): a fading corpse is not a target
+            either < block-at ts-t i F_STATE 9 [
+                d: + abs - block-at ts-t i F_X block-at t F_X abs - block-at ts-t i F_Y block-at t F_Y
+                either < d bd [ nr + i 1 ts-t i d t ] [ nr + i 1 best bd t ]
+            ] [ nr + i 1 best bd t ]
         ] [ nr + i 1 best bd t ]
     ] [ best ]
 ]
@@ -240,10 +242,7 @@ tree-art: func [t] [
         ]
     ]
 ]
-;; ---- sprite actors (Glon names the frame; the host paints it) -------------
-;; `S id x y dir` -- id selects a frame on a host-owned sheet, dir is +1/-1 for
-;; facing. Glon chooses id from actor kind + state + a deterministic flap/run
-;; cycle; it never sends bitmap bytes and never inspects image data.
+;; ---- sprite actors: `S id x y dir`; id names a host-owned frame ------------
 p-spr: func [id x y d] [ p-byte 83 p-num id p-num x p-num y p-num d p-eol ]
 
 spr-kaka: func [t] [
@@ -263,18 +262,28 @@ spr-kaka: func [t] [
         p-spr either < mod tick 12 6 [ 0 ] [ 1 ] x y d
     ] ] ] ] ]
 ]
-;; Pest art by species (F_A): 0 rat (supplied sheet), 1 stoat, 2 possum. Stoats
-;; and possums are DRAWN (vector, distinct silhouettes/sizes/colours), never a
-;; recoloured rat. A non-lethal hit shows a bright halo (F_E flash timer); a
-;; kill shows the expanding red burst. Pests always face left (they march left).
+;; Pest art by species (F_A): 0 rat (sheet), 1 stoat, 2 possum (vector, distinct
+;; shapes). On death (state 9) the pest becomes a short comic GHOST of its own
+;; shape: rises, wobbles, fades (host alpha op) -- no collision/targeting, no
+;; white disc. A non-lethal hit (F_D>0) shows a brief yellow spark. Marches left.
 spr-rat: func [t] [
     x: block-at t F_X
     y: block-at t F_Y
     sp: block-at t F_A
     either = block-at t F_STATE 9 [
-        p-circ x y + 4 - 9 block-at t F_C 5
+        age: - 20 block-at t F_C
+        x: + x either < mod age 6 3 [ -1 ] [ 1 ]
+        y: - y * 2 age
+        a: - 15 / * age 15 20
+        either < a 0 [ a: 0 ] [ none ]
+        p-byte 65 p-num a p-eol
     ] [
-        either > block-at t F_E 0 [ p-circ x - y 12 18 15 ] [ none ]
+        either > block-at t F_D 0 [
+            c: - y 12
+            p-line x - c 18 x - c 28 2 7
+            p-line - x 16 c - x 26 c 2 7
+            p-line + x 16 c + x 26 c 2 7
+        ] [ none ]
     ]
     either = sp 1 [
         p-line - x 6 - y 6 - x 8 y 3 8
@@ -303,6 +312,7 @@ spr-rat: func [t] [
             ]
         ]
     ] ]
+    either = block-at t F_STATE 9 [ p-byte 65 p-num 15 p-eol ] [ none ]
 ]
 ;; A rat chewing at a trunk: a few bark flecks and a brief hit flash at the
 ;; gnawed tree, so it is obvious which tree just lost health.
@@ -335,10 +345,8 @@ actor-art: func [i] [
         actor-art + i 1
     ] [ none ]
 ]
-;; Camera markers: byte 66 makes the host paint the three background parallax
-;; layers and scroll the gameplay plane; byte 70 paints the foreground after the
-;; actors. Only the camera scalar crosses the boundary -- PNG bytes never enter
-;; Glon and no image is reproduced as drawing primitives.
+;; camera markers: byte 66 paints the backgrounds + scrolls the plane, byte 70
+;; paints the foreground after the actors. Only the camera scalar crosses.
 draw-trees: func [i] [
     either < i ts-hi [
         either = ts-k i K_TREE [ tree-art ts-t i ] [ none ]

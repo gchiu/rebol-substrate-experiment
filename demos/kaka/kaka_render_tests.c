@@ -58,7 +58,8 @@ static const char *OVERLAY =
     "[ route: ["
     "  either = current-route 'kaka-damage0 [ damage-tree 0 60 ] ["
     "  either = current-route 'kaka-damage1 [ damage-tree 1 60 ] ["
-    "  either = current-route 'kaka-damage2 [ damage-tree 2 60 ] [ reset ]]]"
+    "  either = current-route 'kaka-damage2 [ damage-tree 2 60 ] ["
+    "  either = current-route 'kaka-ghost [ r: ts-claim K_RAT  block-set! r F_X 300  block-set! r F_Y 340  block-set! r F_STATE 9  block-set! r F_C 10  block-set! r F_A 0 ] [ reset ]]]]"
     "  tally render ] ]";
 
 static char out[65536];
@@ -136,6 +137,30 @@ int main(void) {
             }
         }
         if (!(c[t] < base[t])) { printf("  FAIL: damaged tree %d did not lose foliage\n", t); fails++; }
+    }
+
+    /* ghost render: death state must emit a fading alpha op and NO white disc */
+    if (route("home") != 0) return 2;
+    if (route("kaka-ghost") != 0) return 2;
+    {
+        int alphas = 0, white_discs = 0, ghost_sprites = 0;
+        char *q = vis;
+        while ((q = strchr(q, '\n')) != NULL) {
+            q++;
+            if (q[0] == 'A' && q[1] == ' ') {
+                int a = atoi(q + 2);
+                alphas++;
+                if (a < 0 || a > 15) { printf("  FAIL: ghost alpha out of range: %d\n", a); fails++; }
+            } else if (q[0] == 'O' && q[1] == ' ') {
+                int x, y, r, c;
+                if (sscanf(q + 2, "%d %d %d %d", &x, &y, &r, &c) == 4 && c == 15 && r >= 10) white_discs++;
+            } else if (q[0] == 'S' && q[1] == ' ' && atoi(q + 2) == 23) {
+                ghost_sprites++;
+            }
+        }
+        printf("  ghost render: alphas=%d white_discs=%d ghost_rat_frames=%d\n", alphas, white_discs, ghost_sprites);
+        if (alphas < 1) { printf("  FAIL: ghost emitted no fading alpha op\n"); fails++; }
+        if (white_discs != 0) { printf("  FAIL: ghost render contains a white disc\n"); fails++; }
     }
 
     if (fails == 0) { printf("kaka-render-test PASS\n"); return 0; }

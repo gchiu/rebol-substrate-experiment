@@ -215,6 +215,21 @@ int main(void) {
     check(run_int("trees-live") <= 6, "16 active tree count bounded");
     check(maxTotal <= 30, "16 tuple occupancy bounded (not growing with distance)");
 
+    /* 17. death ghost (state 9): not a live pest, not a target, frees cleanly */
+    run_source("reset");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 400  block-set! r F_Y 345  block-set! r F_STATE 9  block-set! r F_C 20  block-set! r F_A 0");
+    run_source("tally");
+    check(run_int("n-rat") == 0, "17 ghost is not a live pest (n-rat 0)");
+    run_source("reset");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 305  block-set! r F_Y 330  block-set! r F_STATE 9  block-set! r F_C 20");
+    run_source("k: ts-claim K_KAKA  block-set! k F_STATE KS_MUTANT  block-set! k F_B + tick 540  block-set! k F_X 300  block-set! k F_Y 320");
+    run_source("kaka-mutant k");
+    check(run_int("ts-count K_RAT") == 1 && run_int("laser") < 0, "17 powered kaka does not target a ghost");
+    run_source("reset");
+    run_source("r: ts-claim K_RAT  block-set! r F_STATE 9  block-set! r F_C 20");
+    for (int i = 0; i < 20; i++) run_source("rat-step r");
+    check(run_int("ts-count K_RAT") == 0, "17 ghost frees after its 20-tick life");
+
     if (fails == 0) { printf("kaka-wave-test PASS\n"); return 0; }
     printf("kaka-wave-test FAIL (%d)\n", fails);
     return 1;

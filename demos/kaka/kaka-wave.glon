@@ -161,7 +161,7 @@ damage-pest: func [t d] [
     h: - block-at t F_B d
     either < h 1 [
         block-set! t F_STATE 9
-        block-set! t F_C 8
+        block-set! t F_C 20
         sp: block-at t F_A
         score: + score either = sp 2 [ 60 ] [ either = sp 1 [ 35 ] [ 20 ] ]
     ] [
