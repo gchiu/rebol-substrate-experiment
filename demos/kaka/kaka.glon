@@ -65,8 +65,10 @@ kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
 ;; anti-pest fire cooldown. pf follows the last horizontal input.
 krock: 0 pf: 1 rock-cd: 0
 px: 480 py: 330
-;; vy = ranger vertical velocity for the jump (impulse + gravity; 0 on ground)
-vy: 0
+;; jt = ticks remaining in the current jump arc (0 = grounded). A countdown
+;; (not a cross-tick velocity) drives the height so the jump can never be lost
+;; between simulation ticks, bounce, or get stuck.
+jt: 0
 ;; cam = world x at the view's left edge; view-w = logical viewport width.
 ;; dist = furthest world x the ranger has reached (monotonic progress; drives
 ;; pest-stage progression and never decreases, so retreating does not rewind it).
@@ -166,16 +168,17 @@ move-player: func [] [
     ;; a jump-over, not a full stop.
     either = dx 0 [ none ] [ px: + px * dx 10 ]
     either < px 24 [ px: 24 ] [ none ]
-    ;; JUMP is a real dodge: an upward impulse when grounded, gravity always,
-    ;; landing back on the ground line (py 330). Holding jump bunny-hops but can
-    ;; never leave the ranger permanently airborne, so it grants no permanent
-    ;; immunity. Down is a small fast-fall.
-    either > ku 0 [ either > py 329 [ vy: -11 ] [ none ] ] [ none ]
-    either > kd 0 [ vy: + vy 3 ] [ none ]
-    py: + py vy
-    either >= py 330 [ py: 330  vy: 0 ] [ none ]
-    either < py 250 [ py: 250  vy: 0 ] [ none ]
-    vy: + vy 1
+    ;; JUMP: a deterministic 22-tick arc (peak ~60 px up, py 270). A countdown
+    ;; drives the height, so a tap always produces the same full jump, it can
+    ;; never be lost between ticks or bounce, and holding re-triggers on landing.
+    ;; DOWN fast-forwards the descent. Feet rest on the ground line (py 330).
+    either > ku 0 [ either = jt 0 [ jt: 22 ] [ none ] ] [ none ]
+    either > kd 0 [ either > jt 2 [ jt: - jt 2 ] [ jt: 0 ] ] [ none ]
+    either > jt 0 [
+        p: - 22 jt
+        py: - 330 / * p - 22 p 2
+        jt: - jt 1
+    ] [ py: 330 ]
     ;; monotonic progress: stage thresholds key off the furthest x reached, so
     ;; retreating left never rewinds the invasion.
     either > px dist [ dist: px ] [ none ]
@@ -247,7 +250,7 @@ reset: func [] [
     lives: LIVES_MAX invuln: 0
     kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
     krock: 0 pf: 1 rock-cd: 0
-    px: 480 py: 330 vy: 0 cd: 0 glon-cd: 0
+    px: 480 py: 330 jt: 0 cd: 0 glon-cd: 0
     cam: 0 dist: 480
     berries: 1
     next-kaka: 40 next-pick: 1100 next-milestone: 600

@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.2i";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s2i";
+  var BUILD = "D12S.2j";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s2j";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -359,13 +359,23 @@
   var KEY = { ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right",
               ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down",
               Space: "fire", KeyG: "glon", KeyF: "rock" };
+  /* Short taps (jump, fire, glon, rock) must not fall between two 25 Hz ticks.
+     Latch the press: if no tick has run since the press, defer the key-up until
+     one tick has seen it. JUMP is included so a quick phone tap always jumps. */
+  var HOLD_LATCH = { fire: 1, glon: 1, rock: 1, up: 1, down: 1 };
+  function dispatchHold(name, down) {
+    if (down) { pressTick[name] = tickCount; evVal("kaka-key-down", name); return; }
+    if (HOLD_LATCH[name] && tickCount === pressTick[name]) pendingUp[name] = true;
+    else evVal("kaka-key-up", name);
+  }
+
   function key(e, down) {
     if (e.code === "KeyR") { if (down) { acc = 0; clearGhosts(); ev("kaka-restart"); } e.preventDefault(); return; }
     var k = KEY[e.code];
     if (!k) return;
     e.preventDefault();
     if (e.target && e.target.tagName === "BUTTON" && e.target.blur) e.target.blur();
-    evVal(down ? "kaka-key-down" : "kaka-key-up", k);
+    dispatchHold(k, down);
   }
 
   function resetInput() { pendingUp = {}; try { ev("kaka-input-reset"); } catch (err) { console.error("kaka: input reset failed", err); } }
@@ -400,7 +410,8 @@
     }
     if (acc >= SIM_DT) acc = 0;         /* still behind: drop it, never spiral */
     for (var nm in pendingUp) {
-      if (pendingUp[nm]) { pendingUp[nm] = false; evVal("kaka-key-up", nm); }
+      /* hold the deferred key-up until at least one tick has seen the press */
+      if (pendingUp[nm] && tickCount > pressTick[nm]) { pendingUp[nm] = false; evVal("kaka-key-up", nm); }
     }
     requestAnimationFrame(frame);
   }
@@ -448,15 +459,12 @@
           e.preventDefault();
           if (b.setPointerCapture && e.pointerId !== undefined) { try { b.setPointerCapture(e.pointerId); } catch (err) {} }
           b.classList.add("on");
-          pressTick[name] = tickCount;
-          evVal("kaka-key-down", name);
+          dispatchHold(name, true);
         }
         function up(e) {
           e.preventDefault();
           b.classList.remove("on");
-          var discrete = (name === "fire" || name === "glon" || name === "rock");
-          if (discrete && tickCount === pressTick[name]) pendingUp[name] = true;  /* let one tick see it */
-          else evVal("kaka-key-up", name);
+          dispatchHold(name, false);
         }
         b.addEventListener("pointerdown", down);
         b.addEventListener("pointerup", up);

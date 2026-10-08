@@ -352,6 +352,28 @@ int main(void) {
     run_source("invuln: 0  block-set! r F_X 480  block-set! r F_Y 345  rat-step r");
     check(run_int("lives") == 2, "23 after landing contact hits again (no permanent immunity)");
 
+    /* 24. movement keeps working across jump/land and after contact knockback */
+    run_source("reset  kr: 1");
+    for (int i = 0; i < 10; i++) run_source("move-player");
+    long pxA = run_int("px");
+    run_source("ku: 1  move-player  move-player  move-player");   /* jump */
+    check(run_int("py") < 315, "24 jump lifts during the move sequence");
+    run_source("ku: 0");
+    for (int i = 0; i < 30; i++) run_source("move-player");  /* land and continue */
+    long pxB = run_int("px");
+    run_source("kr: 0");
+    check(run_int("py") == 330 && pxB > pxA + 100, "24 movement continues across jump/land");
+    run_source("reset  kr: 1");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 485  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 0  block-set! r F_VY 0  block-set! r F_TARGET -1");
+    run_source("move-player");
+    run_source("rat-step r");
+    long pxC = run_int("px");
+    check(run_int("lives") == 2 && pxC < 480, "24 contact knocks the ranger back");
+    run_source("kr: 1");
+    for (int i = 0; i < 20; i++) run_source("move-player");
+    run_source("kr: 0");
+    check(run_int("px") > pxC + 100, "24 movement resumes after contact knockback");
+
     if (fails == 0) { printf("kaka-wave-test PASS\n"); return 0; }
     printf("kaka-wave-test FAIL (%d)\n", fails);
     return 1;
