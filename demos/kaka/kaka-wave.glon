@@ -86,12 +86,20 @@ rat-disturb: func [i ti] [
 rat-step: func [t] [
     st: block-at t F_STATE
     either > block-at t F_D 0 [ block-set! t F_D - block-at t F_D 1 ] [ none ]
-    ;; ranger contact: only when the pest is at the ranger's height. Tree pests
-    ;; are far above and never touch; a jump lifts the ranger clear of grounders.
+    ;; ranger contact: a conservative torso box (32 wide x 48 tall, centred on
+    ;; the lower body so the hat/arms/feet do not inflate it). One pest + one
+    ;; continuous overlap = exactly ONE hit (F_F latch), even if the global
+    ;; invulnerability window expires before it separates; separation clears it.
     either < st 9 [
-        either < abs - block-at t F_X px 22 [
-            either < abs - block-at t F_Y py 30 [ hit-ranger ] [ none ]
-        ] [ none ]
+        either < abs - block-at t F_X px 16 [
+            either < abs - block-at t F_Y + py 2 24 [
+                either = block-at t F_F 0 [ hit-ranger  block-set! t F_F 1 ] [ none ]
+            ] [
+                either = block-at t F_F 1 [ block-set! t F_F 0 ] [ none ]
+            ]
+        ] [
+            either = block-at t F_F 1 [ block-set! t F_F 0 ] [ none ]
+        ]
     ] [ none ]
     either = st 9 [
         block-set! t F_C - block-at t F_C 1

@@ -63,7 +63,9 @@ static const char *OVERLAY =
     "  either = current-route 'kaka-treeghost [ r: ts-claim K_RAT  block-set! r F_X 300  block-set! r F_Y 250  block-set! r F_STATE 9  block-set! r F_C 10  block-set! r F_A 0 ] ["
     "  either = current-route 'kaka-stoat [ b: ts-claim K_RAT  block-set! b F_X 300  block-set! b F_Y 250  block-set! b F_STATE 0  block-set! b F_A 1 ] ["
     "  either = current-route 'kaka-possum [ q: ts-claim K_RAT  block-set! q F_X 300  block-set! q F_Y 250  block-set! q F_STATE 0  block-set! q F_A 2 ] ["
-    "  either = current-route 'kaka-air [ py: 270 ] [ reset ]]]]]]]]"
+    "  either = current-route 'kaka-air [ py: 270  jt: 11 ] ["
+    "  either = current-route 'kaka-run [ kr: 1  move-player ] ["
+    "  either = current-route 'kaka-hit [ invuln: 10  tick: 1  kr: 0 ] [ reset ]]]]]]]]]]"
     "  tally render ] ]";
 
 static char out[65536];
@@ -101,46 +103,15 @@ static int route(const char *tok) {
     return 0;
 }
 
-/* collect the ranger's primitives (the only actor near cx) from the canvas
-   script: count, vertical extent and which palette entries appear. */
-static void player_stats(int cx, int *count, int *ymin, int *ymax,
-                         unsigned *colours, int *maxLight) {
-    *count = 0; *ymin = 99999; *ymax = -99999; *colours = 0; *maxLight = 0;
+/* the semantic player draw op `P <pose> <x> <y> <dir>` (host owns the art) */
+static int player_op(int *pose, int *x, int *y, int *dir) {
     char *q = vis;
     while ((q = strchr(q, '\n')) != NULL) {
         q++;
-        if (q[1] != ' ') continue;
-        char op = q[0];
-        int x0 = 0, y0 = 0, x1 = 0, y1 = 0, c = -1, ok = 0, a, b, d, e, f, g;
-        if (op == 'E' && sscanf(q + 2, "%d %d %d %d %d", &a, &b, &d, &e, &c) == 5) {
-            x0 = a - d; x1 = a + d; y0 = b - e; y1 = b + e; ok = 1;
-        } else if (op == 'O' && sscanf(q + 2, "%d %d %d %d", &a, &b, &d, &c) == 4) {
-            x0 = a - d; x1 = a + d; y0 = b - d; y1 = b + d; ok = 1;
-        } else if (op == 'R' && sscanf(q + 2, "%d %d %d %d %d", &a, &b, &d, &e, &c) == 5) {
-            x0 = a; y0 = b; x1 = a + d; y1 = b + e; ok = 1;
-        } else if (op == 'T' && sscanf(q + 2, "%d %d %d %d %d %d %d", &a, &b, &d, &e, &f, &g, &c) == 7) {
-            x0 = x1 = a; y0 = y1 = b;
-            if (d < x0) x0 = d;
-            if (d > x1) x1 = d;
-            if (f < x0) x0 = f;
-            if (f > x1) x1 = f;
-            if (e < y0) y0 = e;
-            if (e > y1) y1 = e;
-            if (g < y0) y0 = g;
-            if (g > y1) y1 = g;
-            ok = 1;
-        }
-        if (!ok) continue;
-        if (x1 < cx - 45 || x0 > cx + 45) continue;
-        (*count)++;
-        if (y0 < *ymin) *ymin = y0;
-        if (y1 > *ymax) *ymax = y1;
-        if (c >= 0 && c < 32) *colours |= (1u << c);
-        if ((c == 1 || c == 15)) {
-            int ext = x1 - x0; if (y1 - y0 > ext) ext = y1 - y0;
-            if (ext > *maxLight) *maxLight = ext;
-        }
+        if (q[0] == 'P' && q[1] == ' ')
+            if (sscanf(q + 2, "%d %d %d %d", pose, x, y, dir) == 4) return 1;
     }
+    return 0;
 }
 
 int main(void) {
@@ -279,26 +250,37 @@ int main(void) {
         if (whiteE != 0) { printf("  FAIL: possum render has a white ellipse\n"); fails++; }
     }
 
-    /* the ranger must be several distinct primitives, human-sized, and the
-       WHOLE figure must ride the jump (no component left at the basline) */
+    /* the player is now a semantic pose op the host turns into a cartoon
+       sprite: idle / run / jump / hit resolve, facing works, and the jump
+       translates the sprite's y (no primitive duplicates) */
     if (route("home") != 0) return 2;
-    int gN, gy0, gy1, gMaxLight; unsigned gCol;
-    player_stats(480, &gN, &gy0, &gy1, &gCol, &gMaxLight);
+    int gp, gx, gy, gd, gok = player_op(&gp, &gx, &gy, &gd);
+    if (route("kaka-run") != 0) return 2;
+    int rp, rx, ry, rd, rok = player_op(&rp, &rx, &ry, &rd);
+    if (route("home") != 0) return 2;
     if (route("kaka-air") != 0) return 2;
-    int aN, ay0, ay1, aMaxLight; unsigned aCol;
-    player_stats(480, &aN, &ay0, &ay1, &aCol, &aMaxLight);
-    int ndist = 0; for (int b = 0; b < 32; b++) if (gCol & (1u << b)) ndist++;
-    printf("  player grounded n=%d y[%d..%d] h=%d distinctColours=%d maxLightPrim=%d\n",
-           gN, gy0, gy1, gy1 - gy0, ndist, gMaxLight);
-    printf("  player airborne n=%d y[%d..%d] dyMin=%d dyMax=%d\n",
-           aN, ay0, ay1, ay0 - gy0, ay1 - gy1);
-    if (gN < 6) { printf("  FAIL: ranger not composed of the full sprite (n<6)\n"); fails++; }
-    if (gy1 - gy0 < 60) { printf("  FAIL: ranger not human-sized\n"); fails++; }
-    if (ndist < 4) { printf("  FAIL: ranger palette too flat (white blob?)\n"); fails++; }
-    if (gMaxLight > 22) { printf("  FAIL: a huge cream/white primitive dominates the ranger\n"); fails++; }
-    if (aN != gN) { printf("  FAIL: jump changed the ranger primitive count\n"); fails++; }
-    if ((ay0 - gy0) != (ay1 - gy1) || (ay0 - gy0) > -50) {
-        printf("  FAIL: jump did not translate the whole ranger together\n"); fails++;
+    int ap, ax, ay, ad, aok = player_op(&ap, &ax, &ay, &ad);
+    if (route("home") != 0) return 2;
+    if (route("kaka-hit") != 0) return 2;
+    int hp, hx, hy, hd, hok = player_op(&hp, &hx, &hy, &hd);
+    printf("  player idle: ok=%d pose=%d x=%d y=%d dir=%d\n", gok, gp, gx, gy, gd);
+    printf("  player run pose=%d | jump pose=%d y=%d | hit pose=%d\n", rp, ap, ay, hp);
+    if (!gok || gp != 0) { printf("  FAIL: idle pose not emitted\n"); fails++; }
+    if (gx != 480 || gy != 330 || gd != 1) { printf("  FAIL: idle x/y/facing wrong\n"); fails++; }
+    if (!rok || !(rp == 1 || rp == 2)) { printf("  FAIL: run pose not emitted\n"); fails++; }
+    if (!aok || ap != 3 || ay != 270) { printf("  FAIL: jump pose/translation wrong\n"); fails++; }
+    if (!hok || hp != 4) { printf("  FAIL: hit pose not emitted\n"); fails++; }
+    /* no old primitive ranger must remain (the host is the only painter) */
+    {
+        int prim = 0; char *q = vis;
+        while ((q = strchr(q, '\n')) != NULL) {
+            q++;
+            if ((q[0]=='E'||q[0]=='R'||q[0]=='O'||q[0]=='T') && q[1]==' ') {
+                int a, b, d, e, c;
+                if (q[0]=='E' && sscanf(q+2,"%d %d %d %d %d",&a,&b,&d,&e,&c)==5 && a>430 && a<530) prim++;
+            }
+        }
+        if (prim != 0) { printf("  FAIL: primitive ranger still drawn (%d)\n", prim); fails++; }
     }
 
     if (fails == 0) { printf("kaka-render-test PASS\n"); return 0; }

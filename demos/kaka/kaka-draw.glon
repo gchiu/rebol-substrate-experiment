@@ -352,26 +352,16 @@ draw-trees: func [i] [
         draw-trees + i 1
     ] [ none ]
 ]
-;; cartoon platform ranger (~75 px, all geometry offset from py, feet at py+26)
-draw-player-solid: func [] [
-    p-rect - px 8 - py 2 6 24 9
-    p-rect + px 2 - py 2 6 24 9
-    p-rect - px 10 + py 20 9 6 8
-    p-rect + px 1 + py 20 9 6 8
-    p-rect - px 10 - py 24 20 24 4
-    p-rect - px 15 - py 22 5 16 4
-    p-rect + px 10 - py 22 5 16 4
-    p-circ + px * pf 2 - py 34 9 1
-    p-rect - px 11 - py 40 22 4 8
-    p-tri - px 8 - py 40 + px 8 - py 40 px - py 49 8
-    p-circ + px * pf 6 - py 36 2 0
-    p-circ + px * pf 1 - py 36 2 0
-]
-;; post-respawn invulnerability blinks the ranger (presentation only)
+;; Glon emits ONLY semantic player presentation: `P <pose> <x> <y> <dir>` where
+;; pose = 0 idle / 1 run-a / 2 run-b / 3 jump / 4 hit. The HOST owns the actual
+;; cartoon ranger sprite; Glon keeps all player gameplay state and just names the
+;; pose. During invulnerability the pose alternates to a hit frame (a blink).
 draw-player: func [] [
-    either > invuln 0 [
-        either < mod tick 8 4 [ draw-player-solid ] [ none ]
-    ] [ draw-player-solid ]
+    p: either > jt 0 [ 3 ] [
+        either = 0 - kr kl [ 0 ] [ either < mod tick 12 6 [ 1 ] [ 2 ] ]
+    ]
+    either > invuln 0 [ either < mod tick 8 4 [ p: 4 ] [ none ] ] [ none ]
+    p-byte 80 p-num p p-num px p-num py p-num pf p-eol
 ]
 ;; The mutant's ocular beam, drawn from its eye to its target rat.
 draw-laser: func [] [

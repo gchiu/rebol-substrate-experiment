@@ -329,9 +329,10 @@ int main(void) {
     run_source("rat-step r");
     check(run_int("lives") == 2, "22 first contact loses a life");
     run_source("block-set! r F_X 480  block-set! r F_Y 345  rat-step r");
-    check(run_int("lives") == 2, "22 immediate second contact does not stack");
+    check(run_int("lives") == 2, "22 same-overlap contact does not stack");
+    run_source("block-set! r F_X - px 200  rat-step r");            /* separate */
     run_source("invuln: 0  block-set! r F_X 480  block-set! r F_Y 345  rat-step r");
-    check(run_int("lives") == 1, "22 contact after invuln expires hits again");
+    check(run_int("lives") == 1, "22 new episode after separation hits again");
     run_source("reset");
     check(run_int("invuln") == 0 && run_int("lives") == 3, "22 restart clears invuln/lives");
 
@@ -373,6 +374,26 @@ int main(void) {
     for (int i = 0; i < 20; i++) run_source("move-player");
     run_source("kr: 0");
     check(run_int("px") > pxC + 100, "24 movement resumes after contact knockback");
+
+    /* 25. contact episodes: one pest + one continuous overlap = exactly one hit */
+    run_source("reset");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 480  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 0  block-set! r F_VY 0  block-set! r F_TARGET -1");
+    for (int i = 0; i < 40; i++) run_source("block-set! r F_X px  block-set! r F_Y + py 2  rat-step r");
+    check(run_int("lives") == 2, "25 A continuous overlap => exactly one life");
+    run_source("invuln: 0");
+    for (int i = 0; i < 5; i++) run_source("block-set! r F_X px  block-set! r F_Y + py 2  rat-step r");
+    check(run_int("lives") == 2, "25 B invuln expiry mid-overlap does not stack");
+    run_source("block-set! r F_X - px 200  rat-step r");
+    check(run_int("block-at r F_F") == 0, "25 C separation clears the episode");
+    run_source("invuln: 0  block-set! r F_X px  block-set! r F_Y + py 2  rat-step r");
+    check(run_int("lives") == 1, "25 D a new contact after separation hits again");
+    run_source("reset");
+    run_source("a: ts-claim K_RAT  block-set! a F_X 480  block-set! a F_Y 345  block-set! a F_STATE 0  block-set! a F_A 0  block-set! a F_VY 0  block-set! a F_TARGET -1");
+    run_source("b: ts-claim K_RAT  block-set! b F_X 482  block-set! b F_Y 345  block-set! b F_STATE 0  block-set! b F_A 0  block-set! b F_VY 0  block-set! b F_TARGET -1");
+    run_source("rat-step a  rat-step b");
+    check(run_int("lives") == 2, "25 E two near-simultaneous rats cost one life");
+    run_source("reset");
+    check(run_int("lives") == 3 && run_int("ts-count K_RAT") == 0, "25 F restart clears contact state");
 
     if (fails == 0) { printf("kaka-wave-test PASS\n"); return 0; }
     printf("kaka-wave-test FAIL (%d)\n", fails);
