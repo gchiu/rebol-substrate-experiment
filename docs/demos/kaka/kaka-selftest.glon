@@ -35,8 +35,8 @@ test-rules: func [] [
     r: ts-claim K_RAT
     block-set! r F_X 305  block-set! r F_Y 330
     kaka-mutant k
-    either = ts-count K_RAT 0 [ none ] [ fails: + fails 1 ]
-    either = score 25 [ none ] [ fails: + fails 1 ]
+    either = block-at r F_STATE 9 [ none ] [ fails: + fails 1 ]
+    either = score 20 [ none ] [ fails: + fails 1 ]
     ;; 3. ROCK fires in facing direction; kills a 1-hp rat; +20; no tree damage
     reset
     px: 300  pf: 1  krock: 1  rock-cd: 0
