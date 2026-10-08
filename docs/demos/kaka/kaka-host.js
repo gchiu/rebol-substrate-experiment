@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.2d";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s2d";
+  var BUILD = "D12S.2e";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s2e";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
