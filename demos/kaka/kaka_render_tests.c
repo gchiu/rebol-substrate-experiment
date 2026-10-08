@@ -61,7 +61,8 @@ static const char *OVERLAY =
     "  either = current-route 'kaka-damage2 [ damage-tree 2 60 ] ["
     "  either = current-route 'kaka-ghost [ r: ts-claim K_RAT  block-set! r F_X 300  block-set! r F_Y 340  block-set! r F_STATE 9  block-set! r F_C 10  block-set! r F_A 0 ] ["
     "  either = current-route 'kaka-treeghost [ r: ts-claim K_RAT  block-set! r F_X 300  block-set! r F_Y 250  block-set! r F_STATE 9  block-set! r F_C 10  block-set! r F_A 0 ] ["
-    "  either = current-route 'kaka-stoat [ b: ts-claim K_RAT  block-set! b F_X 300  block-set! b F_Y 250  block-set! b F_STATE 0  block-set! b F_A 1 ] [ reset ]]]]]]"
+    "  either = current-route 'kaka-stoat [ b: ts-claim K_RAT  block-set! b F_X 300  block-set! b F_Y 250  block-set! b F_STATE 0  block-set! b F_A 1 ] ["
+    "  either = current-route 'kaka-possum [ q: ts-claim K_RAT  block-set! q F_X 300  block-set! q F_Y 250  block-set! q F_STATE 0  block-set! q F_A 2 ] [ reset ]]]]]]]"
     "  tally render ] ]";
 
 static char out[65536];
@@ -203,6 +204,34 @@ int main(void) {
         if (belly < 1) { printf("  FAIL: stoat belly is not muted\n"); fails++; }
         if (bright != 0) { printf("  FAIL: stoat still has a bright cream belly\n"); fails++; }
         if (whiteE != 0) { printf("  FAIL: stoat render has a white ellipse\n"); fails++; }
+    }
+
+    /* possum must read bulky/grey with a long bare pink tail */
+    if (route("home") != 0) return 2;
+    if (route("kaka-possum") != 0) return 2;
+    {
+        int greyBody = 0, pinkTail = 0, whiteE = 0;
+        char *q = vis;
+        while ((q = strchr(q, '\n')) != NULL) {
+            q++;
+            if (q[0] == 'E' && q[1] == ' ') {
+                int x, y, rx, ry, c;
+                if (sscanf(q + 2, "%d %d %d %d %d", &x, &y, &rx, &ry, &c) == 5) {
+                    if (c == 2 && rx >= 30 && ry >= 14) greyBody++;
+                    if (c == 15) whiteE++;
+                }
+            } else if (q[0] == 'L' && q[1] == ' ') {
+                int x1, y1, x2, y2, w, c;
+                if (sscanf(q + 2, "%d %d %d %d %d %d", &x1, &y1, &x2, &y2, &w, &c) == 6) {
+                    int dx = x1 - x2; if (dx < 0) dx = -dx;
+                    if (c == 10 && w >= 5 && dx >= 30) pinkTail++;
+                }
+            }
+        }
+        printf("  possum render: bulkyGreyBody=%d longPinkTail=%d whiteEllipse=%d\n", greyBody, pinkTail, whiteE);
+        if (greyBody < 1) { printf("  FAIL: possum body is not bulky grey\n"); fails++; }
+        if (pinkTail < 1) { printf("  FAIL: possum lacks a long bare pink tail\n"); fails++; }
+        if (whiteE != 0) { printf("  FAIL: possum render has a white ellipse\n"); fails++; }
     }
 
     if (fails == 0) { printf("kaka-render-test PASS\n"); return 0; }

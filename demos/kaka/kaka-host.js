@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.2g";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s2g";
+  var BUILD = "D12S.2h";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s2h";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -220,14 +220,10 @@
   var GHOST_CAP = 32, GHOST_DUR = 2.4, GHOST_RISE = 175, GHOST_SEEN = 192;
   var ghosts = [];
   var ghostSeen = [];
-  var GHOST_SHAPE = [
-    { rx: 9,  ry: 6,  halo: 11, tail: 4, tailLen: 16 },  /* rat    */
-    { rx: 16, ry: 5,  halo: 14, tail: 4, tailLen: 24 },  /* stoat  */
-    { rx: 22, ry: 11, halo: 19, tail: 5, tailLen: 30 }   /* possum */
-  ];
   function clearGhosts() { ghosts.length = 0; ghostSeen.length = 0; }
   function addGhost(sp, id, wx, wy, tx) {
-    if (sp < 0 || sp > 2) sp = 0;
+    /* `sp` (species) is retained on the record for future sound/stats/special
+       events, but every species gets the SAME funeral: one golden halo. */
     if (ghostSeen.indexOf(id) >= 0) return;
     ghostSeen.push(id);
     if (ghostSeen.length > GHOST_SEEN) ghostSeen.shift();
@@ -242,23 +238,26 @@
       var prog = e / GHOST_DUR;
       var y = g.y - GHOST_RISE * e;
       if (prog >= 1 || y < -50) { ghosts.splice(i, 1); continue; }
-      var S = GHOST_SHAPE[g.sp];
-      var cy = y - S.halo * 0.6;
       var x = g.x + Math.sin(e * 7 + g.seed) * 6;
-      var a = prog < 0.6 ? 0.9 : Math.max(0, 0.9 * (1 - (prog - 0.6) / 0.4));
+      var a = prog < 0.65 ? 0.95 : Math.max(0, 0.95 * (1 - (prog - 0.65) / 0.35));
+      var pulse = 1 + 0.12 * Math.sin(e * 9 + g.seed);
       ctx.save();
-      ctx.globalAlpha = a * 0.5;
-      ctx.fillStyle = "#f2f7f4";
-      ctx.beginPath(); ctx.arc(x, cy, S.halo, 0, 2 * Math.PI); ctx.fill();
+      /* soft golden glow */
+      ctx.globalAlpha = a * 0.35;
+      var grd = ctx.createRadialGradient(x, y, 2, x, y, 20 * pulse);
+      grd.addColorStop(0, "#ffe9a8");
+      grd.addColorStop(1, "rgba(255,210,63,0)");
+      ctx.fillStyle = grd;
+      ctx.beginPath(); ctx.arc(x, y, 20 * pulse, 0, 2 * Math.PI); ctx.fill();
+      /* golden ring (the halo) */
       ctx.globalAlpha = a;
-      ctx.fillStyle = "#dfeae2";
-      ctx.beginPath(); ctx.ellipse(x, cy, S.rx, S.ry, 0, 0, 2 * Math.PI); ctx.fill();
-      ctx.strokeStyle = "#dfeae2"; ctx.lineWidth = S.tail;
-      ctx.beginPath();
-      ctx.moveTo(x - S.rx + 2, cy); ctx.lineTo(x - S.rx - S.tailLen, cy - S.tailLen * 0.35);
-      ctx.stroke();
-      ctx.fillStyle = "#6b7a70";
-      ctx.beginPath(); ctx.arc(x + S.rx * 0.55, cy - S.ry * 0.35, 1.6, 0, 2 * Math.PI); ctx.fill();
+      ctx.strokeStyle = "#ffd23f";
+      ctx.lineWidth = 3.5;
+      ctx.beginPath(); ctx.arc(x, y, 9 * pulse, 0, 2 * Math.PI); ctx.stroke();
+      /* pale core */
+      ctx.globalAlpha = a * 0.9;
+      ctx.fillStyle = "#fff6d8";
+      ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 2 * Math.PI); ctx.fill();
       ctx.restore();
     }
     window.__ghostN = ghosts.length;

@@ -17,6 +17,9 @@ BERRY_MAX: 6
 LIVES_MAX: 3
 INVULN_TICKS: 50
 GNAW_TICKS: 18
+;; finite semantic reach of a thrown rock, in world px from its spawn x (~one
+;; gameplay viewport, so it covers visible combat without crossing the world)
+ROCK_RANGE: 960
 
 ;; tuple space kinds
 K_EMPTY: 0

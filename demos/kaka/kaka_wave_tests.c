@@ -248,6 +248,33 @@ int main(void) {
     run_source("rat-step r");
     check(run_int("block-at r F_C") == 19 && run_int("block-at r F_X") == gx, "18 ghost is inert (timer only)");
 
+    /* 19. ROCK has a finite semantic range from its spawn x */
+    /* still lethal at ordinary visible combat distance (~380 px) */
+    run_source("reset  px: 300  pf: 1  krock: 1  rock-cd: 0");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 700  block-set! r F_Y 330  block-set! r F_B 1  block-set! r F_A 0  block-set! r F_VY 0");
+    run_source("fire-rock");
+    for (int i = 0; i < 40; i++) run_source("rock-step ts-t 4");
+    check(run_int("block-at r F_STATE") == 9, "19 rock kills at visible combat distance");
+    /* reclaimed after exceeding ROCK_RANGE (960 px => 80 steps at 12 px/tick) */
+    run_source("reset  px: 300  pf: 1  krock: 1  rock-cd: 0");
+    run_source("fire-rock");
+    for (int i = 0; i < 82; i++) run_source("rock-step ts-t 3");
+    check(run_int("ts-count K_ROCK") == 0, "19 rock reclaimed after ROCK_RANGE");
+    /* a pest well beyond ROCK_RANGE is never reached */
+    run_source("reset  px: 300  pf: 1  krock: 1  rock-cd: 0");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 1400  block-set! r F_Y 330  block-set! r F_B 1  block-set! r F_A 0  block-set! r F_VY 0");
+    run_source("fire-rock");
+    for (int i = 0; i < 82; i++) run_source("rock-step ts-t 4");
+    check(run_int("block-at r F_STATE") == 0 && run_int("ts-count K_ROCK") == 0,
+          "19 pest beyond ROCK_RANGE is untouched");
+    /* firing continuously stays bounded, then the pool fully drains (no leak) */
+    run_source("reset  px: 300  pf: 1  krock: 1  rock-cd: 0");
+    for (int i = 0; i < 300; i++) run_source("rock-cd: 0  fire-rock  move-all 0");
+    long inflight = run_int("ts-count K_ROCK");
+    for (int i = 0; i < 90; i++) run_source("move-all 0");
+    check(inflight <= 5 && run_int("ts-count K_ROCK") == 0,
+          "19 no rock leak (all reclaimed)");
+
     if (fails == 0) { printf("kaka-wave-test PASS\n"); return 0; }
     printf("kaka-wave-test FAIL (%d)\n", fails);
     return 1;

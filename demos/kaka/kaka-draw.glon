@@ -1,10 +1,9 @@
 ;; demos/kaka/kaka-draw.glon -- rendering for Attack of the Mutant Kaka.
 [
-;; ---- lives, laser hazard and high score ----------------------------------
+;; ---- lives, laser hazard, high score --------------------------------------
 imin: func [a b] [ either < a b [ a ] [ b ] ]
 imax: func [a b] [ either > a b [ a ] [ b ] ]
-;; Integer separating-axis test: does beam (ax,ay)-(bx,by) touch box
-;; [x0,y0,x1,y1]? Used for the powered kaka's ocular beam only.
+;; separating-axis test: beam (ax,ay)-(bx,by) vs box [x0,y0,x1,y1]
 seg-rect?: func [ax ay bx by x0 y0 x1 y1] [
     dx: - bx ax
     dy: - by ay
@@ -293,16 +292,18 @@ spr-rat: func [t] [
             p-circ + x 21 - y 13 1 0
         ] [
         either = sp 2 [
-            ;; possum: big, heavy, hunched grey body with a bare pink tail
-            p-line - x 30 - y 10 - x 58 - y 16 5 10
-            p-line - x 12 - y 5 - x 16 y 6 8
-            p-line + x 9 - y 5 + x 13 y 6 8
-            p-ell x - y 15 30 14 2
-            p-ell + x 2 - y 9 24 7 17
-            p-circ + x 28 - y 20 9 2
-            p-circ + x 24 - y 30 3 10
-            p-circ + x 37 - y 16 4 10
-            p-circ + x 29 - y 22 2 0
+            ;; possum: bulky/squat grey, pointed face, pink ears + long bare tail
+            p-line - x 34 - y 12 - x 74 - y 20 6 10
+            p-line - x 16 - y 4 - x 20 y 6 8
+            p-line + x 12 - y 4 + x 16 y 6 8
+            p-ell x - y 14 34 16 2
+            p-ell + x 2 - y 8 26 9 17
+            p-tri + x 34 - y 12 + x 56 - y 18 + x 34 - y 24 2
+            p-circ + x 30 - y 18 11 2
+            p-circ + x 26 - y 30 5 10
+            p-circ + x 36 - y 28 4 10
+            p-circ + x 52 - y 18 3 10
+            p-circ + x 30 - y 20 2 0
         ] [
             either > block-at t F_C 0 [ p-spr 22 x - y mod tick 6 -1 ] [
                 p-spr either < mod tick 8 4 [ 20 ] [ 21 ] x y -1
@@ -355,8 +356,7 @@ draw-player-solid: func [] [
     p-tri px 332 + px 4 342 - px 4 342 8
     p-circ + px * pf 8 - py 4 3 7
 ]
-;; post-respawn invulnerability is shown by blinking the ranger (presentation
-;; only; the rule lives in Glon state).
+;; post-respawn invulnerability blinks the ranger (presentation only)
 draw-player: func [] [
     either > invuln 0 [
         either < mod tick 8 4 [ draw-player-solid ] [ none ]
