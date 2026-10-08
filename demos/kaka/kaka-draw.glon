@@ -263,21 +263,17 @@ spr-kaka: func [t] [
         p-spr either < mod tick 12 6 [ 0 ] [ 1 ] x y d
     ] ] ] ] ]
 ]
-;; Pest art by species (F_A): 0 rat (sheet), 1 stoat, 2 possum (vector, distinct
-;; shapes). On death (state 9) the pest becomes a short comic GHOST of its own
-;; shape: rises, wobbles, fades (host alpha op) -- no collision/targeting, no
-;; white disc. A non-lethal hit (F_D>0) shows a brief yellow spark. Marches left.
+;; Pest art by species (F_A): 0 rat (sheet), 1 stoat (long/slender), 2 possum
+;; (large/heavy). Death (state 9) becomes a pale rising ghost; a non-lethal hit
+;; (F_D>0) shows a brief yellow spark. All pests march left.
 spr-rat: func [t] [
     x: block-at t F_X
     y: block-at t F_Y
     sp: block-at t F_A
     either = block-at t F_STATE 9 [
-        age: - 20 block-at t F_C
-        x: + x either < mod age 6 3 [ -1 ] [ 1 ]
-        y: - y * 2 age
-        a: - 15 / * age 15 20
-        either < a 0 [ a: 0 ] [ none ]
-        p-byte 65 p-num a p-eol
+        ;; SEMANTIC DEATH EVENT (species id world-x world-y); the HOST stages
+        ;; the pest-heaven ghost, so this dead tuple emits then reclaims.
+        p-byte 68 p-num sp p-num block-at t F_ID p-num x p-num y p-eol
     ] [
         either > block-at t F_D 0 [
             c: - y 12
@@ -285,35 +281,34 @@ spr-rat: func [t] [
             p-line - x 16 c - x 26 c 2 7
             p-line + x 16 c + x 26 c 2 7
         ] [ none ]
-    ]
-    either = sp 1 [
-        p-line - x 6 - y 6 - x 8 y 3 8
-        p-line + x 4 - y 6 + x 6 y 3 8
-        p-line - x 16 - y 10 - x 30 - y 16 3 8
-        p-ell x - y 10 15 6 8
-        p-ell + x 2 - y 7 12 3 16
-        p-circ + x 14 - y 12 5 8
-        p-circ + x 19 - y 12 3 1
-        p-circ + x 15 - y 14 1 0
-    ] [
-    either = sp 2 [
-        p-line - x 20 - y 8 - x 42 - y 14 4 10
-        p-line - x 8 - y 4 - x 12 y 5 8
-        p-line + x 6 - y 4 + x 10 y 5 8
-        p-ell x - y 14 24 12 2
-        p-ell + x 2 - y 9 18 6 17
-        p-circ + x 22 - y 18 8 2
-        p-circ + x 19 - y 26 3 10
-        p-circ + x 29 - y 16 4 10
-        p-circ + x 23 - y 20 2 0
-    ] [
-        either = block-at t F_STATE 9 [ p-spr 23 x y -1 ] [
+        either = sp 1 [
+            ;; stoat: long, low and slender -- unmistakably longer than a rat
+            p-line - x 10 - y 5 - x 12 y 3 8
+            p-line + x 8 - y 5 + x 10 y 3 8
+            p-line - x 26 - y 9 - x 46 - y 14 3 8
+            p-ell x - y 9 22 6 8
+            p-ell + x 1 - y 7 18 3 16
+            p-circ + x 20 - y 11 6 8
+            p-circ + x 26 - y 11 3 16
+            p-circ + x 21 - y 13 1 0
+        ] [
+        either = sp 2 [
+            ;; possum: big, heavy, hunched grey body with a bare pink tail
+            p-line - x 30 - y 10 - x 58 - y 16 5 10
+            p-line - x 12 - y 5 - x 16 y 6 8
+            p-line + x 9 - y 5 + x 13 y 6 8
+            p-ell x - y 15 30 14 2
+            p-ell + x 2 - y 9 24 7 17
+            p-circ + x 28 - y 20 9 2
+            p-circ + x 24 - y 30 3 10
+            p-circ + x 37 - y 16 4 10
+            p-circ + x 29 - y 22 2 0
+        ] [
             either > block-at t F_C 0 [ p-spr 22 x - y mod tick 6 -1 ] [
                 p-spr either < mod tick 8 4 [ 20 ] [ 21 ] x y -1
             ]
-        ]
-    ] ]
-    either = block-at t F_STATE 9 [ p-byte 65 p-num 15 p-eol ] [ none ]
+        ] ]
+    ]
 ]
 ;; A rat chewing at a trunk: a few bark flecks and a brief hit flash at the
 ;; gnawed tree, so it is obvious which tree just lost health.

@@ -141,49 +141,44 @@ int main(void) {
         if (!(c[t] < base[t])) { printf("  FAIL: damaged tree %d did not lose foliage\n", t); fails++; }
     }
 
-    /* ghost render: death state must emit a fading alpha op and NO white disc */
+    /* a death must emit exactly the semantic event and NO white disc / tuple
+       ghost: the host, not the tuple, stages the funeral */
     if (route("home") != 0) return 2;
     if (route("kaka-ghost") != 0) return 2;
     {
-        int alphas = 0, white_discs = 0, ghost_sprites = 0;
+        int deaths = 0, white_discs = 0, ghost_sprite = 0;
         char *q = vis;
         while ((q = strchr(q, '\n')) != NULL) {
             q++;
-            if (q[0] == 'A' && q[1] == ' ') {
-                int a = atoi(q + 2);
-                alphas++;
-                if (a < 0 || a > 15) { printf("  FAIL: ghost alpha out of range: %d\n", a); fails++; }
-            } else if (q[0] == 'O' && q[1] == ' ') {
+            if (q[0] == 'D' && q[1] == ' ') deaths++;
+            else if (q[0] == 'O' && q[1] == ' ') {
                 int x, y, r, c;
                 if (sscanf(q + 2, "%d %d %d %d", &x, &y, &r, &c) == 4 && c == 15 && r >= 10) white_discs++;
             } else if (q[0] == 'S' && q[1] == ' ' && atoi(q + 2) == 23) {
-                ghost_sprites++;
+                ghost_sprite++;
             }
         }
-        printf("  ghost render: alphas=%d white_discs=%d ghost_rat_frames=%d\n", alphas, white_discs, ghost_sprites);
-        if (alphas < 1) { printf("  FAIL: ghost emitted no fading alpha op\n"); fails++; }
-        if (white_discs != 0) { printf("  FAIL: ghost render contains a white disc\n"); fails++; }
+        printf("  ground death: D-events=%d white_discs=%d ghost_sprites=%d\n", deaths, white_discs, ghost_sprite);
+        if (deaths < 1) { printf("  FAIL: no semantic death event emitted\n"); fails++; }
+        if (white_discs != 0) { printf("  FAIL: death render contains a white disc\n"); fails++; }
+        if (ghost_sprite != 0) { printf("  FAIL: tuple-side ghost sprite still drawn\n"); fails++; }
     }
 
-    /* a pest killed up a tree must still emit a ghost that has RISEN above the
-       death y, with an alpha op, and no white body primitive */
+    /* a pest killed up a tree emits the event from its VISIBLE death position */
     if (route("home") != 0) return 2;
     if (route("kaka-treeghost") != 0) return 2;
     {
-        int risen = 0, alphas = 0, sprite_y = -1;
+        int ok = 0;
         char *q = vis;
         while ((q = strchr(q, '\n')) != NULL) {
             q++;
-            if (q[0] == 'S' && q[1] == ' ') {
-                int id, x, y, d;
-                if (sscanf(q + 2, "%d %d %d %d", &id, &x, &y, &d) == 4 && id == 23) {
-                    sprite_y = y; risen = (y < 250);
-                }
-            } else if (q[0] == 'A' && q[1] == ' ') alphas++;
+            if (q[0] == 'D' && q[1] == ' ') {
+                int sp, id, x, y;
+                if (sscanf(q + 2, "%d %d %d %d", &sp, &id, &x, &y) == 4 && sp == 0 && x == 300 && y == 250) ok = 1;
+            }
         }
-        printf("  tree-death ghost: spriteY=%d (death y=250) alphaOps=%d\n", sprite_y, alphas);
-        if (!risen) { printf("  FAIL: tree-death ghost did not rise\n"); fails++; }
-        if (alphas < 1) { printf("  FAIL: tree-death ghost had no alpha op\n"); fails++; }
+        printf("  tree-death event at (300,250), species 0: %s\n", ok ? "ok" : "missing");
+        if (!ok) { printf("  FAIL: tree-death event wrong position/species\n"); fails++; }
     }
 
     /* the vector pest belly must be the muted tone (16/17), never bright cream 1 */

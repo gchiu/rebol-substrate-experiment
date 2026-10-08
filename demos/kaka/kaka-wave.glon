@@ -161,8 +161,10 @@ fire-rock: func [] [
 ;; funnels through kill-pest, so the victim always becomes the same rising ghost
 ;; regardless of whether it was walking, climbing or gnawing.
 kill-pest: func [t] [
+    ;; brief internal state so the death event renders once, then reclaims; the
+    ;; long visual is the host's job (no scarce tuple slot held for the funeral)
     block-set! t F_STATE 9
-    block-set! t F_C 20
+    block-set! t F_C 2
 ]
 damage-pest: func [t d] [
     h: - block-at t F_B d
