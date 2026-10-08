@@ -9,7 +9,7 @@
 [
 NTREES: 3
 NTS: 48
-TW: 12
+TW: 13
 TREE_MAX: 100
 KAKA_MAX: 4
 RAT_MAX: 8
@@ -33,7 +33,7 @@ K_POOP: 5
 K_TREE: 6
 K_ROCK: 7
 
-;; tuple field indices (every tuple is TW=12 cells wide)
+;; tuple field indices (every tuple is TW cells wide)
 F_KIND: 0
 F_ID: 1
 F_X: 2
@@ -46,6 +46,8 @@ F_B: 8
 F_C: 9
 F_D: 10
 F_E: 11
+;; F_F: pest contact-episode flag (0 = clear, 1 = currently touching the ranger)
+F_F: 12
 
 ;; kaka flight phases
 KS_SWEEP: 0
@@ -123,7 +125,7 @@ tclaim: func [i k] [
             block-set! t F_X 0  block-set! t F_Y 0  block-set! t F_VY 0
             block-set! t F_STATE 0  block-set! t F_TARGET 0
             block-set! t F_A 0  block-set! t F_B 0  block-set! t F_C 0
-            block-set! t F_D 0  block-set! t F_E 0
+            block-set! t F_D 0  block-set! t F_E 0  block-set! t F_F 0
             t
         ] [ tclaim + i 1 k ]
     ] [ none ]
