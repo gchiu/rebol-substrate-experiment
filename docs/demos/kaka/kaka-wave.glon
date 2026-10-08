@@ -38,6 +38,10 @@ spawn-pest: func [] [
         block-set! t F_Y 345
         block-set! t F_B either = sp 2 [ 5 ] [ either = sp 1 [ 2 ] [ 1 ] ]
         block-set! t F_VY either = sp 2 [ 1 ] [ either = sp 1 [ 3 ] [ 2 ] ]
+        ;; ground-vs-tree split: F_TARGET 0 = tree-seeker (~1 in 3), -1 = a
+        ;; pure ground attacker that marches left past trees. Keeps visible
+        ;; armada pressure while tree attacks remain part of the ecology.
+        block-set! t F_TARGET either = 0 mod block-at t F_ID 3 [ 0 ] [ -1 ]
     ]
 ]
 ;; wave controller: wave w sends 2w+2 pests (4, 6, 8, ...); difficulty grows by
@@ -82,22 +86,38 @@ rat-disturb: func [i ti] [
 rat-step: func [t] [
     st: block-at t F_STATE
     either > block-at t F_D 0 [ block-set! t F_D - block-at t F_D 1 ] [ none ]
+    ;; ranger contact: only when the pest is at the ranger's height. Tree pests
+    ;; are far above and never touch; a jump lifts the ranger clear of grounders.
+    either < st 9 [
+        either < abs - block-at t F_X px 22 [
+            either < abs - block-at t F_Y py 30 [ hit-ranger ] [ none ]
+        ] [ none ]
+    ] [ none ]
     either = st 9 [
         block-set! t F_C - block-at t F_C 1
         either < block-at t F_C 1 [ ts-free t ] [ none ]
     ] [
     either = st 0 [
-        n: rat-tree 0 t
-        either < n 0 [
+        either > block-at t F_TARGET -1 [
+            ;; tree-seeker: climb the tree it reaches, else keep marching
+            n: rat-tree 0 t
+            either < n 0 [
+                block-set! t F_X - block-at t F_X block-at t F_VY
+                either > block-at t F_X + px 1500 [ ts-free t ] [
+                    either < block-at t F_X - px 1200 [ ts-free t ] [ none ]
+                ]
+            ] [
+                block-set! t F_TARGET n
+                block-set! t F_E block-at ts-t n F_X
+                block-set! t F_C 0
+                block-set! t F_STATE 1
+            ]
+        ] [
+            ;; ground attacker: always march left, never converts to a climber
             block-set! t F_X - block-at t F_X block-at t F_VY
             either > block-at t F_X + px 1500 [ ts-free t ] [
                 either < block-at t F_X - px 1200 [ ts-free t ] [ none ]
             ]
-        ] [
-            block-set! t F_TARGET n
-            block-set! t F_E block-at ts-t n F_X
-            block-set! t F_C 0
-            block-set! t F_STATE 1
         ]
     ] [
     either = st 1 [
