@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.2e";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s2e";
+  var BUILD = "D12S.2g";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s2g";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -210,6 +210,61 @@
     }
   }
 
+  /* ---- pest-heaven ghosts (host-side presentation only) ------------------
+   * Glon emits a semantic death event `D sp id wx wy` the moment a pest dies.
+   * The HOST stages the funeral: a small BOUNDED list of presentation-only
+   * ghosts. Each rises in SCREEN space from its death position (x is frozen at
+   * birth, so camera scrolling never drags a soul sideways), wobbles, fades near
+   * the top and is removed once it exits the top of the viewport. Ghosts have no
+   * collision, HP, targeting, score or tuple cost -- pure theatre. */
+  var GHOST_CAP = 32, GHOST_DUR = 2.4, GHOST_RISE = 175, GHOST_SEEN = 192;
+  var ghosts = [];
+  var ghostSeen = [];
+  var GHOST_SHAPE = [
+    { rx: 9,  ry: 6,  halo: 11, tail: 4, tailLen: 16 },  /* rat    */
+    { rx: 16, ry: 5,  halo: 14, tail: 4, tailLen: 24 },  /* stoat  */
+    { rx: 22, ry: 11, halo: 19, tail: 5, tailLen: 30 }   /* possum */
+  ];
+  function clearGhosts() { ghosts.length = 0; ghostSeen.length = 0; }
+  function addGhost(sp, id, wx, wy, tx) {
+    if (sp < 0 || sp > 2) sp = 0;
+    if (ghostSeen.indexOf(id) >= 0) return;
+    ghostSeen.push(id);
+    if (ghostSeen.length > GHOST_SEEN) ghostSeen.shift();
+    ghosts.push({ sp: sp, x: wx + tx, y: wy, t0: performance.now(), seed: id % 17 });
+    if (ghosts.length > GHOST_CAP) ghosts.shift();
+  }
+  function drawGhosts(ctx, W) {
+    var now = performance.now();
+    for (var i = ghosts.length - 1; i >= 0; i--) {
+      var g = ghosts[i];
+      var e = (now - g.t0) / 1000;
+      var prog = e / GHOST_DUR;
+      var y = g.y - GHOST_RISE * e;
+      if (prog >= 1 || y < -50) { ghosts.splice(i, 1); continue; }
+      var S = GHOST_SHAPE[g.sp];
+      var cy = y - S.halo * 0.6;
+      var x = g.x + Math.sin(e * 7 + g.seed) * 6;
+      var a = prog < 0.6 ? 0.9 : Math.max(0, 0.9 * (1 - (prog - 0.6) / 0.4));
+      ctx.save();
+      ctx.globalAlpha = a * 0.5;
+      ctx.fillStyle = "#f2f7f4";
+      ctx.beginPath(); ctx.arc(x, cy, S.halo, 0, 2 * Math.PI); ctx.fill();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = "#dfeae2";
+      ctx.beginPath(); ctx.ellipse(x, cy, S.rx, S.ry, 0, 0, 2 * Math.PI); ctx.fill();
+      ctx.strokeStyle = "#dfeae2"; ctx.lineWidth = S.tail;
+      ctx.beginPath();
+      ctx.moveTo(x - S.rx + 2, cy); ctx.lineTo(x - S.rx - S.tailLen, cy - S.tailLen * 0.35);
+      ctx.stroke();
+      ctx.fillStyle = "#6b7a70";
+      ctx.beginPath(); ctx.arc(x + S.rx * 0.55, cy - S.ry * 0.35, 1.6, 0, 2 * Math.PI); ctx.fill();
+      ctx.restore();
+    }
+    window.__ghostN = ghosts.length;
+    window.__ghostInfo = ghosts.map(function (g) { return { sp: g.sp, x: Math.round(g.x), y: Math.round(g.y - GHOST_RISE * ((now - g.t0) / 1000)) }; });
+  }
+
   function drawScript(script) {
     var canvas = document.querySelector("#glon-canvas");
     if (!canvas) return;
@@ -263,13 +318,12 @@
         ctx.beginPath();
         ctx.ellipse(+p[1] + tx, +p[2], +p[3], +p[4], 0, 0, 2 * Math.PI);
         ctx.fill();
-      } else if (op === "A") {
-        /* alpha 0..15 for the pest death ghost; Glon resets it to 15 after the
-           ghost so it never leaks to other actors. */
-        var al = (+p[1]) / 15;
-        ctx.globalAlpha = al < 0 ? 0 : (al > 1 ? 1 : al);
+      } else if (op === "D") {
+        /* semantic death event: species, id, world x, world y */
+        addGhost(+p[1], +p[2], +p[3], +p[4], tx);
       }
     }
+    drawGhosts(ctx, W);
   }
 
   var imports = {
@@ -307,7 +361,7 @@
               ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down",
               Space: "fire", KeyG: "glon", KeyF: "rock" };
   function key(e, down) {
-    if (e.code === "KeyR") { if (down) { acc = 0; ev("kaka-restart"); } e.preventDefault(); return; }
+    if (e.code === "KeyR") { if (down) { acc = 0; clearGhosts(); ev("kaka-restart"); } e.preventDefault(); return; }
     var k = KEY[e.code];
     if (!k) return;
     e.preventDefault();
@@ -355,6 +409,7 @@
   function fireGon(el) {
     var tok = el.getAttribute("data-glon-event");
     if (!tok) return;
+    if (tok === "kaka-restart") clearGhosts();
     try { ev(tok); } catch (err) { console.error("kaka: event failed", err); }
     focusGame();
   }
