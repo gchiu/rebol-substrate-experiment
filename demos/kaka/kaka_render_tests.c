@@ -59,7 +59,9 @@ static const char *OVERLAY =
     "  either = current-route 'kaka-damage0 [ damage-tree 0 60 ] ["
     "  either = current-route 'kaka-damage1 [ damage-tree 1 60 ] ["
     "  either = current-route 'kaka-damage2 [ damage-tree 2 60 ] ["
-    "  either = current-route 'kaka-ghost [ r: ts-claim K_RAT  block-set! r F_X 300  block-set! r F_Y 340  block-set! r F_STATE 9  block-set! r F_C 10  block-set! r F_A 0 ] [ reset ]]]]"
+    "  either = current-route 'kaka-ghost [ r: ts-claim K_RAT  block-set! r F_X 300  block-set! r F_Y 340  block-set! r F_STATE 9  block-set! r F_C 10  block-set! r F_A 0 ] ["
+    "  either = current-route 'kaka-treeghost [ r: ts-claim K_RAT  block-set! r F_X 300  block-set! r F_Y 250  block-set! r F_STATE 9  block-set! r F_C 10  block-set! r F_A 0 ] ["
+    "  either = current-route 'kaka-stoat [ b: ts-claim K_RAT  block-set! b F_X 300  block-set! b F_Y 250  block-set! b F_STATE 0  block-set! b F_A 1 ] [ reset ]]]]]]"
     "  tally render ] ]";
 
 static char out[65536];
@@ -161,6 +163,51 @@ int main(void) {
         printf("  ghost render: alphas=%d white_discs=%d ghost_rat_frames=%d\n", alphas, white_discs, ghost_sprites);
         if (alphas < 1) { printf("  FAIL: ghost emitted no fading alpha op\n"); fails++; }
         if (white_discs != 0) { printf("  FAIL: ghost render contains a white disc\n"); fails++; }
+    }
+
+    /* a pest killed up a tree must still emit a ghost that has RISEN above the
+       death y, with an alpha op, and no white body primitive */
+    if (route("home") != 0) return 2;
+    if (route("kaka-treeghost") != 0) return 2;
+    {
+        int risen = 0, alphas = 0, sprite_y = -1;
+        char *q = vis;
+        while ((q = strchr(q, '\n')) != NULL) {
+            q++;
+            if (q[0] == 'S' && q[1] == ' ') {
+                int id, x, y, d;
+                if (sscanf(q + 2, "%d %d %d %d", &id, &x, &y, &d) == 4 && id == 23) {
+                    sprite_y = y; risen = (y < 250);
+                }
+            } else if (q[0] == 'A' && q[1] == ' ') alphas++;
+        }
+        printf("  tree-death ghost: spriteY=%d (death y=250) alphaOps=%d\n", sprite_y, alphas);
+        if (!risen) { printf("  FAIL: tree-death ghost did not rise\n"); fails++; }
+        if (alphas < 1) { printf("  FAIL: tree-death ghost had no alpha op\n"); fails++; }
+    }
+
+    /* the vector pest belly must be the muted tone (16/17), never bright cream 1 */
+    if (route("home") != 0) return 2;
+    if (route("kaka-stoat") != 0) return 2;
+    {
+        int belly = 0, bright = 0, whiteE = 0;
+        char *q = vis;
+        while ((q = strchr(q, '\n')) != NULL) {
+            q++;
+            if (q[0] == 'E' && q[1] == ' ') {
+                int x, y, rx, ry, c;
+                if (sscanf(q + 2, "%d %d %d %d %d", &x, &y, &rx, &ry, &c) == 5) {
+                    if (c == 16 || c == 17) belly++;
+                    /* the ranger body is the only legitimate colour-1 ellipse */
+                    if (c == 1 && !(rx == 9 && ry == 9)) bright++;
+                    if (c == 15) whiteE++;
+                }
+            }
+        }
+        printf("  stoat render: mutedBelly=%d brightCreamBelly=%d whiteEllipse=%d\n", belly, bright, whiteE);
+        if (belly < 1) { printf("  FAIL: stoat belly is not muted\n"); fails++; }
+        if (bright != 0) { printf("  FAIL: stoat still has a bright cream belly\n"); fails++; }
+        if (whiteE != 0) { printf("  FAIL: stoat render has a white ellipse\n"); fails++; }
     }
 
     if (fails == 0) { printf("kaka-render-test PASS\n"); return 0; }

@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.2c";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s2c";
+  var BUILD = "D12S.2d";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s2d";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -60,7 +60,8 @@
   /* colour index -> CSS (Glon chooses the index; JS only maps it) */
   var COL = ["#0b1020", "#f2e9d8", "#8a8f98", "#ff8c1a", "#3fa34d", "#d64545",
              "#3b6ea5", "#ffd23f", "#6b4a2b", "#1f5c2e", "#e08fb0", "#4fd1c5",
-             "#8e6bd8", "#7fd18a", "#ff3df0", "#ffffff"];
+             "#8e6bd8", "#7fd18a", "#ff3df0", "#ffffff",
+             "#b9a888", "#a9aeb6"];   /* 16,17: muted pest belly tones (not white) */
 
   /* ---- parallax scenery (host-side presentation only) --------------------
    * The four generated PNGs are painted by JS; Glon owns the camera scalar it

@@ -181,8 +181,8 @@ int main(void) {
         run_source(src);
         run_source("kaka-mutant k");
         static const char *names[3] = { "rat", "stoat", "possum" };
-        char msg[64]; snprintf(msg, sizeof msg, "14 powered kaka zaps a %s", names[sp]);
-        check(run_int("ts-count K_RAT") == 0, msg);
+        char msg[64]; snprintf(msg, sizeof msg, "14 powered kaka zaps a %s (ghost)", names[sp]);
+        check(run_int("block-at r F_STATE") == 9, msg);
     }
 
     /* 15 (J/M/Q). restart clears progression/pests/projectiles + viewport-only */
@@ -229,6 +229,24 @@ int main(void) {
     run_source("r: ts-claim K_RAT  block-set! r F_STATE 9  block-set! r F_C 20");
     for (int i = 0; i < 20; i++) run_source("rat-step r");
     check(run_int("ts-count K_RAT") == 0, "17 ghost frees after its 20-tick life");
+
+    /* 18. every lethal path funnels into the one state-9 ghost transition */
+    run_source("reset");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 330  block-set! r F_Y 305  block-set! r F_STATE 1  block-set! r F_B 1  block-set! r F_A 0  block-set! r F_VY 2  block-set! r F_E 330");
+    px300();
+    run_source("fire-rock  rock-step ts-t 4");
+    check(run_int("block-at r F_STATE") == 9, "18 rock kills a climbing rat -> ghost");
+    run_source("reset");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 305  block-set! r F_Y 250  block-set! r F_STATE 2  block-set! r F_B 5  block-set! r F_A 2  block-set! r F_E 305");
+    run_source("k: ts-claim K_KAKA  block-set! k F_STATE KS_MUTANT  block-set! k F_B + tick 540  block-set! k F_X 300  block-set! k F_Y 240");
+    run_source("kaka-mutant k");
+    check(run_int("block-at r F_STATE") == 9, "18 laser kills a gnawing possum -> ghost");
+    /* a state-9 ghost is inert: it only ticks its timer (never climbs/moves) */
+    run_source("reset");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 960  block-set! r F_Y 250  block-set! r F_STATE 9  block-set! r F_C 20  block-set! r F_A 0");
+    long gx = run_int("block-at r F_X");
+    run_source("rat-step r");
+    check(run_int("block-at r F_C") == 19 && run_int("block-at r F_X") == gx, "18 ghost is inert (timer only)");
 
     if (fails == 0) { printf("kaka-wave-test PASS\n"); return 0; }
     printf("kaka-wave-test FAIL (%d)\n", fails);
