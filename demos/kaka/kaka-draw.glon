@@ -34,7 +34,7 @@ lose-life: func [] [
 hit-ranger: func [] [
     either > invuln 0 [ none ] [
         px: - px 14
-        either < px 24 [ px: 24 ] [ none ]
+        keep-visible
         lose-life
     ]
 ]
@@ -373,8 +373,10 @@ render-canvas: func [] [
     draw-trees 0
     actor-art 0
     draw-laser
-    draw-player
+    ;; foreground foliage is emitted BEFORE the ranger so the protagonist is
+    ;; never composited behind it (he must always be visible)
     p-byte 70 p-num cam p-eol
+    draw-player
     p-finish
 ]
 

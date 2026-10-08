@@ -395,6 +395,55 @@ int main(void) {
     run_source("reset");
     check(run_int("lives") == 3 && run_int("ts-count K_RAT") == 0, "25 F restart clears contact state");
 
+    /* 26. the ranger can never leave the visible left margin */
+    int M = (int)run_int("PLAYER_LEFT_MARGIN");
+    run_source("reset  view-w: 1000");
+    run_source("kl: 1");
+    for (int i = 0; i < 80; i++) run_source("kl: 1  move-player");
+    check(run_int("px") == M, "26 A left input clamps at the margin");
+    check(run_int("- px cam") >= M, "26 A screenX stays inside the margin");
+    check(run_int("cam") == 0, "26 C camera rests at the world origin");
+    run_source("kl: 0  kr: 1  move-player");
+    check(run_int("px") > M, "26 F right movement resumes after the clamp");
+    run_source("kr: 0  kl: 1");
+    for (int i = 0; i < 20; i++) run_source("kl: 1  move-player");
+    int p0 = (int)run_int("px"), c0 = (int)run_int("cam");
+    for (int i = 0; i < 20; i++) run_source("kl: 1  move-player");
+    check(run_int("px") == p0 && run_int("cam") == c0, "26 H clamp is stable (no jitter)");
+
+    /* B. scroll right, then walk left all the way home: the ranger stays inside */
+    run_source("kl: 0  reset  view-w: 1000  px: 3000  move-player");
+    check(run_int("cam") == 2650, "26 B camera follows while scrolled");
+    int minSX = 99999;
+    run_source("kl: 1");
+    for (int i = 0; i < 320; i++) {
+        run_source("kl: 1  move-player");
+        long sx = run_int("- px cam");
+        if (sx < minSX) minSX = (int)sx;
+    }
+    check(minSX >= M, "26 B screenX never crosses while scrolling left");
+    check(run_int("cam") == 0 && run_int("px") == M, "26 B camera reaches origin and pins");
+
+    /* D. knockback near the left margin cannot push the body off-screen */
+    run_source("reset  view-w: 1000  px: 60  invuln: 0");
+    run_source("hit-ranger");
+    check(run_int("px") >= M, "26 D knockback keeps the body inside the margin");
+    check(run_int("- px cam") >= M, "26 D post-knockback screenX inside the margin");
+
+    /* E. jump + LEFT cannot escape the viewport */
+    run_source("reset  view-w: 1000  px: 60  kl: 1  ku: 1");
+    int jmin = 99999;
+    for (int i = 0; i < 30; i++) {
+        run_source("kl: 1  move-player");
+        long sx = run_int("- px cam");
+        if (sx < jmin) jmin = (int)sx;
+    }
+    check(jmin >= M, "26 E jump + left stays inside the viewport");
+
+    /* G. restart returns to a valid, visible state */
+    run_source("reset");
+    check(run_int("px") == 480 && run_int("- px cam") >= M, "26 G restart is visible");
+
     if (fails == 0) { printf("kaka-wave-test PASS\n"); return 0; }
     printf("kaka-wave-test FAIL (%d)\n", fails);
     return 1;
