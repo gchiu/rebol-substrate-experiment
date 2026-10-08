@@ -147,6 +147,7 @@ fire-rock: func [] [
                     block-set! b F_X + px * pf 18
                     block-set! b F_Y - py 2
                     block-set! b F_VY * pf 12
+                    block-set! b F_A + px * pf 18    ;; spawn x -> travel range
                     rock-cd: 6
                 ]
             ] [ none ]
@@ -194,9 +195,8 @@ rock-hit: func [t i] [
 ]
 rock-step: func [t] [
     block-set! t F_X + block-at t F_X block-at t F_VY
-    either > block-at t F_X + px 1500 [ ts-free t ] [
-        either < block-at t F_X - px 1200 [ ts-free t ] [ rock-hit t 0 ]
-    ]
+    ;; finite range: reclaim once the rock has travelled ROCK_RANGE from spawn
+    either > abs - block-at t F_X block-at t F_A ROCK_RANGE [ ts-free t ] [ rock-hit t 0 ]
 ]
 
 
