@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.2a";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s2a";
+  var BUILD = "D12S.2b";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s2b";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -139,24 +139,16 @@
     var step = Math.max(1, w - OVERLAP);
     var base = cam * L.factor;
     var n = Math.floor(base / step);
-    /* Foreground foliage is clipped to the ground band so a dense tile can
-       never cover the ranger or the incoming pests (readability). */
-    var clip = (idx === 3);
-    if (clip) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, 360, W, ctx.canvas.height - 360);
-      ctx.clip();
-    }
+    var firstN = n;
     ctx.globalAlpha = L.alpha;
     /* The first (leftmost) copy is the opaque base; every later copy fades in
-       over its predecessor's right OVERLAP px. */
+       over its predecessor's right OVERLAP px. The layer's own painted alpha
+       blends it into the scene -- no clip, so there is no ruler-straight
+       horizontal edge anywhere on the canvas. */
     for (var px = n * step - base; px < W; px += step, n++) {
       if (px + w <= 0) continue;
-      var tile = (n === Math.floor(base / step)) ? img : layerFade[idx];
-      ctx.drawImage(tile, px, L.yb - dh, w, dh);
+      ctx.drawImage(n === firstN ? img : layerFade[idx], px, L.yb - dh, w, dh);
     }
-    if (clip) ctx.restore();
     ctx.globalAlpha = 1;
   }
 
