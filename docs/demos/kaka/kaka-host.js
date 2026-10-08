@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.2b";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s2b";
+  var BUILD = "D12S.2c";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s2c";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -262,6 +262,11 @@
         ctx.beginPath();
         ctx.ellipse(+p[1] + tx, +p[2], +p[3], +p[4], 0, 0, 2 * Math.PI);
         ctx.fill();
+      } else if (op === "A") {
+        /* alpha 0..15 for the pest death ghost; Glon resets it to 15 after the
+           ghost so it never leaks to other actors. */
+        var al = (+p[1]) / 15;
+        ctx.globalAlpha = al < 0 ? 0 : (al > 1 ? 1 : al);
       }
     }
   }
