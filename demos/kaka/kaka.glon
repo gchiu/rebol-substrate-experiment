@@ -15,7 +15,9 @@ KAKA_MAX: 4
 RAT_MAX: 8
 BERRY_MAX: 6
 LIVES_MAX: 3
-INVULN_TICKS: 50
+;; post-hit invulnerability: ~0.64 s at 25 Hz (a swarm cannot take several
+;; lives in successive ticks, but the player is never permanently safe)
+INVULN_TICKS: 16
 GNAW_TICKS: 18
 ;; finite semantic reach of a thrown rock, in world px from its spawn x (~one
 ;; gameplay viewport, so it covers visible combat without crossing the world)
@@ -63,6 +65,8 @@ kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
 ;; anti-pest fire cooldown. pf follows the last horizontal input.
 krock: 0 pf: 1 rock-cd: 0
 px: 480 py: 330
+;; vy = ranger vertical velocity for the jump (impulse + gravity; 0 on ground)
+vy: 0
 ;; cam = world x at the view's left edge; view-w = logical viewport width.
 ;; dist = furthest world x the ranger has reached (monotonic progress; drives
 ;; pest-stage progression and never decreases, so retreating does not rewind it).
@@ -156,15 +160,22 @@ damage-tree: func [ti d] [
 ;; ---- one world tick (deterministic; no randomness beyond Glon's own rng) --
 move-player: func [] [
     dx: - kr kl
-    dy: - kd ku
     ;; facing follows the last horizontal input (rocks fire in this direction)
     either > kr kl [ pf: 1 ] [ either > kl kr [ pf: -1 ] [ none ] ]
-    ;; cardinal 10 px/tick (~3 s to cross at 25 Hz); diagonal 7/7 so it is not
-    ;; faster than a straight line. Reacts within one tick; no acceleration.
-    either = 0 * dx dy [ px: + px * dx 10  py: + py * dy 7 ] [ px: + px * dx 7  py: + py * dy 7 ]
+    ;; horizontal 10 px/tick. The ranger can move while airborne, so a dodge is
+    ;; a jump-over, not a full stop.
+    either = dx 0 [ none ] [ px: + px * dx 10 ]
     either < px 24 [ px: 24 ] [ none ]
-    either < py 300 [ py: 300 ] [ none ]
-    either > py 348 [ py: 348 ] [ none ]
+    ;; JUMP is a real dodge: an upward impulse when grounded, gravity always,
+    ;; landing back on the ground line (py 330). Holding jump bunny-hops but can
+    ;; never leave the ranger permanently airborne, so it grants no permanent
+    ;; immunity. Down is a small fast-fall.
+    either > ku 0 [ either > py 329 [ vy: -11 ] [ none ] ] [ none ]
+    either > kd 0 [ vy: + vy 3 ] [ none ]
+    py: + py vy
+    either >= py 330 [ py: 330  vy: 0 ] [ none ]
+    either < py 250 [ py: 250  vy: 0 ] [ none ]
+    vy: + vy 1
     ;; monotonic progress: stage thresholds key off the furthest x reached, so
     ;; retreating left never rewinds the invasion.
     either > px dist [ dist: px ] [ none ]
@@ -236,7 +247,7 @@ reset: func [] [
     lives: LIVES_MAX invuln: 0
     kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
     krock: 0 pf: 1 rock-cd: 0
-    px: 480 py: 330 cd: 0 glon-cd: 0
+    px: 480 py: 330 vy: 0 cd: 0 glon-cd: 0
     cam: 0 dist: 480
     berries: 1
     next-kaka: 40 next-pick: 1100 next-milestone: 600

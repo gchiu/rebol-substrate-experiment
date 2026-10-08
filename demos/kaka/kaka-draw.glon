@@ -21,16 +21,24 @@ seg-rect?: func [ax ay bx by x0 y0 x1 y1] [
 laser-hits-player?: func [] [
     seg-rect? laser-ox laser-oy laser-x laser-y - px 10 - py 14 + px 10 + py 22
 ]
-;; One life, exactly: a non-terminal hit respawns the ranger at the start with
-;; brief invulnerability; the last life is terminal (over).
+;; One life, exactly, with NO teleport (the rolling world must not jump back);
+;; short invulnerability follows. The ONE canonical player-consequence path.
 lose-life: func [] [
     either < lives 1 [ none ] [
         lives: - lives 1
-        either < lives 1 [ lives: 0 ] [ px: 480 py: 330 cam: 0 invuln: INVULN_TICKS ]
+        either < lives 1 [ lives: 0 ] [ none ]
+        invuln: INVULN_TICKS
     ]
 ]
-;; Called by a mutant kaka each tick it holds a beam on its target rat. A
-;; crossing during invulnerability or after game over changes nothing.
+;; pest contact: comic knockback + one life consequence + the invuln window
+hit-ranger: func [] [
+    either > invuln 0 [ none ] [
+        px: - px 14
+        either < px 24 [ px: 24 ] [ none ]
+        lose-life
+    ]
+]
+;; mutant laser crossing the ranger (invuln / game over change nothing)
 laser-hazard: func [] [
     either = over 0 [
         either < invuln 1 [ either laser-hits-player? [ lose-life ] [ none ] ] [ none ]
@@ -147,9 +155,7 @@ nr: func [i best bd t] [
         ] [ nr + i 1 best bd t ]
     ] [ best ]
 ]
-;; ocular beam origin relative to the mutant's logical (x,y), in its
-;; right-facing sprite frame (mirrored for d=-1); draw and collision share it
-;; (the offsets are inlined at the single use site to save a binding).
+;; ocular beam origin relative to the mutant's logical (x,y), right-facing frame
 kaka-mutant: func [t] [
     either > tick block-at t F_B [ block-set! t F_STATE KS_LEAVE  laser: -99 ] [
         r: nr 0 none 99999 t
@@ -263,8 +269,8 @@ spr-kaka: func [t] [
     ] ] ] ] ]
 ]
 ;; Pest art by species (F_A): 0 rat (sheet), 1 stoat (long/slender), 2 possum
-;; (large/heavy). Death (state 9) becomes a pale rising ghost; a non-lethal hit
-;; (F_D>0) shows a brief yellow spark. All pests march left.
+;; (large/heavy). Death (state 9) emits the host-halo death event; a non-lethal
+;; hit (F_D>0) shows a brief yellow spark. All pests march left.
 spr-rat: func [t] [
     x: block-at t F_X
     y: block-at t F_Y
@@ -351,9 +357,9 @@ draw-trees: func [i] [
     ] [ none ]
 ]
 draw-player-solid: func [] [
-    p-ell px 324 9 9 1
-    p-rect - px 7 332 14 22 6
-    p-tri px 332 + px 4 342 - px 4 342 8
+    p-ell px 348 9 9 1
+    p-rect - px 7 + py 4 14 20 6
+    p-tri px + py 4 + px 4 + py 14 - px 4 + py 14 8
     p-circ + px * pf 8 - py 4 3 7
 ]
 ;; post-respawn invulnerability blinks the ranger (presentation only)

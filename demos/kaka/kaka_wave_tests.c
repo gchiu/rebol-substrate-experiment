@@ -200,7 +200,7 @@ int main(void) {
     (void)px0; (void)d0; (void)nx0;
 
     /* 16 (N/O/P). 20+ sector transitions keep tuple occupancy bounded */
-    run_source("reset  kr: 1");
+    run_source("reset  kr: 1  invuln: 999999");   /* isolate occupancy from contact */
     long maxTotal = 0;
     for (int i = 0; i < 1600; i++) {
         run_source("move-player  spawn-timers  move-all 0  tally");
@@ -274,6 +274,83 @@ int main(void) {
     for (int i = 0; i < 90; i++) run_source("move-all 0");
     check(inflight <= 5 && run_int("ts-count K_ROCK") == 0,
           "19 no rock leak (all reclaimed)");
+
+    /* 20. ground armada: most spawned pests are ground attackers, some seek trees */
+    run_source("reset");
+    run_source("spawn-pest spawn-pest spawn-pest spawn-pest spawn-pest spawn-pest");
+    {
+        int ground = 0, seekers = 0;
+        for (int i = 3; i <= 8; i++) {
+            char src[48]; snprintf(src, sizeof src, "block-at ts-t %d F_TARGET", i);
+            long v = run_int(src);
+            if (v == -1) ground++; else if (v == 0) seekers++;
+        }
+        printf("  ground=%d tree-seekers=%d (of 6)\n", ground, seekers);
+        check(ground >= 3, "20 most pests are ground attackers");
+        check(seekers >= 1, "20 some pests are tree-seekers");
+    }
+    /* a ground attacker marches past a tree and is never converted */
+    run_source("reset");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 240  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 0  block-set! r F_VY 2  block-set! r F_TARGET -1");
+    {
+        long x0 = run_int("block-at r F_X");
+        run_source("rat-step r  rat-step r  rat-step r");
+        check(run_int("block-at r F_STATE") == 0 && run_int("block-at r F_X") < x0,
+              "20 ground attacker marches past a tree");
+    }
+    /* a tree-seeker climbs and gnaws habitat */
+    run_source("reset");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 240  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 0  block-set! r F_VY 2  block-set! r F_TARGET 0");
+    run_source("rat-step r");
+    check(run_int("block-at r F_STATE") == 1, "20 tree-seeker climbs");
+    for (int i = 0; i < 60; i++) run_source("rat-step r");
+    check(run_int("block-at ts-t 0 F_A") < 100, "20 tree-seeker gnaws habitat");
+
+    /* 21. player contact uses the one canonical life path for every species */
+    run_source("reset");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 480  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 0  block-set! r F_B 1  block-set! r F_VY 0  block-set! r F_TARGET -1");
+    run_source("rat-step r");
+    check(run_int("lives") == 2 && run_int("invuln") > 0 && run_int("score") == 0,
+          "21 grounded rat contact: one life, no score");
+    run_source("reset");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 480  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 1  block-set! r F_B 2  block-set! r F_VY 0  block-set! r F_TARGET -1");
+    run_source("rat-step r");
+    check(run_int("lives") == 2 && run_int("block-at r F_B") == 2 && run_int("ts-count K_RAT") == 1,
+          "21 stoat contact: one life, HP + tuples unchanged");
+    run_source("reset");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 480  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 2  block-set! r F_B 5  block-set! r F_VY 0  block-set! r F_TARGET -1");
+    run_source("rat-step r");
+    check(run_int("lives") == 2 && run_int("block-at r F_B") == 5,
+          "21 possum contact: one life, HP unchanged");
+
+    /* 22. short invulnerability: a swarm cannot drain lives in one window */
+    run_source("reset");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 480  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 0  block-set! r F_VY 0  block-set! r F_TARGET -1");
+    run_source("rat-step r");
+    check(run_int("lives") == 2, "22 first contact loses a life");
+    run_source("block-set! r F_X 480  block-set! r F_Y 345  rat-step r");
+    check(run_int("lives") == 2, "22 immediate second contact does not stack");
+    run_source("invuln: 0  block-set! r F_X 480  block-set! r F_Y 345  rat-step r");
+    check(run_int("lives") == 1, "22 contact after invuln expires hits again");
+    run_source("reset");
+    check(run_int("invuln") == 0 && run_int("lives") == 3, "22 restart clears invuln/lives");
+
+    /* 23. jump dodge: grounded = hit, airborne = safe, landing = normal again */
+    run_source("reset");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 480  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 0  block-set! r F_VY 0  block-set! r F_TARGET -1");
+    run_source("rat-step r");
+    check(run_int("lives") == 2, "23 grounded ranger takes the hit");
+    run_source("reset");
+    run_source("r: ts-claim K_RAT  block-set! r F_X 480  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 0  block-set! r F_VY 0  block-set! r F_TARGET -1");
+    run_source("ku: 1  move-player  move-player  move-player");
+    check(run_int("py") < 315, "23 jump lifts the ranger clear");
+    run_source("rat-step r");
+    check(run_int("lives") == 3, "23 airborne ranger takes no contact");
+    run_source("ku: 0");
+    for (int i = 0; i < 26; i++) run_source("move-player");
+    check(run_int("py") == 330, "23 landing returns to the ground (py 330)");
+    run_source("invuln: 0  block-set! r F_X 480  block-set! r F_Y 345  rat-step r");
+    check(run_int("lives") == 2, "23 after landing contact hits again (no permanent immunity)");
 
     if (fails == 0) { printf("kaka-wave-test PASS\n"); return 0; }
     printf("kaka-wave-test FAIL (%d)\n", fails);
