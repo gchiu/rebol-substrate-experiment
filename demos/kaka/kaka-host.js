@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.2l";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s2l";
+  var BUILD = "D12S.2m";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s2m";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -442,40 +442,44 @@
   var KEY = { ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right",
               ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down",
               Space: "fire", KeyG: "glon", KeyF: "rock" };
-  /* Short taps (jump, fire, glon, rock) must not fall between two 25 Hz ticks.
-     Latch the press: if no tick has run since the press, defer the key-up until
-     one tick has seen it. JUMP is included so a quick phone tap always jumps. */
-  var HOLD_LATCH = { fire: 1, glon: 1, rock: 1, up: 1, down: 1 };
-  function dispatchHold(name, down) {
-    if (down) { pressTick[name] = tickCount; evVal("kaka-key-down", name); return; }
-    if (HOLD_LATCH[name] && tickCount === pressTick[name]) pendingUp[name] = true;
-    else evVal("kaka-key-up", name);
+  /* Glon key state is a pure function of the PHYSICAL held state, re-synced once
+     per frame. There is no per-control latch that can get stranded, so no hit,
+     knockback, swarm, frame stall or dropped pointer event can leave LEFT held,
+     RIGHT suppressed or ROCK disabled. A press that begins and ends between two
+     frames is still applied for exactly one frame (the `tapped` set), so a quick
+     tap is never lost. LEFT/RIGHT are included, so turning is never dropped, and
+     a reset re-sends whatever is still physically held. */
+  var held = {}, tapped = {}, applied = {};
+  function setHeld(name, down) {
+    if (down) { held[name] = 1; tapped[name] = 1; } else { held[name] = 0; }
+  }
+  function syncInput() {
+    var want = {}, k;
+    for (k in held) if (held[k]) want[k] = 1;
+    for (k in tapped) want[k] = 1;              /* quick tap: down for this frame */
+    for (k in want) if (!applied[k]) evVal("kaka-key-down", k);
+    for (k in applied) if (!want[k]) evVal("kaka-key-up", k);
+    applied = want;
+    tapped = {};
+  }
+  function resetInput() {
+    held = {}; tapped = {}; applied = {};
+    try { ev("kaka-input-reset"); } catch (err) { console.error("kaka: input reset failed", err); }
   }
 
   function key(e, down) {
-    if (e.code === "KeyR") { if (down) { acc = 0; clearGhosts(); ev("kaka-restart"); } e.preventDefault(); return; }
+    if (e.code === "KeyR") { if (down) { acc = 0; clearGhosts(); resetInput(); ev("kaka-restart"); } e.preventDefault(); return; }
     var k = KEY[e.code];
     if (!k) return;
     e.preventDefault();
     if (e.target && e.target.tagName === "BUTTON" && e.target.blur) e.target.blur();
-    dispatchHold(k, down);
+    setHeld(k, down);
   }
-
-  function resetInput() { pendingUp = {}; try { ev("kaka-input-reset"); } catch (err) { console.error("kaka: input reset failed", err); } }
 
   function focusGame() {
     var cv = document.querySelector("#glon-canvas");
     if (cv) cv.focus();
   }
-
-  /* Discrete BERRY/GLON taps must not be lost when pointerdown+pointerup both
-     land between two fixed simulation ticks. We latch: if no tick has run since
-     the press, the key-up is deferred until after the next tick, so exactly one
-     tick always sees the press (the game's own cooldown/pool still gate firing).
-     LEFT/RIGHT stay plain held-state controls. */
-  var tickCount = 0;
-  var pressTick = {};
-  var pendingUp = {};
 
   function frame(now) {
     if (!lastTime) lastTime = now;      /* first callback: start the clock */
@@ -483,26 +487,22 @@
     lastTime = now;
     if (dt > 500) dt = 500;             /* hidden/stalled tab: do not accrue a backlog */
     acc += dt;
+    syncInput();                        /* physical input -> Glon key edges */
     var steps = 0;
     while (acc >= SIM_DT && steps < MAX_CATCHUP) {
       try { ev("kaka-tick"); }
       catch (err) { console.error("kaka: tick failed", err); acc = 0; break; }
       acc -= SIM_DT;
       steps++;
-      tickCount++;
     }
     if (acc >= SIM_DT) acc = 0;         /* still behind: drop it, never spiral */
-    for (var nm in pendingUp) {
-      /* hold the deferred key-up until at least one tick has seen the press */
-      if (pendingUp[nm] && tickCount > pressTick[nm]) { pendingUp[nm] = false; evVal("kaka-key-up", nm); }
-    }
     requestAnimationFrame(frame);
   }
 
   function fireGon(el) {
     var tok = el.getAttribute("data-glon-event");
     if (!tok) return;
-    if (tok === "kaka-restart") clearGhosts();
+    if (tok === "kaka-restart") { clearGhosts(); resetInput(); }
     try { ev(tok); } catch (err) { console.error("kaka: event failed", err); }
     focusGame();
   }
@@ -542,12 +542,12 @@
           e.preventDefault();
           if (b.setPointerCapture && e.pointerId !== undefined) { try { b.setPointerCapture(e.pointerId); } catch (err) {} }
           b.classList.add("on");
-          dispatchHold(name, true);
+          setHeld(name, true);
         }
         function up(e) {
           e.preventDefault();
           b.classList.remove("on");
-          dispatchHold(name, false);
+          setHeld(name, false);
         }
         b.addEventListener("pointerdown", down);
         b.addEventListener("pointerup", up);

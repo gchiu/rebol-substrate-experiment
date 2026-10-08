@@ -444,6 +444,48 @@ int main(void) {
     run_source("reset");
     check(run_int("px") == 480 && run_int("- px cam") >= M, "26 G restart is visible");
 
+    /* 27. repeated nonfatal rat contacts must never leave a partial-control
+       state: movement, facing, ROCK, JUMP all recover; only game-over is a
+       legitimate control freeze. */
+    run_source("reset  view-w: 1000");
+    for (int i = 1; i <= 6; i++) {
+        char src[256];
+        /* a fresh rat, overlapped, hits once, then separates and is freed */
+        snprintf(src, sizeof src,
+            "h%d: ts-claim K_RAT  block-set! h%d F_X px  block-set! h%d F_Y + py 2  "
+            "block-set! h%d F_STATE 0  block-set! h%d F_TARGET -1  rat-step h%d",
+            i, i, i, i, i, i);
+        run_source(src);
+        snprintf(src, sizeof src,
+            "block-set! h%d F_X - px 400  rat-step h%d  ts-free h%d  invuln: 0", i, i, i);
+        run_source(src);
+    }
+    check(run_int("lives") < 3 && run_int("over") == 0, "27 repeated hits: alive, game not over");
+    /* A. LEFT */
+    run_source("kl: 1  kr: 0  move-player");
+    int pL = (int)run_int("px");
+    check(run_int("pf") == -1, "27 LEFT still turns the ranger");
+    /* B. RIGHT (release LEFT as a real key-up would) */
+    run_source("kl: 0  kr: 1  move-player");
+    check((int)run_int("px") > pL, "27 RIGHT moves after LEFT");
+    check(run_int("pf") == 1, "27 RIGHT still turns the ranger");
+    run_source("kr: 0");
+    /* C. ROCK */
+    run_source("pf: 1  krock: 1  rock-cd: 0  fire-rock  tally");
+    check(run_int("n-rock") >= 1 && run_int("rock-cd") > 0, "27 ROCK fires after repeated hits");
+    /* D. JUMP */
+    run_source("krock: 0  jt: 0  py: 330  ku: 1  move-player  move-player");
+    check(run_int("jt") > 0 && run_int("py") < 330, "27 JUMP works after repeated hits");
+    /* F. no sticky held-state */
+    run_source("ku: 0  kl: 0  kr: 0  krock: 0  kf: 0");
+    check(run_int("kl") == 0 && run_int("kr") == 0 && run_int("krock") == 0, "27 no sticky held state");
+    /* game-over IS the only control freeze (step gates input on `over`) */
+    run_source("reset  over: 1  kr: 1  px: 480");
+    run_source("step");
+    check(run_int("px") == 480, "27 game-over freezes movement");
+    run_source("reset");
+    check(run_int("lives") == 3 && run_int("invuln") == 0, "27 restart clears control/contact state");
+
     if (fails == 0) { printf("kaka-wave-test PASS\n"); return 0; }
     printf("kaka-wave-test FAIL (%d)\n", fails);
     return 1;
