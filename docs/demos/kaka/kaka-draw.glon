@@ -1,6 +1,6 @@
 ;; demos/kaka/kaka-draw.glon -- rendering for Attack of the Mutant Kaka.
 [
-;; ---- lives, laser hazard, high score --------------------------------------
+;; --- lives / laser hazard / high score ---
 imin: func [a b] [ either < a b [ a ] [ b ] ]
 imax: func [a b] [ either > a b [ a ] [ b ] ]
 ;; separating-axis test: beam (ax,ay)-(bx,by) vs box [x0,y0,x1,y1]
@@ -52,7 +52,7 @@ on-viewport: func [] [
     render
 ]
 
-;; ---- kaka flight: per-bird velocity + bounded steering => curved paths -----
+;; ---- kaka flight: bounded steering => curved paths -----------------------
 steer: func [v d] [
     e: - d v
     either > e 2 [ + v 2 ] [ either < e -2 [ - v 2 ] [ d ] ]
@@ -193,9 +193,8 @@ kaka-mutant: func [t] [
     ]
 ]
 
-;; ---- rendering (Glon -> compact Canvas script; JS only paints) -----------
-;; NZ beech (mast) tree: forked trunk, root flare, irregular fine-foliage crown.
-;; Health `h` (F_A 0..100) drives five readable stages, intact -> dead.
+;; ---- rendering (Glon -> Canvas script; JS paints) -------------------------
+;; beech tree; health F_A 0..100 drives five stages (intact -> dead)
 tree-art: func [t] [
     x: block-at t F_X
     h: block-at t F_A
@@ -248,7 +247,7 @@ tree-art: func [t] [
         ]
     ]
 ]
-;; ---- sprite actors: `S id x y dir`; id names a host-owned frame ------------
+;; sprite actors: `S id x y dir`; id names a host-owned frame
 p-spr: func [id x y d] [ p-byte 83 p-num id p-num x p-num y p-num d p-eol ]
 
 spr-kaka: func [t] [
@@ -268,9 +267,7 @@ spr-kaka: func [t] [
         p-spr either < mod tick 12 6 [ 0 ] [ 1 ] x y d
     ] ] ] ] ]
 ]
-;; Pest art by species (F_A): 0 rat (sheet), 1 stoat (long/slender), 2 possum
-;; (large/heavy). Death (state 9) emits the host-halo death event; a non-lethal
-;; hit (F_D>0) shows a brief yellow spark. All pests march left.
+;; Pest art by species (0 rat, 1 stoat, 2 possum); death/hit emit halo/spark.
 spr-rat: func [t] [
     x: block-at t F_X
     y: block-at t F_Y
@@ -348,19 +345,27 @@ actor-art: func [i] [
         actor-art + i 1
     ] [ none ]
 ]
-;; camera markers: byte 66 paints the backgrounds + scrolls the plane, byte 70
-;; paints the foreground after the actors. Only the camera scalar crosses.
+;; cam markers: 66 background, 70 foreground
 draw-trees: func [i] [
     either < i ts-hi [
         either = ts-k i K_TREE [ tree-art ts-t i ] [ none ]
         draw-trees + i 1
     ] [ none ]
 ]
+;; cartoon platform ranger (~75 px, all geometry offset from py, feet at py+26)
 draw-player-solid: func [] [
-    p-ell px 348 9 9 1
-    p-rect - px 7 + py 4 14 20 6
-    p-tri px + py 4 + px 4 + py 14 - px 4 + py 14 8
-    p-circ + px * pf 8 - py 4 3 7
+    p-rect - px 8 - py 2 6 24 9
+    p-rect + px 2 - py 2 6 24 9
+    p-rect - px 10 + py 20 9 6 8
+    p-rect + px 1 + py 20 9 6 8
+    p-rect - px 10 - py 24 20 24 4
+    p-rect - px 15 - py 22 5 16 4
+    p-rect + px 10 - py 22 5 16 4
+    p-circ + px * pf 2 - py 34 9 1
+    p-rect - px 11 - py 40 22 4 8
+    p-tri - px 8 - py 40 + px 8 - py 40 px - py 49 8
+    p-circ + px * pf 6 - py 36 2 0
+    p-circ + px * pf 1 - py 36 2 0
 ]
 ;; post-respawn invulnerability blinks the ranger (presentation only)
 draw-player: func [] [
@@ -410,7 +415,7 @@ render-status: func [] [
     e-int n-kaka e-text " " e-int n-rat e-text " "
     e-int mutant-active e-text " " e-int mutant-left e-text " " e-int py e-text " "
     e-int lives e-text " " e-int invuln e-text " " e-int highscore e-text " "
-    e-int n-rock e-text " " e-int tcfail e-text " " e-int n-stoat e-text " " e-int n-possum
+    e-int n-rock e-text " " e-int tcfail e-text " " e-int n-stoat e-text " " e-int n-possum e-text " " e-int jt e-text " " e-int ku
     e-text "</i>"
     either = over 1 [
         e-text "<div class='kaka-gameover'><div class='kaka-go-panel'>"
