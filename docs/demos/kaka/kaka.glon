@@ -22,6 +22,10 @@ GNAW_TICKS: 18
 ;; finite semantic reach of a thrown rock, in world px from its spawn x (~one
 ;; gameplay viewport, so it covers visible combat without crossing the world)
 ROCK_RANGE: 960
+;; the ranger must keep at least this many px between his body and the left edge
+;; of the viewport. screenX = px - cam, so clamping px >= PLAYER_LEFT_MARGIN
+;; guarantees screenX >= PLAYER_LEFT_MARGIN (cam = max(0, px - 35% * view-w)).
+PLAYER_LEFT_MARGIN: 56
 
 ;; tuple space kinds
 K_EMPTY: 0
@@ -169,7 +173,6 @@ move-player: func [] [
     ;; horizontal 10 px/tick. The ranger can move while airborne, so a dodge is
     ;; a jump-over, not a full stop.
     either = dx 0 [ none ] [ px: + px * dx 10 ]
-    either < px 24 [ px: 24 ] [ none ]
     ;; JUMP: a deterministic 22-tick arc (peak ~60 px up, py 270). A countdown
     ;; drives the height, so a tap always produces the same full jump, it can
     ;; never be lost between ticks or bounce, and holding re-triggers on landing.
@@ -184,6 +187,14 @@ move-player: func [] [
     ;; monotonic progress: stage thresholds key off the furthest x reached, so
     ;; retreating left never rewinds the invasion.
     either > px dist [ dist: px ] [ none ]
+    keep-visible
+]
+;; Single deterministic order: clamp the ranger inside the visible left margin,
+;; then derive the camera from that clamped x. Because screenX = px - cam =
+;; min(px, 35% * view-w), enforcing px >= PLAYER_LEFT_MARGIN enforces
+;; screenX >= PLAYER_LEFT_MARGIN with no jitter (both derived each tick).
+keep-visible: func [] [
+    either < px PLAYER_LEFT_MARGIN [ px: PLAYER_LEFT_MARGIN ] [ none ]
     ;; side-scroller camera: ranger ~35% from the left, most of the screen is the
     ;; battlefield ahead. Only visibility changes; actor world coords are stable.
     t: - px / * view-w 35 100
