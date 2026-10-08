@@ -157,11 +157,17 @@ fire-rock: func [] [
 ;; On death the tuple plays an 8-tick burst (F_C) then reclaims; the kill score
 ;; scales with species (rat 20, stoat 35, possum 60). A non-lethal hit sets the
 ;; F_D flash timer so the player sees "that one took a hit but is not dead".
+;; the ONE canonical lethal transition: every lethal path (rock, kaka laser)
+;; funnels through kill-pest, so the victim always becomes the same rising ghost
+;; regardless of whether it was walking, climbing or gnawing.
+kill-pest: func [t] [
+    block-set! t F_STATE 9
+    block-set! t F_C 20
+]
 damage-pest: func [t d] [
     h: - block-at t F_B d
     either < h 1 [
-        block-set! t F_STATE 9
-        block-set! t F_C 20
+        kill-pest t
         sp: block-at t F_A
         score: + score either = sp 2 [ 60 ] [ either = sp 1 [ 35 ] [ 20 ] ]
     ] [

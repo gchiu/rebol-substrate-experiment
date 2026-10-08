@@ -179,8 +179,9 @@ kaka-mutant: func [t] [
             ] ]
             either < + abs - block-at t F_X rx abs - block-at t F_Y ry 40 [
                 either = over 1 [ none ] [
-                    ;; canonical lethal transition: the laser also becomes a ghost
-                    damage-pest r 999
+                    ;; same canonical transition (ghost); laser keeps its +25
+                    kill-pest r
+                    score: + score 25
                 ]
             ] [ none ]
         ]
