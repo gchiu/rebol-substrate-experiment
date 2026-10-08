@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.2m";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s2m";
+  var BUILD = "D12S.2n";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s2n";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -245,11 +245,35 @@
   var RANGER = { skin: "#ecb27e", hair: "#3a2a1a", hat: "#83713f", hatD: "#5c4c24",
                  tunic: "#3f9146", tunicD: "#2c6d32", belt: "#5a3a22",
                  pants: "#5c6a3e", boot: "#4a2f18", eye: "#241f16" };
+  /* pose 5: the terminal, still, fallen ranger (no run cycle) */
+  function drawFallenRanger(ctx, C) {
+    ctx.fillStyle = "rgba(0,0,0,.22)";
+    ctx.beginPath(); ctx.ellipse(-2, 2, 30, 7, 0, 0, 2 * Math.PI); ctx.fill();
+    ctx.strokeStyle = C.pants; ctx.lineWidth = 11; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(-8, -10); ctx.lineTo(-30, -6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-8, -14); ctx.lineTo(-32, -16); ctx.stroke();
+    ctx.fillStyle = C.boot;
+    rrect(ctx, -44, -13, 15, 12, 4); ctx.fill();
+    rrect(ctx, -46, -24, 15, 12, 4); ctx.fill();
+    ctx.fillStyle = C.tunic; rrect(ctx, -12, -28, 32, 19, 8); ctx.fill();
+    ctx.fillStyle = C.tunicD; rrect(ctx, -12, -28, 32, 9, 8); ctx.fill();
+    ctx.strokeStyle = C.tunic; ctx.lineWidth = 9; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(8, -24); ctx.lineTo(26, -32); ctx.stroke();
+    ctx.fillStyle = C.skin; ctx.beginPath(); ctx.arc(26, -32, 5, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = C.skin; ctx.beginPath(); ctx.arc(30, -18, 13, 0, 2 * Math.PI); ctx.fill();
+    ctx.strokeStyle = C.eye; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.moveTo(26, -23); ctx.lineTo(31, -18); ctx.moveTo(31, -23); ctx.lineTo(26, -18); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(34, -23); ctx.lineTo(39, -18); ctx.moveTo(39, -23); ctx.lineTo(34, -18); ctx.stroke();
+    ctx.fillStyle = C.hat; ctx.beginPath(); ctx.ellipse(48, -6, 16, 5, 0.25, 0, 2 * Math.PI); ctx.fill();
+    rrect(ctx, 41, -18, 20, 13, 5); ctx.fill();
+    ctx.fillStyle = C.hatD; rrect(ctx, 41, -9, 20, 4, 2); ctx.fill();
+  }
   function drawRanger(ctx, pose, x, y, dir, tx) {
     var cx = x + tx, fy = y + 28, C = RANGER;
     ctx.save();
     ctx.translate(cx, fy);
     if (dir < 0) ctx.scale(-1, 1);
+    if (pose === 5) { drawFallenRanger(ctx, C); ctx.restore(); return; }
     ctx.fillStyle = "rgba(0,0,0,.22)";
     ctx.beginPath(); ctx.ellipse(0, 2, 22, 6, 0, 0, 2 * Math.PI); ctx.fill();
     var lean = 0, lf = 4, rf = -4, lk = 0, rk = 0, lh = -14, rh = -14, lhx = 20, rhx = 20, hit = false;

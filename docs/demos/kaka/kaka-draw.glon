@@ -166,11 +166,8 @@ kaka-mutant: func [t] [
             rx: block-at r F_X
             ry: block-at r F_Y
             k-move t rx ry 6 6
-            ;; Ocular beam from the eye to the target rat, plus the same segment
-            ;; tested for a ranger crossing. OFF-SCREEN RULE: a bird outside the
-            ;; viewport (+40 margin) may keep flying, targeting and killing, but
-            ;; must NOT draw a visible beam or zap the ranger until it is on/near
-            ;; screen. Simulated, never frozen.
+            ;; ocular beam + its ranger-crossing test; off-screen birds may
+            ;; still simulate but draw/zap nothing until near the viewport
             d: either < block-at t F_VY 0 [ -1 ] [ 1 ]
             laser: -99
             either < block-at t F_X - cam 40 [ none ] [
@@ -357,11 +354,17 @@ draw-trees: func [i] [
 ;; cartoon ranger sprite; Glon keeps all player gameplay state and just names the
 ;; pose. During invulnerability the pose alternates to a hit frame (a blink).
 draw-player: func [] [
-    p: either > jt 0 [ 3 ] [
-        either = 0 - kr kl [ 0 ] [ either < mod tick 12 6 [ 1 ] [ 2 ] ]
+    either = over 1 [
+        ;; terminal: a still, grounded, fallen ranger. Input is already gated
+        ;; off by `step`; force the ground baseline too, in case he fell in air.
+        p-byte 80 p-num 5 p-num px p-num 330 p-num pf p-eol
+    ] [
+        p: either > jt 0 [ 3 ] [
+            either = 0 - kr kl [ 0 ] [ either < mod tick 12 6 [ 1 ] [ 2 ] ]
+        ]
+        either > invuln 0 [ either < mod tick 8 4 [ p: 4 ] [ none ] ] [ none ]
+        p-byte 80 p-num p p-num px p-num py p-num pf p-eol
     ]
-    either > invuln 0 [ either < mod tick 8 4 [ p: 4 ] [ none ] ] [ none ]
-    p-byte 80 p-num p p-num px p-num py p-num pf p-eol
 ]
 ;; The mutant's ocular beam, drawn from its eye to its target rat.
 draw-laser: func [] [
