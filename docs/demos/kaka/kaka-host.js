@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.2";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s2";
+  var BUILD = "D12S.2a";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s2a";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -65,18 +65,29 @@
   /* ---- parallax scenery (host-side presentation only) --------------------
    * The four generated PNGs are painted by JS; Glon owns the camera scalar it
    * emits as `B <cam>` (backgrounds + scroll gameplay) and `F <cam>`
-   * (foreground). Because the world scrolls right forever, each layer is
-   * mirror-tiled: alternate copies are flipped so tile edges are C0-continuous
-   * (no hard repeat seam and no uncovered strip at any camera x or width). The
-   * gameplay plane itself scrolls 1:1 with the same cam. Nothing here is game
-   * logic. */
+   * (foreground). The world scrolls right forever, so each layer is repeated as
+   * ORDINARY (unmirrored) copies with an OVERLAP-wide crossfade between
+   * neighbours: the incoming copy's first OVERLAP px are a linear alpha ramp, so
+   * the outgoing copy's right edge dissolves into the incoming copy's left edge.
+   * This removes the mirror symmetry axis the old mirror tiling produced (a
+   * reflected tree/hill reads as a hard join) with no hard opacity edge, no
+   * uncovered strip, no scale change and no camera-dependent jump. The faded
+   * copy is precomputed ONCE per layer -- no per-frame offscreen canvas. The
+   * gameplay plane scrolls 1:1 with the same cam. Nothing here is game logic. */
   var LAYERS = [
     { src: "assets/ChatGPT Image Oct 6, 2026, 08_56_38 AM-1.png", factor: 0.12, h: 480, yb: 480, alpha: 1.0 },
     { src: "assets/ChatGPT Image Oct 6, 2026, 08_56_40 AM-2.png", factor: 0.35, h: 430, yb: 470, alpha: 1.0 },
     { src: "assets/ChatGPT Image Oct 6, 2026, 08_56_41 AM-3.png", factor: 0.70, h: 440, yb: 500, alpha: 1.0 },
     { src: "assets/ChatGPT Image Oct 6, 2026, 08_56_43 AM-4.png", factor: 1.20, h: 560, yb: 540, alpha: 1.0 }
   ];
+  /* Crossfade band width in logical px: the span over which two neighbouring
+     copies dissolve. ~120 is enough to hide the join in the supplied 3:1 art
+     without a wide double-image. */
+  var OVERLAP = 120;
   var layerImg = [null, null, null, null];
+  var layerFade = [null, null, null, null];   /* left-edge alpha-ramp copy */
+  var layerW = [0, 0, 0, 0];
+  var layerDH = [0, 0, 0, 0];
 
   function loadImage(url) {
     return new Promise(function (res) {
@@ -86,24 +97,48 @@
       im.src = url + "?v=" + VER;    /* bust the Pages 10-minute cache */
     });
   }
+  /* Precompute, once per layer, a scaled copy whose LEFT OVERLAP px ramp from
+     alpha 0 to 1 (fully opaque after). Pure Canvas; done at load, never per
+     frame. The original Image is reused for the opaque base tile. */
+  function buildFade(idx) {
+    var img = layerImg[idx];
+    if (!img) return;
+    var L = LAYERS[idx];
+    var w = Math.max(1, Math.round(img.naturalWidth * (L.h / img.naturalHeight)));
+    var dh = L.h;
+    layerW[idx] = w; layerDH[idx] = dh;
+    var f = document.createElement("canvas"); f.width = w; f.height = dh;
+    var fx = f.getContext("2d");
+    fx.drawImage(img, 0, 0, w, dh);
+    /* destination-in with a horizontal ramp: only the first OVERLAP px lose
+       alpha (0 -> 1); everything else stays fully opaque. */
+    var g = fx.createLinearGradient(0, 0, w, 0);
+    var o = Math.min(OVERLAP, w) / w;
+    g.addColorStop(0, "rgba(255,255,255,0)");
+    g.addColorStop(o, "rgba(255,255,255,1)");
+    g.addColorStop(1, "rgba(255,255,255,1)");
+    fx.globalCompositeOperation = "destination-in";
+    fx.fillStyle = g;
+    fx.fillRect(0, 0, w, dh);
+    layerFade[idx] = f;
+  }
   function loadParallax() {
     return Promise.all(LAYERS.map(function (l) { return loadImage(l.src); }))
-      .then(function (imgs) { layerImg = imgs; });
+      .then(function (imgs) {
+        layerImg = imgs;
+        for (var i = 0; i < LAYERS.length; i++) buildFade(i);
+      });
   }
   function paintLayer(ctx, W, idx, cam) {
     var img = layerImg[idx];
     if (!img) return;
     var L = LAYERS[idx];
-    var w = img.naturalWidth * (L.h / img.naturalHeight);
-    var dh = L.h;
-    /* Keep tiles at least viewport-wide so no uncovered strip can appear. */
-    if (w < W) { var s = W / w; w *= s; dh *= s; }
-    /* World point X maps to screen X*factor - cam*factor, so tile n (world span
-       w/factor) starts at screen n*w - cam*factor. Alternate tiles are mirrored:
-       each mirror tile starts on the previous tile's right edge and is flipped,
-       so edges are C0-continuous (content matches) -- no hard repeat seam. */
+    var w = layerW[idx], dh = layerDH[idx];
+    /* copies are spaced `step` apart (step < w), so neighbours overlap by
+       OVERLAP px and crossfade there. */
+    var step = Math.max(1, w - OVERLAP);
     var base = cam * L.factor;
-    var n = Math.floor(base / w);
+    var n = Math.floor(base / step);
     /* Foreground foliage is clipped to the ground band so a dense tile can
        never cover the ranger or the incoming pests (readability). */
     var clip = (idx === 3);
@@ -114,17 +149,12 @@
       ctx.clip();
     }
     ctx.globalAlpha = L.alpha;
-    for (var px = n * w - base; px < W; px += w, n++) {
+    /* The first (leftmost) copy is the opaque base; every later copy fades in
+       over its predecessor's right OVERLAP px. */
+    for (var px = n * step - base; px < W; px += step, n++) {
       if (px + w <= 0) continue;
-      if ((n & 1) === 0) {
-        ctx.drawImage(img, px, L.yb - dh, w, dh);
-      } else {
-        ctx.save();
-        ctx.translate(px + w, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(img, 0, L.yb - dh, w, dh);
-        ctx.restore();
-      }
+      var tile = (n === Math.floor(base / step)) ? img : layerFade[idx];
+      ctx.drawImage(tile, px, L.yb - dh, w, dh);
     }
     if (clip) ctx.restore();
     ctx.globalAlpha = 1;
