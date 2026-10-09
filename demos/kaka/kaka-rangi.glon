@@ -60,71 +60,105 @@ hit-ranger: func [] [
 ;; movement, jump arc, invuln/cooldown ticks, camera derivation.
 rangi-step: func [] [
     either = block-at rangi F_STATE 1 [ none ] [
-        ;; contact resolution is a FOREST concept; in the cave F_C is the chosen
-        ;; object. FLAT conditionals: the loader mis-compiles deep nesting.
+        ;; FOREST-only: contact request, rock cooldown, invulnerability blink.
         either = block-at rangi F_E 0 [
             either > block-at rangi F_C 0 [ hit-ranger ] [ none ]
+            either > block-at rangi F_TARGET 0 [ block-set! rangi F_TARGET - block-at rangi F_TARGET 1 ] [ none ]
+            either > block-at rangi F_A 0 [ block-set! rangi F_A - block-at rangi F_A 1 ] [ none ]
         ] [ none ]
-        either > block-at rangi F_TARGET 0 [ block-set! rangi F_TARGET - block-at rangi F_TARGET 1 ] [ none ]
-        either > block-at rangi F_A 0 [ block-set! rangi F_A - block-at rangi F_A 1 ] [ none ]
         dx: - kr kl
         either > kr kl [ block-set! rangi F_D 1 ] [ either > kl kr [ block-set! rangi F_D -1 ] [ none ] ]
         either = dx 0 [ none ] [ block-set! rangi F_X + block-at rangi F_X * dx 10 ]
-        ;; mode geometry: forest ground 330 (no pedestals). Cave ground 352; its
-        ;; pedestals are at world x 1120/1300/1480, tops at F_Y 182 (from the
-        ;; image), reached by a taller cave-only jump arc (js).
         gnd: 330
         pt: 280
-        js: 1
-        either > block-at rangi F_E 0 [ gnd: 352  pt: 182  js: 3 ] [ none ]
-        either > ku 0 [
-            either = block-at rangi F_VY 0 [
-                either = block-at rangi F_Y gnd [ block-set! rangi F_VY 22 ] [ none ]
+        either > block-at rangi F_E 0 [ gnd: 352  pt: 182 ] [ none ]
+        ;; BERRY (kf) drops a nearby BUNDLED rope (cave). F_TARGET holds the rope
+        ;; bits: 1=helmet rope, 2=phone rope, 4=key rope (0 = bundled).
+        either = block-at rangi F_E 1 [
+            either = kf 1 [
+                either < abs - block-at rangi F_X 1120 50 [
+                    either = 0 mod block-at rangi F_TARGET 2 [ block-set! rangi F_TARGET + block-at rangi F_TARGET 1 ] [ none ]
+                ] [ none ]
+                either < abs - block-at rangi F_X 1300 50 [
+                    either = 0 mod / block-at rangi F_TARGET 2 2 [ block-set! rangi F_TARGET + block-at rangi F_TARGET 2 ] [ none ]
+                ] [ none ]
+                either < abs - block-at rangi F_X 1480 50 [
+                    either = 0 mod / block-at rangi F_TARGET 4 2 [ block-set! rangi F_TARGET + block-at rangi F_TARGET 4 ] [ none ]
+                ] [ none ]
             ] [ none ]
         ] [ none ]
-        either > kd 0 [ either > block-at rangi F_VY 2 [ block-set! rangi F_VY - block-at rangi F_VY 2 ] [ block-set! rangi F_VY 0 ] ] [ none ]
-        either > block-at rangi F_VY 0 [
-            p: - 22 block-at rangi F_VY
-            b: - gnd * / * p - 22 p 2 js
-            dx: gnd
-            either > block-at rangi F_E 0 [
-                either <= b + pt 5 [
-                    either < abs - block-at rangi F_X 1120 44 [ dx: pt ] [ none ]
-                    either < abs - block-at rangi F_X 1300 44 [ dx: pt ] [ none ]
-                    either < abs - block-at rangi F_X 1480 44 [ dx: pt ] [ none ]
+        ;; F_A doubles as the CLIMB flag in the cave (invuln in the forest).
+        either = block-at rangi F_E 1 [
+            block-set! rangi F_A 0
+            either < block-at rangi F_Y 360 [
+                either = 1 mod block-at rangi F_TARGET 2 [ either < abs - block-at rangi F_X 1120 24 [ block-set! rangi F_A 1 ] [ none ] ] [ none ]
+                either = 1 mod / block-at rangi F_TARGET 2 2 [ either < abs - block-at rangi F_X 1300 24 [ block-set! rangi F_A 1 ] [ none ] ] [ none ]
+                either = 1 mod / block-at rangi F_TARGET 4 2 [ either < abs - block-at rangi F_X 1480 24 [ block-set! rangi F_A 1 ] [ none ] ] [ none ]
+            ] [ none ]
+        ] [ none ]
+        ;; `cl` = actually climbing (cave AND F_A set); F_A is invuln in forest.
+        cl: 0
+        either = block-at rangi F_E 1 [ either = block-at rangi F_A 1 [ cl: 1 ] [ none ] ] [ none ]
+        either = cl 1 [
+            ;; climbing a dropped rope: UP/DOWN move, horizontal detaches, and no
+            ;; jump state may survive the climb.
+            block-set! rangi F_VY 0
+            either > ku 0 [ block-set! rangi F_Y - block-at rangi F_Y 8 ] [ none ]
+            either > kd 0 [ block-set! rangi F_Y + block-at rangi F_Y 8 ] [ none ]
+            either < block-at rangi F_Y 182 [ block-set! rangi F_Y 182 ] [ none ]
+            either > block-at rangi F_Y 352 [ block-set! rangi F_Y 352 ] [ none ]
+            either > kr kl [ block-set! rangi F_A 0 ] [ either > kl kr [ block-set! rangi F_A 0 ] [ none ] ]
+        ] [
+            either > ku 0 [
+                either = block-at rangi F_VY 0 [
+                    either = block-at rangi F_Y gnd [ block-set! rangi F_VY 22 ] [ none ]
                 ] [ none ]
             ] [ none ]
-            either < b dx [
-                block-set! rangi F_Y b
-                block-set! rangi F_VY - block-at rangi F_VY 1
-            ] [
-                either > block-at rangi F_VY 11 [
+            either > kd 0 [ either > block-at rangi F_VY 2 [ block-set! rangi F_VY - block-at rangi F_VY 2 ] [ block-set! rangi F_VY 0 ] ] [ none ]
+            either > block-at rangi F_VY 0 [
+                p: - 22 block-at rangi F_VY
+                b: - gnd / * p - 22 p 2
+                dx: gnd
+                either > block-at rangi F_E 0 [
+                    either <= b + pt 5 [
+                        either < abs - block-at rangi F_X 1120 44 [ dx: pt ] [ none ]
+                        either < abs - block-at rangi F_X 1300 44 [ dx: pt ] [ none ]
+                        either < abs - block-at rangi F_X 1480 44 [ dx: pt ] [ none ]
+                    ] [ none ]
+                ] [ none ]
+                either < b dx [
                     block-set! rangi F_Y b
                     block-set! rangi F_VY - block-at rangi F_VY 1
-                ] [ block-set! rangi F_Y dx  block-set! rangi F_VY 0 ]
-            ]
-        ] [
-            dx: gnd
-            either > block-at rangi F_E 0 [
-                either <= block-at rangi F_Y + pt 5 [
-                    either < abs - block-at rangi F_X 1120 44 [ dx: pt ] [ none ]
-                    either < abs - block-at rangi F_X 1300 44 [ dx: pt ] [ none ]
-                    either < abs - block-at rangi F_X 1480 44 [ dx: pt ] [ none ]
+                ] [
+                    either > block-at rangi F_VY 11 [
+                        block-set! rangi F_Y b
+                        block-set! rangi F_VY - block-at rangi F_VY 1
+                    ] [ block-set! rangi F_Y dx  block-set! rangi F_VY 0 ]
+                ]
+            ] [
+                dx: gnd
+                either > block-at rangi F_E 0 [
+                    either <= block-at rangi F_Y + pt 5 [
+                        either < abs - block-at rangi F_X 1120 44 [ dx: pt ] [ none ]
+                        either < abs - block-at rangi F_X 1300 44 [ dx: pt ] [ none ]
+                        either < abs - block-at rangi F_X 1480 44 [ dx: pt ] [ none ]
+                    ] [ none ]
                 ] [ none ]
-            ] [ none ]
-            block-set! rangi F_Y dx
+                block-set! rangi F_Y dx
+            ]
         ]
-        ;; standing on a pedestal HIGHLIGHTS that relic (candidate); leaving
-        ;; clears it. FIRE (krock) confirms the candidate -> route transition.
+        ;; relic choice: only while STANDING (not on a rope). FIRE confirms.
         either = block-at rangi F_E 1 [
-            block-set! rangi F_C 0
-            either <= block-at rangi F_Y + pt 20 [
-                either < abs - block-at rangi F_X 1120 44 [ block-set! rangi F_C 1 ] [ none ]
-                either < abs - block-at rangi F_X 1300 44 [ block-set! rangi F_C 2 ] [ none ]
-                either < abs - block-at rangi F_X 1480 44 [ block-set! rangi F_C 3 ] [ none ]
-            ] [ none ]
-            either = krock 1 [
-                either > block-at rangi F_C 0 [ block-set! rangi F_E + block-at rangi F_C 1 ] [ none ]
+            either = block-at rangi F_A 0 [
+                block-set! rangi F_C 0
+                either <= block-at rangi F_Y + pt 20 [
+                    either < abs - block-at rangi F_X 1120 44 [ block-set! rangi F_C 1 ] [ none ]
+                    either < abs - block-at rangi F_X 1300 44 [ block-set! rangi F_C 2 ] [ none ]
+                    either < abs - block-at rangi F_X 1480 44 [ block-set! rangi F_C 3 ] [ none ]
+                ] [ none ]
+                either = krock 1 [
+                    either > block-at rangi F_C 0 [ block-set! rangi F_E + block-at rangi F_C 1 ] [ none ]
+                ] [ none ]
             ] [ none ]
         ] [ none ]
         either > block-at rangi F_X dist [ dist: block-at rangi F_X ] [ none ]
@@ -135,6 +169,8 @@ rangi-step: func [] [
                 block-set! rangi F_Y 352
                 block-set! rangi F_VY 0
                 block-set! rangi F_C 0
+                block-set! rangi F_TARGET 0
+                block-set! rangi F_A 0
                 cam: 0
             ] [ none ]
         ] [ none ]
@@ -175,7 +211,12 @@ draw-player: func [] [
         p: either > block-at rangi F_VY 0 [ 3 ] [
             either = 0 - kr kl [ 0 ] [ either < mod tick 12 6 [ 1 ] [ 2 ] ]
         ]
-        either > block-at rangi F_A 0 [ either < mod tick 8 4 [ p: 4 ] [ none ] ] [ none ]
+        either = block-at rangi F_E 0 [
+            either > block-at rangi F_A 0 [ either < mod tick 8 4 [ p: 4 ] [ none ] ] [ none ]
+        ] [ none ]
+        either = block-at rangi F_E 1 [
+            either = block-at rangi F_A 1 [ p: 6 ] [ none ]
+        ] [ none ]
         p-byte 80 p-num p p-num block-at rangi F_X p-num block-at rangi F_Y p-num block-at rangi F_D p-eol
     ]
 ]

@@ -19,7 +19,6 @@ seg-rect?: func [ax ay bx by x0 y0 x1 y1] [
 laser-hits-player?: func [] [
     seg-rect? laser-ox laser-oy laser-x laser-y - block-at rangi F_X 10 - block-at rangi F_Y 14 + block-at rangi F_X 10 + block-at rangi F_Y 22
 ]
-;; short invulnerability follows. The ONE canonical player-consequence path.
 laser-hazard: func [] [
     either = over 0 [
         either < block-at rangi F_A 1 [ either laser-hits-player? [ lose-life ] [ none ] ] [ none ]
@@ -54,7 +53,6 @@ kp: func [n t] [
 spawn-kaka: func [] [
     t: ts-claim K_KAKA
     either = t none [ none ] [
-        ;; birds roam the battlefield AROUND the ranger (not a fixed world slot)
         block-set! t F_X + - block-at rangi F_X 260 mod rnd 900
         block-set! t F_Y 20
         block-set! t F_STATE KS_SWEEP
@@ -163,7 +161,6 @@ kaka-mutant: func [t] [
     ]
 ]
 
-;; ---- rendering (Glon -> Canvas script; JS paints) -------------------------
 ;; beech tree; health F_A 0..100 drives five stages (intact -> dead)
 tree-art: func [t] [
     x: block-at t F_X
@@ -237,7 +234,6 @@ spr-kaka: func [t] [
         p-spr either < mod tick 12 6 [ 0 ] [ 1 ] x y d
     ] ] ] ] ]
 ]
-;; Pest art by species (0 rat, 1 stoat, 2 possum); death/hit emit halo/spark.
 spr-rat: func [t] [
     x: block-at t F_X
     y: block-at t F_Y
@@ -284,7 +280,6 @@ spr-rat: func [t] [
         ] ]
     ]
 ]
-;; A rat chewing at a trunk: a few bark flecks and a brief hit flash at the
 ;; gnawed tree, so it is obvious which tree just lost health.
 gnaw-cue: func [t] [
     either > block-at t F_C 0 [
@@ -326,7 +321,6 @@ draw-trees: func [i] [
 draw-laser: func [] [
     either > laser 0 [ p-line laser-ox laser-oy laser-x laser-y 2 14 ] [ none ]
 ]
-;; Skull Cave distance signs: fixed world objects within the camera window are
 draw-signs: func [i] [
     either < i 12 [
         sx: block-at signs i
@@ -351,6 +345,10 @@ render-canvas: func [] [
         p-byte 74 p-num 1300 p-num 5 p-eol
         p-byte 74 p-num 1480 p-num 6 p-eol
         p-byte 74 p-num 700 p-num 7 p-eol
+        ;; rope bundles above each pedestal: bundled (14) / dropped (15)
+        either = 1 mod block-at rangi F_TARGET 2 [ p-byte 74 p-num 1120 p-num 15 p-eol ] [ p-byte 74 p-num 1120 p-num 14 p-eol ]
+        either = 1 mod / block-at rangi F_TARGET 2 2 [ p-byte 74 p-num 1300 p-num 15 p-eol ] [ p-byte 74 p-num 1300 p-num 14 p-eol ]
+        either = 1 mod / block-at rangi F_TARGET 4 2 [ p-byte 74 p-num 1480 p-num 15 p-eol ] [ p-byte 74 p-num 1480 p-num 14 p-eol ]
         ;; candidate highlight (only before a route is chosen). FLAT: the loader
         ;; mis-compiles deeply nested conditionals.
         hx: 0

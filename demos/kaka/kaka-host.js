@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.10a";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s10a";
+  var BUILD = "D12S.10b";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s10b";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -269,6 +269,7 @@
     ctx.fillStyle = C.hatD; rrect(ctx, 41, -9, 20, 4, 2); ctx.fill();
   }
   function drawRanger(ctx, pose, x, y, dir, tx) {
+    if (pose === 6) pose = 3;          /* climb pose reuses the jump limbs */
     var cx = x + tx, fy = y + 28, C = RANGER;
     ctx.save();
     ctx.translate(cx, fy);
@@ -489,6 +490,17 @@
       ctx.globalAlpha = 1;
       ctx.fillStyle = "rgba(240,200,90,.4)";
       ctx.beginPath(); ctx.arc(sx, 125, 24 + 6 * Math.sin(performance.now() / 200), 0, 2 * Math.PI); ctx.fill();
+    } else if (kind === 14) {                  /* bundled rope near the cave roof */
+      var rb = 44;
+      ctx.strokeStyle = "#c8a05a"; ctx.lineWidth = 5; ctx.lineCap = "round";
+      for (var q = 0; q < 4; q++) { ctx.beginPath(); ctx.arc(sx, rb, 9 + q * 5, 0.2, Math.PI - 0.2); ctx.stroke(); }
+      ctx.fillStyle = "#e0c07a"; ctx.fillRect(sx - 13, rb - 6, 26, 9);
+    } else if (kind === 15) {                  /* dropped vertical rope */
+      var swy = 5 * Math.sin(performance.now() / 350);
+      ctx.strokeStyle = "#c8a05a"; ctx.lineWidth = 6; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(sx, 16); ctx.quadraticCurveTo(sx + swy, 120, sx, 214); ctx.stroke();
+      ctx.fillStyle = "#a8823f";
+      for (var q2 = 0; q2 < 5; q2++) ctx.fillRect(sx - 6, 34 + q2 * 36, 12, 6);
     }
     ctx.restore();
   }

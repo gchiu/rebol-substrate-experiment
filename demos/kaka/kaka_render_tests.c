@@ -73,9 +73,11 @@ static const char *OVERLAY =
     "  either = current-route 'kaka-signs-start [ view-w: 1000  block-set! rangi F_X 480  keep-visible ] ["
     "  either = current-route 'kaka-cave [ block-set! rangi F_E 1 ] ["
     "  either = current-route 'kaka-cave-pick [ block-set! rangi F_E 1  block-set! rangi F_C 1 ] ["
+    "  either = current-route 'kaka-climb [ block-set! rangi F_E 1  block-set! rangi F_A 1 ] ["
+    "  either = current-route 'kaka-rope [ block-set! rangi F_E 1  block-set! rangi F_TARGET 1 ] ["
     "  either = current-route 'kaka-r1 [ block-set! rangi F_E 2 ] ["
     "  either = current-route 'kaka-r2 [ block-set! rangi F_E 3 ] ["
-    "  either = current-route 'kaka-r3 [ block-set! rangi F_E 4 ] [ reset ]]]]]]]]]]]]]]]]]]]]"
+    "  either = current-route 'kaka-r3 [ block-set! rangi F_E 4 ] [ reset ]]]]]]]]]]]]]]]]]]]]]]"
     "  tally render ] ]";
 
 static char out[65536];
@@ -348,13 +350,26 @@ int main(void) {
     {
         int nv = op_count('V'), nj = op_count('J'), np = op_count('P');
         printf("  cave ops V=%d J=%d P=%d\n", nv, nj, np);
-        if (nv != 1 || nj != 8 || np != 1 || jkind(10) != 0 || jkind(11) != 0) { printf("  FAIL: unselected cave ops wrong\n"); fails++; }
+        if (nv != 1 || nj != 11 || np != 1 || jkind(10) != 0 || jkind(11) != 0 || jkind(14) != 3 || jkind(15) != 0) { printf("  FAIL: unselected cave ops wrong\n"); fails++; }
     }
     if (route("home") != 0) return 2;
     if (route("kaka-cave-pick") != 0) return 2;
     {
         printf("  cave highlight J=%d kind10=%d\n", op_count('J'), jkind(10));
-        if (op_count('J') != 9 || jkind(10) != 1 || jkind(11) != 0) { printf("  FAIL: candidate highlight wrong\n"); fails++; }
+        if (op_count('J') != 12 || jkind(10) != 1 || jkind(11) != 0) { printf("  FAIL: candidate highlight wrong\n"); fails++; }
+    }
+    if (route("home") != 0) return 2;
+    if (route("kaka-rope") != 0) return 2;
+    {
+        printf("  cave rope J=%d k14=%d k15=%d\n", op_count('J'), jkind(14), jkind(15));
+        if (op_count('J') != 11 || jkind(14) != 2 || jkind(15) != 1) { printf("  FAIL: rope drop render wrong\n"); fails++; }
+    }
+    if (route("home") != 0) return 2;
+    if (route("kaka-climb") != 0) return 2;
+    {
+        int pp, px, py, pd, ok = player_op(&pp, &px, &py, &pd);
+        printf("  cave climb pose=%d\n", pp);
+        if (!ok || pp != 6) { printf("  FAIL: climb pose not emitted\n"); fails++; }
     }
     if (route("home") != 0) return 2;
     if (route("kaka-r1") != 0) return 2;
