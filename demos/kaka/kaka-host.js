@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.10";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s10";
+  var BUILD = "D12S.10a";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s10a";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -273,6 +273,7 @@
     ctx.save();
     ctx.translate(cx, fy);
     if (dir < 0) ctx.scale(-1, 1);
+    if (caveMode) ctx.scale(CAVE_RANGI_S, CAVE_RANGI_S);  /* cave presentation only; feet anchored */
     ctx.globalAlpha = rangerAlpha;      /* phone route dissolves the ranger */
     if (pose === 5) { drawFallenRanger(ctx, C); ctx.restore(); return; }
     ctx.fillStyle = "rgba(0,0,0,.22)";
@@ -344,7 +345,16 @@
   /* the cave backdrop IMAGE (replaceable via drawCaveBackground); null until
      loaded, and null forever if the asset fails -> procedural fallback. */
   var caveImg = null;
+  var caveMode = false;              /* set from the V/B ops each frame */
   var CAVE_W = 1800;                 /* cave world width (matches Glon bounds) */
+  /* The cave image IS the visual reference now: 1 image px = 1 world px, drawn
+     at world x=0, so the baked pedestals land at world x ~1120/1300/1480 (the
+     Glon cave pedestal centres were moved there to match). CAVE_IMG_Y shifts the
+     backdrop vertically so the image's floor sits on the cave ground line. */
+  var CAVE_IMG_S = 1.0;
+  var CAVE_IMG_X = 0;
+  var CAVE_IMG_Y = -320;
+  var CAVE_RANGI_S = 1.6;            /* cave-only player presentation scale */
   function loadCaveImage() {
     return loadImage("assets/Moonlit Skull Cave Adventure.png")
       .then(function (im) { caveImg = im; });
@@ -357,14 +367,21 @@
    * backdrop path; Glon only ever emits `V <cam>` + `J <world-x> <kind>`. */
   function drawCaveBackground(ctx, W, H, cam) {
     if (caveImg) {
-      /* One image asset covers the whole 1800-unit cave. Uniform scale to the
-         cave width (never stretching; vertical overflow is cropped), anchored
-         to the floor: the image's lower edge sits at the canvas bottom. Gameplay
+      /* One uniform transform aligns the image's baked pedestal/relic trio with
+         the live Glon pedestal positions (760/1000/1240); aspect preserved, no
+         stretch. Cropped horizontally/vertically as needed; the base fill shows
+         where the image does not reach (near the cave's right wall). Gameplay
          coordinates are untouched (drawn 1:1 with the camera offset). */
-      ctx.fillStyle = "#05040a"; ctx.fillRect(0, 0, W, H);   /* base for any gap */
-      var s = CAVE_W / caveImg.naturalWidth;
-      var sw = CAVE_W, sh = caveImg.naturalHeight * s;
-      ctx.drawImage(caveImg, -cam, H - sh, sw, sh);
+      ctx.fillStyle = "#201c26"; ctx.fillRect(0, 0, W, H);   /* gap base (the image's right-edge colour) */
+      var sw = caveImg.naturalWidth * CAVE_IMG_S, sh = caveImg.naturalHeight * CAVE_IMG_S;
+      var ix = CAVE_IMG_X - cam;
+      ctx.drawImage(caveImg, ix, CAVE_IMG_Y, sw, sh);
+      /* Softly blend the seam where the aligned image ends (~world 1497, before
+         the 1800 wall) into the dark gap -- reads as deeper cave, no hard line. */
+      var seam = ix + sw;
+      var g = ctx.createLinearGradient(seam, 0, seam + 100, 0);
+      g.addColorStop(0, "rgba(32,28,38,0)"); g.addColorStop(1, "rgba(32,28,38,1)");
+      ctx.fillStyle = g; ctx.fillRect(seam, 0, 100, H);
       return;
     }
     /* procedural fallback (unchanged) if the asset is missing */
@@ -386,7 +403,7 @@
        route effects (11 portal / 12 beam / 13 time-box) -- still draw, as does
        Rangi (P). The procedural fallback (no image) draws everything. */
     if (caveImg && kind <= 7) return;
-    var sx = Math.round(x + tx), gy = 350;
+    var sx = Math.round(x + tx), gy = 380;
     ctx.save();
     if (kind === 0) {                          /* skull on the cave wall */
       var cy = 188;
@@ -413,15 +430,15 @@
       ctx.globalAlpha = 1;
     } else if (kind === 10) {                  /* selected-object highlight */
       ctx.strokeStyle = "#ffe066"; ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.arc(sx, 250, 30, 0, 2 * Math.PI); ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx, 122, 34, 0, 2 * Math.PI); ctx.stroke();
       ctx.fillStyle = "#ffe066";
-      ctx.beginPath(); ctx.moveTo(sx, 194); ctx.lineTo(sx - 10, 206); ctx.lineTo(sx + 10, 206); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(sx, 62); ctx.lineTo(sx - 11, 76); ctx.lineTo(sx + 11, 76); ctx.closePath(); ctx.fill();
     } else if (kind >= 1 && kind <= 3) {       /* pedestal block, top at 280 */
-      ctx.fillStyle = "#241f3a"; ctx.fillRect(sx - 42, 280, 84, gy - 280);
-      ctx.fillStyle = "#4b4376"; ctx.fillRect(sx - 42, 272, 84, 10);
-      ctx.fillStyle = "rgba(150,120,255,.3)"; ctx.fillRect(sx - 34, 274, 68, 5);
+      ctx.fillStyle = "#241f3a"; ctx.fillRect(sx - 42, 210, 84, gy - 210);
+      ctx.fillStyle = "#4b4376"; ctx.fillRect(sx - 42, 202, 84, 10);
+      ctx.fillStyle = "rgba(150,120,255,.3)"; ctx.fillRect(sx - 34, 204, 68, 5);
     } else if (kind === 4 || kind === 5 || kind === 6) {   /* pedestal objects */
-      var oy = 252;
+      var oy = 185;
       ctx.fillStyle = "rgba(150,180,255,.22)";               /* soft glow */
       ctx.beginPath(); ctx.arc(sx, oy, 27, 0, 2 * Math.PI); ctx.fill();
       if (kind === 4) {                        /* sci-fi helmet */
@@ -443,35 +460,35 @@
     } else if (kind === 11) {                  /* helmet route: hangar/portal */
       var t = (performance.now() % 1200) / 1200;
       ctx.strokeStyle = "#5fd0ff"; ctx.lineWidth = 5;
-      ctx.strokeRect(sx - 74, 150, 148, 150);
-      ctx.beginPath(); ctx.moveTo(sx - 74, 150); ctx.lineTo(sx, 104); ctx.lineTo(sx + 74, 150); ctx.stroke();
+      ctx.strokeRect(sx - 74, 48, 148, 158);
+      ctx.beginPath(); ctx.moveTo(sx - 74, 48); ctx.lineTo(sx, 6); ctx.lineTo(sx + 74, 48); ctx.stroke();
       for (var r = 0; r < 3; r++) {
         ctx.globalAlpha = 0.55 - r * 0.14; ctx.lineWidth = 4; ctx.strokeStyle = "#8fe0ff";
-        ctx.beginPath(); ctx.arc(sx, 244, 30 + r * 12 + t * 10, 0, 2 * Math.PI); ctx.stroke();
+        ctx.beginPath(); ctx.arc(sx, 120, 30 + r * 12 + t * 10, 0, 2 * Math.PI); ctx.stroke();
       }
       ctx.globalAlpha = 1;
     } else if (kind === 12) {                  /* phone route: transporter beam */
       var t2 = performance.now() / 1000;
-      var bg = ctx.createLinearGradient(0, 110, 0, 350);
+      var bg = ctx.createLinearGradient(0, 20, 0, 380);
       bg.addColorStop(0, "rgba(120,255,220,0)");
       bg.addColorStop(0.5, "rgba(120,255,220,.55)");
       bg.addColorStop(1, "rgba(120,255,220,0)");
-      ctx.fillStyle = bg; ctx.fillRect(sx - 28, 110, 56, 240);
+      ctx.fillStyle = bg; ctx.fillRect(sx - 28, 20, 56, 360);
       ctx.fillStyle = "rgba(190,255,238,.85)";
       for (var s = 0; s < 12; s++) {
-        var yy = (s * 41 + (t2 * 160) % 360) % 360;
-        ctx.fillRect(sx - 22 + (s * 9) % 44, 344 - yy, 4, 4);
+        var yy = (s * 41 + (t2 * 160) % 380) % 380;
+        ctx.fillRect(sx - 22 + (s * 9) % 44, 386 - yy, 4, 4);
       }
     } else if (kind === 13) {                  /* key route: time-box materialises */
       var t3 = Math.min(1, (performance.now() - caveRouteT0) / 1500);
       ctx.globalAlpha = t3; ctx.strokeStyle = "#e8c24a"; ctx.lineWidth = 5;
       var bw = 124 * t3, bh = 150 * t3;
-      ctx.strokeRect(sx - bw / 2, 330 - bh, bw, bh);
+      ctx.strokeRect(sx - bw / 2, 210 - bh, bw, bh);
       ctx.strokeStyle = "rgba(235,215,150,.7)"; ctx.lineWidth = 3;
-      ctx.strokeRect(sx - bw / 2 + 12, 330 - bh + 12, bw - 24, bh - 24);
+      ctx.strokeRect(sx - bw / 2 + 12, 210 - bh + 12, bw - 24, bh - 24);
       ctx.globalAlpha = 1;
       ctx.fillStyle = "rgba(240,200,90,.4)";
-      ctx.beginPath(); ctx.arc(sx, 250, 24 + 6 * Math.sin(performance.now() / 200), 0, 2 * Math.PI); ctx.fill();
+      ctx.beginPath(); ctx.arc(sx, 125, 24 + 6 * Math.sin(performance.now() / 200), 0, 2 * Math.PI); ctx.fill();
     }
     ctx.restore();
   }
@@ -553,6 +570,7 @@
       if (op === "B") {
         cam = +p[1];
         tx = -cam;
+        caveMode = false;
         paintLayer(ctx, W, 0, cam);   /* distant sky / hills  (slowest) */
         paintLayer(ctx, W, 1, cam);   /* native bush / treeline           */
         paintLayer(ctx, W, 2, cam);   /* orchard / fence / near landscape */
@@ -565,7 +583,7 @@
       } else if (op === "N") {
         drawSign(ctx, +p[1], +p[2], tx);
       } else if (op === "V") {
-        cam = +p[1]; tx = -cam;      /* cave plane scrolls 1:1 like the forest */
+        cam = +p[1]; tx = -cam; caveMode = true;   /* cave plane scrolls 1:1 */
         drawCaveBackground(ctx, W, H, cam);
       } else if (op === "J") {
         drawCaveProp(ctx, +p[1], +p[2], tx);

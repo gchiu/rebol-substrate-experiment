@@ -343,28 +343,28 @@ render-canvas: func [] [
     either > block-at rangi F_E 0 [
         ;; SKULL_CAVE chamber: `V` bg + `J` props (0 skull ... 13 key box).
         p-byte 86 p-num cam p-eol
-        p-byte 74 p-num 1000 p-num 0 p-eol
-        p-byte 74 p-num 760 p-num 1 p-eol
-        p-byte 74 p-num 1000 p-num 2 p-eol
-        p-byte 74 p-num 1240 p-num 3 p-eol
-        p-byte 74 p-num 760 p-num 4 p-eol
-        p-byte 74 p-num 1000 p-num 5 p-eol
-        p-byte 74 p-num 1240 p-num 6 p-eol
-        p-byte 74 p-num 1480 p-num 7 p-eol
+        p-byte 74 p-num 900 p-num 0 p-eol
+        p-byte 74 p-num 1120 p-num 1 p-eol
+        p-byte 74 p-num 1300 p-num 2 p-eol
+        p-byte 74 p-num 1480 p-num 3 p-eol
+        p-byte 74 p-num 1120 p-num 4 p-eol
+        p-byte 74 p-num 1300 p-num 5 p-eol
+        p-byte 74 p-num 1480 p-num 6 p-eol
+        p-byte 74 p-num 700 p-num 7 p-eol
         ;; candidate highlight (only before a route is chosen). FLAT: the loader
         ;; mis-compiles deeply nested conditionals.
         hx: 0
         either = block-at rangi F_E 1 [
-            either = block-at rangi F_C 1 [ hx: 760 ] [ none ]
-            either = block-at rangi F_C 2 [ hx: 1000 ] [ none ]
-            either = block-at rangi F_C 3 [ hx: 1240 ] [ none ]
+            either = block-at rangi F_C 1 [ hx: 1120 ] [ none ]
+            either = block-at rangi F_C 2 [ hx: 1300 ] [ none ]
+            either = block-at rangi F_C 3 [ hx: 1480 ] [ none ]
         ] [ none ]
         either > hx 0 [ p-byte 74 p-num hx p-num 10 p-eol ] [ none ]
         ;; route transition effect (distinct per relic)
         rx: 0  rk: 0
-        either = block-at rangi F_E 2 [ rx: 760  rk: 11 ] [ none ]
-        either = block-at rangi F_E 3 [ rx: 1000  rk: 12 ] [ none ]
-        either = block-at rangi F_E 4 [ rx: 1240  rk: 13 ] [ none ]
+        either = block-at rangi F_E 2 [ rx: 1120  rk: 11 ] [ none ]
+        either = block-at rangi F_E 3 [ rx: 1300  rk: 12 ] [ none ]
+        either = block-at rangi F_E 4 [ rx: 1480  rk: 13 ] [ none ]
         either > rx 0 [ p-byte 74 p-num rx p-num rk p-eol ] [ none ]
         draw-player
     ] [
