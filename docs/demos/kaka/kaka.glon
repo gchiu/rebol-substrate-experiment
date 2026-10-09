@@ -223,9 +223,9 @@ step: func [] [
     either > glon-cd 0 [ glon-cd: - glon-cd 1 ] [ none ]
     ;; terminal: input, spawns and scoring stop; the world keeps moving and
     ;; rendering (never frozen) so in-flight rocks/berries clear.
-    either = block-at rangi F_E 1 [
-        ;; SKULL_CAVE: forest spawning/advancing stops; the SAME Rangi actor
-        ;; lives on and can still walk.
+    either > block-at rangi F_E 0 [
+        ;; SKULL_CAVE (no selection or a chosen route): forest spawning/advancing
+        ;; stops; the SAME Rangi actor lives on and can still walk.
         rangi-step
     ] [
         either = over 0 [

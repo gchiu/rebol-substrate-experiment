@@ -12,9 +12,20 @@
 ;; actor inside the visible left margin, then derive cam from the clamped x
 ;; (screenX = x - cam = min(x, 35% * view-w)).
 keep-visible: func [] [
-    either < block-at rangi F_X PLAYER_LEFT_MARGIN [ block-set! rangi F_X PLAYER_LEFT_MARGIN ] [ none ]
+    ;; finite SKULL_CAVE chamber [60,1740]; the forest keeps only the left margin
+    either > block-at rangi F_E 0 [
+        either < block-at rangi F_X 60 [ block-set! rangi F_X 60 ] [ none ]
+        either > block-at rangi F_X 1740 [ block-set! rangi F_X 1740 ] [ none ]
+    ] [
+        either < block-at rangi F_X PLAYER_LEFT_MARGIN [ block-set! rangi F_X PLAYER_LEFT_MARGIN ] [ none ]
+    ]
     t: - block-at rangi F_X / * view-w 35 100
     cam: either < t 0 [ 0 ] [ t ]
+    ;; stop the camera at the cave's right wall (nothing scrolls past 1800)
+    either > block-at rangi F_E 0 [
+        either > cam - 1800 view-w [ cam: - 1800 view-w ] [ none ]
+    ] [ none ]
+    either < cam 0 [ cam: 0 ] [ none ]
 ]
 
 ;; canonical hit consequence, owned by Rangi (pests only request it).
@@ -67,7 +78,7 @@ rangi-step: func [] [
             p: - 22 block-at rangi F_VY
             b: - 330 / * p - 22 p 2
             dx: 330
-            either = block-at rangi F_E 1 [
+            either > block-at rangi F_E 0 [
                 either <= b 285 [
                     either < abs - block-at rangi F_X 760 44 [ dx: 280 ] [ none ]
                     either < abs - block-at rangi F_X 1000 44 [ dx: 280 ] [ none ]
@@ -85,7 +96,7 @@ rangi-step: func [] [
             ]
         ] [
             dx: 330
-            either = block-at rangi F_E 1 [
+            either > block-at rangi F_E 0 [
                 either <= block-at rangi F_Y 285 [
                     either < abs - block-at rangi F_X 760 44 [ dx: 280 ] [ none ]
                     either < abs - block-at rangi F_X 1000 44 [ dx: 280 ] [ none ]
@@ -94,11 +105,17 @@ rangi-step: func [] [
             ] [ none ]
             block-set! rangi F_Y dx
         ]
+        ;; standing on a pedestal HIGHLIGHTS that relic (candidate); leaving
+        ;; clears it. FIRE (krock) confirms the candidate -> route transition.
         either = block-at rangi F_E 1 [
+            block-set! rangi F_C 0
             either <= block-at rangi F_Y 300 [
                 either < abs - block-at rangi F_X 760 44 [ block-set! rangi F_C 1 ] [ none ]
                 either < abs - block-at rangi F_X 1000 44 [ block-set! rangi F_C 2 ] [ none ]
                 either < abs - block-at rangi F_X 1240 44 [ block-set! rangi F_C 3 ] [ none ]
+            ] [ none ]
+            either = krock 1 [
+                either > block-at rangi F_C 0 [ block-set! rangi F_E + block-at rangi F_C 1 ] [ none ]
             ] [ none ]
         ] [ none ]
         either > block-at rangi F_X dist [ dist: block-at rangi F_X ] [ none ]
