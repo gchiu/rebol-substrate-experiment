@@ -390,7 +390,7 @@ patrol-serve: demos/patrol/glon.wasm demos/patrol/prelude.glon demos/patrol/stri
 # Kaka uses no M1 multitasking tasks, so its runtime reclaims the reserved M1
 # task arena as loader heap (R0S1_HEAP_LIMIT override). The shared shop WASM
 # keeps the default 14800-cell loader heap (Linda does use tasks).
-KAKA_HEAP_LIMIT = 64000
+KAKA_HEAP_LIMIT = 65536
 KAKA_LIMIT_FLAG = -DR0S1_HEAP_LIMIT=$(KAKA_HEAP_LIMIT)
 
 demo/shop/glon-kaka.wasm: standalone/glon.c r0_s1_g1a.c r0_s1_g1a.h s1.c s1.h r0_s1_runtime.c r0_s1_show.c r0_s1.h

@@ -95,15 +95,18 @@ pest-speed: [ 4 5 3 ]
 skull-ready: 0
 cd: 0 glon-cd: 0
 berries: 1
-    next-kaka: 40 next-pick: 1100 next-milestone: 600
-    wave: 0 wave-left: 0 wave-cd: 0
-;; x at which the next ahead tree will be planted as the ranger advances.
-next-tree-x: 240
-laser: -99 laser-x: 0 laser-y: 0 laser-ox: 0 laser-oy: 0
+;; packed world groups (fewer top-level bindings). Values are set by `reset`.
+;;   nx = spawn timers (0 next-kaka, 1 next-pick, 2 next-tree-x)
+;;   wv = wave/rhythm (0 wave, 1 wave-left, 2 wave-cd, 3 next-milestone)
+;;   lz = mutant laser (0 target, 1 x, 2 y, 3 ox, 4 oy)
+;;   mt = mutant activity (0 active, 1 left)
+nx: new-block 3
+wv: new-block 4
+lz: new-block 5
+mt: new-block 2
 idc: 0 rng: 12345
 ;; aggregate actor/tree tallies, refreshed once per tick by `tally` so the
 ;; spawn logic, HUD and game-over test never re-scan the tuple space.
-mutant-active: 0 mutant-left: 0
 n-kaka: 0 n-rat: 0 n-stoat: 0 n-possum: 0 n-pick: 0 n-rock: 0
 ;; cumulative tuple-claim failures (capacity pressure); never reset by tally,
 ;; only by a full restart. Zero means no kind ever starved for a slot.
@@ -192,19 +195,19 @@ move-all: func [i] [
     ] [ none ]
 ]
 spawn-timers: func [] [
-    next-kaka: - next-kaka 1
-    either < next-kaka 1 [
-        either < n-kaka KAKA_MAX [ spawn-kaka  next-kaka: + 70 mod tick 60 ] [ next-kaka: 40 ]
+    block-set! nx 0  - block-at nx 0 1
+    either < block-at nx 0 1 [
+        either < n-kaka KAKA_MAX [ spawn-kaka  block-set! nx 0  + 70 mod tick 60 ] [ block-set! nx 0  40 ]
     ] [ none ]
     wave-step
     ;; rolling forest: plant the next tree ahead as the ranger advances, and
     ;; reclaim trees well behind. Bounded -- next-tree-x only ever climbs.
-    either < next-tree-x + block-at rangi F_X 1360 [ spawn-tree 0 next-tree-x  next-tree-x: + next-tree-x 720 ] [ none ]
+    either < block-at nx 2 + block-at rangi F_X 1360 [ spawn-tree 0 block-at nx 2  block-set! nx 2  + block-at nx 2 720 ] [ none ]
     tr-cull 0
-    next-pick: - next-pick 1
-    either < next-pick 1 [
+    block-set! nx 1  - block-at nx 1 1
+    either < block-at nx 1 1 [
         either < berries 3 [ either = 0 n-pick [ spawn-pick ] [ none ] ] [ none ]
-        next-pick: + 1100 mod tick 400
+        block-set! nx 1  + 1100 mod tick 400
     ] [ none ]
 ]
 ;; reclaim trees that have fallen well behind the ranger (their tuples are
@@ -238,7 +241,7 @@ step: func [] [
         move-all 0
     ]
     either = over 0 [
-        either >= tick next-milestone [ score: + score 50  next-milestone: + next-milestone 600 ] [ none ]
+        either >= tick block-at wv 3 [ score: + score 50  block-set! wv 3  + block-at wv 3 600 ] [ none ]
     ] [ none ]
 ]
 reset: func [] [
@@ -248,10 +251,10 @@ reset: func [] [
     cd: 0 glon-cd: 0
     cam: 0 dist: 480
     berries: 1
-    next-kaka: 40 next-pick: 1100 next-milestone: 600
-    wave: 0 wave-left: 0 wave-cd: 0
-    next-tree-x: 2400
-        laser: -99 laser-x: 0 laser-y: 0 laser-ox: 0 laser-oy: 0
+    block-set! nx 0  40 block-set! nx 1  1100 block-set! wv 3  600
+    block-set! wv 0  0 block-set! wv 1  0 block-set! wv 2  0
+    block-set! nx 2  2400
+        block-set! lz 0  -99 block-set! lz 1  0 block-set! lz 2  0 block-set! lz 3  0 block-set! lz 4  0
     tcfail: 0
     idc: 0 rng: 12345
     ts-hi: 0
@@ -283,7 +286,7 @@ reset: func [] [
 tally: func [] [
     either > score highscore [ highscore: score ] [ none ]
     ch-hi 6
-    mutant-active: 0  mutant-left: 0
+    block-set! mt 0  0  block-set! mt 1  0
     n-kaka: 0  n-rat: 0  n-stoat: 0  n-possum: 0  n-pick: 0  n-rock: 0
     trees-live: 0  tree-sum: 0
     tly 0
@@ -299,9 +302,9 @@ tly: func [i] [
         either = k K_KAKA [
             n-kaka: + n-kaka 1
             either = block-at ts-t i F_STATE KS_MUTANT [
-                mutant-active: 1
+                block-set! mt 0  1
                 l: - block-at ts-t i F_B tick
-                either > l mutant-left [ mutant-left: l ] [ none ]
+                either > l block-at mt 1 [ block-set! mt 1  l ] [ none ]
             ] [ none ]
         ] [
         either = k K_RAT [

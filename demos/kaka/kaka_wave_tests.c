@@ -64,11 +64,11 @@ int main(void) {
     if (load_file("demos/kaka/kaka-rangi.glon")) return 2;
     if (load_file("demos/kaka/kaka-wave.glon")) return 2;
 
-    printf("kaka D12B wave/climb/cover test\n");
+    printf("kaka D12B block-at wv 0/climb/cover test\n");
 
     /* 1. a new game has no wave; a spawned pest enters off the RIGHT edge */
     run_source("reset");
-    check(run_int("wave") == 0 && run_int("n-rat") == 0, "1 fresh: no wave, no pests");
+    check(run_int("block-at wv 0") == 0 && run_int("n-rat") == 0, "1 fresh: no block-at wv 0, no pests");
     run_source("spawn-pest");
     check(run_int("block-at ts-t 3 F_X") == run_int("+ + cam view-w 90"), "1 pest spawns off the right edge");
     check(run_int("block-at ts-t 3 F_X") > run_int("block-at rangi F_X"), "1 pest is ahead (right) of the ranger");
@@ -78,7 +78,7 @@ int main(void) {
     /* 2. the wave controller advances and produces rats */
     run_source("reset");
     for (int t = 0; t < 400 && run_int("n-rat") < 1; t++) run_source("on-tick");
-    check(run_int("wave") >= 1 && run_int("n-rat") >= 1, "2 wave advances and spawns rats");
+    check(run_int("block-at wv 0") >= 1 && run_int("n-rat") >= 1, "2 block-at wv 0 advances and spawns rats");
 
     /* 3. a rat climbs the tree it reaches and gnaws it */
     run_source("reset");
@@ -189,12 +189,12 @@ int main(void) {
     /* 15 (J/M/Q). restart clears progression/pests/projectiles + viewport-only */
     run_source("reset");
     run_source("spawn-pest");
-    long px0 = run_int("block-at rangi F_X"), d0 = run_int("dist"), nx0 = run_int("next-tree-x");
-    run_source("block-set! rangi F_X  3000  dist: 3000  next-tree-x: 10000");
+    long px0 = run_int("block-at rangi F_X"), d0 = run_int("dist"), nx0 = run_int("block-at nx 2");
+    run_source("block-set! rangi F_X  3000  dist: 3000  block-set! nx 2  10000");
     run_source("view-w: 1200  rangi-step");
     check(run_int("block-at rangi F_X") == 3000, "15 viewport change does not move the ranger");
     run_source("reset");
-    check(run_int("block-at rangi F_X") == 480 && run_int("dist") == 480 && run_int("next-tree-x") == 2400,
+    check(run_int("block-at rangi F_X") == 480 && run_int("dist") == 480 && run_int("block-at nx 2") == 2400,
           "15 restart resets progression");
     check(run_int("ts-count K_RAT") == 0 && run_int("ts-count K_ROCK") == 0 && run_int("ts-count K_BERRY") == 0,
           "15 restart clears pests/projectiles");
@@ -223,7 +223,7 @@ int main(void) {
     run_source("r: ts-claim K_RAT  block-set! r F_X 305  block-set! r F_Y 330  block-set! r F_STATE 9  block-set! r F_C 20");
     run_source("k: ts-claim K_KAKA  block-set! k F_STATE KS_MUTANT  block-set! k F_B + tick 540  block-set! k F_X 300  block-set! k F_Y 320");
     run_source("kaka-mutant k");
-    check(run_int("ts-count K_RAT") == 1 && run_int("laser") < 0, "17 powered kaka does not target a ghost");
+    check(run_int("ts-count K_RAT") == 1 && run_int("block-at lz 0") < 0, "17 powered kaka does not target a ghost");
     run_source("reset");
     run_source("r: ts-claim K_RAT  block-set! r F_STATE 9  block-set! r F_C 20");
     for (int i = 0; i < 20; i++) run_source("rat-step r");
@@ -239,7 +239,7 @@ int main(void) {
     run_source("r: ts-claim K_RAT  block-set! r F_X 305  block-set! r F_Y 250  block-set! r F_STATE 2  block-set! r F_B 5  block-set! r F_A 2  block-set! r F_E 305");
     run_source("k: ts-claim K_KAKA  block-set! k F_STATE KS_MUTANT  block-set! k F_B + tick 540  block-set! k F_X 300  block-set! k F_Y 240");
     run_source("kaka-mutant k");
-    check(run_int("block-at r F_STATE") == 9, "18 laser kills a gnawing possum -> ghost");
+    check(run_int("block-at r F_STATE") == 9, "18 block-at lz 0 kills a gnawing possum -> ghost");
     /* a state-9 ghost is inert: it only ticks its timer (never climbs/moves) */
     run_source("reset");
     run_source("r: ts-claim K_RAT  block-set! r F_X 960  block-set! r F_Y 250  block-set! r F_STATE 9  block-set! r F_C 20  block-set! r F_A 0");
@@ -607,10 +607,10 @@ int main(void) {
     check(run_int("block-at rangi F_X") > 200, "33 Rangi can walk in the cave");
     run_source("kr: 0");
     {
-        long nrat0 = run_int("ts-count K_RAT"), tree0 = run_int("ts-count K_TREE"), ntx = run_int("next-tree-x");
+        long nrat0 = run_int("ts-count K_RAT"), tree0 = run_int("ts-count K_TREE"), ntx = run_int("block-at nx 2");
         for (int i = 0; i < 200; i++) run_source("step");
         check(run_int("ts-count K_RAT") <= nrat0 && run_int("ts-count K_TREE") == tree0 &&
-              run_int("next-tree-x") == ntx, "33 forest spawning is frozen in the cave");
+              run_int("block-at nx 2") == ntx, "33 forest spawning is frozen in the cave");
     }
     run_source("reset");
     check(run_int("block-at rangi F_E") == 0 && run_int("dist") == 480 && run_int("skull-ready") == 0,

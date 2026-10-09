@@ -17,7 +17,7 @@
 ;; Pest phases (F_STATE): 0 march, 1 climb, 2 gnaw, 3 descend, 9 dead.
 ;; F_D is reused as the non-lethal hit-flash timer (direction is always left).
 [
-wave: 0  wave-left: 0  wave-cd: 0
+block-set! wv 0  0  block-set! wv 1  0  block-set! wv 2  0
 
 ;; spawn a pest just off the RIGHT edge, marching left. Species escalates with
 ;; progress: rats first, then rats+stoats, then +possums, then a mixed invasion.
@@ -47,17 +47,17 @@ spawn-pest: func [] [
 ;; wave controller: wave w sends 2w+2 pests (4, 6, 8, ...); difficulty grows by
 ;; NUMBERS, never by toughness. Species mix is chosen per-spawn from progress.
 wave-step: func [] [
-    either > wave-left 0 [
-        either < wave-cd 1 [
-            either < n-rat RAT_MAX [ spawn-pest  wave-left: - wave-left 1  wave-cd: 34 ] [ none ]
-        ] [ wave-cd: - wave-cd 1 ]
+    either > block-at wv 1 0 [
+        either < block-at wv 2 1 [
+            either < n-rat RAT_MAX [ spawn-pest  block-set! wv 1  - block-at wv 1 1  block-set! wv 2  34 ] [ none ]
+        ] [ block-set! wv 2  - block-at wv 2 1 ]
     ] [
         either < n-rat 1 [
-            either < wave-cd 1 [
-                wave: + wave 1
-                wave-left: either > wave 6 [ 14 ] [ + * 2 wave 2 ]
-                wave-cd: 80
-            ] [ wave-cd: - wave-cd 1 ]
+            either < block-at wv 2 1 [
+                block-set! wv 0  + block-at wv 0 1
+                block-set! wv 1  either > block-at wv 0 6 [ 14 ] [ + * 2 block-at wv 0 2 ]
+                block-set! wv 2  80
+            ] [ block-set! wv 2  - block-at wv 2 1 ]
         ] [ none ]
     ]
 ]

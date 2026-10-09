@@ -73,7 +73,7 @@ test-rules: func [] [
     either = ts-count K_RAT 1 [ none ] [ fails: + fails 1 ]
     ;; 5. restart clears pests/rocks/berries and resets progress + camera
     r: ts-claim K_RAT  b: ts-claim K_ROCK  g: ts-claim K_BERRY
-    block-set! rangi F_X  5000  dist: 5000  next-tree-x: 6000
+    block-set! rangi F_X  5000  dist: 5000  block-set! nx 2  6000
     reset
     either = ts-count K_RAT 0 [ none ] [ fails: + fails 1 ]
     either = ts-count K_ROCK 0 [ none ] [ fails: + fails 1 ]
