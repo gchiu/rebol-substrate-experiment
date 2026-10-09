@@ -71,7 +71,8 @@ static const char *OVERLAY =
     "  either = current-route 'kaka-signs [ view-w: 20000 ] ["
     "  either = current-route 'kaka-signs-near [ view-w: 900  block-set! rangi F_X 2000  keep-visible ] ["
     "  either = current-route 'kaka-signs-start [ view-w: 1000  block-set! rangi F_X 480  keep-visible ] ["
-    "  either = current-route 'kaka-cave [ block-set! rangi F_E 1 ] [ reset ]]]]]]]]]]]]]]]]"
+    "  either = current-route 'kaka-cave [ block-set! rangi F_E 1 ] ["
+    "  either = current-route 'kaka-cave-pick [ block-set! rangi F_E 1  block-set! rangi F_C 2 ] [ reset ]]]]]]]]]]]]]]]]]"
     "  tally render ] ]";
 
 static char out[65536];
@@ -328,13 +329,21 @@ int main(void) {
         printf("  signs at start n=%d x=%d label=%d\n", ns, ns ? xs[0] : -1, ns ? lb[0] : -1);
         if (ns != 1 || xs[0] != 500 || lb[0] != 0) { printf("  FAIL: first sign not visible during ordinary movement\n"); fails++; }
     }
-    /* SKULL_CAVE scene: a `V` background + a skull and three `J` door/prop ops */
+    /* SKULL_CAVE choice chamber: `V` bg + `J` props (skull, 3 pedestals,
+       3 objects, phantom) + `P`; a chosen object adds a highlight `J`. */
     if (route("home") != 0) return 2;
     if (route("kaka-cave") != 0) return 2;
     {
         int nv = op_count('V'), nj = op_count('J'), np = op_count('P');
         printf("  cave ops V=%d J=%d P=%d\n", nv, nj, np);
-        if (nv != 1 || nj != 4 || np != 1) { printf("  FAIL: cave scene ops wrong\n"); fails++; }
+        if (nv != 1 || nj != 8 || np != 1) { printf("  FAIL: cave scene ops wrong\n"); fails++; }
+    }
+    if (route("home") != 0) return 2;
+    if (route("kaka-cave-pick") != 0) return 2;
+    {
+        int nj = op_count('J');
+        printf("  cave pick J=%d\n", nj);
+        if (nj != 9) { printf("  FAIL: selection highlight missing\n"); fails++; }
     }
     /* camera-relative: only the sign near the current view is emitted (world-fixed) */
     if (route("home") != 0) return 2;

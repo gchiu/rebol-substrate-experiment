@@ -17,11 +17,9 @@ seg-rect?: func [ax ay bx by x0 y0 x1 y1] [
         either < p rl [ 0 ] [ either > p rh [ 0 ] [ 1 ] ]
     ] ] ] ]
 ]
-;; The ranger's hitbox in world coordinates (matches draw-player: head + body).
 laser-hits-player?: func [] [
     seg-rect? laser-ox laser-oy laser-x laser-y - block-at rangi F_X 10 - block-at rangi F_Y 14 + block-at rangi F_X 10 + block-at rangi F_Y 22
 ]
-;; One life, exactly, with NO teleport (the rolling world must not jump back);
 ;; short invulnerability follows. The ONE canonical player-consequence path.
 ;; mutant laser crossing the ranger (invuln / game over change nothing)
 laser-hazard: func [] [
@@ -29,7 +27,6 @@ laser-hazard: func [] [
         either < block-at rangi F_A 1 [ either laser-hits-player? [ lose-life ] [ none ] ] [ none ]
     ] [ none ]
 ]
-;; The host reports the logical presentation width (from the display aspect) so
 ;; the camera can show more world on wide landscape screens.
 on-viewport: func [] [
     v: str-int current-value
@@ -50,7 +47,6 @@ k-move: func [t wx wy sx sy] [
     block-set! t F_X + block-at t F_X vx
     block-set! t F_Y + block-at t F_Y vy
 ]
-;; pick the first live tree from an id-derived offset (distinct ids spread out)
 kp: func [n t] [
     either < n NTS [
         i: mod + mod block-at t F_ID NTS n NTS
@@ -140,7 +136,6 @@ nr: func [i best bd t] [
         ] [ nr + i 1 best bd t ]
     ] [ best ]
 ]
-;; ocular beam origin relative to the mutant's logical (x,y), right-facing frame
 kaka-mutant: func [t] [
     either > tick block-at t F_B [ block-set! t F_STATE KS_LEAVE  laser: -99 ] [
         r: nr 0 none 99999 t
@@ -151,7 +146,6 @@ kaka-mutant: func [t] [
             rx: block-at r F_X
             ry: block-at r F_Y
             k-move t rx ry 6 6
-            ;; ocular beam + its ranger-crossing test; off-screen birds may
             ;; still simulate but draw/zap nothing until near the viewport
             d: either < block-at t F_VY 0 [ -1 ] [ 1 ]
             laser: -99
@@ -339,7 +333,6 @@ draw-laser: func [] [
     either > laser 0 [ p-line laser-ox laser-oy laser-x laser-y 2 14 ] [ none ]
 ]
 ;; Skull Cave distance signs: fixed world objects within the camera window are
-;; emitted as `N <world-x> <label-id>`; the host draws the post + board + text.
 draw-signs: func [i] [
     either < i 12 [
         sx: block-at signs i
@@ -354,15 +347,26 @@ draw-signs: func [i] [
 render-canvas: func [] [
     p-clear
     either = block-at rangi F_E 1 [
-        ;; SKULL_CAVE scene: host paints the `V` background + `J` props
+        ;; SKULL_CAVE choice chamber: host paints the `V` background + `J` props.
+        ;; kinds: 0 skull, 1-3 pedestals, 4 helmet, 5 phone, 6 key, 7 phantom,
+        ;; 10 selection highlight.
         p-byte 86 p-num cam p-eol
-        p-byte 74 p-num 700 p-num 0 p-eol
-        p-byte 74 p-num 1000 p-num 1 p-eol
-        p-byte 74 p-num 1260 p-num 2 p-eol
-        p-byte 74 p-num 1520 p-num 3 p-eol
+        p-byte 74 p-num 1000 p-num 0 p-eol
+        p-byte 74 p-num 760 p-num 1 p-eol
+        p-byte 74 p-num 1000 p-num 2 p-eol
+        p-byte 74 p-num 1240 p-num 3 p-eol
+        p-byte 74 p-num 760 p-num 4 p-eol
+        p-byte 74 p-num 1000 p-num 5 p-eol
+        p-byte 74 p-num 1240 p-num 6 p-eol
+        p-byte 74 p-num 1480 p-num 7 p-eol
+        either = block-at rangi F_C 1 [ p-byte 74 p-num 760 p-num 10 p-eol ] [
+        either = block-at rangi F_C 2 [ p-byte 74 p-num 1000 p-num 10 p-eol ] [
+        either = block-at rangi F_C 3 [ p-byte 74 p-num 1240 p-num 10 p-eol ] [ none ] ] ]
         draw-player
     ] [
         p-byte 66 p-num cam p-eol          ;; B cam : forest background
+        ;; night falls as the ranger nears Skull Cave
+        either >= dist - SKULL_X 700 [ p-byte 81 p-num cam p-eol ] [ none ]
         draw-trees 0
         draw-signs 0
         actor-art 0
@@ -375,7 +379,6 @@ render-canvas: func [] [
 ]
 
 ;; ---- HTML status (Glon builds only the dynamic part; the static head/tag/
-;; keyboard/muted markup lives in kaka.html so it is not re-emitted every tick) --
 render-status: func [] [
     e-clear
     e-text "<p class='hud'>SCORE: " e-int score

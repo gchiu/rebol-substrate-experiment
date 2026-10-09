@@ -665,6 +665,26 @@ int main(void) {
         check(run_int("block-at rangi F_Y") == 330, "31 E jump lands at ground 330");
     }
 
+    /* 34. Skull Cave choice chamber: pedestal platforms + object selection */
+    run_source("reset  view-w: 1000  kl: 0  kr: 0");
+    run_source("dist: 4000  rangi-step");                 /* enter the cave */
+    check(run_int("block-at rangi F_E") == 1 && run_int("block-at rangi F_C") == 0, "34 in cave, nothing chosen yet");
+    /* jump onto pedestal A (x=760) and land on its top */
+    run_source("block-set! rangi F_X 760  block-set! rangi F_Y 330  block-set! rangi F_VY 0  ku: 1  rangi-step");
+    for (int i = 0; i < 40 && run_int("block-at rangi F_VY") > 0; i++) run_source("ku: 0  rangi-step");
+    check(run_int("block-at rangi F_Y") == 280, "34 lands on pedestal A top (280)");
+    check(run_int("block-at rangi F_C") == 1, "34 object A selection = helmet");
+    /* stepping off the pedestal drops back to the floor */
+    run_source("block-set! rangi F_X 700  rangi-step");
+    check(run_int("block-at rangi F_Y") == 330, "34 stepping off drops to the floor");
+    /* pedestal C (x=1240) selects the key (id 3) */
+    run_source("block-set! rangi F_X 1240  block-set! rangi F_Y 330  block-set! rangi F_VY 0  ku: 1  rangi-step");
+    for (int i = 0; i < 40 && run_int("block-at rangi F_VY") > 0; i++) run_source("ku: 0  rangi-step");
+    check(run_int("block-at rangi F_Y") == 280 && run_int("block-at rangi F_C") == 3, "34 object C selection = key");
+    /* passing the pedestal on the floor (not up on it) selects nothing */
+    run_source("reset  dist: 4000  rangi-step  block-set! rangi F_X 1000  block-set! rangi F_Y 330  rangi-step");
+    check(run_int("block-at rangi F_C") == 0, "34 passing on the floor selects nothing");
+
     if (fails == 0) { printf("kaka-wave-test PASS\n"); return 0; }
     printf("kaka-wave-test FAIL (%d)\n", fails);
     return 1;

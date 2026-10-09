@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.6";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s6";
+  var BUILD = "D12S.7";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s7";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -365,23 +365,57 @@
       ctx.beginPath(); ctx.ellipse(sx + 23, cy + 4, 15, 17, 0, 0, 2 * Math.PI); ctx.fill();
       ctx.beginPath(); ctx.moveTo(sx, cy + 20); ctx.lineTo(sx - 7, cy + 34); ctx.lineTo(sx + 7, cy + 34); ctx.closePath(); ctx.fill();
       for (var t = -20; t <= 20; t += 10) ctx.fillRect(sx + t - 2, cy + 42, 4, 12);
-    } else {                                   /* three visibly different doors */
-      var dh = 122, dw = 76, top = gy - dh;
-      ctx.lineWidth = 7;
-      if (kind === 1) {                        /* arched, emerald */
-        ctx.fillStyle = "#06140d"; ctx.beginPath();
-        ctx.moveTo(sx - dw / 2, gy); ctx.lineTo(sx - dw / 2, top + dw / 2);
-        ctx.arc(sx, top + dw / 2, dw / 2, Math.PI, 0); ctx.lineTo(sx + dw / 2, gy); ctx.closePath(); ctx.fill();
-        ctx.strokeStyle = "#3fae6a"; ctx.stroke();
-      } else if (kind === 2) {                 /* square, sapphire */
-        ctx.fillStyle = "#08111f"; ctx.fillRect(sx - dw / 2, top, dw, dh);
-        ctx.strokeStyle = "#4f8fd6"; ctx.strokeRect(sx - dw / 2, top, dw, dh);
-      } else {                                 /* round, ruby */
-        ctx.fillStyle = "#180608"; ctx.beginPath(); ctx.arc(sx, gy - dw / 2, dw / 2, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = "#d15a5a"; ctx.stroke();
+    } else if (kind === 7) {                   /* sleeping Phantom in a hammock */
+      var hy = 200;
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = "#7a5fbf"; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(sx - 60, hy - 24); ctx.quadraticCurveTo(sx, hy + 22, sx + 60, hy - 24); ctx.stroke();
+      ctx.fillStyle = "#5b4a92";
+      ctx.beginPath(); ctx.ellipse(sx, hy - 6, 44, 15, 0.06, 0, 2 * Math.PI); ctx.fill();
+      ctx.beginPath(); ctx.arc(sx + 40, hy - 14, 12, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = "#9a8ad8"; ctx.fillRect(sx + 30, hy - 20, 20, 9);       /* mask */
+      ctx.fillStyle = "#1a1330"; ctx.fillRect(sx + 36, hy - 17, 3, 3); ctx.fillRect(sx + 43, hy - 17, 3, 3);
+      ctx.fillStyle = "#2a2340"; ctx.fillRect(sx - 66, hy - 24, 6, 64); ctx.fillRect(sx + 60, hy - 24, 6, 64);
+      ctx.globalAlpha = 1;
+    } else if (kind === 10) {                  /* selected-object highlight */
+      ctx.strokeStyle = "#ffe066"; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(sx, 250, 30, 0, 2 * Math.PI); ctx.stroke();
+      ctx.fillStyle = "#ffe066";
+      ctx.beginPath(); ctx.moveTo(sx, 194); ctx.lineTo(sx - 10, 206); ctx.lineTo(sx + 10, 206); ctx.closePath(); ctx.fill();
+    } else if (kind >= 1 && kind <= 3) {       /* pedestal block, top at 280 */
+      ctx.fillStyle = "#241f3a"; ctx.fillRect(sx - 42, 280, 84, gy - 280);
+      ctx.fillStyle = "#4b4376"; ctx.fillRect(sx - 42, 272, 84, 10);
+      ctx.fillStyle = "rgba(150,120,255,.3)"; ctx.fillRect(sx - 34, 274, 68, 5);
+    } else if (kind === 4 || kind === 5 || kind === 6) {   /* pedestal objects */
+      var oy = 252;
+      ctx.fillStyle = "rgba(150,180,255,.22)";               /* soft glow */
+      ctx.beginPath(); ctx.arc(sx, oy, 27, 0, 2 * Math.PI); ctx.fill();
+      if (kind === 4) {                        /* sci-fi helmet */
+        ctx.fillStyle = "#a9bede"; ctx.beginPath(); ctx.arc(sx, oy, 17, Math.PI, 0); ctx.fill();
+        ctx.fillRect(sx - 17, oy, 34, 12);
+        ctx.fillStyle = "#16203a"; ctx.fillRect(sx - 13, oy - 3, 26, 12);
+        ctx.fillStyle = "#e9f1ff"; ctx.fillRect(sx - 13, oy - 6, 26, 3);
+      } else if (kind === 5) {                 /* flip phone / communicator */
+        ctx.fillStyle = "#2b3550"; rrect(ctx, sx - 11, oy - 21, 22, 42, 4); ctx.fill();
+        ctx.fillStyle = "#6fe0c0"; ctx.fillRect(sx - 8, oy - 18, 16, 18);
+        ctx.fillStyle = "#c9d4e6"; ctx.fillRect(sx - 8, oy + 3, 16, 15);
+      } else {                                 /* key (blue-box route) */
+        ctx.strokeStyle = "#f0cc54"; ctx.lineWidth = 6; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.arc(sx - 10, oy - 8, 9, 0, 2 * Math.PI); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sx - 3, oy - 2); ctx.lineTo(sx + 17, oy + 17); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sx + 7, oy + 7); ctx.lineTo(sx + 2, oy + 12); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sx + 13, oy + 13); ctx.lineTo(sx + 8, oy + 18); ctx.stroke();
       }
     }
     ctx.restore();
+  }
+  /* night overlay for the forest as the ranger nears Skull Cave */
+  function drawNight(ctx, W, H) {
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "rgba(6,10,32,.74)"); g.addColorStop(1, "rgba(6,10,32,.5)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(255,255,255,.85)";
+    for (var i = 0; i < 44; i++) ctx.fillRect((i * 211) % W, (i * 97) % 150, 2, 2);
   }
 
   /* ---- pest-heaven ghosts (host-side presentation only) ------------------
@@ -465,9 +499,12 @@
       } else if (op === "N") {
         drawSign(ctx, +p[1], +p[2], tx);
       } else if (op === "V") {
+        cam = +p[1]; tx = -cam;      /* cave plane scrolls 1:1 like the forest */
         drawCaveBackground(ctx, W, H);
       } else if (op === "J") {
         drawCaveProp(ctx, +p[1], +p[2], tx);
+      } else if (op === "Q") {
+        drawNight(ctx, W, H);
       } else if (op === "C") {
         ctx.fillStyle = COL[0];
         ctx.fillRect(0, 0, W, H);
