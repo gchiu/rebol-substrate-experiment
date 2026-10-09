@@ -69,7 +69,8 @@ static const char *OVERLAY =
     "  either = current-route 'kaka-over [ block-set! rangi F_B  0  block-set! rangi F_Y  270  kr: 1 ] ["
     "  either = current-route 'kaka-dead [ block-set! rangi F_STATE  1  block-set! rangi F_Y  200  kr: 1 ] ["
     "  either = current-route 'kaka-signs [ view-w: 20000 ] ["
-    "  either = current-route 'kaka-signs-near [ view-w: 900  block-set! rangi F_X 6500  keep-visible ] [ reset ]]]]]]]]]]]]]]"
+    "  either = current-route 'kaka-signs-near [ view-w: 900  block-set! rangi F_X 2000  keep-visible ] ["
+    "  either = current-route 'kaka-signs-start [ view-w: 1000  block-set! rangi F_X 480  keep-visible ] [ reset ]]]]]]]]]]]]]]]"
     "  tally render ] ]";
 
 static char out[65536];
@@ -305,11 +306,19 @@ int main(void) {
     if (route("kaka-signs") != 0) return 2;
     {
         int xs[8], lb[8]; int ns = signs_list(xs, lb, 8);
-        int ex[6] = {1000, 3750, 6500, 9250, 11450, 12000};
+        int ex[6] = {500, 1250, 2000, 2750, 3500, 4000};
         printf("  signs n=%d first=%d last=%d\n", ns, ns ? xs[0] : -1, ns ? xs[ns-1] : -1);
         if (ns != 6) { printf("  FAIL: expected 6 signs, got %d\n", ns); fails++; }
         else for (int i = 0; i < 6; i++)
             if (xs[i] != ex[i] || lb[i] != i) { printf("  FAIL: sign %d pos/label wrong (%d,%d)\n", i, xs[i], lb[i]); fails++; }
+    }
+    /* I. at an ordinary phone width, the first sign is in view at the start */
+    if (route("home") != 0) return 2;
+    if (route("kaka-signs-start") != 0) return 2;
+    {
+        int xs[8], lb[8]; int ns = signs_list(xs, lb, 8);
+        printf("  signs at start n=%d x=%d label=%d\n", ns, ns ? xs[0] : -1, ns ? lb[0] : -1);
+        if (ns != 1 || xs[0] != 500 || lb[0] != 0) { printf("  FAIL: first sign not visible during ordinary movement\n"); fails++; }
     }
     /* camera-relative: only the sign near the current view is emitted (world-fixed) */
     if (route("home") != 0) return 2;
@@ -317,7 +326,7 @@ int main(void) {
     {
         int xs[8], lb[8]; int ns = signs_list(xs, lb, 8);
         printf("  signs near n=%d x=%d label=%d\n", ns, ns ? xs[0] : -1, ns ? lb[0] : -1);
-        if (ns != 1 || xs[0] != 6500 || lb[0] != 2) { printf("  FAIL: sign culling/world-anchor wrong\n"); fails++; }
+        if (ns != 1 || xs[0] != 2000 || lb[0] != 2) { printf("  FAIL: sign culling/world-anchor wrong\n"); fails++; }
     }
     /* no old primitive ranger must remain (the host is the only painter) */
     {

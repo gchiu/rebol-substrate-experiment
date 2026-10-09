@@ -568,24 +568,54 @@ int main(void) {
 
     /* 30. Skull Cave distance: one deterministic destination + ready flag */
     run_source("reset");
-    check(run_int("block-at signs 0") == 1000 && run_int("block-at signs 10") == 12000,
+    check(run_int("block-at signs 0") == 500 && run_int("block-at signs 10") == 4000,
           "30 signs span start..destination");
-    check(run_int("block-at signs 0") < run_int("block-at signs 2") &&
-          run_int("block-at signs 2") < run_int("block-at signs 4") &&
-          run_int("block-at signs 4") < run_int("block-at signs 6") &&
-          run_int("block-at signs 6") < run_int("block-at signs 8") &&
-          run_int("block-at signs 8") < run_int("block-at signs 10"),
-          "30 signs are in increasing world order");
+    check(run_int("block-at signs 0") == 500 && run_int("block-at signs 2") == 1250 &&
+          run_int("block-at signs 4") == 2000 && run_int("block-at signs 6") == 2750 &&
+          run_int("block-at signs 8") == 3500 && run_int("block-at signs 10") == 4000,
+          "30 signs at the exact intended positions, in order");
+    check(run_int("SKULL_X") == 4000, "30 SKULL_X is 4000");
     check(run_int("skull-ready") == 0, "30 not ready at the start");
-    run_source("dist: 11999  tally");
+    run_source("dist: 3999  tally");
     check(run_int("skull-ready") == 0, "30 not ready just before the threshold");
-    run_source("dist: 12000  tally");
+    run_source("dist: 4000  tally");
     check(run_int("skull-ready") == 1 && run_int("over") == 0, "30 ready at the threshold, no transition");
     run_source("reset  block-set! rangi F_X 900  rangi-step");
     check(run_int("block-at rangi F_B") == 3 && run_int("block-at rangi F_X") == 900,
           "30 passing a sign leaves Rangi state intact");
     run_source("reset");
     check(run_int("dist") == 480 && run_int("skull-ready") == 0, "30 restart resets progression");
+
+    /* 31. ROCK firing is independent of jump state */
+    {
+        long g = 0, j = 0, prev;
+        run_source("reset  view-w: 1000  block-set! rangi F_X 1000");
+        run_source("krock: 1  ku: 0  block-set! rangi F_TARGET 0");
+        prev = run_int("ts-count K_ROCK");
+        for (int i = 0; i < 240; i++) { run_source("rangi-step  fire-rock  move-all 0"); long c = run_int("ts-count K_ROCK"); if (c > prev) g++; prev = c; }
+        run_source("reset  view-w: 1000  block-set! rangi F_X 1000");
+        run_source("krock: 1  ku: 1  block-set! rangi F_TARGET 0");
+        prev = run_int("ts-count K_ROCK");
+        for (int i = 0; i < 240; i++) { run_source("rangi-step  fire-rock  move-all 0"); long c = run_int("ts-count K_ROCK"); if (c > prev) j++; prev = c; }
+        printf("      (31) rock spawns grounded=%ld jumping=%ld\n", g, j);
+        check(g > 10 && j == g, "31 A/B/C jumping ROCK cadence == grounded");
+    }
+    /* D. a one-tick ROCK tap mid-jump is accepted (independent of jump state) */
+    run_source("reset  view-w: 1000  block-set! rangi F_X 1000  block-set! rangi F_Y 270  block-set! rangi F_VY 11");
+    run_source("krock: 1  block-set! rangi F_TARGET 0");
+    run_source("rangi-step  fire-rock  tally");
+    check(run_int("n-rock") >= 1, "31 D ROCK tap during a jump is accepted");
+    run_source("krock: 0");
+    /* E. jump: 22-tick arc, peak ~60 px, lands at 330 */
+    run_source("reset  view-w: 1000  block-set! rangi F_Y 330  block-set! rangi F_VY 0  ku: 1  rangi-step");
+    check(run_int("block-at rangi F_VY") == 21, "31 E jump starts the 22-tick arc");
+    {
+        long minY = 999;
+        for (int i = 0; i < 22; i++) { run_source("ku: 0  rangi-step"); long y = run_int("block-at rangi F_Y"); if (y < minY) minY = y; }
+        printf("      (31) jump minY=%ld\n", minY);
+        check(minY <= 271 && minY >= 268, "31 E jump peak ~60 px");
+        check(run_int("block-at rangi F_Y") == 330, "31 E jump lands at ground 330");
+    }
 
     if (fails == 0) { printf("kaka-wave-test PASS\n"); return 0; }
     printf("kaka-wave-test FAIL (%d)\n", fails);

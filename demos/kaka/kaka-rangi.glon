@@ -75,7 +75,10 @@ fire-rock: func [] [
                 b: ts-claim K_ROCK
                 either = b none [ none ] [
                     block-set! b F_X + block-at rangi F_X * block-at rangi F_D 18
-                    block-set! b F_Y - block-at rangi F_Y 2
+                    ;; launch on a FIXED combat line (grounded chest height), so a
+                    ;; throw made mid-jump engages ground pests exactly like a
+                    ;; grounded throw. ROCK must not depend on vertical position.
+                    block-set! b F_Y 328
                     block-set! b F_VY * block-at rangi F_D 12
                     block-set! b F_A + block-at rangi F_X * block-at rangi F_D 18
                     block-set! rangi F_TARGET 6

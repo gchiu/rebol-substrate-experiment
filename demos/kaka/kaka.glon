@@ -30,7 +30,7 @@ PLAYER_LEFT_MARGIN: 56
 ;; ONE deterministic destination (world x). The signs are fixed world objects
 ;; and the displayed km are a pure function of world position -- never of score
 ;; or elapsed time. `skull-ready` is exposed for a future transition (none yet).
-SKULL_X: 12000
+SKULL_X: 4000
 
 ;; tuple space kinds
 K_EMPTY: 0
@@ -87,7 +87,7 @@ rangi: 0
 cam: 0 view-w: 640 dist: 480
 ;; world-owned Skull Cave signs: (world-x, label-id) pairs in encounter order.
 ;; labels 0..5 = 100km, 75km, 50km, 25km, 5km, NEXT EXIT.
-signs: [ 1000 0  3750 1  6500 2  9250 3  11450 4  12000 5 ]
+signs: [ 500 0  1250 1  2000 2  2750 3  3500 4  4000 5 ]
 ;; 1 once the ranger has travelled to the destination (no transition yet).
 skull-ready: 0
 cd: 0 glon-cd: 0
