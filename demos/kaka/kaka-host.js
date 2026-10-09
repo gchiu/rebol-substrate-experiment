@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.9";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s9";
+  var BUILD = "D12S.10";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s10";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -380,6 +380,12 @@
     ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fillRect(0, 350, W, H - 350);
   }
   function drawCaveProp(ctx, x, kind, tx) {
+    /* With the cave IMAGE as the backdrop, its baked-in art already supplies the
+       skull (0), pedestals (1-3), relics (4-6) and guardian (7): skip those so we
+       don't double them. The live dynamic overlays -- highlight/glow (10) and the
+       route effects (11 portal / 12 beam / 13 time-box) -- still draw, as does
+       Rangi (P). The procedural fallback (no image) draws everything. */
+    if (caveImg && kind <= 7) return;
     var sx = Math.round(x + tx), gy = 350;
     ctx.save();
     if (kind === 0) {                          /* skull on the cave wall */
