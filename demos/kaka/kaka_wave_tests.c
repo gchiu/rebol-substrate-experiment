@@ -665,25 +665,65 @@ int main(void) {
         check(run_int("block-at rangi F_Y") == 330, "31 E jump lands at ground 330");
     }
 
-    /* 34. Skull Cave choice chamber: pedestal platforms + object selection */
-    run_source("reset  view-w: 1000  kl: 0  kr: 0");
+    /* 34. Skull Cave relic choice: LAND = highlight, FIRE = select, leave = cancel */
+    long rid0, lives0;
+    /* --- helmet route (pedestal A, x=760) --- */
+    run_source("reset  view-w: 1000  kl: 0  kr: 0  krock: 0");
     run_source("dist: 4000  rangi-step");                 /* enter the cave */
-    check(run_int("block-at rangi F_E") == 1 && run_int("block-at rangi F_C") == 0, "34 in cave, nothing chosen yet");
-    /* jump onto pedestal A (x=760) and land on its top */
+    check(run_int("block-at rangi F_E") == 1 && run_int("block-at rangi F_C") == 0, "34 in cave, nothing highlighted");
+    rid0 = run_int("block-at rangi F_ID"); lives0 = run_int("block-at rangi F_B");
     run_source("block-set! rangi F_X 760  block-set! rangi F_Y 330  block-set! rangi F_VY 0  ku: 1  rangi-step");
     for (int i = 0; i < 40 && run_int("block-at rangi F_VY") > 0; i++) run_source("ku: 0  rangi-step");
-    check(run_int("block-at rangi F_Y") == 280, "34 lands on pedestal A top (280)");
-    check(run_int("block-at rangi F_C") == 1, "34 object A selection = helmet");
-    /* stepping off the pedestal drops back to the floor */
-    run_source("block-set! rangi F_X 700  rangi-step");
-    check(run_int("block-at rangi F_Y") == 330, "34 stepping off drops to the floor");
-    /* pedestal C (x=1240) selects the key (id 3) */
+    check(run_int("block-at rangi F_Y") == 280 && run_int("block-at rangi F_C") == 1 && run_int("block-at rangi F_E") == 1,
+          "34 A landing highlights helmet (not selected)");
+    /* jump off WITHOUT firing -> candidate cleared, no selection */
+    run_source("block-set! rangi F_X 700  block-set! rangi F_Y 330  rangi-step");
+    check(run_int("block-at rangi F_C") == 0 && run_int("block-at rangi F_E") == 1, "34 D leaving cancels, no selection");
+    /* FIRE on the floor selects nothing */
+    run_source("reset  dist: 4000  rangi-step  block-set! rangi F_X 1000  block-set! rangi F_Y 330  krock: 1  rangi-step  krock: 0");
+    check(run_int("block-at rangi F_E") == 1 && run_int("block-at rangi F_C") == 0, "34 H FIRE on the floor selects nothing");
+    /* --- helmet select --- */
+    run_source("reset  dist: 4000  rangi-step  krock: 0");
+    rid0 = run_int("block-at rangi F_ID"); lives0 = run_int("block-at rangi F_B");
+    run_source("block-set! rangi F_X 760  block-set! rangi F_Y 330  block-set! rangi F_VY 0  ku: 1  rangi-step");
+    for (int i = 0; i < 40 && run_int("block-at rangi F_VY") > 0; i++) run_source("ku: 0  rangi-step");
+    run_source("krock: 1  rangi-step  krock: 0");
+    check(run_int("block-at rangi F_E") == 2, "34 E FIRE selects the helmet route");
+    check(run_int("block-at rangi F_ID") == rid0 && run_int("block-at rangi F_B") == lives0, "34 J/K same actor id + lives");
+    /* other pedestals can no longer be chosen */
+    run_source("block-set! rangi F_X 1240  rangi-step  krock: 1  rangi-step  krock: 0");
+    check(run_int("block-at rangi F_E") == 2, "34 I selection locks out other relics");
+    /* --- phone select --- */
+    run_source("reset  dist: 4000  rangi-step  krock: 0");
+    run_source("block-set! rangi F_X 1000  block-set! rangi F_Y 330  block-set! rangi F_VY 0  ku: 1  rangi-step");
+    for (int i = 0; i < 40 && run_int("block-at rangi F_VY") > 0; i++) run_source("ku: 0  rangi-step");
+    check(run_int("block-at rangi F_C") == 2, "34 B landing highlights phone");
+    run_source("krock: 1  rangi-step  krock: 0");
+    check(run_int("block-at rangi F_E") == 3, "34 F FIRE selects the phone route");
+    /* --- key select --- */
+    run_source("reset  dist: 4000  rangi-step  krock: 0");
     run_source("block-set! rangi F_X 1240  block-set! rangi F_Y 330  block-set! rangi F_VY 0  ku: 1  rangi-step");
     for (int i = 0; i < 40 && run_int("block-at rangi F_VY") > 0; i++) run_source("ku: 0  rangi-step");
-    check(run_int("block-at rangi F_Y") == 280 && run_int("block-at rangi F_C") == 3, "34 object C selection = key");
-    /* passing the pedestal on the floor (not up on it) selects nothing */
-    run_source("reset  dist: 4000  rangi-step  block-set! rangi F_X 1000  block-set! rangi F_Y 330  rangi-step");
-    check(run_int("block-at rangi F_C") == 0, "34 passing on the floor selects nothing");
+    check(run_int("block-at rangi F_C") == 3, "34 C landing highlights key");
+    run_source("krock: 1  rangi-step  krock: 0");
+    check(run_int("block-at rangi F_E") == 4, "34 G FIRE selects the key route");
+    /* restart returns to a fresh FOREST with no relic selected */
+    run_source("reset");
+    check(run_int("block-at rangi F_E") == 0 && run_int("block-at rangi F_C") == 0, "34 M restart returns to fresh FOREST");
+
+    /* 35. Skull Cave is FINITE: ranger + camera clamped, objects inside */
+    run_source("reset  view-w: 1000  dist: 4000  rangi-step");   /* enter cave */
+    run_source("kl: 1  kr: 0");
+    for (int i = 0; i < 60; i++) run_source("rangi-step");
+    check(run_int("block-at rangi F_X") == 60, "35 C left boundary clamps at 60");
+    run_source("kl: 0  kr: 1");
+    for (int i = 0; i < 400; i++) run_source("rangi-step");
+    check(run_int("block-at rangi F_X") == 1740, "35 B right boundary clamps at 1740");
+    check(run_int("cam") == 800, "35 D camera stops at the cave right wall (1800-view-w)");
+    check(760 > 60 && 1000 < 1740 && 1240 < 1740 && 1480 < 1740, "35 E/F pedestals + guardian inside the chamber");
+    check(run_int("block-at rangi F_E") == 1, "35 still in cave after hitting the wall");
+    run_source("reset");
+    check(run_int("block-at rangi F_E") == 0 && run_int("dist") == 480, "35 L restart returns to fresh FOREST");
 
     if (fails == 0) { printf("kaka-wave-test PASS\n"); return 0; }
     printf("kaka-wave-test FAIL (%d)\n", fails);

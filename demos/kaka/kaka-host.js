@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.7";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s7";
+  var BUILD = "D12S.8";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s8";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -273,6 +273,7 @@
     ctx.save();
     ctx.translate(cx, fy);
     if (dir < 0) ctx.scale(-1, 1);
+    ctx.globalAlpha = rangerAlpha;      /* phone route dissolves the ranger */
     if (pose === 5) { drawFallenRanger(ctx, C); ctx.restore(); return; }
     ctx.fillStyle = "rgba(0,0,0,.22)";
     ctx.beginPath(); ctx.ellipse(0, 2, 22, 6, 0, 0, 2 * Math.PI); ctx.fill();
@@ -338,7 +339,14 @@
     ctx.restore();
   }
 
-  /* ---- Skull Cave scene (host paints the semantic `V` bg + `J` props) ---- */
+  /* ---- cave route animation state (host-only; not a Glon binding) -------- */
+  var caveRoute = 0, caveRouteT0 = 0, rangerAlpha = 1;
+
+  /* ---- Skull Cave scene (host paints the semantic `V` bg + `J` props) ----
+   * Presentation is layered far-bg / props / ranger so the procedural backdrop
+   * below can later be swapped for a host image (`ctx.drawImage(caveBg, ...)`)
+   * WITHOUT touching Glon semantics. This function is the single replaceable
+   * backdrop path; Glon only ever emits `V <cam>` + `J <world-x> <kind>`. */
   function drawCaveBackground(ctx, W, H) {
     var g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, "#07060d"); g.addColorStop(0.6, "#161126"); g.addColorStop(1, "#241a2e");
@@ -406,6 +414,38 @@
         ctx.beginPath(); ctx.moveTo(sx + 7, oy + 7); ctx.lineTo(sx + 2, oy + 12); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(sx + 13, oy + 13); ctx.lineTo(sx + 8, oy + 18); ctx.stroke();
       }
+    } else if (kind === 11) {                  /* helmet route: hangar/portal */
+      var t = (performance.now() % 1200) / 1200;
+      ctx.strokeStyle = "#5fd0ff"; ctx.lineWidth = 5;
+      ctx.strokeRect(sx - 74, 150, 148, 150);
+      ctx.beginPath(); ctx.moveTo(sx - 74, 150); ctx.lineTo(sx, 104); ctx.lineTo(sx + 74, 150); ctx.stroke();
+      for (var r = 0; r < 3; r++) {
+        ctx.globalAlpha = 0.55 - r * 0.14; ctx.lineWidth = 4; ctx.strokeStyle = "#8fe0ff";
+        ctx.beginPath(); ctx.arc(sx, 244, 30 + r * 12 + t * 10, 0, 2 * Math.PI); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    } else if (kind === 12) {                  /* phone route: transporter beam */
+      var t2 = performance.now() / 1000;
+      var bg = ctx.createLinearGradient(0, 110, 0, 350);
+      bg.addColorStop(0, "rgba(120,255,220,0)");
+      bg.addColorStop(0.5, "rgba(120,255,220,.55)");
+      bg.addColorStop(1, "rgba(120,255,220,0)");
+      ctx.fillStyle = bg; ctx.fillRect(sx - 28, 110, 56, 240);
+      ctx.fillStyle = "rgba(190,255,238,.85)";
+      for (var s = 0; s < 12; s++) {
+        var yy = (s * 41 + (t2 * 160) % 360) % 360;
+        ctx.fillRect(sx - 22 + (s * 9) % 44, 344 - yy, 4, 4);
+      }
+    } else if (kind === 13) {                  /* key route: time-box materialises */
+      var t3 = Math.min(1, (performance.now() - caveRouteT0) / 1500);
+      ctx.globalAlpha = t3; ctx.strokeStyle = "#e8c24a"; ctx.lineWidth = 5;
+      var bw = 124 * t3, bh = 150 * t3;
+      ctx.strokeRect(sx - bw / 2, 330 - bh, bw, bh);
+      ctx.strokeStyle = "rgba(235,215,150,.7)"; ctx.lineWidth = 3;
+      ctx.strokeRect(sx - bw / 2 + 12, 330 - bh + 12, bw - 24, bh - 24);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "rgba(240,200,90,.4)";
+      ctx.beginPath(); ctx.arc(sx, 250, 24 + 6 * Math.sin(performance.now() / 200), 0, 2 * Math.PI); ctx.fill();
     }
     ctx.restore();
   }

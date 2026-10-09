@@ -72,7 +72,10 @@ static const char *OVERLAY =
     "  either = current-route 'kaka-signs-near [ view-w: 900  block-set! rangi F_X 2000  keep-visible ] ["
     "  either = current-route 'kaka-signs-start [ view-w: 1000  block-set! rangi F_X 480  keep-visible ] ["
     "  either = current-route 'kaka-cave [ block-set! rangi F_E 1 ] ["
-    "  either = current-route 'kaka-cave-pick [ block-set! rangi F_E 1  block-set! rangi F_C 2 ] [ reset ]]]]]]]]]]]]]]]]]"
+    "  either = current-route 'kaka-cave-pick [ block-set! rangi F_E 1  block-set! rangi F_C 1 ] ["
+    "  either = current-route 'kaka-r1 [ block-set! rangi F_E 2 ] ["
+    "  either = current-route 'kaka-r2 [ block-set! rangi F_E 3 ] ["
+    "  either = current-route 'kaka-r3 [ block-set! rangi F_E 4 ] [ reset ]]]]]]]]]]]]]]]]]]]]"
     "  tally render ] ]";
 
 static char out[65536];
@@ -138,6 +141,15 @@ static int signs_list(int *xs, int *labels, int maxn) {
 static int op_count(char c) {
     int n = 0; char *q = vis;
     while ((q = strchr(q, '\n')) != NULL) { q++; if (q[0] == c && q[1] == ' ') n++; }
+    return n;
+}
+/* count `J <x> <kind>` cave-prop ops of a given kind */
+static int jkind(int kind) {
+    int n = 0; char *q = vis;
+    while ((q = strchr(q, '\n')) != NULL) {
+        q++;
+        if (q[0] == 'J' && q[1] == ' ') { int x, k; if (sscanf(q + 2, "%d %d", &x, &k) == 2 && k == kind) n++; }
+    }
     return n;
 }
 
@@ -329,22 +341,30 @@ int main(void) {
         printf("  signs at start n=%d x=%d label=%d\n", ns, ns ? xs[0] : -1, ns ? lb[0] : -1);
         if (ns != 1 || xs[0] != 500 || lb[0] != 0) { printf("  FAIL: first sign not visible during ordinary movement\n"); fails++; }
     }
-    /* SKULL_CAVE choice chamber: `V` bg + `J` props (skull, 3 pedestals,
-       3 objects, phantom) + `P`; a chosen object adds a highlight `J`. */
+    /* SKULL_CAVE: unselected cave (no highlight/effect), helmet candidate
+       highlight, and the three distinct route-transition effects. */
     if (route("home") != 0) return 2;
     if (route("kaka-cave") != 0) return 2;
     {
         int nv = op_count('V'), nj = op_count('J'), np = op_count('P');
         printf("  cave ops V=%d J=%d P=%d\n", nv, nj, np);
-        if (nv != 1 || nj != 8 || np != 1) { printf("  FAIL: cave scene ops wrong\n"); fails++; }
+        if (nv != 1 || nj != 8 || np != 1 || jkind(10) != 0 || jkind(11) != 0) { printf("  FAIL: unselected cave ops wrong\n"); fails++; }
     }
     if (route("home") != 0) return 2;
     if (route("kaka-cave-pick") != 0) return 2;
     {
-        int nj = op_count('J');
-        printf("  cave pick J=%d\n", nj);
-        if (nj != 9) { printf("  FAIL: selection highlight missing\n"); fails++; }
+        printf("  cave highlight J=%d kind10=%d\n", op_count('J'), jkind(10));
+        if (op_count('J') != 9 || jkind(10) != 1 || jkind(11) != 0) { printf("  FAIL: candidate highlight wrong\n"); fails++; }
     }
+    if (route("home") != 0) return 2;
+    if (route("kaka-r1") != 0) return 2;
+    if (jkind(11) != 1 || jkind(10) != 0) { printf("  FAIL: helmet portal effect missing\n"); fails++; }
+    if (route("home") != 0) return 2;
+    if (route("kaka-r2") != 0) return 2;
+    if (jkind(12) != 1) { printf("  FAIL: phone beam effect missing\n"); fails++; }
+    if (route("home") != 0) return 2;
+    if (route("kaka-r3") != 0) return 2;
+    if (jkind(13) != 1) { printf("  FAIL: key box effect missing\n"); fails++; }
     /* camera-relative: only the sign near the current view is emitted (world-fixed) */
     if (route("home") != 0) return 2;
     if (route("kaka-signs-near") != 0) return 2;
