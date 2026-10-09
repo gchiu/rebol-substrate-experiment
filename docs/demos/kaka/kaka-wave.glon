@@ -91,9 +91,11 @@ rat-step: func [t] [
     ;; continuous overlap = exactly ONE hit (F_F latch), even if the global
     ;; invulnerability window expires before it separates; separation clears it.
     either < st 9 [
-        either < abs - block-at t F_X px 16 [
-            either < abs - block-at t F_Y + py 2 24 [
-                either = block-at t F_F 0 [ hit-ranger  block-set! t F_F 1 ] [ none ]
+        either < abs - block-at t F_X block-at rangi F_X 16 [
+            either < abs - block-at t F_Y + block-at rangi F_Y 2 24 [
+                ;; pest DETECTS the overlap and raises a contact request on the
+                ;; Rangi actor (F_C); Rangi itself resolves the consequence.
+                either = block-at t F_F 0 [ block-set! rangi F_C 1  block-set! t F_F 1  hit-ranger ] [ none ]
             ] [
                 either = block-at t F_F 1 [ block-set! t F_F 0 ] [ none ]
             ]
@@ -111,8 +113,8 @@ rat-step: func [t] [
             n: rat-tree 0 t
             either < n 0 [
                 block-set! t F_X - block-at t F_X block-at t F_VY
-                either > block-at t F_X + px 1500 [ ts-free t ] [
-                    either < block-at t F_X - px 1200 [ ts-free t ] [ none ]
+                either > block-at t F_X + block-at rangi F_X 1500 [ ts-free t ] [
+                    either < block-at t F_X - block-at rangi F_X 1200 [ ts-free t ] [ none ]
                 ]
             ] [
                 block-set! t F_TARGET n
@@ -123,8 +125,8 @@ rat-step: func [t] [
         ] [
             ;; ground attacker: always march left, never converts to a climber
             block-set! t F_X - block-at t F_X block-at t F_VY
-            either > block-at t F_X + px 1500 [ ts-free t ] [
-                either < block-at t F_X - px 1200 [ ts-free t ] [ none ]
+            either > block-at t F_X + block-at rangi F_X 1500 [ ts-free t ] [
+                either < block-at t F_X - block-at rangi F_X 1200 [ ts-free t ] [ none ]
             ]
         ]
     ] [
@@ -166,22 +168,6 @@ berry-blocked?: func [i t] [
 ;; Fires horizontally in the ranger's facing direction. Rock tuple: F_VY is the
 ;; signed horizontal velocity (rocks do not fall), F_A is unused. A rock is a
 ;; distinct K_ROCK kind, so it can never be mistaken for a berry by berry-hit.
-fire-rock: func [] [
-    either = krock 1 [
-        either < rock-cd 1 [
-            either < ts-count K_ROCK 5 [
-                b: ts-claim K_ROCK
-                either = b none [ none ] [
-                    block-set! b F_X + px * pf 18
-                    block-set! b F_Y - py 2
-                    block-set! b F_VY * pf 12
-                    block-set! b F_A + px * pf 18    ;; spawn x -> travel range
-                    rock-cd: 6
-                ]
-            ] [ none ]
-        ] [ none ]
-    ] [ none ]
-]
 ;; generic pest damage: HP in F_B (rat 1, stoat 2, possum 5). A rock deals 1.
 ;; On death the tuple plays an 8-tick burst (F_C) then reclaims; the kill score
 ;; scales with species (rat 20, stoat 35, possum 60). A non-lethal hit sets the
@@ -235,8 +221,8 @@ fire: func [] [
             either < ts-count K_BERRY BERRY_MAX [
                 b: ts-claim K_BERRY
                 either = b none [ none ] [
-                    block-set! b F_X px
-                    block-set! b F_Y - py 14
+                    block-set! b F_X block-at rangi F_X
+                    block-set! b F_Y - block-at rangi F_Y 14
                     block-set! b F_VY -9
                     block-set! b F_A 0
                     cd: 9
@@ -251,8 +237,8 @@ fire-glon: func [] [
             either > berries 0 [
                 b: ts-claim K_BERRY
                 either = b none [ none ] [
-                    block-set! b F_X px
-                    block-set! b F_Y - py 14
+                    block-set! b F_X block-at rangi F_X
+                    block-set! b F_Y - block-at rangi F_Y 14
                     block-set! b F_VY -8
                     block-set! b F_A 1
                     berries: - berries 1
@@ -266,7 +252,7 @@ divert: func [kt bt] [
     block-set! kt F_STATE KS_DIVERT
     block-set! kt F_C 0
     ;; keep momentum; steer away so the turn is an arc, never an instant flip
-    block-set! kt F_D either < - block-at kt F_X px 0 [ -1 ] [ 1 ]
+    block-set! kt F_D either < - block-at kt F_X block-at rangi F_X 0 [ -1 ] [ 1 ]
     ts-free bt
     score: + score 10
 ]
@@ -287,7 +273,7 @@ berry-step: func [t] [
     ;; berries are fired upward (F_VY < 0), so they leave the playfield at the
     ;; TOP; free there, or if they somehow fall behind the ranger's cull line.
     either < block-at t F_Y 0 [ ts-free t ] [
-        either < block-at t F_X - px 1200 [ ts-free t ] [ none ]
+        either < block-at t F_X - block-at rangi F_X 1200 [ ts-free t ] [ none ]
     ]
 ]
 berry-hit: func [t i] [
@@ -302,7 +288,7 @@ berry-hit: func [t i] [
 spawn-pick: func [] [
     t: ts-claim K_PICK
     either = t none [ none ] [
-        block-set! t F_X + - px 60 mod rnd 500
+        block-set! t F_X + - block-at rangi F_X 60 mod rnd 500
         block-set! t F_Y 20
         block-set! t F_VY 2
     ]
@@ -310,9 +296,9 @@ spawn-pick: func [] [
 pick-step: func [t] [
     y: + block-at t F_Y block-at t F_VY
     block-set! t F_Y y
-    either > abs - block-at t F_X px 1200 [ ts-free t ] [
-        either < abs - px block-at t F_X 26 [
-            either < abs - py y 30 [ either = over 1 [ none ] [ berries: + berries 1 ]  ts-free t ] [ either > y 470 [ ts-free t ] [ none ] ]
+    either > abs - block-at t F_X block-at rangi F_X 1200 [ ts-free t ] [
+        either < abs - block-at rangi F_X block-at t F_X 26 [
+            either < abs - block-at rangi F_Y y 30 [ either = over 1 [ none ] [ berries: + berries 1 ]  ts-free t ] [ either > y 470 [ ts-free t ] [ none ] ]
         ] [ either > y 470 [ ts-free t ] [ none ] ]
     ]
 ]

@@ -39,17 +39,17 @@ test-rules: func [] [
     either = score 25 [ none ] [ fails: + fails 1 ]
     ;; 3. ROCK fires in facing direction; kills a 1-hp rat; +20; no tree damage
     reset
-    px: 300  pf: 1  krock: 1  rock-cd: 0
+    block-set! rangi F_X  300  block-set! rangi F_D  1  krock: 1  block-set! rangi F_TARGET  0
     fire-rock
     either > block-at ts-t 3 F_VY 0 [ none ] [ fails: + fails 1 ]
     reset
-    px: 300  pf: -1  krock: 1  rock-cd: 0
+    block-set! rangi F_X  300  block-set! rangi F_D  -1  krock: 1  block-set! rangi F_TARGET  0
     fire-rock
     either < block-at ts-t 3 F_VY 0 [ none ] [ fails: + fails 1 ]
     reset
     r: ts-claim K_RAT
     block-set! r F_X 330  block-set! r F_Y 330  block-set! r F_B 1  block-set! r F_A 0  block-set! r F_VY 2
-    px: 300  pf: 1  krock: 1  rock-cd: 0
+    block-set! rangi F_X  300  block-set! rangi F_D  1  krock: 1  block-set! rangi F_TARGET  0
     fire-rock  rock-step ts-t 4
     either = block-at r F_STATE 9 [ none ] [ fails: + fails 1 ]
     either = score 20 [ none ] [ fails: + fails 1 ]
@@ -68,17 +68,17 @@ test-rules: func [] [
     either = block-at r F_B 1 [ none ] [ fails: + fails 1 ]
     either = block-at r F_STATE 0 [ none ] [ fails: + fails 1 ]
     x0: block-at r F_X
-    px: 100  rat-step r
+    block-set! rangi F_X  100  rat-step r
     either < block-at r F_X x0 [ none ] [ fails: + fails 1 ]
     either = ts-count K_RAT 1 [ none ] [ fails: + fails 1 ]
     ;; 5. restart clears pests/rocks/berries and resets progress + camera
     r: ts-claim K_RAT  b: ts-claim K_ROCK  g: ts-claim K_BERRY
-    px: 5000  dist: 5000  next-tree-x: 6000
+    block-set! rangi F_X  5000  dist: 5000  next-tree-x: 6000
     reset
     either = ts-count K_RAT 0 [ none ] [ fails: + fails 1 ]
     either = ts-count K_ROCK 0 [ none ] [ fails: + fails 1 ]
     either = ts-count K_BERRY 0 [ none ] [ fails: + fails 1 ]
-    either = px 480 [ none ] [ fails: + fails 1 ]
+    either = block-at rangi F_X 480 [ none ] [ fails: + fails 1 ]
     either = dist 480 [ none ] [ fails: + fails 1 ]
     either = cam 0 [ none ] [ fails: + fails 1 ]
     either = trees-live 3 [ none ] [ fails: + fails 1 ]
@@ -88,20 +88,20 @@ test-camera: func [] [
     ;; 6. rightward camera: the ranger sits ~35% from the left (more ahead than
     ;; behind), and moving across the old midpoint never reverses the invasion.
     reset
-    view-w: 1000  px: 3000
-    move-player
+    view-w: 1000  block-set! rangi F_X  3000
+    rangi-step
     either = cam 2650 [ none ] [ fails: + fails 1 ]
-    either > - px cam - cam view-w px [ none ] [ fails: + fails 1 ]
-    either > px 1000 [ none ] [ fails: + fails 1 ]
+    either > - block-at rangi F_X cam - cam view-w block-at rangi F_X [ none ] [ fails: + fails 1 ]
+    either > block-at rangi F_X 1000 [ none ] [ fails: + fails 1 ]
     ;; 7. same world, different viewport: view-w never relocates actors
     reset
     spawn-pest
     x0: block-at ts-t 3 F_X
     t0: block-at ts-t 0 F_X
-    view-w: 1056  move-player
+    view-w: 1056  rangi-step
     either = block-at ts-t 3 F_X x0 [ none ] [ fails: + fails 1 ]
     either = block-at ts-t 0 F_X t0 [ none ] [ fails: + fails 1 ]
-    view-w: 640  move-player
+    view-w: 640  rangi-step
     either = block-at ts-t 3 F_X x0 [ none ] [ fails: + fails 1 ]
     ;; 8. pest species HP: stoat needs two rocks, possum five
     reset
