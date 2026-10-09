@@ -71,10 +71,16 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
     return rendered.join("");
   };
 
+  // Engine timing: accumulate only the `glon_event` dispatch (the simulation
+  // cost) and exclude the host buffer marshalling and render-script analysis,
+  // which are verification-harness overhead, not the game's tick budget.
+  const eng = { ns: 0n, on: false };
   const event = (token) => {
     rendered.length = 0;
     const [p, n] = put(token);
+    const _e0 = eng.on ? process.hrtime.bigint() : 0n;
     if (e.glon_event(p, n) !== 0) fail("glon_event('" + token + "') failed");
+    if (eng.on) eng.ns += process.hrtime.bigint() - _e0;
     return rendered.join("");
   };
 
@@ -130,7 +136,12 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   let maxBerries = 0, mutants = 0, restarts = 0, drawTicks = 0;
   let prevOrd = 0, ordSpawns = 0, maxOrd = 0;
   let maxRat = 0, maxKaka = 0, maxRock = 0, rockSpawns = 0, prevRock = 0, maxClaimFail = 0;
+  // Time the engine dispatch itself (`event("kaka-tick")`) separately from the
+  // per-tick JS bookkeeping below (state()/countOrdinary regex scans). Only the
+  // engine time is the game's tick cost; the bookkeeping is harness overhead
+  // and must not be attributed to the simulation.
   const t0 = process.hrtime.bigint();
+  eng.on = true; eng.ns = 0n;
   for (let i = 0; i < SOAK; i++) {
     if (i % 300 === 150) eventValue("kaka-key-down", "glon");
     if (i % 300 === 160) eventValue("kaka-key-up", "glon");
@@ -167,8 +178,10 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   if (claimFails !== 0) fail("tuple-claim failures during soak: " + claimFails);
   eventValue("kaka-key-up", "fire");
   eventValue("kaka-key-up", "rock");
+  eng.on = false;
   const t1 = process.hrtime.bigint();
-  const msPerTick = Number(t1 - t0) / 1e6 / SOAK;
+  const msPerTick = Number(eng.ns) / 1e6 / SOAK;
+  const totalMsPerTick = Number(t1 - t0) / 1e6 / SOAK;
 
   /* Long-session berry-pool regression (the "Space stopped firing" bug). The
      fixed BERRY_MAX pool must recycle: after fire is released, every in-flight
@@ -204,7 +217,7 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   if (s2.length < 14 || s2[4] !== px0 + 10) fail("controls dead after restart (px=" + s2[4] + " from " + px0 + ")");
 
   console.log("KAKA_WASM_TEST PASS (selftest + " + SOAK + " tick soak, allocFail=0, " +
-    msPerTick.toFixed(3) + " ms/tick, " + restarts + " restarts, mutants-seen=" + mutants +
+    msPerTick.toFixed(3) + " ms/tick engine (" + totalMsPerTick.toFixed(3) + " ms/tick incl harness), " + restarts + " restarts, mutants-seen=" + mutants +
     ", ticks-drew=" + drawTicks + ", maxBerries=" + maxBerries +
     ", berrySpawns=" + ordSpawns + ", maxOrdLive=" + maxOrd +
     ", maxRats=" + maxRat + ", maxKaka=" + maxKaka + ", maxRocks=" + maxRock +
