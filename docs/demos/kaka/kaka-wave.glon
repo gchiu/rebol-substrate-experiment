@@ -37,7 +37,7 @@ spawn-pest: func [] [
         block-set! t F_X + + cam view-w 90
         block-set! t F_Y 345
         block-set! t F_B either = sp 2 [ 5 ] [ either = sp 1 [ 2 ] [ 1 ] ]
-        block-set! t F_VY either = sp 2 [ 1 ] [ either = sp 1 [ 3 ] [ 2 ] ]
+        block-set! t F_VY block-at pest-speed sp
         ;; ground-vs-tree split: F_TARGET 0 = tree-seeker (~1 in 3), -1 = a
         ;; pure ground attacker that marches left past trees. Keeps visible
         ;; armada pressure while tree attacks remain part of the ecology.

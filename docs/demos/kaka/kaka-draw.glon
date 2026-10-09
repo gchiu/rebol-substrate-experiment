@@ -353,15 +353,24 @@ draw-signs: func [i] [
 ]
 render-canvas: func [] [
     p-clear
-    p-byte 66 p-num cam p-eol
-    draw-trees 0
-    draw-signs 0
-    actor-art 0
-    draw-laser
-    ;; foreground foliage is emitted BEFORE the ranger so the protagonist is
-    ;; never composited behind it (he must always be visible)
-    p-byte 70 p-num cam p-eol
-    draw-player
+    either = block-at rangi F_E 1 [
+        ;; SKULL_CAVE scene: host paints the `V` background + `J` props
+        p-byte 86 p-num cam p-eol
+        p-byte 74 p-num 700 p-num 0 p-eol
+        p-byte 74 p-num 1000 p-num 1 p-eol
+        p-byte 74 p-num 1260 p-num 2 p-eol
+        p-byte 74 p-num 1520 p-num 3 p-eol
+        draw-player
+    ] [
+        p-byte 66 p-num cam p-eol          ;; B cam : forest background
+        draw-trees 0
+        draw-signs 0
+        actor-art 0
+        draw-laser
+        ;; foreground before the ranger so he is never hidden behind it
+        p-byte 70 p-num cam p-eol
+        draw-player
+    ]
     p-finish
 ]
 

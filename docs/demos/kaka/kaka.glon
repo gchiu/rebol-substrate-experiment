@@ -88,6 +88,9 @@ cam: 0 view-w: 640 dist: 480
 ;; world-owned Skull Cave signs: (world-x, label-id) pairs in encounter order.
 ;; labels 0..5 = 100km, 75km, 50km, 25km, 5km, NEXT EXIT.
 signs: [ 500 0  1250 1  2000 2  2750 3  3500 4  4000 5 ]
+;; pest leftward speed by species (0 rat, 1 stoat, 2 possum). Tuned so a timed
+;; 22-tick jump comfortably clears every ordinary ground pest; stoat>rat>possum.
+pest-speed: [ 4 5 3 ]
 ;; 1 once the ranger has travelled to the destination (no transition yet).
 skull-ready: 0
 cd: 0 glon-cd: 0
@@ -220,14 +223,20 @@ step: func [] [
     either > glon-cd 0 [ glon-cd: - glon-cd 1 ] [ none ]
     ;; terminal: input, spawns and scoring stop; the world keeps moving and
     ;; rendering (never frozen) so in-flight rocks/berries clear.
-    either = over 0 [
-        spawn-timers
+    either = block-at rangi F_E 1 [
+        ;; SKULL_CAVE: forest spawning/advancing stops; the SAME Rangi actor
+        ;; lives on and can still walk.
         rangi-step
-        fire
-        fire-glon
-        fire-rock
-    ] [ none ]
-    move-all 0
+    ] [
+        either = over 0 [
+            spawn-timers
+            rangi-step
+            fire
+            fire-glon
+            fire-rock
+        ] [ none ]
+        move-all 0
+    ]
     either = over 0 [
         either >= tick next-milestone [ score: + score 50  next-milestone: + next-milestone 600 ] [ none ]
     ] [ none ]
