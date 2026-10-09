@@ -4,8 +4,8 @@
  * the browser animation loop (Glon tick -> Glon render -> paint), and paints the
  * compact canvas script Glon emits. All game state, collisions, targeting,
  * physics, damage, spawning, mutant timers, scoring and tree regeneration live
- * in kaka.glon / kaka-lib.glon / kaka-draw.glon / kaka-selftest.glon.
- * No game logic here.
+ * in kaka.glon / kaka-lib.glon / kaka-rangi.glon / kaka-draw.glon /
+ * kaka-wave.glon / kaka-selftest.glon. No game logic here.
  */
 (function () {
   "use strict";
@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.2n";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s2n";
+  var BUILD = "D12S.3";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s3";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -664,6 +664,7 @@
       .then(function () { return fetchText("kaka-lib.glon"); }).then(load)
       .then(function () { return fetchText("kaka.glon"); }).then(load)
       .then(function () { return fetchText("kaka-draw.glon"); }).then(load)
+      .then(function () { return fetchText("kaka-rangi.glon"); }).then(load)
       .then(function () { return fetchText("kaka-wave.glon"); }).then(load)
       /* kaka-selftest.glon is test-only and is intentionally not loaded here:
          the production page needs the loader budget for input dispatch. */

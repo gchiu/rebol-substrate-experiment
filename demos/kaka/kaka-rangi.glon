@@ -1,0 +1,101 @@
+;; kaka-rangi.glon -- Rangi, the ONE persistent player actor.
+;;
+;; Ownership rule: ONLY this file mutates the Rangi actor tuple. Everything else
+;; sends semantic input (host) or a contact request (pests); Rangi decides the
+;; consequence. The renderer only reads the actor's semantic state.
+
+;; Rangi lives in the RESERVED top tuple slot (NTS-1) so it never competes with
+;; pests for shared slots and never shifts their slot indices. `reset` creates it
+;; in place (no allocation).
+
+;; camera derives from the actor; it never owns it. Single order: clamp the
+;; actor inside the visible left margin, then derive cam from the clamped x
+;; (screenX = x - cam = min(x, 35% * view-w)).
+keep-visible: func [] [
+    either < block-at rangi F_X PLAYER_LEFT_MARGIN [ block-set! rangi F_X PLAYER_LEFT_MARGIN ] [ none ]
+    t: - block-at rangi F_X / * view-w 35 100
+    cam: either < t 0 [ 0 ] [ t ]
+]
+
+;; canonical hit consequence, owned by Rangi (pests only request it).
+lose-life: func [] [
+    either < block-at rangi F_B 1 [ none ] [
+        block-set! rangi F_B - block-at rangi F_B 1
+        ;; on the final life, become DEAD and settle on the ground: no jump state
+        ;; survives, so a death in mid-air cannot cause posthumous drift
+        either < block-at rangi F_B 1 [
+            block-set! rangi F_B 0
+            block-set! rangi F_STATE 1
+            block-set! rangi F_VY 0
+            block-set! rangi F_Y 330
+        ] [ none ]
+        block-set! rangi F_A INVULN_TICKS
+    ]
+]
+hit-ranger: func [] [
+    block-set! rangi F_C 0
+    either > block-at rangi F_A 0 [ none ] [
+        block-set! rangi F_X - block-at rangi F_X 14
+        keep-visible
+        lose-life
+    ]
+]
+
+
+
+;; one deterministic Rangi update: pending-hit resolution, facing, horizontal
+;; movement, jump arc, invuln/cooldown ticks, camera derivation.
+rangi-step: func [] [
+    either = block-at rangi F_STATE 1 [ none ] [
+        either > block-at rangi F_C 0 [ hit-ranger ] [ none ]
+        either > block-at rangi F_TARGET 0 [ block-set! rangi F_TARGET - block-at rangi F_TARGET 1 ] [ none ]
+        either > block-at rangi F_A 0 [ block-set! rangi F_A - block-at rangi F_A 1 ] [ none ]
+        dx: - kr kl
+        either > kr kl [ block-set! rangi F_D 1 ] [ either > kl kr [ block-set! rangi F_D -1 ] [ none ] ]
+        either = dx 0 [ none ] [ block-set! rangi F_X + block-at rangi F_X * dx 10 ]
+        either > ku 0 [ either = block-at rangi F_VY 0 [ block-set! rangi F_VY 22 ] [ none ] ] [ none ]
+        either > kd 0 [ either > block-at rangi F_VY 2 [ block-set! rangi F_VY - block-at rangi F_VY 2 ] [ block-set! rangi F_VY 0 ] ] [ none ]
+        either > block-at rangi F_VY 0 [
+            p: - 22 block-at rangi F_VY
+            block-set! rangi F_Y - 330 / * p - 22 p 2
+            block-set! rangi F_VY - block-at rangi F_VY 1
+        ] [ block-set! rangi F_Y 330 ]
+        either > block-at rangi F_X dist [ dist: block-at rangi F_X ] [ none ]
+        keep-visible
+    ]
+]
+
+;; ROCK: Rangi consumes the ROCK input and only then does the world spawn the
+;; projectile (after Rangi validates cooldown and pool capacity).
+fire-rock: func [] [
+    either = block-at rangi F_STATE 0 [
+    either = krock 1 [
+        either < block-at rangi F_TARGET 1 [
+            either < ts-count K_ROCK 5 [
+                b: ts-claim K_ROCK
+                either = b none [ none ] [
+                    block-set! b F_X + block-at rangi F_X * block-at rangi F_D 18
+                    block-set! b F_Y - block-at rangi F_Y 2
+                    block-set! b F_VY * block-at rangi F_D 12
+                    block-set! b F_A + block-at rangi F_X * block-at rangi F_D 18
+                    block-set! rangi F_TARGET 6
+                ]
+            ] [ none ]
+        ] [ none ]
+    ] [ none ]
+    ] [ none ]
+]
+
+;; semantic render op `P <pose> <x> <y> <dir>`; pose/pos/facing come only from
+;; the actor. 0 idle / 1 run-a / 2 run-b / 3 jump / 4 hit / 5 fallen.
+draw-player: func [] [
+    either > + over block-at rangi F_STATE 0 [
+        p-byte 80 p-num 5 p-num block-at rangi F_X p-num 330 p-num block-at rangi F_D p-eol
+    ] [
+        p: either > block-at rangi F_VY 0 [ 3 ] [
+            either = 0 - kr kl [ 0 ] [ either < mod tick 12 6 [ 1 ] [ 2 ] ]
+        ]
+        either > block-at rangi F_A 0 [ either < mod tick 8 4 [ p: 4 ] [ none ] ] [ none ]
+        p-byte 80 p-num p p-num block-at rangi F_X p-num block-at rangi F_Y p-num block-at rangi F_D p-eol
+    ]
+]

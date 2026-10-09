@@ -76,6 +76,7 @@ int main(void) {
     if (load_file("demos/kaka/kaka-lib.glon") != 0) return 2;
     if (load_file("demos/kaka/kaka.glon") != 0) return 2;
     if (load_file("demos/kaka/kaka-draw.glon") != 0) return 2;
+    if (load_file("demos/kaka/kaka-rangi.glon") != 0) return 2;
 
     /* A. a new game shows three lives and no game over */
     check(strstr(ev("kaka-start", ""), "Lives: 3") != NULL, "A: HUD shows Lives: 3");

@@ -145,6 +145,7 @@ int main(void) {
     if (load_file("demos/kaka/kaka-lib.glon")) return 2;
     if (load_file("demos/kaka/kaka.glon")) return 2;
     if (load_file("demos/kaka/kaka-draw.glon")) return 2;
+    if (load_file("demos/kaka/kaka-rangi.glon")) return 2;
     if (load_file("demos/kaka/kaka-wave.glon")) return 2;
     if (run_source_impl(OVERLAY, 0)) return 2;
 

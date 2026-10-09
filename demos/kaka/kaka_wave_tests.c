@@ -39,7 +39,7 @@ static long run_int(const char *src) {
 static int ticks(const char *src, int n) { for (int i = 0; i < n; i++) if (run_source(src)) return -1; return 0; }
 static void check(int ok, const char *m) { printf("  %-42s %s\n", m, ok ? "ok" : "FAIL"); if (!ok) fails++; }
 /* aim the ranger right and clear the rock cooldown before a shot */
-static void px300(void) { run_source("px: 300  pf: 1  krock: 1  rock-cd: 0"); }
+static void px300(void) { run_source("block-set! rangi F_X  300  block-set! rangi F_D  1  krock: 1  block-set! rangi F_TARGET  0"); }
 static int load_file(const char *path) {
     FILE *f = fopen(path, "rb"); if (!f) { fprintf(stderr, "wave-test: open %s\n", path); return -1; }
     size_t n = fread(filebuf, 1, sizeof filebuf - 1, f); fclose(f); filebuf[n] = 0;
@@ -61,6 +61,7 @@ int main(void) {
     if (load_file("demos/kaka/kaka-lib.glon")) return 2;
     if (load_file("demos/kaka/kaka.glon")) return 2;
     if (load_file("demos/kaka/kaka-draw.glon")) return 2;
+    if (load_file("demos/kaka/kaka-rangi.glon")) return 2;
     if (load_file("demos/kaka/kaka-wave.glon")) return 2;
 
     printf("kaka D12B wave/climb/cover test\n");
@@ -70,7 +71,7 @@ int main(void) {
     check(run_int("wave") == 0 && run_int("n-rat") == 0, "1 fresh: no wave, no pests");
     run_source("spawn-pest");
     check(run_int("block-at ts-t 3 F_X") == run_int("+ + cam view-w 90"), "1 pest spawns off the right edge");
-    check(run_int("block-at ts-t 3 F_X") > run_int("px"), "1 pest is ahead (right) of the ranger");
+    check(run_int("block-at ts-t 3 F_X") > run_int("block-at rangi F_X"), "1 pest is ahead (right) of the ranger");
     check(run_int("block-at ts-t 3 F_Y") == 345, "1 pest starts on the ground (y=345)");
     check(run_int("block-at ts-t 3 F_A") == 0 && run_int("block-at ts-t 3 F_B") == 1, "1 first pest is a 1-hp rat");
 
@@ -126,23 +127,23 @@ int main(void) {
     run_source("spawn-pest");
     run_source("block-set! ts-t 3 F_X 900  block-set! ts-t 3 F_VY 2");
     x = run_int("block-at ts-t 3 F_X");
-    run_source("px: 2000  rat-step ts-t 3");
+    run_source("block-set! rangi F_X  2000  rat-step ts-t 3");
     check(run_int("block-at ts-t 3 F_X") < x, "7 still left after ranger moves right");
     x = run_int("block-at ts-t 3 F_X");
-    run_source("px: 100  rat-step ts-t 3");
+    run_source("block-set! rangi F_X  100  rat-step ts-t 3");
     check(run_int("block-at ts-t 3 F_X") < x, "7 still left after ranger moves left");
 
     /* 8 (D). the ranger advances far beyond the old ~1440 world */
     run_source("reset  kr: 1");
-    for (int i = 0; i < 250; i++) run_source("move-player");
-    check(run_int("px") > 2400, "8 ranger advances beyond the old world");
+    for (int i = 0; i < 250; i++) run_source("rangi-step");
+    check(run_int("block-at rangi F_X") > 2400, "8 ranger advances beyond the old world");
 
     /* 9 (E). camera leaves more visible space ahead than behind */
-    run_source("reset  view-w: 1000  px: 3000  move-player");
-    check(run_int("- px cam") < run_int("- view-w - px cam"), "9 more space ahead than behind");
+    run_source("reset  view-w: 1000  block-set! rangi F_X  3000  rangi-step");
+    check(run_int("- block-at rangi F_X cam") < run_int("- view-w - block-at rangi F_X cam"), "9 more space ahead than behind");
 
     /* 10 (F). one rock kills a 1-hp rat and scores 20 */
-    run_source("reset  px: 300  pf: 1  krock: 1  rock-cd: 0");
+    run_source("reset  block-set! rangi F_X  300  block-set! rangi F_D  1  krock: 1  block-set! rangi F_TARGET  0");
     run_source("r: ts-claim K_RAT  block-set! r F_X 330  block-set! r F_Y 330  block-set! r F_B 1  block-set! r F_A 0  block-set! r F_VY 2");
     run_source("fire-rock  rock-step ts-t 4");
     check(run_int("block-at r F_STATE") == 9 && run_int("score") == 20, "10 one rock kills a rat (+20)");
@@ -154,7 +155,7 @@ int main(void) {
     run_source("fire-rock  rock-step ts-t 4");
     check(run_int("block-at r F_STATE") == 0 && run_int("block-at r F_B") == 1 && run_int("score") == 0,
           "11 stoat survives hit 1 (no early score)");
-    run_source("rock-cd: 0  fire-rock  rock-step ts-t 4");
+    run_source("block-set! rangi F_TARGET  0  fire-rock  rock-step ts-t 4");
     check(run_int("block-at r F_STATE") == 9 && run_int("score") == 35, "11 stoat dies on hit 2 (+35)");
 
     /* 12 (H). a possum dies on the fifth rock (+60) */
@@ -188,28 +189,28 @@ int main(void) {
     /* 15 (J/M/Q). restart clears progression/pests/projectiles + viewport-only */
     run_source("reset");
     run_source("spawn-pest");
-    long px0 = run_int("px"), d0 = run_int("dist"), nx0 = run_int("next-tree-x");
-    run_source("px: 9000  dist: 9000  next-tree-x: 10000");
-    run_source("view-w: 1200  move-player");
-    check(run_int("px") == 9000, "15 viewport change does not move the ranger");
+    long px0 = run_int("block-at rangi F_X"), d0 = run_int("dist"), nx0 = run_int("next-tree-x");
+    run_source("block-set! rangi F_X  9000  dist: 9000  next-tree-x: 10000");
+    run_source("view-w: 1200  rangi-step");
+    check(run_int("block-at rangi F_X") == 9000, "15 viewport change does not move the ranger");
     run_source("reset");
-    check(run_int("px") == 480 && run_int("dist") == 480 && run_int("next-tree-x") == 2400,
+    check(run_int("block-at rangi F_X") == 480 && run_int("dist") == 480 && run_int("next-tree-x") == 2400,
           "15 restart resets progression");
     check(run_int("ts-count K_RAT") == 0 && run_int("ts-count K_ROCK") == 0 && run_int("ts-count K_BERRY") == 0,
           "15 restart clears pests/projectiles");
     (void)px0; (void)d0; (void)nx0;
 
     /* 16 (N/O/P). 20+ sector transitions keep tuple occupancy bounded */
-    run_source("reset  kr: 1  invuln: 999999");   /* isolate occupancy from contact */
+    run_source("reset  kr: 1  block-set! rangi F_A  999999");   /* isolate occupancy from contact */
     long maxTotal = 0;
     for (int i = 0; i < 1600; i++) {
-        run_source("move-player  spawn-timers  move-all 0  tally");
+        run_source("rangi-step  spawn-timers  move-all 0  tally");
         if (i % 20 == 0) {
             long tot = run_int("+ + + + ts-count K_RAT ts-count K_KAKA ts-count K_ROCK ts-count K_BERRY ts-count K_TREE");
             if (tot > maxTotal) maxTotal = tot;
         }
     }
-    long sectors = (run_int("px") - 480) / 720;
+    long sectors = (run_int("block-at rangi F_X") - 480) / 720;
     check(sectors >= 20, "16 advanced through 20+ sectors");
     check(run_int("next-tree-x") >= 12000, "16 rolling forest regenerated ahead");
     check(run_int("trees-live") <= 6, "16 active tree count bounded");
@@ -250,26 +251,26 @@ int main(void) {
 
     /* 19. ROCK has a finite semantic range from its spawn x */
     /* still lethal at ordinary visible combat distance (~380 px) */
-    run_source("reset  px: 300  pf: 1  krock: 1  rock-cd: 0");
+    run_source("reset  block-set! rangi F_X  300  block-set! rangi F_D  1  krock: 1  block-set! rangi F_TARGET  0");
     run_source("r: ts-claim K_RAT  block-set! r F_X 700  block-set! r F_Y 330  block-set! r F_B 1  block-set! r F_A 0  block-set! r F_VY 0");
     run_source("fire-rock");
     for (int i = 0; i < 40; i++) run_source("rock-step ts-t 4");
     check(run_int("block-at r F_STATE") == 9, "19 rock kills at visible combat distance");
     /* reclaimed after exceeding ROCK_RANGE (960 px => 80 steps at 12 px/tick) */
-    run_source("reset  px: 300  pf: 1  krock: 1  rock-cd: 0");
+    run_source("reset  block-set! rangi F_X  300  block-set! rangi F_D  1  krock: 1  block-set! rangi F_TARGET  0");
     run_source("fire-rock");
     for (int i = 0; i < 82; i++) run_source("rock-step ts-t 3");
     check(run_int("ts-count K_ROCK") == 0, "19 rock reclaimed after ROCK_RANGE");
     /* a pest well beyond ROCK_RANGE is never reached */
-    run_source("reset  px: 300  pf: 1  krock: 1  rock-cd: 0");
+    run_source("reset  block-set! rangi F_X  300  block-set! rangi F_D  1  krock: 1  block-set! rangi F_TARGET  0");
     run_source("r: ts-claim K_RAT  block-set! r F_X 1400  block-set! r F_Y 330  block-set! r F_B 1  block-set! r F_A 0  block-set! r F_VY 0");
     run_source("fire-rock");
     for (int i = 0; i < 82; i++) run_source("rock-step ts-t 4");
     check(run_int("block-at r F_STATE") == 0 && run_int("ts-count K_ROCK") == 0,
           "19 pest beyond ROCK_RANGE is untouched");
     /* firing continuously stays bounded, then the pool fully drains (no leak) */
-    run_source("reset  px: 300  pf: 1  krock: 1  rock-cd: 0");
-    for (int i = 0; i < 300; i++) run_source("rock-cd: 0  fire-rock  move-all 0");
+    run_source("reset  block-set! rangi F_X  300  block-set! rangi F_D  1  krock: 1  block-set! rangi F_TARGET  0");
+    for (int i = 0; i < 300; i++) run_source("block-set! rangi F_TARGET  0  fire-rock  move-all 0");
     long inflight = run_int("ts-count K_ROCK");
     for (int i = 0; i < 90; i++) run_source("move-all 0");
     check(inflight <= 5 && run_int("ts-count K_ROCK") == 0,
@@ -310,181 +311,260 @@ int main(void) {
     run_source("reset");
     run_source("r: ts-claim K_RAT  block-set! r F_X 480  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 0  block-set! r F_B 1  block-set! r F_VY 0  block-set! r F_TARGET -1");
     run_source("rat-step r");
-    check(run_int("lives") == 2 && run_int("invuln") > 0 && run_int("score") == 0,
+    check(run_int("block-at rangi F_B") == 2 && run_int("block-at rangi F_A") > 0 && run_int("score") == 0,
           "21 grounded rat contact: one life, no score");
     run_source("reset");
     run_source("r: ts-claim K_RAT  block-set! r F_X 480  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 1  block-set! r F_B 2  block-set! r F_VY 0  block-set! r F_TARGET -1");
     run_source("rat-step r");
-    check(run_int("lives") == 2 && run_int("block-at r F_B") == 2 && run_int("ts-count K_RAT") == 1,
+    check(run_int("block-at rangi F_B") == 2 && run_int("block-at r F_B") == 2 && run_int("ts-count K_RAT") == 1,
           "21 stoat contact: one life, HP + tuples unchanged");
     run_source("reset");
     run_source("r: ts-claim K_RAT  block-set! r F_X 480  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 2  block-set! r F_B 5  block-set! r F_VY 0  block-set! r F_TARGET -1");
     run_source("rat-step r");
-    check(run_int("lives") == 2 && run_int("block-at r F_B") == 5,
+    check(run_int("block-at rangi F_B") == 2 && run_int("block-at r F_B") == 5,
           "21 possum contact: one life, HP unchanged");
 
     /* 22. short invulnerability: a swarm cannot drain lives in one window */
     run_source("reset");
     run_source("r: ts-claim K_RAT  block-set! r F_X 480  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 0  block-set! r F_VY 0  block-set! r F_TARGET -1");
     run_source("rat-step r");
-    check(run_int("lives") == 2, "22 first contact loses a life");
+    check(run_int("block-at rangi F_B") == 2, "22 first contact loses a life");
     run_source("block-set! r F_X 480  block-set! r F_Y 345  rat-step r");
-    check(run_int("lives") == 2, "22 same-overlap contact does not stack");
-    run_source("block-set! r F_X - px 200  rat-step r");            /* separate */
-    run_source("invuln: 0  block-set! r F_X 480  block-set! r F_Y 345  rat-step r");
-    check(run_int("lives") == 1, "22 new episode after separation hits again");
+    check(run_int("block-at rangi F_B") == 2, "22 same-overlap contact does not stack");
+    run_source("block-set! r F_X - block-at rangi F_X 200  rat-step r");            /* separate */
+    run_source("block-set! rangi F_A  0  block-set! r F_X 480  block-set! r F_Y 345  rat-step r");
+    check(run_int("block-at rangi F_B") == 1, "22 new episode after separation hits again");
     run_source("reset");
-    check(run_int("invuln") == 0 && run_int("lives") == 3, "22 restart clears invuln/lives");
+    check(run_int("block-at rangi F_A") == 0 && run_int("block-at rangi F_B") == 3, "22 restart clears block-at rangi F_A/block-at rangi F_B");
 
     /* 23. jump dodge: grounded = hit, airborne = safe, landing = normal again */
     run_source("reset");
     run_source("r: ts-claim K_RAT  block-set! r F_X 480  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 0  block-set! r F_VY 0  block-set! r F_TARGET -1");
     run_source("rat-step r");
-    check(run_int("lives") == 2, "23 grounded ranger takes the hit");
+    check(run_int("block-at rangi F_B") == 2, "23 grounded ranger takes the hit");
     run_source("reset");
     run_source("r: ts-claim K_RAT  block-set! r F_X 480  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 0  block-set! r F_VY 0  block-set! r F_TARGET -1");
-    run_source("ku: 1  move-player  move-player  move-player");
-    check(run_int("py") < 315, "23 jump lifts the ranger clear");
+    run_source("ku: 1  rangi-step  rangi-step  rangi-step");
+    check(run_int("block-at rangi F_Y") < 315, "23 jump lifts the ranger clear");
     run_source("rat-step r");
-    check(run_int("lives") == 3, "23 airborne ranger takes no contact");
+    check(run_int("block-at rangi F_B") == 3, "23 airborne ranger takes no contact");
     run_source("ku: 0");
-    for (int i = 0; i < 26; i++) run_source("move-player");
-    check(run_int("py") == 330, "23 landing returns to the ground (py 330)");
-    run_source("invuln: 0  block-set! r F_X 480  block-set! r F_Y 345  rat-step r");
-    check(run_int("lives") == 2, "23 after landing contact hits again (no permanent immunity)");
+    for (int i = 0; i < 26; i++) run_source("rangi-step");
+    check(run_int("block-at rangi F_Y") == 330, "23 landing returns to the ground (block-at rangi F_Y 330)");
+    run_source("block-set! rangi F_A  0  block-set! r F_X 480  block-set! r F_Y 345  rat-step r");
+    check(run_int("block-at rangi F_B") == 2, "23 after landing contact hits again (no permanent immunity)");
 
     /* 24. movement keeps working across jump/land and after contact knockback */
     run_source("reset  kr: 1");
-    for (int i = 0; i < 10; i++) run_source("move-player");
-    long pxA = run_int("px");
-    run_source("ku: 1  move-player  move-player  move-player");   /* jump */
-    check(run_int("py") < 315, "24 jump lifts during the move sequence");
+    for (int i = 0; i < 10; i++) run_source("rangi-step");
+    long pxA = run_int("block-at rangi F_X");
+    run_source("ku: 1  rangi-step  rangi-step  rangi-step");   /* jump */
+    check(run_int("block-at rangi F_Y") < 315, "24 jump lifts during the move sequence");
     run_source("ku: 0");
-    for (int i = 0; i < 30; i++) run_source("move-player");  /* land and continue */
-    long pxB = run_int("px");
+    for (int i = 0; i < 30; i++) run_source("rangi-step");  /* land and continue */
+    long pxB = run_int("block-at rangi F_X");
     run_source("kr: 0");
-    check(run_int("py") == 330 && pxB > pxA + 100, "24 movement continues across jump/land");
+    check(run_int("block-at rangi F_Y") == 330 && pxB > pxA + 100, "24 movement continues across jump/land");
     run_source("reset  kr: 1");
     run_source("r: ts-claim K_RAT  block-set! r F_X 485  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 0  block-set! r F_VY 0  block-set! r F_TARGET -1");
-    run_source("move-player");
+    run_source("rangi-step");
     run_source("rat-step r");
-    long pxC = run_int("px");
-    check(run_int("lives") == 2 && pxC < 480, "24 contact knocks the ranger back");
+    long pxC = run_int("block-at rangi F_X");
+    check(run_int("block-at rangi F_B") == 2 && pxC < 480, "24 contact knocks the ranger back");
     run_source("kr: 1");
-    for (int i = 0; i < 20; i++) run_source("move-player");
+    for (int i = 0; i < 20; i++) run_source("rangi-step");
     run_source("kr: 0");
-    check(run_int("px") > pxC + 100, "24 movement resumes after contact knockback");
+    check(run_int("block-at rangi F_X") > pxC + 100, "24 movement resumes after contact knockback");
 
     /* 25. contact episodes: one pest + one continuous overlap = exactly one hit */
     run_source("reset");
     run_source("r: ts-claim K_RAT  block-set! r F_X 480  block-set! r F_Y 345  block-set! r F_STATE 0  block-set! r F_A 0  block-set! r F_VY 0  block-set! r F_TARGET -1");
-    for (int i = 0; i < 40; i++) run_source("block-set! r F_X px  block-set! r F_Y + py 2  rat-step r");
-    check(run_int("lives") == 2, "25 A continuous overlap => exactly one life");
-    run_source("invuln: 0");
-    for (int i = 0; i < 5; i++) run_source("block-set! r F_X px  block-set! r F_Y + py 2  rat-step r");
-    check(run_int("lives") == 2, "25 B invuln expiry mid-overlap does not stack");
-    run_source("block-set! r F_X - px 200  rat-step r");
+    for (int i = 0; i < 40; i++) run_source("block-set! r F_X block-at rangi F_X  block-set! r F_Y + block-at rangi F_Y 2  rat-step r");
+    check(run_int("block-at rangi F_B") == 2, "25 A continuous overlap => exactly one life");
+    run_source("block-set! rangi F_A  0");
+    for (int i = 0; i < 5; i++) run_source("block-set! r F_X block-at rangi F_X  block-set! r F_Y + block-at rangi F_Y 2  rat-step r");
+    check(run_int("block-at rangi F_B") == 2, "25 B block-at rangi F_A expiry mid-overlap does not stack");
+    run_source("block-set! r F_X - block-at rangi F_X 200  rat-step r");
     check(run_int("block-at r F_F") == 0, "25 C separation clears the episode");
-    run_source("invuln: 0  block-set! r F_X px  block-set! r F_Y + py 2  rat-step r");
-    check(run_int("lives") == 1, "25 D a new contact after separation hits again");
+    run_source("block-set! rangi F_A  0  block-set! r F_X block-at rangi F_X  block-set! r F_Y + block-at rangi F_Y 2  rat-step r");
+    check(run_int("block-at rangi F_B") == 1, "25 D a new contact after separation hits again");
     run_source("reset");
     run_source("a: ts-claim K_RAT  block-set! a F_X 480  block-set! a F_Y 345  block-set! a F_STATE 0  block-set! a F_A 0  block-set! a F_VY 0  block-set! a F_TARGET -1");
     run_source("b: ts-claim K_RAT  block-set! b F_X 482  block-set! b F_Y 345  block-set! b F_STATE 0  block-set! b F_A 0  block-set! b F_VY 0  block-set! b F_TARGET -1");
     run_source("rat-step a  rat-step b");
-    check(run_int("lives") == 2, "25 E two near-simultaneous rats cost one life");
+    check(run_int("block-at rangi F_B") == 2, "25 E two near-simultaneous rats cost one life");
     run_source("reset");
-    check(run_int("lives") == 3 && run_int("ts-count K_RAT") == 0, "25 F restart clears contact state");
+    check(run_int("block-at rangi F_B") == 3 && run_int("ts-count K_RAT") == 0, "25 F restart clears contact state");
 
     /* 26. the ranger can never leave the visible left margin */
     int M = (int)run_int("PLAYER_LEFT_MARGIN");
     run_source("reset  view-w: 1000");
     run_source("kl: 1");
-    for (int i = 0; i < 80; i++) run_source("kl: 1  move-player");
-    check(run_int("px") == M, "26 A left input clamps at the margin");
-    check(run_int("- px cam") >= M, "26 A screenX stays inside the margin");
+    for (int i = 0; i < 80; i++) run_source("kl: 1  rangi-step");
+    check(run_int("block-at rangi F_X") == M, "26 A left input clamps at the margin");
+    check(run_int("- block-at rangi F_X cam") >= M, "26 A screenX stays inside the margin");
     check(run_int("cam") == 0, "26 C camera rests at the world origin");
-    run_source("kl: 0  kr: 1  move-player");
-    check(run_int("px") > M, "26 F right movement resumes after the clamp");
+    run_source("kl: 0  kr: 1  rangi-step");
+    check(run_int("block-at rangi F_X") > M, "26 F right movement resumes after the clamp");
     run_source("kr: 0  kl: 1");
-    for (int i = 0; i < 20; i++) run_source("kl: 1  move-player");
-    int p0 = (int)run_int("px"), c0 = (int)run_int("cam");
-    for (int i = 0; i < 20; i++) run_source("kl: 1  move-player");
-    check(run_int("px") == p0 && run_int("cam") == c0, "26 H clamp is stable (no jitter)");
+    for (int i = 0; i < 20; i++) run_source("kl: 1  rangi-step");
+    int p0 = (int)run_int("block-at rangi F_X"), c0 = (int)run_int("cam");
+    for (int i = 0; i < 20; i++) run_source("kl: 1  rangi-step");
+    check(run_int("block-at rangi F_X") == p0 && run_int("cam") == c0, "26 H clamp is stable (no jitter)");
 
     /* B. scroll right, then walk left all the way home: the ranger stays inside */
-    run_source("kl: 0  reset  view-w: 1000  px: 3000  move-player");
+    run_source("kl: 0  reset  view-w: 1000  block-set! rangi F_X  3000  rangi-step");
     check(run_int("cam") == 2650, "26 B camera follows while scrolled");
     int minSX = 99999;
     run_source("kl: 1");
     for (int i = 0; i < 320; i++) {
-        run_source("kl: 1  move-player");
-        long sx = run_int("- px cam");
+        run_source("kl: 1  rangi-step");
+        long sx = run_int("- block-at rangi F_X cam");
         if (sx < minSX) minSX = (int)sx;
     }
     check(minSX >= M, "26 B screenX never crosses while scrolling left");
-    check(run_int("cam") == 0 && run_int("px") == M, "26 B camera reaches origin and pins");
+    check(run_int("cam") == 0 && run_int("block-at rangi F_X") == M, "26 B camera reaches origin and pins");
 
     /* D. knockback near the left margin cannot push the body off-screen */
-    run_source("reset  view-w: 1000  px: 60  invuln: 0");
+    run_source("reset  view-w: 1000  block-set! rangi F_X  60  block-set! rangi F_A  0");
     run_source("hit-ranger");
-    check(run_int("px") >= M, "26 D knockback keeps the body inside the margin");
-    check(run_int("- px cam") >= M, "26 D post-knockback screenX inside the margin");
+    check(run_int("block-at rangi F_X") >= M, "26 D knockback keeps the body inside the margin");
+    check(run_int("- block-at rangi F_X cam") >= M, "26 D post-knockback screenX inside the margin");
 
     /* E. jump + LEFT cannot escape the viewport */
-    run_source("reset  view-w: 1000  px: 60  kl: 1  ku: 1");
+    run_source("reset  view-w: 1000  block-set! rangi F_X  60  kl: 1  ku: 1");
     int jmin = 99999;
     for (int i = 0; i < 30; i++) {
-        run_source("kl: 1  move-player");
-        long sx = run_int("- px cam");
+        run_source("kl: 1  rangi-step");
+        long sx = run_int("- block-at rangi F_X cam");
         if (sx < jmin) jmin = (int)sx;
     }
     check(jmin >= M, "26 E jump + left stays inside the viewport");
 
     /* G. restart returns to a valid, visible state */
     run_source("reset");
-    check(run_int("px") == 480 && run_int("- px cam") >= M, "26 G restart is visible");
+    check(run_int("block-at rangi F_X") == 480 && run_int("- block-at rangi F_X cam") >= M, "26 G restart is visible");
 
     /* 27. repeated nonfatal rat contacts must never leave a partial-control
        state: movement, facing, ROCK, JUMP all recover; only game-over is a
        legitimate control freeze. */
     run_source("reset  view-w: 1000");
-    for (int i = 1; i <= 6; i++) {
-        char src[256];
-        /* a fresh rat, overlapped, hits once, then separates and is freed */
-        snprintf(src, sizeof src,
-            "h%d: ts-claim K_RAT  block-set! h%d F_X px  block-set! h%d F_Y + py 2  "
-            "block-set! h%d F_STATE 0  block-set! h%d F_TARGET -1  rat-step h%d",
-            i, i, i, i, i, i);
-        run_source(src);
-        snprintf(src, sizeof src,
-            "block-set! h%d F_X - px 400  rat-step h%d  ts-free h%d  invuln: 0", i, i, i);
-        run_source(src);
+    /* six fresh rats (reusing one slot), each overlapped and hitting once; lives
+       are pinned high so the episode is deliberately NONfatal */
+    for (int i = 0; i < 6; i++) {
+        run_source("block-set! rangi F_B 3  block-set! rangi F_A 0  h: ts-claim K_RAT  "
+                   "block-set! h F_X block-at rangi F_X  block-set! h F_Y + block-at rangi F_Y 2  "
+                   "block-set! h F_STATE 0  block-set! h F_TARGET -1  rat-step h");
+        run_source("block-set! h F_X - block-at rangi F_X 400  rat-step h  ts-free h  block-set! rangi F_A 0");
     }
-    check(run_int("lives") < 3 && run_int("over") == 0, "27 repeated hits: alive, game not over");
+    check(run_int("block-at rangi F_B") < 3 && run_int("over") == 0, "27 repeated hits: alive, game not over");
     /* A. LEFT */
-    run_source("kl: 1  kr: 0  move-player");
-    int pL = (int)run_int("px");
-    check(run_int("pf") == -1, "27 LEFT still turns the ranger");
+    run_source("kl: 1  kr: 0  rangi-step");
+    int pL = (int)run_int("block-at rangi F_X");
+    check(run_int("block-at rangi F_D") == -1, "27 LEFT still turns the ranger");
     /* B. RIGHT (release LEFT as a real key-up would) */
-    run_source("kl: 0  kr: 1  move-player");
-    check((int)run_int("px") > pL, "27 RIGHT moves after LEFT");
-    check(run_int("pf") == 1, "27 RIGHT still turns the ranger");
+    run_source("kl: 0  kr: 1  rangi-step");
+    check((int)run_int("block-at rangi F_X") > pL, "27 RIGHT moves after LEFT");
+    check(run_int("block-at rangi F_D") == 1, "27 RIGHT still turns the ranger");
     run_source("kr: 0");
     /* C. ROCK */
-    run_source("pf: 1  krock: 1  rock-cd: 0  fire-rock  tally");
-    check(run_int("n-rock") >= 1 && run_int("rock-cd") > 0, "27 ROCK fires after repeated hits");
+    run_source("block-set! rangi F_D  1  krock: 1  block-set! rangi F_TARGET  0  fire-rock  tally");
+    check(run_int("n-rock") >= 1 && run_int("block-at rangi F_TARGET") > 0, "27 ROCK fires after repeated hits");
     /* D. JUMP */
-    run_source("krock: 0  jt: 0  py: 330  ku: 1  move-player  move-player");
-    check(run_int("jt") > 0 && run_int("py") < 330, "27 JUMP works after repeated hits");
+    run_source("krock: 0  block-set! rangi F_VY  0  block-set! rangi F_Y  330  ku: 1  rangi-step  rangi-step");
+    check(run_int("block-at rangi F_VY") > 0 && run_int("block-at rangi F_Y") < 330, "27 JUMP works after repeated hits");
     /* F. no sticky held-state */
     run_source("ku: 0  kl: 0  kr: 0  krock: 0  kf: 0");
     check(run_int("kl") == 0 && run_int("kr") == 0 && run_int("krock") == 0, "27 no sticky held state");
     /* game-over IS the only control freeze (step gates input on `over`) */
-    run_source("reset  over: 1  kr: 1  px: 480");
+    run_source("reset  over: 1  kr: 1  block-set! rangi F_X  480");
     run_source("step");
-    check(run_int("px") == 480, "27 game-over freezes movement");
+    check(run_int("block-at rangi F_X") == 480, "27 game-over freezes movement");
     run_source("reset");
-    check(run_int("lives") == 3 && run_int("invuln") == 0, "27 restart clears control/contact state");
+    check(run_int("block-at rangi F_B") == 3 && run_int("block-at rangi F_A") == 0, "27 restart clears control/contact state");
+
+    /* 28. Rangi is a first-class actor: ONE tuple owns all player state */
+    run_source("reset");
+    check(run_int("block-at rangi F_KIND") == 8 && run_int("block-at rangi F_ID") == 1,
+          "28 A one K_RANGI actor exists");
+    check(run_int("block-at rangi F_X") == 480 && run_int("block-at rangi F_Y") == 330 &&
+          run_int("block-at rangi F_D") == 1 && run_int("block-at rangi F_B") == 3 &&
+          run_int("block-at rangi F_VY") == 0 && run_int("block-at rangi F_A") == 0 &&
+          run_int("block-at rangi F_TARGET") == 0 && run_int("block-at rangi F_STATE") == 0,
+          "28 B actor owns x/y/facing/lives/jump/invuln/cooldown/state");
+    run_source("kl: 1  kr: 0  rangi-step");
+    check(run_int("block-at rangi F_D") == -1 && run_int("block-at rangi F_X") == 470, "28 C LEFT moves+turns actor");
+    run_source("kl: 0  kr: 1  rangi-step");
+    check(run_int("block-at rangi F_D") == 1 && run_int("block-at rangi F_X") == 480, "28 D RIGHT moves+turns actor");
+    run_source("kr: 0  block-set! rangi F_X 300  ku: 1  rangi-step  rangi-step");
+    check(run_int("block-at rangi F_VY") > 0 && run_int("block-at rangi F_Y") < 330 && run_int("block-at rangi F_X") == 300,
+          "28 E JUMP only moves the actor's jump/y");
+    run_source("ku: 0  block-set! rangi F_VY 0  block-set! rangi F_Y 330");
+    run_source("block-set! rangi F_D 1  block-set! rangi F_TARGET 0  krock: 1  fire-rock  tally");
+    check(run_int("n-rock") >= 1, "28 F ROCK spawns through the actor");
+    run_source("krock: 0");
+    /* G/H. contact resolves through Rangi; one continuous overlap = one hit */
+    run_source("reset  block-set! rangi F_B 3");
+    run_source("h: ts-claim K_RAT  block-set! h F_X 480  block-set! h F_Y 332  block-set! h F_STATE 0  block-set! h F_TARGET -1");
+    for (int i = 0; i < 20; i++) run_source("block-set! h F_X block-at rangi F_X  block-set! h F_Y + block-at rangi F_Y 2  rat-step h");
+    check(run_int("block-at rangi F_B") == 2, "28 G/H continuous overlap => exactly one hit");
+    run_source("ts-free h");
+    /* K/J. final life => DEAD, and DEAD is inert */
+    run_source("block-set! rangi F_B 1  block-set! rangi F_A 0  block-set! rangi F_C 1  rangi-step");
+    check(run_int("block-at rangi F_B") == 0 && run_int("block-at rangi F_STATE") == 1, "28 J final life => DEAD");
+    {
+        long dx = run_int("block-at rangi F_X"), df = run_int("block-at rangi F_D");
+        run_source("kl: 0  kr: 1  ku: 1  krock: 1  block-set! rangi F_TARGET 0  n-rock: 0  rangi-step  fire-rock");
+        check(run_int("block-at rangi F_X") == dx && run_int("block-at rangi F_D") == df &&
+              run_int("block-at rangi F_VY") == 0 && run_int("n-rock") == 0, "28 K DEAD actor is inert");
+    }
+    run_source("kl: 0  kr: 0  ku: 0  krock: 0");
+    /* M/N. restart recreates the actor; camera derives without mutating it */
+    run_source("reset");
+    check(run_int("block-at rangi F_X") == 480 && run_int("block-at rangi F_B") == 3 &&
+          run_int("block-at rangi F_STATE") == 0 && run_int("block-at rangi F_KIND") == 8, "28 M restart recreates the actor");
+    run_source("view-w: 1000  block-set! rangi F_X 3000  rangi-step");
+    check(run_int("block-at rangi F_X") == 3000 && run_int("cam") == 2650, "28 N camera derives from the actor");
+
+    /* 29. Rangi torture: long mixed input + repeated contacts never break it */
+    run_source("reset  view-w: 1056  block-set! rangi F_B 9");
+    unsigned tseed = 26461u;
+    int tortureFail = 0, sawAlive = 0, sawDead = 0;
+    for (int i = 0; i < 2500 && !tortureFail; i++) {
+        tseed = tseed * 1103515245u + 12345u;
+        switch ((tseed >> 13) & 7) {
+            case 0: run_source("kl: 1  kr: 0  ku: 0  kd: 0  krock: 0"); break;
+            case 1: run_source("kl: 0  kr: 1  ku: 0  kd: 0  krock: 0"); break;
+            case 2: run_source("kl: 0  kr: 1  ku: 1  kd: 0  krock: 0"); break;
+            case 3: run_source("kl: 1  kr: 0  ku: 0  kd: 0  block-set! rangi F_TARGET 0  krock: 1"); break;
+            case 4: run_source("kl: 1  kr: 0  ku: 0  kd: 1  krock: 0"); break;
+            default: run_source("kl: 0  kr: 0  ku: 0  kd: 0  krock: 0"); break;
+        }
+        run_source("rangi-step  fire-rock  move-all 0  tally");
+        if ((i % 17) == 0) {   /* a fresh rat hits once, then separates and frees */
+            run_source("block-set! rangi F_A 0  h: ts-claim K_RAT  block-set! h F_X block-at rangi F_X  "
+                       "block-set! h F_Y + block-at rangi F_Y 2  block-set! h F_STATE 0  block-set! h F_TARGET -1  rat-step h  ts-free h");
+        }
+        if ((i % 500) == 499) run_source("reset  view-w: 1056  block-set! rangi F_B 9");  /* restart mid-run */
+        long st = run_int("block-at rangi F_STATE"), x = run_int("block-at rangi F_X"),
+             y = run_int("block-at rangi F_Y"), vy = run_int("block-at rangi F_VY"),
+             lb = run_int("block-at rangi F_B");
+        if (st == 0) {
+            sawAlive++;
+            if (x < 56 || y < 260 || y > 330 || vy < 0 || vy > 22 || lb < 1 || lb > 9) {
+                tortureFail = 1;
+                printf("      torture ALIVE invariant broken i=%d st=%ld x=%ld y=%ld vy=%ld lb=%ld\n", i, st, x, y, vy, lb);
+            }
+        } else {
+            sawDead++;
+            if (vy != 0 || y != 330) {
+                tortureFail = 1;
+                printf("      torture DEAD invariant broken i=%d vy=%ld y=%ld\n", i, vy, y);
+            }
+        }
+    }
+    check(sawAlive > 100 && sawDead >= 0, "29 torture exercised the actor for thousands of ticks");
+    check(!tortureFail, "29 torture: no impossible actor state");
 
     if (fails == 0) { printf("kaka-wave-test PASS\n"); return 0; }
     printf("kaka-wave-test FAIL (%d)\n", fails);

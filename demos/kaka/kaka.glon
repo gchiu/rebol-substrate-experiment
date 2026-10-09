@@ -36,6 +36,9 @@ K_PICK: 4
 K_POOP: 5
 K_TREE: 6
 K_ROCK: 7
+;; Rangi: the ONE persistent player actor. Only rangi-step mutates it.
+;; F_STATE: 0 active / 1 dead.  F_E: mode (0 = FOREST).
+K_RANGI: 8
 
 ;; tuple field indices (every tuple is TW cells wide)
 F_KIND: 0
@@ -65,16 +68,14 @@ KS_SWOOP: 5
 tick: 0 score: 0 over: 0
 ;; `over` is the ONE authoritative terminal state (no lives OR no tree). tally
 ;; recomputes it; HUD, splash and step all read this single flag.
-lives: 3 invuln: 0 highscore: 0
+highscore: 0
+;; input intent only (host -> Glon). NOT player state: the Rangi actor consumes
+;; it. Rangi's own mutable state (x/y/facing/jump/lives/invuln/cooldown) lives in
+;; its tuple, not here.
 kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
-;; krock = ROCK action held; pf = ranger facing (+1 right / -1 left); rock-cd =
-;; anti-pest fire cooldown. pf follows the last horizontal input.
-krock: 0 pf: 1 rock-cd: 0
-px: 480 py: 330
-;; jt = ticks remaining in the current jump arc (0 = grounded). A countdown
-;; (not a cross-tick velocity) drives the height so the jump can never be lost
-;; between simulation ticks, bounce, or get stuck.
-jt: 0
+krock: 0
+;; rangi = handle to the single K_RANGI actor tuple (kaka-rangi.glon).
+rangi: 0
 ;; cam = world x at the view's left edge; view-w = logical viewport width.
 ;; dist = furthest world x the ranger has reached (monotonic progress; drives
 ;; pest-stage progression and never decreases, so retreating does not rewind it).
@@ -165,41 +166,6 @@ damage-tree: func [ti d] [
 
 ;; ---- rats (D12B wave/climb logic lives in kaka-wave.glon) -----------------
 
-;; ---- one world tick (deterministic; no randomness beyond Glon's own rng) --
-move-player: func [] [
-    dx: - kr kl
-    ;; facing follows the last horizontal input (rocks fire in this direction)
-    either > kr kl [ pf: 1 ] [ either > kl kr [ pf: -1 ] [ none ] ]
-    ;; horizontal 10 px/tick. The ranger can move while airborne, so a dodge is
-    ;; a jump-over, not a full stop.
-    either = dx 0 [ none ] [ px: + px * dx 10 ]
-    ;; JUMP: a deterministic 22-tick arc (peak ~60 px up, py 270). A countdown
-    ;; drives the height, so a tap always produces the same full jump, it can
-    ;; never be lost between ticks or bounce, and holding re-triggers on landing.
-    ;; DOWN fast-forwards the descent. Feet rest on the ground line (py 330).
-    either > ku 0 [ either = jt 0 [ jt: 22 ] [ none ] ] [ none ]
-    either > kd 0 [ either > jt 2 [ jt: - jt 2 ] [ jt: 0 ] ] [ none ]
-    either > jt 0 [
-        p: - 22 jt
-        py: - 330 / * p - 22 p 2
-        jt: - jt 1
-    ] [ py: 330 ]
-    ;; monotonic progress: stage thresholds key off the furthest x reached, so
-    ;; retreating left never rewinds the invasion.
-    either > px dist [ dist: px ] [ none ]
-    keep-visible
-]
-;; Single deterministic order: clamp the ranger inside the visible left margin,
-;; then derive the camera from that clamped x. Because screenX = px - cam =
-;; min(px, 35% * view-w), enforcing px >= PLAYER_LEFT_MARGIN enforces
-;; screenX >= PLAYER_LEFT_MARGIN with no jitter (both derived each tick).
-keep-visible: func [] [
-    either < px PLAYER_LEFT_MARGIN [ px: PLAYER_LEFT_MARGIN ] [ none ]
-    ;; side-scroller camera: ranger ~35% from the left, most of the screen is the
-    ;; battlefield ahead. Only visibility changes; actor world coords are stable.
-    t: - px / * view-w 35 100
-    cam: either < t 0 [ 0 ] [ t ]
-]
 move-all: func [i] [
     either < i ts-hi [
         k: ts-k i
@@ -220,7 +186,7 @@ spawn-timers: func [] [
     wave-step
     ;; rolling forest: plant the next tree ahead as the ranger advances, and
     ;; reclaim trees well behind. Bounded -- next-tree-x only ever climbs.
-    either < next-tree-x + px 1360 [ spawn-tree 0 next-tree-x  next-tree-x: + next-tree-x 720 ] [ none ]
+    either < next-tree-x + block-at rangi F_X 1360 [ spawn-tree 0 next-tree-x  next-tree-x: + next-tree-x 720 ] [ none ]
     tr-cull 0
     next-pick: - next-pick 1
     either < next-pick 1 [
@@ -233,7 +199,7 @@ spawn-timers: func [] [
 tr-cull: func [i] [
     either < i ts-hi [
         either = ts-k i K_TREE [
-            either < block-at ts-t i F_X - px 800 [ ts-free ts-t i ] [ none ]
+            either < block-at ts-t i F_X - block-at rangi F_X 800 [ ts-free ts-t i ] [ none ]
         ] [ none ]
         tr-cull + i 1
     ] [ none ]
@@ -242,13 +208,11 @@ step: func [] [
     tick: + tick 1
     either > cd 0 [ cd: - cd 1 ] [ none ]
     either > glon-cd 0 [ glon-cd: - glon-cd 1 ] [ none ]
-    either > rock-cd 0 [ rock-cd: - rock-cd 1 ] [ none ]
-    either > invuln 0 [ invuln: - invuln 1 ] [ none ]
     ;; terminal: input, spawns and scoring stop; the world keeps moving and
     ;; rendering (never frozen) so in-flight rocks/berries clear.
     either = over 0 [
         spawn-timers
-        move-player
+        rangi-step
         fire
         fire-glon
         fire-rock
@@ -260,10 +224,9 @@ step: func [] [
 ]
 reset: func [] [
     tick: 0 score: 0 over: 0
-    lives: LIVES_MAX invuln: 0
     kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
-    krock: 0 pf: 1 rock-cd: 0
-    px: 480 py: 330 jt: 0 cd: 0 glon-cd: 0
+    krock: 0
+    cd: 0 glon-cd: 0
     cam: 0 dist: 480
     berries: 1
     next-kaka: 40 next-pick: 1100 next-milestone: 600
@@ -274,6 +237,21 @@ reset: func [] [
     idc: 0 rng: 12345
     ts-hi: 0
     tc 0
+    ;; create the ONE player actor in its RESERVED top tuple slot (NTS-1); its
+    ;; tuple is the source of truth for all Rangi state (kaka-rangi.glon).
+    rangi: ts-t - NTS 1
+    block-set! rangi F_KIND K_RANGI
+    block-set! rangi F_ID 1
+    block-set! rangi F_X 480
+    block-set! rangi F_Y 330
+    block-set! rangi F_VY 0
+    block-set! rangi F_D 1
+    block-set! rangi F_B LIVES_MAX
+    block-set! rangi F_A 0
+    block-set! rangi F_TARGET 0
+    block-set! rangi F_STATE 0
+    block-set! rangi F_E 0
+    block-set! rangi F_C 0
     ;; initial forest: three stable trees within the opening window; the rolling
     ;; spawner plants more ahead as the ranger advances (kaka.glon spawn-timers).
     spawn-tree 0 240
@@ -292,7 +270,7 @@ tally: func [] [
     tly 0
     ;; ONE terminal predicate: no lives, or no gameplay tree. HUD, splash and
     ;; step gating all read this single `over`.
-    over: either = lives 0 [ 1 ] [ either = trees-live 0 [ 1 ] [ 0 ] ]
+    over: either = block-at rangi F_B 0 [ 1 ] [ either = trees-live 0 [ 1 ] [ 0 ] ]
 ]
 tly: func [i] [
     either < i ts-hi [
@@ -383,7 +361,7 @@ on-debug-hit: func [] [ lose-life  tally  render ]
 on-debug-score: func [] [ score: str-int current-value  tally  render ]
 ;; soak hook: pin the life count so long-session berry/actor soaks do not end
 ;; the game and stop firing (the life rules have their own tests).
-on-debug-lives: func [] [ lives: str-int current-value  tally  render ]
+on-debug-lives: func [] [ block-set! rangi F_B str-int current-value  tally  render ]
 
 ;; the dispatcher is a table lookup (the same shape traffic.glon uses), so the
 ;; game reads as data and the routing stays in Glon.

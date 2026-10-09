@@ -63,10 +63,11 @@ static const char *OVERLAY =
     "  either = current-route 'kaka-treeghost [ r: ts-claim K_RAT  block-set! r F_X 300  block-set! r F_Y 250  block-set! r F_STATE 9  block-set! r F_C 10  block-set! r F_A 0 ] ["
     "  either = current-route 'kaka-stoat [ b: ts-claim K_RAT  block-set! b F_X 300  block-set! b F_Y 250  block-set! b F_STATE 0  block-set! b F_A 1 ] ["
     "  either = current-route 'kaka-possum [ q: ts-claim K_RAT  block-set! q F_X 300  block-set! q F_Y 250  block-set! q F_STATE 0  block-set! q F_A 2 ] ["
-    "  either = current-route 'kaka-air [ py: 270  jt: 11 ] ["
-    "  either = current-route 'kaka-run [ kr: 1  move-player ] ["
-    "  either = current-route 'kaka-hit [ invuln: 10  tick: 1  kr: 0 ] ["
-    "  either = current-route 'kaka-over [ lives: 0  py: 270  kr: 1 ] [ reset ]]]]]]]]]]]"
+    "  either = current-route 'kaka-air [ block-set! rangi F_Y  270  block-set! rangi F_VY  11 ] ["
+    "  either = current-route 'kaka-run [ kr: 1  rangi-step ] ["
+    "  either = current-route 'kaka-hit [ block-set! rangi F_A  10  tick: 1  kr: 0 ] ["
+    "  either = current-route 'kaka-over [ block-set! rangi F_B  0  block-set! rangi F_Y  270  kr: 1 ] ["
+    "  either = current-route 'kaka-dead [ block-set! rangi F_STATE  1  block-set! rangi F_Y  200  kr: 1 ] [ reset ]]]]]]]]]]]]"
     "  tally render ] ]";
 
 static char out[65536];
@@ -128,6 +129,7 @@ int main(void) {
     if (load_file("demos/kaka/kaka-lib.glon") != 0) return 2;
     if (load_file("demos/kaka/kaka.glon") != 0) return 2;
     if (load_file("demos/kaka/kaka-draw.glon") != 0) return 2;
+    if (load_file("demos/kaka/kaka-rangi.glon") != 0) return 2;
     if (load_file("demos/kaka/kaka-wave.glon") != 0) return 2;
     if (run_source(OVERLAY) != 0) return 2;
 
@@ -277,6 +279,12 @@ int main(void) {
     int op, ox, oy, od, ook = player_op(&op, &ox, &oy, &od);
     printf("  player over pose=%d y=%d\n", op, oy);
     if (!ook || op != 5 || oy != 330) { printf("  FAIL: terminal pose not fallen/grounded\n"); fails++; }
+    /* DEAD actor (state 1) likewise renders the fallen pose, still grounded */
+    if (route("home") != 0) return 2;
+    if (route("kaka-dead") != 0) return 2;
+    int dp, dxx, dyy, dd, dok = player_op(&dp, &dxx, &dyy, &dd);
+    printf("  player dead pose=%d y=%d\n", dp, dyy);
+    if (!dok || dp != 5 || dyy != 330) { printf("  FAIL: DEAD actor pose not fallen/grounded\n"); fails++; }
     /* no old primitive ranger must remain (the host is the only painter) */
     {
         int prim = 0; char *q = vis;

@@ -104,6 +104,7 @@ WebAssembly.instantiate(fs.readFileSync(WASM), imports).then(({ instance }) => {
   load(fs.readFileSync(path.join(HERE, "kaka.glon"), "utf8"));
   load(fs.readFileSync(path.join(HERE, "kaka-draw.glon"), "utf8"));
   load(fs.readFileSync(path.join(HERE, "kaka-wave.glon"), "utf8"));
+  load(fs.readFileSync(path.join(HERE, "kaka-rangi.glon"), "utf8"));
   load(fs.readFileSync(path.join(HERE, "kaka-selftest.glon"), "utf8"));
 
   const start = route("home");

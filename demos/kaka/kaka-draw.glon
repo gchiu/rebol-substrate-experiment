@@ -19,29 +19,14 @@ seg-rect?: func [ax ay bx by x0 y0 x1 y1] [
 ]
 ;; The ranger's hitbox in world coordinates (matches draw-player: head + body).
 laser-hits-player?: func [] [
-    seg-rect? laser-ox laser-oy laser-x laser-y - px 10 - py 14 + px 10 + py 22
+    seg-rect? laser-ox laser-oy laser-x laser-y - block-at rangi F_X 10 - block-at rangi F_Y 14 + block-at rangi F_X 10 + block-at rangi F_Y 22
 ]
 ;; One life, exactly, with NO teleport (the rolling world must not jump back);
 ;; short invulnerability follows. The ONE canonical player-consequence path.
-lose-life: func [] [
-    either < lives 1 [ none ] [
-        lives: - lives 1
-        either < lives 1 [ lives: 0 ] [ none ]
-        invuln: INVULN_TICKS
-    ]
-]
-;; pest contact: comic knockback + one life consequence + the invuln window
-hit-ranger: func [] [
-    either > invuln 0 [ none ] [
-        px: - px 14
-        keep-visible
-        lose-life
-    ]
-]
 ;; mutant laser crossing the ranger (invuln / game over change nothing)
 laser-hazard: func [] [
     either = over 0 [
-        either < invuln 1 [ either laser-hits-player? [ lose-life ] [ none ] ] [ none ]
+        either < block-at rangi F_A 1 [ either laser-hits-player? [ lose-life ] [ none ] ] [ none ]
     ] [ none ]
 ]
 ;; The host reports the logical presentation width (from the display aspect) so
@@ -78,7 +63,7 @@ spawn-kaka: func [] [
     t: ts-claim K_KAKA
     either = t none [ none ] [
         ;; birds roam the battlefield AROUND the ranger (not a fixed world slot)
-        block-set! t F_X + - px 260 mod rnd 900
+        block-set! t F_X + - block-at rangi F_X 260 mod rnd 900
         block-set! t F_Y 20
         block-set! t F_STATE KS_SWEEP
         block-set! t F_D either = 0 mod block-at t F_ID 2 [ 1 ] [ -1 ]
@@ -126,9 +111,9 @@ kaka-eat: func [t] [
     ]
 ]
 kaka-leave: func [t] [
-    k-move t either > block-at t F_D 0 [ + px 1400 ] [ -1400 ] 16 7 4
-    either > block-at t F_X + px 1500 [ ts-free t ] [
-        either < block-at t F_X - px 1300 [ ts-free t ] [ none ]
+    k-move t either > block-at t F_D 0 [ + block-at rangi F_X 1400 ] [ -1400 ] 16 7 4
+    either > block-at t F_X + block-at rangi F_X 1500 [ ts-free t ] [
+        either < block-at t F_X - block-at rangi F_X 1300 [ ts-free t ] [ none ]
     ]
 ]
 kaka-divert: func [t] [
@@ -349,23 +334,6 @@ draw-trees: func [i] [
         draw-trees + i 1
     ] [ none ]
 ]
-;; Glon emits ONLY semantic player presentation: `P <pose> <x> <y> <dir>` where
-;; pose = 0 idle / 1 run-a / 2 run-b / 3 jump / 4 hit. The HOST owns the actual
-;; cartoon ranger sprite; Glon keeps all player gameplay state and just names the
-;; pose. During invulnerability the pose alternates to a hit frame (a blink).
-draw-player: func [] [
-    either = over 1 [
-        ;; terminal: a still, grounded, fallen ranger. Input is already gated
-        ;; off by `step`; force the ground baseline too, in case he fell in air.
-        p-byte 80 p-num 5 p-num px p-num 330 p-num pf p-eol
-    ] [
-        p: either > jt 0 [ 3 ] [
-            either = 0 - kr kl [ 0 ] [ either < mod tick 12 6 [ 1 ] [ 2 ] ]
-        ]
-        either > invuln 0 [ either < mod tick 8 4 [ p: 4 ] [ none ] ] [ none ]
-        p-byte 80 p-num p p-num px p-num py p-num pf p-eol
-    ]
-]
 ;; The mutant's ocular beam, drawn from its eye to its target rat.
 draw-laser: func [] [
     either > laser 0 [ p-line laser-ox laser-oy laser-x laser-y 2 14 ] [ none ]
@@ -388,13 +356,13 @@ render-canvas: func [] [
 render-status: func [] [
     e-clear
     e-text "<p class='hud'>SCORE: " e-int score
-    e-text "    Lives: " e-int lives
+    e-text "    Lives: " e-int block-at rangi F_B
     e-text "    Trees: " e-int trees-live e-text "/" e-int NTREES
     e-text "    Habitat: " e-int tree-sum e-text "/" e-int * NTREES TREE_MAX
     e-text "    Glon Berries: " e-int berries
     e-text "    Wave: " e-int wave
     e-text "    HIGH SCORE: " e-int highscore
-    either > invuln 0 [ e-text "    <b class='invuln'>INVULNERABLE</b>" ] [ none ]
+    either > block-at rangi F_A 0 [ e-text "    <b class='invuln'>INVULNERABLE</b>" ] [ none ]
     either = over 1 [ e-text "    <b>GAME OVER</b>" ] [ none ]
     e-text "</p>"
     either = mutant-active 1 [
@@ -406,11 +374,11 @@ render-status: func [] [
     e-text "<i id='kaka-hs' style='display:none'>" e-int highscore e-text "</i>"
     e-text "<i id='kaka-state' style='display:none'>"
     e-int tick e-text " " e-int score e-text " " e-int over e-text " " e-int berries e-text " "
-    e-int px e-text " " e-int kl e-text " " e-int kr e-text " " e-int kf e-text " " e-int kg e-text " "
+    e-int block-at rangi F_X e-text " " e-int kl e-text " " e-int kr e-text " " e-int kf e-text " " e-int kg e-text " "
     e-int n-kaka e-text " " e-int n-rat e-text " "
-    e-int mutant-active e-text " " e-int mutant-left e-text " " e-int py e-text " "
-    e-int lives e-text " " e-int invuln e-text " " e-int highscore e-text " "
-    e-int n-rock e-text " " e-int tcfail e-text " " e-int n-stoat e-text " " e-int n-possum e-text " " e-int jt e-text " " e-int ku
+    e-int mutant-active e-text " " e-int mutant-left e-text " " e-int block-at rangi F_Y e-text " "
+    e-int block-at rangi F_B e-text " " e-int block-at rangi F_A e-text " " e-int highscore e-text " "
+    e-int n-rock e-text " " e-int tcfail e-text " " e-int n-stoat e-text " " e-int n-possum e-text " " e-int block-at rangi F_VY e-text " " e-int ku
     e-text "</i>"
     either = over 1 [
         e-text "<div class='kaka-gameover'><div class='kaka-go-panel'>"

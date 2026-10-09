@@ -57,9 +57,9 @@ static void check_consistent(const char *label) {
     if (!ok) fails++;
 }
 static void check_state(const char *label, long want_over, long want_lives, long want_trees) {
-    long over = state("over"), lives = state("lives"), trees = state("trees-live");
+    long over = state("over"), lives = state("block-at rangi F_B"), trees = state("trees-live");
     int ok = (over == want_over) && (lives == want_lives) && (trees == want_trees);
-    printf("  %-34s over=%ld lives=%ld trees=%ld  %s\n", label, over, lives, trees, ok ? "ok" : "FAIL");
+    printf("  %-34s over=%ld block-at rangi F_B=%ld trees=%ld  %s\n", label, over, lives, trees, ok ? "ok" : "FAIL");
     if (!ok) fails++;
 }
 static int load_file(const char *path) {
@@ -83,6 +83,7 @@ int main(void) {
     if (load_file("demos/kaka/kaka-lib.glon")) return 2;
     if (load_file("demos/kaka/kaka.glon")) return 2;
     if (load_file("demos/kaka/kaka-draw.glon")) return 2;
+    if (load_file("demos/kaka/kaka-rangi.glon")) return 2;
     if (load_file("demos/kaka/kaka-wave.glon")) return 2;
 
     printf("kaka terminal-state test (one authoritative predicate)\n");
@@ -121,12 +122,12 @@ int main(void) {
     check_consistent("6 all trees destroyed HUD/splash");
 
     /* 7. lives -> 0 via the real life-loss function -> terminal + splash */
-    if (run_source("reset  lives: 1  lose-life  tally")) return 2;
+    if (run_source("reset  block-set! rangi F_B  1  lose-life  tally")) return 2;
     check_state("7 final life lost", 1, 0, 3);
     check_consistent("7 final life lost HUD/splash");
 
     /* 8. a non-terminal hit keeps one life and is NOT game over */
-    if (run_source("reset  lives: 3  lose-life  tally")) return 2;
+    if (run_source("reset  block-set! rangi F_B  3  lose-life  tally")) return 2;
     check_state("8 non-terminal hit", 0, 2, 3);
     check_consistent("8 non-terminal hit HUD/splash");
 

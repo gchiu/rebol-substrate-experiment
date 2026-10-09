@@ -59,6 +59,7 @@ int main(void) {
     if (load_file("demos/kaka/kaka-lib.glon") != 0) return 2;
     if (load_file("demos/kaka/kaka.glon") != 0) return 2;
     if (load_file("demos/kaka/kaka-draw.glon") != 0) return 2;
+    if (load_file("demos/kaka/kaka-rangi.glon") != 0) return 2;
     if (load_file("demos/kaka/kaka-wave.glon") != 0) return 2;
     if (load_file("demos/kaka/kaka-selftest.glon") != 0) return 2;
 
