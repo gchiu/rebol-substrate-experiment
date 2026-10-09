@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.4";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s4";
+  var BUILD = "D12S.5";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s5";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -325,16 +325,16 @@
     if (!t) return;
     var sx = Math.round(x + tx), gy = 345;
     ctx.save();
-    ctx.font = "bold 15px system-ui, sans-serif";
+    ctx.font = "bold 20px system-ui, sans-serif";
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    var w = Math.max(70, ctx.measureText(t).width + 22), h = 28, cy = gy - 104;
-    ctx.fillStyle = "rgba(0,0,0,.22)";
-    ctx.beginPath(); ctx.ellipse(sx, gy + 2, w * 0.5, 6, 0, 0, 2 * Math.PI); ctx.fill();
-    ctx.fillStyle = "#6b4a26"; ctx.fillRect(sx - 4, cy + h / 2 - 2, 8, gy - (cy + h / 2));
-    ctx.fillStyle = "#d8b877"; rrect(ctx, sx - w / 2, cy - h / 2, w, h, 5); ctx.fill();
-    ctx.strokeStyle = "#6b4a26"; ctx.lineWidth = 3;
-    rrect(ctx, sx - w / 2, cy - h / 2, w, h, 5); ctx.stroke();
-    ctx.fillStyle = "#2f2010"; ctx.fillText(t, sx, cy + 1);
+    var w = Math.max(96, ctx.measureText(t).width + 30), h = 38, cy = gy - 120;
+    ctx.fillStyle = "rgba(0,0,0,.24)";
+    ctx.beginPath(); ctx.ellipse(sx, gy + 2, w * 0.5, 7, 0, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = "#6b4a26"; ctx.fillRect(sx - 6, cy + h / 2 - 2, 12, gy - (cy + h / 2));
+    ctx.fillStyle = "#e6c98a"; rrect(ctx, sx - w / 2, cy - h / 2, w, h, 6); ctx.fill();
+    ctx.strokeStyle = "#5c3f20"; ctx.lineWidth = 4;
+    rrect(ctx, sx - w / 2, cy - h / 2, w, h, 6); ctx.stroke();
+    ctx.fillStyle = "#2a1b0c"; ctx.fillText(t, sx, cy + 1);
     ctx.restore();
   }
 
@@ -509,7 +509,8 @@
     for (k in want) if (!applied[k]) evVal("kaka-key-down", k);
     for (k in applied) if (!want[k]) evVal("kaka-key-up", k);
     applied = want;
-    tapped = {};
+    /* NB: `tapped` is cleared by frame() only AFTER a tick has run, so a tap
+       that lands on a zero-tick frame cannot be lost. */
   }
   function resetInput() {
     held = {}; tapped = {}; applied = {};
@@ -545,6 +546,11 @@
       steps++;
     }
     if (acc >= SIM_DT) acc = 0;         /* still behind: drop it, never spiral */
+    /* A press is released only once at least one tick has consumed it. Until
+       then it stays applied, so a quick tap that lands on a frame with no tick
+       (common at 60 Hz with a 25 Hz sim, and more so under jump render load) is
+       never dropped. Jump state therefore cannot reduce ROCK (or JUMP) taps. */
+    if (steps > 0) tapped = {};
     requestAnimationFrame(frame);
   }
 
