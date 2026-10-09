@@ -338,10 +338,24 @@ draw-trees: func [i] [
 draw-laser: func [] [
     either > laser 0 [ p-line laser-ox laser-oy laser-x laser-y 2 14 ] [ none ]
 ]
+;; Skull Cave distance signs: fixed world objects within the camera window are
+;; emitted as `N <world-x> <label-id>`; the host draws the post + board + text.
+draw-signs: func [i] [
+    either < i 12 [
+        sx: block-at signs i
+        either > sx - cam 80 [
+            either < sx + + cam view-w 80 [
+                p-byte 78 p-num sx p-num block-at signs + i 1 p-eol
+            ] [ none ]
+        ] [ none ]
+        draw-signs + i 2
+    ] [ none ]
+]
 render-canvas: func [] [
     p-clear
     p-byte 66 p-num cam p-eol
     draw-trees 0
+    draw-signs 0
     actor-art 0
     draw-laser
     ;; foreground foliage is emitted BEFORE the ranger so the protagonist is

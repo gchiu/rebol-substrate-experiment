@@ -26,6 +26,11 @@ ROCK_RANGE: 960
 ;; of the viewport. screenX = px - cam, so clamping px >= PLAYER_LEFT_MARGIN
 ;; guarantees screenX >= PLAYER_LEFT_MARGIN (cam = max(0, px - 35% * view-w)).
 PLAYER_LEFT_MARGIN: 56
+;; ---- the road to Skull Cave ----------------------------------------------
+;; ONE deterministic destination (world x). The signs are fixed world objects
+;; and the displayed km are a pure function of world position -- never of score
+;; or elapsed time. `skull-ready` is exposed for a future transition (none yet).
+SKULL_X: 12000
 
 ;; tuple space kinds
 K_EMPTY: 0
@@ -80,6 +85,11 @@ rangi: 0
 ;; dist = furthest world x the ranger has reached (monotonic progress; drives
 ;; pest-stage progression and never decreases, so retreating does not rewind it).
 cam: 0 view-w: 640 dist: 480
+;; world-owned Skull Cave signs: (world-x, label-id) pairs in encounter order.
+;; labels 0..5 = 100km, 75km, 50km, 25km, 5km, NEXT EXIT.
+signs: [ 1000 0  3750 1  6500 2  9250 3  11450 4  12000 5 ]
+;; 1 once the ranger has travelled to the destination (no transition yet).
+skull-ready: 0
 cd: 0 glon-cd: 0
 berries: 1
     next-kaka: 40 next-pick: 1100 next-milestone: 600
@@ -271,6 +281,8 @@ tally: func [] [
     ;; ONE terminal predicate: no lives, or no gameplay tree. HUD, splash and
     ;; step gating all read this single `over`.
     over: either = block-at rangi F_B 0 [ 1 ] [ either = trees-live 0 [ 1 ] [ 0 ] ]
+    ;; Skull Cave destination: reached purely by travelled world progress.
+    skull-ready: either >= dist SKULL_X [ 1 ] [ 0 ]
 ]
 tly: func [i] [
     either < i ts-hi [

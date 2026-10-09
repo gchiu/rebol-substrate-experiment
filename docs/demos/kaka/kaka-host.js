@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.3";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s3";
+  var BUILD = "D12S.4";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s4";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -315,6 +315,29 @@
     ctx.restore();
   }
 
+  /* ---- Skull Cave distance signs (host paints the semantic `N` op) ------- */
+  var SIGN_LABELS = [
+    "SKULL CAVE 100 km", "SKULL CAVE 75 km", "SKULL CAVE 50 km",
+    "SKULL CAVE 25 km", "SKULL CAVE 5 km", "SKULL CAVE \u2014 NEXT EXIT"
+  ];
+  function drawSign(ctx, x, label, tx) {
+    var t = SIGN_LABELS[label];
+    if (!t) return;
+    var sx = Math.round(x + tx), gy = 345;
+    ctx.save();
+    ctx.font = "bold 15px system-ui, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    var w = Math.max(70, ctx.measureText(t).width + 22), h = 28, cy = gy - 104;
+    ctx.fillStyle = "rgba(0,0,0,.22)";
+    ctx.beginPath(); ctx.ellipse(sx, gy + 2, w * 0.5, 6, 0, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = "#6b4a26"; ctx.fillRect(sx - 4, cy + h / 2 - 2, 8, gy - (cy + h / 2));
+    ctx.fillStyle = "#d8b877"; rrect(ctx, sx - w / 2, cy - h / 2, w, h, 5); ctx.fill();
+    ctx.strokeStyle = "#6b4a26"; ctx.lineWidth = 3;
+    rrect(ctx, sx - w / 2, cy - h / 2, w, h, 5); ctx.stroke();
+    ctx.fillStyle = "#2f2010"; ctx.fillText(t, sx, cy + 1);
+    ctx.restore();
+  }
+
   /* ---- pest-heaven ghosts (host-side presentation only) ------------------
    * Glon emits a semantic death event `D sp id wx wy` the moment a pest dies.
    * The HOST stages the funeral: a small BOUNDED list of presentation-only
@@ -393,6 +416,8 @@
         drawSprite(ctx, +p[1], +p[2], +p[3], +p[4], tx);
       } else if (op === "P") {
         drawRanger(ctx, +p[1], +p[2], +p[3], +p[4], tx);
+      } else if (op === "N") {
+        drawSign(ctx, +p[1], +p[2], tx);
       } else if (op === "C") {
         ctx.fillStyle = COL[0];
         ctx.fillRect(0, 0, W, H);
