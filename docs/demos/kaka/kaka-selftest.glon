@@ -81,7 +81,7 @@ test-rules: func [] [
     either = block-at rangi F_X 480 [ none ] [ fails: + fails 1 ]
     either = dist 480 [ none ] [ fails: + fails 1 ]
     either = cam 0 [ none ] [ fails: + fails 1 ]
-    either = trees-live 3 [ none ] [ fails: + fails 1 ]
+    either = block-at tc2 0 3 [ none ] [ fails: + fails 1 ]
 ]
 
 test-camera: func [] [

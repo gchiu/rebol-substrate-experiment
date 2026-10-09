@@ -49,10 +49,10 @@ spawn-pest: func [] [
 wave-step: func [] [
     either > block-at wv 1 0 [
         either < block-at wv 2 1 [
-            either < n-rat RAT_MAX [ spawn-pest  block-set! wv 1  - block-at wv 1 1  block-set! wv 2  34 ] [ none ]
+            either < block-at pc 1 RAT_MAX [ spawn-pest  block-set! wv 1  - block-at wv 1 1  block-set! wv 2  34 ] [ none ]
         ] [ block-set! wv 2  - block-at wv 2 1 ]
     ] [
-        either < n-rat 1 [
+        either < block-at pc 1 1 [
             either < block-at wv 2 1 [
                 block-set! wv 0  + block-at wv 0 1
                 block-set! wv 1  either > block-at wv 0 6 [ 14 ] [ + * 2 block-at wv 0 2 ]
