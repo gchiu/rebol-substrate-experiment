@@ -47,29 +47,68 @@ hit-ranger: func [] [
 ;; movement, jump arc, invuln/cooldown ticks, camera derivation.
 rangi-step: func [] [
     either = block-at rangi F_STATE 1 [ none ] [
-        either > block-at rangi F_C 0 [ hit-ranger ] [ none ]
+        ;; contact resolution is a FOREST concept; in the cave F_C is the chosen
+        ;; object. FLAT conditionals: the loader mis-compiles deep nesting.
+        either = block-at rangi F_E 0 [
+            either > block-at rangi F_C 0 [ hit-ranger ] [ none ]
+        ] [ none ]
         either > block-at rangi F_TARGET 0 [ block-set! rangi F_TARGET - block-at rangi F_TARGET 1 ] [ none ]
         either > block-at rangi F_A 0 [ block-set! rangi F_A - block-at rangi F_A 1 ] [ none ]
         dx: - kr kl
         either > kr kl [ block-set! rangi F_D 1 ] [ either > kl kr [ block-set! rangi F_D -1 ] [ none ] ]
         either = dx 0 [ none ] [ block-set! rangi F_X + block-at rangi F_X * dx 10 ]
-        either > ku 0 [ either = block-at rangi F_VY 0 [ block-set! rangi F_VY 22 ] [ none ] ] [ none ]
+        either > ku 0 [
+            either = block-at rangi F_VY 0 [
+                either = block-at rangi F_Y 330 [ block-set! rangi F_VY 22 ] [ none ]
+            ] [ none ]
+        ] [ none ]
         either > kd 0 [ either > block-at rangi F_VY 2 [ block-set! rangi F_VY - block-at rangi F_VY 2 ] [ block-set! rangi F_VY 0 ] ] [ none ]
         either > block-at rangi F_VY 0 [
             p: - 22 block-at rangi F_VY
-            block-set! rangi F_Y - 330 / * p - 22 p 2
-            block-set! rangi F_VY - block-at rangi F_VY 1
-        ] [ block-set! rangi F_Y 330 ]
+            b: - 330 / * p - 22 p 2
+            dx: 330
+            either = block-at rangi F_E 1 [
+                either <= b 285 [
+                    either < abs - block-at rangi F_X 760 44 [ dx: 280 ] [ none ]
+                    either < abs - block-at rangi F_X 1000 44 [ dx: 280 ] [ none ]
+                    either < abs - block-at rangi F_X 1240 44 [ dx: 280 ] [ none ]
+                ] [ none ]
+            ] [ none ]
+            either < b dx [
+                block-set! rangi F_Y b
+                block-set! rangi F_VY - block-at rangi F_VY 1
+            ] [
+                either > block-at rangi F_VY 11 [
+                    block-set! rangi F_Y b
+                    block-set! rangi F_VY - block-at rangi F_VY 1
+                ] [ block-set! rangi F_Y dx  block-set! rangi F_VY 0 ]
+            ]
+        ] [
+            dx: 330
+            either = block-at rangi F_E 1 [
+                either <= block-at rangi F_Y 285 [
+                    either < abs - block-at rangi F_X 760 44 [ dx: 280 ] [ none ]
+                    either < abs - block-at rangi F_X 1000 44 [ dx: 280 ] [ none ]
+                    either < abs - block-at rangi F_X 1240 44 [ dx: 280 ] [ none ]
+                ] [ none ]
+            ] [ none ]
+            block-set! rangi F_Y dx
+        ]
+        either = block-at rangi F_E 1 [
+            either <= block-at rangi F_Y 300 [
+                either < abs - block-at rangi F_X 760 44 [ block-set! rangi F_C 1 ] [ none ]
+                either < abs - block-at rangi F_X 1000 44 [ block-set! rangi F_C 2 ] [ none ]
+                either < abs - block-at rangi F_X 1240 44 [ block-set! rangi F_C 3 ] [ none ]
+            ] [ none ]
+        ] [ none ]
         either > block-at rangi F_X dist [ dist: block-at rangi F_X ] [ none ]
-        ;; FOREST -> SKULL_CAVE, ONE TIME, when the destination is reached. The
-        ;; SAME Rangi actor persists (identity, lives, id unchanged); only the
-        ;; mode flag and the scene position move - no reset, no new player.
         either = block-at rangi F_E 0 [
             either >= dist SKULL_X [
                 block-set! rangi F_E 1
                 block-set! rangi F_X 200
                 block-set! rangi F_Y 330
                 block-set! rangi F_VY 0
+                block-set! rangi F_C 0
                 cam: 0
             ] [ none ]
         ] [ none ]
