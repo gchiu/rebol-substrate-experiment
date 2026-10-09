@@ -67,7 +67,9 @@ static const char *OVERLAY =
     "  either = current-route 'kaka-run [ kr: 1  rangi-step ] ["
     "  either = current-route 'kaka-hit [ block-set! rangi F_A  10  tick: 1  kr: 0 ] ["
     "  either = current-route 'kaka-over [ block-set! rangi F_B  0  block-set! rangi F_Y  270  kr: 1 ] ["
-    "  either = current-route 'kaka-dead [ block-set! rangi F_STATE  1  block-set! rangi F_Y  200  kr: 1 ] [ reset ]]]]]]]]]]]]"
+    "  either = current-route 'kaka-dead [ block-set! rangi F_STATE  1  block-set! rangi F_Y  200  kr: 1 ] ["
+    "  either = current-route 'kaka-signs [ view-w: 20000 ] ["
+    "  either = current-route 'kaka-signs-near [ view-w: 900  block-set! rangi F_X 6500  keep-visible ] [ reset ]]]]]]]]]]]]]]"
     "  tally render ] ]";
 
 static char out[65536];
@@ -114,6 +116,19 @@ static int player_op(int *pose, int *x, int *y, int *dir) {
             if (sscanf(q + 2, "%d %d %d %d", pose, x, y, dir) == 4) return 1;
     }
     return 0;
+}
+
+/* the semantic sign op `N <world-x> <label-id>`; returns how many were emitted */
+static int signs_list(int *xs, int *labels, int maxn) {
+    int n = 0; char *q = vis;
+    while ((q = strchr(q, '\n')) != NULL) {
+        q++;
+        if (q[0] == 'N' && q[1] == ' ') {
+            int x, l;
+            if (sscanf(q + 2, "%d %d", &x, &l) == 2 && n < maxn) { xs[n] = x; labels[n] = l; n++; }
+        }
+    }
+    return n;
 }
 
 int main(void) {
@@ -285,6 +300,25 @@ int main(void) {
     int dp, dxx, dyy, dd, dok = player_op(&dp, &dxx, &dyy, &dd);
     printf("  player dead pose=%d y=%d\n", dp, dyy);
     if (!dok || dp != 5 || dyy != 330) { printf("  FAIL: DEAD actor pose not fallen/grounded\n"); fails++; }
+    /* Skull Cave signs: six fixed world markers in order, then culling by camera */
+    if (route("home") != 0) return 2;
+    if (route("kaka-signs") != 0) return 2;
+    {
+        int xs[8], lb[8]; int ns = signs_list(xs, lb, 8);
+        int ex[6] = {1000, 3750, 6500, 9250, 11450, 12000};
+        printf("  signs n=%d first=%d last=%d\n", ns, ns ? xs[0] : -1, ns ? xs[ns-1] : -1);
+        if (ns != 6) { printf("  FAIL: expected 6 signs, got %d\n", ns); fails++; }
+        else for (int i = 0; i < 6; i++)
+            if (xs[i] != ex[i] || lb[i] != i) { printf("  FAIL: sign %d pos/label wrong (%d,%d)\n", i, xs[i], lb[i]); fails++; }
+    }
+    /* camera-relative: only the sign near the current view is emitted (world-fixed) */
+    if (route("home") != 0) return 2;
+    if (route("kaka-signs-near") != 0) return 2;
+    {
+        int xs[8], lb[8]; int ns = signs_list(xs, lb, 8);
+        printf("  signs near n=%d x=%d label=%d\n", ns, ns ? xs[0] : -1, ns ? lb[0] : -1);
+        if (ns != 1 || xs[0] != 6500 || lb[0] != 2) { printf("  FAIL: sign culling/world-anchor wrong\n"); fails++; }
+    }
     /* no old primitive ranger must remain (the host is the only painter) */
     {
         int prim = 0; char *q = vis;

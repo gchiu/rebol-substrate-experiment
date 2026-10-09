@@ -566,6 +566,27 @@ int main(void) {
     check(sawAlive > 100 && sawDead >= 0, "29 torture exercised the actor for thousands of ticks");
     check(!tortureFail, "29 torture: no impossible actor state");
 
+    /* 30. Skull Cave distance: one deterministic destination + ready flag */
+    run_source("reset");
+    check(run_int("block-at signs 0") == 1000 && run_int("block-at signs 10") == 12000,
+          "30 signs span start..destination");
+    check(run_int("block-at signs 0") < run_int("block-at signs 2") &&
+          run_int("block-at signs 2") < run_int("block-at signs 4") &&
+          run_int("block-at signs 4") < run_int("block-at signs 6") &&
+          run_int("block-at signs 6") < run_int("block-at signs 8") &&
+          run_int("block-at signs 8") < run_int("block-at signs 10"),
+          "30 signs are in increasing world order");
+    check(run_int("skull-ready") == 0, "30 not ready at the start");
+    run_source("dist: 11999  tally");
+    check(run_int("skull-ready") == 0, "30 not ready just before the threshold");
+    run_source("dist: 12000  tally");
+    check(run_int("skull-ready") == 1 && run_int("over") == 0, "30 ready at the threshold, no transition");
+    run_source("reset  block-set! rangi F_X 900  rangi-step");
+    check(run_int("block-at rangi F_B") == 3 && run_int("block-at rangi F_X") == 900,
+          "30 passing a sign leaves Rangi state intact");
+    run_source("reset");
+    check(run_int("dist") == 480 && run_int("skull-ready") == 0, "30 restart resets progression");
+
     if (fails == 0) { printf("kaka-wave-test PASS\n"); return 0; }
     printf("kaka-wave-test FAIL (%d)\n", fails);
     return 1;
