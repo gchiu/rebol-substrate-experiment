@@ -190,9 +190,9 @@ int main(void) {
     run_source("reset");
     run_source("spawn-pest");
     long px0 = run_int("block-at rangi F_X"), d0 = run_int("dist"), nx0 = run_int("next-tree-x");
-    run_source("block-set! rangi F_X  9000  dist: 9000  next-tree-x: 10000");
+    run_source("block-set! rangi F_X  3000  dist: 3000  next-tree-x: 10000");
     run_source("view-w: 1200  rangi-step");
-    check(run_int("block-at rangi F_X") == 9000, "15 viewport change does not move the ranger");
+    check(run_int("block-at rangi F_X") == 3000, "15 viewport change does not move the ranger");
     run_source("reset");
     check(run_int("block-at rangi F_X") == 480 && run_int("dist") == 480 && run_int("next-tree-x") == 2400,
           "15 restart resets progression");
@@ -200,20 +200,18 @@ int main(void) {
           "15 restart clears pests/projectiles");
     (void)px0; (void)d0; (void)nx0;
 
-    /* 16 (N/O/P). 20+ sector transitions keep tuple occupancy bounded */
+    /* 16 (N/O/P). long travel keeps tuple occupancy bounded across the journey
+       (rolling forest until the destination, then the frozen cave) */
     run_source("reset  kr: 1  block-set! rangi F_A  999999");   /* isolate occupancy from contact */
     long maxTotal = 0;
     for (int i = 0; i < 1600; i++) {
-        run_source("rangi-step  spawn-timers  move-all 0  tally");
+        run_source("step");
         if (i % 20 == 0) {
             long tot = run_int("+ + + + ts-count K_RAT ts-count K_KAKA ts-count K_ROCK ts-count K_BERRY ts-count K_TREE");
             if (tot > maxTotal) maxTotal = tot;
         }
     }
-    long sectors = (run_int("block-at rangi F_X") - 480) / 720;
-    check(sectors >= 20, "16 advanced through 20+ sectors");
-    check(run_int("next-tree-x") >= 12000, "16 rolling forest regenerated ahead");
-    check(run_int("trees-live") <= 6, "16 active tree count bounded");
+    check(run_int("block-at rangi F_E") == 1, "16 reached SKULL_CAVE by long travel");
     check(maxTotal <= 30, "16 tuple occupancy bounded (not growing with distance)");
 
     /* 17. death ghost (state 9): not a live pest, not a target, frees cleanly */
@@ -565,6 +563,56 @@ int main(void) {
     }
     check(sawAlive > 100 && sawDead >= 0, "29 torture exercised the actor for thousands of ticks");
     check(!tortureFail, "29 torture: no impossible actor state");
+
+    /* 32. pest speeds give useful jump-dodge clearance for every ground pest */
+    check(run_int("block-at pest-speed 0") == 4 && run_int("block-at pest-speed 1") == 5 &&
+          run_int("block-at pest-speed 2") == 3, "32 pest speeds are rat4 stoat5 possum3");
+    check(run_int("block-at pest-speed 1") > run_int("block-at pest-speed 0") &&
+          run_int("block-at pest-speed 0") > run_int("block-at pest-speed 2"),
+          "32 speed ordering stoat > rat > possum");
+    for (int sp = 0; sp < 3; sp++) {
+        const char *nm = sp == 0 ? "rat" : (sp == 1 ? "stoat" : "possum");
+        long v = run_int("block-at pest-speed 0");                 /* placeholder */
+        char q[220];
+        snprintf(q, sizeof q, "block-at pest-speed %d", sp);
+        v = run_int(q);
+        run_source("reset  view-w: 1000");
+        run_source("block-set! rangi F_X 1000  block-set! rangi F_Y 330  block-set! rangi F_VY 0  block-set! rangi F_D 1  block-set! rangi F_B 3  block-set! rangi F_STATE 0  kl: 0  kr: 1  ku: 1");
+        snprintf(q, sizeof q, "h: ts-claim K_RAT  block-set! h F_X 1150  block-set! h F_Y 345  block-set! h F_STATE 0  block-set! h F_TARGET -1  block-set! h F_VY %ld  block-set! h F_F 0", v);
+        run_source(q);
+        run_source("rangi-step  ku: 0  rat-step h");
+        for (int t = 0; t < 39; t++) run_source("rangi-step  rat-step h");
+        long lb = run_int("block-at rangi F_B");
+        long pxf = run_int("block-at rangi F_X"), rxf = run_int("block-at h F_X");
+        char msg[96]; snprintf(msg, sizeof msg, "32 timed forward jump clears a %s", nm);
+        check(lb == 3 && pxf > rxf, msg);
+        run_source("ts-free h");
+    }
+
+    /* 33. FOREST -> SKULL_CAVE transition, ONCE, same actor */
+    run_source("reset  view-w: 1000  kl: 0  kr: 0");
+    check(run_int("block-at rangi F_E") == 0, "33 starts in FOREST mode");
+    long rid = run_int("block-at rangi F_ID");
+    run_source("dist: 3999  rangi-step");
+    check(run_int("block-at rangi F_E") == 0, "33 FOREST before the threshold");
+    run_source("dist: 4000  rangi-step");
+    check(run_int("block-at rangi F_E") == 1, "33 enters SKULL_CAVE at the threshold");
+    check(run_int("block-at rangi F_ID") == rid && run_int("block-at rangi F_B") == 3,
+          "33 SAME Rangi actor id/lives survive the transition");
+    run_source("rangi-step  rangi-step");
+    check(run_int("block-at rangi F_E") == 1, "33 transition happens exactly once");
+    run_source("kr: 1  rangi-step");
+    check(run_int("block-at rangi F_X") > 200, "33 Rangi can walk in the cave");
+    run_source("kr: 0");
+    {
+        long nrat0 = run_int("ts-count K_RAT"), tree0 = run_int("ts-count K_TREE"), ntx = run_int("next-tree-x");
+        for (int i = 0; i < 200; i++) run_source("step");
+        check(run_int("ts-count K_RAT") <= nrat0 && run_int("ts-count K_TREE") == tree0 &&
+              run_int("next-tree-x") == ntx, "33 forest spawning is frozen in the cave");
+    }
+    run_source("reset");
+    check(run_int("block-at rangi F_E") == 0 && run_int("dist") == 480 && run_int("skull-ready") == 0,
+          "33 restart returns to a fresh FOREST");
 
     /* 30. Skull Cave distance: one deterministic destination + ready flag */
     run_source("reset");

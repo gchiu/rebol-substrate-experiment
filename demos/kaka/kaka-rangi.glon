@@ -61,6 +61,18 @@ rangi-step: func [] [
             block-set! rangi F_VY - block-at rangi F_VY 1
         ] [ block-set! rangi F_Y 330 ]
         either > block-at rangi F_X dist [ dist: block-at rangi F_X ] [ none ]
+        ;; FOREST -> SKULL_CAVE, ONE TIME, when the destination is reached. The
+        ;; SAME Rangi actor persists (identity, lives, id unchanged); only the
+        ;; mode flag and the scene position move - no reset, no new player.
+        either = block-at rangi F_E 0 [
+            either >= dist SKULL_X [
+                block-set! rangi F_E 1
+                block-set! rangi F_X 200
+                block-set! rangi F_Y 330
+                block-set! rangi F_VY 0
+                cam: 0
+            ] [ none ]
+        ] [ none ]
         keep-visible
     ]
 ]

@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.5";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s5";
+  var BUILD = "D12S.6";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s6";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -338,6 +338,52 @@
     ctx.restore();
   }
 
+  /* ---- Skull Cave scene (host paints the semantic `V` bg + `J` props) ---- */
+  function drawCaveBackground(ctx, W, H) {
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#07060d"); g.addColorStop(0.6, "#161126"); g.addColorStop(1, "#241a2e");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#0c0916";
+    for (var i = 0; i < 16; i++) {
+      var sx = ((i * 173) % (W + 80)) - 40;
+      ctx.beginPath(); ctx.moveTo(sx - 26, 0); ctx.lineTo(sx + 26, 0);
+      ctx.lineTo(sx, 54 + ((i * 47) % 72)); ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fillRect(0, 350, W, H - 350);
+  }
+  function drawCaveProp(ctx, x, kind, tx) {
+    var sx = Math.round(x + tx), gy = 350;
+    ctx.save();
+    if (kind === 0) {                          /* skull on the cave wall */
+      var cy = 188;
+      ctx.fillStyle = "#e8e2d2";
+      ctx.beginPath(); ctx.arc(sx, cy, 54, Math.PI, 0); ctx.fill();
+      ctx.fillRect(sx - 54, cy - 2, 108, 34);
+      ctx.beginPath(); ctx.arc(sx, cy + 30, 28, 0, Math.PI); ctx.fill();
+      ctx.fillStyle = "#0a0a12";
+      ctx.beginPath(); ctx.ellipse(sx - 23, cy + 4, 15, 17, 0, 0, 2 * Math.PI); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(sx + 23, cy + 4, 15, 17, 0, 0, 2 * Math.PI); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(sx, cy + 20); ctx.lineTo(sx - 7, cy + 34); ctx.lineTo(sx + 7, cy + 34); ctx.closePath(); ctx.fill();
+      for (var t = -20; t <= 20; t += 10) ctx.fillRect(sx + t - 2, cy + 42, 4, 12);
+    } else {                                   /* three visibly different doors */
+      var dh = 122, dw = 76, top = gy - dh;
+      ctx.lineWidth = 7;
+      if (kind === 1) {                        /* arched, emerald */
+        ctx.fillStyle = "#06140d"; ctx.beginPath();
+        ctx.moveTo(sx - dw / 2, gy); ctx.lineTo(sx - dw / 2, top + dw / 2);
+        ctx.arc(sx, top + dw / 2, dw / 2, Math.PI, 0); ctx.lineTo(sx + dw / 2, gy); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = "#3fae6a"; ctx.stroke();
+      } else if (kind === 2) {                 /* square, sapphire */
+        ctx.fillStyle = "#08111f"; ctx.fillRect(sx - dw / 2, top, dw, dh);
+        ctx.strokeStyle = "#4f8fd6"; ctx.strokeRect(sx - dw / 2, top, dw, dh);
+      } else {                                 /* round, ruby */
+        ctx.fillStyle = "#180608"; ctx.beginPath(); ctx.arc(sx, gy - dw / 2, dw / 2, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "#d15a5a"; ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   /* ---- pest-heaven ghosts (host-side presentation only) ------------------
    * Glon emits a semantic death event `D sp id wx wy` the moment a pest dies.
    * The HOST stages the funeral: a small BOUNDED list of presentation-only
@@ -418,6 +464,10 @@
         drawRanger(ctx, +p[1], +p[2], +p[3], +p[4], tx);
       } else if (op === "N") {
         drawSign(ctx, +p[1], +p[2], tx);
+      } else if (op === "V") {
+        drawCaveBackground(ctx, W, H);
+      } else if (op === "J") {
+        drawCaveProp(ctx, +p[1], +p[2], tx);
       } else if (op === "C") {
         ctx.fillStyle = COL[0];
         ctx.fillRect(0, 0, W, H);

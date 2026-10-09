@@ -70,7 +70,8 @@ static const char *OVERLAY =
     "  either = current-route 'kaka-dead [ block-set! rangi F_STATE  1  block-set! rangi F_Y  200  kr: 1 ] ["
     "  either = current-route 'kaka-signs [ view-w: 20000 ] ["
     "  either = current-route 'kaka-signs-near [ view-w: 900  block-set! rangi F_X 2000  keep-visible ] ["
-    "  either = current-route 'kaka-signs-start [ view-w: 1000  block-set! rangi F_X 480  keep-visible ] [ reset ]]]]]]]]]]]]]]]"
+    "  either = current-route 'kaka-signs-start [ view-w: 1000  block-set! rangi F_X 480  keep-visible ] ["
+    "  either = current-route 'kaka-cave [ block-set! rangi F_E 1 ] [ reset ]]]]]]]]]]]]]]]]"
     "  tally render ] ]";
 
 static char out[65536];
@@ -129,6 +130,13 @@ static int signs_list(int *xs, int *labels, int maxn) {
             if (sscanf(q + 2, "%d %d", &x, &l) == 2 && n < maxn) { xs[n] = x; labels[n] = l; n++; }
         }
     }
+    return n;
+}
+
+/* count emitted canvas ops whose first char is c */
+static int op_count(char c) {
+    int n = 0; char *q = vis;
+    while ((q = strchr(q, '\n')) != NULL) { q++; if (q[0] == c && q[1] == ' ') n++; }
     return n;
 }
 
@@ -319,6 +327,14 @@ int main(void) {
         int xs[8], lb[8]; int ns = signs_list(xs, lb, 8);
         printf("  signs at start n=%d x=%d label=%d\n", ns, ns ? xs[0] : -1, ns ? lb[0] : -1);
         if (ns != 1 || xs[0] != 500 || lb[0] != 0) { printf("  FAIL: first sign not visible during ordinary movement\n"); fails++; }
+    }
+    /* SKULL_CAVE scene: a `V` background + a skull and three `J` door/prop ops */
+    if (route("home") != 0) return 2;
+    if (route("kaka-cave") != 0) return 2;
+    {
+        int nv = op_count('V'), nj = op_count('J'), np = op_count('P');
+        printf("  cave ops V=%d J=%d P=%d\n", nv, nj, np);
+        if (nv != 1 || nj != 4 || np != 1) { printf("  FAIL: cave scene ops wrong\n"); fails++; }
     }
     /* camera-relative: only the sign near the current view is emitted (world-fixed) */
     if (route("home") != 0) return 2;
