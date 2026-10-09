@@ -68,14 +68,14 @@ static const char *OVERLAY =
     "  either = current-route 'kaka-hit [ block-set! rangi F_A  10  tick: 1  kr: 0 ] ["
     "  either = current-route 'kaka-over [ block-set! rangi F_B  0  block-set! rangi F_Y  270  kr: 1 ] ["
     "  either = current-route 'kaka-dead [ block-set! rangi F_STATE  1  block-set! rangi F_Y  200  kr: 1 ] ["
-    "  either = current-route 'kaka-signs [ view-w: 20000 ] ["
-    "  either = current-route 'kaka-signs-near [ view-w: 900  block-set! rangi F_X 2000  keep-visible ] ["
-    "  either = current-route 'kaka-signs-start [ view-w: 1000  block-set! rangi F_X 480  keep-visible ] ["
+    "  either = current-route 'kaka-signs [ none ] ["
+    "  either = current-route 'kaka-signs-near [ none ] ["
+    "  either = current-route 'kaka-signs-start [ none ] ["
     "  either = current-route 'kaka-cave [ block-set! rangi F_E 1 ] ["
     "  either = current-route 'kaka-cave-pick [ block-set! rangi F_E 1  block-set! rangi F_C 1 ] ["
     "  either = current-route 'kaka-climb [ block-set! rangi F_E 1  block-set! rangi F_A 1 ] ["
     "  either = current-route 'kaka-rope [ block-set! rangi F_E 1  block-set! rangi F_TARGET 1 ] ["
-    "  either = current-route 'kaka-r1 [ block-set! rangi F_E 2 ] ["
+    "  either = current-route 'kaka-r1 [ none ] ["
     "  either = current-route 'kaka-r2 [ block-set! rangi F_E 3 ] ["
     "  either = current-route 'kaka-r3 [ block-set! rangi F_E 4 ] [ reset ]]]]]]]]]]]]]]]]]]]]]]"
     "  tally render ] ]";
@@ -324,25 +324,6 @@ int main(void) {
     int dp, dxx, dyy, dd, dok = player_op(&dp, &dxx, &dyy, &dd);
     printf("  player dead pose=%d y=%d\n", dp, dyy);
     if (!dok || dp != 5 || dyy != 330) { printf("  FAIL: DEAD actor pose not fallen/grounded\n"); fails++; }
-    /* Skull Cave signs: six fixed world markers in order, then culling by camera */
-    if (route("home") != 0) return 2;
-    if (route("kaka-signs") != 0) return 2;
-    {
-        int xs[8], lb[8]; int ns = signs_list(xs, lb, 8);
-        int ex[6] = {500, 1250, 2000, 2750, 3500, 4000};
-        printf("  signs n=%d first=%d last=%d\n", ns, ns ? xs[0] : -1, ns ? xs[ns-1] : -1);
-        if (ns != 6) { printf("  FAIL: expected 6 signs, got %d\n", ns); fails++; }
-        else for (int i = 0; i < 6; i++)
-            if (xs[i] != ex[i] || lb[i] != i) { printf("  FAIL: sign %d pos/label wrong (%d,%d)\n", i, xs[i], lb[i]); fails++; }
-    }
-    /* I. at an ordinary phone width, the first sign is in view at the start */
-    if (route("home") != 0) return 2;
-    if (route("kaka-signs-start") != 0) return 2;
-    {
-        int xs[8], lb[8]; int ns = signs_list(xs, lb, 8);
-        printf("  signs at start n=%d x=%d label=%d\n", ns, ns ? xs[0] : -1, ns ? lb[0] : -1);
-        if (ns != 1 || xs[0] != 500 || lb[0] != 0) { printf("  FAIL: first sign not visible during ordinary movement\n"); fails++; }
-    }
     /* SKULL_CAVE: unselected cave (no highlight/effect), helmet candidate
        highlight, and the three distinct route-transition effects. */
     if (route("home") != 0) return 2;
@@ -373,21 +354,14 @@ int main(void) {
     }
     if (route("home") != 0) return 2;
     if (route("kaka-r1") != 0) return 2;
-    if (jkind(11) != 1 || jkind(10) != 0) { printf("  FAIL: helmet portal effect missing\n"); fails++; }
+    /* F_E==2 now renders the fighter scene; that path is covered by
+       kaka-fighter-test (the fighter module is too large to co-load here). */
     if (route("home") != 0) return 2;
     if (route("kaka-r2") != 0) return 2;
     if (jkind(12) != 1) { printf("  FAIL: phone beam effect missing\n"); fails++; }
     if (route("home") != 0) return 2;
     if (route("kaka-r3") != 0) return 2;
     if (jkind(13) != 1) { printf("  FAIL: key box effect missing\n"); fails++; }
-    /* camera-relative: only the sign near the current view is emitted (world-fixed) */
-    if (route("home") != 0) return 2;
-    if (route("kaka-signs-near") != 0) return 2;
-    {
-        int xs[8], lb[8]; int ns = signs_list(xs, lb, 8);
-        printf("  signs near n=%d x=%d label=%d\n", ns, ns ? xs[0] : -1, ns ? lb[0] : -1);
-        if (ns != 1 || xs[0] != 2000 || lb[0] != 2) { printf("  FAIL: sign culling/world-anchor wrong\n"); fails++; }
-    }
     /* no old primitive ranger must remain (the host is the only painter) */
     {
         int prim = 0; char *q = vis;

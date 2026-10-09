@@ -1,6 +1,6 @@
-;; demos/kaka/kaka.glon -- Attack of the Mutant Kaka (Glon owns all state/rules).
+
 ;; D12S.2 "Into the Invasion": the permanent grammar is GRAHAM GOES RIGHT; the
-;; invasion is always ahead/right and its pests march LEFT. World x grows to the
+
 ;; right forever (no fixed width); BOUNDED state comes from recycling -- pests/
 ;; rocks that fall behind the ranger are reclaimed and trees spawn ahead as the
 ;; ranger advances (kaka-wave.glon). ROCKS kill pests; BERRIES only feed/divert
@@ -22,14 +22,14 @@ GNAW_TICKS: 18
 ;; finite semantic reach of a thrown rock, in world px from its spawn x (~one
 ;; gameplay viewport, so it covers visible combat without crossing the world)
 ROCK_RANGE: 960
-;; the ranger must keep at least this many px between his body and the left edge
+
 ;; of the viewport. screenX = px - cam, so clamping px >= PLAYER_LEFT_MARGIN
 ;; guarantees screenX >= PLAYER_LEFT_MARGIN (cam = max(0, px - 35% * view-w)).
 PLAYER_LEFT_MARGIN: 56
 ;; ---- the road to Skull Cave ----------------------------------------------
 ;; ONE deterministic destination (world x). The signs are fixed world objects
 ;; and the displayed km are a pure function of world position -- never of score
-;; or elapsed time. `skull-ready` is exposed for a future transition (none yet).
+
 SKULL_X: 4000
 
 ;; tuple space kinds
@@ -44,6 +44,9 @@ K_ROCK: 7
 ;; Rangi: the ONE persistent player actor. Only rangi-step mutates it.
 ;; F_STATE: 0 active / 1 dead.  F_E: mode (0 = FOREST).
 K_RANGI: 8
+;; K_FOE: a helmet-route fighter enemy (and its single bolt). Owned by
+;; kaka-fighter.glon; inert to the forest systems (parked during the fighter).
+K_FOE: 9
 
 ;; tuple field indices (every tuple is TW cells wide)
 F_KIND: 0
@@ -58,7 +61,7 @@ F_B: 8
 F_C: 9
 F_D: 10
 F_E: 11
-;; F_F: pest contact-episode flag (0 = clear, 1 = currently touching the ranger)
+
 F_F: 12
 
 ;; kaka flight phases
@@ -73,9 +76,12 @@ KS_SWOOP: 5
 tick: 0 score: 0 over: 0
 ;; `over` is the ONE authoritative terminal state (no lives OR no tree). tally
 ;; recomputes it; HUD, splash and step all read this single flag.
-highscore: 0
+;; hv = (0 highscore, 1 skull-ready); set by tally / on-highscore. Highscore is
+;; persistent, so slot 0 is seeded once here (reset must not clear it).
+hv: new-block 2
+block-set! hv 0 0
 ;; input intent only (host -> Glon). NOT player state: the Rangi actor consumes
-;; it. Rangi's own mutable state (x/y/facing/jump/lives/invuln/cooldown) lives in
+
 ;; its tuple, not here.
 kl: 0 kr: 0 ku: 0 kd: 0 kf: 0 kg: 0
 krock: 0
@@ -83,18 +89,18 @@ krock: 0
 rangi: 0
 ;; cam = world x at the view's left edge; view-w = logical viewport width.
 ;; dist = furthest world x the ranger has reached (monotonic progress; drives
-;; pest-stage progression and never decreases, so retreating does not rewind it).
+
 cam: 0 view-w: 640 dist: 480
-;; world-owned Skull Cave signs: (world-x, label-id) pairs in encounter order.
 ;; labels 0..5 = 100km, 75km, 50km, 25km, 5km, NEXT EXIT.
-signs: [ 500 0  1250 1  2000 2  2750 3  3500 4  4000 5 ]
 ;; pest leftward speed by species (0 rat, 1 stoat, 2 possum). Tuned so a timed
 ;; 22-tick jump comfortably clears every ordinary ground pest; stoat>rat>possum.
 pest-speed: [ 4 5 3 ]
 ;; 1 once the ranger has travelled to the destination (no transition yet).
-skull-ready: 0
 cd: 0 glon-cd: 0
 berries: 1
+;; helmet-route mission state (owned by kaka-fighter.glon). fprog == 0 arms a
+;; fresh mission; fbomb 1 = the ONE bomb still available.
+fprog: 0 fbomb: 0
 ;; packed world groups (fewer top-level bindings). Values are set by `reset`.
 ;;   nx = spawn timers (0 next-kaka, 1 next-pick, 2 next-tree-x)
 ;;   wv = wave/rhythm (0 wave, 1 wave-left, 2 wave-cd, 3 next-milestone)
@@ -104,21 +110,19 @@ nx: new-block 3
 wv: new-block 4
 lz: new-block 5
 mt: new-block 2
-idc: 0 rng: 12345
-;; aggregate actor/tree tallies, refreshed once per tick by `tally` so the
-;; spawn logic, HUD and game-over test never re-scan the tuple space.
-n-kaka: 0 n-rat: 0 n-stoat: 0 n-possum: 0 n-pick: 0 n-rock: 0
-;; cumulative tuple-claim failures (capacity pressure); never reset by tally,
-;; only by a full restart. Zero means no kind ever starved for a slot.
-tcfail: 0
-trees-live: 0 tree-sum: 0
+;; ax = aux (0 tcfail, 1 idc, 2 rng); pc = pest counts, refreshed by `tally`
+;; (0 n-kaka, 1 n-rat, 2 n-stoat, 3 n-possum, 4 n-pick, 5 n-rock).
+ax: new-block 3
+pc: new-block 6
+;; aggregate tree tallies (0 trees-live, 1 tree-sum), refreshed by `tally`.
+tc2: new-block 2
 ;; occupied high-water: the per-tick scans (move-all / tally / actor-art) only
 ;; walk slots < ts-hi, so empty tail slots cost nothing. Raised on claim and
 ;; lowered (bounded) once per tick by `ch-hi` while the top slots are empty.
 ts-hi: 0
 
 sign: func [n] [ either < n 0 [ -1 ] [ either > n 0 [ 1 ] [ 0 ] ] ]
-rnd: func [] [ rng: mod + * rng 1103 12345 32768  rng ]
+rnd: func [] [ block-set! ax 2 mod + * block-at ax 2 1103 12345 32768  block-at ax 2 ]
 
 ;; ---- shared tuple space --------------------------------------------------
 ;; ts holds NTS pre-built 12-cell tuples. The actor IS its tuple: spawn claims a
@@ -140,8 +144,8 @@ tclaim: func [i k] [
             t: ts-t i
             block-set! t F_KIND k
             either > + i 1 ts-hi [ ts-hi: + i 1 ] [ none ]
-            idc: + idc 1
-            block-set! t F_ID idc
+            block-set! ax 1 + block-at ax 1 1
+            block-set! t F_ID block-at ax 1
             ;; clear every field so a reused slot never inherits stale state
             block-set! t F_X 0  block-set! t F_Y 0  block-set! t F_VY 0
             block-set! t F_STATE 0  block-set! t F_TARGET 0
@@ -153,7 +157,7 @@ tclaim: func [i k] [
 ]
 ts-claim: func [k] [
     t: tclaim 0 k
-    either = t none [ tcfail: + tcfail 1  none ] [ t ]
+    either = t none [ block-set! ax 0 + block-at ax 0 1  none ] [ t ]
 ]
 ts-free: func [t] [ block-set! t F_KIND K_EMPTY ]
 
@@ -197,7 +201,7 @@ move-all: func [i] [
 spawn-timers: func [] [
     block-set! nx 0  - block-at nx 0 1
     either < block-at nx 0 1 [
-        either < n-kaka KAKA_MAX [ spawn-kaka  block-set! nx 0  + 70 mod tick 60 ] [ block-set! nx 0  40 ]
+        either < block-at pc 0 KAKA_MAX [ spawn-kaka  block-set! nx 0  + 70 mod tick 60 ] [ block-set! nx 0  40 ]
     ] [ none ]
     wave-step
     ;; rolling forest: plant the next tree ahead as the ranger advances, and
@@ -206,7 +210,7 @@ spawn-timers: func [] [
     tr-cull 0
     block-set! nx 1  - block-at nx 1 1
     either < block-at nx 1 1 [
-        either < berries 3 [ either = 0 n-pick [ spawn-pick ] [ none ] ] [ none ]
+        either < berries 3 [ either = 0 block-at pc 4 [ spawn-pick ] [ none ] ] [ none ]
         block-set! nx 1  + 1100 mod tick 400
     ] [ none ]
 ]
@@ -226,8 +230,13 @@ step: func [] [
     either > glon-cd 0 [ glon-cd: - glon-cd 1 ] [ none ]
     ;; terminal: input, spawns and scoring stop; the world keeps moving and
     ;; rendering (never frozen) so in-flight rocks/berries clear.
+    either = block-at rangi F_E 2 [
+        ;; HELMET ROUTE: the SAME Rangi actor pilots the fighter
+        ;; (kaka-fighter.glon). The forest/world is parked (no spawn, no move).
+        fighter-step
+    ] [
     either > block-at rangi F_E 0 [
-        ;; SKULL_CAVE (no selection or a chosen route): forest spawning/advancing
+
         ;; stops; the SAME Rangi actor lives on and can still walk.
         rangi-step
     ] [
@@ -239,7 +248,7 @@ step: func [] [
             fire-rock
         ] [ none ]
         move-all 0
-    ]
+    ] ]
     either = over 0 [
         either >= tick block-at wv 3 [ score: + score 50  block-set! wv 3  + block-at wv 3 600 ] [ none ]
     ] [ none ]
@@ -251,12 +260,15 @@ reset: func [] [
     cd: 0 glon-cd: 0
     cam: 0 dist: 480
     berries: 1
+    fprog: 0 fbomb: 0
     block-set! nx 0  40 block-set! nx 1  1100 block-set! wv 3  600
     block-set! wv 0  0 block-set! wv 1  0 block-set! wv 2  0
     block-set! nx 2  2400
         block-set! lz 0  -99 block-set! lz 1  0 block-set! lz 2  0 block-set! lz 3  0 block-set! lz 4  0
-    tcfail: 0
-    idc: 0 rng: 12345
+    block-set! ax 0 0
+    block-set! ax 1 0 block-set! ax 2 12345
+    ;; pc / tc2 / hv:1 are recomputed every tick by `tally`; only highscore
+    ;; (hv:0) is persistent and is seeded once at load, below.
     ts-hi: 0
     tc 0
     ;; create the ONE player actor in its RESERVED top tuple slot (NTS-1); its
@@ -275,7 +287,7 @@ reset: func [] [
     block-set! rangi F_E 0
     block-set! rangi F_C 0
     ;; initial forest: three stable trees within the opening window; the rolling
-    ;; spawner plants more ahead as the ranger advances (kaka.glon spawn-timers).
+
     spawn-tree 0 240
     spawn-tree 1 960
     spawn-tree 2 1680
@@ -284,23 +296,23 @@ reset: func [] [
 ;; one pass over the tuple space, refreshing every aggregate the spawn logic,
 ;; HUD and tests read. Replaces Patrol's hard-coded per-entity variables.
 tally: func [] [
-    either > score highscore [ highscore: score ] [ none ]
+    either > score block-at hv 0 [ block-set! hv 0 score ] [ none ]
     ch-hi 6
     block-set! mt 0  0  block-set! mt 1  0
-    n-kaka: 0  n-rat: 0  n-stoat: 0  n-possum: 0  n-pick: 0  n-rock: 0
-    trees-live: 0  tree-sum: 0
+    block-set! pc 0 0  block-set! pc 1 0  block-set! pc 2 0  block-set! pc 3 0  block-set! pc 4 0  block-set! pc 5 0
+    block-set! tc2 0 0  block-set! tc2 1 0
     tly 0
     ;; ONE terminal predicate: no lives, or no gameplay tree. HUD, splash and
     ;; step gating all read this single `over`.
-    over: either = block-at rangi F_B 0 [ 1 ] [ either = trees-live 0 [ 1 ] [ 0 ] ]
+    over: either = block-at rangi F_B 0 [ 1 ] [ either = block-at tc2 0 0 [ 1 ] [ 0 ] ]
     ;; Skull Cave destination: reached purely by travelled world progress.
-    skull-ready: either >= dist SKULL_X [ 1 ] [ 0 ]
+    block-set! hv 1 either >= dist SKULL_X [ 1 ] [ 0 ]
 ]
 tly: func [i] [
     either < i ts-hi [
         k: ts-k i
         either = k K_KAKA [
-            n-kaka: + n-kaka 1
+            block-set! pc 0 + block-at pc 0 1
             either = block-at ts-t i F_STATE KS_MUTANT [
                 block-set! mt 0  1
                 l: - block-at ts-t i F_B tick
@@ -311,18 +323,18 @@ tly: func [i] [
             ;; ghosts (F_STATE 9) are transient presentation and are NOT counted
             ;; as live pests, so a fading corpse never blocks the next wave.
             either < block-at ts-t i F_STATE 9 [
-                n-rat: + n-rat 1
-                either = block-at ts-t i F_A 1 [ n-stoat: + n-stoat 1 ] [
-                either = block-at ts-t i F_A 2 [ n-possum: + n-possum 1 ] [ none ] ]
+                block-set! pc 1 + block-at pc 1 1
+                either = block-at ts-t i F_A 1 [ block-set! pc 2 + block-at pc 2 1 ] [
+                either = block-at ts-t i F_A 2 [ block-set! pc 3 + block-at pc 3 1 ] [ none ] ]
             ] [ none ]
         ] [
-        either = k K_ROCK [ n-rock: + n-rock 1 ] [
+        either = k K_ROCK [ block-set! pc 5 + block-at pc 5 1 ] [
         either = k K_BERRY [ none ] [
-        either = k K_PICK [ n-pick: + n-pick 1 ] [
+        either = k K_PICK [ block-set! pc 4 + block-at pc 4 1 ] [
         either = k K_POOP [ none ] [
         either = k K_TREE [
-            tree-sum: + tree-sum block-at ts-t i F_A
-            either > block-at ts-t i F_A 0 [ trees-live: + trees-live 1 ] [ none ]
+            block-set! tc2 1 + block-at tc2 1 block-at ts-t i F_A
+            either > block-at ts-t i F_A 0 [ block-set! tc2 0 + block-at tc2 0 1 ] [ none ]
         ] [ none ] ] ] ] ] ] ]
         tly + i 1
     ] [ none ]
@@ -360,7 +372,7 @@ on-input-reset: func [] [ reset-input render ]
 ;; junk can never overwrite a better one.
 on-highscore: func [] [
     v: str-int current-value
-    either > v highscore [ highscore: v ] [ none ]
+    either > v block-at hv 0 [ block-set! hv 0 v ] [ none ]
     render
 ]
 ;; soak/test hooks (deterministic; they change state, not rules): force the
@@ -371,8 +383,7 @@ dm: func [i] [
         either = ts-k i K_KAKA [ block-set! ts-t i F_STATE KS_MUTANT  block-set! ts-t i F_B + tick 300 ] [ dm + i 1 ]
     ] [ none ]
 ]
-on-debug-give: func [] [ berries: + berries 1  render ]
-;; soak/test hook: destroy every tree and mark game over (tick_regression_cdp.js)
+
 dmg-all-trees: func [i] [
     either < i NTS [
         either = ts-k i K_TREE [ block-set! ts-t i F_A 0 ] [ none ]
@@ -385,7 +396,15 @@ on-debug-hit: func [] [ lose-life  tally  render ]
 on-debug-score: func [] [ score: str-int current-value  tally  render ]
 ;; soak hook: pin the life count so long-session berry/actor soaks do not end
 ;; the game and stop firing (the life rules have their own tests).
-on-debug-lives: func [] [ block-set! rangi F_B str-int current-value  tally  render ]
+on-debug-lives: func [] [ block-set! rangi F_B str-int current-value  tally render ]
+;; test/screenshot hook: jump straight into the helmet mission at a chosen
+;; mission clock (value = fprog; 0/empty arms it). No rule lives here.
+on-debug-fighter: func [] [
+    block-set! rangi F_E 2
+    fighter-enter
+    fprog: either > str-int current-value 0 [ str-int current-value ] [ 1 ]
+    tally render
+]
 
 ;; the dispatcher is a table lookup (the same shape traffic.glon uses), so the
 ;; game reads as data and the routing stays in Glon.
@@ -400,11 +419,11 @@ events: [
     ['kaka-highscore [ on-highscore ]]
     ['kaka-viewport [ on-viewport ]]
     ['kaka-debug-mutant [ on-debug-mutant ]]
-    ['kaka-debug-give [ on-debug-give ]]
     ['kaka-debug-over [ on-debug-over ]]
     ['kaka-debug-hit [ on-debug-hit ]]
     ['kaka-debug-score [ on-debug-score ]]
     ['kaka-debug-lives [ on-debug-lives ]]
+    ['kaka-debug-fighter [ on-debug-fighter ]]
 ]
 do-event: [
     event-row: select events current-event

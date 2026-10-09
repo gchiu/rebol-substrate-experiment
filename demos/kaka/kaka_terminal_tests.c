@@ -57,7 +57,7 @@ static void check_consistent(const char *label) {
     if (!ok) fails++;
 }
 static void check_state(const char *label, long want_over, long want_lives, long want_trees) {
-    long over = state("over"), lives = state("block-at rangi F_B"), trees = state("trees-live");
+    long over = state("over"), lives = state("block-at rangi F_B"), trees = state("block-at tc2 0");
     int ok = (over == want_over) && (lives == want_lives) && (trees == want_trees);
     printf("  %-34s over=%ld block-at rangi F_B=%ld trees=%ld  %s\n", label, over, lives, trees, ok ? "ok" : "FAIL");
     if (!ok) fails++;
@@ -92,16 +92,16 @@ int main(void) {
     if (run_source("reset")) return 2;
     check_state("1 fresh", 0, 3, 3);
     check_consistent("1 fresh HUD/splash");
-    if (!(state("tree-sum") == 300)) { printf("  FAIL: fresh habitat != 300\n"); fails++; }
+    if (!(state("block-at tc2 1") == 300)) { printf("  FAIL: fresh habitat != 300\n"); fails++; }
 
     /* 2. one real rat gnaw (the reported bug): run the real loop until habitat
        drops below 300, then it must still NOT be game over. */
     if (run_source("reset")) return 2;
     for (int t = 0; t < 400; t++) {
         if (run_source("on-tick")) return 2;
-        if (state("tree-sum") < 300) break;
+        if (state("block-at tc2 1") < 300) break;
     }
-    printf("  (after real rat gnaw: habitat=%ld)\n", state("tree-sum"));
+    printf("  (after real rat gnaw: habitat=%ld)\n", state("block-at tc2 1"));
     check_state("2 rat gnaw, 3 trees alive", 0, 3, 3);
     check_consistent("2 rat gnaw HUD/splash");
 

@@ -152,7 +152,7 @@ kaka-mutant: func [t] [
             ] ]
             either < + abs - block-at t F_X rx abs - block-at t F_Y ry 40 [
                 either = over 1 [ none ] [
-                    ;; same canonical transition (ghost); laser keeps its +25
+
                     kill-pest r
                     score: + score 25
                 ]
@@ -319,19 +319,13 @@ draw-trees: func [i] [
 draw-laser: func [] [
     either > block-at lz 0 0 [ p-line block-at lz 3 block-at lz 4 block-at lz 1 block-at lz 2 2 14 ] [ none ]
 ]
-draw-signs: func [i] [
-    either < i 12 [
-        sx: block-at signs i
-        either > sx - cam 80 [
-            either < sx + + cam view-w 80 [
-                p-byte 78 p-num sx p-num block-at signs + i 1 p-eol
-            ] [ none ]
-        ] [ none ]
-        draw-signs + i 2
-    ] [ none ]
-]
 render-canvas: func [] [
     p-clear
+    either = block-at rangi F_E 2 [
+
+        ;; semantic W/O/S ops; the host projects and paints the cockpit).
+        fighter-scene
+    ] [
     either > block-at rangi F_E 0 [
         ;; SKULL_CAVE chamber: `V` bg + `J` props (0 skull ... 13 key box).
         p-byte 86 p-num cam p-eol
@@ -347,7 +341,7 @@ render-canvas: func [] [
         either = 1 mod block-at rangi F_TARGET 2 [ p-byte 74 p-num 1120 p-num 15 p-eol ] [ p-byte 74 p-num 1120 p-num 14 p-eol ]
         either = 1 mod / block-at rangi F_TARGET 2 2 [ p-byte 74 p-num 1300 p-num 15 p-eol ] [ p-byte 74 p-num 1300 p-num 14 p-eol ]
         either = 1 mod / block-at rangi F_TARGET 4 2 [ p-byte 74 p-num 1480 p-num 15 p-eol ] [ p-byte 74 p-num 1480 p-num 14 p-eol ]
-        ;; candidate highlight (only before a route is chosen). FLAT: the loader
+
         ;; mis-compiles deeply nested conditionals.
         hx: 0
         either = block-at rangi F_E 1 [
@@ -368,13 +362,12 @@ render-canvas: func [] [
         ;; night falls as the ranger nears Skull Cave
         either >= dist - SKULL_X 700 [ p-byte 81 p-num cam p-eol ] [ none ]
         draw-trees 0
-        draw-signs 0
         actor-art 0
         draw-laser
         ;; foreground before the ranger so he is never hidden behind it
         p-byte 70 p-num cam p-eol
         draw-player
-    ]
+    ] ]
     p-finish
 ]
 
@@ -383,11 +376,11 @@ render-status: func [] [
     e-clear
     e-text "<p class='hud'>SCORE: " e-int score
     e-text "    Lives: " e-int block-at rangi F_B
-    e-text "    Trees: " e-int trees-live e-text "/" e-int NTREES
-    e-text "    Habitat: " e-int tree-sum e-text "/" e-int * NTREES TREE_MAX
+    e-text "    Trees: " e-int block-at tc2 0 e-text "/" e-int NTREES
+    e-text "    Habitat: " e-int block-at tc2 1 e-text "/" e-int * NTREES TREE_MAX
     e-text "    Glon Berries: " e-int berries
     e-text "    Wave: " e-int block-at wv 0
-    e-text "    HIGH SCORE: " e-int highscore
+    e-text "    HIGH SCORE: " e-int block-at hv 0
     either > block-at rangi F_A 0 [ e-text "    <b class='invuln'>INVULNERABLE</b>" ] [ none ]
     either = over 1 [ e-text "    <b>GAME OVER</b>" ] [ none ]
     e-text "</p>"
@@ -395,23 +388,24 @@ render-status: func [] [
         e-text "<p class='mutant'>MUTANT KAKA &mdash; OCULAR LASERS ACTIVE ("
         e-int / block-at mt 1 60 e-text "s)</p>"
     ] [ none ]
+
     ;; The host mirrors this numeric value into localStorage (small semantic
     ;; bridge); Glon owns the value and the comparison.
-    e-text "<i id='kaka-hs' style='display:none'>" e-int highscore e-text "</i>"
+    e-text "<i id='kaka-hs' style='display:none'>" e-int block-at hv 0 e-text "</i>"
     e-text "<i id='kaka-state' style='display:none'>"
     e-int tick e-text " " e-int score e-text " " e-int over e-text " " e-int berries e-text " "
     e-int block-at rangi F_X e-text " " e-int kl e-text " " e-int kr e-text " " e-int kf e-text " " e-int kg e-text " "
-    e-int n-kaka e-text " " e-int n-rat e-text " "
+    e-int block-at pc 0 e-text " " e-int block-at pc 1 e-text " "
     e-int block-at mt 0 e-text " " e-int block-at mt 1 e-text " " e-int block-at rangi F_Y e-text " "
-    e-int block-at rangi F_B e-text " " e-int block-at rangi F_A e-text " " e-int highscore e-text " "
-    e-int n-rock e-text " " e-int tcfail e-text " " e-int n-stoat e-text " " e-int n-possum e-text " " e-int block-at rangi F_VY e-text " " e-int ku
+    e-int block-at rangi F_B e-text " " e-int block-at rangi F_A e-text " " e-int block-at hv 0 e-text " "
+    e-int block-at pc 5 e-text " " e-int block-at ax 0 e-text " " e-int block-at pc 2 e-text " " e-int block-at pc 3 e-text " " e-int block-at rangi F_VY e-text " " e-int ku
     e-text "</i>"
     either = over 1 [
         e-text "<div class='kaka-gameover'><div class='kaka-go-panel'>"
         e-text "<div class='kaka-go-title'>GAME OVER!!!</div>"
         e-text "<div class='kaka-go-sub'>THE FOREST HAS FALLEN</div>"
         e-text "<div class='kaka-go-line'>SCORE: " e-int score "</div>"
-        e-text "<div class='kaka-go-line'>HIGH SCORE: " e-int highscore "</div>"
+        e-text "<div class='kaka-go-line'>HIGH SCORE: " e-int block-at hv 0 "</div>"
         e-text "<div class='kaka-go-again'>PRESS R TO PLAY AGAIN</div>"
         e-text "<button class='kaka-go-btn' data-glon-event='kaka-restart'>PLAY AGAIN</button>"
         e-text "</div></div>"

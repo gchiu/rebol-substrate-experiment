@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.11";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s11";
+  var BUILD = "D12S.12";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s12";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -567,6 +567,221 @@
     window.__ghostInfo = ghosts.map(function (g) { return { sp: g.sp, x: Math.round(g.x), y: Math.round(g.y - GHOST_RISE * ((now - g.t0) / 1000)) }; });
   }
 
+  /* ---- D12S.12 helmet route: first-person trench mission -----------------
+   * Glon emits a semantic fighter frame (`A` header + `G`/`U`/`K`/`Y`), the
+   * host projects it over the static cockpit art and paints the dynamic
+   * overlays (foes, bolts, gates, reticle, target, HUD, speed FX). No game
+   * rule is computed here; only presentation. */
+  var fighterImg = null;
+  var fighterUiOn = false;
+  /* In the fighter the free FIRE control is the boost and the vertical axis is
+     UP/DOWN, so relabel the touch buttons and reveal the DOWN key. */
+  function setFighterUi(on) {
+    if (on === fighterUiOn) return;
+    fighterUiOn = on;
+    var berry = document.querySelector('[data-kaka-hold="fire"]');
+    var jump = document.querySelector('[data-kaka-hold="up"]');
+    var down = document.querySelector('[data-kaka-hold="down"]');
+    if (berry) berry.textContent = on ? "BOOST" : "BERRY";
+    if (jump) jump.textContent = on ? "UP" : "JUMP";
+    if (down) down.style.display = on ? "" : "none";
+  }
+  var fActive = false, fPx = 0, fPy = 0, fPhase = 0, fShield = 0, fBoost = 0, fLaser = 0, fProg = 0;
+  var fFoes = [], fBolts = [], fGate = null, fBomb = 0, fFlash = 0, fPrevShield = -1;
+  var FXCOL = { wall: "#39b7ff", dim: "rgba(80,180,255,.45)", foe: "#ff3b3b",
+                bolt: "#ff8a3b", gate: "#5fd0ff", good: "#7fd18a", hot: "#ffd23f" };
+  function loadFighterImage() {
+    return loadImage("assets/vector-trench-cockpit.png").then(function (im) { fighterImg = im; });
+  }
+  function fScale(W) { return fighterImg ? W / fighterImg.naturalWidth : 1; }
+  function fCenter(W, H) {
+    if (!fighterImg) return { x: W * 0.5, y: H * 0.62, sc: 1 };
+    var sc = fScale(W);
+    return { x: W * 0.5, y: (H - fighterImg.naturalHeight * sc) + 520 * sc, sc: sc };
+  }
+  function fProj(W, H, ox, oy, oz) {
+    var c = fCenter(W, H);
+    var z = Math.max(oz, 16);
+    var s = 230 / z;
+    return { x: c.x + (ox - fPx) * s, y: c.y + (oy - fPy) * s * 0.62, s: s };
+  }
+  /* semantic host sound hook (simple synth; silently a no-op if unavailable) */
+  var audioCtx = null;
+  function sfx(name) {
+    try {
+      if (!audioCtx) { var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; audioCtx = new AC(); }
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      var t = { LASER: [880, 0.05, "square", 0.12], ENEMY_FIRE: [300, 0.08, "sawtooth", 0.08],
+                BOOST: [180, 0.18, "sawtooth", 0.1], HIT: [110, 0.18, "square", 0.18],
+                TARGET_LOCK: [1200, 0.1, "sine", 0.12], GLON_BOMB: [90, 0.4, "sawtooth", 0.2],
+                EXPLOSION: [60, 0.5, "sawtooth", 0.25], MISSION_SUCCESS: [660, 0.4, "sine", 0.16],
+                MISSION_FAIL: [140, 0.5, "square", 0.18] }[name];
+      if (!t) return;
+      var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = t[2]; o.frequency.value = t[0];
+      g.gain.value = t[3]; o.connect(g); g.connect(audioCtx.destination);
+      o.start(); g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + t[1]);
+      o.stop(audioCtx.currentTime + t[1]);
+    } catch (e) {}
+  }
+  function fStarRush(ctx, W, H, c, t) {
+    ctx.save();
+    for (var i = 0; i < 46; i++) {
+      var ang = (i * 2.399) % (Math.PI * 2);
+      var ph = ((i * 137 + t * 90) % 300) / 300;    /* 0 at centre -> 1 outward */
+      var r = 14 + ph * ph * Math.max(W, H) * 0.72;
+      var x = c.x + Math.cos(ang) * r, y = c.y + Math.sin(ang) * r * 0.62;
+      if (x < 0 || x > W || y < 0 || y > H) continue;
+      ctx.globalAlpha = 0.15 + ph * 0.6;
+      ctx.strokeStyle = FXCOL.glow;
+      ctx.lineWidth = 1 + ph * 2;
+      ctx.beginPath(); ctx.moveTo(x, y);
+      ctx.lineTo(c.x + Math.cos(ang) * (r - 6 - ph * 14), c.y + Math.sin(ang) * (r - 6 - ph * 14) * 0.62);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  function fTrenchRush(ctx, W, H, c, t) {
+    ctx.save();
+    ctx.strokeStyle = FXCOL.dim; ctx.lineWidth = 1.5;
+    for (var k = 1; k <= 9; k++) {
+      var ph = ((k * 47 + t * 130) % 360) / 360;   /* 0 far -> 1 near */
+      var s = ph * ph * ph;
+      var bw = 12 + s * W * 0.52, bh = 10 + s * H * 0.42;
+      var yB = c.y + bh * 0.55, yT = c.y - bh * 0.55;
+      ctx.globalAlpha = 0.1 + s * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(c.x - bw, yT); ctx.lineTo(c.x - bw, yB);
+      ctx.moveTo(c.x + bw, yT); ctx.lineTo(c.x + bw, yB);
+      ctx.moveTo(c.x - bw, yB); ctx.lineTo(c.x + bw, yB);
+      ctx.moveTo(c.x - bw, yT); ctx.lineTo(c.x + bw, yT);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  function drawFighterBackground(ctx, W, H) {
+    ctx.fillStyle = "#02030a"; ctx.fillRect(0, 0, W, H);
+    if (fighterImg) {
+      var sc = fScale(W), iw = fighterImg.naturalWidth * sc, ih = fighterImg.naturalHeight * sc;
+      ctx.drawImage(fighterImg, (W - iw) / 2, H - ih, iw, ih);
+    }
+    var c = fCenter(W, H), t = performance.now() / 1000;
+    fStarRush(ctx, W, H, c, t);
+    fTrenchRush(ctx, W, H, c, t);
+    if (fBoost > 0) {                              /* boost: cockpit shake + hot streak */
+      ctx.fillStyle = "rgba(120,200,255,.06)";
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+  function drawFighterReticle(ctx, W, H, firing) {
+    var c = fCenter(W, H);
+    var px = c.x - fPx * 0.9 * (c.sc), py = c.y - fPy * 0.55 * c.sc;
+    if (firing) {                            /* player laser: clear beam to the reticle */
+      ctx.save();
+      var g = ctx.createLinearGradient(W / 2, H, px, py);
+      g.addColorStop(0, "rgba(255,240,120,0.0)");
+      g.addColorStop(1, "rgba(255,245,150,0.95)");
+      ctx.strokeStyle = g; ctx.lineWidth = 6; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(W / 2, H); ctx.lineTo(px, py); ctx.stroke();
+      ctx.strokeStyle = "rgba(255,255,255,.95)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(W / 2, H); ctx.lineTo(px, py); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.strokeStyle = fLaser ? FXCOL.hot : "rgba(120,255,160,.85)";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(px, py, 18, 0, 2 * Math.PI); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(px - 28, py); ctx.lineTo(px - 8, py);
+    ctx.moveTo(px + 8, py); ctx.lineTo(px + 28, py);
+    ctx.moveTo(px, py - 28); ctx.lineTo(px, py - 8);
+    ctx.moveTo(px, py + 8); ctx.lineTo(px, py + 28);
+    ctx.stroke();
+    ctx.fillStyle = fLaser ? FXCOL.hot : "rgba(120,255,160,.9)";
+    ctx.beginPath(); ctx.arc(px, py, 2.5, 0, 2 * Math.PI); ctx.fill();
+    ctx.restore();
+  }
+  function drawFoe(ctx, ex, ey, ez, beh) {
+    var W = ctx.canvas.width, H = ctx.canvas.height;
+    var q = fProj(W, H, ex, ey, ez);
+    if (q.x < -80 || q.x > W + 80 || q.y < -60 || q.y > H + 60) return;
+    var s = Math.max(10, Math.min(46, q.s * 9));
+    ctx.save();
+    ctx.translate(q.x, q.y);
+    ctx.fillStyle = "rgba(255,40,40,.22)";
+    ctx.beginPath(); ctx.arc(0, 0, s * 0.9, 0, 2 * Math.PI); ctx.fill();
+    ctx.strokeStyle = FXCOL.foe; ctx.lineWidth = Math.max(1.5, s * 0.12);
+    ctx.beginPath();                         /* readable red arrow fighter */
+    ctx.moveTo(-s, -s * 0.55); ctx.lineTo(s, -s * 0.55);
+    ctx.lineTo(s * 0.5, 0); ctx.lineTo(s, s * 0.55);
+    ctx.lineTo(-s, s * 0.55); ctx.lineTo(-s * 0.5, 0); ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, s * 0.30, 0, 2 * Math.PI); ctx.stroke();
+    ctx.fillStyle = FXCOL.foe;
+    ctx.beginPath(); ctx.arc(0, 0, s * 0.16, 0, 2 * Math.PI); ctx.fill();
+    ctx.restore();
+  }
+  function drawBolt(ctx, bx, by, bz) {
+    var W = ctx.canvas.width, H = ctx.canvas.height;
+    var q = fProj(W, H, bx, by, bz);
+    var s = Math.max(3, Math.min(16, q.s * 3));
+    ctx.save();
+    var g = ctx.createRadialGradient(q.x, q.y, 1, q.x, q.y, s * 2.4);
+    g.addColorStop(0, "#ffd9a0"); g.addColorStop(0.4, FXCOL.bolt); g.addColorStop(1, "rgba(255,80,0,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(q.x, q.y, s * 2.4, 0, 2 * Math.PI); ctx.fill();
+    ctx.restore();
+  }
+  function drawGate(ctx, pattern, pct) {
+    var W = ctx.canvas.width, H = ctx.canvas.height;
+    var c = fCenter(W, H);
+    var s = Math.max(0, Math.min(1, pct / 100));
+    var scale = s * s * 7 + 0.12;
+    var hw = 18 + scale * 300, hh = 12 + scale * 150;
+    var px = c.x - fPx * scale * 0.9, py = c.y - fPy * scale * 0.5;
+    ctx.save();
+    ctx.strokeStyle = FXCOL.gate; ctx.lineWidth = 2 + s * 3;
+    ctx.globalAlpha = 0.35 + s * 0.65;
+    ctx.strokeRect(px - hw, py - hh, hw * 2, hh * 2);
+    ctx.fillStyle = "rgba(95,208,255,.16)";
+    if (pattern === 0) ctx.fillRect(px - hw, py - hh, hw * 2, hh * 0.7);
+    else if (pattern === 1) ctx.fillRect(px - hw, py + hh * 0.3, hw * 2, hh * 0.7);
+    else if (pattern === 2) ctx.fillRect(px - hw, py - hh, hw * 0.7, hh * 2);
+    else if (pattern === 3) ctx.fillRect(px + hw * 0.3, py - hh, hw * 0.7, hh * 2);
+    else { ctx.fillRect(px - hw, py - hh, hw * 2, hh * 0.5); ctx.fillRect(px - hw, py + hh * 0.5, hw * 2, hh * 0.5); }
+    ctx.restore();
+  }
+  function drawTarget(ctx, W, H) {
+    var c = fCenter(W, H);
+    var present = (fProg >= 850 && fPhase === 0);
+    if (!present) return;
+    var aligned = Math.abs(fPx) < 70;
+    var r = 46 + 8 * Math.sin(performance.now() / 180);
+    ctx.save();
+    ctx.strokeStyle = aligned ? FXCOL.good : FXCOL.hot;
+    ctx.lineWidth = aligned ? 4 : 2.5;
+    ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, 2 * Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(c.x, c.y, r * 0.5, 0, 2 * Math.PI); ctx.stroke();
+    ctx.fillStyle = aligned ? "rgba(127,209,138,.28)" : "rgba(255,210,63,.16)";
+    ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = aligned ? FXCOL.good : FXCOL.hot;
+    ctx.font = "bold 14px system-ui, sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(aligned ? "GLON LOCKED" : "ALIGN + GLON", c.x, c.y - r - 10);
+    ctx.restore();
+  }
+  function drawFighterHud(ctx, W) {
+    var names = ["LAUNCH", "TRENCH", "PRESSURE", "TARGET", "ESCAPE", "SUCCESS"];
+    var phase = fPhase === 0 ? (fProg < 300 ? "TRENCH RUN" : (fProg < 850 ? "ENEMY PRESSURE" : "TARGET APPROACH"))
+              : (fPhase === 1 ? "ESCAPE" : (fPhase === 2 ? "SUCCESS" : "FAILED"));
+    ctx.save();
+    ctx.font = "bold 16px system-ui, sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+    ctx.fillStyle = "rgba(0,0,0,.45)"; ctx.fillRect(8, 8, 300, 56);
+    ctx.fillStyle = "#cfeeff";
+    ctx.fillText("HELMET RUN  " + phase, 16, 12);
+    ctx.fillStyle = fShield > 1 ? "#7fd18a" : "#ffd23f";
+    ctx.fillText("SHIELD " + fShield + "   BOMB " + (fBomb ? "READY" : "SPENT") + "   T" + Math.floor(fProg / 25) + "s", 16, 34);
+    ctx.restore();
+  }
+
   function drawScript(script) {
     var canvas = document.querySelector("#glon-canvas");
     if (!canvas) return;
@@ -579,7 +794,34 @@
       if (!line) continue;
       var p = line.split(" ");
       var op = p[0];
-      if (op === "B") {
+      if (op === "A") {
+        fActive = true; setFighterUi(true);
+        fPx = +p[1]; fPy = +p[2]; fPhase = +p[3]; fShield = +p[4];
+        fBoost = +p[5]; fLaser = +p[6]; fProg = +p[7];
+        fFoes = []; fBolts = []; fGate = null; fBomb = 0;
+        if (fShield < fPrevShield) { fFlash = performance.now(); sfx("HIT"); }
+        fPrevShield = fShield;
+        if (fLaser) sfx("LASER");
+        if (fBoost) sfx("BOOST");
+        drawFighterBackground(ctx, W, H);
+      } else if (op === "G") {
+        fGate = { p: +p[1], pct: +p[2] };
+        drawGate(ctx, fGate.p, fGate.pct);
+      } else if (op === "U") {
+        drawFoe(ctx, +p[1], +p[2], +p[3], +p[4]);
+      } else if (op === "K") {
+        drawBolt(ctx, +p[1], +p[2], +p[3]);
+      } else if (op === "Y") {
+        fBomb = +p[1];
+        drawTarget(ctx, W, H);
+        drawFighterReticle(ctx, W, H, fLaser);
+        drawFighterHud(ctx, W);
+        if (fFlash && performance.now() - fFlash < 220) {
+          ctx.fillStyle = "rgba(255,60,60," + (0.35 * (1 - (performance.now() - fFlash) / 220)) + ")";
+          ctx.fillRect(0, 0, W, H);
+        }
+      } else if (op === "B") {
+        if (fActive) { fActive = false; setFighterUi(false); }
         cam = +p[1];
         tx = -cam;
         caveMode = false;
@@ -595,6 +837,7 @@
       } else if (op === "N") {
         drawSign(ctx, +p[1], +p[2], tx);
       } else if (op === "V") {
+        if (fActive) { fActive = false; setFighterUi(false); }
         cam = +p[1]; tx = -cam; caveMode = true;   /* cave plane scrolls 1:1 */
         drawCaveBackground(ctx, W, H, cam);
       } else if (op === "J") {
@@ -670,6 +913,8 @@
   function route(t) { var x = alloc(t); ex.glon_route(x[0], x[1]); }
   function ev(t) { var x = alloc(t); ex.glon_event(x[0], x[1]); }
   function evVal(t, v) { var a = alloc(t), b = alloc(v); ex.glon_event_value(a[0], a[1], b[0], b[1]); }
+  /* debug hook for headless screenshot/QA harnesses (no game rule lives here) */
+  window.__kaka = { ev: ev, evVal: evVal, route: route };
 
   var KEY = { ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right",
               ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down",
@@ -877,14 +1122,18 @@
       .then(function () { return fetchText("strings.glon"); }).then(load)
       .then(function () { return fetchText("kaka-lib.glon"); }).then(load)
       .then(function () { return fetchText("kaka.glon"); }).then(load)
+      /* kaka-fighter.glon is loaded EARLY (right after the core) so its parse
+         has loader-heap headroom; it only needs core names (resolved at run). */
+      .then(function () { return fetchText("kaka-fighter.glon"); }).then(load)
       .then(function () { return fetchText("kaka-draw.glon"); }).then(load)
       .then(function () { return fetchText("kaka-rangi.glon"); }).then(load)
       .then(function () { return fetchText("kaka-wave.glon"); }).then(load)
-      /* kaka-selftest.glon is test-only and is intentionally not loaded here:
-         the production page needs the loader budget for input dispatch. */
+      /* kaka-selftest.glon is test-only and is intentionally not loaded here
+         (and does not fit beside kaka-fighter.glon in the loader heap). */
       .then(loadParallax)            /* PNG scenery is presentation-only */
       .then(loadSprites)             /* actor sheets are presentation-only */
       .then(loadCaveImage)           /* cave backdrop image (procedural fallback) */
+      .then(loadFighterImage)        /* helmet-route cockpit backdrop */
       .then(function () {
         wireClicks();
         wireTouch();

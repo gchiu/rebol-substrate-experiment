@@ -68,7 +68,7 @@ int main(void) {
 
     /* 1. a new game has no wave; a spawned pest enters off the RIGHT edge */
     run_source("reset");
-    check(run_int("block-at wv 0") == 0 && run_int("n-rat") == 0, "1 fresh: no block-at wv 0, no pests");
+    check(run_int("block-at wv 0") == 0 && run_int("block-at pc 1") == 0, "1 fresh: no block-at wv 0, no pests");
     run_source("spawn-pest");
     check(run_int("block-at ts-t 3 F_X") == run_int("+ + cam view-w 90"), "1 pest spawns off the right edge");
     check(run_int("block-at ts-t 3 F_X") > run_int("block-at rangi F_X"), "1 pest is ahead (right) of the ranger");
@@ -77,8 +77,8 @@ int main(void) {
 
     /* 2. the wave controller advances and produces rats */
     run_source("reset");
-    for (int t = 0; t < 400 && run_int("n-rat") < 1; t++) run_source("on-tick");
-    check(run_int("block-at wv 0") >= 1 && run_int("n-rat") >= 1, "2 block-at wv 0 advances and spawns rats");
+    for (int t = 0; t < 400 && run_int("block-at pc 1") < 1; t++) run_source("on-tick");
+    check(run_int("block-at wv 0") >= 1 && run_int("block-at pc 1") >= 1, "2 block-at wv 0 advances and spawns rats");
 
     /* 3. a rat climbs the tree it reaches and gnaws it */
     run_source("reset");
@@ -218,7 +218,7 @@ int main(void) {
     run_source("reset");
     run_source("r: ts-claim K_RAT  block-set! r F_X 400  block-set! r F_Y 345  block-set! r F_STATE 9  block-set! r F_C 20  block-set! r F_A 0");
     run_source("tally");
-    check(run_int("n-rat") == 0, "17 ghost is not a live pest (n-rat 0)");
+    check(run_int("block-at pc 1") == 0, "17 ghost is not a live pest (block-at pc 1 0)");
     run_source("reset");
     run_source("r: ts-claim K_RAT  block-set! r F_X 305  block-set! r F_Y 330  block-set! r F_STATE 9  block-set! r F_C 20");
     run_source("k: ts-claim K_KAKA  block-set! k F_STATE KS_MUTANT  block-set! k F_B + tick 540  block-set! k F_X 300  block-set! k F_Y 320");
@@ -467,7 +467,7 @@ int main(void) {
     run_source("kr: 0");
     /* C. ROCK */
     run_source("block-set! rangi F_D  1  krock: 1  block-set! rangi F_TARGET  0  fire-rock  tally");
-    check(run_int("n-rock") >= 1 && run_int("block-at rangi F_TARGET") > 0, "27 ROCK fires after repeated hits");
+    check(run_int("block-at pc 5") >= 1 && run_int("block-at rangi F_TARGET") > 0, "27 ROCK fires after repeated hits");
     /* D. JUMP */
     run_source("krock: 0  block-set! rangi F_VY  0  block-set! rangi F_Y  330  ku: 1  rangi-step  rangi-step");
     check(run_int("block-at rangi F_VY") > 0 && run_int("block-at rangi F_Y") < 330, "27 JUMP works after repeated hits");
@@ -499,7 +499,7 @@ int main(void) {
           "28 E JUMP only moves the actor's jump/y");
     run_source("ku: 0  block-set! rangi F_VY 0  block-set! rangi F_Y 330");
     run_source("block-set! rangi F_D 1  block-set! rangi F_TARGET 0  krock: 1  fire-rock  tally");
-    check(run_int("n-rock") >= 1, "28 F ROCK spawns through the actor");
+    check(run_int("block-at pc 5") >= 1, "28 F ROCK spawns through the actor");
     run_source("krock: 0");
     /* G/H. contact resolves through Rangi; one continuous overlap = one hit */
     run_source("reset  block-set! rangi F_B 3");
@@ -512,9 +512,9 @@ int main(void) {
     check(run_int("block-at rangi F_B") == 0 && run_int("block-at rangi F_STATE") == 1, "28 J final life => DEAD");
     {
         long dx = run_int("block-at rangi F_X"), df = run_int("block-at rangi F_D");
-        run_source("kl: 0  kr: 1  ku: 1  krock: 1  block-set! rangi F_TARGET 0  n-rock: 0  rangi-step  fire-rock");
+        run_source("kl: 0  kr: 1  ku: 1  krock: 1  block-set! rangi F_TARGET 0  block-set! pc 5 0  rangi-step  fire-rock");
         check(run_int("block-at rangi F_X") == dx && run_int("block-at rangi F_D") == df &&
-              run_int("block-at rangi F_VY") == 0 && run_int("n-rock") == 0, "28 K DEAD actor is inert");
+              run_int("block-at rangi F_VY") == 0 && run_int("block-at pc 5") == 0, "28 K DEAD actor is inert");
     }
     run_source("kl: 0  kr: 0  ku: 0  krock: 0");
     /* M/N. restart recreates the actor; camera derives without mutating it */
@@ -613,28 +613,22 @@ int main(void) {
               run_int("block-at nx 2") == ntx, "33 forest spawning is frozen in the cave");
     }
     run_source("reset");
-    check(run_int("block-at rangi F_E") == 0 && run_int("dist") == 480 && run_int("skull-ready") == 0,
+    check(run_int("block-at rangi F_E") == 0 && run_int("dist") == 480 && run_int("block-at hv 1") == 0,
           "33 restart returns to a fresh FOREST");
 
     /* 30. Skull Cave distance: one deterministic destination + ready flag */
     run_source("reset");
-    check(run_int("block-at signs 0") == 500 && run_int("block-at signs 10") == 4000,
-          "30 signs span start..destination");
-    check(run_int("block-at signs 0") == 500 && run_int("block-at signs 2") == 1250 &&
-          run_int("block-at signs 4") == 2000 && run_int("block-at signs 6") == 2750 &&
-          run_int("block-at signs 8") == 3500 && run_int("block-at signs 10") == 4000,
-          "30 signs at the exact intended positions, in order");
     check(run_int("SKULL_X") == 4000, "30 SKULL_X is 4000");
-    check(run_int("skull-ready") == 0, "30 not ready at the start");
+    check(run_int("block-at hv 1") == 0, "30 not ready at the start");
     run_source("dist: 3999  tally");
-    check(run_int("skull-ready") == 0, "30 not ready just before the threshold");
+    check(run_int("block-at hv 1") == 0, "30 not ready just before the threshold");
     run_source("dist: 4000  tally");
-    check(run_int("skull-ready") == 1 && run_int("over") == 0, "30 ready at the threshold, no transition");
+    check(run_int("block-at hv 1") == 1 && run_int("over") == 0, "30 ready at the threshold, no transition");
     run_source("reset  block-set! rangi F_X 900  rangi-step");
     check(run_int("block-at rangi F_B") == 3 && run_int("block-at rangi F_X") == 900,
           "30 passing a sign leaves Rangi state intact");
     run_source("reset");
-    check(run_int("dist") == 480 && run_int("skull-ready") == 0, "30 restart resets progression");
+    check(run_int("dist") == 480 && run_int("block-at hv 1") == 0, "30 restart resets progression");
 
     /* 31. ROCK firing is independent of jump state */
     {
@@ -654,7 +648,7 @@ int main(void) {
     run_source("reset  view-w: 1000  block-set! rangi F_X 1000  block-set! rangi F_Y 270  block-set! rangi F_VY 11");
     run_source("krock: 1  block-set! rangi F_TARGET 0");
     run_source("rangi-step  fire-rock  tally");
-    check(run_int("n-rock") >= 1, "31 D ROCK tap during a jump is accepted");
+    check(run_int("block-at pc 5") >= 1, "31 D ROCK tap during a jump is accepted");
     run_source("krock: 0");
     /* E. jump: 22-tick arc, peak ~60 px, lands at 330 */
     run_source("reset  view-w: 1000  block-set! rangi F_Y 330  block-set! rangi F_VY 0  ku: 1  rangi-step");

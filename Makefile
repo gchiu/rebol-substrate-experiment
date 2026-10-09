@@ -397,9 +397,17 @@ demo/shop/glon-kaka.wasm: standalone/glon.c r0_s1_g1a.c r0_s1_g1a.h s1.c s1.h r0
 	$(EMCC) $(STANDALONE_FLAGS) $(KAKA_LIMIT_FLAG) standalone/glon.c r0_s1_g1a.c s1.c r0_s1_runtime.c r0_s1_show.c -o $@
 
 kaka-test: demos/kaka/kaka_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c \
-           r0_s1.h r0_s1_g1a.h s1.h m1_layout.h kaka-render-test kaka-damage-test kaka-terminal-test kaka-wave-test | glon-lib
+           r0_s1.h r0_s1_g1a.h s1.h m1_layout.h kaka-render-test kaka-damage-test kaka-terminal-test kaka-wave-test kaka-fighter-test kaka-life-test | glon-lib
 	$(CC) $(CFLAGS) $(KAKA_LIMIT_FLAG) -I. -o $@ demos/kaka/kaka_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c
 	./kaka-test
+
+# D12S.12: helmet-route (fighter) tests. Loads kaka-fighter.glon WITHOUT the
+# self-test module: the two together exceed the loader heap, so the fighter
+# gets its own harness (the self-test rules stay covered by kaka-test).
+kaka-fighter-test: demos/kaka/kaka_fighter_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c \
+                   r0_s1.h r0_s1_g1a.h s1.h m1_layout.h | glon-lib
+	$(CC) $(CFLAGS) $(KAKA_LIMIT_FLAG) -I. -o $@ demos/kaka/kaka_fighter_tests.c r0_s1_g1a.c r0_s1_runtime.c s1.c
+	./kaka-fighter-test
 
 # D12A.7: render-binding regression -- damages each gameplay tree separately
 # and proves only that tree's rendered instance changes (test-only overlay).

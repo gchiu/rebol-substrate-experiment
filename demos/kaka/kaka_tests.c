@@ -95,6 +95,7 @@ int main(void) {
     double ms = 1000.0 * (double)(t1 - t0) / (double)CLOCKS_PER_SEC;
     printf("perf: 200 ticks in %.1f ms (%.3f ms/tick, native -O0)\n", ms, ms / 200.0);
 
+    printf("GC used after soak: %ld cells (of %ld)\n", (long)(M[REG_HP]-GC_HEAP_BASE), (long)(GC_HEAP_LIMIT-GC_HEAP_BASE));
     if (strstr(gout, "KAKA-SELFTEST PASS")) { printf("kaka-test PASS\n"); return 0; }
     printf("kaka-test FAIL\n");
     return 1;
