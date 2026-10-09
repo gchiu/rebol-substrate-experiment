@@ -129,10 +129,10 @@ jobs:
           cp demo/shop/strings.glon pages/docs/demos/patrol/strings.glon
           # Attack of the Mutant Kaka: same shared runtime + libraries, split game source.
           mkdir -p pages/docs/demos/kaka
-          cp demos/kaka/kaka.html demos/kaka/kaka-host.js demos/kaka/manifest.webmanifest demos/kaka/kaka.glon \
-             demos/kaka/kaka-lib.glon demos/kaka/kaka-rangi.glon demos/kaka/kaka-draw.glon demos/kaka/kaka-wave.glon \
-             demos/kaka/kaka-selftest.glon \
-             pages/docs/demos/kaka/
+           cp demos/kaka/kaka.html demos/kaka/kaka-host.js demos/kaka/manifest.webmanifest demos/kaka/kaka.glon \
+              demos/kaka/kaka-lib.glon demos/kaka/kaka-rangi.glon demos/kaka/kaka-draw.glon demos/kaka/kaka-wave.glon \
+              demos/kaka/kaka-fighter.glon demos/kaka/kaka-selftest.glon \
+              pages/docs/demos/kaka/
           cp demo/shop/glon-kaka.wasm pages/docs/demos/kaka/glon.wasm
           cp jupyter/prelude.glon pages/docs/demos/kaka/prelude.glon
           cp demo/shop/strings.glon pages/docs/demos/kaka/strings.glon
