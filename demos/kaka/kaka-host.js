@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.8";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s8";
+  var BUILD = "D12S.9";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s9";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -341,13 +341,33 @@
 
   /* ---- cave route animation state (host-only; not a Glon binding) -------- */
   var caveRoute = 0, caveRouteT0 = 0, rangerAlpha = 1;
+  /* the cave backdrop IMAGE (replaceable via drawCaveBackground); null until
+     loaded, and null forever if the asset fails -> procedural fallback. */
+  var caveImg = null;
+  var CAVE_W = 1800;                 /* cave world width (matches Glon bounds) */
+  function loadCaveImage() {
+    return loadImage("assets/Moonlit Skull Cave Adventure.png")
+      .then(function (im) { caveImg = im; });
+  }
 
   /* ---- Skull Cave scene (host paints the semantic `V` bg + `J` props) ----
    * Presentation is layered far-bg / props / ranger so the procedural backdrop
    * below can later be swapped for a host image (`ctx.drawImage(caveBg, ...)`)
    * WITHOUT touching Glon semantics. This function is the single replaceable
    * backdrop path; Glon only ever emits `V <cam>` + `J <world-x> <kind>`. */
-  function drawCaveBackground(ctx, W, H) {
+  function drawCaveBackground(ctx, W, H, cam) {
+    if (caveImg) {
+      /* One image asset covers the whole 1800-unit cave. Uniform scale to the
+         cave width (never stretching; vertical overflow is cropped), anchored
+         to the floor: the image's lower edge sits at the canvas bottom. Gameplay
+         coordinates are untouched (drawn 1:1 with the camera offset). */
+      ctx.fillStyle = "#05040a"; ctx.fillRect(0, 0, W, H);   /* base for any gap */
+      var s = CAVE_W / caveImg.naturalWidth;
+      var sw = CAVE_W, sh = caveImg.naturalHeight * s;
+      ctx.drawImage(caveImg, -cam, H - sh, sw, sh);
+      return;
+    }
+    /* procedural fallback (unchanged) if the asset is missing */
     var g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, "#07060d"); g.addColorStop(0.6, "#161126"); g.addColorStop(1, "#241a2e");
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
@@ -540,7 +560,7 @@
         drawSign(ctx, +p[1], +p[2], tx);
       } else if (op === "V") {
         cam = +p[1]; tx = -cam;      /* cave plane scrolls 1:1 like the forest */
-        drawCaveBackground(ctx, W, H);
+        drawCaveBackground(ctx, W, H, cam);
       } else if (op === "J") {
         drawCaveProp(ctx, +p[1], +p[2], tx);
       } else if (op === "Q") {
@@ -828,6 +848,7 @@
          the production page needs the loader budget for input dispatch. */
       .then(loadParallax)            /* PNG scenery is presentation-only */
       .then(loadSprites)             /* actor sheets are presentation-only */
+      .then(loadCaveImage)           /* cave backdrop image (procedural fallback) */
       .then(function () {
         wireClicks();
         wireTouch();
