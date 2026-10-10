@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.15";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s15";
+  var BUILD = "D12S.16";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s16";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -403,6 +403,44 @@
        don't double them. The live dynamic overlays -- highlight/glow (10) and the
        route effects (11 portal / 12 beam / 13 time-box) -- still draw, as does
        Rangi (P). The procedural fallback (no image) draws everything. */
+    /* The HELMET relic is the fighter exit: always draw a strong, obvious
+       portal beacon for it (even when the cave IMAGE supplies the artwork),
+       plus an off-screen pointer so the player never has to hunt for it. */
+    if (kind === 4) {
+      var cw = ctx.canvas.width, hx = x + tx, oy = 185, t4 = performance.now() / 1000;
+      ctx.save();
+      if (hx < -20 || hx > cw + 20) {
+        var left = hx < 0, ex = left ? 18 : cw - 18, dir = left ? -1 : 1;
+        ctx.globalAlpha = 0.55 + 0.45 * Math.sin(t4 * 5);
+        ctx.fillStyle = "#5fd0ff";
+        ctx.beginPath(); ctx.moveTo(ex + dir * 16, 150); ctx.lineTo(ex - dir * 12, 118); ctx.lineTo(ex - dir * 12, 182); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1;
+        var g = ctx.createRadialGradient(ex - dir * 12, 150, 2, ex - dir * 12, 150, 40);
+        g.addColorStop(0, "rgba(170,240,255,.7)"); g.addColorStop(1, "rgba(95,208,255,0)");
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ex - dir * 12, 150, 40, 0, 2 * Math.PI); ctx.fill();
+        /* helmet glyph facing the exit direction */
+        ctx.fillStyle = "#cfefff";
+        ctx.beginPath(); ctx.arc(ex - dir * 30, 150, 9, Math.PI, 0); ctx.fill();
+        ctx.fillRect(ex - dir * 39, 150, 18, 5); ctx.fillStyle = "#16203a"; ctx.fillRect(ex - dir * 35, 147, 10, 6);
+      } else {
+        var glow = ctx.createRadialGradient(hx, oy, 2, hx, oy, 74);
+        glow.addColorStop(0, "rgba(160,242,255,.6)"); glow.addColorStop(1, "rgba(95,208,255,0)");
+        ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(hx, oy, 74, 0, 2 * Math.PI); ctx.fill();
+        var cg = ctx.createLinearGradient(0, oy - 160, 0, oy + 12);
+        cg.addColorStop(0, "rgba(120,230,255,0)"); cg.addColorStop(1, "rgba(160,242,255,.45)");
+        ctx.fillStyle = cg; ctx.fillRect(hx - 26, oy - 160, 52, 172);
+        var rr = 30 + 5 * Math.sin(t4 * 4);
+        for (var ri = 0; ri < 3; ri++) {
+          ctx.globalAlpha = 0.72 - ri * 0.2; ctx.lineWidth = 4; ctx.strokeStyle = "rgba(185,246,255,.95)";
+          ctx.beginPath(); ctx.arc(hx, oy, rr + ri * 12, 0, 2 * Math.PI); ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = "#dff6ff";
+        ctx.beginPath(); ctx.moveTo(hx, oy - 46); ctx.lineTo(hx - 10, oy - 62); ctx.lineTo(hx + 10, oy - 62); ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+      return;
+    }
     if (caveImg && kind <= 7) return;
     var sx = Math.round(x + tx), gy = 380;
     ctx.save();
@@ -585,10 +623,12 @@
     if (berry) berry.textContent = on ? "BOOST" : "BERRY";
     if (jump) jump.textContent = on ? "UP" : "JUMP";
     if (down) down.style.display = on ? "" : "none";
+    if (!on && wasBoost) { wasBoost = false; stopBoost(); }   /* clean boost cut on exit */
   }
   var fActive = false, lastCanvasScript = "";
   var fPx = 0, fPy = 0, fPhase = 0, fShield = 0, fBoost = 0, fLaser = 0, fProg = 0;
   var fFoes = [], fBolts = [], fGate = null, fBomb = 0, fFlash = 0, fPrevShield = -1;
+  var prevFoes = 0, prevBolts = 0, lastLaserMs = 0, laserSide = false, wasBoost = false;
   var FXCOL = { wall: "#39b7ff", dim: "rgba(80,180,255,.45)", foe: "#ff3b3b",
                 bolt: "#ff8a3b", gate: "#5fd0ff", good: "#7fd18a", hot: "#ffd23f" };
   function loadFighterImage() {
@@ -606,25 +646,113 @@
     var s = 230 / z;
     return { x: c.x + (ox - fPx) * s, y: c.y + (oy - fPy) * s * 0.62, s: s };
   }
-  /* semantic host sound hook (simple synth; silently a no-op if unavailable) */
-  var audioCtx = null;
-  function sfx(name) {
+  /* ---- D12S.16 layered arcade audio (WebAudio, host-only) -----------------
+   * Semantics unchanged: the host still reacts to the same render events. The
+   * AudioContext is created only after a real user gesture (no autoplay
+   * warnings) and a master gain keeps headroom so rapid fire never clips. */
+  var audioCtx = null, audioMaster = null, audioUnlocked = false, noiseBuf = null;
+  function ensureAudio() {
+    if (audioCtx) return audioCtx;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    try { audioCtx = new AC(); } catch (e) { return null; }
+    audioMaster = audioCtx.createGain(); audioMaster.gain.value = 0.55;
+    audioMaster.connect(audioCtx.destination);
+    return audioCtx;
+  }
+  function unlockAudio() {
+    var c = ensureAudio(); if (!c) return;
+    if (c.state === "suspended") { try { c.resume(); } catch (e) {} }
+    audioUnlocked = true;
+  }
+  window.addEventListener("keydown", unlockAudio);
+  window.addEventListener("pointerdown", unlockAudio);
+  window.addEventListener("touchstart", unlockAudio, { passive: true });
+  function noise() {
+    if (noiseBuf) return noiseBuf;
+    var n = Math.floor(audioCtx.sampleRate * 0.6);
+    noiseBuf = audioCtx.createBuffer(1, n, audioCtx.sampleRate);
+    var d = noiseBuf.getChannelData(0);
+    for (var i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    return noiseBuf;
+  }
+  function bus(pan) {
+    if (audioCtx.createStereoPanner) { var p = audioCtx.createStereoPanner(); p.pan.value = pan || 0; p.connect(audioMaster); return p; }
+    return audioMaster;
+  }
+  function osc(type, f0, f1, t0, dur, vol, node) {
+    var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t0);
+    if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(node); o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  function noiseTail(freq, q, t0, dur, vol, node) {
+    var s = audioCtx.createBufferSource(); s.buffer = noise();
+    var bp = audioCtx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = freq; bp.Q.value = q;
+    var g = audioCtx.createGain(); g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    s.connect(bp); bp.connect(g); g.connect(node); s.start(t0); s.stop(t0 + dur + 0.02);
+  }
+  /* player laser: bright attack + mid zap body + short noise tail, panned */
+  function playLaser(pan) {
+    if (!audioUnlocked || !audioCtx) return;
     try {
-      if (!audioCtx) { var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; audioCtx = new AC(); }
-      if (audioCtx.state === "suspended") audioCtx.resume();
-      var t = { LASER: [880, 0.05, "square", 0.12], ENEMY_FIRE: [300, 0.08, "sawtooth", 0.08],
-                BOOST: [180, 0.18, "sawtooth", 0.1], HIT: [110, 0.18, "square", 0.18],
-                TARGET_LOCK: [1200, 0.1, "sine", 0.12], GLON_BOMB: [90, 0.4, "sawtooth", 0.2],
-                EXPLOSION: [60, 0.5, "sawtooth", 0.25], MISSION_SUCCESS: [660, 0.4, "sine", 0.16],
-                MISSION_FAIL: [140, 0.5, "square", 0.18] }[name];
-      if (!t) return;
-      var o = audioCtx.createOscillator(), g = audioCtx.createGain();
-      o.type = t[2]; o.frequency.value = t[0];
-      g.gain.value = t[3]; o.connect(g); g.connect(audioCtx.destination);
-      o.start(); g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + t[1]);
-      o.stop(audioCtx.currentTime + t[1]);
+      var t0 = audioCtx.currentTime, out = bus(pan);
+      osc("square", 2100, 820, t0, 0.08, 0.20, out);
+      osc("sawtooth", 620, 280, t0, 0.11, 0.15, out);
+      noiseTail(2600, 0.7, t0, 0.07, 0.10, out);
     } catch (e) {}
   }
+  /* enemy fire: lower, rougher, opposite pitch contour */
+  function playEnemyFire() {
+    if (!audioUnlocked || !audioCtx) return;
+    try {
+      var t0 = audioCtx.currentTime;
+      osc("sawtooth", 300, 700, t0, 0.16, 0.15, audioMaster);
+      osc("square", 180, 90, t0, 0.14, 0.10, audioMaster);
+      noiseTail(900, 0.9, t0, 0.12, 0.08, audioMaster);
+    } catch (e) {}
+  }
+  /* boost: deep engine surge (start/stop around the boost window) */
+  var boostNodes = null;
+  function startBoost() {
+    if (!audioUnlocked || !audioCtx || boostNodes) return;
+    try {
+      var t0 = audioCtx.currentTime;
+      var o1 = audioCtx.createOscillator(); o1.type = "sawtooth";
+      o1.frequency.setValueAtTime(66, t0); o1.frequency.linearRampToValueAtTime(150, t0 + 0.5);
+      var o2 = audioCtx.createOscillator(); o2.type = "triangle";
+      o2.frequency.setValueAtTime(44, t0); o2.frequency.linearRampToValueAtTime(96, t0 + 0.5);
+      var f = audioCtx.createBiquadFilter(); f.type = "lowpass";
+      f.frequency.setValueAtTime(320, t0); f.frequency.linearRampToValueAtTime(1500, t0 + 0.5);
+      var g = audioCtx.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(0.24, t0 + 0.14);
+      o1.connect(f); o2.connect(f); f.connect(g); g.connect(audioMaster);
+      o1.start(t0); o2.start(t0);
+      boostNodes = { o: [o1, o2], g: g };
+    } catch (e) {}
+  }
+  function stopBoost() {
+    if (!boostNodes) return;
+    try {
+      var t = audioCtx.currentTime, g = boostNodes.g;
+      g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0.0001, t + 0.16);
+      for (var i = 0; i < boostNodes.o.length; i++) boostNodes.o[i].stop(t + 0.2);
+    } catch (e) {}
+    boostNodes = null;
+  }
+  /* one-shot impact / explosion */
+  function playHit() {
+    if (!audioUnlocked || !audioCtx) return;
+    try { var t0 = audioCtx.currentTime; osc("square", 220, 70, t0, 0.16, 0.18, audioMaster); noiseTail(1400, 0.6, t0, 0.14, 0.14, audioMaster); } catch (e) {}
+  }
+  function playExplosion() {
+    if (!audioUnlocked || !audioCtx) return;
+    try { var t0 = audioCtx.currentTime; osc("sine", 90, 40, t0, 0.5, 0.26, audioMaster); noiseTail(500, 0.4, t0, 0.5, 0.22, audioMaster); } catch (e) {}
+  }
+  function playSuccess() { if (audioUnlocked && audioCtx) { try { var t0 = audioCtx.currentTime; osc("sine", 523, 784, t0, 0.35, 0.16, audioMaster); osc("sine", 392, 587, t0 + 0.12, 0.35, 0.12, audioMaster); } catch (e) {} } }
+  function playFail() { if (audioUnlocked && audioCtx) { try { var t0 = audioCtx.currentTime; osc("square", 220, 90, t0, 0.45, 0.16, audioMaster); } catch (e) {} } }
   /* ---- D12S.14 forward-speed cues (host-only, over the static cockpit) ----
    * The cockpit PNG is the frame/background; all motion is layered and driven
    * by wall-clock time, so it animates every rAF even though the Glon tick is
@@ -864,13 +992,18 @@
       var op = p[0];
       if (op === "A") {
         fActive = true; setFighterUi(true);
+        prevFoes = fFoes.length; prevBolts = fBolts.length;
         fPx = +p[1]; fPy = +p[2]; fPhase = +p[3]; fShield = +p[4];
         fBoost = +p[5]; fLaser = +p[6]; fProg = +p[7];
         fFoes = []; fBolts = []; fGate = null; fBomb = 0;
-        if (fShield < fPrevShield) { fFlash = performance.now(); sfx("HIT"); }
+        if (fShield < fPrevShield) { fFlash = performance.now(); playHit(); }
         fPrevShield = fShield;
-        if (fLaser) sfx("LASER");
-        if (fBoost) sfx("BOOST");
+        if (fLaser) {                        /* fire once per press, then rapid-fire */
+          var nowMs = performance.now();
+          if (nowMs - lastLaserMs > 205) { lastLaserMs = nowMs; laserSide = !laserSide; playLaser(laserSide ? 0.28 : -0.28); }
+        }
+        if (fBoost > 0 && !wasBoost) { wasBoost = true; startBoost(); }
+        else if (fBoost === 0 && wasBoost) { wasBoost = false; stopBoost(); }
         drawFighterBackground(ctx, W, H);
       } else if (op === "G") {
         fGate = { p: +p[1], pct: +p[2] };
@@ -949,6 +1082,10 @@
       }
     }
     drawGhosts(ctx, W);
+    if (fActive) {                              /* audio cues from frame deltas */
+      if (fBolts.length > prevBolts) playEnemyFire();
+      if (fFoes.length < prevFoes) playExplosion();
+    }
     lastCanvasScript = fActive ? script : "";   /* enemy-free redraw source for rAF */
   }
 
