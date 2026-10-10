@@ -475,6 +475,11 @@ kaka-refresh-regression:
 kaka-berry-regression:
 	node demos/kaka/berry_regression_cdp.js
 
+# D12S.13: real-browser smoke for the developer start URLs
+# (?start=forest|cave|helmet). Needs a debug Chrome + node.
+kaka-start-smoke:
+	node demos/kaka/start_url_smoke.js
+
 # ---- Experimental GLON_LIVE host boundary (native focused test) -------------
 # Builds only the live layer + runtime; does not touch the s1 test binary or
 # any WASM build. Run: make glon-live-native-test && ./glon-live-native-test

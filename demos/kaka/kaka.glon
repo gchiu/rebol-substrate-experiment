@@ -397,13 +397,12 @@ on-debug-score: func [] [ score: str-int current-value  tally  render ]
 ;; soak hook: pin the life count so long-session berry/actor soaks do not end
 ;; the game and stop firing (the life rules have their own tests).
 on-debug-lives: func [] [ block-set! rangi F_B str-int current-value  tally render ]
-;; test/screenshot hook: jump straight into the helmet mission at a chosen
-;; mission clock (value = fprog; 0/empty arms it). No rule lives here.
-on-debug-fighter: func [] [
-    block-set! rangi F_E 2
-    fighter-enter
-    fprog: either > str-int current-value 0 [ str-int current-value ] [ 1 ]
-    tally render
+;; developer/test entry. The host forwards a `?start=` URL token AND has just
+;; run a reset (`route home` / `kaka-restart`); Glon only moves Rangi into the
+;; requested world, so no gameplay state is hard-coded host-side.
+on-start-mode: func [] [
+    either str-eq current-value "cave" [ block-set! rangi F_E 1  block-set! rangi F_X 200  block-set! rangi F_Y 352 ] [
+    either str-eq current-value "helmet" [ block-set! rangi F_E 2  fighter-enter ] [ none ] ]
 ]
 
 ;; the dispatcher is a table lookup (the same shape traffic.glon uses), so the
@@ -423,7 +422,7 @@ events: [
     ['kaka-debug-hit [ on-debug-hit ]]
     ['kaka-debug-score [ on-debug-score ]]
     ['kaka-debug-lives [ on-debug-lives ]]
-    ['kaka-debug-fighter [ on-debug-fighter ]]
+    ['kaka-start-mode [ on-start-mode ]]
 ]
 do-event: [
     event-row: select events current-event

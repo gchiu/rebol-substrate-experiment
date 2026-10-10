@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.12";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s12";
+  var BUILD = "D12S.13";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s13";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -913,8 +913,20 @@
   function route(t) { var x = alloc(t); ex.glon_route(x[0], x[1]); }
   function ev(t) { var x = alloc(t); ex.glon_event(x[0], x[1]); }
   function evVal(t, v) { var a = alloc(t), b = alloc(v); ex.glon_event_value(a[0], a[1], b[0], b[1]); }
+  /* developer/test entry: `?start=forest|cave|helmet` initialises that world
+   * directly so a tester need not replay the forest. The host only forwards
+   * the URL token; Glon (kaka-start-mode) owns the mode setup. The token is
+   * re-applied on every restart while the parameter is present. */
+  function startToken() {
+    var m = /[?&]start=([a-z]+)/.exec(window.location.search);
+    return m ? m[1] : "";
+  }
+  function applyStart() {
+    var t = startToken();
+    if (t === "forest" || t === "cave" || t === "helmet") { try { evVal("kaka-start-mode", t); } catch (e) {} }
+  }
   /* debug hook for headless screenshot/QA harnesses (no game rule lives here) */
-  window.__kaka = { ev: ev, evVal: evVal, route: route };
+  window.__kaka = { ev: ev, evVal: evVal, route: route, applyStart: applyStart };
 
   var KEY = { ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right",
               ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down",
@@ -946,7 +958,7 @@
   }
 
   function key(e, down) {
-    if (e.code === "KeyR") { if (down) { acc = 0; clearGhosts(); resetInput(); ev("kaka-restart"); } e.preventDefault(); return; }
+    if (e.code === "KeyR") { if (down) { acc = 0; clearGhosts(); resetInput(); ev("kaka-restart"); applyStart(); } e.preventDefault(); return; }
     var k = KEY[e.code];
     if (!k) return;
     e.preventDefault();
@@ -987,6 +999,7 @@
     if (!tok) return;
     if (tok === "kaka-restart") { clearGhosts(); resetInput(); }
     try { ev(tok); } catch (err) { console.error("kaka: event failed", err); }
+    if (tok === "kaka-restart") applyStart();
     focusGame();
   }
   /* Buttons that map to a Glon event (RESTART during play, PLAY AGAIN after
@@ -1165,6 +1178,7 @@
         var be = document.getElementById("kaka-build");
         if (be) be.textContent = "Kākā " + BUILD + " \u00b7 " + (window.__BUILD_SHA || "dev");
         route("home");
+        applyStart();          /* ?start=forest|cave|helmet developer entry */
         focusGame();
         requestAnimationFrame(frame);
       })
