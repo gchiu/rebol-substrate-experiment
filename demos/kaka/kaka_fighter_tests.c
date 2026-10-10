@@ -151,14 +151,14 @@ int main(void) {
     run_source("fighter-step");
     check(run_int("block-at rangi F_E") == 1 && run_int("block-at rangi F_X") == 200, "Q2 failure returns to SKULL_CAVE");
     /* R. a valid aligned bomb in the window destroys the node -> escape */
-    run_source(ENTER "fprog: 900  block-set! rangi F_X 0  kg: 1  fighter-run  kg: 0  block-set! rangi F_TARGET 90");
+    run_source(ENTER "fprog: 960  block-set! rangi F_X 0  kg: 1  fighter-run  kg: 0  block-set! rangi F_TARGET 90");
     check(run_int("block-at rangi F_STATE") == 1 && run_int("fbomb") == 0 && run_int("score") == 200,
           "R aligned bomb in window destroys the node");
     /* R2. an unaligned bomb in the window does not destroy the node */
-    run_source(ENTER "fprog: 900  block-set! rangi F_X 150  kg: 1  fighter-run  kg: 0");
+    run_source(ENTER "fprog: 960  block-set! rangi F_X 150  kg: 1  fighter-run  kg: 0");
     check(run_int("block-at rangi F_STATE") == 0, "R2 unaligned bomb misses the node");
     /* S/T. escape ends in success and returns to FOREST */
-    run_source(ENTER "fprog: 900  block-set! rangi F_X 0  kg: 1  fighter-run  kg: 0  block-set! rangi F_TARGET 90");
+    run_source(ENTER "fprog: 960  block-set! rangi F_X 0  kg: 1  fighter-run  kg: 0  block-set! rangi F_TARGET 90");
     ticks("fighter-step", 90);
     check(run_int("block-at rangi F_STATE") == 2, "S target hit enters escape then success");
     run_source("fighter-step");
@@ -178,21 +178,22 @@ int main(void) {
           && run_int("ts-count K_FOE") == 0, "X reset returns a coherent fresh game");
 
     /* ---- winding canyon (D12S.23) -----------------------------------------
-       canyon centre = can-x fprog; half-width 100; collision/render share it. */
-    check(run_int("can-x 200") > 0 && run_int("can-x 400") < 0 && run_int("can-x 800") < 0,
+       canyon centre = can-x fprog; half-width 80; collision/render share it.
+       smooth sine table: +140@80, 0@160, -140@240 (40-unit step). */
+    check(run_int("can-x 80") > 0 && run_int("can-x 240") < 0 && run_int("can-x 560") < 0,
           "N1 canyon centre bends both ways");
-    /* fprog 200 -> centre 120: holding a fixed world x leaves the corridor */
-    run_source(ENTER "fprog: 200  block-set! rangi F_X 0  block-set! rangi F_A 0  fighter-run");
+    /* fprog 80 -> centre 140: holding a fixed world x leaves the corridor */
+    run_source(ENTER "fprog: 80  block-set! rangi F_X 0  block-set! rangi F_A 0  fighter-run");
     check(run_int("block-at rangi F_C") == 2, "N2 fixed X hits the canyon wall at a bend");
-    run_source(ENTER "fprog: 200  block-set! rangi F_X 120  block-set! rangi F_A 0  fighter-run");
+    run_source(ENTER "fprog: 80  block-set! rangi F_X 140  block-set! rangi F_A 0  fighter-run");
     check(run_int("block-at rangi F_C") == 3, "N3 following the bend clears the wall");
-    /* fprog 718 -> centre -45: a lateral gate is safe at/above the centre */
-    run_source(ENTER "fprog: 718  block-set! rangi F_X 0  block-set! rangi F_A 0  fighter-gates");
+    /* fprog 918 -> centre -102: a lateral gate is relative to the centre */
+    run_source(ENTER "fprog: 918  block-set! rangi F_X -180  block-set! rangi F_A 0  fighter-gates");
     check(run_int("block-at rangi F_C") == 3, "N4 gate follows the local canyon centre");
-    run_source(ENTER "fprog: 718  block-set! rangi F_X -100  block-set! rangi F_A 0  fighter-gates");
+    run_source(ENTER "fprog: 918  block-set! rangi F_X 0  block-set! rangi F_A 0  fighter-gates");
     check(run_int("block-at rangi F_C") == 2, "N5 gate blocked region is canyon-relative");
-    /* fprog 1000 -> centre 110: the node is acquired at the canyon centre */
-    run_source(ENTER "fprog: 1000  block-set! rangi F_X 110  kg: 1  fighter-run  kg: 0");
+    /* fprog 1080 -> centre 99: the node is acquired at the canyon centre */
+    run_source(ENTER "fprog: 1080  block-set! rangi F_X 99  kg: 1  fighter-run  kg: 0");
     check(run_int("block-at rangi F_STATE") == 1 && run_int("fbomb") == 0,
           "N6 node follows the canyon centre");
 

@@ -628,13 +628,32 @@
   var fActive = false, lastCanvasScript = "";
   var fPx = 0, fPy = 0, fPhase = 0, fShield = 0, fBoost = 0, fLaser = 0, fProg = 0;
   var fFoes = [], fBolts = [], fGate = null, fBomb = 0, fFlash = 0, fPrevShield = -1;
-  /* Winding canyon (D12S.23): Glon emits the corridor centre at fixed forward
-     depths (op `H`) plus the half-width in the `A` header. The host projects
-     the samples with the SAME perspective as everything else and yaws the
-     camera onto the corridor tangent, so bends read as turns. */
-  var fCanX = 0, fCanW = 100, fYawPx = 0;
-  var FCAN_D = [0, 60, 160, 320, 560, 900];   /* sample depths, mirrored in Glon */
-  var FCAN_FOCAL = 120;                        /* yaw gain (turn cue strength) */
+  /* Winding canyon (D12S.23). Glon owns can-x (the collision centre) and emits
+     the half-width in the `A` header. The host MIRRORS the exact same table and
+     step here (keep in sync with kaka-fighter.glon) so it can sample the
+     corridor DENSELY for rendering -- a handful of emitted samples aliases the
+     sine and looks jagged. Rendering and collision therefore share one curve. */
+  var CAN_STEP = 40;
+  var CAN_TAB = [0,113,160,113,0,-113,-160,-113,0,113,160,113,0,-113,-160,-113,
+                 0,113,160,113,0,-113,-160,-113,0,113,160,113,0,-113,-160,-113,
+                 0,113,160,113,0,-113,-160,-113,0,113,160,113,0,-113,-160,-113,
+                 0,113,160,113,0,-113,-160,-113,0,113];
+  function canX(z) {
+    if (z < 0) z = 0;
+    var i = Math.floor(z / CAN_STEP), f = z - i * CAN_STEP;
+    var a = CAN_TAB[i] !== undefined ? CAN_TAB[i] : CAN_TAB[CAN_TAB.length - 1];
+    var b = CAN_TAB[i + 1] !== undefined ? CAN_TAB[i + 1] : a;
+    var d = b - a;
+    return a + (d >= 0 ? Math.trunc(d * f / CAN_STEP) : -Math.trunc(-d * f / CAN_STEP));
+  }
+  var fCanX = 0, fCanW = 80, fYawPx = 0;
+  /* dense corridor cross-sections (forward depths), sampled from can-x */
+  var FCAN_D = [];
+  (function () { for (var d = 0; d <= 912; d += 48) FCAN_D.push(d); })();
+  /* Deliberately WEAK yaw: a tangent-tracking camera straightens the bend on
+     screen (the corridor always ends up dead ahead). Under-applying it keeps
+     the curve sweeping left/right while still hinting at a turn. */
+  var FCAN_FOCAL = 20;
   var prevFoes = 0, prevBolts = 0, lastLaserMs = 0, laserSide = false, wasBoost = false;
   var FXCOL = { wall: "#39b7ff", dim: "rgba(80,180,255,.45)", foe: "#ff3b3b",
                 bolt: "#ff8a3b", gate: "#5fd0ff", good: "#7fd18a", hot: "#ffd23f" };
@@ -650,10 +669,13 @@
   function fProj(W, H, ox, oy, oz) {
     var c = fCenter(W, H);
     var z = Math.max(oz, 16);
-    var s = 230 / z;
-    /* fYawPx rotates the camera onto the canyon tangent (a screen-space shift
-       is the small-angle approximation): the corridor ahead converges to the
-       screen centre while near walls sweep, so a bend reads as a turn. */
+    /* The world uses the cockpit's own scale (design width 640) so the canyon
+       keeps its size relative to the frame on wider phone canvases. */
+    var vk = Math.max(1, W / 640);
+    var s = 230 * vk / z;
+    /* fYawPx rotates the camera onto the corridor tangent (a screen-space shift
+       is the small-angle approximation). It is deliberately UNDER-applied so a
+       bend still sweeps across the screen instead of cancelling out. */
     return { x: c.x + fYawPx + (ox - fPx) * s, y: c.y + (oy - fPy) * s * 0.62, s: s };
   }
   /* Bottom of the cockpit's see-through trench window: the canyon wireframe is
@@ -663,32 +685,34 @@
     var sc = fScale(W);
     return (H - fighterImg.naturalHeight * sc) + fAlt(W, H) + 628 * sc;
   }
-  /* Project the emitted canyon cross-sections and connect them into the
-     wireframe corridor. Runs on the `H` scene op after the background. */
-  function drawCanyonWalls(ctx, W, H, centres) {
-    if (!centres || centres.length < 2) return;
-    var top = -140, bot = 140, i, cp, prev = null;
+  /* Project the corridor cross-sections (sampled densely from the mirrored
+     can-x) and connect them into the wireframe canyon. The walls are drawn
+     BOLD over a blacked-out window so the winding line reads on a small phone
+     screen, not just at the vanishing point. */
+  function drawCanyonWalls(ctx, W, H) {
+    if (FCAN_D.length < 2) return;
+    var top = -150, bot = 150, i, cp, prev = null;
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, W, Math.max(0, fDashTop(W, H))); ctx.clip();
     ctx.lineCap = "round";
-    for (i = 0; i < centres.length; i++) {
-      var d = FCAN_D[i] !== undefined ? FCAN_D[i] : FCAN_D[FCAN_D.length - 1];
-      var cx = centres[i], w = fCanW;
+    for (i = 0; i < FCAN_D.length; i++) {
+      var d = FCAN_D[i];
+      var cx = canX(fProg + d), w = fCanW;
       cp = {
         d: d,
         lt: fProj(W, H, cx - w, top, d), lb: fProj(W, H, cx - w, bot, d),
         rt: fProj(W, H, cx + w, top, d), rb: fProj(W, H, cx + w, bot, d)
       };
-      var a = 0.16 + 0.62 * Math.max(0, 1 - d / 1000);
+      var a = 0.35 + 0.65 * Math.max(0, 1 - d / 1200);
       ctx.globalAlpha = a;
-      ctx.strokeStyle = FXCOL.wall;
-      ctx.lineWidth = Math.max(1, 3 - d / 420);
+      ctx.strokeStyle = "#78dcff";
+      ctx.lineWidth = Math.max(2, 6 - d / 200);
       ctx.beginPath();                                  /* vertical ribs */
       ctx.moveTo(cp.lt.x, cp.lt.y); ctx.lineTo(cp.lb.x, cp.lb.y);
       ctx.moveTo(cp.rt.x, cp.rt.y); ctx.lineTo(cp.rb.x, cp.rb.y);
       ctx.stroke();
       if (prev) {                                       /* longitudinal rails */
-        ctx.strokeStyle = FXCOL.dim; ctx.globalAlpha = a * 0.85;
+        ctx.strokeStyle = "#46b4ff"; ctx.globalAlpha = a * 0.9;
         ctx.beginPath();
         ctx.moveTo(prev.lt.x, prev.lt.y); ctx.lineTo(cp.lt.x, cp.lt.y);
         ctx.moveTo(prev.lb.x, prev.lb.y); ctx.lineTo(cp.lb.x, cp.lb.y);
@@ -960,14 +984,18 @@
       var sc = fScale(W), iw = fighterImg.naturalWidth * sc, ih = fighterImg.naturalHeight * sc;
       ctx.drawImage(fighterImg, (W - iw) / 2, H - ih + ay, iw, ih);
       if (ay < 0) { ctx.fillStyle = "#01020a"; ctx.fillRect(-10, H + ay - 2, W + 20, -ay + 16); }
-      /* subdue the baked "fixed cabin light" streaks: a dark wash over the
-         trench region (above the dashboard) so the dynamic streaks dominate */
+      /* The baked cockpit art is a fully-drawn STRAIGHT trench; left visible it
+         dominates and the run reads as straight no matter what the centreline
+         does. Black the trench window out (blending into the dashboard) so the
+         dynamic winding corridor below is the only corridor on screen. */
       var dashTop = (H - ih) + ay + 628 * sc;
-      var g = ctx.createLinearGradient(0, 0, 0, dashTop);
-      g.addColorStop(0, "rgba(1,3,14,0.72)");
-      g.addColorStop(0.72, "rgba(1,3,14,0.52)");
-      g.addColorStop(1, "rgba(1,3,14,0.0)");
-      ctx.fillStyle = g; ctx.fillRect(-10, -10, W + 20, dashTop + 10);
+      var blend = 70 * sc;
+      ctx.fillStyle = "#01020a";
+      ctx.fillRect(-10, -10, W + 20, Math.max(0, dashTop - blend) + 10);
+      var g = ctx.createLinearGradient(0, dashTop - blend, 0, dashTop);
+      g.addColorStop(0, "rgba(1,2,10,1)");
+      g.addColorStop(1, "rgba(1,2,10,0)");
+      ctx.fillStyle = g; ctx.fillRect(-10, dashTop - blend, W + 20, blend + 2);
     }
     /* bright vanishing-point "warp core" — a strong depth/motion anchor */
     var wc = ctx.createRadialGradient(cw.x, cw.y, 1, cw.x, cw.y, 46 + (fBoost > 0 ? 24 : 0));
@@ -1117,7 +1145,11 @@
         fPx = +p[1]; fPy = +p[2]; fPhase = +p[3]; fShield = +p[4];
         fBoost = +p[5]; fLaser = +p[6]; fProg = +p[7];
         if (p[8] !== undefined && !isNaN(+p[8])) fCanW = +p[8];
-        fCanX = 0; fYawPx = 0;
+        fCanX = canX(fProg);
+        /* weak yaw toward the corridor tangent (full tangent-tracking would
+           straighten the visible bend): 3rd sample is a ~150-unit look-ahead */
+        var tan = (canX(fProg + FCAN_D[3]) - fCanX) / FCAN_D[3];
+        fYawPx = Math.max(-90, Math.min(90, -tan * FCAN_FOCAL));
         fFoes = []; fBolts = []; fGate = null; fBomb = 0;
         if (fShield < fPrevShield) { fFlash = performance.now(); playHit(); }
         fPrevShield = fShield;
@@ -1128,18 +1160,7 @@
         if (fBoost > 0 && !wasBoost) { wasBoost = true; startBoost(); }
         else if (fBoost === 0 && wasBoost) { wasBoost = false; stopBoost(); }
         drawFighterBackground(ctx, W, H);
-      } else if (op === "H") {
-        /* corridor cross-sections at FCAN_D depths: p[1..] are centres */
-        var ctr = [];
-        for (var ci = 1; ci < p.length && p[ci] !== ""; ci++) ctr.push(+p[ci]);
-        if (ctr.length >= 2) {
-          fCanX = ctr[0];
-          var ref = ctr[3] !== undefined ? ctr[3] : ctr[ctr.length - 1];
-          var span = FCAN_D[3] !== undefined ? FCAN_D[3] : 1;
-          var tan = (ref - ctr[0]) / span;            /* tangent near the ship */
-          fYawPx = Math.max(-100, Math.min(100, -tan * FCAN_FOCAL));
-        }
-        drawCanyonWalls(ctx, W, H, ctr);
+        drawCanyonWalls(ctx, W, H);          /* winding corridor over the void */
       } else if (op === "G") {
         fGate = { p: +p[1], pct: +p[2] };
         drawGate(ctx, fGate.p, fGate.pct);
