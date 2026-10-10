@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.16";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s16";
+  var BUILD = "D12S.17";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s17";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -656,7 +656,7 @@
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
     try { audioCtx = new AC(); } catch (e) { return null; }
-    audioMaster = audioCtx.createGain(); audioMaster.gain.value = 0.55;
+    audioMaster = audioCtx.createGain(); audioMaster.gain.value = 0.5;
     audioMaster.connect(audioCtx.destination);
     return audioCtx;
   }
@@ -664,6 +664,7 @@
     var c = ensureAudio(); if (!c) return;
     if (c.state === "suspended") { try { c.resume(); } catch (e) {} }
     audioUnlocked = true;
+    preloadSfx();
   }
   window.addEventListener("keydown", unlockAudio);
   window.addEventListener("pointerdown", unlockAudio);
@@ -695,24 +696,60 @@
     var g = audioCtx.createGain(); g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     s.connect(bp); bp.connect(g); g.connect(node); s.start(t0); s.stop(t0 + dur + 0.02);
   }
-  /* player laser: bright attack + mid zap body + short noise tail, panned */
+  /* broadband transient (high-passed noise) */
+  function noiseBurst(t0, dur, vol, hp, node) {
+    var s = audioCtx.createBufferSource(); s.buffer = noise();
+    var f = audioCtx.createBiquadFilter(); f.type = "highpass"; f.frequency.value = hp;
+    var g = audioCtx.createGain(); g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    s.connect(f); f.connect(g); g.connect(node); s.start(t0); s.stop(t0 + dur + 0.01);
+  }
+  /* band-passed noise sweeping f0 -> f1 (resonant tail / zip) */
+  function noiseSweep(t0, f0, f1, dur, vol, node) {
+    var s = audioCtx.createBufferSource(); s.buffer = noise();
+    var bp = audioCtx.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 2.6;
+    bp.frequency.setValueAtTime(f0, t0); bp.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t0 + dur);
+    var g = audioCtx.createGain(); g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    s.connect(bp); bp.connect(g); g.connect(node); s.start(t0); s.stop(t0 + dur + 0.02);
+  }
+  /* Optional sampled-SFX seam: set SFX_ASSETS = { LASER: "assets/laser.ogg", ... }
+     and the host uses the buffer instead of synthesis. Empty = pure WebAudio. */
+  var SFX_ASSETS = {}, sfxBuf = {};
+  function preloadSfx() {
+    if (!audioCtx) return;
+    for (var k in SFX_ASSETS) (function (k) {
+      fetch(SFX_ASSETS[k]).then(function (r) { return r.arrayBuffer(); })
+        .then(function (b) { return audioCtx.decodeAudioData(b); })
+        .then(function (buf) { sfxBuf[k] = buf; }).catch(function () {});
+    })(k);
+  }
+  function playSample(name, vol, pan) {
+    var buf = sfxBuf[name]; if (!buf) return false;
+    try { var s = audioCtx.createBufferSource(); s.buffer = buf;
+      var g = audioCtx.createGain(); g.gain.value = vol || 1;
+      var out = bus(pan || 0); s.connect(g); g.connect(out); s.start(); return true; } catch (e) { return false; }
+  }
+  /* player laser: broadband snap + bright body + detuned width + sub + resonant tail */
   function playLaser(pan) {
     if (!audioUnlocked || !audioCtx) return;
+    if (playSample("LASER", 0.95, pan)) return;
     try {
-      var t0 = audioCtx.currentTime, out = bus(pan);
-      osc("square", 2100, 820, t0, 0.08, 0.20, out);
-      osc("sawtooth", 620, 280, t0, 0.11, 0.15, out);
-      noiseTail(2600, 0.7, t0, 0.07, 0.10, out);
+      var t0 = audioCtx.currentTime, out = bus(pan), out2 = bus(-(pan || 0) * 0.7);
+      noiseBurst(t0, 0.02, 0.55, 5200, out);              /* transient attack */
+      osc("square", 2600, 740, t0, 0.085, 0.20, out);     /* bright body */
+      osc("sawtooth", 1700, 430, t0, 0.10, 0.13, out2);   /* stereo width */
+      osc("sine", 250, 70, t0, 0.10, 0.22, out);          /* sub weight */
+      noiseSweep(t0, 1900, 420, 0.11, 0.16, out);         /* resonant downward tail */
     } catch (e) {}
   }
-  /* enemy fire: lower, rougher, opposite pitch contour */
+  /* enemy fire: lower, rougher, opposite (upward) pitch contour */
   function playEnemyFire() {
     if (!audioUnlocked || !audioCtx) return;
+    if (playSample("ENEMY_FIRE", 0.95, 0)) return;
     try {
       var t0 = audioCtx.currentTime;
-      osc("sawtooth", 300, 700, t0, 0.16, 0.15, audioMaster);
-      osc("square", 180, 90, t0, 0.14, 0.10, audioMaster);
-      noiseTail(900, 0.9, t0, 0.12, 0.08, audioMaster);
+      osc("sawtooth", 330, 900, t0, 0.17, 0.16, audioMaster);
+      osc("square", 150, 70, t0, 0.15, 0.12, audioMaster);
+      noiseSweep(t0, 400, 1400, 0.14, 0.10, audioMaster);
     } catch (e) {}
   }
   /* boost: deep engine surge (start/stop around the boost window) */
