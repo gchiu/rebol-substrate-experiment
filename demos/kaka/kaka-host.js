@@ -1397,7 +1397,9 @@
      capture + pointercancel/lostpointercapture guarantee a release is never
      lost, so movement can never get stuck. No mobile-specific game rules. */
   function wireTouch() {
-    var hold = document.querySelectorAll("[data-kaka-hold]");
+    /* The star D-pad arms are labels only; the pad's pointer vector drives them
+       (wireDpad). Every OTHER [data-kaka-hold] control is a plain hold button. */
+    var hold = document.querySelectorAll("[data-kaka-hold]:not(.dpad-arm)");
     for (var i = 0; i < hold.length; i++) {
       (function (b) {
         var name = b.getAttribute("data-kaka-hold");
@@ -1419,6 +1421,61 @@
         b.addEventListener("contextmenu", function (e) { e.preventDefault(); });
       })(hold[i]);
     }
+  }
+
+  /* One four-point star D-pad replaces the four separate move buttons. A single
+     pointer's VECTOR from the hub picks a direction, or both adjacent arms
+     inside the diagonal band, so one thumb can steer a diagonal; the hub is a
+     neutral dead zone. It emits the SAME Glon key names the keyboard does, so
+     Glon's input semantics are untouched (presentation/interaction only). */
+  function wireDpad() {
+    var pad = document.querySelector("[data-kaka-dpad]");
+    if (!pad) return;
+    var DIRS = ["up", "down", "left", "right"], arms = {}, active = {};
+    for (var i = 0; i < DIRS.length; i++) arms[DIRS[i]] = pad.querySelector(".dpad-arm." + DIRS[i]);
+    var pid = null;
+    function apply(dir, want) {
+      want = !!want;
+      /* DOWN is a control only in the fighter; elsewhere its arm is hidden, so
+         ignore it exactly as the old hidden button was unreachable. */
+      if (want && dir === "down" && arms.down && arms.down.style.display === "none") return;
+      if (want === !!active[dir]) return;
+      active[dir] = want;
+      setHeld(dir, want);
+      pad.classList.toggle("on-" + dir, want);
+      if (arms[dir]) arms[dir].classList.toggle("on", want);
+    }
+    function set(d) {
+      d = d || {};
+      apply("up", d.up); apply("down", d.down); apply("left", d.left); apply("right", d.right);
+    }
+    function pick(e) {
+      var r = pad.getBoundingClientRect();
+      var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      var dx = e.clientX - cx, dy = e.clientY - cy;
+      var dead = Math.min(r.width, r.height) * 0.17;   /* hub = neutral */
+      if (dx * dx + dy * dy < dead * dead) { set(null); return; }
+      var ax = Math.abs(dx), ay = Math.abs(dy), t = 0.5;  /* ~53deg diagonal band */
+      var d = {};
+      if (ax >= ay * t) d[dx < 0 ? "left" : "right"] = 1;
+      if (ay >= ax * t) d[dy < 0 ? "up" : "down"] = 1;
+      set(d);
+    }
+    function down(e) {
+      if (pid !== null) return;                        /* one pointer owns the pad */
+      pid = e.pointerId;
+      if (pad.setPointerCapture && e.pointerId !== undefined) { try { pad.setPointerCapture(e.pointerId); } catch (err) {} }
+      e.preventDefault();
+      pick(e);
+    }
+    function move(e) { if (e.pointerId === pid) { e.preventDefault(); pick(e); } }
+    function up(e) { if (pid !== null && e.pointerId !== pid) return; pid = null; set(null); }
+    pad.addEventListener("pointerdown", down);
+    pad.addEventListener("pointermove", move);
+    pad.addEventListener("pointerup", up);
+    pad.addEventListener("pointercancel", up);
+    pad.addEventListener("lostpointercapture", up);
+    pad.addEventListener("contextmenu", function (e) { e.preventDefault(); });
   }
 
   function fetchText(u) {
@@ -1517,6 +1574,7 @@
       .then(function () {
         wireClicks();
         wireTouch();
+        wireDpad();
         /* Hand the one persisted number to Glon BEFORE the viewport-driven
            render below, so it cannot mirror a stale 0 over the stored high score. */
         evVal("kaka-highscore", String(readStoredHigh()));
