@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.14";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s14";
+  var BUILD = "D12S.15";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s15";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -630,42 +630,50 @@
    * by wall-clock time, so it animates every rAF even though the Glon tick is
    * 25 Hz. Normal flight is already fast; BOOST multiplies speed, lengthens the
    * streaks, quickens the trench expansion and shakes/parallaxes the frame. */
-  var FSPEED = 1.0, FSPEED_BOOST = 3.1;
+  var FSPEED = 1.5, FSPEED_BOOST = 3.8;
   function fSpeed() { return fBoost > 0 ? FSPEED_BOOST : FSPEED; }
   /* longitudinal streaks: radiate from the vanishing point, accelerate and
-     lengthen with depth (perspective) — the primary "rushing past you" cue */
+     lengthen with depth (perspective) — the primary "rushing past you" cue.
+     Each is drawn as a bright leading head + a long fading tail so it reads as
+     travel, not as static wireframe. */
   function fStreaks(ctx, W, H, c, t, sp, boost) {
     ctx.save(); ctx.lineCap = "round";
-    var N = 84, ca, sa, i, ph, r, len, x0, y0, x1, y1, a;
-    var maxR = Math.sqrt(W * W + H * H) * 0.62;
+    var N = 124, ca, sa, i, ph, r, len, x0, y0, x1, y1, mx, my, a, head;
+    var maxR = Math.sqrt(W * W + H * H) * 0.64;
     for (i = 0; i < N; i++) {
       var ang = i * 2.399963;
       ca = Math.cos(ang); sa = Math.sin(ang) * 0.62;
-      ph = ((i * 0.117 + t * (0.62 + (i % 9) * 0.035) * sp) % 1 + 1) % 1;
+      ph = ((i * 0.117 + t * (0.72 + (i % 11) * 0.04) * sp) % 1 + 1) % 1;
       r = 6 + ph * ph * maxR;
-      len = (12 + ph * ph * (150 + (boost ? 120 : 0))) ;
-      x0 = c.x + ca * r; y0 = c.y + sa * r;
-      x1 = c.x + ca * (r - len); y1 = c.y + sa * (r - len);
-      a = 0.10 + ph * 0.8;
-      ctx.strokeStyle = (boost && (i % 3 === 0)) ? "rgba(220,248,255," + a + ")"
-                       : "rgba(150,225,255," + (a * 0.9) + ")";
-      ctx.lineWidth = 1 + ph * (boost ? 3.4 : 2.4);
-      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      len = (16 + ph * ph * (210 + (boost ? 170 : 0)));
+      x0 = c.x + ca * r; y0 = c.y + sa * r;                 /* leading head */
+      x1 = c.x + ca * (r - len); y1 = c.y + sa * (r - len); /* tail */
+      mx = c.x + ca * (r - len * 0.28); my = c.y + sa * (r - len * 0.28);
+      a = 0.14 + ph * 0.86;
+      /* fading tail */
+      ctx.strokeStyle = "rgba(120,205,255," + (a * 0.35).toFixed(3) + ")";
+      ctx.lineWidth = 1 + ph * (boost ? 2.6 : 1.8);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(mx, my); ctx.stroke();
+      /* bright head */
+      ctx.strokeStyle = (boost && (i % 3 === 0)) ? "rgba(225,250,255," + a + ")"
+                       : "rgba(160,230,255," + a + ")";
+      ctx.lineWidth = 1.4 + ph * (boost ? 4.6 : 3.4);
+      ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(x0, y0); ctx.stroke();
     }
     ctx.restore();
   }
   /* small particles/star streaks radiating outward */
   function fStars(ctx, W, H, c, t, sp) {
     ctx.save();
-    for (var i = 0; i < 40; i++) {
+    for (var i = 0; i < 58; i++) {
       var ang = i * 1.7;
-      var ph = ((i * 0.211 + t * 1.15 * sp) % 1 + 1) % 1;
+      var ph = ((i * 0.211 + t * 1.5 * sp) % 1 + 1) % 1;
       var r = 5 + ph * ph * Math.max(W, H) * 0.95;
       var x = c.x + Math.cos(ang) * r, y = c.y + Math.sin(ang) * r * 0.62;
       if (x < -2 || x > W + 2 || y < -2 || y > H + 2) continue;
-      ctx.globalAlpha = 0.22 + ph * 0.7;
-      ctx.fillStyle = "#e6f7ff";
-      var sz = 1 + ph * 2.4;
+      ctx.globalAlpha = 0.25 + ph * 0.75;
+      ctx.fillStyle = "#eafaff";
+      var sz = 1 + ph * 2.6;
       ctx.fillRect(x, y, sz, sz);
     }
     ctx.restore();
@@ -674,13 +682,13 @@
      longitudinal rails the ribs slide along (the strongest speed read) */
   function fTrench(ctx, W, H, c, t, sp) {
     ctx.save();
-    var NR = 12, k, ph, s, hw, hh, yT, yB, a;
+    var NR = 16, k, ph, s, hw, hh, yT, yB, a;
     for (k = 1; k <= NR; k++) {
-      ph = (((k / NR) + t * 0.5 * sp) % 1 + 1) % 1;
+      ph = (((k / NR) + t * 0.64 * sp) % 1 + 1) % 1;
       s = ph * ph * ph;
-      hw = 10 + s * W * 0.64; hh = 8 + s * H * 0.52;
+      hw = 10 + s * W * 0.66; hh = 8 + s * H * 0.54;
       yT = c.y - hh * 0.5; yB = c.y + hh * 0.6;
-      a = 0.05 + s * 0.5;
+      a = 0.06 + s * 0.6;
       ctx.strokeStyle = "rgba(70,190,255," + a.toFixed(3) + ")";
       ctx.lineWidth = 1 + s * 2;
       ctx.beginPath();
@@ -714,16 +722,22 @@
          trench region (above the dashboard) so the dynamic streaks dominate */
       var dashTop = (H - ih) + 628 * sc;
       var g = ctx.createLinearGradient(0, 0, 0, dashTop);
-      g.addColorStop(0, "rgba(1,3,14,0.55)");
-      g.addColorStop(0.72, "rgba(1,3,14,0.34)");
+      g.addColorStop(0, "rgba(1,3,14,0.72)");
+      g.addColorStop(0.72, "rgba(1,3,14,0.52)");
       g.addColorStop(1, "rgba(1,3,14,0.0)");
       ctx.fillStyle = g; ctx.fillRect(-10, -10, W + 20, dashTop + 10);
     }
+    /* bright vanishing-point "warp core" — a strong depth/motion anchor */
+    var wc = ctx.createRadialGradient(c.x, c.y, 1, c.x, c.y, 46 + (fBoost > 0 ? 24 : 0));
+    wc.addColorStop(0, "rgba(190,240,255,.85)");
+    wc.addColorStop(0.4, "rgba(90,200,255,.28)");
+    wc.addColorStop(1, "rgba(90,200,255,0)");
+    ctx.fillStyle = wc; ctx.beginPath(); ctx.arc(c.x, c.y, 46 + (fBoost > 0 ? 24 : 0), 0, 2 * Math.PI); ctx.fill();
     fTrench(ctx, W, H, c, t, sp);
     fStars(ctx, W, H, c, t, sp);
     fStreaks(ctx, W, H, c, t, sp, fBoost > 0);
     if (fBoost > 0) {
-      ctx.fillStyle = "rgba(120,200,255,.07)"; ctx.fillRect(-10, -10, W + 20, H + 20);
+      ctx.fillStyle = "rgba(120,200,255,.09)"; ctx.fillRect(-10, -10, W + 20, H + 20);
     }
     ctx.restore();
   }
