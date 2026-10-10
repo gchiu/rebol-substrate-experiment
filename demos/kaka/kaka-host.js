@@ -646,6 +646,20 @@
     var s = 230 / z;
     return { x: c.x + (ox - fPx) * s, y: c.y + (oy - fPy) * s * 0.62, s: s };
   }
+  /* Altitude ride: the fighter's real Glon altitude (F_Y -> fPy) shifts the
+     cockpit frame so the ship visibly climbs (fPy<0 -> frame up) or dives. The
+     world already moves the opposite way via fProj(oy - fPy), so the trench
+     sinks when the ship climbs — the unambiguous altitude cue. */
+  function fAlt(W, H) { return fPy * fCenter(W, H).sc * 0.42; }
+  /* Ship gun muzzles: cockpit weapon pods sampled from the rendered artwork
+     geometry (image fractions of the bottom-anchored cockpit PNG). */
+  function fGun(W, H, side) {
+    var sc = fScale(W);
+    var iw = fighterImg ? fighterImg.naturalWidth * sc : W;
+    var ih = fighterImg ? fighterImg.naturalHeight * sc : H;
+    var ix = (W - iw) / 2, iy = H - ih + fAlt(W, H);
+    return { x: ix + (side ? 0.62 : 0.38) * iw, y: iy + 0.84 * ih };
+  }
   /* ---- D12S.16 layered arcade audio (WebAudio, host-only) -----------------
    * Semantics unchanged: the host still reacts to the same render events. The
    * AudioContext is created only after a real user gesture (no autoplay
@@ -657,7 +671,11 @@
     if (!AC) return null;
     try { audioCtx = new AC(); } catch (e) { return null; }
     audioMaster = audioCtx.createGain(); audioMaster.gain.value = 0.5;
-    audioMaster.connect(audioCtx.destination);
+    /* gentle master limiter so overlapping rapid fire does not clip */
+    var comp = audioCtx.createDynamicsCompressor();
+    comp.threshold.value = -10; comp.knee.value = 10; comp.ratio.value = 6;
+    comp.attack.value = 0.003; comp.release.value = 0.22;
+    audioMaster.connect(comp); comp.connect(audioCtx.destination);
     return audioCtx;
   }
   function unlockAudio() {
@@ -733,12 +751,13 @@
     if (!audioUnlocked || !audioCtx) return;
     if (playSample("LASER", 0.95, pan)) return;
     try {
-      var t0 = audioCtx.currentTime, out = bus(pan), out2 = bus(-(pan || 0) * 0.7);
-      noiseBurst(t0, 0.02, 0.55, 5200, out);              /* transient attack */
-      osc("square", 2600, 740, t0, 0.085, 0.20, out);     /* bright body */
-      osc("sawtooth", 1700, 430, t0, 0.10, 0.13, out2);   /* stereo width */
-      osc("sine", 250, 70, t0, 0.10, 0.22, out);          /* sub weight */
-      noiseSweep(t0, 1900, 420, 0.11, 0.16, out);         /* resonant downward tail */
+      var t0 = audioCtx.currentTime, out = bus(pan || 0), out2 = bus(-(pan || 0) * 0.7);
+      noiseBurst(t0, 0.03, 0.7, 3600, out);               /* broadband attack/snap */
+      osc("square", 1500, 560, t0, 0.10, 0.26, out);      /* upper-mid bite */
+      osc("sawtooth", 900, 320, t0, 0.13, 0.22, out2);    /* 300-1000 Hz body, wide */
+      osc("sawtooth", 420, 150, t0, 0.14, 0.18, out);     /* lower body / weight */
+      osc("sine", 160, 68, t0, 0.12, 0.12, out);          /* sub as reinforcement */
+      noiseSweep(t0, 2200, 480, 0.14, 0.17, out);         /* resonant tail */
     } catch (e) {}
   }
   /* enemy fire: lower, rougher, opposite (upward) pitch contour */
@@ -877,15 +896,19 @@
     var c = fCenter(W, H), t = performance.now() / 1000, sp = fSpeed();
     var sx = 0, sy = 0;
     if (fBoost > 0) { sx = Math.sin(t * 63) * 3 + Math.sin(t * 41) * 1.5; sy = Math.cos(t * 55) * 2.4; }
+    var ay = fAlt(W, H);                         /* ship altitude ride (F_Y) */
+    /* the world shifts the OPPOSITE way, so a climb sinks the trench */
+    var cw = { x: c.x, y: c.y - ay, sc: c.sc };
     ctx.save();
     ctx.translate(sx, sy);
     ctx.fillStyle = "#01020a"; ctx.fillRect(-10, -10, W + 20, H + 20);
     if (fighterImg) {
       var sc = fScale(W), iw = fighterImg.naturalWidth * sc, ih = fighterImg.naturalHeight * sc;
-      ctx.drawImage(fighterImg, (W - iw) / 2, H - ih, iw, ih);
+      ctx.drawImage(fighterImg, (W - iw) / 2, H - ih + ay, iw, ih);
+      if (ay < 0) { ctx.fillStyle = "#01020a"; ctx.fillRect(-10, H + ay - 2, W + 20, -ay + 16); }
       /* subdue the baked "fixed cabin light" streaks: a dark wash over the
          trench region (above the dashboard) so the dynamic streaks dominate */
-      var dashTop = (H - ih) + 628 * sc;
+      var dashTop = (H - ih) + ay + 628 * sc;
       var g = ctx.createLinearGradient(0, 0, 0, dashTop);
       g.addColorStop(0, "rgba(1,3,14,0.72)");
       g.addColorStop(0.72, "rgba(1,3,14,0.52)");
@@ -893,14 +916,14 @@
       ctx.fillStyle = g; ctx.fillRect(-10, -10, W + 20, dashTop + 10);
     }
     /* bright vanishing-point "warp core" — a strong depth/motion anchor */
-    var wc = ctx.createRadialGradient(c.x, c.y, 1, c.x, c.y, 46 + (fBoost > 0 ? 24 : 0));
+    var wc = ctx.createRadialGradient(cw.x, cw.y, 1, cw.x, cw.y, 46 + (fBoost > 0 ? 24 : 0));
     wc.addColorStop(0, "rgba(190,240,255,.85)");
     wc.addColorStop(0.4, "rgba(90,200,255,.28)");
     wc.addColorStop(1, "rgba(90,200,255,0)");
-    ctx.fillStyle = wc; ctx.beginPath(); ctx.arc(c.x, c.y, 46 + (fBoost > 0 ? 24 : 0), 0, 2 * Math.PI); ctx.fill();
-    fTrench(ctx, W, H, c, t, sp);
-    fStars(ctx, W, H, c, t, sp);
-    fStreaks(ctx, W, H, c, t, sp, fBoost > 0);
+    ctx.fillStyle = wc; ctx.beginPath(); ctx.arc(cw.x, cw.y, 46 + (fBoost > 0 ? 24 : 0), 0, 2 * Math.PI); ctx.fill();
+    fTrench(ctx, W, H, cw, t, sp);
+    fStars(ctx, W, H, cw, t, sp);
+    fStreaks(ctx, W, H, cw, t, sp, fBoost > 0);
     if (fBoost > 0) {
       ctx.fillStyle = "rgba(120,200,255,.09)"; ctx.fillRect(-10, -10, W + 20, H + 20);
     }
@@ -908,16 +931,22 @@
   }
   function drawFighterReticle(ctx, W, H, firing) {
     var c = fCenter(W, H);
-    var px = c.x - fPx * 0.9 * (c.sc), py = c.y - fPy * 0.55 * c.sc;
-    if (firing) {                            /* player laser: clear beam to the reticle */
+    /* forward aim point is pinned to the ship's forward line (fixed on screen),
+       so UP/DOWN never reads as the reticle aiming independently */
+    var px = c.x, py = c.y;
+    if (firing) {                            /* hitscan: beam runs muzzle -> aim point */
+      var g = fGun(W, H, laserSide);
       ctx.save();
-      var g = ctx.createLinearGradient(W / 2, H, px, py);
-      g.addColorStop(0, "rgba(255,240,120,0.0)");
-      g.addColorStop(1, "rgba(255,245,150,0.95)");
-      ctx.strokeStyle = g; ctx.lineWidth = 6; ctx.lineCap = "round";
-      ctx.beginPath(); ctx.moveTo(W / 2, H); ctx.lineTo(px, py); ctx.stroke();
+      var lg = ctx.createLinearGradient(g.x, g.y, px, py);
+      lg.addColorStop(0, "rgba(255,232,90,0.30)");
+      lg.addColorStop(1, "rgba(255,248,175,0.95)");
+      ctx.strokeStyle = lg; ctx.lineWidth = 6; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(g.x, g.y); ctx.lineTo(px, py); ctx.stroke();
       ctx.strokeStyle = "rgba(255,255,255,.95)"; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(W / 2, H); ctx.lineTo(px, py); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(g.x, g.y); ctx.lineTo(px, py); ctx.stroke();
+      var mf = ctx.createRadialGradient(g.x, g.y, 1, g.x, g.y, 24);
+      mf.addColorStop(0, "rgba(255,252,210,.95)"); mf.addColorStop(1, "rgba(255,190,50,0)");
+      ctx.fillStyle = mf; ctx.beginPath(); ctx.arc(g.x, g.y, 24, 0, 2 * Math.PI); ctx.fill();
       ctx.restore();
     }
     ctx.save();
