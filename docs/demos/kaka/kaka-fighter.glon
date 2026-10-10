@@ -20,18 +20,19 @@
 ;;   F_STATE 0 alive / 1 destroyed
 
 ;; ---- winding canyon centreline (D12S.23) ---------------------------------
-;; The helmet route is a WINDING canyon: the corridor centre slides left/right
-;; as a pure integer function of forward mission distance (fprog). The SAME
-;; model drives the emitted wall samples AND collision, so the walls the player
-;; sees are the walls that hit. Deterministic and integer-only. The 200-unit
-;; step, this centre table, the 100 half-width and the sample depths (op H at
-;; 0/60/160/320/560/900) are mirrored by kaka-host.js.
-can-tab: [ 0 120 -130 90 -140 110 -60 130 -120 70 -40 0 0 ]
+;; The helmet route is a WINDING canyon: the corridor centre is a smooth
+;; integer sine over forward mission distance fprog (amplitude 140, wavelength
+;; 320, 40-unit step), so the corridor visibly sweeps right then left within the
+;; first few seconds. This can-x and the half-width are the SINGLE source of
+;; truth: collision uses them directly, and kaka-host.js mirrors the exact same
+;; table/step/width (CAN_TAB/CAN_STEP/CAN_W) to sample the corridor densely for
+;; rendering. If you change the table here, change it there too.
+can-tab: [ 0 113 160 113 0 -113 -160 -113 0 113 160 113 0 -113 -160 -113 0 113 160 113 0 -113 -160 -113 0 113 160 113 0 -113 -160 -113 0 113 160 113 0 -113 -160 -113 0 113 160 113 0 -113 -160 -113 0 113 160 113 0 -113 -160 -113 0 113 ]
 can-x: func [z] [
-    i: / z 200
-    f: mod z 200
+    i: / z 40
+    f: mod z 40
     a: block-at can-tab i
-    + a / * - block-at can-tab + i 1 a f 200
+    + a / * - block-at can-tab + i 1 a f 40
 ]
 
 ;; first fighter tick: fprog == 0 means "arm a fresh mission" (reset on every
@@ -140,7 +141,7 @@ fighter-gates: func [] [
 fighter-run: func [] [
     fighter-controls
     cen: can-x fprog
-    either > abs - block-at rangi F_X cen 100 [ fighter-hit ] [ none ]
+    either > abs - block-at rangi F_X cen 80 [ fighter-hit ] [ none ]
     ;; spawn a foe every 18 ticks, <=5 live (behaviour = id mod 3)
         either = 0 mod fprog 18 [
             either < ts-count K_FOE 5 [
@@ -235,8 +236,7 @@ fdraw: func [i] [
 fighter-scene: func [] [
     p-byte 65 p-num block-at rangi F_X p-num block-at rangi F_Y
     p-num block-at rangi F_STATE p-num block-at rangi F_C
-    p-num either > block-at rangi F_D 0 [ 1 ] [ 0 ] p-num krock p-num fprog p-num 100 p-eol
-    p-byte 72 p-num can-x fprog p-num can-x + fprog 60 p-num can-x + fprog 160 p-num can-x + fprog 320 p-num can-x + fprog 560 p-num can-x + fprog 900 p-eol
+    p-num either > block-at rangi F_D 0 [ 1 ] [ 0 ] p-num krock p-num fprog p-num 80 p-eol
     either > fprog 120 [
         p-byte 71 p-num mod / - fprog 120 200 5
         p-num / * mod - fprog 120 200 50 100 p-eol
