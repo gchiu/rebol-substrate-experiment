@@ -19,6 +19,21 @@
 ;;   F_D fire cooldown  F_TARGET bolt life  F_E/F_F bolt x/y  F_VY bolt z
 ;;   F_STATE 0 alive / 1 destroyed
 
+;; ---- winding canyon centreline (D12S.23) ---------------------------------
+;; The helmet route is a WINDING canyon: the corridor centre slides left/right
+;; as a pure integer function of forward mission distance (fprog). The SAME
+;; model drives the emitted wall samples AND collision, so the walls the player
+;; sees are the walls that hit. Deterministic and integer-only. The 200-unit
+;; step, this centre table, the 100 half-width and the sample depths (op H at
+;; 0/60/160/320/560/900) are mirrored by kaka-host.js.
+can-tab: [ 0 120 -130 90 -140 110 -60 130 -120 70 -40 0 0 ]
+can-x: func [z] [
+    i: / z 200
+    f: mod z 200
+    a: block-at can-tab i
+    + a / * - block-at can-tab + i 1 a f 200
+]
+
 ;; first fighter tick: fprog == 0 means "arm a fresh mission" (reset on every
 ;; win/fail/reset), so the route always re-initialises.
 fighter-enter: func [] [
@@ -48,10 +63,8 @@ fighter-controls: func [] [
     sp: either > block-at rangi F_D 0 [ 9 ] [ 5 ]
     block-set! rangi F_X + block-at rangi F_X * - kr kl sp
     block-set! rangi F_Y + block-at rangi F_Y * - kd ku sp
-    either > block-at rangi F_X 180 [ block-set! rangi F_X 180 ] [ none ]
-    either < block-at rangi F_X -180 [ block-set! rangi F_X -180 ] [ none ]
-    either > block-at rangi F_Y 120 [ block-set! rangi F_Y 120 ] [ none ]
-    either < block-at rangi F_Y -120 [ block-set! rangi F_Y -120 ] [ none ]
+    block-set! rangi F_X imax -180 imin 180 block-at rangi F_X
+    block-set! rangi F_Y imax -120 imin 120 block-at rangi F_Y
 ]
 ;; deterministic spawn: a foe every 18 ticks, <=5 live; behaviour = id mod 3
 ;; one foe: close depth, behave, fire its bolt, ram/bolt the player
@@ -92,19 +105,17 @@ fighter-foes: func [i] [
         fighter-foes + i 1
     ] [ none ]
 ]
-;; is foe t inside the reticle cone? (kept separate so the search stays shallow;
-;; the loader mis-compiles ~6-deep conditionals)
-zap-ok?: func [t] [
-    either < abs - block-at t F_X block-at rangi F_X 90 [
-        either < abs - block-at t F_Y block-at rangi F_Y 72 [ 1 ] [ 0 ]
-    ] [ 0 ]
-]
+;; is foe t inside the reticle cone? (inlined: the loader heap is at its
+;; 65536-cell ceiling loading this file and a separate helper costs ~100 cells;
+;; the inlined search stays at five nested conditionals, under the ~6-deep limit)
 ;; ROCK -> hitscan laser: destroys the nearest foe inside the reticle cone
 fighter-zap: func [i best bz] [
     either < i ts-hi [
         either = ts-k i K_FOE [
-            either = 1 zap-ok? ts-t i [
-                either < block-at ts-t i F_C bz [ fighter-zap + i 1 i block-at ts-t i F_C ] [ fighter-zap + i 1 best bz ]
+            either < abs - block-at ts-t i F_X block-at rangi F_X 90 [
+                either < abs - block-at ts-t i F_Y block-at rangi F_Y 72 [
+                    either < block-at ts-t i F_C bz [ fighter-zap + i 1 i block-at ts-t i F_C ] [ fighter-zap + i 1 best bz ]
+                ] [ fighter-zap + i 1 best bz ]
             ] [ fighter-zap + i 1 best bz ]
         ] [ fighter-zap + i 1 best bz ]
     ] [ either < best 0 [ none ] [ ts-free ts-t best  score: + score 15 ] ]
@@ -117,8 +128,8 @@ fighter-gates: func [] [
             p: mod / - fprog 120 200 5
             either = p 0 [ either > block-at rangi F_Y 0 [ none ] [ fighter-hit ] ] [ none ]
             either = p 1 [ either < block-at rangi F_Y 0 [ none ] [ fighter-hit ] ] [ none ]
-            either = p 2 [ either > block-at rangi F_X 0 [ none ] [ fighter-hit ] ] [ none ]
-            either = p 3 [ either < block-at rangi F_X 0 [ none ] [ fighter-hit ] ] [ none ]
+            either = p 2 [ either > - block-at rangi F_X can-x fprog 0 [ none ] [ fighter-hit ] ] [ none ]
+            either = p 3 [ either < - block-at rangi F_X can-x fprog 0 [ none ] [ fighter-hit ] ] [ none ]
             either = p 4 [ either < abs block-at rangi F_Y 60 [ none ] [ fighter-hit ] ] [ none ]
         ] [ none ]
     ] [ none ]
@@ -128,6 +139,8 @@ fighter-gates: func [] [
 ;; spent for nothing, so the node is later unopposed and the mission fails.
 fighter-run: func [] [
     fighter-controls
+    cen: can-x fprog
+    either > abs - block-at rangi F_X cen 100 [ fighter-hit ] [ none ]
     ;; spawn a foe every 18 ticks, <=5 live (behaviour = id mod 3)
         either = 0 mod fprog 18 [
             either < ts-count K_FOE 5 [
@@ -137,11 +150,11 @@ fighter-run: func [] [
                     block-set! t F_A b  block-set! t F_D + 20 mod rnd 40
                     block-set! t F_C 420  block-set! t F_TARGET 0  block-set! t F_VY 0
                     either = b 0 [
-                        block-set! t F_X either = 0 mod block-at t F_ID 2 [ -260 ] [ 260 ]
+                        block-set! t F_X + cen either = 0 mod block-at t F_ID 2 [ -260 ] [ 260 ]
                         block-set! t F_Y - 90 mod rnd 180
                         block-set! t F_B * -1 sign block-at t F_X
                     ] [
-                        block-set! t F_X - 130 mod rnd 260
+                        block-set! t F_X + cen - 130 mod rnd 260
                         block-set! t F_Y - 90 mod rnd 180
                         block-set! t F_B 0
                     ]
@@ -155,7 +168,7 @@ fighter-run: func [] [
         either = kg 1 [
             either > fbomb 0 [
                 fbomb: 0
-                either < abs block-at rangi F_X 70 [
+                either < abs - block-at rangi F_X can-x fprog 70 [
                     either >= fprog 850 [
                         block-set! rangi F_STATE 1  block-set! rangi F_TARGET 90  score: + score 200
                     ] [ none ]
@@ -222,7 +235,8 @@ fdraw: func [i] [
 fighter-scene: func [] [
     p-byte 65 p-num block-at rangi F_X p-num block-at rangi F_Y
     p-num block-at rangi F_STATE p-num block-at rangi F_C
-    p-num either > block-at rangi F_D 0 [ 1 ] [ 0 ] p-num krock p-num fprog p-eol
+    p-num either > block-at rangi F_D 0 [ 1 ] [ 0 ] p-num krock p-num fprog p-num 100 p-eol
+    p-byte 72 p-num can-x fprog p-num can-x + fprog 60 p-num can-x + fprog 160 p-num can-x + fprog 320 p-num can-x + fprog 560 p-num can-x + fprog 900 p-eol
     either > fprog 120 [
         p-byte 71 p-num mod / - fprog 120 200 5
         p-num / * mod - fprog 120 200 50 100 p-eol

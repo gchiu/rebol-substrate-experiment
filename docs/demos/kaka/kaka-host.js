@@ -628,6 +628,13 @@
   var fActive = false, lastCanvasScript = "";
   var fPx = 0, fPy = 0, fPhase = 0, fShield = 0, fBoost = 0, fLaser = 0, fProg = 0;
   var fFoes = [], fBolts = [], fGate = null, fBomb = 0, fFlash = 0, fPrevShield = -1;
+  /* Winding canyon (D12S.23): Glon emits the corridor centre at fixed forward
+     depths (op `H`) plus the half-width in the `A` header. The host projects
+     the samples with the SAME perspective as everything else and yaws the
+     camera onto the corridor tangent, so bends read as turns. */
+  var fCanX = 0, fCanW = 100, fYawPx = 0;
+  var FCAN_D = [0, 60, 160, 320, 560, 900];   /* sample depths, mirrored in Glon */
+  var FCAN_FOCAL = 120;                        /* yaw gain (turn cue strength) */
   var prevFoes = 0, prevBolts = 0, lastLaserMs = 0, laserSide = false, wasBoost = false;
   var FXCOL = { wall: "#39b7ff", dim: "rgba(80,180,255,.45)", foe: "#ff3b3b",
                 bolt: "#ff8a3b", gate: "#5fd0ff", good: "#7fd18a", hot: "#ffd23f" };
@@ -644,7 +651,54 @@
     var c = fCenter(W, H);
     var z = Math.max(oz, 16);
     var s = 230 / z;
-    return { x: c.x + (ox - fPx) * s, y: c.y + (oy - fPy) * s * 0.62, s: s };
+    /* fYawPx rotates the camera onto the canyon tangent (a screen-space shift
+       is the small-angle approximation): the corridor ahead converges to the
+       screen centre while near walls sweep, so a bend reads as a turn. */
+    return { x: c.x + fYawPx + (ox - fPx) * s, y: c.y + (oy - fPy) * s * 0.62, s: s };
+  }
+  /* Bottom of the cockpit's see-through trench window: the canyon wireframe is
+     clipped to it so it never paints over the dashboard artwork. */
+  function fDashTop(W, H) {
+    if (!fighterImg) return H * 0.72;
+    var sc = fScale(W);
+    return (H - fighterImg.naturalHeight * sc) + fAlt(W, H) + 628 * sc;
+  }
+  /* Project the emitted canyon cross-sections and connect them into the
+     wireframe corridor. Runs on the `H` scene op after the background. */
+  function drawCanyonWalls(ctx, W, H, centres) {
+    if (!centres || centres.length < 2) return;
+    var top = -140, bot = 140, i, cp, prev = null;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, W, Math.max(0, fDashTop(W, H))); ctx.clip();
+    ctx.lineCap = "round";
+    for (i = 0; i < centres.length; i++) {
+      var d = FCAN_D[i] !== undefined ? FCAN_D[i] : FCAN_D[FCAN_D.length - 1];
+      var cx = centres[i], w = fCanW;
+      cp = {
+        d: d,
+        lt: fProj(W, H, cx - w, top, d), lb: fProj(W, H, cx - w, bot, d),
+        rt: fProj(W, H, cx + w, top, d), rb: fProj(W, H, cx + w, bot, d)
+      };
+      var a = 0.16 + 0.62 * Math.max(0, 1 - d / 1000);
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = FXCOL.wall;
+      ctx.lineWidth = Math.max(1, 3 - d / 420);
+      ctx.beginPath();                                  /* vertical ribs */
+      ctx.moveTo(cp.lt.x, cp.lt.y); ctx.lineTo(cp.lb.x, cp.lb.y);
+      ctx.moveTo(cp.rt.x, cp.rt.y); ctx.lineTo(cp.rb.x, cp.rb.y);
+      ctx.stroke();
+      if (prev) {                                       /* longitudinal rails */
+        ctx.strokeStyle = FXCOL.dim; ctx.globalAlpha = a * 0.85;
+        ctx.beginPath();
+        ctx.moveTo(prev.lt.x, prev.lt.y); ctx.lineTo(cp.lt.x, cp.lt.y);
+        ctx.moveTo(prev.lb.x, prev.lb.y); ctx.lineTo(cp.lb.x, cp.lb.y);
+        ctx.moveTo(prev.rt.x, prev.rt.y); ctx.lineTo(cp.rt.x, cp.rt.y);
+        ctx.moveTo(prev.rb.x, prev.rb.y); ctx.lineTo(cp.rb.x, cp.rb.y);
+        ctx.stroke();
+      }
+      prev = cp;
+    }
+    ctx.restore();
   }
   /* Altitude ride: the fighter's real Glon altitude (F_Y -> fPy) shifts the
      cockpit frame so the ship visibly climbs (fPy<0 -> frame up) or dives. The
@@ -892,36 +946,6 @@
     }
     ctx.restore();
   }
-  /* perspective trench ribs expanding from the vanishing point + the four
-     longitudinal rails the ribs slide along (the strongest speed read) */
-  function fTrench(ctx, W, H, c, t, sp) {
-    ctx.save();
-    var NR = 16, k, ph, s, hw, hh, yT, yB, a;
-    for (k = 1; k <= NR; k++) {
-      ph = (((k / NR) + t * 0.64 * sp) % 1 + 1) % 1;
-      s = ph * ph * ph;
-      hw = 10 + s * W * 0.66; hh = 8 + s * H * 0.54;
-      yT = c.y - hh * 0.5; yB = c.y + hh * 0.6;
-      a = 0.06 + s * 0.6;
-      ctx.strokeStyle = "rgba(70,190,255," + a.toFixed(3) + ")";
-      ctx.lineWidth = 1 + s * 2;
-      ctx.beginPath();
-      ctx.moveTo(c.x - hw, yT); ctx.lineTo(c.x - hw, yB);
-      ctx.moveTo(c.x + hw, yT); ctx.lineTo(c.x + hw, yB);
-      ctx.moveTo(c.x - hw, yB); ctx.lineTo(c.x + hw, yB);
-      ctx.moveTo(c.x - hw, yT); ctx.lineTo(c.x + hw, yT);
-      ctx.stroke();
-    }
-    var R = Math.max(W, H) * 1.15;
-    ctx.strokeStyle = "rgba(90,205,255,0.20)"; ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(c.x, c.y); ctx.lineTo(c.x - R, c.y - R * 0.62);
-    ctx.moveTo(c.x, c.y); ctx.lineTo(c.x + R, c.y - R * 0.62);
-    ctx.moveTo(c.x, c.y); ctx.lineTo(c.x - R, c.y + R * 0.62);
-    ctx.moveTo(c.x, c.y); ctx.lineTo(c.x + R, c.y + R * 0.62);
-    ctx.stroke();
-    ctx.restore();
-  }
   function drawFighterBackground(ctx, W, H) {
     var c = fCenter(W, H), t = performance.now() / 1000, sp = fSpeed();
     var sx = 0, sy = 0;
@@ -951,7 +975,7 @@
     wc.addColorStop(0.4, "rgba(90,200,255,.28)");
     wc.addColorStop(1, "rgba(90,200,255,0)");
     ctx.fillStyle = wc; ctx.beginPath(); ctx.arc(cw.x, cw.y, 46 + (fBoost > 0 ? 24 : 0), 0, 2 * Math.PI); ctx.fill();
-    fTrench(ctx, W, H, cw, t, sp);
+    /* the winding corridor is drawn from the emitted samples (op H) */
     fStars(ctx, W, H, cw, t, sp);
     fStreaks(ctx, W, H, cw, t, sp, fBoost > 0);
     if (fBoost > 0) {
@@ -1030,7 +1054,7 @@
     var s = Math.max(0, Math.min(1, pct / 100));
     var scale = s * s * 7 + 0.12;
     var hw = 18 + scale * 300, hh = 12 + scale * 150;
-    var px = c.x - fPx * scale * 0.9, py = c.y - fPy * scale * 0.5;
+    var px = c.x + fYawPx + (fCanX - fPx) * scale * 0.9, py = c.y - fPy * scale * 0.5;
     ctx.save();
     ctx.strokeStyle = FXCOL.gate; ctx.lineWidth = 2 + s * 3;
     ctx.globalAlpha = 0.35 + s * 0.65;
@@ -1047,7 +1071,7 @@
     var c = fCenter(W, H);
     var present = (fProg >= 850 && fPhase === 0);
     if (!present) return;
-    var aligned = Math.abs(fPx) < 70;
+    var aligned = Math.abs(fPx - fCanX) < 70;
     var r = 46 + 8 * Math.sin(performance.now() / 180);
     ctx.save();
     ctx.strokeStyle = aligned ? FXCOL.good : FXCOL.hot;
@@ -1092,6 +1116,8 @@
         prevFoes = fFoes.length; prevBolts = fBolts.length;
         fPx = +p[1]; fPy = +p[2]; fPhase = +p[3]; fShield = +p[4];
         fBoost = +p[5]; fLaser = +p[6]; fProg = +p[7];
+        if (p[8] !== undefined && !isNaN(+p[8])) fCanW = +p[8];
+        fCanX = 0; fYawPx = 0;
         fFoes = []; fBolts = []; fGate = null; fBomb = 0;
         if (fShield < fPrevShield) { fFlash = performance.now(); playHit(); }
         fPrevShield = fShield;
@@ -1102,6 +1128,18 @@
         if (fBoost > 0 && !wasBoost) { wasBoost = true; startBoost(); }
         else if (fBoost === 0 && wasBoost) { wasBoost = false; stopBoost(); }
         drawFighterBackground(ctx, W, H);
+      } else if (op === "H") {
+        /* corridor cross-sections at FCAN_D depths: p[1..] are centres */
+        var ctr = [];
+        for (var ci = 1; ci < p.length && p[ci] !== ""; ci++) ctr.push(+p[ci]);
+        if (ctr.length >= 2) {
+          fCanX = ctr[0];
+          var ref = ctr[3] !== undefined ? ctr[3] : ctr[ctr.length - 1];
+          var span = FCAN_D[3] !== undefined ? FCAN_D[3] : 1;
+          var tan = (ref - ctr[0]) / span;            /* tangent near the ship */
+          fYawPx = Math.max(-100, Math.min(100, -tan * FCAN_FOCAL));
+        }
+        drawCanyonWalls(ctx, W, H, ctr);
       } else if (op === "G") {
         fGate = { p: +p[1], pct: +p[2] };
         drawGate(ctx, fGate.p, fGate.pct);
