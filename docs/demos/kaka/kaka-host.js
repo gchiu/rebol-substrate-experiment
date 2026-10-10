@@ -653,12 +653,36 @@
   function fAlt(W, H) { return fPy * fCenter(W, H).sc * 0.42; }
   /* Ship gun muzzles: cockpit weapon pods sampled from the rendered artwork
      geometry (image fractions of the bottom-anchored cockpit PNG). */
-  function fGun(W, H, side) {
+  /* Explicit forward cannon barrels: base on the ship's frame, projecting
+     forward (up toward the vanishing point) and slightly inward. Both the
+     rendered barrel and the weapon origin share this one geometry. */
+  function fBarrel(W, H, side) {
     var sc = fScale(W);
     var iw = fighterImg ? fighterImg.naturalWidth * sc : W;
     var ih = fighterImg ? fighterImg.naturalHeight * sc : H;
     var ix = (W - iw) / 2, iy = H - ih + fAlt(W, H);
-    return { x: ix + (side ? 0.72 : 0.28) * iw, y: iy + 0.68 * ih };
+    return {
+      base: { x: ix + (side ? 0.70 : 0.30) * iw, y: iy + 0.82 * ih },
+      tip:  { x: ix + (side ? 0.665 : 0.335) * iw, y: iy + 0.615 * ih }
+    };
+  }
+  /* fGun is the authoritative muzzle = the rendered barrel tip */
+  function fGun(W, H, side) { return fBarrel(W, H, side).tip; }
+  function drawCannons(ctx, W, H) {
+    var side, b, dx, dy, len;
+    ctx.save();
+    for (side = 0; side < 2; side++) {
+      b = fBarrel(W, H, side === 1);
+      dx = b.tip.x - b.base.x; dy = b.tip.y - b.base.y; len = Math.hypot(dx, dy);
+      ctx.lineCap = "round";
+      ctx.strokeStyle = "rgba(120,210,255,.85)"; ctx.lineWidth = Math.max(2, len * 0.16);
+      ctx.beginPath(); ctx.moveTo(b.base.x, b.base.y); ctx.lineTo(b.tip.x, b.tip.y); ctx.stroke();
+      ctx.strokeStyle = "rgba(200,245,255,.95)"; ctx.lineWidth = Math.max(1, len * 0.05);
+      ctx.beginPath(); ctx.moveTo(b.base.x, b.base.y); ctx.lineTo(b.tip.x, b.tip.y); ctx.stroke();
+      ctx.fillStyle = "#eafaff";
+      ctx.beginPath(); ctx.arc(b.tip.x, b.tip.y, Math.max(2, len * 0.09), 0, 2 * Math.PI); ctx.fill();
+    }
+    ctx.restore();
   }
   /* ---- D12S.16 layered arcade audio (WebAudio, host-only) -----------------
    * Semantics unchanged: the host still reacts to the same render events. The
@@ -927,6 +951,7 @@
     if (fBoost > 0) {
       ctx.fillStyle = "rgba(120,200,255,.09)"; ctx.fillRect(-10, -10, W + 20, H + 20);
     }
+    drawCannons(ctx, W, H);          /* explicit ship cannons (tips = fGun) */
     ctx.restore();
   }
   function drawFighterReticle(ctx, W, H, firing) {
