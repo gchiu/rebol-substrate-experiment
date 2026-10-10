@@ -69,36 +69,31 @@
     border-radius: .7rem; padding: .8rem 1rem; }
   .tc-btn.on, .tc-btn:active { background: rgba(70,95,160,.8); }
 
-  /* Four-point star D-pad: one coherent wireframe control replaces the four
-     separate move buttons. The whole star is the touch target; a pointer's
-     vector from the hub picks one arm, or both adjacent arms inside the
-     diagonal band. The hub is a neutral dead zone. */
+  /* Direction control: FOUR separate hold buttons in a compact cross/star
+     (UP top, DOWN bottom, LEFT/RIGHT either side) around a neutral central
+     gap. Each is its own touch region (wireTouch), so two fingers give a
+     diagonal; the gap between them is dead. Simple wireframe key faces. */
   .tc-dpad { position: relative; touch-action: none; -webkit-user-select: none;
     user-select: none; -webkit-tap-highlight-color: transparent;
-    width: clamp(116px, 32vh, 172px); height: clamp(116px, 32vh, 172px); }
-  .tc-dpad .dpad-star { position: absolute; inset: 0; width: 100%; height: 100%;
-    display: block; overflow: visible;
-    filter: drop-shadow(0 0 5px rgba(80,190,255,.5)); }
-  .tc-dpad .star-out { fill: rgba(10,24,44,.55); stroke: #5fd0ff; stroke-width: 2.5;
-    stroke-linejoin: round; }
-  .tc-dpad .star-arm { fill: transparent; transition: fill .06s linear; }
-  .tc-dpad.on-up .star-arm[data-arm="up"],
-  .tc-dpad.on-down .star-arm[data-arm="down"],
-  .tc-dpad.on-left .star-arm[data-arm="left"],
-  .tc-dpad.on-right .star-arm[data-arm="right"] { fill: rgba(95,208,255,.30); }
-  .tc-dpad .star-spine { stroke: rgba(90,175,235,.45); stroke-width: 1.4; }
-  .tc-dpad .star-hub { fill: none; stroke: rgba(140,225,255,.6); stroke-width: 1.5;
-    stroke-dasharray: 3 3; }
-  .tc-dpad .dpad-arm { position: absolute; transform: translate(-50%, -50%);
-    margin: 0; padding: 0; border: 0; background: none; color: #bfeaff;
-    font: inherit; font-weight: 800; font-size: clamp(.5rem, 1.7vh, .72rem);
-    letter-spacing: .05em; line-height: 1; pointer-events: none;
-    text-shadow: 0 0 4px #04121f; }
-  .tc-dpad .dpad-arm.up    { left: 50%; top: 21%; }
-  .tc-dpad .dpad-arm.down  { left: 50%; top: 79%; }
-  .tc-dpad .dpad-arm.left  { left: 21%; top: 50%; }
-  .tc-dpad .dpad-arm.right { left: 79%; top: 50%; }
-  .tc-dpad .dpad-arm.on { color: #fff; text-shadow: 0 0 8px #78dcff, 0 0 2px #fff; }
+    width: clamp(140px, 35vh, 172px); height: clamp(140px, 35vh, 172px); }
+  .tc-dpad .dpad-key { position: absolute; width: 32%; height: 32%;
+    display: flex; align-items: center; justify-content: center; gap: .28em;
+    margin: 0; padding: 0; box-sizing: border-box;
+    color: #bfeaff; font: inherit; font-weight: 800;
+    font-size: clamp(.5rem, 1.5vh, .68rem); letter-spacing: .03em; line-height: 1;
+    background: rgba(12,26,44,.62); border: 2px solid rgba(95,208,255,.85);
+    border-radius: .5rem; text-shadow: 0 0 4px #04121f;
+    box-shadow: 0 0 6px rgba(80,190,255,.35);
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent; touch-action: none; }
+  .tc-dpad .dpad-key::before { content: attr(data-arrow); font-size: 1.15em; }
+  .tc-dpad .dpad-key.up    { left: 34%; top: 0; }
+  .tc-dpad .dpad-key.down  { left: 34%; bottom: 0; }
+  .tc-dpad .dpad-key.left  { left: 0; top: 34%; }
+  .tc-dpad .dpad-key.right { right: 0; top: 34%; }
+  .tc-dpad .dpad-key.on, .tc-dpad .dpad-key:active {
+    background: rgba(95,208,255,.38); color: #fff; border-color: #cdefff;
+    box-shadow: 0 0 12px rgba(120,220,255,.9); }
 
   /* --- touch devices: compact chrome, show controls --------------------- */
   @media (pointer: coarse) {
@@ -175,20 +170,10 @@
     <div id="kaka-touch" class="touch-only" aria-label="touch controls">
       <div class="tc-left">
         <div class="tc-dpad" data-kaka-dpad role="group" aria-label="move / jump">
-          <svg class="dpad-star" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-            <polygon class="star-out" points="50,4 61,39 96,50 61,61 50,96 39,61 4,50 39,39"></polygon>
-            <polygon class="star-arm" data-arm="up" points="50,4 61,39 39,39"></polygon>
-            <polygon class="star-arm" data-arm="down" points="50,96 61,61 39,61"></polygon>
-            <polygon class="star-arm" data-arm="left" points="4,50 39,39 39,61"></polygon>
-            <polygon class="star-arm" data-arm="right" points="96,50 61,39 61,61"></polygon>
-            <line class="star-spine" x1="50" y1="14" x2="50" y2="86"></line>
-            <line class="star-spine" x1="14" y1="50" x2="86" y2="50"></line>
-            <circle class="star-hub" cx="50" cy="50" r="13"></circle>
-          </svg>
-          <button class="dpad-arm up" data-kaka-hold="up" aria-label="up / jump" tabindex="-1">JUMP</button>
-          <button class="dpad-arm down" data-kaka-hold="down" aria-label="move down" tabindex="-1" style="display:none">DOWN</button>
-          <button class="dpad-arm left" data-kaka-hold="left" aria-label="move left" tabindex="-1">&#9664;</button>
-          <button class="dpad-arm right" data-kaka-hold="right" aria-label="move right" tabindex="-1">&#9654;</button>
+          <button class="dpad-key up" data-kaka-hold="up" data-arrow="&#9650;" aria-label="up / jump" tabindex="-1">JUMP</button>
+          <button class="dpad-key down" data-kaka-hold="down" data-arrow="&#9660;" aria-label="move down" tabindex="-1" style="display:none">DOWN</button>
+          <button class="dpad-key left" data-kaka-hold="left" data-arrow="&#9664;" aria-label="move left" tabindex="-1"></button>
+          <button class="dpad-key right" data-kaka-hold="right" data-arrow="&#9654;" aria-label="move right" tabindex="-1"></button>
         </div>
       </div>
       <div class="tc-right">
@@ -205,7 +190,7 @@
   <p class="build" id="kaka-build">Kākā D12S.17</p>
   <button id="kaka-fs" class="fs-btn" type="button" hidden>FULLSCREEN</button>
 </div>
-<script>window.__BUILD_SHA='8cf50e4';</script>
+<script>window.__BUILD_SHA='0e6f32c';</script>
 <script src="kaka-host.js?v=d12s17"></script>
 </body>
 </html>

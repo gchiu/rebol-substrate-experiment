@@ -647,9 +647,12 @@
     return a + (d >= 0 ? Math.trunc(d * f / CAN_STEP) : -Math.trunc(-d * f / CAN_STEP));
   }
   var fCanX = 0, fCanW = 80, fYawPx = 0;
-  /* dense corridor cross-sections (forward depths), sampled from can-x */
-  var FCAN_D = [];
-  (function () { for (var d = 0; d <= 912; d += 48) FCAN_D.push(d); })();
+  /* A FEW strong cross-section ribs at geometrically spaced depths (16:10:6
+     ratio) so successive frames NEST instead of piling into an unreadable mesh.
+     The two continuous wall rails carry the corridor shape; the ribs are only
+     depth cues. */
+  var FCAN_RIBS = [120, 320, 620];
+  var FCAN_LOOK = 320;   /* look-ahead depth for the weak tangent yaw */
   /* Deliberately WEAK yaw: a tangent-tracking camera straightens the bend on
      screen (the corridor always ends up dead ahead). Under-applying it keeps
      the curve sweeping left/right while still hinting at a turn. */
@@ -685,42 +688,60 @@
     var sc = fScale(W);
     return (H - fighterImg.naturalHeight * sc) + fAlt(W, H) + 628 * sc;
   }
-  /* Project the corridor cross-sections (sampled densely from the mirrored
-     can-x) and connect them into the wireframe canyon. The walls are drawn
-     BOLD over a blacked-out window so the winding line reads on a small phone
-     screen, not just at the vanishing point. */
+  /* Corridor rendering for readability. The two CONTINUOUS wall rails are the
+     dominant lines: left and right floor edges drawn as unbroken depth-faded
+     curves, so where the canyon goes is legible at a glance. The ceiling edges
+     are drawn fainter (height cue only) and just a few geometrically spaced
+     ribs are drawn as dim depth cues -- not a dense mesh. Distance is capped so
+     the winding does not coil into a tangle at the vanishing point. */
   function drawCanyonWalls(ctx, W, H) {
-    if (FCAN_D.length < 2) return;
-    var top = -150, bot = 150, i, cp, prev = null;
+    var top = -150, bot = 150;
+    var D_END = 640, RAIL = 16, i, d, cur, prev;
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, W, Math.max(0, fDashTop(W, H))); ctx.clip();
-    ctx.lineCap = "round";
-    for (i = 0; i < FCAN_D.length; i++) {
-      var d = FCAN_D[i];
-      var cx = canX(fProg + d), w = fCanW;
-      cp = {
-        d: d,
-        lt: fProj(W, H, cx - w, top, d), lb: fProj(W, H, cx - w, bot, d),
-        rt: fProj(W, H, cx + w, top, d), rb: fProj(W, H, cx + w, bot, d)
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    function frame(dd) {
+      var cx = canX(fProg + dd), w = fCanW;
+      return {
+        lt: fProj(W, H, cx - w, top, dd), lb: fProj(W, H, cx - w, bot, dd),
+        rt: fProj(W, H, cx + w, top, dd), rb: fProj(W, H, cx + w, bot, dd)
       };
-      var a = 0.35 + 0.65 * Math.max(0, 1 - d / 1200);
-      ctx.globalAlpha = a;
-      ctx.strokeStyle = "#78dcff";
-      ctx.lineWidth = Math.max(2, 6 - d / 200);
-      ctx.beginPath();                                  /* vertical ribs */
-      ctx.moveTo(cp.lt.x, cp.lt.y); ctx.lineTo(cp.lb.x, cp.lb.y);
-      ctx.moveTo(cp.rt.x, cp.rt.y); ctx.lineTo(cp.rb.x, cp.rb.y);
+    }
+    prev = frame(0);
+    for (d = RAIL; d <= D_END; d += RAIL) {
+      cur = frame(d);
+      var fade = Math.max(0, 1 - d / D_END);
+      /* 1a. the two dominant rails: the corridor's left/right floor edges */
+      ctx.globalAlpha = 0.16 + 0.84 * fade * fade;
+      ctx.strokeStyle = "#55ccff";
+      ctx.lineWidth = Math.max(1.2, 0.7 + 5.4 * fade);
+      ctx.beginPath();
+      ctx.moveTo(prev.lb.x, prev.lb.y); ctx.lineTo(cur.lb.x, cur.lb.y);
+      ctx.moveTo(prev.rb.x, prev.rb.y); ctx.lineTo(cur.rb.x, cur.rb.y);
       ctx.stroke();
-      if (prev) {                                       /* longitudinal rails */
-        ctx.strokeStyle = "#46b4ff"; ctx.globalAlpha = a * 0.9;
-        ctx.beginPath();
-        ctx.moveTo(prev.lt.x, prev.lt.y); ctx.lineTo(cp.lt.x, cp.lt.y);
-        ctx.moveTo(prev.lb.x, prev.lb.y); ctx.lineTo(cp.lb.x, cp.lb.y);
-        ctx.moveTo(prev.rt.x, prev.rt.y); ctx.lineTo(cp.rt.x, cp.rt.y);
-        ctx.moveTo(prev.rb.x, prev.rb.y); ctx.lineTo(cp.rb.x, cp.rb.y);
-        ctx.stroke();
-      }
-      prev = cp;
+      /* 1b. fainter ceiling edges: wall height only, never competing */
+      ctx.globalAlpha = (0.16 + 0.84 * fade * fade) * 0.35;
+      ctx.lineWidth = Math.max(0.8, 0.5 + 2.4 * fade);
+      ctx.beginPath();
+      ctx.moveTo(prev.lt.x, prev.lt.y); ctx.lineTo(cur.lt.x, cur.lt.y);
+      ctx.moveTo(prev.rt.x, prev.rt.y); ctx.lineTo(cur.rt.x, cur.rt.y);
+      ctx.stroke();
+      prev = cur;
+    }
+    /* 2. sparse ribs: the nearest defines the playable opening (strong), the
+          mid/far ones fade as depth cues. Never a dense mesh. */
+    for (i = 0; i < FCAN_RIBS.length; i++) {
+      var f = frame(FCAN_RIBS[i]);
+      var fa = Math.max(0, 1 - FCAN_RIBS[i] / D_END);
+      ctx.globalAlpha = 0.06 + 0.5 * fa;
+      ctx.strokeStyle = "#8fe0ff";
+      ctx.lineWidth = Math.max(0.8, 0.8 + 2.2 * fa);
+      ctx.beginPath();
+      ctx.moveTo(f.lt.x, f.lt.y); ctx.lineTo(f.lb.x, f.lb.y);
+      ctx.moveTo(f.rt.x, f.rt.y); ctx.lineTo(f.rb.x, f.rb.y);
+      ctx.moveTo(f.lt.x, f.lt.y); ctx.lineTo(f.rt.x, f.rt.y);
+      ctx.moveTo(f.lb.x, f.lb.y); ctx.lineTo(f.rb.x, f.rb.y);
+      ctx.stroke();
     }
     ctx.restore();
   }
@@ -1147,8 +1168,8 @@
         if (p[8] !== undefined && !isNaN(+p[8])) fCanW = +p[8];
         fCanX = canX(fProg);
         /* weak yaw toward the corridor tangent (full tangent-tracking would
-           straighten the visible bend): 3rd sample is a ~150-unit look-ahead */
-        var tan = (canX(fProg + FCAN_D[3]) - fCanX) / FCAN_D[3];
+           straighten the visible bend): look-ahead along the centreline */
+        var tan = (canX(fProg + FCAN_LOOK) - fCanX) / FCAN_LOOK;
         fYawPx = Math.max(-90, Math.min(90, -tan * FCAN_FOCAL));
         fFoes = []; fBolts = []; fGate = null; fBomb = 0;
         if (fShield < fPrevShield) { fFlash = performance.now(); playHit(); }
@@ -1288,7 +1309,9 @@
     if (t === "forest" || t === "cave" || t === "helmet") { try { evVal("kaka-start-mode", t); } catch (e) {} }
   }
   /* debug hook for headless screenshot/QA harnesses (no game rule lives here) */
-  window.__kaka = { ev: ev, evVal: evVal, route: route, applyStart: applyStart };
+  window.__kaka = { ev: ev, evVal: evVal, route: route, applyStart: applyStart,
+    /* read-only fighter read-out for screenshot/QA harnesses (no game rule) */
+    fighter: function () { return { on: fActive, prog: fProg, x: fPx, can: fCanX, w: fCanW }; } };
 
   var KEY = { ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right",
               ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down",
@@ -1397,9 +1420,7 @@
      capture + pointercancel/lostpointercapture guarantee a release is never
      lost, so movement can never get stuck. No mobile-specific game rules. */
   function wireTouch() {
-    /* The star D-pad arms are labels only; the pad's pointer vector drives them
-       (wireDpad). Every OTHER [data-kaka-hold] control is a plain hold button. */
-    var hold = document.querySelectorAll("[data-kaka-hold]:not(.dpad-arm)");
+    var hold = document.querySelectorAll("[data-kaka-hold]");
     for (var i = 0; i < hold.length; i++) {
       (function (b) {
         var name = b.getAttribute("data-kaka-hold");
@@ -1423,60 +1444,10 @@
     }
   }
 
-  /* One four-point star D-pad replaces the four separate move buttons. A single
-     pointer's VECTOR from the hub picks a direction, or both adjacent arms
-     inside the diagonal band, so one thumb can steer a diagonal; the hub is a
-     neutral dead zone. It emits the SAME Glon key names the keyboard does, so
-     Glon's input semantics are untouched (presentation/interaction only). */
-  function wireDpad() {
-    var pad = document.querySelector("[data-kaka-dpad]");
-    if (!pad) return;
-    var DIRS = ["up", "down", "left", "right"], arms = {}, active = {};
-    for (var i = 0; i < DIRS.length; i++) arms[DIRS[i]] = pad.querySelector(".dpad-arm." + DIRS[i]);
-    var pid = null;
-    function apply(dir, want) {
-      want = !!want;
-      /* DOWN is a control only in the fighter; elsewhere its arm is hidden, so
-         ignore it exactly as the old hidden button was unreachable. */
-      if (want && dir === "down" && arms.down && arms.down.style.display === "none") return;
-      if (want === !!active[dir]) return;
-      active[dir] = want;
-      setHeld(dir, want);
-      pad.classList.toggle("on-" + dir, want);
-      if (arms[dir]) arms[dir].classList.toggle("on", want);
-    }
-    function set(d) {
-      d = d || {};
-      apply("up", d.up); apply("down", d.down); apply("left", d.left); apply("right", d.right);
-    }
-    function pick(e) {
-      var r = pad.getBoundingClientRect();
-      var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-      var dx = e.clientX - cx, dy = e.clientY - cy;
-      var dead = Math.min(r.width, r.height) * 0.17;   /* hub = neutral */
-      if (dx * dx + dy * dy < dead * dead) { set(null); return; }
-      var ax = Math.abs(dx), ay = Math.abs(dy), t = 0.5;  /* ~53deg diagonal band */
-      var d = {};
-      if (ax >= ay * t) d[dx < 0 ? "left" : "right"] = 1;
-      if (ay >= ax * t) d[dy < 0 ? "up" : "down"] = 1;
-      set(d);
-    }
-    function down(e) {
-      if (pid !== null) return;                        /* one pointer owns the pad */
-      pid = e.pointerId;
-      if (pad.setPointerCapture && e.pointerId !== undefined) { try { pad.setPointerCapture(e.pointerId); } catch (err) {} }
-      e.preventDefault();
-      pick(e);
-    }
-    function move(e) { if (e.pointerId === pid) { e.preventDefault(); pick(e); } }
-    function up(e) { if (pid !== null && e.pointerId !== pid) return; pid = null; set(null); }
-    pad.addEventListener("pointerdown", down);
-    pad.addEventListener("pointermove", move);
-    pad.addEventListener("pointerup", up);
-    pad.addEventListener("pointercancel", up);
-    pad.addEventListener("lostpointercapture", up);
-    pad.addEventListener("contextmenu", function (e) { e.preventDefault(); });
-  }
+  /* Direction control: four separate hold buttons in a cross around a central
+     gap. They are ordinary hold buttons (wireTouch emits the SAME Glon key
+     names as the keyboard), so two fingers on adjacent keys steer a diagonal
+     and the gap between them is dead. No gameplay logic lives here. */
 
   function fetchText(u) {
     var v = u + "?v=" + VER;         /* bust the Pages 10-minute cache */
@@ -1574,7 +1545,6 @@
       .then(function () {
         wireClicks();
         wireTouch();
-        wireDpad();
         /* Hand the one persisted number to Glon BEFORE the viewport-driven
            render below, so it cannot mirror a stale 0 over the stored high score. */
         evVal("kaka-highscore", String(readStoredHigh()));
