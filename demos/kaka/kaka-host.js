@@ -647,11 +647,11 @@
     return a + (d >= 0 ? Math.trunc(d * f / CAN_STEP) : -Math.trunc(-d * f / CAN_STEP));
   }
   var fCanX = 0, fCanW = 80, fYawPx = 0;
-  /* A FEW strong cross-section ribs at geometrically spaced depths (16:10:6
-     ratio) so successive frames NEST instead of piling into an unreadable mesh.
-     The two continuous wall rails carry the corridor shape; the ribs are only
-     depth cues. */
-  var FCAN_RIBS = [120, 320, 620];
+  /* Cross-section ribs at deliberately spaced depths: dense enough near/mid to
+     read as a solid tube, thinning with distance (fewer, fainter far frames) so
+     the winding never becomes a tangled cluster. The two continuous wall rails
+     carry the path; the ribs are the repeated structural frames. */
+  var FCAN_RIBS = [90, 180, 300, 450, 620, 820, 1050];
   var FCAN_LOOK = 320;   /* look-ahead depth for the weak tangent yaw */
   /* Deliberately WEAK yaw: a tangent-tracking camera straightens the bend on
      screen (the corridor always ends up dead ahead). Under-applying it keeps
@@ -688,15 +688,14 @@
     var sc = fScale(W);
     return (H - fighterImg.naturalHeight * sc) + fAlt(W, H) + 628 * sc;
   }
-  /* Corridor rendering for readability. The two CONTINUOUS wall rails are the
-     dominant lines: left and right floor edges drawn as unbroken depth-faded
-     curves, so where the canyon goes is legible at a glance. The ceiling edges
-     are drawn fainter (height cue only) and just a few geometrically spaced
-     ribs are drawn as dim depth cues -- not a dense mesh. Distance is capped so
-     the winding does not coil into a tangle at the vanishing point. */
+  /* Corridor rendering. The two CONTINUOUS floor rails stay dominant (the path
+     reads at a glance); the ceiling edges are lighter (height cue only); and a
+     set of spaced ribs gives repeated structural frames so the corridor feels
+     solid. Everything fades with depth, and the draw distance is capped so the
+     vanishing point does not become spaghetti. */
   function drawCanyonWalls(ctx, W, H) {
     var top = -150, bot = 150;
-    var D_END = 640, RAIL = 16, i, d, cur, prev;
+    var D_END = 1050, RAIL = 15, i, d, cur, prev;
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, W, Math.max(0, fDashTop(W, H))); ctx.clip();
     ctx.lineCap = "round"; ctx.lineJoin = "round";
@@ -712,7 +711,7 @@
       cur = frame(d);
       var fade = Math.max(0, 1 - d / D_END);
       /* 1a. the two dominant rails: the corridor's left/right floor edges */
-      ctx.globalAlpha = 0.16 + 0.84 * fade * fade;
+      ctx.globalAlpha = 0.92 * Math.pow(fade, 1.3);
       ctx.strokeStyle = "#55ccff";
       ctx.lineWidth = Math.max(1.2, 0.7 + 5.4 * fade);
       ctx.beginPath();
@@ -720,7 +719,7 @@
       ctx.moveTo(prev.rb.x, prev.rb.y); ctx.lineTo(cur.rb.x, cur.rb.y);
       ctx.stroke();
       /* 1b. fainter ceiling edges: wall height only, never competing */
-      ctx.globalAlpha = (0.16 + 0.84 * fade * fade) * 0.35;
+      ctx.globalAlpha = 0.92 * Math.pow(fade, 1.3) * 0.32;
       ctx.lineWidth = Math.max(0.8, 0.5 + 2.4 * fade);
       ctx.beginPath();
       ctx.moveTo(prev.lt.x, prev.lt.y); ctx.lineTo(cur.lt.x, cur.lt.y);
@@ -728,14 +727,13 @@
       ctx.stroke();
       prev = cur;
     }
-    /* 2. sparse ribs: the nearest defines the playable opening (strong), the
-          mid/far ones fade as depth cues. Never a dense mesh. */
+    /* 2. repeated structural ribs: nearest strongest, mid moderate, far faint */
     for (i = 0; i < FCAN_RIBS.length; i++) {
       var f = frame(FCAN_RIBS[i]);
       var fa = Math.max(0, 1 - FCAN_RIBS[i] / D_END);
-      ctx.globalAlpha = 0.06 + 0.5 * fa;
+      ctx.globalAlpha = 0.62 * Math.pow(fa, 1.15);
       ctx.strokeStyle = "#8fe0ff";
-      ctx.lineWidth = Math.max(0.8, 0.8 + 2.2 * fa);
+      ctx.lineWidth = Math.max(0.8, 0.8 + 2.3 * fa);
       ctx.beginPath();
       ctx.moveTo(f.lt.x, f.lt.y); ctx.lineTo(f.lb.x, f.lb.y);
       ctx.moveTo(f.rt.x, f.rt.y); ctx.lineTo(f.rb.x, f.rb.y);
