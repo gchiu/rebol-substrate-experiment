@@ -147,18 +147,22 @@ rangi-step: func [] [
                 block-set! rangi F_Y dx
             ]
         ]
-        ;; relic choice: only while STANDING (not on a rope). FIRE confirms.
+        ;; relic choice: Rangi visibly at/on the relic (standing OR on the rope).
+        ;; Generous zone from the cave art: pedestals span +/-42 (84 wide), the
+        ;; relic sits at y~185, the climb apex pt=182, the floor at 352. Horizontal
+        ;; +/-64 (relics 180 apart -> zones never overlap); vertical band 130..260
+        ;; (relic height + modest above/below; excludes the floor and far above).
         either = block-at rangi F_E 1 [
-            either = block-at rangi F_A 0 [
-                block-set! rangi F_C 0
-                either <= block-at rangi F_Y + pt 20 [
-                    either < abs - block-at rangi F_X 1120 44 [ block-set! rangi F_C 1 ] [ none ]
-                    either < abs - block-at rangi F_X 1300 44 [ block-set! rangi F_C 2 ] [ none ]
-                    either < abs - block-at rangi F_X 1480 44 [ block-set! rangi F_C 3 ] [ none ]
+            block-set! rangi F_C 0
+            either > block-at rangi F_Y 130 [
+                either < block-at rangi F_Y 260 [
+                    either < abs - block-at rangi F_X 1120 64 [ block-set! rangi F_C 1 ] [ none ]
+                    either < abs - block-at rangi F_X 1300 64 [ block-set! rangi F_C 2 ] [ none ]
+                    either < abs - block-at rangi F_X 1480 64 [ block-set! rangi F_C 3 ] [ none ]
                 ] [ none ]
-                either = krock 1 [
-                    either > block-at rangi F_C 0 [ block-set! rangi F_E + block-at rangi F_C 1 ] [ none ]
-                ] [ none ]
+            ] [ none ]
+            either = krock 1 [
+                either > block-at rangi F_C 0 [ block-set! rangi F_E + block-at rangi F_C 1 ] [ none ]
             ] [ none ]
         ] [ none ]
         either > block-at rangi F_X dist [ dist: block-at rangi F_X ] [ none ]

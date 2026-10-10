@@ -660,10 +660,16 @@
     var sc = fScale(W);
     var iw = fighterImg ? fighterImg.naturalWidth * sc : W;
     var ih = fighterImg ? fighterImg.naturalHeight * sc : H;
-    var ix = (W - iw) / 2, iy = H - ih + fAlt(W, H);
+    var ix = (W - iw) / 2, ay = fAlt(W, H);
+    var bx = ix + (side ? 0.70 : 0.30) * iw, by = (H - ih) + 0.82 * ih;
+    /* The barrel extends FORWARD in ship space, so its tip is projected toward
+       the trench's vanishing point (fCenter), not an image fraction. Both
+       barrels therefore converge on the same forward axis; base and tip share
+       the same altitude ride (ay) so the barrels stay rigidly on the ship. */
+    var c = fCenter(W, H), k = 0.42;
     return {
-      base: { x: ix + (side ? 0.70 : 0.30) * iw, y: iy + 0.82 * ih },
-      tip:  { x: ix + (side ? 0.665 : 0.335) * iw, y: iy + 0.615 * ih }
+      base: { x: bx, y: by + ay },
+      tip:  { x: bx + (c.x - bx) * k, y: by + (c.y - by) * k + ay }
     };
   }
   /* fGun is the authoritative muzzle = the rendered barrel tip */
