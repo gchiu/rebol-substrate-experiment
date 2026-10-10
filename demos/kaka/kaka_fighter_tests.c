@@ -177,6 +177,26 @@ int main(void) {
     check(run_int("block-at rangi F_E") == 0 && run_int("fprog") == 0 && run_int("fbomb") == 0
           && run_int("ts-count K_FOE") == 0, "X reset returns a coherent fresh game");
 
+    /* cave relic interaction: reaching a relic (on the rope OR on the pedestal)
+       is enough; ROCK confirms. Zone: 130 < F_Y < 260, |F_X - relic| < 64. */
+    run_source("reset  block-set! rangi F_E 1  block-set! rangi F_X 1120  block-set! rangi F_Y 182  block-set! rangi F_A 1  krock: 1  rangi-step");
+    check(run_int("block-at rangi F_E") == 2, "relic: helmet rope at relic height -> selects helmet");
+    run_source("reset  block-set! rangi F_E 1  block-set! rangi F_X 1300  block-set! rangi F_Y 182  block-set! rangi F_A 1  krock: 1  rangi-step");
+    check(run_int("block-at rangi F_E") == 3, "relic: phone rope at relic height -> selects phone");
+    run_source("reset  block-set! rangi F_E 1  block-set! rangi F_X 1480  block-set! rangi F_Y 182  block-set! rangi F_A 1  krock: 1  rangi-step");
+    check(run_int("block-at rangi F_E") == 4, "relic: key rope at relic height -> selects key");
+    run_source("reset  block-set! rangi F_E 1  block-set! rangi F_X 1120  block-set! rangi F_Y 182  block-set! rangi F_A 0  krock: 1  rangi-step");
+    check(run_int("block-at rangi F_E") == 2, "relic: on the pedestal beside the helmet -> selects");
+    run_source("reset  block-set! rangi F_E 1  block-set! rangi F_X 1120  block-set! rangi F_Y 352  block-set! rangi F_A 0  krock: 1  rangi-step");
+    check(run_int("block-at rangi F_E") == 1, "relic: cave floor -> does not select");
+    run_source("reset  block-set! rangi F_E 1  block-set! rangi F_X 1120  block-set! rangi F_Y 300  block-set! rangi F_A 0  krock: 1  rangi-step");
+    check(run_int("block-at rangi F_E") == 1, "relic: below the band -> does not select");
+    run_source("reset  block-set! rangi F_E 1  block-set! rangi F_X 1200  block-set! rangi F_Y 182  block-set! rangi F_A 1  krock: 1  rangi-step");
+    check(run_int("block-at rangi F_E") == 1, "relic: outside +/-64 -> does not select");
+    run_source("reset  block-set! rangi F_E 1  block-set! rangi F_X 1480  block-set! rangi F_Y 182  block-set! rangi F_A 1  krock: 1  rangi-step");
+    check(run_int("block-at rangi F_E") == 4 && run_int("block-at rangi F_C") == 3,
+          "relic: key zone not overridden by a neighbouring relic");
+
     if (fails == 0) { printf("kaka-fighter-test PASS\n"); return 0; }
     printf("kaka-fighter-test FAIL (%d)\n", fails);
     return 1;
