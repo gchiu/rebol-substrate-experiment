@@ -13,8 +13,8 @@
    * stale cached kaka.glon / kaka-draw.glon / wasm / PNG would keep an old
    * frame (e.g. the flat background or geometric actors) alive for minutes.
    * Bump this whenever published game assets change. */
-  var BUILD = "D12S.13";   /* human-visible label; SHA injected at deploy */
-  var VER = "d12s13";
+  var BUILD = "D12S.14";   /* human-visible label; SHA injected at deploy */
+  var VER = "d12s14";
   var ex = null;
   var dec = new TextDecoder();
   var enc = new TextEncoder();
@@ -586,7 +586,8 @@
     if (jump) jump.textContent = on ? "UP" : "JUMP";
     if (down) down.style.display = on ? "" : "none";
   }
-  var fActive = false, fPx = 0, fPy = 0, fPhase = 0, fShield = 0, fBoost = 0, fLaser = 0, fProg = 0;
+  var fActive = false, lastCanvasScript = "";
+  var fPx = 0, fPy = 0, fPhase = 0, fShield = 0, fBoost = 0, fLaser = 0, fProg = 0;
   var fFoes = [], fBolts = [], fGate = null, fBomb = 0, fFlash = 0, fPrevShield = -1;
   var FXCOL = { wall: "#39b7ff", dim: "rgba(80,180,255,.45)", foe: "#ff3b3b",
                 bolt: "#ff8a3b", gate: "#5fd0ff", good: "#7fd18a", hot: "#ffd23f" };
@@ -624,54 +625,107 @@
       o.stop(audioCtx.currentTime + t[1]);
     } catch (e) {}
   }
-  function fStarRush(ctx, W, H, c, t) {
-    ctx.save();
-    for (var i = 0; i < 46; i++) {
-      var ang = (i * 2.399) % (Math.PI * 2);
-      var ph = ((i * 137 + t * 90) % 300) / 300;    /* 0 at centre -> 1 outward */
-      var r = 14 + ph * ph * Math.max(W, H) * 0.72;
-      var x = c.x + Math.cos(ang) * r, y = c.y + Math.sin(ang) * r * 0.62;
-      if (x < 0 || x > W || y < 0 || y > H) continue;
-      ctx.globalAlpha = 0.15 + ph * 0.6;
-      ctx.strokeStyle = FXCOL.glow;
-      ctx.lineWidth = 1 + ph * 2;
-      ctx.beginPath(); ctx.moveTo(x, y);
-      ctx.lineTo(c.x + Math.cos(ang) * (r - 6 - ph * 14), c.y + Math.sin(ang) * (r - 6 - ph * 14) * 0.62);
-      ctx.stroke();
+  /* ---- D12S.14 forward-speed cues (host-only, over the static cockpit) ----
+   * The cockpit PNG is the frame/background; all motion is layered and driven
+   * by wall-clock time, so it animates every rAF even though the Glon tick is
+   * 25 Hz. Normal flight is already fast; BOOST multiplies speed, lengthens the
+   * streaks, quickens the trench expansion and shakes/parallaxes the frame. */
+  var FSPEED = 1.0, FSPEED_BOOST = 3.1;
+  function fSpeed() { return fBoost > 0 ? FSPEED_BOOST : FSPEED; }
+  /* longitudinal streaks: radiate from the vanishing point, accelerate and
+     lengthen with depth (perspective) — the primary "rushing past you" cue */
+  function fStreaks(ctx, W, H, c, t, sp, boost) {
+    ctx.save(); ctx.lineCap = "round";
+    var N = 84, ca, sa, i, ph, r, len, x0, y0, x1, y1, a;
+    var maxR = Math.sqrt(W * W + H * H) * 0.62;
+    for (i = 0; i < N; i++) {
+      var ang = i * 2.399963;
+      ca = Math.cos(ang); sa = Math.sin(ang) * 0.62;
+      ph = ((i * 0.117 + t * (0.62 + (i % 9) * 0.035) * sp) % 1 + 1) % 1;
+      r = 6 + ph * ph * maxR;
+      len = (12 + ph * ph * (150 + (boost ? 120 : 0))) ;
+      x0 = c.x + ca * r; y0 = c.y + sa * r;
+      x1 = c.x + ca * (r - len); y1 = c.y + sa * (r - len);
+      a = 0.10 + ph * 0.8;
+      ctx.strokeStyle = (boost && (i % 3 === 0)) ? "rgba(220,248,255," + a + ")"
+                       : "rgba(150,225,255," + (a * 0.9) + ")";
+      ctx.lineWidth = 1 + ph * (boost ? 3.4 : 2.4);
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
     }
     ctx.restore();
   }
-  function fTrenchRush(ctx, W, H, c, t) {
+  /* small particles/star streaks radiating outward */
+  function fStars(ctx, W, H, c, t, sp) {
     ctx.save();
-    ctx.strokeStyle = FXCOL.dim; ctx.lineWidth = 1.5;
-    for (var k = 1; k <= 9; k++) {
-      var ph = ((k * 47 + t * 130) % 360) / 360;   /* 0 far -> 1 near */
-      var s = ph * ph * ph;
-      var bw = 12 + s * W * 0.52, bh = 10 + s * H * 0.42;
-      var yB = c.y + bh * 0.55, yT = c.y - bh * 0.55;
-      ctx.globalAlpha = 0.1 + s * 0.5;
+    for (var i = 0; i < 40; i++) {
+      var ang = i * 1.7;
+      var ph = ((i * 0.211 + t * 1.15 * sp) % 1 + 1) % 1;
+      var r = 5 + ph * ph * Math.max(W, H) * 0.95;
+      var x = c.x + Math.cos(ang) * r, y = c.y + Math.sin(ang) * r * 0.62;
+      if (x < -2 || x > W + 2 || y < -2 || y > H + 2) continue;
+      ctx.globalAlpha = 0.22 + ph * 0.7;
+      ctx.fillStyle = "#e6f7ff";
+      var sz = 1 + ph * 2.4;
+      ctx.fillRect(x, y, sz, sz);
+    }
+    ctx.restore();
+  }
+  /* perspective trench ribs expanding from the vanishing point + the four
+     longitudinal rails the ribs slide along (the strongest speed read) */
+  function fTrench(ctx, W, H, c, t, sp) {
+    ctx.save();
+    var NR = 12, k, ph, s, hw, hh, yT, yB, a;
+    for (k = 1; k <= NR; k++) {
+      ph = (((k / NR) + t * 0.5 * sp) % 1 + 1) % 1;
+      s = ph * ph * ph;
+      hw = 10 + s * W * 0.64; hh = 8 + s * H * 0.52;
+      yT = c.y - hh * 0.5; yB = c.y + hh * 0.6;
+      a = 0.05 + s * 0.5;
+      ctx.strokeStyle = "rgba(70,190,255," + a.toFixed(3) + ")";
+      ctx.lineWidth = 1 + s * 2;
       ctx.beginPath();
-      ctx.moveTo(c.x - bw, yT); ctx.lineTo(c.x - bw, yB);
-      ctx.moveTo(c.x + bw, yT); ctx.lineTo(c.x + bw, yB);
-      ctx.moveTo(c.x - bw, yB); ctx.lineTo(c.x + bw, yB);
-      ctx.moveTo(c.x - bw, yT); ctx.lineTo(c.x + bw, yT);
+      ctx.moveTo(c.x - hw, yT); ctx.lineTo(c.x - hw, yB);
+      ctx.moveTo(c.x + hw, yT); ctx.lineTo(c.x + hw, yB);
+      ctx.moveTo(c.x - hw, yB); ctx.lineTo(c.x + hw, yB);
+      ctx.moveTo(c.x - hw, yT); ctx.lineTo(c.x + hw, yT);
       ctx.stroke();
     }
+    var R = Math.max(W, H) * 1.15;
+    ctx.strokeStyle = "rgba(90,205,255,0.20)"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(c.x, c.y); ctx.lineTo(c.x - R, c.y - R * 0.62);
+    ctx.moveTo(c.x, c.y); ctx.lineTo(c.x + R, c.y - R * 0.62);
+    ctx.moveTo(c.x, c.y); ctx.lineTo(c.x - R, c.y + R * 0.62);
+    ctx.moveTo(c.x, c.y); ctx.lineTo(c.x + R, c.y + R * 0.62);
+    ctx.stroke();
     ctx.restore();
   }
   function drawFighterBackground(ctx, W, H) {
-    ctx.fillStyle = "#02030a"; ctx.fillRect(0, 0, W, H);
+    var c = fCenter(W, H), t = performance.now() / 1000, sp = fSpeed();
+    var sx = 0, sy = 0;
+    if (fBoost > 0) { sx = Math.sin(t * 63) * 3 + Math.sin(t * 41) * 1.5; sy = Math.cos(t * 55) * 2.4; }
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.fillStyle = "#01020a"; ctx.fillRect(-10, -10, W + 20, H + 20);
     if (fighterImg) {
       var sc = fScale(W), iw = fighterImg.naturalWidth * sc, ih = fighterImg.naturalHeight * sc;
       ctx.drawImage(fighterImg, (W - iw) / 2, H - ih, iw, ih);
+      /* subdue the baked "fixed cabin light" streaks: a dark wash over the
+         trench region (above the dashboard) so the dynamic streaks dominate */
+      var dashTop = (H - ih) + 628 * sc;
+      var g = ctx.createLinearGradient(0, 0, 0, dashTop);
+      g.addColorStop(0, "rgba(1,3,14,0.55)");
+      g.addColorStop(0.72, "rgba(1,3,14,0.34)");
+      g.addColorStop(1, "rgba(1,3,14,0.0)");
+      ctx.fillStyle = g; ctx.fillRect(-10, -10, W + 20, dashTop + 10);
     }
-    var c = fCenter(W, H), t = performance.now() / 1000;
-    fStarRush(ctx, W, H, c, t);
-    fTrenchRush(ctx, W, H, c, t);
-    if (fBoost > 0) {                              /* boost: cockpit shake + hot streak */
-      ctx.fillStyle = "rgba(120,200,255,.06)";
-      ctx.fillRect(0, 0, W, H);
+    fTrench(ctx, W, H, c, t, sp);
+    fStars(ctx, W, H, c, t, sp);
+    fStreaks(ctx, W, H, c, t, sp, fBoost > 0);
+    if (fBoost > 0) {
+      ctx.fillStyle = "rgba(120,200,255,.07)"; ctx.fillRect(-10, -10, W + 20, H + 20);
     }
+    ctx.restore();
   }
   function drawFighterReticle(ctx, W, H, firing) {
     var c = fCenter(W, H);
@@ -881,6 +935,7 @@
       }
     }
     drawGhosts(ctx, W);
+    lastCanvasScript = fActive ? script : "";   /* enemy-free redraw source for rAF */
   }
 
   var imports = {
@@ -991,6 +1046,11 @@
        (common at 60 Hz with a 25 Hz sim, and more so under jump render load) is
        never dropped. Jump state therefore cannot reduce ROCK (or JUMP) taps. */
     if (steps > 0) tapped = {};
+    /* In the helmet mission, re-render the last frame on tick-free frames so the
+       time-driven speed cues animate at the display rate, not just 25 Hz. */
+    if (steps === 0 && fActive && lastCanvasScript) {
+      try { drawScript(lastCanvasScript); } catch (err) {}
+    }
     requestAnimationFrame(frame);
   }
 
