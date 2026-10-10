@@ -658,7 +658,7 @@
     var iw = fighterImg ? fighterImg.naturalWidth * sc : W;
     var ih = fighterImg ? fighterImg.naturalHeight * sc : H;
     var ix = (W - iw) / 2, iy = H - ih + fAlt(W, H);
-    return { x: ix + (side ? 0.62 : 0.38) * iw, y: iy + 0.84 * ih };
+    return { x: ix + (side ? 0.72 : 0.28) * iw, y: iy + 0.68 * ih };
   }
   /* ---- D12S.16 layered arcade audio (WebAudio, host-only) -----------------
    * Semantics unchanged: the host still reacts to the same render events. The
