@@ -101,9 +101,9 @@ int main(void) {
     check(uy < 0 && dy > 0, "D UP/DOWN steer vertically");
     /* E. bounded on every edge */
     run_source(ENTER "kl: 1"); ticks("fighter-controls", 60);
-    check(run_int("block-at rangi F_X") == -180, "E lateral clamp left = -180");
+    check(run_int("block-at rangi F_X") == -260, "E lateral clamp left = -260");
     run_source(ENTER "kr: 1"); ticks("fighter-controls", 60);
-    check(run_int("block-at rangi F_X") == 180, "E lateral clamp right = 180");
+    check(run_int("block-at rangi F_X") == 260, "E lateral clamp right = 260");
     run_source(ENTER "ku: 1"); ticks("fighter-controls", 60);
     check(run_int("block-at rangi F_Y") == -120, "E vertical clamp up = -120");
     run_source(ENTER "kd: 1"); ticks("fighter-controls", 60);
@@ -232,7 +232,7 @@ int main(void) {
           && run_int("ts-count K_FOE") == 0, "X reset returns a coherent fresh game");
 
     /* ---- winding canyon (D12S.23) -----------------------------------------
-       canyon centre = can-x fprog; half-width 80; collision/render share it.
+       canyon centre = can-x fprog; half-width 110; collision/render share it.
        straight to 60, then a 32-step sine (wavelength 480) x amplitude ramp
        40->150: +67@180, -122@420, +150@660, -145@918, +106@1080. */
     check(run_int("can-x 30") == 0 && run_int("can-x 180") > 0 && run_int("can-x 420") < 0,
@@ -244,7 +244,7 @@ int main(void) {
     /* fprog 660 -> centre 150: holding a fixed world x leaves the corridor */
     run_source(ENTER "fprog: 660  block-set! rangi F_X 0  block-set! rangi F_A 0  fighter-run");
     check(run_int("block-at rangi F_C") == 2, "N2 fixed X hits the canyon wall at a bend");
-    check(run_int("block-at rangi F_X") == 80, "N2b a wall scrape bounces the ship just inside the wall");
+    check(run_int("block-at rangi F_X") == 50, "N2b a wall scrape bounces the ship just inside the wall");
     run_source(ENTER "fprog: 660  block-set! rangi F_X 150  block-set! rangi F_A 0  fighter-run");
     check(run_int("block-at rangi F_C") == 3, "N3 following the bend clears the wall");
     /* fprog 918 -> centre -145, pattern 3 blocks the right half */

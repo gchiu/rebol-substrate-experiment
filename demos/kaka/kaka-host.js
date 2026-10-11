@@ -377,19 +377,28 @@
    * native harness), so the host paints them from the camera Glon already
    * emits in `B`. Positions are the original world-x table (no gameplay). */
   var SIGN_X = [500, 1250, 2000, 2750, 3500, 4000];
+  /* Forest ground calibration (presentation only). Glon's ground plane
+     (Rangi F_Y 330 -> feet at canvas y 358; pests F_Y 345; signs 345) dates
+     from the procedural ground and sits at the fence-rail height of the PNG
+     scenery, whose walkable lawn runs ~y 395-450 in the near-landscape layer.
+     Every forest gameplay-plane draw (actors, Rangi, trees, laser, ghosts,
+     signs) is shifted by this one amount, so relative positions, jumps and
+     collisions are unchanged and everything stands on the painted lawn. The
+     parallax layers themselves are not moved; the cave and fighter use 0. */
+  var FOREST_GROUND_DY = 48;
   var SIGN_LABELS = [
     "SKULL CAVE 100 km", "SKULL CAVE 75 km", "SKULL CAVE 50 km",
     "SKULL CAVE 25 km", "SKULL CAVE 5 km", "SKULL CAVE \u2014 NEXT EXIT"
   ];
   var signsDue = false;
-  function drawSigns(ctx, W, cam, tx) {
+  function drawSigns(ctx, W, cam, tx, ty) {
     for (var i = 0; i < SIGN_X.length; i++)
-      if (SIGN_X[i] > cam - 120 && SIGN_X[i] < cam + W + 120) drawSign(ctx, SIGN_X[i], i, tx);
+      if (SIGN_X[i] > cam - 120 && SIGN_X[i] < cam + W + 120) drawSign(ctx, SIGN_X[i], i, tx, ty);
   }
-  function drawSign(ctx, x, label, tx) {
+  function drawSign(ctx, x, label, tx, ty) {
     var t = SIGN_LABELS[label];
     if (!t) return;
-    var sx = Math.round(x + tx), gy = 345;
+    var sx = Math.round(x + tx), gy = 345 + (ty || 0);
     ctx.save();
     ctx.font = "bold 20px system-ui, sans-serif";
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -708,14 +717,15 @@
     var sv = CAN_SIN[k] + truncDiv((CAN_SIN[k + 1] - CAN_SIN[k]) * f, CAN_SIN_STEP);
     return truncDiv(canAmp(z) * sv, 1000);
   }
-  var fCanX = 0, fCanW = 80, fYaw = 0, fWallHit = 0, fWallSide = 0;
+  var fCanX = 0, fCanW = 110, fYaw = 0, fWallHit = 0, fWallSide = 0;
   /* ONE world scale for everything in the trench: a canyon sample dd ticks
      ahead sits at render depth dd * CAN_Z. Foes close 3 depth/tick while fprog
      advances 1, so CAN_Z = 3 also places every foe/bolt (emitted in that depth
      unit) in the same canyon cross-section Glon used to spawn it. */
   var CAN_Z = 3;
   var FCAN_NEAR = 6, FCAN_END = 200, FCAN_STEP = 4;   /* sampled ticks ahead */
-  var FCAN_RIB = 25;   /* one structural rib per second of flight, world-fixed */
+  var FCAN_RIB = 25;
+  var FDECO = 10;      /* one wall-detail slot per 10 ticks of flight, world-fixed */   /* one structural rib per second of flight, world-fixed */
   var FFOCAL = 230;
   /* WALL SURFACE COORDINATES. The canyon walls are continuous, addressable
      surfaces, not just a collision limit: a point on a wall is (side, s, v)
@@ -849,14 +859,14 @@
     return "rgb(" + Math.round(r + (FBG[0] - r) * k) + "," + Math.round(g + (FBG[1] - g) * k) +
            "," + Math.round(b + (FBG[2] - b) * k) + ")";
   }
-  /* scrape warning 0..1 as the ship closes from 50 to the wall at fCanW */
+  /* scrape warning 0..1 over the last 30 units before the wall at fCanW */
   function fWallWarn() {
     var d = Math.abs(fPx - fCanX);
-    return { amt: Math.max(0, Math.min(1, (d - 50) / (fCanW - 50))), side: fPx > fCanX ? 1 : -1 };
+    return { amt: Math.max(0, Math.min(1, (d - (fCanW - 30)) / 30)), side: fPx > fCanX ? 1 : -1 };
   }
   function drawCanyonWalls(ctx, W, H, gate) {
     var top = CAN_TOP, mid = 0, bot = CAN_BOT, w = fCanW, j, d, a, b, t, e;
-    var S = [], ribs = [], gd = -1, ri, gateMark = null, gatePat = 0;
+    var S = [], ribs = [], decos = [], gd = -1, ri, di, gateMark = null, gatePat = 0;
     var hot = fWallHit ? Math.max(0, 1 - (performance.now() - fWallHit) / 450) : 0;
     var ww = fWallWarn(), wl, wr, near;
     ctx.save();
@@ -867,7 +877,56 @@
       function wp(side, v) { return fProjS(W, H, canWall(side, s, v)); }
       return { d: dd, cx: canX(s), z: dd * CAN_Z,
         fl: wp(-1, bot), cl: wp(-1, top), ml: wp(-1, mid),
-        fr: wp(1, bot), cr: wp(1, top), mr: wp(1, mid) };
+        fr: wp(1, bot), cr: wp(1, top), mr: wp(1, mid),
+        ul: wp(-1, -75), ur: wp(1, -75), ll: wp(-1, 75), lr: wp(1, 75) };
+    }
+    /* ---- wall surface detail ------------------------------------------
+       Flat, wall-mounted, world-fixed items every FDECO ticks, staggered
+       between the walls (they stream past = speed/depth cue, and their
+       perspective shows each wall's orientation). Painted inside the
+       far-to-near pass, so near walls still hide them; nothing protrudes into
+       the flight path, so none reads as an obstacle. ~40 small fills/frame. */
+    function wq(side, s0, s1, v0, v1) {           /* wall-surface quad */
+      var a0 = fProjS(W, H, canWall(side, s0, v0)), a1 = fProjS(W, H, canWall(side, s1, v0));
+      var b1 = fProjS(W, H, canWall(side, s1, v1)), b0 = fProjS(W, H, canWall(side, s0, v1));
+      ctx.beginPath(); ctx.moveTo(a0.x, a0.y); ctx.lineTo(a1.x, a1.y); ctx.lineTo(b1.x, b1.y); ctx.lineTo(b0.x, b0.y); ctx.closePath();
+    }
+    function decor(dd) {
+      var s = fProg + dd, n = Math.round(s / FDECO), f = Math.max(0, 1 - dd / FCAN_END), side, kind, q, r;
+      if (f < 0.12) return;
+      for (side = -1; side <= 1; side += 2) {
+        kind = (n + (side > 0 ? 3 : 0)) % 8;
+        ctx.globalAlpha = 0.25 + 0.75 * f;
+        if (kind === 0 || kind === 5) {           /* running light high on the wall */
+          /* capped size: a near light stays a small lamp, never a big disc */
+          q = fProjS(W, H, canWall(side, s, -112)); r = Math.min(4, Math.max(1.2, 5 * q.s));
+          ctx.fillStyle = kind === 0 ? "#7fe8ff" : "#ffcf5a";
+          ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, 2 * Math.PI); ctx.fill();
+          ctx.globalAlpha *= 0.3; ctx.beginPath(); ctx.arc(q.x, q.y, r * 2.2, 0, 2 * Math.PI); ctx.fill();
+        } else if (kind === 1) {                  /* vent grille */
+          wq(side, s - 3, s + 3, 30, 70); ctx.fillStyle = "#0a1626"; ctx.fill();
+          ctx.strokeStyle = "#4a7aa8"; ctx.lineWidth = Math.max(0.6, 1.4 * f); ctx.stroke();
+          for (var k = 1; k < 4; k++) { var v = 30 + k * 10;
+            q = fProjS(W, H, canWall(side, s - 3, v)); r = fProjS(W, H, canWall(side, s + 3, v));
+            ctx.beginPath(); ctx.moveTo(q.x, q.y); ctx.lineTo(r.x, r.y); ctx.stroke(); }
+        } else if (kind === 2) {                  /* conduit pipe with brackets */
+          wq(side, s - 5, s + 5, -58, -50); ctx.fillStyle = "#3d5d80"; ctx.fill();
+          ctx.strokeStyle = "#9cc6ee"; ctx.lineWidth = Math.max(0.6, 1.2 * f); ctx.stroke();
+          wq(side, s - 0.6, s + 0.6, -62, -46); ctx.fillStyle = "#c8d6e8"; ctx.fill();
+        } else if (kind === 4) {                  /* machinery panel + status light */
+          wq(side, s - 3, s + 3, -30, 15); ctx.fillStyle = "#1b3a5e"; ctx.fill();
+          ctx.strokeStyle = "#6fb0e6"; ctx.lineWidth = Math.max(0.6, 1.3 * f); ctx.stroke();
+          q = fProjS(W, H, canWall(side, s, -18)); ctx.fillStyle = (n & 1) ? "#7dffa0" : "#ff6a5a";
+          ctx.beginPath(); ctx.arc(q.x, q.y, Math.min(3, Math.max(1, 3 * q.s)), 0, 2 * Math.PI); ctx.fill();
+        } else if (kind === 6) {                  /* low yellow/black warning band */
+          wq(side, s - 4, s + 4, 118, 132); ctx.fillStyle = "#c9a227"; ctx.fill();
+          ctx.strokeStyle = "#1a1408"; ctx.lineWidth = Math.max(0.8, 2 * f);
+          for (var m2 = -3; m2 <= 3; m2 += 2) {
+            q = fProjS(W, H, canWall(side, s + m2 - 1, 132)); r = fProjS(W, H, canWall(side, s + m2 + 1, 118));
+            ctx.beginPath(); ctx.moveTo(q.x, q.y); ctx.lineTo(r.x, r.y); ctx.stroke(); }
+        }
+      }
+      ctx.globalAlpha = 1;
     }
     /* q/r are the panel's FAR corners. Panels are painted far to near, so each
        nearer panel is stretched ~1.5 px past the seam it shares with the panel
@@ -951,6 +1010,8 @@
     S.push(cross(0.5));
     for (d = FCAN_NEAR; d <= FCAN_END; d += FCAN_STEP) S.push(cross(d));
     for (d = FCAN_RIB - (fProg % FCAN_RIB); d <= FCAN_END; d += FCAN_RIB) if (d > FCAN_NEAR) ribs.push(d);
+    for (d = FDECO - (fProg % FDECO); d <= FCAN_END; d += FDECO) if (d > FCAN_NEAR) decos.push(d);
+    di = decos.length - 1;
     if (gate && fProg > 120) gd = 198 - ((fProg - 120) % 200);
     ri = ribs.length - 1;
     for (j = S.length - 1; j > 0; j--) {
@@ -965,6 +1026,9 @@
       edge("f", 0.95 * Math.pow(e, 1.1), 1.2 + 5.5 * e, "#8feaff");   /* floor edges   */
       edge("c", 0.80 * Math.pow(e, 1.1), 1.0 + 3.8 * e, "#6fd8ff");   /* wall-top edges */
       edge("m", 0.25 * e, 0.8 + 1.6 * e, "#3aa8d8");                   /* mid-wall rail */
+      edge("u", 0.16 * e, 0.6 + 1.0 * e, "#3a86b8");                   /* panel seams */
+      edge("l", 0.16 * e, 0.6 + 1.0 * e, "#3a86b8");
+      while (di >= 0 && decos[di] > a.d) { if (decos[di] <= b.d) decor(decos[di]); di--; }
       while (ri >= 0 && ribs[ri] > a.d) { if (ribs[ri] <= b.d) rib(cross(ribs[ri])); ri--; }
       if (gd > a.d && gd <= b.d) gatePanel(cross(gd), gate.p);
     }
@@ -1419,7 +1483,7 @@
     var ctx = canvas.getContext("2d");
     var W = canvas.width, H = canvas.height;
     var lines = script.split("\n");
-    var cam = 0, tx = 0;              /* tx: gameplay plane scrolls 1:1 with cam */
+    var cam = 0, tx = 0, ty = 0;      /* tx: gameplay plane scrolls 1:1 with cam; ty: forest ground calibration */
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i].replace(/^\s+|\s+$/g, "");
       if (!line) continue;
@@ -1453,8 +1517,8 @@
         }
         if (fShield < fPrevShield) {
           fFlash = performance.now(); playHit();
-          /* Glon bounces a wall scrape to exactly centre +/- 70: light that wall */
-          if (Math.abs(fPx - fCanX) === 70) { fWallHit = fFlash; fWallSide = fPx > fCanX ? 1 : -1; }
+          /* Glon bounces a wall scrape to exactly centre +/- (half-width - 10): light that wall */
+          if (Math.abs(fPx - fCanX) === fCanW - 10) { fWallHit = fFlash; fWallSide = fPx > fCanX ? 1 : -1; }
         }
         fPrevShield = fShield;
         if (fLaser) {                        /* fire once per press, then rapid-fire */
@@ -1489,25 +1553,26 @@
         if (fActive) { fActive = false; setFighterUi(false); }
         cam = +p[1];
         tx = -cam;
+        ty = FOREST_GROUND_DY;
         caveMode = false;
         signsDue = true;              /* signs go after the trees, before actors */
         paintLayer(ctx, W, 0, cam);   /* distant sky / hills  (slowest) */
         paintLayer(ctx, W, 1, cam);   /* native bush / treeline           */
         paintLayer(ctx, W, 2, cam);   /* orchard / fence / near landscape */
       } else if (op === "F") {
-        if (signsDue) { signsDue = false; drawSigns(ctx, W, cam, tx); }
+        if (signsDue) { signsDue = false; drawSigns(ctx, W, cam, tx, ty); }
         paintLayer(ctx, W, 3, cam);   /* foreground foliage   (fastest)   */
       } else if (op === "S") {
-        if (signsDue) { signsDue = false; drawSigns(ctx, W, cam, tx); }
-        drawSprite(ctx, +p[1], +p[2], +p[3], +p[4], tx);
+        if (signsDue) { signsDue = false; drawSigns(ctx, W, cam, tx, ty); }
+        drawSprite(ctx, +p[1], +p[2], +p[3] + ty, +p[4], tx);
       } else if (op === "P") {
-        if (signsDue) { signsDue = false; drawSigns(ctx, W, cam, tx); }
-        drawRanger(ctx, +p[1], +p[2], +p[3], +p[4], tx);
+        if (signsDue) { signsDue = false; drawSigns(ctx, W, cam, tx, ty); }
+        drawRanger(ctx, +p[1], +p[2], +p[3] + ty, +p[4], tx);
       } else if (op === "N") {
-        drawSign(ctx, +p[1], +p[2], tx);
+        drawSign(ctx, +p[1], +p[2], tx, ty);
       } else if (op === "V") {
         if (fActive) { fActive = false; setFighterUi(false); }
-        cam = +p[1]; tx = -cam; caveMode = true;   /* cave plane scrolls 1:1 */
+        cam = +p[1]; tx = -cam; ty = 0; caveMode = true;   /* cave plane scrolls 1:1 */
         drawCaveBackground(ctx, W, H, cam);
       } else if (op === "J") {
         drawCaveProp(ctx, +p[1], +p[2], tx);
@@ -1518,35 +1583,35 @@
         ctx.fillRect(0, 0, W, H);
       } else if (op === "R") {
         ctx.fillStyle = COL[+p[5]] || "#fff";
-        ctx.fillRect(+p[1] + tx, +p[2], +p[3], +p[4]);
+        ctx.fillRect(+p[1] + tx, +p[2] + ty, +p[3], +p[4]);
       } else if (op === "O") {
         ctx.fillStyle = COL[+p[4]] || "#fff";
         ctx.beginPath();
-        ctx.arc(+p[1] + tx, +p[2], +p[3], 0, 2 * Math.PI);
+        ctx.arc(+p[1] + tx, +p[2] + ty, +p[3], 0, 2 * Math.PI);
         ctx.fill();
       } else if (op === "T") {
         ctx.fillStyle = COL[+p[7]] || "#fff";
         ctx.beginPath();
-        ctx.moveTo(+p[1] + tx, +p[2]);
-        ctx.lineTo(+p[3] + tx, +p[4]);
-        ctx.lineTo(+p[5] + tx, +p[6]);
+        ctx.moveTo(+p[1] + tx, +p[2] + ty);
+        ctx.lineTo(+p[3] + tx, +p[4] + ty);
+        ctx.lineTo(+p[5] + tx, +p[6] + ty);
         ctx.closePath();
         ctx.fill();
       } else if (op === "L") {
         ctx.strokeStyle = COL[+p[6]] || "#fff";
         ctx.lineWidth = +p[5] || 1;
         ctx.beginPath();
-        ctx.moveTo(+p[1] + tx, +p[2]);
-        ctx.lineTo(+p[3] + tx, +p[4]);
+        ctx.moveTo(+p[1] + tx, +p[2] + ty);
+        ctx.lineTo(+p[3] + tx, +p[4] + ty);
         ctx.stroke();
       } else if (op === "E") {
         ctx.fillStyle = COL[+p[5]] || "#fff";
         ctx.beginPath();
-        ctx.ellipse(+p[1] + tx, +p[2], +p[3], +p[4], 0, 0, 2 * Math.PI);
+        ctx.ellipse(+p[1] + tx, +p[2] + ty, +p[3], +p[4], 0, 0, 2 * Math.PI);
         ctx.fill();
       } else if (op === "D") {
         /* semantic death event: species, id, world x, world y */
-        addGhost(+p[1], +p[2], +p[3], +p[4], tx);
+        addGhost(+p[1], +p[2], +p[3], +p[4] + ty, tx);
       }
     }
     drawGhosts(ctx, W);
