@@ -49,6 +49,10 @@ static void check(int ok, const char *m) { printf("  %-46s %s\n", m, ok ? "ok" :
 static int load_file(const char *path) {
     FILE *f = fopen(path, "rb"); if (!f) { fprintf(stderr, "fighter-test: open %s\n", path); return -1; }
     size_t n = fread(filebuf, 1, sizeof filebuf - 1, f); fclose(f); filebuf[n] = 0;
+    /* the browser WASM copies each source (comments included) into a 16 KiB
+       srcbuf (standalone/glon.c) and glon_load fails at >= 16384 bytes -- which
+       stops the whole game booting; this native loader has no such limit */
+    if (n >= 16384) { printf("  %-46s FAIL\n", path); fprintf(stderr, "fighter-test: %s is %zu bytes (>= 16384 WASM srcbuf)\n", path, n); fails++; }
     char *r = filebuf, *w = filebuf;
     while (*r) { if (r[0] == ';' && r[1] == ';') { while (*r && *r != '\n') r++; continue; } *w++ = *r++; }
     *w = 0;
@@ -122,9 +126,24 @@ int main(void) {
     run_source(ENTER FOE0 "block-set! foe F_C 20  block-set! foe F_E 0  block-set! foe F_F 0 "
               "block-set! foe F_VY 20  block-set! foe F_TARGET 5  block-set! rangi F_A 0  fighter-foes 0");
     check(run_int("block-at rangi F_C") == 2, "J enemy bolt damages the player");
+    /* J2. a bolt on its own (foe far away, bolt about to arrive) -> reason 5 */
+    run_source(ENTER FOE0 "block-set! foe F_C 200  block-set! foe F_E 0  block-set! foe F_F 0 "
+              "block-set! foe F_VY 15  block-set! foe F_TARGET 5  block-set! rangi F_A 0  fighter-foes 0");
+    check(run_int("block-at rangi F_C") == 2 && run_int("fwhy") == 5, "J2 bolt hit records reason 5 (fighter fire)");
+    /* J3. a ram needs lateral AND altitude overlap; it records reason 4 */
+    run_source(ENTER FOE0 "block-set! foe F_C 20  block-set! rangi F_A 0  fighter-foes 0");
+    check(run_int("block-at rangi F_C") == 2 && run_int("fwhy") == 4, "J3 an overlapping foe rams (reason 4)");
+    run_source(ENTER FOE0 "block-set! foe F_C 20  block-set! rangi F_Y 100  block-set! rangi F_A 0  fighter-foes 0");
+    check(run_int("block-at rangi F_C") == 3, "J4 a foe passing well below does not ram");
+    /* J5. wall scrapes record which wall (fprog 660 centre 150, 420 centre -122) */
+    run_source(ENTER "fprog: 660  block-set! rangi F_X 0  block-set! rangi F_A 0  fighter-run");
+    long wl = run_int("fwhy");
+    run_source(ENTER "fprog: 420  block-set! rangi F_X 0  block-set! rangi F_A 0  fighter-run");
+    long wr = run_int("fwhy");
+    check(wl == 1 && wr == 2, "J5 wall scrapes record LEFT (1) / RIGHT (2) wall");
     /* K. a gate in a blocked region damages; the gap clears */
     run_source(ENTER "fprog: 318  block-set! rangi F_Y -40  block-set! rangi F_A 0  fighter-gates");
-    check(run_int("block-at rangi F_C") == 2, "K obstacle gate damages the player");
+    check(run_int("block-at rangi F_C") == 2 && run_int("fwhy") == 3, "K obstacle gate damages the player (reason 3)");
     run_source(ENTER "fprog: 318  block-set! rangi F_Y 40  block-set! rangi F_A 0  fighter-gates");
     check(run_int("block-at rangi F_C") == 3, "K gate cleared by being in the gap");
     /* K2. every gate pattern: blocked side hits, open side clears
@@ -144,7 +163,7 @@ int main(void) {
     check(k1h == 2 && k1o == 3 && k2h == 2 && k2o == 3 && k4h == 2 && k4o == 3,
           "K2 gate patterns 1/2/4 block and open correctly");
     /* L. invulnerability prevents a burst of hits */
-    run_source(ENTER "block-set! rangi F_A 10  fighter-hit");
+    run_source(ENTER "block-set! rangi F_A 10  fighter-hit 3");
     check(run_int("block-at rangi F_C") == 3, "L invulnerability prevents multi-hit");
 
     /* M0. debrief stats: shots fired, fighters destroyed, boosts used */

@@ -318,11 +318,22 @@
     ctx.restore();
   }
 
-  /* ---- Skull Cave distance signs (host paints the semantic `N` op) ------- */
+  /* ---- Skull Cave distance signs ----------------------------------------
+   * Fixed, purely cosmetic world markers. Glon emitted them as `N` ops until
+   * f33e086, which dropped draw-signs/signs to fit the loader heap; there is
+   * still no room for them in Glon (the browser loader heap is tighter than the
+   * native harness), so the host paints them from the camera Glon already
+   * emits in `B`. Positions are the original world-x table (no gameplay). */
+  var SIGN_X = [500, 1250, 2000, 2750, 3500, 4000];
   var SIGN_LABELS = [
     "SKULL CAVE 100 km", "SKULL CAVE 75 km", "SKULL CAVE 50 km",
     "SKULL CAVE 25 km", "SKULL CAVE 5 km", "SKULL CAVE \u2014 NEXT EXIT"
   ];
+  var signsDue = false;
+  function drawSigns(ctx, W, cam, tx) {
+    for (var i = 0; i < SIGN_X.length; i++)
+      if (SIGN_X[i] > cam - 120 && SIGN_X[i] < cam + W + 120) drawSign(ctx, SIGN_X[i], i, tx);
+  }
   function drawSign(ctx, x, label, tx) {
     var t = SIGN_LABELS[label];
     if (!t) return;
@@ -767,7 +778,7 @@
   }
   function drawCanyonWalls(ctx, W, H, gate) {
     var top = CAN_TOP, mid = 0, bot = CAN_BOT, w = fCanW, j, d, a, b, t, e;
-    var S = [], ribs = [], gd = -1, ri, gateMark = null;
+    var S = [], ribs = [], gd = -1, ri, gateMark = null, gatePat = 0;
     var hot = fWallHit ? Math.max(0, 1 - (performance.now() - fWallHit) / 450) : 0;
     var ww = fWallWarn(), wl, wr, near;
     ctx.save();
@@ -819,28 +830,41 @@
       else if (p === 2) R = [[x0, c.cx, top, bot]];
       else if (p === 3) R = [[c.cx, x1, top, bot]];
       else R = [[x0, x1, top, -60], [x0, x1, 60, bot]];
-      var f = Math.max(0, 1 - c.d / FCAN_END), i, r, p0, p1;
+      var f = Math.max(0, 1 - c.d / FCAN_END), i, r, p0, p1, O;
+      /* the OPEN gap (fly here), outlined green */
+      if (p === 0) O = [x0, x1, 0, bot];
+      else if (p === 1) O = [x0, x1, top, 0];
+      else if (p === 2) O = [c.cx, x1, top, bot];
+      else if (p === 3) O = [x0, c.cx, top, bot];
+      else O = [x0, x1, -60, 60];
+      /* the BLOCKED region: solid hazard panel with warning hatching. No frame
+         is drawn across the whole cross-section any more -- its top bar read as
+         an overhead beam even when the top of the gate was open. */
       for (i = 0; i < R.length; i++) {
         r = R[i];
         p0 = fProj(W, H, r[0], r[2], c.z, 1); p1 = fProj(W, H, r[1], r[3], c.z, 1);
-        ctx.globalAlpha = 0.30 + 0.45 * f; ctx.fillStyle = "#b8461a";
+        ctx.globalAlpha = 0.55 + 0.40 * f; ctx.fillStyle = "#a3260f";
         ctx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
-        ctx.globalAlpha = 0.5 + 0.5 * f; ctx.strokeStyle = "#ffb347"; ctx.lineWidth = 1 + 3 * f;
+        ctx.globalAlpha = 0.6 + 0.4 * f; ctx.strokeStyle = "#ffb347"; ctx.lineWidth = 1 + 3 * f;
         ctx.strokeRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
         ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y);
         ctx.moveTo(p1.x, p0.y); ctx.lineTo(p0.x, p1.y); ctx.stroke();
       }
-      ctx.globalAlpha = 0.5 + 0.5 * f; ctx.strokeStyle = FXCOL.gate; ctx.lineWidth = 1 + 2.5 * f;
-      ctx.beginPath(); ctx.moveTo(c.fl.x, c.fl.y); ctx.lineTo(c.cl.x, c.cl.y); ctx.lineTo(c.cr.x, c.cr.y);
-      ctx.lineTo(c.fr.x, c.fr.y); ctx.closePath(); ctx.stroke();
-      gateMark = c;
+      p0 = fProj(W, H, O[0], O[2], c.z, 1); p1 = fProj(W, H, O[1], O[3], c.z, 1);
+      ctx.globalAlpha = 0.6 + 0.4 * f; ctx.strokeStyle = "#7dffa0"; ctx.lineWidth = 1 + 2.5 * f;
+      ctx.setLineDash([8, 6]); ctx.strokeRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y); ctx.setLineDash([]);
+      gateMark = c; gatePat = p;
     }
     /* where the ship will cross the gate if it holds its offset from the canyon
        centre and its altitude (gates are canyon-relative); drawn as a HUD cue
        on top of everything so a bend can never hide it */
     function gateMarker(c) {
       var m = fProj(W, H, c.cx + fPx - fCanX, fPy, c.z, 1), mr = Math.max(5, 22 * m.s);
-      ctx.globalAlpha = 0.95; ctx.strokeStyle = "#eaffff"; ctx.lineWidth = 2;
+      /* red when that crossing point is in the blocked region (the same rule
+         Glon's fighter-gates applies at the crossing tick), else white */
+      var dx = fPx - fCanX, y = fPy, hit = gatePat === 0 ? y <= 0 : gatePat === 1 ? y >= 0 :
+                gatePat === 2 ? dx <= 0 : gatePat === 3 ? dx >= 0 : Math.abs(y) >= 60;
+      ctx.globalAlpha = 0.95; ctx.strokeStyle = hit ? "#ff3b3b" : "#eaffff"; ctx.lineWidth = hit ? 3 : 2;
       ctx.beginPath(); ctx.moveTo(m.x, m.y - mr); ctx.lineTo(m.x + mr, m.y); ctx.lineTo(m.x, m.y + mr);
       ctx.lineTo(m.x - mr, m.y); ctx.closePath(); ctx.stroke();
     }
@@ -1212,7 +1236,16 @@
     ctx.beginPath(); ctx.arc(0, 0, s * 0.30, 0, 2 * Math.PI); ctx.stroke();
     ctx.fillStyle = FXCOL.foe;
     ctx.beginPath(); ctx.arc(0, 0, s * 0.16, 0, 2 * Math.PI); ctx.fill();
+    /* on a ram course (Glon rams within |dx|<40 and |dy|<52 at depth <30) */
+    if (ez < 150 && Math.abs(ex - fPx) < 40 && Math.abs(ey - fPy) < 52) fWarnRing(ctx, s * 1.5);
     ctx.restore();
+  }
+  /* pulsing red ring: this object will hit the ship if nothing changes */
+  function fWarnRing(ctx, r) {
+    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(performance.now() / 70);
+    ctx.strokeStyle = "#ff2a2a"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, 2 * Math.PI); ctx.stroke();
+    ctx.globalAlpha = 1;
   }
   function drawBolt(ctx, bx, by, bz) {
     var W = ctx.canvas.width, H = ctx.canvas.height;
@@ -1222,6 +1255,8 @@
     var g = ctx.createRadialGradient(q.x, q.y, 1, q.x, q.y, s * 2.4);
     g.addColorStop(0, "#ffd9a0"); g.addColorStop(0.4, FXCOL.bolt); g.addColorStop(1, "rgba(255,80,0,0)");
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(q.x, q.y, s * 2.4, 0, 2 * Math.PI); ctx.fill();
+    /* on a hit course (Glon: |dx|<60 and |dy|<52 when it arrives) */
+    if (bz < 180 && Math.abs(bx - fPx) < 60 && Math.abs(by - fPy) < 52) { ctx.translate(q.x, q.y); fWarnRing(ctx, s * 3.2); }
     ctx.restore();
   }
   function drawTarget(ctx, W, H) {
@@ -1246,6 +1281,9 @@
    * Glon freezes the mission and owns the stats (Z op) and the continue rule;
    * the host only presents them over the frozen last frame. */
   var fStats = null, fPrevPhase = 0;
+  /* Glon's fwhy codes (the last thing that damaged the ship) */
+  var FWHY = ["", "COLLISION: LEFT WALL", "COLLISION: RIGHT WALL", "COLLISION: GATE",
+              "RAMMED BY FIGHTER", "DESTROYED BY FIGHTER FIRE"];
   function drawDebrief(ctx, W, H) {
     var st = fStats || { score: 0, kills: 0, shots: 0, boosts: 0, hold: 0 };
     var win = fPhase === 4, k = Math.max(1, W / 640);
@@ -1258,6 +1296,8 @@
                 ["SHOTS FIRED", "" + st.shots], ["HITS / ACCURACY", st.kills + " / " + acc + "%"],
                 ["SHIELD REMAINING", "" + fShield], ["BOOSTS USED", "" + st.boosts],
                 ["MISSION TIME", time]];
+    if (!win) rows.unshift(["CAUSE", fShield > 0 ? "TARGET NOT DESTROYED" : (FWHY[st.why] || "SHIELDS LOST")]);
+    var step = Math.min(26 * k, (ph - 108 * k) / rows.length);
     ctx.save();
     ctx.globalAlpha = 1;
     ctx.fillStyle = "rgba(1,3,12,.72)"; ctx.fillRect(0, 0, W, H);
@@ -1270,7 +1310,7 @@
     ctx.fillText(win ? "MISSION COMPLETE" : "MISSION FAILED", W / 2, y0 + 30 * k);
     ctx.font = "bold " + Math.round(14 * k) + "px system-ui, sans-serif";
     for (i = 0; i < rows.length; i++) {
-      var ry = y0 + (68 + i * 26) * k;
+      var ry = y0 + 66 * k + i * step;
       ctx.textAlign = "left"; ctx.fillStyle = "#9fc8e8"; ctx.fillText(rows[i][0], x0 + 28 * k, ry);
       ctx.textAlign = "right"; ctx.fillStyle = "#eaffff"; ctx.fillText(rows[i][1], x0 + pw - 28 * k, ry);
     }
@@ -1361,20 +1401,24 @@
         }
         if (fPhase >= 4) drawDebrief(ctx, W, H);
       } else if (op === "Z") {
-        fStats = { score: +p[1], kills: +p[2], shots: +p[3], boosts: +p[4], hold: +p[5] };
+        fStats = { score: +p[1], kills: +p[2], shots: +p[3], boosts: +p[4], hold: +p[5], why: +p[6] || 0 };
       } else if (op === "B") {
         if (fActive) { fActive = false; setFighterUi(false); }
         cam = +p[1];
         tx = -cam;
         caveMode = false;
+        signsDue = true;              /* signs go after the trees, before actors */
         paintLayer(ctx, W, 0, cam);   /* distant sky / hills  (slowest) */
         paintLayer(ctx, W, 1, cam);   /* native bush / treeline           */
         paintLayer(ctx, W, 2, cam);   /* orchard / fence / near landscape */
       } else if (op === "F") {
+        if (signsDue) { signsDue = false; drawSigns(ctx, W, cam, tx); }
         paintLayer(ctx, W, 3, cam);   /* foreground foliage   (fastest)   */
       } else if (op === "S") {
+        if (signsDue) { signsDue = false; drawSigns(ctx, W, cam, tx); }
         drawSprite(ctx, +p[1], +p[2], +p[3], +p[4], tx);
       } else if (op === "P") {
+        if (signsDue) { signsDue = false; drawSigns(ctx, W, cam, tx); }
         drawRanger(ctx, +p[1], +p[2], +p[3], +p[4], tx);
       } else if (op === "N") {
         drawSign(ctx, +p[1], +p[2], tx);
