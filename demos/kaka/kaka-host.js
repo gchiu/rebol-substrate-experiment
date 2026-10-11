@@ -638,6 +638,7 @@
   }
   var fActive = false, lastCanvasScript = "";
   var fPx = 0, fPy = 0, fPhase = 0, fShield = 0, fBoost = 0, fLaser = 0, fProg = 0;
+  var fLives = 0, fGaugeShield = 99, fGaugeLives = 99, fGaugeFlashS = 0, fGaugeFlashL = 0;
   var fFoes = [], fBolts = [], fGate = null, fBomb = 0, fFlash = 0, fPrevShield = -1;
   /* Winding canyon (D12S.23). Glon owns can-x (the collision centre) and emits
      the half-width in the `A` header. The host MIRRORS the exact same integer
@@ -721,6 +722,26 @@
      drawImage. (A per-frame complex clip here multiplied GPU-process work ~10x
      and was the cause of the long-run phone freeze / black screen.) */
   var fCockpitCache = null;
+  /* Dashboard instrument wells (image px x, y, w, h), measured from the art's
+     two red bar banks: left = shield (Glon F_C), right = Rangi's lives (F_B).
+     The host only presents these Glon values. */
+  var FGAUGE = [[605, 755, 54, 104], [1015, 755, 53, 104]];
+  var FGAUGE_SEGS = 3;   /* shield steps (fighter-enter: 3) and LIVES_MAX (3) */
+  function drawGauges(ctx, ox, oy, sc) {
+    var now = performance.now(), vals = [fShield, fLives], flash = [fGaugeFlashS, fGaugeFlashL];
+    var lit = [["#7fe8ff", "#2a9fd0"], ["#ff5a4a", "#b3261a"]], i, k;
+    for (i = 0; i < 2; i++) {
+      var r = FGAUGE[i], x = ox + r[0] * sc, y = oy + r[1] * sc, w = r[2] * sc, h = r[3] * sc;
+      var gap = 4 * sc, sh = (h - gap * (FGAUGE_SEGS - 1)) / FGAUGE_SEGS;
+      var fl = flash[i] && now - flash[i] < 600 ? (Math.floor((now - flash[i]) / 100) % 2 === 0) : false;
+      for (k = 0; k < FGAUGE_SEGS; k++) {
+        var sy = y + h - (k + 1) * sh - k * gap, on = k < vals[i];
+        ctx.fillStyle = fl ? "#ffffff" : (on ? lit[i][0] : "#1a1f2a");
+        ctx.fillRect(x, sy, w, sh);
+        if (on && !fl) { ctx.fillStyle = lit[i][1]; ctx.fillRect(x, sy + sh * 0.62, w, sh * 0.38); }
+      }
+    }
+  }
   function fCockpitOverlay(W) {
     if (!fighterImg) return null;
     if (fCockpitCache && fCockpitCache.W === W) return fCockpitCache.c;
@@ -732,6 +753,10 @@
     g.beginPath(); g.moveTo(FCOCKPIT[0] * sc, FCOCKPIT[1] * sc);
     for (i = 2; i < FCOCKPIT.length; i += 2) g.lineTo(FCOCKPIT[i] * sc, FCOCKPIT[i + 1] * sc);
     g.closePath(); g.fill();
+    /* empty the two painted bar wells: the live gauges are drawn into them */
+    g.globalCompositeOperation = "source-over"; g.fillStyle = "#06090f";
+    for (i = 0; i < FGAUGE.length; i++)
+      g.fillRect((FGAUGE[i][0] - 2) * sc, (FGAUGE[i][1] - 2) * sc, (FGAUGE[i][2] + 4) * sc, (FGAUGE[i][3] + 4) * sc);
     fCockpitCache = { W: W, c: c };
     return c;
   }
@@ -741,6 +766,7 @@
     ctx.save(); ctx.translate(sh.x, sh.y);
     if (ov) {
       ctx.drawImage(ov, (W - ov.width) / 2, H - ov.height + ay);
+      drawGauges(ctx, (W - ov.width) / 2, H - ov.height + ay, ov.width / fighterImg.naturalWidth);
       if (ay < 0) { ctx.fillStyle = "#01020a"; ctx.fillRect(-10, H + ay - 2, W + 20, -ay + 16); }
     } else {
       ctx.fillStyle = "#01020a"; ctx.fillRect(0, H * 0.72, W, H * 0.28);
@@ -1358,6 +1384,11 @@
         }
         fPrevPhase = fPhase;
         if (p[8] !== undefined && !isNaN(+p[8])) fCanW = +p[8];
+        if (p[9] !== undefined && !isNaN(+p[9])) fLives = +p[9];
+        var gnow = performance.now();
+        if (fShield < fGaugeShield) fGaugeFlashS = gnow;    /* damage -> that bank flashes */
+        if (fLives < fGaugeLives) fGaugeFlashL = gnow;
+        fGaugeShield = fShield; fGaugeLives = fLives;
         fCanX = canX(fProg);
         /* camera heading = canyon tangent at the ship */
         fYaw = (canX(fProg + 8) - canX(Math.max(0, fProg - 8))) / (fProg + 8 - Math.max(0, fProg - 8));

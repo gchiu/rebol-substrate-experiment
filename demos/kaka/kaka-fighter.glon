@@ -259,7 +259,7 @@ fighter-debrief: func [] [
 ]
 
 ;; ---- fighter render (semantic ops; the host projects/draws) ---------------
-;; A px py phase shield boost laser prog   fighter frame header
+;; A px py phase shield boost laser prog w lives   fighter frame header
 ;; X present aligned                        station node
 ;; U ex ey ez behaviour                     foe
 ;; K bx by bz                               enemy bolt
@@ -284,7 +284,7 @@ fdraw: func [i] [
 fighter-scene: func [] [
     p-byte 65 p-num block-at rangi F_X p-num block-at rangi F_Y
     p-num block-at rangi F_STATE p-num block-at rangi F_C
-    p-num either > block-at rangi F_D 0 [ 1 ] [ 0 ] p-num krock p-num fprog p-num 80 p-eol
+    p-num either > block-at rangi F_D 0 [ 1 ] [ 0 ] p-num krock p-num fprog p-num 80 p-num block-at rangi F_B p-eol
     p-byte 90 p-num score p-num fkills p-num fshots p-num fboosts
     p-num block-at rangi F_TARGET p-num fwhy p-eol
     either > fprog 120 [
