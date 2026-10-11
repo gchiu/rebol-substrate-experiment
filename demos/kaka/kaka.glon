@@ -100,7 +100,7 @@ cd: 0 glon-cd: 0
 berries: 1
 ;; helmet-route mission state (owned by kaka-fighter.glon). fprog == 0 arms a
 ;; fresh mission; fbomb 1 = the ONE bomb still available.
-fprog: 0 fbomb: 0
+fprog: 0 fbomb: 0 fshots: 0 fkills: 0 fboosts: 0 fdbr: 0
 ;; packed world groups (fewer top-level bindings). Values are set by `reset`.
 ;;   nx = spawn timers (0 next-kaka, 1 next-pick, 2 next-tree-x)
 ;;   wv = wave/rhythm (0 wave, 1 wave-left, 2 wave-cd, 3 next-milestone)

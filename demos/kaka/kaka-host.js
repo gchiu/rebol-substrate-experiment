@@ -656,7 +656,7 @@
   /* WALL SURFACE COORDINATES. The canyon walls are continuous, addressable
      surfaces, not just a collision limit: a point on a wall is (side, s, v)
      with side -1 left / +1 right, s = mission distance (fprog units, the same
-     axis as can-x) and v = height (CAN_TOP ceiling .. CAN_BOT floor). The wall
+     axis as can-x) and v = height (CAN_TOP wall top .. CAN_BOT floor). The wall
      renderer is built from canWall(), so anything attached later (gun
      emplacements, machinery, vents, gantries, targetable structures) placed
      with the same (side, s, v) sits exactly on the drawn and collided surface,
@@ -694,29 +694,46 @@
     var px = -FFOCAL * Math.max(1, W / 640) * fYaw / CAN_Z;
     return Math.max(-W * 0.3, Math.min(W * 0.3, px));
   }
-  /* Bottom of the cockpit's see-through trench window: the canyon wireframe is
-     clipped to it so it never paints over the dashboard artwork. */
-  function fDashTop(W, H) {
-    if (!fighterImg) return H * 0.72;
-    var sc = fScale(W);
-    return (H - fighterImg.naturalHeight * sc) + fAlt(W, H) + 628 * sc;
+  /* The cockpit's SOLID body (central console, sills and the two canopy
+     struts with their red bars), traced from the artwork in image pixels
+     (the art is left/right symmetric about x = 836). Everything outside it is
+     canopy window: the baked straight trench there is blacked out and the live
+     canyon is drawn into it, including the lower side windows, so a wall
+     beside the ship reaches the bottom corners of the view (no look-past at
+     the near end of a wall). The outline runs past the image edges so a
+     climbing ship's frame stays covered. */
+  var FCOCKPIT = [345, 1341, 345, 835, -10, 336, -10, 137, 370, 770, 522, 765, 582, 697, 690, 670,
+                  982, 670, 1090, 697, 1150, 765, 1302, 770, 1682, 137, 1682, 336, 1327, 835, 1327, 1341];
+  /* clip to the canopy window (whole view minus the cockpit body) */
+  function fWindowClip(ctx, W, H) {
+    ctx.beginPath(); ctx.rect(-10, -10, W + 20, H + 20);
+    if (fighterImg) {
+      var sc = fScale(W), ox = (W - fighterImg.naturalWidth * sc) / 2;
+      var oy = H - fighterImg.naturalHeight * sc + fAlt(W, H), i;
+      ctx.moveTo(ox + FCOCKPIT[0] * sc, oy + FCOCKPIT[1] * sc);
+      for (i = 2; i < FCOCKPIT.length; i += 2) ctx.lineTo(ox + FCOCKPIT[i] * sc, oy + FCOCKPIT[i + 1] * sc);
+      ctx.closePath();
+    } else {
+      ctx.rect(0, H * 0.72, W, H * 0.28);
+    }
+    ctx.clip("evenodd");
   }
   /* Corridor rendering: a SOLID canyon. Every cross-section is derived from
      the SAME canX(fProg + dd) +/- fCanW that Glon collides against, at render
      depth dd * CAN_Z, so the surface that kills the ship is the surface drawn.
-     Between successive samples four dark surfaces are filled (floor, ceiling,
+     Between successive samples three dark surfaces are filled (floor,
      left wall, right wall), painted FAR to NEAR so a near wall on the inside of
      a bend genuinely hides the corridor behind it. Neon edges ride on top:
-     continuous floor/ceiling rails (plus a faint mid-wall rail) carry the path,
+     continuous floor and wall-top rails (plus a faint mid-wall rail) carry the path,
      and sparse world-fixed ribs (one per second of flight) stream past as the
      depth/speed cue. Surfaces fog into the void with distance. Gate barriers
      are drawn in the same cross-section, in their exact blocked region. */
   /* Surfaces are OPAQUE and clearly lighter than the void: side walls are a
-     solid slate-blue slab, floor/ceiling darker. Fog is capped (kmax) so even
+     solid slate-blue slab, floor darker; the trench is open overhead. Fog is capped (kmax) so even
      the farthest wall stays visibly wall, never dissolving into the void.
      `hot` tints toward red (a wall hit), `warn` toward amber (closing on it). */
   var FBG = [1, 2, 10];
-  var FWALL = [22, 54, 98], FFLOOR = [11, 28, 50], FCEIL = [8, 20, 38];
+  var FWALL = [22, 54, 98], FFLOOR = [11, 28, 50];
   function fFog(rgb, t, kmax, hot, warn) {
     var k = Math.min(kmax, t * t * 0.9), r = rgb[0], g = rgb[1], b = rgb[2];
     if (warn > 0) { r += (215 - r) * warn; g += (120 - g) * warn; b += (30 - b) * warn; }
@@ -735,7 +752,7 @@
     var hot = fWallHit ? Math.max(0, 1 - (performance.now() - fWallHit) / 450) : 0;
     var ww = fWallWarn(), wl, wr, near;
     ctx.save();
-    ctx.beginPath(); ctx.rect(0, 0, W, Math.max(0, fDashTop(W, H))); ctx.clip();
+    fWindowClip(ctx, W, H);
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     /* one cross-section dd ticks ahead, built from the wall-surface mapping */
     function cross(dd) {
@@ -764,9 +781,11 @@
       var f = Math.max(0, 1 - c.d / FCAN_END);
       ctx.globalAlpha = 0.65 * Math.pow(f, 1.1); ctx.strokeStyle = "#8fe0ff";
       ctx.lineWidth = 0.8 + 2.6 * f;
+      /* posts on the two wall faces only: nothing bridges the open trench */
       ctx.beginPath();
-      ctx.moveTo(c.fl.x, c.fl.y); ctx.lineTo(c.cl.x, c.cl.y); ctx.lineTo(c.cr.x, c.cr.y);
-      ctx.lineTo(c.fr.x, c.fr.y); ctx.closePath(); ctx.stroke();
+      ctx.moveTo(c.fl.x, c.fl.y); ctx.lineTo(c.cl.x, c.cl.y);
+      ctx.moveTo(c.fr.x, c.fr.y); ctx.lineTo(c.cr.x, c.cr.y);
+      ctx.stroke();
     }
     /* gate barrier: exactly the region fighter-gates treats as blocked */
     function gatePanel(c, p) {
@@ -815,11 +834,10 @@
       near = ww.amt * Math.max(0, 1 - b.d / 70);
       wl = ww.side < 0 ? near : 0; wr = ww.side > 0 ? near : 0;
       quad(a.fl, b.fl, b.fr, a.fr, fFog(FFLOOR, t, 0.7, 0, 0));                           /* floor */
-      quad(a.cl, b.cl, b.cr, a.cr, fFog(FCEIL, t, 0.7, 0, 0));                            /* ceiling */
       quad(a.cl, b.cl, b.fl, a.fl, fFog(FWALL, t, 0.5, fWallSide < 0 ? hot : 0, wl));     /* LEFT wall  */
       quad(a.cr, b.cr, b.fr, a.fr, fFog(FWALL, t, 0.5, fWallSide > 0 ? hot : 0, wr));     /* RIGHT wall */
       edge("f", 0.95 * Math.pow(e, 1.1), 1.2 + 5.5 * e, "#8feaff");   /* floor edges   */
-      edge("c", 0.80 * Math.pow(e, 1.1), 1.0 + 3.8 * e, "#6fd8ff");   /* ceiling edges */
+      edge("c", 0.80 * Math.pow(e, 1.1), 1.0 + 3.8 * e, "#6fd8ff");   /* wall-top edges */
       edge("m", 0.25 * e, 0.8 + 1.6 * e, "#3aa8d8");                   /* mid-wall rail */
       while (ri >= 0 && ribs[ri] > a.d) { if (ribs[ri] <= b.d) rib(cross(ribs[ri])); ri--; }
       if (gd > a.d && gd <= b.d) gatePanel(cross(gd), gate.p);
@@ -1100,24 +1118,23 @@
          dominates and the run reads as straight no matter what the centreline
          does. Black the trench window out (blending into the dashboard) so the
          dynamic winding corridor below is the only corridor on screen. */
-      var dashTop = (H - ih) + ay + 628 * sc;
-      var blend = 70 * sc;
-      ctx.fillStyle = "#01020a";
-      ctx.fillRect(-10, -10, W + 20, Math.max(0, dashTop - blend) + 10);
-      var g = ctx.createLinearGradient(0, dashTop - blend, 0, dashTop);
-      g.addColorStop(0, "rgba(1,2,10,1)");
-      g.addColorStop(1, "rgba(1,2,10,0)");
-      ctx.fillStyle = g; ctx.fillRect(-10, dashTop - blend, W + 20, blend + 2);
+      ctx.save();
+      fWindowClip(ctx, W, H);
+      ctx.fillStyle = "#01020a"; ctx.fillRect(-10, -10, W + 20, H + 20);
+      ctx.restore();
     }
+    /* sky cues live only in the canopy window (never over the cockpit body);
+       the opaque canyon walls drawn next then hide them behind every wall */
+    ctx.save(); fWindowClip(ctx, W, H);
     /* bright vanishing-point "warp core" — a strong depth/motion anchor */
     var wc = ctx.createRadialGradient(cw.x, cw.y, 1, cw.x, cw.y, 46 + (fBoost > 0 ? 24 : 0));
     wc.addColorStop(0, "rgba(190,240,255,.85)");
     wc.addColorStop(0.4, "rgba(90,200,255,.28)");
     wc.addColorStop(1, "rgba(90,200,255,0)");
     ctx.fillStyle = wc; ctx.beginPath(); ctx.arc(cw.x, cw.y, 46 + (fBoost > 0 ? 24 : 0), 0, 2 * Math.PI); ctx.fill();
-    /* the winding corridor is drawn from the emitted samples (op H) */
     fStars(ctx, W, H, cw, t, sp);
     fStreaks(ctx, W, H, cw, t, sp, fBoost > 0);
+    ctx.restore();
     if (fBoost > 0) {
       ctx.fillStyle = "rgba(120,200,255,.09)"; ctx.fillRect(-10, -10, W + 20, H + 20);
     }
@@ -1217,10 +1234,49 @@
     ctx.fillText(aligned ? "GLON LOCKED" : "ALIGN + GLON", c.x, c.y - r - 10);
     ctx.restore();
   }
+  /* ---- end-of-mission debrief (Glon phase 4 = complete, 5 = failed) --------
+   * Glon freezes the mission and owns the stats (Z op) and the continue rule;
+   * the host only presents them over the frozen last frame. */
+  var fStats = null, fPrevPhase = 0;
+  function drawDebrief(ctx, W, H) {
+    var st = fStats || { score: 0, kills: 0, shots: 0, boosts: 0, hold: 0 };
+    var win = fPhase === 4, k = Math.max(1, W / 640);
+    var pw = Math.min(W - 24 * k, 420 * k), ph = Math.min(H - 16 * k, 300 * k);
+    var x0 = (W - pw) / 2, y0 = (H - ph) / 2, i;
+    var acc = st.shots > 0 ? Math.round(100 * st.kills / st.shots) : 0;
+    var secs = Math.floor(fProg / 25);
+    var time = Math.floor(secs / 60) + ":" + ("0" + (secs % 60)).slice(-2);
+    var rows = [["SCORE", "" + st.score], ["FIGHTERS DESTROYED", "" + st.kills],
+                ["SHOTS FIRED", "" + st.shots], ["HITS / ACCURACY", st.kills + " / " + acc + "%"],
+                ["SHIELD REMAINING", "" + fShield], ["BOOSTS USED", "" + st.boosts],
+                ["MISSION TIME", time]];
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "rgba(1,3,12,.72)"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(4,14,30,.94)"; ctx.fillRect(x0, y0, pw, ph);
+    ctx.strokeStyle = win ? "#7fd18a" : "#ff5a4a"; ctx.lineWidth = 2 * k;
+    ctx.strokeRect(x0, y0, pw, ph);
+    ctx.textBaseline = "middle"; ctx.textAlign = "center";
+    ctx.fillStyle = win ? "#7fd18a" : "#ff6a5a";
+    ctx.font = "bold " + Math.round(26 * k) + "px system-ui, sans-serif";
+    ctx.fillText(win ? "MISSION COMPLETE" : "MISSION FAILED", W / 2, y0 + 30 * k);
+    ctx.font = "bold " + Math.round(14 * k) + "px system-ui, sans-serif";
+    for (i = 0; i < rows.length; i++) {
+      var ry = y0 + (68 + i * 26) * k;
+      ctx.textAlign = "left"; ctx.fillStyle = "#9fc8e8"; ctx.fillText(rows[i][0], x0 + 28 * k, ry);
+      ctx.textAlign = "right"; ctx.fillStyle = "#eaffff"; ctx.fillText(rows[i][1], x0 + pw - 28 * k, ry);
+    }
+    ctx.textAlign = "center";
+    ctx.fillStyle = st.hold > 0 ? "rgba(255,210,63,.35)"
+                  : "rgba(255,210,63," + (0.65 + 0.35 * Math.sin(performance.now() / 220)).toFixed(3) + ")";
+    ctx.font = "bold " + Math.round(16 * k) + "px system-ui, sans-serif";
+    ctx.fillText("FIRE TO CONTINUE  →  " + (win ? "FOREST" : "SKULL CAVE"), W / 2, y0 + ph - 22 * k);
+    ctx.restore();
+  }
   function drawFighterHud(ctx, W) {
     var names = ["LAUNCH", "TRENCH", "PRESSURE", "TARGET", "ESCAPE", "SUCCESS"];
     var phase = fPhase === 0 ? (fProg < 300 ? "TRENCH RUN" : (fProg < 850 ? "ENEMY PRESSURE" : "TARGET APPROACH"))
-              : (fPhase === 1 ? "ESCAPE" : (fPhase === 2 ? "SUCCESS" : "FAILED"));
+              : (fPhase === 1 ? "ESCAPE" : ((fPhase === 2 || fPhase === 4) ? "SUCCESS" : "FAILED"));
     ctx.save();
     ctx.font = "bold 16px system-ui, sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "top";
     ctx.fillStyle = "rgba(0,0,0,.45)"; ctx.fillRect(8, 8, 300, 56);
@@ -1248,6 +1304,11 @@
         prevFoes = fFoes.length; prevBolts = fBolts.length;
         fPx = +p[1]; fPy = +p[2]; fPhase = +p[3]; fShield = +p[4];
         fBoost = +p[5]; fLaser = +p[6]; fProg = +p[7];
+        if (fPhase >= 4) {                   /* frozen debrief: no fire/boost feedback */
+          fLaser = 0; fBoost = 0;
+          if (fPrevPhase < 4) { if (fPhase === 4) playSuccess(); else playFail(); }
+        }
+        fPrevPhase = fPhase;
         if (p[8] !== undefined && !isNaN(+p[8])) fCanW = +p[8];
         fCanX = canX(fProg);
         /* camera heading = canyon tangent at the ship */
@@ -1289,6 +1350,9 @@
           ctx.fillStyle = "rgba(255,60,60," + (0.35 * (1 - (performance.now() - fFlash) / 220)) + ")";
           ctx.fillRect(0, 0, W, H);
         }
+        if (fPhase >= 4) drawDebrief(ctx, W, H);
+      } else if (op === "Z") {
+        fStats = { score: +p[1], kills: +p[2], shots: +p[3], boosts: +p[4], hold: +p[5] };
       } else if (op === "B") {
         if (fActive) { fActive = false; setFighterUi(false); }
         cam = +p[1];

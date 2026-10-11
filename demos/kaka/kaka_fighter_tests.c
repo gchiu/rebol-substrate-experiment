@@ -127,9 +127,33 @@ int main(void) {
     check(run_int("block-at rangi F_C") == 2, "K obstacle gate damages the player");
     run_source(ENTER "fprog: 318  block-set! rangi F_Y 40  block-set! rangi F_A 0  fighter-gates");
     check(run_int("block-at rangi F_C") == 3, "K gate cleared by being in the gap");
+    /* K2. every gate pattern: blocked side hits, open side clears
+       (518 = pattern 1, 718 = pattern 2 with centre 108, 1118 = pattern 4) */
+    run_source(ENTER "fprog: 518  block-set! rangi F_Y 40  block-set! rangi F_A 0  fighter-gates");
+    long k1h = run_int("block-at rangi F_C");
+    run_source(ENTER "fprog: 518  block-set! rangi F_Y -40  block-set! rangi F_A 0  fighter-gates");
+    long k1o = run_int("block-at rangi F_C");
+    run_source(ENTER "fprog: 718  block-set! rangi F_X 60  block-set! rangi F_A 0  fighter-gates");
+    long k2h = run_int("block-at rangi F_C");
+    run_source(ENTER "fprog: 718  block-set! rangi F_X 150  block-set! rangi F_A 0  fighter-gates");
+    long k2o = run_int("block-at rangi F_C");
+    run_source(ENTER "fprog: 1118  block-set! rangi F_Y 80  block-set! rangi F_A 0  fighter-gates");
+    long k4h = run_int("block-at rangi F_C");
+    run_source(ENTER "fprog: 1118  block-set! rangi F_Y 0  block-set! rangi F_A 0  fighter-gates");
+    long k4o = run_int("block-at rangi F_C");
+    check(k1h == 2 && k1o == 3 && k2h == 2 && k2o == 3 && k4h == 2 && k4o == 3,
+          "K2 gate patterns 1/2/4 block and open correctly");
     /* L. invulnerability prevents a burst of hits */
     run_source(ENTER "block-set! rangi F_A 10  fighter-hit");
     check(run_int("block-at rangi F_C") == 3, "L invulnerability prevents multi-hit");
+
+    /* M0. debrief stats: shots fired, fighters destroyed, boosts used */
+    run_source(ENTER FOE0 "krock: 1  fighter-run  krock: 0");
+    check(run_int("fshots") == 1 && run_int("fkills") == 1, "M0 a shot and a kill are counted");
+    run_source(ENTER "kf: 1"); ticks("fighter-controls", 5);
+    run_source("kf: 0"); ticks("fighter-run", 30);
+    run_source("kf: 1  fighter-controls  kf: 0");
+    check(run_int("fboosts") == 2, "M0b each boost press counts once");
 
     /* M. JUMP/boost starts the boost */
     run_source(ENTER "kf: 1  fighter-controls");
@@ -149,7 +173,12 @@ int main(void) {
     run_source("fprog: 1300  fighter-run");
     check(run_int("fbomb") == 0 && run_int("block-at rangi F_STATE") == 3, "Q early bomb use causes later failure");
     run_source("fighter-step");
-    check(run_int("block-at rangi F_E") == 1 && run_int("block-at rangi F_X") == 200, "Q2 failure returns to SKULL_CAVE");
+    check(run_int("block-at rangi F_STATE") == 5 && run_int("block-at rangi F_E") == 2, "Q1 failure freezes into the FAILED debrief");
+    /* the debrief holds, then needs FIRE released and pressed again */
+    run_source("krock: 1"); ticks("fighter-step", 40);
+    check(run_int("block-at rangi F_STATE") == 5, "Q1b a held FIRE cannot skip the debrief");
+    run_source("krock: 0  fighter-step  krock: 1  fighter-step  krock: 0");
+    check(run_int("block-at rangi F_E") == 1 && run_int("block-at rangi F_X") == 200, "Q2 failure debrief -> FIRE -> SKULL_CAVE");
     /* R. a valid aligned bomb in the window destroys the node -> escape
        (fprog 1020 is a canyon crossover: centre 0) */
     run_source(ENTER "fprog: 1020  block-set! rangi F_X 0  kg: 1  fighter-run  kg: 0  block-set! rangi F_TARGET 90");
@@ -163,7 +192,12 @@ int main(void) {
     ticks("fighter-step", 90);
     check(run_int("block-at rangi F_STATE") == 2, "S target hit enters escape then success");
     run_source("fighter-step");
-    check(run_int("block-at rangi F_E") == 0 && run_int("fprog") == 0, "T success returns to FOREST");
+    check(run_int("block-at rangi F_STATE") == 4 && run_int("block-at rangi F_E") == 2, "S2 success freezes into the COMPLETE debrief");
+    long dprog = run_int("fprog");
+    ticks("fighter-step", 30);
+    check(run_int("fprog") == dprog && run_int("block-at rangi F_STATE") == 4, "S3 gameplay is frozen during the debrief");
+    run_source("kf: 1  fighter-step  kf: 0");
+    check(run_int("block-at rangi F_E") == 0 && run_int("fprog") == 0, "T success debrief -> FIRE -> FOREST");
     /* V. same actor id persists on the way back */
     check(run_int("block-at rangi F_ID") == 1, "V same Rangi actor persists on return");
 
