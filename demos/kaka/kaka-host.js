@@ -128,7 +128,50 @@
       .then(function (imgs) {
         layerImg = imgs;
         for (var i = 0; i < LAYERS.length; i++) buildFade(i);
+        buildOccluders();
       });
+  }
+  /* ---- deliberate forest occluders --------------------------------------
+     Glon draws the foreground layer BEFORE Rangi (he is never lost behind
+     it) and rats behind it. For depth and ambush spots, a few vegetation
+     clumps cut once from the foreground artwork are stamped AFTER Rangi at
+     world-fixed x (1:1 with the gameplay plane), bottom-anchored, so they
+     cover part of Rangi as he passes and can hide rats completely. Purely
+     presentation: no collision or game-logic change. */
+  var OCC_CROPS = [[1420, 380, 300, 344], [170, 330, 310, 394], [1840, 400, 260, 324]];
+  var OCC_SCALE = 0.42, OCC_STEP = 540, OCC_PATTERN = [0, -1, 1, -1, 2, -1, 1, -1, 0, 2];
+  var occImgs = [];
+  function buildOccluders() {
+    var img = layerImg[3]; occImgs = [];
+    if (!img) return;
+    for (var i = 0; i < OCC_CROPS.length; i++) {
+      var r = OCC_CROPS[i], cw = Math.round(r[2] * OCC_SCALE), ch = Math.round(r[3] * OCC_SCALE);
+      var c = document.createElement("canvas"); c.width = cw; c.height = ch;
+      var g = c.getContext("2d"), fx, k;
+      g.drawImage(img, r[0], r[1], r[2], r[3], 0, 0, cw, ch);
+      /* feather the cut edges (left, right, top) so no straight seam shows */
+      g.globalCompositeOperation = "destination-out";
+      var ramps = [[0, 0, cw * 0.28, 0], [cw, 0, cw * 0.72, 0], [0, 0, 0, ch * 0.22]];
+      for (k = 0; k < 3; k++) {
+        var q = ramps[k]; fx = g.createLinearGradient(q[0], q[1], q[2], q[3]);
+        fx.addColorStop(0, "rgba(0,0,0,1)"); fx.addColorStop(1, "rgba(0,0,0,0)");
+        g.fillStyle = fx; g.fillRect(0, 0, cw, ch);
+      }
+      occImgs.push(c);
+    }
+  }
+  function drawOccluders(ctx, W, H, tx) {
+    if (!occImgs.length) return;
+    var k0 = Math.floor((-tx - 200) / OCC_STEP), k1 = Math.ceil((-tx + W + 200) / OCC_STEP), k;
+    for (k = k0; k <= k1; k++) {
+      var t = OCC_PATTERN[((k % OCC_PATTERN.length) + OCC_PATTERN.length) % OCC_PATTERN.length];
+      if (t < 0 || k < 1) continue;
+      var c = occImgs[t], x = k * OCC_STEP + tx, flip = (k % 3) === 1;
+      ctx.save(); ctx.translate(x, H + 6);
+      if (flip) ctx.scale(-1, 1);
+      ctx.drawImage(c, -c.width / 2, -c.height);
+      ctx.restore();
+    }
   }
   function paintLayer(ctx, W, idx, cam) {
     var img = layerImg[idx];
@@ -781,7 +824,13 @@
     return loadImage("assets/vector-trench-cockpit.png").then(function (im) { fighterImg = im; });
   }
   function fScale(W) { return fighterImg ? W / fighterImg.naturalWidth : 1; }
+  var fCenterMemo = { W: -1, H: -1, img: null, v: null };
   function fCenter(W, H) {
+    if (fCenterMemo.W === W && fCenterMemo.H === H && fCenterMemo.img === fighterImg) return fCenterMemo.v;
+    fCenterMemo.W = W; fCenterMemo.H = H; fCenterMemo.img = fighterImg; fCenterMemo.v = fCenterRaw(W, H);
+    return fCenterMemo.v;
+  }
+  function fCenterRaw(W, H) {
     if (!fighterImg) return { x: W * 0.5, y: H * 0.62, sc: 1 };
     var sc = fScale(W);
     return { x: W * 0.5, y: (H - fighterImg.naturalHeight * sc) + 520 * sc, sc: sc };
@@ -946,7 +995,6 @@
     function decor(dd) {
       var s = fProg + dd, n = Math.round(s / FDECO), f = Math.max(0, 1 - dd / FCAN_END), side, kind, q, r;
       if (f < 0.12) return;
-      if (above) surfLights(s, n, f);
       for (side = -1; side <= 1; side += 2) {
         if (!wallVis(side, canX(s))) continue;
         kind = (n + (side > 0 ? 3 : 0)) % 8;
@@ -1012,11 +1060,6 @@
       if (wallVis(-1, c.cx)) { ctx.moveTo(c.fl.x, c.fl.y); ctx.lineTo(c.cl.x, c.cl.y); }
       if (wallVis(1, c.cx)) { ctx.moveTo(c.fr.x, c.fr.y); ctx.lineTo(c.cr.x, c.cr.y); }
       ctx.stroke();
-      if (above) {                    /* transverse surface panel seams */
-        ctx.globalAlpha = 0.45 * f; ctx.strokeStyle = "#5b7390"; ctx.lineWidth = 0.8 + 1.4 * f;
-        ctx.beginPath(); ctx.moveTo(c.cl.x, c.cl.y); ctx.lineTo(c.sol.x, c.sol.y);
-        ctx.moveTo(c.cr.x, c.cr.y); ctx.lineTo(c.sor.x, c.sor.y); ctx.stroke();
-      }
     }
     /* The near Death Star surface, one polygon per side (rim line out to the
        screen-covering outer edge) plus all longitudinal seams in one stroke.
@@ -1041,16 +1084,171 @@
       }
       ctx.stroke(); ctx.globalAlpha = 1;
     }
+    /* strong readable rim: where the solid surface ends and the opening is */
+    function rimEdges() {
+      var i, n = S.length, side;
+      for (side = 0; side < 2; side++) {
+        var k = side ? "cr" : "cl";
+        ctx.globalAlpha = 1; ctx.strokeStyle = "#0a0f18"; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(S[0][k].x, S[0][k].y); for (i = 1; i < n; i++) ctx.lineTo(S[i][k].x, S[i][k].y); ctx.stroke();
+        ctx.strokeStyle = "#9fe8ff"; ctx.lineWidth = 2.4;
+        ctx.beginPath(); ctx.moveTo(S[0][k].x, S[0][k].y); for (i = 1; i < n; i++) ctx.lineTo(S[i][k].x, S[i][k].y); ctx.stroke();
+      }
+    }
+    /* Flat detail ON the surface (painted after it): seams every 12.5 ticks,
+       armour channels, vents and lamps. Nothing here has height, so nothing
+       within flying reach looks like an obstacle; tall structures are placed
+       out of reach by surfaceStructures(). */
+    function surfaceDetail() {
+      var d, f, c, side, q0, q1, n, seams = new Path2D(), vents = new Path2D(), lampsC = new Path2D(), lampsA = new Path2D();
+      for (d = 12.5 - (fProg % 12.5); d <= FCAN_END; d += 12.5) {
+        if (d < FCAN_NEAR) continue;
+        f = Math.max(0, 1 - d / FCAN_END); c = canX(fProg + d);
+        var z = d * CAN_Z, L = W / (FFOCAL * Math.max(1, W / 640) / z) + Math.abs(fPx - c) + 160;
+        for (side = -1; side <= 1; side += 2) {
+          q0 = fProj(W, H, c + side * w, top, z, 1); q1 = fProj(W, H, c + side * (w + L), top, z, 1);
+          seams.moveTo(q0.x, q0.y); seams.lineTo(q1.x, q1.y);
+        }
+        n = Math.round((fProg + d) / 12.5);
+        for (side = -1; side <= 1; side += 2) {                /* flat vents / hatch plates */
+          if ((n + (side > 0 ? 2 : 0)) % 4) continue;
+          var off = w + 90 + ((n * 61) % 5) * 70;
+          var a0 = fProj(W, H, c + side * off, top, z, 1), a1 = fProj(W, H, c + side * (off + 50), top, z, 1);
+          var b0 = fProj(W, H, c + side * off, top, (d + 4) * CAN_Z, 1), b1 = fProj(W, H, c + side * (off + 50), top, (d + 4) * CAN_Z, 1);
+          vents.moveTo(a0.x, a0.y); vents.lineTo(a1.x, a1.y); vents.lineTo(b1.x, b1.y); vents.lineTo(b0.x, b0.y); vents.closePath();
+        }
+        if (n % 2 === 0) surfLights(fProg + d, n, lampsC, lampsA);
+      }
+      ctx.globalAlpha = 0.4; ctx.strokeStyle = "#566b86"; ctx.lineWidth = 1; ctx.stroke(seams);
+      ctx.globalAlpha = 0.8; ctx.fillStyle = "#11161f"; ctx.fill(vents); ctx.strokeStyle = "#3e536d"; ctx.stroke(vents);
+      ctx.globalAlpha = 0.9; ctx.fillStyle = "#7fe8ff"; ctx.fill(lampsC); ctx.fillStyle = "#ffcf5a"; ctx.fill(lampsA);
+      /* armour channels: darker double grooves along the trench at 320 / 640 */
+      var i, k, m = S.length;
+      ctx.globalAlpha = 0.55; ctx.strokeStyle = "#0b0f16"; ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (k = 3; k < FSURF_LINES; k += 4) {
+        ctx.moveTo(S[0].gl[k].x, S[0].gl[k].y); for (i = 1; i < m; i++) ctx.lineTo(S[i].gl[k].x, S[i].gl[k].y);
+        ctx.moveTo(S[0].gr[k].x, S[0].gr[k].y); for (i = 1; i < m; i++) ctx.lineTo(S[i].gr[k].x, S[i].gr[k].y);
+      }
+      ctx.stroke(); ctx.globalAlpha = 1;
+      surfaceStructures();
+    }
+    /* Structures with height: gun batteries, antennae, machinery clusters --
+       ALL at |dx| >= 950 from the trench centre while the ship is limited to
+       |dx| <= 850, so none is reachable (no collision needed). Batteries track
+       and fire tracer bursts into the sky. Far-to-near; host-only, no Glon. */
+    function surfaceStructures() {
+      var now = performance.now() / 1000, base = Math.floor(fProg / 40) * 40, i, side;
+      for (i = 18; i >= 0; i--) {
+        var sB = base + i * 40, d = sB - fProg;
+        if (d < 4 || d > 700) continue;
+        var z = d * CAN_Z, f = Math.max(0.25, 1 - d / 700), idx = sB / 40, c = canX(sB);
+        for (side = -1; side <= 1; side += 2) {
+          var h = (idx * 2654435761 + (side > 0 ? 97 : 0)) >>> 0, kind = h % 3;
+          var X = c + side * (960 + (h >>> 5) % 560);
+          var pb = fProj(W, H, X, top, z, 1), sc = pb.s;
+          if (pb.x < -200 || pb.x > W + 200) continue;
+          ctx.globalAlpha = 0.45 + 0.55 * f;
+          if (kind === 0) {                                  /* gun battery */
+            var bw = Math.max(6, 70 * sc), bh = Math.max(2.5, 22 * sc), aim = Math.sin(now * 0.7 + idx) * 0.6 - side * 0.4;
+            sc = Math.max(sc, 0.09);
+            ctx.fillStyle = "#1c2433"; ctx.fillRect(pb.x - bw / 2, pb.y - bh, bw, bh);
+            ctx.beginPath(); ctx.arc(pb.x, pb.y - bh, bw * 0.28, Math.PI, 0); ctx.fill();
+            ctx.strokeStyle = "#5c7aa0"; ctx.lineWidth = Math.max(1, 1.4 * sc * 4); ctx.strokeRect(pb.x - bw / 2, pb.y - bh, bw, bh);
+            var tipx = pb.x + Math.sin(aim) * 46 * sc, tipy = pb.y - bh - Math.cos(aim) * 46 * sc;
+            ctx.strokeStyle = "#8fa6c4"; ctx.lineWidth = Math.max(1.2, 6 * sc);
+            ctx.beginPath(); ctx.moveTo(pb.x, pb.y - bh - bw * 0.2); ctx.lineTo(tipx, tipy); ctx.stroke();
+            var ph = (now * 1.3 + idx * 0.37 + (side > 0 ? 0.5 : 0)) % 1;
+            if (ph < 0.35) {                                 /* burst: muzzle flash + tracers */
+              ctx.fillStyle = "#ffe08a"; ctx.beginPath(); ctx.arc(tipx, tipy, Math.max(1.5, 7 * sc), 0, 2 * Math.PI); ctx.fill();
+              ctx.strokeStyle = (idx % 2) ? "#ff5a3a" : "#7dff8a"; ctx.lineWidth = Math.max(1.3, 2.2 * sc * 2);
+              for (var b = 0; b < 3; b++) {
+                var u = ph * 2.4 + b * 0.18, len = Math.max(140, 900 * sc);
+                var ex = tipx + Math.sin(aim) * len * u, ey = tipy - Math.cos(aim) * len * u;
+                var tl = Math.max(8, 40 * sc);
+                ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex + Math.sin(aim) * tl, ey - Math.cos(aim) * tl); ctx.stroke();
+              }
+            }
+          } else if (kind === 1) {                           /* antenna mast */
+            var ah = 160 * sc;
+            ctx.strokeStyle = "#6f86a6"; ctx.lineWidth = Math.max(1, 3 * sc);
+            ctx.beginPath(); ctx.moveTo(pb.x, pb.y); ctx.lineTo(pb.x, pb.y - ah); ctx.moveTo(pb.x - 18 * sc, pb.y - ah * 0.7); ctx.lineTo(pb.x + 18 * sc, pb.y - ah * 0.7); ctx.stroke();
+            ctx.fillStyle = ((now * 2 + idx) % 1) < 0.5 ? "#ff5a4a" : "#3a1410";
+            ctx.beginPath(); ctx.arc(pb.x, pb.y - ah, Math.max(1.5, 4 * sc), 0, 2 * Math.PI); ctx.fill();
+          } else {                                           /* machinery cluster */
+            ctx.fillStyle = "#18202d"; ctx.strokeStyle = "#4b6587"; ctx.lineWidth = 1;
+            var parts = [[-40, 50, 30], [10, 40, 48], [42, 28, 22]];
+            for (var q = 0; q < 3; q++) {
+              var px = pb.x + parts[q][0] * sc, pw = parts[q][1] * sc, ph2 = parts[q][2] * sc;
+              ctx.fillRect(px - pw / 2, pb.y - ph2, pw, ph2); ctx.strokeRect(px - pw / 2, pb.y - ph2, pw, ph2);
+            }
+            ctx.fillStyle = "#ffcf5a"; ctx.fillRect(pb.x + 8 * sc, pb.y - 40 * sc, Math.max(1, 4 * sc), Math.max(1, 4 * sc));
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+    /* Ambient battle in the sky: fixed pools cycled deterministically from
+       time (no allocation, no Glon, no collision): flak bursts, laser streaks,
+       distant fighters (some exploding). Drawn before the trench and surface,
+       so walls and metal occlude them; visible from inside the trench too. */
+    function hash1(a) { a = (a ^ 61) ^ (a >>> 16); a = (a + (a << 3)) | 0; a ^= a >>> 4; a = Math.imul(a, 0x27d4eb2d); a ^= a >>> 15; return (a >>> 0) / 4294967296; }
+    function battleSky() {
+      var now = performance.now() / 1000, i, cyc, u, P, q, r, X, Y, Z;
+      /* the battle swells and ebbs (~12 s): quieter and fiercer moments */
+      var heat = 0.5 + 0.5 * Math.sin(now * 0.52);
+      /* flak */
+      for (i = 0; i < 16; i++) {
+        if (i / 16 > 0.12 + 0.88 * heat) continue;
+        P = 1.5 + (i % 5) * 0.37; u = (now / P + i * 0.731); cyc = Math.floor(u); u -= cyc;
+        if (u > 0.55) continue;
+        X = fCanX + (hash1(cyc * 31 + i) - 0.5) * 3600; Y = -420 - hash1(cyc * 17 + i * 7) * 900; Z = 1500 + hash1(cyc * 13 + i * 3) * 9000;
+        q = fProj(W, H, X, Y, Z, 1); if (q.x < -40 || q.x > W + 40 || q.y < -40) continue;
+        r = Math.max(3.5, Math.min(30, 220 * q.s * (0.3 + u)));
+        ctx.globalAlpha = Math.max(0, 1 - u / 0.55);
+        ctx.fillStyle = u < 0.12 ? "#fff6d0" : "#ff9a3a"; ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, 2 * Math.PI); ctx.fill();
+        ctx.fillStyle = "rgba(60,50,45,.6)"; ctx.beginPath(); ctx.arc(q.x + r * 0.3, q.y - r * 0.2, r * 0.7, 0, 2 * Math.PI); ctx.fill();
+      }
+      /* laser streaks crossing the sky */
+      for (i = 0; i < 10; i++) {
+        if (i / 10 > 0.15 + 0.85 * heat) continue;
+        P = 0.9 + (i % 4) * 0.23; u = now / P + i * 0.413; cyc = Math.floor(u); u -= cyc;
+        var h1 = hash1(cyc * 7 + i * 101), h2 = hash1(cyc * 11 + i * 37), h3 = hash1(cyc * 5 + i * 53);
+        var ax = fCanX + (h1 - 0.5) * 4000, ay = -350 - h2 * 800, az = 2000 + h3 * 8000;
+        var bx = ax + (h2 - 0.5) * 3000, by = ay - 200 + h1 * 400, bz = az + (h1 - 0.5) * 3000;
+        var t0 = Math.max(0, u - 0.18), p0 = fProj(W, H, ax + (bx - ax) * t0, ay + (by - ay) * t0, az + (bz - az) * t0, 1);
+        var p1 = fProj(W, H, ax + (bx - ax) * u, ay + (by - ay) * u, az + (bz - az) * u, 1);
+        ctx.strokeStyle = (i % 3) ? "#ff3b2e" : "#4dff7a";
+        ctx.globalAlpha = 0.3; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+        ctx.globalAlpha = 1; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+      }
+      /* distant fighters; some are hit */
+      for (i = 0; i < 8; i++) {
+        P = 4 + (i % 3) * 1.3; u = now / P + i * 0.29; cyc = Math.floor(u); u -= cyc;
+        var g1 = hash1(cyc * 3 + i * 211), g2 = hash1(cyc * 19 + i * 7);
+        X = fCanX + (g1 - 0.5) * 3000 + (u - 0.5) * 2600 * (i % 2 ? 1 : -1); Y = -500 - g2 * 600; Z = 2500 + g1 * 6000 - u * 1500;
+        q = fProj(W, H, X, Y, Z, 1); if (q.x < -40 || q.x > W + 40) continue;
+        var sz = Math.max(4, Math.min(11, 150 * q.s)), dir = i % 2 ? 1 : -1;
+        if (g2 < 0.25 && u > 0.7) {                          /* shot down */
+          var e2 = (u - 0.7) / 0.3; ctx.globalAlpha = 1 - e2;
+          ctx.fillStyle = "#ffd27a"; ctx.beginPath(); ctx.arc(q.x, q.y, sz * (1 + 3 * e2), 0, 2 * Math.PI); ctx.fill();
+          continue;
+        }
+        ctx.globalAlpha = 0.9; ctx.fillStyle = "#0d1118";
+        ctx.beginPath(); ctx.moveTo(q.x + dir * sz, q.y); ctx.lineTo(q.x - dir * sz, q.y - sz * 0.6); ctx.lineTo(q.x - dir * sz * 0.6, q.y); ctx.lineTo(q.x - dir * sz, q.y + sz * 0.6); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#7fe8ff"; ctx.fillRect(q.x - dir * sz - 1, q.y - 1, 2, 2);
+      }
+      ctx.globalAlpha = 1;
+    }
     /* sparse lamps on the surface either side of the trench */
-    function surfLights(s, n, f) {
+    function surfLights(s, n, pathC, pathA) {
       for (var side = -1; side <= 1; side += 2) {
         var cx = canX(s), off = [60 + ((n * 53) % 7) * 45, 320 + ((n * 37) % 5) * 70];
         for (var i = 0; i < 2; i++) {
           if ((n + i + (side > 0 ? 1 : 0)) % 3) continue;
           var q = fProjS(W, H, { x: cx + side * (w + off[i]), y: top, s: s });
-          var r = Math.min(3.5, Math.max(1, 4 * q.s));
-          ctx.globalAlpha = 0.3 + 0.7 * f; ctx.fillStyle = i ? "#ffcf5a" : "#7fe8ff";
-          ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, 2 * Math.PI); ctx.fill();
+          var r = Math.min(3.5, Math.max(1, 4 * q.s)), pth = i ? pathA : pathC;
+          pth.moveTo(q.x + r, q.y); pth.arc(q.x, q.y, r, 0, 2 * Math.PI);
         }
       }
     }
@@ -1065,11 +1263,12 @@
       var hz = ctx.createLinearGradient(0, ph - 46, 0, ph);
       hz.addColorStop(0, "rgba(80,120,170,0)"); hz.addColorStop(1, "rgba(120,170,220,.35)");
       ctx.fillStyle = hz; ctx.fillRect(0, ph - 46, W, 46);
-      ctx.strokeStyle = "#3d5068"; ctx.lineWidth = 1;                      /* far panel rows */
+      ctx.strokeStyle = "#3d5068"; ctx.lineWidth = 1; ctx.globalAlpha = 0.5;  /* far panel rows */
+      ctx.beginPath();
       for (var zz = zEnd * 1.35; zz < 40000; zz *= 1.35) {
-        var y = fProj(W, H, fCanX, top, zz, 1).y; ctx.globalAlpha = 0.5;
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+        var y = fProj(W, H, fCanX, top, zz, 1).y; ctx.moveTo(0, y); ctx.lineTo(W, y);
       }
+      ctx.stroke();
       var base = Math.ceil((fProg + FCAN_END) / 150) * 150, i, side;
       for (i = 0; i < 16; i++) {
         var sT = base + i * 150, z = (sT - fProg) * CAN_Z, idx = sT / 150;
@@ -1083,7 +1282,35 @@
           ctx.strokeStyle = "#4f6d8f"; ctx.lineWidth = 1; ctx.strokeRect(pb.x - hw, pt.y, hw * 2, pb.y - pt.y);
           ctx.fillStyle = (idx + side) % 2 ? "#ff5a4a" : "#ffcf5a";
           ctx.fillRect(pb.x - 1, pt.y - 2, 2, 2);
+          var hh = (idx * 2654435761 + (side > 0 ? 7 : 0)) >>> 0;
+          if (hh % 4 === 0) {                                /* damaged: smoke plume */
+            var tn = performance.now() / 1000;
+            for (var sm = 0; sm < 3; sm++) {
+              var su = (tn * 0.35 + sm / 3 + idx * 0.13) % 1;
+              ctx.globalAlpha = fa * 0.45 * (1 - su); ctx.fillStyle = "#4a4d55";
+              ctx.beginPath(); ctx.arc(pb.x + su * 10 * side, pt.y - su * 60 * pb.s * 6, (4 + su * 14) * Math.max(0.4, pb.s * 4), 0, 2 * Math.PI); ctx.fill();
+            }
+            ctx.globalAlpha = fa * (0.5 + 0.5 * Math.sin(tn * 9 + idx)); ctx.fillStyle = "#ff7a2a";
+            ctx.fillRect(pb.x - 2, pt.y - 2, 4, 3);
+          } else if (hh % 4 === 1) {                         /* far battery firing */
+            var fp = (performance.now() / 1000 * 1.1 + idx * 0.29) % 1;
+            if (fp < 0.3) {
+              ctx.globalAlpha = fa; ctx.strokeStyle = side > 0 ? "#ff5a3a" : "#7dff8a"; ctx.lineWidth = 1.5;
+              ctx.beginPath(); ctx.moveTo(pb.x, pt.y); ctx.lineTo(pb.x - side * 40 * fp, pt.y - 140 * fp - 20); ctx.stroke();
+            }
+          }
         }
+      }
+      /* distant surface explosions near the horizon */
+      var tq = performance.now() / 1000;
+      for (i = 0; i < 3; i++) {
+        var Pq = 2.3 + i * 0.7, uq = tq / Pq + i * 0.41, cq = Math.floor(uq); uq -= cq;
+        if (uq > 0.4) continue;
+        var hx = hash1(cq * 23 + i * 5), zq = zEnd * 2 + hash1(cq * 29 + i) * 14000;
+        var pq = fProj(W, H, fCanX + (hx - 0.5) * 5000, top, zq, 1), rq = Math.max(3, 260 * pq.s) * (0.4 + uq * 2);
+        ctx.globalAlpha = 1 - uq / 0.4; ctx.fillStyle = uq < 0.1 ? "#fff3c0" : "#ff8a2a";
+        ctx.beginPath(); ctx.arc(pq.x, pq.y, rq, Math.PI, 0); ctx.fill();
+        ctx.strokeStyle = "#ffd27a"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(pq.x, pq.y, rq * 1.8, Math.PI, 0); ctx.stroke();
       }
       ctx.globalAlpha = 1;
     }
@@ -1142,7 +1369,8 @@
     di = decos.length - 1;
     if (gate && fProg > 120) gd = 198 - ((fProg - 120) % 200);
     ri = ribs.length - 1;
-    if (above) { farSurface(); nearSurface(); }
+    if (above) farSurface();
+    battleSky();                      /* ambient battle in the sky (host only) */
     for (j = S.length - 1; j > 0; j--) {
       a = S[j - 1]; b = S[j]; t = b.d / FCAN_END; e = Math.max(0, 1 - t);
       ctx.globalAlpha = 1;
@@ -1163,6 +1391,12 @@
       while (ri >= 0 && ribs[ri] > a.d) { if (ribs[ri] <= b.d) rib(cross(ribs[ri])); ri--; }
       if (gd > a.d && gd <= b.d) gatePanel(cross(gd), gate.p);
     }
+    /* Seen from above, everything in the trench lies BELOW the surface plane,
+       so the solid surface is painted AFTER the trench pass: it hides every
+       part of the canyon that is under metal, and only the opening between
+       the two rim lines -- exactly where Glon lets the ship descend -- shows
+       the canyon. Then surface detail, structures and a strong rim edge. */
+    if (above) { nearSurface(); surfaceDetail(); rimEdges(); }
     if (gateMark) gateMarker(gateMark);
     /* scrape warning: an amber glow on that screen edge, before any shield loss */
     if (ww.amt > 0) {
@@ -1380,8 +1614,13 @@
      Each is drawn as a bright leading head + a long fading tail so it reads as
      travel, not as static wireframe. */
   function fStreaks(ctx, W, H, c, t, sp, boost) {
+    /* Batched by brightness band: each streak goes into one of NB Path2Ds
+       (tail + head), so the whole field is 2*NB strokes instead of ~250
+       (this was the largest JS cost of every fighter frame). */
     ctx.save(); ctx.lineCap = "round";
-    var N = 124, ca, sa, i, ph, r, len, x0, y0, x1, y1, mx, my, a, head;
+    var N = 124, NB = 4, ca, sa, i, ph, r, len, mx, my, bnd, k;
+    var tails = [], heads = [];
+    for (k = 0; k < NB; k++) { tails.push(new Path2D()); heads.push(new Path2D()); }
     var maxR = Math.sqrt(W * W + H * H) * 0.64;
     for (i = 0; i < N; i++) {
       var ang = i * 2.399963;
@@ -1389,19 +1628,17 @@
       ph = ((i * 0.117 + t * (0.72 + (i % 11) * 0.04) * sp) % 1 + 1) % 1;
       r = 6 + ph * ph * maxR;
       len = (16 + ph * ph * (210 + (boost ? 170 : 0)));
-      x0 = c.x + ca * r; y0 = c.y + sa * r;                 /* leading head */
-      x1 = c.x + ca * (r - len); y1 = c.y + sa * (r - len); /* tail */
       mx = c.x + ca * (r - len * 0.28); my = c.y + sa * (r - len * 0.28);
-      a = 0.14 + ph * 0.86;
-      /* fading tail */
+      bnd = Math.min(NB - 1, Math.floor(ph * NB));
+      tails[bnd].moveTo(c.x + ca * (r - len), c.y + sa * (r - len)); tails[bnd].lineTo(mx, my);   /* fading tail */
+      heads[bnd].moveTo(mx, my); heads[bnd].lineTo(c.x + ca * r, c.y + sa * r);                   /* bright head */
+    }
+    for (k = 0; k < NB; k++) {
+      var pm = (k + 0.5) / NB, a = 0.14 + pm * 0.86;
       ctx.strokeStyle = "rgba(120,205,255," + (a * 0.35).toFixed(3) + ")";
-      ctx.lineWidth = 1 + ph * (boost ? 2.6 : 1.8);
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(mx, my); ctx.stroke();
-      /* bright head */
-      ctx.strokeStyle = (boost && (i % 3 === 0)) ? "rgba(225,250,255," + a + ")"
-                       : "rgba(160,230,255," + a + ")";
-      ctx.lineWidth = 1.4 + ph * (boost ? 4.6 : 3.4);
-      ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(x0, y0); ctx.stroke();
+      ctx.lineWidth = 1 + pm * (boost ? 2.6 : 1.8); ctx.stroke(tails[k]);
+      ctx.strokeStyle = (boost ? "rgba(200,245,255," : "rgba(160,230,255,") + a.toFixed(3) + ")";
+      ctx.lineWidth = 1.4 + pm * (boost ? 4.6 : 3.4); ctx.stroke(heads[k]);
     }
     ctx.restore();
   }
@@ -1442,7 +1679,10 @@
     wc.addColorStop(1, "rgba(90,200,255,0)");
     ctx.fillStyle = wc; ctx.beginPath(); ctx.arc(cw.x, cw.y, 46 + (fBoost > 0 ? 24 : 0), 0, 2 * Math.PI); ctx.fill();
     fStars(ctx, W, H, cw, t, sp);
+    /* above the rim the surface gives the motion cue: let the battle show */
+    if (fPy < CAN_TOP) ctx.globalAlpha = 0.35;
     fStreaks(ctx, W, H, cw, t, sp, fBoost > 0);
+    ctx.globalAlpha = 1;
     ctx.restore();
   }
   /* boost frame shake (shared by the background and the cannons) */
@@ -1637,7 +1877,7 @@
     var ctx = canvas.getContext("2d");
     var W = canvas.width, H = canvas.height;
     var lines = script.split("\n");
-    var cam = 0, tx = 0, ty = 0;      /* tx: gameplay plane scrolls 1:1 with cam; ty: forest ground calibration */
+    var cam = 0, tx = 0, ty = 0, forestFrame = false, forestTx = 0;      /* tx: gameplay plane scrolls 1:1 with cam; ty: forest ground calibration */
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i].replace(/^\s+|\s+$/g, "");
       if (!line) continue;
@@ -1709,7 +1949,7 @@
         cam = +p[1];
         tx = -cam;
         ty = FOREST_GROUND_DY;
-        caveMode = false;
+        caveMode = false; forestFrame = true; forestTx = tx;
         signsDue = true;              /* signs go after the trees, before actors */
         paintLayer(ctx, W, 0, cam);   /* distant sky / hills  (slowest) */
         paintLayer(ctx, W, 1, cam);   /* native bush / treeline           */
@@ -1728,7 +1968,7 @@
         drawSign(ctx, +p[1], +p[2], tx, ty);
       } else if (op === "V") {
         if (fActive) { fActive = false; setFighterUi(false); }
-        cam = +p[1]; tx = -cam; ty = 0; caveMode = true;   /* cave plane scrolls 1:1 */
+        cam = +p[1]; tx = -cam; ty = 0; caveMode = true; forestFrame = false;   /* cave plane scrolls 1:1 */
         drawCaveBackground(ctx, W, H, cam);
       } else if (op === "J") {
         drawCaveProp(ctx, +p[1], +p[2], tx);
@@ -1770,6 +2010,7 @@
         addGhost(+p[1], +p[2], +p[3], +p[4] + ty, tx);
       }
     }
+    if (forestFrame) drawOccluders(ctx, W, H, forestTx);   /* vegetation in front of the actors */
     drawGhosts(ctx, W);
     if (fActive) {                              /* audio cues from frame deltas */
       if (fBolts.length > prevBolts) playEnemyFire();
