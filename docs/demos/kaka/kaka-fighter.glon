@@ -9,12 +9,14 @@
 ;; kaka.glon's `step` routes F_E == 2 to `fighter-step` (the only name it needs).
 ;;
 ;; Rangi field reuse in fighter mode:
-;;   F_X  lateral world  (+/-260)      F_Y  vertical world (+/-120)
+;;   F_X  lateral world  (+/-700)      F_Y  vertical world (-420 high .. 120 low;
+;;        the trench rim / Death Star surface is at -150)
 ;;   F_STATE  phase 0 run / 1 escape / 2 win / 3 fail / 4 win debrief / 5 fail debrief
 ;;   F_C  local shield (hits left)     F_A  brief invulnerability
 ;;   F_TARGET  laser cooldown / escape countdown   F_D  boost timer
 ;; Globals (declared in kaka.glon): fprog = mission clock, fbomb = 1 armed,
-;; debrief stats fshots / fkills / fboosts, fdbr = 1 once FIRE was released.
+;; debrief stats fshots / fkills / fboosts, fdbr = 1 once FIRE was released
+;; (in flight fdbr is the stray-from-trench clock).
 ;; Kind K_FOE carries one foe AND its single in-flight bolt in the same tuple:
 ;;   F_X/F_Y pos  F_C depth (420->0)  F_A behaviour  F_B crossing sign
 ;;   F_D fire cooldown  F_TARGET bolt life  F_E/F_F bolt x/y  F_VY bolt z
@@ -54,7 +56,7 @@ fighter-enter: func [] [
     block-set! rangi F_STATE 0  block-set! rangi F_C 3  block-set! rangi F_A 30
     block-set! rangi F_TARGET 0  block-set! rangi F_D 0
     fprog: 1  fbomb: 1
-    fshots: 0  fkills: 0  fboosts: 0  fwhy: 0
+    fshots: 0  fkills: 0  fboosts: 0  fwhy: 0  fdbr: 0
 ]
 ;; free every live foe (mission entry/exit; forest actors stay parked)
 fighter-clear: func [i] [
@@ -65,7 +67,8 @@ fighter-clear: func [i] [
 ]
 ;; mission-local hit: one shield step + brief invulnerability; 0 shield = fail.
 ;; r = what hit the ship (kept for the debrief): 1 left wall, 2 right wall,
-;; 3 gate, 4 rammed by a fighter, 5 fighter fire
+;; 3 gate, 4 rammed by a fighter, 5 fighter fire, 6 abandoned the run
+;; (set directly), 7 the Death Star surface
 fighter-hit: func [r] [
     either > block-at rangi F_A 0 [ none ] [
         fwhy: r
@@ -79,11 +82,12 @@ fighter-controls: func [] [
     ;; a boost press counts once (only when no boost is already running)
     fboosts: + fboosts * kf imax 0 - 1 block-at rangi F_D
     either = kf 1 [ block-set! rangi F_D 24 ] [ none ]
-    sp: either > block-at rangi F_D 0 [ 9 ] [ 5 ]
+    sp: + 5 * 4 imin 1 block-at rangi F_D
     block-set! rangi F_X + block-at rangi F_X * - kr kl sp
     block-set! rangi F_Y + block-at rangi F_Y * - kd ku sp
-    block-set! rangi F_X imax -260 imin 260 block-at rangi F_X
-    block-set! rangi F_Y imax -120 imin 120 block-at rangi F_Y
+    ;; free flight: up out of the trench (rim at -150) to -420, wide laterally
+    block-set! rangi F_X imax -700 imin 700 block-at rangi F_X
+    block-set! rangi F_Y imax -420 imin 120 block-at rangi F_Y
 ]
 ;; deterministic spawn: a foe every 18 ticks, <=5 live; behaviour = id mod 3
 ;; one foe: close depth, behave, fire its bolt, ram/bolt the player
@@ -156,7 +160,8 @@ fighter-gates: func [] [
             gy: block-at rangi F_Y
             gv: + + + * block-at gate-k gg gy  * block-at gate-k + gg 1 - block-at rangi F_X can-x fprog
                     * block-at gate-k + gg 2 abs gy  block-at gate-k + gg 3
-            either > gv 0 [ none ] [ fighter-hit 3 ]
+            ;; gates live inside the trench: above the rim (-150) they cannot hit
+            either > imax gv - -150 gy 0 [ none ] [ fighter-hit 3 ]
         ] [ none ]
     ] [ none ]
 ]
@@ -166,12 +171,27 @@ fighter-gates: func [] [
 fighter-run: func [] [
     fighter-controls
     cen: can-x fprog
-    ;; wall scrape: lose a shield step and bounce back just inside the wall, so
-    ;; the ship never sits outside the visible canyon
-    either > abs - block-at rangi F_X cen 110 [
-        fighter-hit + 1 imax 0 sign - block-at rangi F_X cen
-        block-set! rangi F_X + cen * 100 sign - block-at rangi F_X cen
+    ;; walls + Death Star surface: solid only when the ship is BOTH outside the
+    ;; trench laterally (pl > 0) AND below the rim at -150 (pv > 0). Above the
+    ;; rim the ship crosses over the walls freely. The smaller penetration
+    ;; decides the bounce: came down onto the surface -> back up above it
+    ;; (reason 7); drifted into a wall -> back just inside it (reason 1/2).
+    pl: - abs - block-at rangi F_X cen 110
+    pv: + block-at rangi F_Y 150
+    either > imin pl pv 0 [
+        either < pv pl [
+            fighter-hit 7  block-set! rangi F_Y -160
+        ] [
+            fighter-hit + 1 imax 0 sign - block-at rangi F_X cen
+            block-set! rangi F_X + cen * 100 sign - block-at rangi F_X cen
+        ]
     ] [ none ]
+    ;; mission discipline: more than 400 from the trench centre for 75 ticks
+    ;; (3 s) abandons the run (reason 6). The stray clock reuses fdbr, which
+    ;; is idle in flight (debrief entry resets it): the WASM global context is
+    ;; full, so no new top-level global can be added. It drives the HUD countdown.
+    fdbr: * imax 0 sign - abs - block-at rangi F_X cen 400  + fdbr 1
+    either > fdbr 75 [ fwhy: 6  block-set! rangi F_STATE 3 ] [ none ]
     ;; foes spawn at depth 420 = 140 ticks ahead, so they sit in the canyon there
     fc: can-x + fprog 140
     ;; spawn a foe every 18 ticks, <=5 live (behaviour = id mod 3)
@@ -200,16 +220,17 @@ fighter-run: func [] [
         either = kg 1 [
             either > fbomb 0 [
                 fbomb: 0
-                either < abs - block-at rangi F_X can-x fprog 70 [
+                ;; aligned (<70 off centre) AND inside the trench (below the rim)
+                either < imax abs - block-at rangi F_X can-x fprog - -80 block-at rangi F_Y 70 [
                     either >= fprog 850 [
                         block-set! rangi F_STATE 1  block-set! rangi F_TARGET 90  score: + score 200
                     ] [ none ]
                 ] [ none ]
             ] [ none ]
         ] [ none ]
-    either > block-at rangi F_A 0 [ block-set! rangi F_A - block-at rangi F_A 1 ] [ none ]
-    either > block-at rangi F_D 0 [ block-set! rangi F_D - block-at rangi F_D 1 ] [ none ]
-    either > block-at rangi F_TARGET 0 [ block-set! rangi F_TARGET - block-at rangi F_TARGET 1 ] [ none ]
+    block-set! rangi F_A imax 0 - block-at rangi F_A 1
+    block-set! rangi F_D imax 0 - block-at rangi F_D 1
+    block-set! rangi F_TARGET imax 0 - block-at rangi F_TARGET 1
     either >= fprog 1300 [ block-set! rangi F_STATE 3 ] [ none ]
 ]
 ;; exit: fail -> SKULL_CAVE hub; success -> FOREST just short of the cave
@@ -264,7 +285,7 @@ fighter-debrief: func [] [
 ;; U ex ey ez behaviour                     foe
 ;; K bx by bz                               enemy bolt
 ;; Y on                                     player laser this tick
-;; Z score kills shots boosts hold why          mission stats (the host shows the
+;; Z score kills shots boosts hold why stray          mission stats (the host shows the
 ;;                                          debrief in phase 4/5; FIRE counts
 ;;                                          once hold is 0)
 ;; G pattern                                approaching gate (depth from fprog)
@@ -284,9 +305,9 @@ fdraw: func [i] [
 fighter-scene: func [] [
     p-byte 65 p-num block-at rangi F_X p-num block-at rangi F_Y
     p-num block-at rangi F_STATE p-num block-at rangi F_C
-    p-num either > block-at rangi F_D 0 [ 1 ] [ 0 ] p-num krock p-num fprog p-num 110 p-num block-at rangi F_B p-eol
+    p-num imin 1 block-at rangi F_D p-num krock p-num fprog p-num 110 p-num block-at rangi F_B p-eol
     p-byte 90 p-num score p-num fkills p-num fshots p-num fboosts
-    p-num block-at rangi F_TARGET p-num fwhy p-eol
+    p-num block-at rangi F_TARGET p-num fwhy p-num fdbr p-eol
     either > fprog 120 [
         p-byte 71 p-num mod / - fprog 120 200 5 p-eol
     ] [ none ]
