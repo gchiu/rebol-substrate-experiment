@@ -100,12 +100,12 @@ int main(void) {
     long dy = run_int("block-at rangi F_Y");
     check(uy < 0 && dy > 0, "D UP/DOWN steer vertically");
     /* E. bounded on every edge */
-    run_source(ENTER "kl: 1"); ticks("fighter-controls", 60);
-    check(run_int("block-at rangi F_X") == -260, "E lateral clamp left = -260");
-    run_source(ENTER "kr: 1"); ticks("fighter-controls", 60);
-    check(run_int("block-at rangi F_X") == 260, "E lateral clamp right = 260");
-    run_source(ENTER "ku: 1"); ticks("fighter-controls", 60);
-    check(run_int("block-at rangi F_Y") == -120, "E vertical clamp up = -120");
+    run_source(ENTER "kl: 1"); ticks("fighter-controls", 160);
+    check(run_int("block-at rangi F_X") == -700, "E lateral clamp left = -700");
+    run_source(ENTER "kr: 1"); ticks("fighter-controls", 160);
+    check(run_int("block-at rangi F_X") == 700, "E lateral clamp right = 700");
+    run_source(ENTER "ku: 1"); ticks("fighter-controls", 160);
+    check(run_int("block-at rangi F_Y") == -420, "E vertical clamp up = -420 (above the rim)");
     run_source(ENTER "kd: 1"); ticks("fighter-controls", 60);
     check(run_int("block-at rangi F_Y") == 120, "E vertical clamp down = 120");
 
@@ -230,6 +230,28 @@ int main(void) {
     run_source("reset");
     check(run_int("block-at rangi F_E") == 0 && run_int("fprog") == 0 && run_int("fbomb") == 0
           && run_int("ts-count K_FOE") == 0, "X reset returns a coherent fresh game");
+
+    /* ---- open trench: climb out over the Death Star surface ---------------
+       rim / surface at F_Y -150; walls + surface solid only below the rim */
+    run_source(ENTER "fprog: 660  block-set! rangi F_X 0  block-set! rangi F_Y -200  block-set! rangi F_A 0  fighter-run");
+    check(run_int("block-at rangi F_C") == 3, "O1 above the rim the ship crosses over the wall");
+    run_source(ENTER "fprog: 660  block-set! rangi F_X 0  block-set! rangi F_Y -140  block-set! rangi F_A 0  fighter-run");
+    check(run_int("block-at rangi F_C") == 2 && run_int("fwhy") == 7 && run_int("block-at rangi F_Y") == -160,
+          "O2 coming down onto the surface hits it and pops back above");
+    run_source(ENTER "fprog: 318  block-set! rangi F_Y -200  block-set! rangi F_A 0  fighter-gates");
+    check(run_int("block-at rangi F_C") == 3, "O3 gates cannot hit above the rim");
+    run_source(ENTER "fprog: 1020  block-set! rangi F_X 0  block-set! rangi F_Y -200  kg: 1  fighter-run  kg: 0");
+    check(run_int("block-at rangi F_STATE") == 0, "O4 the bomb only counts inside the trench");
+    run_source(ENTER "fprog: 1020  block-set! rangi F_X 500  block-set! rangi F_Y -300  block-set! rangi F_A 9999");
+    ticks("fighter-run", 70);
+    long st70 = run_int("block-at rangi F_STATE");
+    ticks("fighter-run", 8);
+    check(st70 == 0 && run_int("block-at rangi F_STATE") == 3 && run_int("fwhy") == 6,
+          "O5 straying > 400 from the trench for 3 s abandons the run");
+    run_source(ENTER "fprog: 1020  block-set! rangi F_X 500  block-set! rangi F_Y -300  block-set! rangi F_A 9999");
+    ticks("fighter-run", 60);
+    run_source("block-set! rangi F_X 0  block-set! rangi F_Y 0  fighter-run");
+    check(run_int("fdbr") == 0 && run_int("block-at rangi F_STATE") == 0, "O6 returning to the trench resets the stray clock");
 
     /* ---- winding canyon (D12S.23) -----------------------------------------
        canyon centre = can-x fprog; half-width 110; collision/render share it.

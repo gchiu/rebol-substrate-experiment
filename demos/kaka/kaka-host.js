@@ -386,6 +386,38 @@
      collisions are unchanged and everything stands on the painted lawn. The
      parallax layers themselves are not moved; the cave and fighter use 0. */
   var FOREST_GROUND_DY = 48;
+  /* The walkable forest trail. Measured: the painted lawn's front edge under
+     Rangi swings ~70 px (canvas y ~360..432) as the near-landscape layer
+     scrolls at 0.70x while the gameplay plane moves at 1.0x, so no constant
+     offset can keep his feet on painted ground everywhere (the median lawn
+     line, ~401-405, is what FOREST_GROUND_DY = 48 matches). Nothing painted
+     moved with the gameplay plane; this band does. It sits on Glon's ground
+     line (Rangi F_Y 330 -> feet y 358 + ty) and scrolls exactly with the world
+     (world-fixed pebbles and tufts), so actors are grounded at every scroll
+     position. Cheap: one gradient band + ~20 small marks per frame. */
+  var TRAIL_FEET = 358;
+  function drawTrail(ctx, W, tx, ty) {
+    var y0 = TRAIL_FEET + ty, top = y0 - 9, bot = y0 + 15, g, x, wx, h, k;
+    g = ctx.createLinearGradient(0, top - 6, 0, bot + 8);
+    g.addColorStop(0, "rgba(96,74,44,0)"); g.addColorStop(0.16, "rgba(110,84,50,.92)");
+    g.addColorStop(0.55, "rgba(92,68,40,.95)"); g.addColorStop(0.85, "rgba(70,52,30,.85)"); g.addColorStop(1, "rgba(60,46,26,0)");
+    ctx.fillStyle = g; ctx.fillRect(0, top - 6, W, bot - top + 14);
+    /* world-fixed pebbles and grass tufts (hash of world x) -> 1:1 motion */
+    var x0 = Math.floor(-tx / 23) * 23;
+    for (wx = x0; wx < -tx + W + 23; wx += 23) {
+      k = (wx * 2654435761) >>> 0; x = wx + tx;
+      h = (k >>> 8) % 100;
+      if (h < 38) {                                   /* pebble */
+        ctx.fillStyle = h < 19 ? "rgba(150,132,104,.8)" : "rgba(58,44,28,.7)";
+        ctx.beginPath(); ctx.ellipse(x + (k % 13), y0 - 2 + (k >>> 4) % 12, 2.5 + h % 3, 1.6, 0, 0, 2 * Math.PI); ctx.fill();
+      } else if (h < 70) {                            /* grass tuft on the trail edge */
+        var ex = x + (k % 17), ey = (h & 1) ? top + 2 : bot - 1;
+        ctx.strokeStyle = "rgba(120,160,60,.85)"; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex - 3, ey - 6); ctx.moveTo(ex, ey); ctx.lineTo(ex + 1, ey - 8);
+        ctx.moveTo(ex, ey); ctx.lineTo(ex + 4, ey - 5); ctx.stroke();
+      }
+    }
+  }
   var SIGN_LABELS = [
     "SKULL CAVE 100 km", "SKULL CAVE 75 km", "SKULL CAVE 50 km",
     "SKULL CAVE 25 km", "SKULL CAVE 5 km", "SKULL CAVE \u2014 NEXT EXIT"
@@ -725,7 +757,9 @@
   var CAN_Z = 3;
   var FCAN_NEAR = 6, FCAN_END = 200, FCAN_STEP = 4;   /* sampled ticks ahead */
   var FCAN_RIB = 25;
-  var FDECO = 10;      /* one wall-detail slot per 10 ticks of flight, world-fixed */   /* one structural rib per second of flight, world-fixed */
+  var FDECO = 10;
+  var FSURF = [26, 31, 41];   /* Death Star surface metal */
+  var FSURF_LINES = 8;        /* longitudinal surface seams each side (every 80 units) */      /* one wall-detail slot per 10 ticks of flight, world-fixed */   /* one structural rib per second of flight, world-fixed */
   var FFOCAL = 230;
   /* WALL SURFACE COORDINATES. The canyon walls are continuous, addressable
      surfaces, not just a collision limit: a point on a wall is (side, s, v)
@@ -759,11 +793,15 @@
        keeps its size relative to the frame on wider phone canvases. */
     var vk = Math.max(1, W / 640);
     var s = FFOCAL * vk / z;
-    return { x: c.x + fYawPx(W) + (ox - fPx) * s, y: c.y + (oy - fPy) * s * 0.62, s: s };
+    return { x: c.x + fYawPx(W) + (ox - fPx) * s, y: c.y - fPitchPx(H) + (oy - fPy) * s * 0.62, s: s };
   }
   /* The camera heads along the canyon tangent at the ship (small-angle yaw =
      a constant screen shift of focal * slope / CAN_Z), so the corridor near the
      ship runs straight ahead and the bend ahead visibly sweeps off to one side. */
+  /* Above the trench rim the camera tilts down with height (no extra
+     controls): the horizon rises so the surface and the trench winding below
+     come into view. Inside the trench there is no tilt. */
+  function fPitchPx(H) { return fPy < CAN_TOP ? Math.min(H * 0.38, (CAN_TOP - fPy) * 0.62) : 0; }
   function fYawPx(W) {
     var px = -FFOCAL * Math.max(1, W / 640) * fYaw / CAN_Z;
     return Math.max(-W * 0.3, Math.min(W * 0.3, px));
@@ -861,25 +899,39 @@
   }
   /* scrape warning 0..1 over the last 30 units before the wall at fCanW */
   function fWallWarn() {
-    var d = Math.abs(fPx - fCanX);
+    var d = fPy < CAN_TOP ? 0 : Math.abs(fPx - fCanX);   /* above the rim nothing to scrape */
     return { amt: Math.max(0, Math.min(1, (d - (fCanW - 30)) / 30)), side: fPx > fCanX ? 1 : -1 };
   }
   function drawCanyonWalls(ctx, W, H, gate) {
     var top = CAN_TOP, mid = 0, bot = CAN_BOT, w = fCanW, j, d, a, b, t, e;
     var S = [], ribs = [], decos = [], gd = -1, ri, di, gateMark = null, gatePat = 0;
     var hot = fWallHit ? Math.max(0, 1 - (performance.now() - fWallHit) / 450) : 0;
-    var ww = fWallWarn(), wl, wr, near;
+    var ww = fWallWarn(), wl, wr, near, above = fPy < CAN_TOP, visL = true, visR = true;
     ctx.save();
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     /* one cross-section dd ticks ahead, built from the wall-surface mapping */
     function cross(dd) {
       var s = fProg + dd;
       function wp(side, v) { return fProjS(W, H, canWall(side, s, v)); }
-      return { d: dd, cx: canX(s), z: dd * CAN_Z,
+      var c = { d: dd, cx: canX(s), z: dd * CAN_Z,
         fl: wp(-1, bot), cl: wp(-1, top), ml: wp(-1, mid),
         fr: wp(1, bot), cr: wp(1, top), mr: wp(1, mid),
         ul: wp(-1, -75), ur: wp(1, -75), ll: wp(-1, 75), lr: wp(1, 75) };
+      if (above) {
+        /* Death Star surface at the rim height: outer edge sized to just cover
+           the screen at this depth, plus grid points every 80 units outward */
+        var L = W / c.fl.s + Math.abs(fPx - c.cx) + 160, k;
+        c.sol = fProj(W, H, c.cx - w - L, top, c.z, 1); c.sor = fProj(W, H, c.cx + w + L, top, c.z, 1);
+        c.gl = []; c.gr = [];
+        for (k = 1; k <= FSURF_LINES; k++) {
+          c.gl.push(fProj(W, H, c.cx - w - k * 80, top, c.z, 1)); c.gr.push(fProj(W, H, c.cx + w + k * 80, top, c.z, 1));
+        }
+      }
+      return c;
     }
+    /* a wall face is drawn only when the camera can see its inner side:
+       inside/below the rim always; above the rim, not the wall you are over */
+    function wallVis(side, cx) { return !above || (side < 0 ? fPx > cx - w : fPx < cx + w); }
     /* ---- wall surface detail ------------------------------------------
        Flat, wall-mounted, world-fixed items every FDECO ticks, staggered
        between the walls (they stream past = speed/depth cue, and their
@@ -894,7 +946,9 @@
     function decor(dd) {
       var s = fProg + dd, n = Math.round(s / FDECO), f = Math.max(0, 1 - dd / FCAN_END), side, kind, q, r;
       if (f < 0.12) return;
+      if (above) surfLights(s, n, f);
       for (side = -1; side <= 1; side += 2) {
+        if (!wallVis(side, canX(s))) continue;
         kind = (n + (side > 0 ? 3 : 0)) % 8;
         ctx.globalAlpha = 0.25 + 0.75 * f;
         if (kind === 0 || kind === 5) {           /* running light high on the wall */
@@ -945,8 +999,8 @@
     function edge(k, alpha, width, color) {
       ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = width;
       ctx.beginPath();
-      ctx.moveTo(a[k + "l"].x, a[k + "l"].y); ctx.lineTo(b[k + "l"].x, b[k + "l"].y);
-      ctx.moveTo(a[k + "r"].x, a[k + "r"].y); ctx.lineTo(b[k + "r"].x, b[k + "r"].y);
+      if (visL || k === "c") { ctx.moveTo(a[k + "l"].x, a[k + "l"].y); ctx.lineTo(b[k + "l"].x, b[k + "l"].y); }
+      if (visR || k === "c") { ctx.moveTo(a[k + "r"].x, a[k + "r"].y); ctx.lineTo(b[k + "r"].x, b[k + "r"].y); }
       ctx.stroke();
     }
     function rib(c) {
@@ -955,9 +1009,83 @@
       ctx.lineWidth = 0.8 + 2.6 * f;
       /* posts on the two wall faces only: nothing bridges the open trench */
       ctx.beginPath();
-      ctx.moveTo(c.fl.x, c.fl.y); ctx.lineTo(c.cl.x, c.cl.y);
-      ctx.moveTo(c.fr.x, c.fr.y); ctx.lineTo(c.cr.x, c.cr.y);
+      if (wallVis(-1, c.cx)) { ctx.moveTo(c.fl.x, c.fl.y); ctx.lineTo(c.cl.x, c.cl.y); }
+      if (wallVis(1, c.cx)) { ctx.moveTo(c.fr.x, c.fr.y); ctx.lineTo(c.cr.x, c.cr.y); }
       ctx.stroke();
+      if (above) {                    /* transverse surface panel seams */
+        ctx.globalAlpha = 0.45 * f; ctx.strokeStyle = "#5b7390"; ctx.lineWidth = 0.8 + 1.4 * f;
+        ctx.beginPath(); ctx.moveTo(c.cl.x, c.cl.y); ctx.lineTo(c.sol.x, c.sol.y);
+        ctx.moveTo(c.cr.x, c.cr.y); ctx.lineTo(c.sor.x, c.sor.y); ctx.stroke();
+      }
+    }
+    /* The near Death Star surface, one polygon per side (rim line out to the
+       screen-covering outer edge) plus all longitudinal seams in one stroke.
+       Seen from above it never overlaps the trench opening, so it is painted
+       before the trench pass in 2 fills instead of ~100 overlapping slabs. */
+    function nearSurface() {
+      var i, k, side, n = S.length, g = ctx.createLinearGradient(0, S[n - 1].cl.y, 0, S[0].cl.y);
+      g.addColorStop(0, fFog(FSURF, 1, 0.55, 0, 0)); g.addColorStop(1, fFog(FSURF, 0, 0.55, 0, 0));
+      ctx.globalAlpha = 1; ctx.fillStyle = g;
+      for (side = 0; side < 2; side++) {
+        var rim = side ? "cr" : "cl", out = side ? "sor" : "sol";
+        ctx.beginPath(); ctx.moveTo(S[0][rim].x, S[0][rim].y);
+        for (i = 1; i < n; i++) ctx.lineTo(S[i][rim].x, S[i][rim].y);
+        for (i = n - 1; i >= 0; i--) ctx.lineTo(S[i][out].x, S[i][out].y);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.globalAlpha = 0.4; ctx.strokeStyle = "#4b6080"; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (k = 0; k < FSURF_LINES; k++) {
+        ctx.moveTo(S[0].gl[k].x, S[0].gl[k].y); for (i = 1; i < n; i++) ctx.lineTo(S[i].gl[k].x, S[i].gl[k].y);
+        ctx.moveTo(S[0].gr[k].x, S[0].gr[k].y); for (i = 1; i < n; i++) ctx.lineTo(S[i].gr[k].x, S[i].gr[k].y);
+      }
+      ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    /* sparse lamps on the surface either side of the trench */
+    function surfLights(s, n, f) {
+      for (var side = -1; side <= 1; side += 2) {
+        var cx = canX(s), off = [60 + ((n * 53) % 7) * 45, 320 + ((n * 37) % 5) * 70];
+        for (var i = 0; i < 2; i++) {
+          if ((n + i + (side > 0 ? 1 : 0)) % 3) continue;
+          var q = fProjS(W, H, { x: cx + side * (w + off[i]), y: top, s: s });
+          var r = Math.min(3.5, Math.max(1, 4 * q.s));
+          ctx.globalAlpha = 0.3 + 0.7 * f; ctx.fillStyle = i ? "#ffcf5a" : "#7fe8ff";
+          ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, 2 * Math.PI); ctx.fill();
+        }
+      }
+    }
+    /* the far surface: one fogged band from the end of the drawn trench to the
+       horizon, a haze line, and distant towers placed out of flying reach
+       (|dx| >= 1100 while the ship is limited to |x| <= 700) */
+    function farSurface() {
+      var zEnd = FCAN_END * CAN_Z, pe = fProj(W, H, fCanX, top, zEnd, 1).y, ph = fProj(W, H, fCanX, top, 80000, 1).y;
+      var g = ctx.createLinearGradient(0, ph, 0, pe);
+      g.addColorStop(0, "#2a3446"); g.addColorStop(1, fFog(FSURF, 1, 0.55, 0, 0));
+      ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(0, ph, W, Math.max(0, pe - ph) + 2);
+      var hz = ctx.createLinearGradient(0, ph - 46, 0, ph);
+      hz.addColorStop(0, "rgba(80,120,170,0)"); hz.addColorStop(1, "rgba(120,170,220,.35)");
+      ctx.fillStyle = hz; ctx.fillRect(0, ph - 46, W, 46);
+      ctx.strokeStyle = "#3d5068"; ctx.lineWidth = 1;                      /* far panel rows */
+      for (var zz = zEnd * 1.35; zz < 40000; zz *= 1.35) {
+        var y = fProj(W, H, fCanX, top, zz, 1).y; ctx.globalAlpha = 0.5;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      }
+      var base = Math.ceil((fProg + FCAN_END) / 150) * 150, i, side;
+      for (i = 0; i < 16; i++) {
+        var sT = base + i * 150, z = (sT - fProg) * CAN_Z, idx = sT / 150;
+        if (z > 30000) break;
+        var fa = Math.min(1, (z - zEnd) / zEnd);
+        for (side = -1; side <= 1; side += 2) {
+          var X = canX(sT) + side * (1100 + ((idx * 397 + (side > 0 ? 211 : 0)) % 600));
+          var Ht = 70 + (idx * 53 + (side > 0 ? 29 : 0)) % 170, wd = 45 + (idx * 17) % 30;
+          var pb = fProj(W, H, X, top, z, 1), pt = fProj(W, H, X, top - Ht, z, 1), hw = wd * pb.s / 2;
+          ctx.globalAlpha = fa; ctx.fillStyle = "#161d2a"; ctx.fillRect(pb.x - hw, pt.y, hw * 2, pb.y - pt.y);
+          ctx.strokeStyle = "#4f6d8f"; ctx.lineWidth = 1; ctx.strokeRect(pb.x - hw, pt.y, hw * 2, pb.y - pt.y);
+          ctx.fillStyle = (idx + side) % 2 ? "#ff5a4a" : "#ffcf5a";
+          ctx.fillRect(pb.x - 1, pt.y - 2, 2, 2);
+        }
+      }
+      ctx.globalAlpha = 1;
     }
     /* gate barrier: exactly the region fighter-gates treats as blocked */
     function gatePanel(c, p) {
@@ -999,7 +1127,7 @@
       var m = fProj(W, H, c.cx + fPx - fCanX, fPy, c.z, 1), mr = Math.max(5, 22 * m.s);
       /* red when that crossing point is in the blocked region (the same rule
          Glon's fighter-gates applies at the crossing tick), else white */
-      var dx = fPx - fCanX, y = fPy, hit = gatePat === 0 ? y <= 0 : gatePat === 1 ? y >= 0 :
+      var dx = fPx - fCanX, y = fPy, hit = y <= CAN_TOP ? false : gatePat === 0 ? y <= 0 : gatePat === 1 ? y >= 0 :
                 gatePat === 2 ? dx <= 0 : gatePat === 3 ? dx >= 0 : Math.abs(y) >= 60;
       ctx.globalAlpha = 0.95; ctx.strokeStyle = hit ? "#ff3b3b" : "#eaffff"; ctx.lineWidth = hit ? 3 : 2;
       ctx.beginPath(); ctx.moveTo(m.x, m.y - mr); ctx.lineTo(m.x + mr, m.y); ctx.lineTo(m.x, m.y + mr);
@@ -1014,15 +1142,18 @@
     di = decos.length - 1;
     if (gate && fProg > 120) gd = 198 - ((fProg - 120) % 200);
     ri = ribs.length - 1;
+    if (above) { farSurface(); nearSurface(); }
     for (j = S.length - 1; j > 0; j--) {
       a = S[j - 1]; b = S[j]; t = b.d / FCAN_END; e = Math.max(0, 1 - t);
       ctx.globalAlpha = 1;
       /* scrape warning lights the near stretch of the wall being approached */
       near = ww.amt * Math.max(0, 1 - b.d / 70);
       wl = ww.side < 0 ? near : 0; wr = ww.side > 0 ? near : 0;
+      visL = wallVis(-1, a.cx); visR = wallVis(1, a.cx);
       quad(a.fl, b.fl, b.fr, a.fr, fFog(FFLOOR, t, 0.7, 0, 0));                           /* floor */
-      quad(a.cl, b.cl, b.fl, a.fl, fFog(FWALL, t, 0.5, fWallSide < 0 ? hot : 0, wl));     /* LEFT wall  */
-      quad(a.cr, b.cr, b.fr, a.fr, fFog(FWALL, t, 0.5, fWallSide > 0 ? hot : 0, wr));     /* RIGHT wall */
+      if (visL) quad(a.cl, b.cl, b.fl, a.fl, fFog(FWALL, t, 0.5, fWallSide < 0 ? hot : 0, wl));     /* LEFT wall  */
+      if (visR) quad(a.cr, b.cr, b.fr, a.fr, fFog(FWALL, t, 0.5, fWallSide > 0 ? hot : 0, wr));     /* RIGHT wall */
+
       edge("f", 0.95 * Math.pow(e, 1.1), 1.2 + 5.5 * e, "#8feaff");   /* floor edges   */
       edge("c", 0.80 * Math.pow(e, 1.1), 1.0 + 3.8 * e, "#6fd8ff");   /* wall-top edges */
       edge("m", 0.25 * e, 0.8 + 1.6 * e, "#3aa8d8");                   /* mid-wall rail */
@@ -1048,7 +1179,7 @@
      cockpit frame so the ship visibly climbs (fPy<0 -> frame up) or dives. The
      world already moves the opposite way via fProj(oy - fPy), so the trench
      sinks when the ship climbs — the unambiguous altitude cue. */
-  function fAlt(W, H) { return fPy * fCenter(W, H).sc * 0.42; }
+  function fAlt(W, H) { return Math.max(-120, Math.min(120, fPy)) * fCenter(W, H).sc * 0.42; }
   /* Ship gun muzzles: cockpit weapon pods sampled from the rendered artwork
      geometry (image fractions of the bottom-anchored cockpit PNG). */
   /* Explicit forward cannon barrels: base on the ship's frame, projecting
@@ -1296,7 +1427,7 @@
     var ay = fAlt(W, H);                         /* ship altitude ride (F_Y) */
     /* the world shifts the OPPOSITE way, so a climb sinks the trench; the
        vanishing point follows the camera's canyon-tangent heading */
-    var cw = { x: c.x + fYawPx(W), y: c.y - ay, sc: c.sc };
+    var cw = { x: c.x + fYawPx(W), y: c.y - ay - fPitchPx(H), sc: c.sc };
     ctx.save();
     ctx.translate(sh.x, sh.y);
     ctx.fillStyle = "#01020a"; ctx.fillRect(-10, -10, W + 20, H + 20);
@@ -1425,7 +1556,8 @@
   var fStats = null, fPrevPhase = 0;
   /* Glon's fwhy codes (the last thing that damaged the ship) */
   var FWHY = ["", "COLLISION: LEFT WALL", "COLLISION: RIGHT WALL", "COLLISION: GATE",
-              "RAMMED BY FIGHTER", "DESTROYED BY FIGHTER FIRE"];
+              "RAMMED BY FIGHTER", "DESTROYED BY FIGHTER FIRE", "ABANDONED THE TRENCH RUN",
+              "COLLISION: SURFACE"];
   function drawDebrief(ctx, W, H) {
     var st = fStats || { score: 0, kills: 0, shots: 0, boosts: 0, hold: 0 };
     var win = fPhase === 4, k = Math.max(1, W / 640);
@@ -1438,7 +1570,9 @@
                 ["SHOTS FIRED", "" + st.shots], ["HITS / ACCURACY", st.kills + " / " + acc + "%"],
                 ["SHIELD REMAINING", "" + fShield], ["BOOSTS USED", "" + st.boosts],
                 ["MISSION TIME", time]];
-    if (!win) rows.unshift(["CAUSE", fShield > 0 ? "TARGET NOT DESTROYED" : (FWHY[st.why] || "SHIELDS LOST")]);
+    /* abandoning (6) ends the run with shields left, so the reason code wins;
+       otherwise shields left at the end means the target was not destroyed */
+    if (!win) rows.unshift(["CAUSE", st.why === 6 ? FWHY[6] : fShield > 0 ? "TARGET NOT DESTROYED" : (FWHY[st.why] || "SHIELDS LOST")]);
     var step = Math.min(26 * k, (ph - 108 * k) / rows.length);
     ctx.save();
     ctx.globalAlpha = 1;
@@ -1461,6 +1595,26 @@
                   : "rgba(255,210,63," + (0.65 + 0.35 * Math.sin(performance.now() / 220)).toFixed(3) + ")";
     ctx.font = "bold " + Math.round(16 * k) + "px system-ui, sans-serif";
     ctx.fillText("FIRE TO CONTINUE  →  " + (win ? "FOREST" : "SKULL CAVE"), W / 2, y0 + ph - 22 * k);
+    ctx.restore();
+  }
+  /* Mission discipline cues (Glon owns the rule: > 400 from the trench centre
+     for 75 ticks abandons the run). Outside the trench an arrow points back
+     to it; once Glon's stray clock runs, RETURN TO TRENCH counts down. */
+  function drawTrenchGuide(ctx, W, H) {
+    var dx = fCanX - fPx, stray = fStats ? fStats.stray : 0, k = Math.max(1, W / 640);
+    if (Math.abs(dx) <= fCanW && !stray) return;
+    var left = dx < 0, ax = left ? 26 * k : W - 26 * k, ay = H * 0.42, dir = left ? -1 : 1;
+    ctx.save();
+    ctx.globalAlpha = 0.75 + 0.25 * Math.sin(performance.now() / 160);
+    ctx.fillStyle = stray ? "#ff5a4a" : "#7fe8ff";
+    ctx.beginPath(); ctx.moveTo(ax + dir * 14 * k, ay); ctx.lineTo(ax - dir * 8 * k, ay - 14 * k); ctx.lineTo(ax - dir * 8 * k, ay + 14 * k); ctx.closePath(); ctx.fill();
+    ctx.font = "bold " + Math.round(12 * k) + "px system-ui, sans-serif"; ctx.textAlign = left ? "left" : "right"; ctx.textBaseline = "middle";
+    ctx.fillText("TRENCH", ax + (left ? 18 : -18) * k, ay + 24 * k);
+    if (stray) {
+      var secs = Math.max(0, (75 - stray) / 25);
+      ctx.textAlign = "center"; ctx.font = "bold " + Math.round(22 * k) + "px system-ui, sans-serif";
+      ctx.fillStyle = "#ff5a4a"; ctx.fillText("RETURN TO TRENCH  " + secs.toFixed(1) + "s", W / 2, H * 0.24);
+    }
     ctx.restore();
   }
   function drawFighterHud(ctx, W) {
@@ -1542,13 +1696,14 @@
         drawTarget(ctx, W, H);
         drawFighterReticle(ctx, W, H, fLaser);
         drawFighterHud(ctx, W);
+        if (fPhase < 2) drawTrenchGuide(ctx, W, H);
         if (fFlash && performance.now() - fFlash < 220) {
           ctx.fillStyle = "rgba(255,60,60," + (0.35 * (1 - (performance.now() - fFlash) / 220)) + ")";
           ctx.fillRect(0, 0, W, H);
         }
         if (fPhase >= 4) drawDebrief(ctx, W, H);
       } else if (op === "Z") {
-        fStats = { score: +p[1], kills: +p[2], shots: +p[3], boosts: +p[4], hold: +p[5], why: +p[6] || 0 };
+        fStats = { score: +p[1], kills: +p[2], shots: +p[3], boosts: +p[4], hold: +p[5], why: +p[6] || 0, stray: +p[7] || 0 };
       } else if (op === "B") {
         if (fActive) { fActive = false; setFighterUi(false); }
         cam = +p[1];
@@ -1559,6 +1714,7 @@
         paintLayer(ctx, W, 0, cam);   /* distant sky / hills  (slowest) */
         paintLayer(ctx, W, 1, cam);   /* native bush / treeline           */
         paintLayer(ctx, W, 2, cam);   /* orchard / fence / near landscape */
+        drawTrail(ctx, W, tx, ty);    /* the walkable ground: moves 1:1 with play */
       } else if (op === "F") {
         if (signsDue) { signsDue = false; drawSigns(ctx, W, cam, tx, ty); }
         paintLayer(ctx, W, 3, cam);   /* foreground foliage   (fastest)   */
