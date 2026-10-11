@@ -711,17 +711,29 @@
      and sparse world-fixed ribs (one per second of flight) stream past as the
      depth/speed cue. Surfaces fog into the void with distance. Gate barriers
      are drawn in the same cross-section, in their exact blocked region. */
+  /* Surfaces are OPAQUE and clearly lighter than the void: side walls are a
+     solid slate-blue slab, floor/ceiling darker. Fog is capped (kmax) so even
+     the farthest wall stays visibly wall, never dissolving into the void.
+     `hot` tints toward red (a wall hit), `warn` toward amber (closing on it). */
   var FBG = [1, 2, 10];
-  function fFog(rgb, t, hot) {
-    var k = Math.min(1, t * t * 1.1), r = rgb[0], g = rgb[1], b = rgb[2];
-    if (hot > 0) { r += (150 - r) * hot; g += (24 - g) * hot; b += (30 - b) * hot; }
+  var FWALL = [22, 54, 98], FFLOOR = [11, 28, 50], FCEIL = [8, 20, 38];
+  function fFog(rgb, t, kmax, hot, warn) {
+    var k = Math.min(kmax, t * t * 0.9), r = rgb[0], g = rgb[1], b = rgb[2];
+    if (warn > 0) { r += (215 - r) * warn; g += (120 - g) * warn; b += (30 - b) * warn; }
+    if (hot > 0) { r += (190 - r) * hot; g += (28 - g) * hot; b += (34 - b) * hot; }
     return "rgb(" + Math.round(r + (FBG[0] - r) * k) + "," + Math.round(g + (FBG[1] - g) * k) +
            "," + Math.round(b + (FBG[2] - b) * k) + ")";
+  }
+  /* scrape warning 0..1 as the ship closes from 50 to the wall at fCanW */
+  function fWallWarn() {
+    var d = Math.abs(fPx - fCanX);
+    return { amt: Math.max(0, Math.min(1, (d - 50) / (fCanW - 50))), side: fPx > fCanX ? 1 : -1 };
   }
   function drawCanyonWalls(ctx, W, H, gate) {
     var top = CAN_TOP, mid = 0, bot = CAN_BOT, w = fCanW, j, d, a, b, t, e;
     var S = [], ribs = [], gd = -1, ri, gateMark = null;
     var hot = fWallHit ? Math.max(0, 1 - (performance.now() - fWallHit) / 450) : 0;
+    var ww = fWallWarn(), wl, wr, near;
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, W, Math.max(0, fDashTop(W, H))); ctx.clip();
     ctx.lineCap = "round"; ctx.lineJoin = "round";
@@ -733,10 +745,13 @@
         fl: wp(-1, bot), cl: wp(-1, top), ml: wp(-1, mid),
         fr: wp(1, bot), cr: wp(1, top), mr: wp(1, mid) };
     }
+    /* fill AND stroke in the same colour: the stroke closes the anti-aliased
+       hairline seams between neighbouring panels, so nothing behind a wall
+       leaks through */
     function quad(p, q, r, s, col) {
-      ctx.fillStyle = col; ctx.beginPath();
+      ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.beginPath();
       ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.lineTo(r.x, r.y); ctx.lineTo(s.x, s.y);
-      ctx.closePath(); ctx.fill();
+      ctx.closePath(); ctx.fill(); ctx.stroke();
     }
     function edge(k, alpha, width, color) {
       ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = width;
@@ -796,10 +811,13 @@
     for (j = S.length - 1; j > 0; j--) {
       a = S[j - 1]; b = S[j]; t = b.d / FCAN_END; e = Math.max(0, 1 - t);
       ctx.globalAlpha = 1;
-      quad(a.fl, b.fl, b.fr, a.fr, fFog([7, 20, 38], t, 0));                         /* floor */
-      quad(a.cl, b.cl, b.cr, a.cr, fFog([4, 11, 24], t, 0));                         /* ceiling */
-      quad(a.cl, b.cl, b.fl, a.fl, fFog([12, 36, 66], t, fWallSide < 0 ? hot : 0));  /* LEFT wall  */
-      quad(a.cr, b.cr, b.fr, a.fr, fFog([12, 36, 66], t, fWallSide > 0 ? hot : 0));  /* RIGHT wall */
+      /* scrape warning lights the near stretch of the wall being approached */
+      near = ww.amt * Math.max(0, 1 - b.d / 70);
+      wl = ww.side < 0 ? near : 0; wr = ww.side > 0 ? near : 0;
+      quad(a.fl, b.fl, b.fr, a.fr, fFog(FFLOOR, t, 0.7, 0, 0));                           /* floor */
+      quad(a.cl, b.cl, b.cr, a.cr, fFog(FCEIL, t, 0.7, 0, 0));                            /* ceiling */
+      quad(a.cl, b.cl, b.fl, a.fl, fFog(FWALL, t, 0.5, fWallSide < 0 ? hot : 0, wl));     /* LEFT wall  */
+      quad(a.cr, b.cr, b.fr, a.fr, fFog(FWALL, t, 0.5, fWallSide > 0 ? hot : 0, wr));     /* RIGHT wall */
       edge("f", 0.95 * Math.pow(e, 1.1), 1.2 + 5.5 * e, "#8feaff");   /* floor edges   */
       edge("c", 0.80 * Math.pow(e, 1.1), 1.0 + 3.8 * e, "#6fd8ff");   /* ceiling edges */
       edge("m", 0.25 * e, 0.8 + 1.6 * e, "#3aa8d8");                   /* mid-wall rail */
@@ -807,6 +825,15 @@
       if (gd > a.d && gd <= b.d) gatePanel(cross(gd), gate.p);
     }
     if (gateMark) gateMarker(gateMark);
+    /* scrape warning: an amber glow on that screen edge, before any shield loss */
+    if (ww.amt > 0) {
+      var gx = ww.side < 0 ? 0 : W, gw = W * 0.22;
+      var gg = ctx.createLinearGradient(gx, 0, gx - ww.side * gw, 0);
+      gg.addColorStop(0, "rgba(255,150,40," + (0.55 * ww.amt).toFixed(3) + ")");
+      gg.addColorStop(1, "rgba(255,150,40,0)");
+      ctx.globalAlpha = 1; ctx.fillStyle = gg;
+      ctx.fillRect(ww.side < 0 ? 0 : W - gw, 0, gw, H);
+    }
     ctx.restore();
   }
   /* Altitude ride: the fighter's real Glon altitude (F_Y -> fPy) shifts the
