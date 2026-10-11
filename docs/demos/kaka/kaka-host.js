@@ -224,105 +224,168 @@
     ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
   }
-  function rangerLeg(ctx, hipx, footx, knee, C) {
-    ctx.strokeStyle = C.pants; ctx.lineWidth = 11; ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(hipx, -30);
-    ctx.lineTo((hipx + footx) / 2 + knee, -18);
-    ctx.lineTo(footx, -6);
-    ctx.stroke();
-    ctx.fillStyle = C.boot; rrect(ctx, footx - 8, -10, 17, 12, 4); ctx.fill();
+  /* ---- Rangi, the young explorer (forest + Skull Cave) -------------------
+   * Pith helmet with compass badge, messy brown hair, big brown eyes, toothy
+   * grin, green neckerchief, cream rolled-sleeve shirt, olive vest, satchel on
+   * a cross strap, belt + gold buckle + compass pendant, khaki shorts, cream
+   * socks, chunky lace-up boots; warm brown skin. Dark outline + two-tone flat
+   * shading so he reads at phone size. Feet at y = 0, ~100 tall. Poses (Glon
+   * owns which): 0 idle (hands on hips), 1/2 run frames, 3 jump, 4 hit,
+   * 5 fallen, 6 climb (drawn as the jump pose). Host presentation only. */
+  var RX = { skin: "#b8753f", skinD: "#93582a", cheek: "rgba(200,80,60,.45)",
+    hair: "#4a2c16", hairD: "#2e1a0b", iris: "#6b3d18",
+    helm: "#a49a72", helmD: "#7d7452", helmL: "#c4bb92", strap: "#3b2f20",
+    gold: "#e2b23c", navy: "#24315a", kerch: "#3f8a2e", kerchD: "#2b6620",
+    shirt: "#efe6cf", shirtD: "#cfc3a3", vest: "#6b7a32",
+    leather: "#7a4a24", leatherD: "#55321a", shorts: "#a39668", shortsD: "#7f7550",
+    sock: "#e9e2cf", boot: "#5e3a1d", bootD: "#3a2210", lace: "#e09a3a", ink: "#1d140b" };
+  function rxOl(ctx, w) { ctx.strokeStyle = RX.ink; ctx.lineWidth = w || 2; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.stroke(); }
+  function rxBlob(ctx, x, y, rx, ry, fill) { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, 2 * Math.PI); ctx.fillStyle = fill; ctx.fill(); rxOl(ctx); }
+  function rxBox(ctx, x, y, w, h, r, fill) { rrect(ctx, x, y, w, h, r); ctx.fillStyle = fill; ctx.fill(); rxOl(ctx); }
+  function rxLimb(ctx, pts, w, col) {          /* outlined thick polyline */
+    var i;
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.strokeStyle = RX.ink; ctx.lineWidth = w + 3.4; ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
+    for (i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.stroke();
+    ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
+    for (i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.stroke();
   }
-  function rangerArm(ctx, shx, handx, handy, C) {
-    ctx.strokeStyle = C.tunic; ctx.lineWidth = 9; ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(shx, -52);
-    ctx.lineTo((shx + handx) / 2, (handy - 52) / 2);
-    ctx.lineTo(handx, handy);
-    ctx.stroke();
-    ctx.fillStyle = C.skin; ctx.beginPath(); ctx.arc(handx, handy, 5, 0, 2 * Math.PI); ctx.fill();
+  function rxCompass(ctx, x, y, r) {
+    rxBlob(ctx, x, y, r, r, RX.gold); rxBlob(ctx, x, y, r * 0.68, r * 0.68, RX.navy);
+    ctx.fillStyle = RX.gold; ctx.beginPath();
+    for (var i = 0; i < 8; i++) { var a = i * Math.PI / 4 - Math.PI / 2, d = i % 2 ? r * 0.22 : r * 0.62; ctx.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d); }
+    ctx.closePath(); ctx.fill();
   }
-  var RANGER = { skin: "#ecb27e", hair: "#3a2a1a", hat: "#83713f", hatD: "#5c4c24",
-                 tunic: "#3f9146", tunicD: "#2c6d32", belt: "#5a3a22",
-                 pants: "#5c6a3e", boot: "#4a2f18", eye: "#241f16" };
-  /* pose 5: the terminal, still, fallen ranger (no run cycle) */
-  function drawFallenRanger(ctx, C) {
-    ctx.fillStyle = "rgba(0,0,0,.22)";
-    ctx.beginPath(); ctx.ellipse(-2, 2, 30, 7, 0, 0, 2 * Math.PI); ctx.fill();
-    ctx.strokeStyle = C.pants; ctx.lineWidth = 11; ctx.lineCap = "round";
-    ctx.beginPath(); ctx.moveTo(-8, -10); ctx.lineTo(-30, -6); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-8, -14); ctx.lineTo(-32, -16); ctx.stroke();
-    ctx.fillStyle = C.boot;
-    rrect(ctx, -44, -13, 15, 12, 4); ctx.fill();
-    rrect(ctx, -46, -24, 15, 12, 4); ctx.fill();
-    ctx.fillStyle = C.tunic; rrect(ctx, -12, -28, 32, 19, 8); ctx.fill();
-    ctx.fillStyle = C.tunicD; rrect(ctx, -12, -28, 32, 9, 8); ctx.fill();
-    ctx.strokeStyle = C.tunic; ctx.lineWidth = 9; ctx.lineCap = "round";
-    ctx.beginPath(); ctx.moveTo(8, -24); ctx.lineTo(26, -32); ctx.stroke();
-    ctx.fillStyle = C.skin; ctx.beginPath(); ctx.arc(26, -32, 5, 0, 2 * Math.PI); ctx.fill();
-    ctx.fillStyle = C.skin; ctx.beginPath(); ctx.arc(30, -18, 13, 0, 2 * Math.PI); ctx.fill();
-    ctx.strokeStyle = C.eye; ctx.lineWidth = 2.4;
-    ctx.beginPath(); ctx.moveTo(26, -23); ctx.lineTo(31, -18); ctx.moveTo(31, -23); ctx.lineTo(26, -18); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(34, -23); ctx.lineTo(39, -18); ctx.moveTo(39, -23); ctx.lineTo(34, -18); ctx.stroke();
-    ctx.fillStyle = C.hat; ctx.beginPath(); ctx.ellipse(48, -6, 16, 5, 0.25, 0, 2 * Math.PI); ctx.fill();
-    rrect(ctx, 41, -18, 20, 13, 5); ctx.fill();
-    ctx.fillStyle = C.hatD; rrect(ctx, 41, -9, 20, 4, 2); ctx.fill();
+  function rxLeg(ctx, hx, fx, kneeDx, lift) {
+    var kx = (hx + fx) / 2 + kneeDx, ky = -19 - lift / 2, sx = hx + (kx - hx) * 0.35;
+    rxLimb(ctx, [kx, ky, fx, -11 - lift], 6.5, RX.skin);                   /* bare shin */
+    rxBox(ctx, fx - 4.6, -15 - lift, 9.2, 6, 2, RX.sock);                  /* sock */
+    ctx.beginPath(); ctx.moveTo(fx - 6, -11 - lift); ctx.lineTo(fx + 5, -11 - lift); ctx.lineTo(fx + 6, -6 - lift);   /* boot */
+    ctx.quadraticCurveTo(fx + 13, -6 - lift, fx + 13, -1.5 - lift); ctx.lineTo(fx + 13, -lift); ctx.lineTo(fx - 7, -lift); ctx.closePath();
+    ctx.fillStyle = RX.boot; ctx.fill(); rxOl(ctx);
+    ctx.fillStyle = RX.bootD; ctx.fillRect(fx - 7, -2.2 - lift, 20, 2.2);
+    ctx.strokeStyle = RX.lace; ctx.lineWidth = 1.3; ctx.beginPath();
+    ctx.moveTo(fx - 2, -10 - lift); ctx.lineTo(fx + 3, -8 - lift); ctx.moveTo(fx + 3, -10 - lift); ctx.lineTo(fx - 2, -8 - lift);
+    ctx.moveTo(fx - 1, -7 - lift); ctx.lineTo(fx + 4, -5 - lift); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(hx - 7, -34); ctx.lineTo(hx + 7, -34); ctx.lineTo(sx + 7, -22); ctx.lineTo(sx - 7, -22); ctx.closePath();   /* shorts */
+    ctx.fillStyle = RX.shorts; ctx.fill(); rxOl(ctx);
+    ctx.fillStyle = RX.shortsD; ctx.fillRect(sx - 6.4, -25, 12.8, 2);
+  }
+  function rxArm(ctx, sx, ex, ey, hx, hy) {     /* shoulder -> elbow (sleeve) -> hand */
+    rxLimb(ctx, [ex, ey, hx, hy], 5.5, RX.skin);
+    rxLimb(ctx, [sx, -50, ex, ey], 7.5, RX.shirt);
+    rxBox(ctx, ex - 4.5, ey - 2.8, 9, 5.6, 2.5, RX.shirtD);                 /* rolled cuff */
+    rxBlob(ctx, hx, hy, 4.4, 4.4, RX.skin);
+  }
+  function rxHead(ctx, hit) {
+    var hy = -74, xs = [-6.5, 7], i, x;
+    ctx.beginPath(); ctx.ellipse(-2, hy - 1, 19, 16, 0, 0, 2 * Math.PI); ctx.fillStyle = RX.hair; ctx.fill(); rxOl(ctx);
+    rxBlob(ctx, -15.5, hy + 2, 4.2, 5.4, RX.skin);                           /* ear */
+    ctx.fillStyle = RX.skinD; ctx.beginPath(); ctx.ellipse(-15.5, hy + 2.5, 1.8, 2.8, 0, 0, 2 * Math.PI); ctx.fill();
+    rxBlob(ctx, 0.5, hy + 1, 16.5, 16, RX.skin);                             /* face */
+    ctx.fillStyle = RX.skinD; ctx.beginPath(); ctx.ellipse(0.5, hy + 11, 12, 4.4, 0, 0, Math.PI); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-16, hy - 1); ctx.quadraticCurveTo(-15, hy - 15, -2, hy - 14);       /* messy fringe */
+    ctx.lineTo(-6, hy - 6); ctx.lineTo(0, hy - 11); ctx.lineTo(1, hy - 4); ctx.lineTo(7, hy - 11); ctx.lineTo(9, hy - 5);
+    ctx.quadraticCurveTo(14, hy - 9, 16, hy - 4); ctx.quadraticCurveTo(16, hy - 18, 0, hy - 18); ctx.quadraticCurveTo(-18, hy - 18, -16, hy - 1); ctx.closePath();
+    ctx.fillStyle = RX.hair; ctx.fill(); rxOl(ctx, 1.8);
+    if (hit) {
+      ctx.strokeStyle = RX.ink; ctx.lineWidth = 2.4;
+      for (i = 0; i < 2; i++) { x = xs[i]; ctx.beginPath(); ctx.moveTo(x - 3.4, hy - 2); ctx.lineTo(x + 3.4, hy + 5); ctx.moveTo(x + 3.4, hy - 2); ctx.lineTo(x - 3.4, hy + 5); ctx.stroke(); }
+    } else {
+      for (i = 0; i < 2; i++) {                                              /* big brown eyes */
+        x = xs[i];
+        ctx.beginPath(); ctx.ellipse(x, hy + 1.5, 4.3, 5.4, 0, 0, 2 * Math.PI); ctx.fillStyle = "#fff"; ctx.fill(); ctx.strokeStyle = RX.ink; ctx.lineWidth = 1.4; ctx.stroke();
+        ctx.fillStyle = RX.iris; ctx.beginPath(); ctx.arc(x + 0.9, hy + 2.4, 3.1, 0, 2 * Math.PI); ctx.fill();
+        ctx.fillStyle = RX.ink; ctx.beginPath(); ctx.arc(x + 1, hy + 2.6, 1.7, 0, 2 * Math.PI); ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(x + 2, hy + 1.1, 1, 0, 2 * Math.PI); ctx.fill();
+      }
+      ctx.strokeStyle = RX.hairD; ctx.lineWidth = 2;                           /* brows */
+      ctx.beginPath(); ctx.moveTo(-10.5, hy - 5); ctx.quadraticCurveTo(-6.5, hy - 7.5, -2.5, hy - 5.5);
+      ctx.moveTo(3.5, hy - 5.5); ctx.quadraticCurveTo(7.5, hy - 7.5, 11, hy - 5); ctx.stroke();
+    }
+    ctx.fillStyle = RX.cheek;
+    ctx.beginPath(); ctx.ellipse(-10.5, hy + 9, 3.4, 2.2, 0, 0, 2 * Math.PI); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(12.5, hy + 9, 3.4, 2.2, 0, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = RX.skinD; ctx.beginPath(); ctx.ellipse(2, hy + 6, 2.6, 2, 0, 0, 2 * Math.PI); ctx.fill();   /* nose */
+    ctx.beginPath(); ctx.moveTo(-5, hy + 9.5); ctx.quadraticCurveTo(1.5, hy + 18, 9, hy + 9.5); ctx.closePath();  /* grin */
+    ctx.fillStyle = "#6e2418"; ctx.fill(); ctx.strokeStyle = RX.ink; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-4.4, hy + 10); ctx.lineTo(8.4, hy + 10); ctx.lineTo(7.5, hy + 12); ctx.lineTo(-3.5, hy + 12); ctx.closePath(); ctx.fillStyle = "#fff"; ctx.fill();
+    ctx.save(); ctx.translate(0, hy - 13); ctx.rotate(-0.07);               /* pith helmet */
+    ctx.beginPath(); ctx.ellipse(1, 2, 25, 6, 0, 0, 2 * Math.PI); ctx.fillStyle = RX.helmD; ctx.fill(); rxOl(ctx);
+    ctx.beginPath(); ctx.moveTo(-17, 1); ctx.quadraticCurveTo(-17, -19, 1, -19); ctx.quadraticCurveTo(19, -19, 19, 1); ctx.closePath();
+    ctx.fillStyle = RX.helm; ctx.fill(); rxOl(ctx);
+    ctx.fillStyle = RX.helmL; ctx.beginPath(); ctx.ellipse(-6, -11, 6, 3.4, -0.5, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = RX.strap; rrect(ctx, -17, -4.5, 36, 4.2, 1.5); ctx.fill();
+    rxBox(ctx, 9, -6, 6, 7, 1.2, RX.gold);
+    rxCompass(ctx, 0, -11, 5.4);
+    ctx.restore();
+  }
+  function rxBody(ctx, pose) {
+    var lf = -4, rf = 5, lk = -2, rk = 2, ll = 0, rl = 0, hit = false;
+    var la = [-25, -43, -16.5, -32], ra = [25, -43, 16.5, -32];            /* elbow x,y, hand x,y */
+    if (pose === 1) { lf = 12; rf = -11; lk = 0; rk = 0; rl = 5; la = [-12, -38, -4, -27]; ra = [22, -44, 30, -38]; }
+    else if (pose === 2) { lf = -11; rf = 12; lk = 0; rk = 0; ll = 5; la = [22, -44, 30, -38]; ra = [-12, -38, -4, -27]; }
+    else if (pose === 3) { lf = 8; rf = -8; lk = -7; rk = -7; ll = 7; rl = 7; la = [-20, -58, -22, -70]; ra = [20, -58, 24, -72]; }
+    else if (pose === 4) { hit = true; la = [-16, -40, -12, -30]; ra = [24, -44, 32, -36]; }
+    rxLeg(ctx, -6, -6 + lf, lk, ll); rxLeg(ctx, 6, 6 + rf, rk, rl);
+    ctx.beginPath(); ctx.moveTo(-14, -31); ctx.quadraticCurveTo(-16, -54, 0, -56); ctx.quadraticCurveTo(16, -54, 14, -31); ctx.closePath();   /* shirt */
+    ctx.fillStyle = RX.shirt; ctx.fill(); rxOl(ctx);
+    ctx.beginPath(); ctx.moveTo(-14, -31); ctx.quadraticCurveTo(-16, -52, -6, -54); ctx.lineTo(-4, -31); ctx.closePath(); ctx.fillStyle = RX.vest; ctx.fill(); rxOl(ctx, 1.6);
+    ctx.beginPath(); ctx.moveTo(14, -31); ctx.quadraticCurveTo(16, -52, 6, -54); ctx.lineTo(4, -31); ctx.closePath(); ctx.fillStyle = RX.vest; ctx.fill(); rxOl(ctx, 1.6);
+    ctx.strokeStyle = RX.ink; ctx.lineWidth = 4.6; ctx.beginPath(); ctx.moveTo(11, -54); ctx.lineTo(-11, -30); ctx.stroke();   /* satchel strap */
+    ctx.strokeStyle = RX.leather; ctx.lineWidth = 2.8; ctx.beginPath(); ctx.moveTo(11, -54); ctx.lineTo(-11, -30); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-10, -55); ctx.quadraticCurveTo(0, -51, 10, -55); ctx.lineTo(2, -45); ctx.lineTo(-1, -45); ctx.closePath();   /* neckerchief */
+    ctx.fillStyle = RX.kerch; ctx.fill(); rxOl(ctx, 1.6);
+    ctx.fillStyle = RX.kerchD; ctx.beginPath(); ctx.moveTo(-1, -48); ctx.lineTo(2, -48); ctx.lineTo(1.5, -45.5); ctx.lineTo(-0.5, -45.5); ctx.fill();
+    rxBox(ctx, -15, -35, 30, 6, 2.5, RX.leather); rxBox(ctx, -4, -36, 8, 8, 1.5, RX.gold);   /* belt + buckle */
+    ctx.fillStyle = RX.leatherD; ctx.fillRect(-2, -34, 4, 4);
+    rxCompass(ctx, 7, -25.5, 3.3);
+    rxBox(ctx, -21, -33, 11, 10, 3, RX.leather); rxBox(ctx, -21, -33, 11, 4, 2, RX.leatherD);   /* satchel */
+    ctx.fillStyle = RX.gold; ctx.fillRect(-17, -30, 3, 3);
+    rxArm(ctx, -12, la[0], la[1], la[2], la[3]); rxArm(ctx, 12, ra[0], ra[1], ra[2], ra[3]);
+    rxHead(ctx, hit);
   }
   function drawRanger(ctx, pose, x, y, dir, tx) {
     if (pose === 6) pose = 3;          /* climb pose reuses the jump limbs */
-    var cx = x + tx, fy = y + 28, C = RANGER;
+    var cx = x + tx, fy = y + 28;
     ctx.save();
     ctx.translate(cx, fy);
     if (dir < 0) ctx.scale(-1, 1);
     if (caveMode) ctx.scale(CAVE_RANGI_S, CAVE_RANGI_S);  /* cave presentation only; feet anchored */
     ctx.globalAlpha = rangerAlpha;      /* phone route dissolves the ranger */
-    if (pose === 5) { drawFallenRanger(ctx, C); ctx.restore(); return; }
-    ctx.fillStyle = "rgba(0,0,0,.22)";
-    ctx.beginPath(); ctx.ellipse(0, 2, 22, 6, 0, 0, 2 * Math.PI); ctx.fill();
-    var lean = 0, lf = 4, rf = -4, lk = 0, rk = 0, lh = -14, rh = -14, lhx = 20, rhx = 20, hit = false;
-    if (pose === 1) { lean = -0.07; lf = 12; rf = -10; lk = 0; rk = 0; lhx = 2; rhx = 30; lh = -4; rh = -24; }
-    else if (pose === 2) { lean = -0.07; lf = -10; rf = 12; lhx = 30; rhx = 2; lh = -24; rh = -4; }
-    else if (pose === 3) { lf = 9; rf = -9; lk = -9; rk = -9; lhx = 6; rhx = 6; lh = -38; rh = -38; }
-    else if (pose === 4) { lean = 0.12; lhx = 32; rhx = 30; lh = -30; rh = -28; hit = true; }
-    ctx.save();
-    ctx.rotate(lean);
-    rangerLeg(ctx, -8, -8 + lf, lk, C);
-    rangerLeg(ctx, 8, 8 + rf, rk, C);
-    ctx.fillStyle = C.tunic; rrect(ctx, -14, -58, 28, 32, 9); ctx.fill();
-    ctx.fillStyle = C.tunicD; rrect(ctx, -14, -58, 28, 11, 9); ctx.fill();
-    ctx.fillStyle = C.belt; rrect(ctx, -14, -34, 28, 7, 3); ctx.fill();
-    ctx.fillStyle = "#d9b24a"; rrect(ctx, -4, -34, 8, 7, 2); ctx.fill();
-    rangerArm(ctx, -13, -13 + lhx, lh, C);
-    rangerArm(ctx, 13, 13 + rhx, rh, C);
-    ctx.fillStyle = C.skin;
-    ctx.beginPath(); ctx.arc(0, -70, 13, 0, 2 * Math.PI); ctx.fill();
-    ctx.beginPath(); ctx.arc(-11, -70, 3.5, 0, 2 * Math.PI); ctx.fill();   /* ear */
-    ctx.fillStyle = C.hair;
-    ctx.beginPath(); ctx.arc(-3, -76, 11, Math.PI * 0.95, Math.PI * 2.05); ctx.fill();
-    ctx.fillStyle = C.eye;
-    if (hit) {
-      ctx.strokeStyle = C.eye; ctx.lineWidth = 2.4;
-      ctx.beginPath(); ctx.moveTo(-9, -73); ctx.lineTo(-3, -67); ctx.moveTo(-3, -73); ctx.lineTo(-9, -67); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(4, -73); ctx.lineTo(10, -67); ctx.moveTo(10, -73); ctx.lineTo(4, -67); ctx.stroke();
-    } else {
-      ctx.beginPath(); ctx.arc(-5, -71, 2.4, 0, 2 * Math.PI); ctx.fill();
-      ctx.beginPath(); ctx.arc(5, -71, 2.4, 0, 2 * Math.PI); ctx.fill();
-      ctx.strokeStyle = C.eye; ctx.lineWidth = 1.8;
-      ctx.beginPath(); ctx.arc(0, -66, 5, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    ctx.fillStyle = "rgba(0,0,0,.25)";
+    if (pose === 5) {                   /* fallen: lying on his back, X eyes, head forward */
+      ctx.beginPath(); ctx.ellipse(8, 2, 44, 6, 0, 0, 2 * Math.PI); ctx.fill();
+      ctx.translate(-6, -15); ctx.rotate(Math.PI / 2);
+      rxBody(ctx, 4);
+      ctx.restore();
+      return;
     }
-    ctx.fillStyle = C.hat;
-    ctx.beginPath(); ctx.ellipse(0, -80, 25, 6, 0, 0, 2 * Math.PI); ctx.fill();
-    rrect(ctx, -12, -94, 24, 16, 6); ctx.fill();
-    ctx.fillStyle = C.hatD; rrect(ctx, -12, -81, 24, 5, 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, 2, 22, 5.5, 0, 0, 2 * Math.PI); ctx.fill();
+    ctx.save();
+    if (pose === 1 || pose === 2) ctx.rotate(-0.06);
+    else if (pose === 4) ctx.rotate(0.12);
+    rxBody(ctx, pose);
     ctx.restore();
     ctx.restore();
   }
 
-  /* ---- Skull Cave distance signs (host paints the semantic `N` op) ------- */
+  /* ---- Skull Cave distance signs ----------------------------------------
+   * Fixed, purely cosmetic world markers. Glon emitted them as `N` ops until
+   * f33e086, which dropped draw-signs/signs to fit the loader heap; there is
+   * still no room for them in Glon (the browser loader heap is tighter than the
+   * native harness), so the host paints them from the camera Glon already
+   * emits in `B`. Positions are the original world-x table (no gameplay). */
+  var SIGN_X = [500, 1250, 2000, 2750, 3500, 4000];
   var SIGN_LABELS = [
     "SKULL CAVE 100 km", "SKULL CAVE 75 km", "SKULL CAVE 50 km",
     "SKULL CAVE 25 km", "SKULL CAVE 5 km", "SKULL CAVE \u2014 NEXT EXIT"
   ];
+  var signsDue = false;
+  function drawSigns(ctx, W, cam, tx) {
+    for (var i = 0; i < SIGN_X.length; i++)
+      if (SIGN_X[i] > cam - 120 && SIGN_X[i] < cam + W + 120) drawSign(ctx, SIGN_X[i], i, tx);
+  }
   function drawSign(ctx, x, label, tx) {
     var t = SIGN_LABELS[label];
     if (!t) return;
@@ -627,6 +690,7 @@
   }
   var fActive = false, lastCanvasScript = "";
   var fPx = 0, fPy = 0, fPhase = 0, fShield = 0, fBoost = 0, fLaser = 0, fProg = 0;
+  var fLives = 0, fGaugeShield = 99, fGaugeLives = 99, fGaugeFlashS = 0, fGaugeFlashL = 0;
   var fFoes = [], fBolts = [], fGate = null, fBomb = 0, fFlash = 0, fPrevShield = -1;
   /* Winding canyon (D12S.23). Glon owns can-x (the collision centre) and emits
      the half-width in the `A` header. The host MIRRORS the exact same integer
@@ -710,6 +774,26 @@
      drawImage. (A per-frame complex clip here multiplied GPU-process work ~10x
      and was the cause of the long-run phone freeze / black screen.) */
   var fCockpitCache = null;
+  /* Dashboard instrument wells (image px x, y, w, h), measured from the art's
+     two red bar banks: left = shield (Glon F_C), right = Rangi's lives (F_B).
+     The host only presents these Glon values. */
+  var FGAUGE = [[605, 755, 54, 104], [1015, 755, 53, 104]];
+  var FGAUGE_SEGS = 3;   /* shield steps (fighter-enter: 3) and LIVES_MAX (3) */
+  function drawGauges(ctx, ox, oy, sc) {
+    var now = performance.now(), vals = [fShield, fLives], flash = [fGaugeFlashS, fGaugeFlashL];
+    var lit = [["#7fe8ff", "#2a9fd0"], ["#ff5a4a", "#b3261a"]], i, k;
+    for (i = 0; i < 2; i++) {
+      var r = FGAUGE[i], x = ox + r[0] * sc, y = oy + r[1] * sc, w = r[2] * sc, h = r[3] * sc;
+      var gap = 4 * sc, sh = (h - gap * (FGAUGE_SEGS - 1)) / FGAUGE_SEGS;
+      var fl = flash[i] && now - flash[i] < 600 ? (Math.floor((now - flash[i]) / 100) % 2 === 0) : false;
+      for (k = 0; k < FGAUGE_SEGS; k++) {
+        var sy = y + h - (k + 1) * sh - k * gap, on = k < vals[i];
+        ctx.fillStyle = fl ? "#ffffff" : (on ? lit[i][0] : "#1a1f2a");
+        ctx.fillRect(x, sy, w, sh);
+        if (on && !fl) { ctx.fillStyle = lit[i][1]; ctx.fillRect(x, sy + sh * 0.62, w, sh * 0.38); }
+      }
+    }
+  }
   function fCockpitOverlay(W) {
     if (!fighterImg) return null;
     if (fCockpitCache && fCockpitCache.W === W) return fCockpitCache.c;
@@ -721,6 +805,10 @@
     g.beginPath(); g.moveTo(FCOCKPIT[0] * sc, FCOCKPIT[1] * sc);
     for (i = 2; i < FCOCKPIT.length; i += 2) g.lineTo(FCOCKPIT[i] * sc, FCOCKPIT[i + 1] * sc);
     g.closePath(); g.fill();
+    /* empty the two painted bar wells: the live gauges are drawn into them */
+    g.globalCompositeOperation = "source-over"; g.fillStyle = "#06090f";
+    for (i = 0; i < FGAUGE.length; i++)
+      g.fillRect((FGAUGE[i][0] - 2) * sc, (FGAUGE[i][1] - 2) * sc, (FGAUGE[i][2] + 4) * sc, (FGAUGE[i][3] + 4) * sc);
     fCockpitCache = { W: W, c: c };
     return c;
   }
@@ -730,6 +818,7 @@
     ctx.save(); ctx.translate(sh.x, sh.y);
     if (ov) {
       ctx.drawImage(ov, (W - ov.width) / 2, H - ov.height + ay);
+      drawGauges(ctx, (W - ov.width) / 2, H - ov.height + ay, ov.width / fighterImg.naturalWidth);
       if (ay < 0) { ctx.fillStyle = "#01020a"; ctx.fillRect(-10, H + ay - 2, W + 20, -ay + 16); }
     } else {
       ctx.fillStyle = "#01020a"; ctx.fillRect(0, H * 0.72, W, H * 0.28);
@@ -767,7 +856,7 @@
   }
   function drawCanyonWalls(ctx, W, H, gate) {
     var top = CAN_TOP, mid = 0, bot = CAN_BOT, w = fCanW, j, d, a, b, t, e;
-    var S = [], ribs = [], gd = -1, ri, gateMark = null;
+    var S = [], ribs = [], gd = -1, ri, gateMark = null, gatePat = 0;
     var hot = fWallHit ? Math.max(0, 1 - (performance.now() - fWallHit) / 450) : 0;
     var ww = fWallWarn(), wl, wr, near;
     ctx.save();
@@ -819,28 +908,41 @@
       else if (p === 2) R = [[x0, c.cx, top, bot]];
       else if (p === 3) R = [[c.cx, x1, top, bot]];
       else R = [[x0, x1, top, -60], [x0, x1, 60, bot]];
-      var f = Math.max(0, 1 - c.d / FCAN_END), i, r, p0, p1;
+      var f = Math.max(0, 1 - c.d / FCAN_END), i, r, p0, p1, O;
+      /* the OPEN gap (fly here), outlined green */
+      if (p === 0) O = [x0, x1, 0, bot];
+      else if (p === 1) O = [x0, x1, top, 0];
+      else if (p === 2) O = [c.cx, x1, top, bot];
+      else if (p === 3) O = [x0, c.cx, top, bot];
+      else O = [x0, x1, -60, 60];
+      /* the BLOCKED region: solid hazard panel with warning hatching. No frame
+         is drawn across the whole cross-section any more -- its top bar read as
+         an overhead beam even when the top of the gate was open. */
       for (i = 0; i < R.length; i++) {
         r = R[i];
         p0 = fProj(W, H, r[0], r[2], c.z, 1); p1 = fProj(W, H, r[1], r[3], c.z, 1);
-        ctx.globalAlpha = 0.30 + 0.45 * f; ctx.fillStyle = "#b8461a";
+        ctx.globalAlpha = 0.55 + 0.40 * f; ctx.fillStyle = "#a3260f";
         ctx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
-        ctx.globalAlpha = 0.5 + 0.5 * f; ctx.strokeStyle = "#ffb347"; ctx.lineWidth = 1 + 3 * f;
+        ctx.globalAlpha = 0.6 + 0.4 * f; ctx.strokeStyle = "#ffb347"; ctx.lineWidth = 1 + 3 * f;
         ctx.strokeRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
         ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y);
         ctx.moveTo(p1.x, p0.y); ctx.lineTo(p0.x, p1.y); ctx.stroke();
       }
-      ctx.globalAlpha = 0.5 + 0.5 * f; ctx.strokeStyle = FXCOL.gate; ctx.lineWidth = 1 + 2.5 * f;
-      ctx.beginPath(); ctx.moveTo(c.fl.x, c.fl.y); ctx.lineTo(c.cl.x, c.cl.y); ctx.lineTo(c.cr.x, c.cr.y);
-      ctx.lineTo(c.fr.x, c.fr.y); ctx.closePath(); ctx.stroke();
-      gateMark = c;
+      p0 = fProj(W, H, O[0], O[2], c.z, 1); p1 = fProj(W, H, O[1], O[3], c.z, 1);
+      ctx.globalAlpha = 0.6 + 0.4 * f; ctx.strokeStyle = "#7dffa0"; ctx.lineWidth = 1 + 2.5 * f;
+      ctx.setLineDash([8, 6]); ctx.strokeRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y); ctx.setLineDash([]);
+      gateMark = c; gatePat = p;
     }
     /* where the ship will cross the gate if it holds its offset from the canyon
        centre and its altitude (gates are canyon-relative); drawn as a HUD cue
        on top of everything so a bend can never hide it */
     function gateMarker(c) {
       var m = fProj(W, H, c.cx + fPx - fCanX, fPy, c.z, 1), mr = Math.max(5, 22 * m.s);
-      ctx.globalAlpha = 0.95; ctx.strokeStyle = "#eaffff"; ctx.lineWidth = 2;
+      /* red when that crossing point is in the blocked region (the same rule
+         Glon's fighter-gates applies at the crossing tick), else white */
+      var dx = fPx - fCanX, y = fPy, hit = gatePat === 0 ? y <= 0 : gatePat === 1 ? y >= 0 :
+                gatePat === 2 ? dx <= 0 : gatePat === 3 ? dx >= 0 : Math.abs(y) >= 60;
+      ctx.globalAlpha = 0.95; ctx.strokeStyle = hit ? "#ff3b3b" : "#eaffff"; ctx.lineWidth = hit ? 3 : 2;
       ctx.beginPath(); ctx.moveTo(m.x, m.y - mr); ctx.lineTo(m.x + mr, m.y); ctx.lineTo(m.x, m.y + mr);
       ctx.lineTo(m.x - mr, m.y); ctx.closePath(); ctx.stroke();
     }
@@ -1212,7 +1314,16 @@
     ctx.beginPath(); ctx.arc(0, 0, s * 0.30, 0, 2 * Math.PI); ctx.stroke();
     ctx.fillStyle = FXCOL.foe;
     ctx.beginPath(); ctx.arc(0, 0, s * 0.16, 0, 2 * Math.PI); ctx.fill();
+    /* on a ram course (Glon rams within |dx|<40 and |dy|<52 at depth <30) */
+    if (ez < 150 && Math.abs(ex - fPx) < 40 && Math.abs(ey - fPy) < 52) fWarnRing(ctx, s * 1.5);
     ctx.restore();
+  }
+  /* pulsing red ring: this object will hit the ship if nothing changes */
+  function fWarnRing(ctx, r) {
+    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(performance.now() / 70);
+    ctx.strokeStyle = "#ff2a2a"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, 2 * Math.PI); ctx.stroke();
+    ctx.globalAlpha = 1;
   }
   function drawBolt(ctx, bx, by, bz) {
     var W = ctx.canvas.width, H = ctx.canvas.height;
@@ -1222,6 +1333,8 @@
     var g = ctx.createRadialGradient(q.x, q.y, 1, q.x, q.y, s * 2.4);
     g.addColorStop(0, "#ffd9a0"); g.addColorStop(0.4, FXCOL.bolt); g.addColorStop(1, "rgba(255,80,0,0)");
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(q.x, q.y, s * 2.4, 0, 2 * Math.PI); ctx.fill();
+    /* on a hit course (Glon: |dx|<60 and |dy|<52 when it arrives) */
+    if (bz < 180 && Math.abs(bx - fPx) < 60 && Math.abs(by - fPy) < 52) { ctx.translate(q.x, q.y); fWarnRing(ctx, s * 3.2); }
     ctx.restore();
   }
   function drawTarget(ctx, W, H) {
@@ -1246,6 +1359,9 @@
    * Glon freezes the mission and owns the stats (Z op) and the continue rule;
    * the host only presents them over the frozen last frame. */
   var fStats = null, fPrevPhase = 0;
+  /* Glon's fwhy codes (the last thing that damaged the ship) */
+  var FWHY = ["", "COLLISION: LEFT WALL", "COLLISION: RIGHT WALL", "COLLISION: GATE",
+              "RAMMED BY FIGHTER", "DESTROYED BY FIGHTER FIRE"];
   function drawDebrief(ctx, W, H) {
     var st = fStats || { score: 0, kills: 0, shots: 0, boosts: 0, hold: 0 };
     var win = fPhase === 4, k = Math.max(1, W / 640);
@@ -1258,6 +1374,8 @@
                 ["SHOTS FIRED", "" + st.shots], ["HITS / ACCURACY", st.kills + " / " + acc + "%"],
                 ["SHIELD REMAINING", "" + fShield], ["BOOSTS USED", "" + st.boosts],
                 ["MISSION TIME", time]];
+    if (!win) rows.unshift(["CAUSE", fShield > 0 ? "TARGET NOT DESTROYED" : (FWHY[st.why] || "SHIELDS LOST")]);
+    var step = Math.min(26 * k, (ph - 108 * k) / rows.length);
     ctx.save();
     ctx.globalAlpha = 1;
     ctx.fillStyle = "rgba(1,3,12,.72)"; ctx.fillRect(0, 0, W, H);
@@ -1270,7 +1388,7 @@
     ctx.fillText(win ? "MISSION COMPLETE" : "MISSION FAILED", W / 2, y0 + 30 * k);
     ctx.font = "bold " + Math.round(14 * k) + "px system-ui, sans-serif";
     for (i = 0; i < rows.length; i++) {
-      var ry = y0 + (68 + i * 26) * k;
+      var ry = y0 + 66 * k + i * step;
       ctx.textAlign = "left"; ctx.fillStyle = "#9fc8e8"; ctx.fillText(rows[i][0], x0 + 28 * k, ry);
       ctx.textAlign = "right"; ctx.fillStyle = "#eaffff"; ctx.fillText(rows[i][1], x0 + pw - 28 * k, ry);
     }
@@ -1318,6 +1436,11 @@
         }
         fPrevPhase = fPhase;
         if (p[8] !== undefined && !isNaN(+p[8])) fCanW = +p[8];
+        if (p[9] !== undefined && !isNaN(+p[9])) fLives = +p[9];
+        var gnow = performance.now();
+        if (fShield < fGaugeShield) fGaugeFlashS = gnow;    /* damage -> that bank flashes */
+        if (fLives < fGaugeLives) fGaugeFlashL = gnow;
+        fGaugeShield = fShield; fGaugeLives = fLives;
         fCanX = canX(fProg);
         /* camera heading = canyon tangent at the ship */
         fYaw = (canX(fProg + 8) - canX(Math.max(0, fProg - 8))) / (fProg + 8 - Math.max(0, fProg - 8));
@@ -1361,20 +1484,24 @@
         }
         if (fPhase >= 4) drawDebrief(ctx, W, H);
       } else if (op === "Z") {
-        fStats = { score: +p[1], kills: +p[2], shots: +p[3], boosts: +p[4], hold: +p[5] };
+        fStats = { score: +p[1], kills: +p[2], shots: +p[3], boosts: +p[4], hold: +p[5], why: +p[6] || 0 };
       } else if (op === "B") {
         if (fActive) { fActive = false; setFighterUi(false); }
         cam = +p[1];
         tx = -cam;
         caveMode = false;
+        signsDue = true;              /* signs go after the trees, before actors */
         paintLayer(ctx, W, 0, cam);   /* distant sky / hills  (slowest) */
         paintLayer(ctx, W, 1, cam);   /* native bush / treeline           */
         paintLayer(ctx, W, 2, cam);   /* orchard / fence / near landscape */
       } else if (op === "F") {
+        if (signsDue) { signsDue = false; drawSigns(ctx, W, cam, tx); }
         paintLayer(ctx, W, 3, cam);   /* foreground foliage   (fastest)   */
       } else if (op === "S") {
+        if (signsDue) { signsDue = false; drawSigns(ctx, W, cam, tx); }
         drawSprite(ctx, +p[1], +p[2], +p[3], +p[4], tx);
       } else if (op === "P") {
+        if (signsDue) { signsDue = false; drawSigns(ctx, W, cam, tx); }
         drawRanger(ctx, +p[1], +p[2], +p[3], +p[4], tx);
       } else if (op === "N") {
         drawSign(ctx, +p[1], +p[2], tx);

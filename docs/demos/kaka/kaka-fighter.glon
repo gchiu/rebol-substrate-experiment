@@ -54,7 +54,7 @@ fighter-enter: func [] [
     block-set! rangi F_STATE 0  block-set! rangi F_C 3  block-set! rangi F_A 30
     block-set! rangi F_TARGET 0  block-set! rangi F_D 0
     fprog: 1  fbomb: 1
-    fshots: 0  fkills: 0  fboosts: 0
+    fshots: 0  fkills: 0  fboosts: 0  fwhy: 0
 ]
 ;; free every live foe (mission entry/exit; forest actors stay parked)
 fighter-clear: func [i] [
@@ -63,9 +63,12 @@ fighter-clear: func [i] [
         fighter-clear + i 1
     ] [ none ]
 ]
-;; mission-local hit: one shield step + brief invulnerability; 0 shield = fail
-fighter-hit: func [] [
+;; mission-local hit: one shield step + brief invulnerability; 0 shield = fail.
+;; r = what hit the ship (kept for the debrief): 1 left wall, 2 right wall,
+;; 3 gate, 4 rammed by a fighter, 5 fighter fire
+fighter-hit: func [r] [
     either > block-at rangi F_A 0 [ none ] [
+        fwhy: r
         either > block-at rangi F_C 0 [ block-set! rangi F_C - block-at rangi F_C 1  block-set! rangi F_A 20 ] [ none ]
         either < block-at rangi F_C 1 [ block-set! rangi F_STATE 3 ] [ none ]
     ]
@@ -106,12 +109,15 @@ foe-step: func [t] [
         block-set! t F_VY - block-at t F_VY 6
         either < block-at t F_VY 12 [
             either < abs - block-at t F_E block-at rangi F_X 60 [
-                either < abs - block-at t F_F block-at rangi F_Y 52 [ fighter-hit ] [ none ]
+                either < abs - block-at t F_F block-at rangi F_Y 52 [ fighter-hit 5 ] [ none ]
             ] [ none ]
         ] [ none ]
     ] [ none ]
-    either < abs - block-at t F_X block-at rangi F_X 40 [
-        either < block-at t F_C 30 [ fighter-hit ] [ none ]
+    ;; ram: the foe must overlap the ship laterally (<40) AND in altitude
+    ;; (<52, the same band as its bolt) -- one visibly passing above or below
+    ;; does not hit. max(|dx|, |dy|*40/52) < 40 keeps it to one test.
+    either < imax abs - block-at t F_X block-at rangi F_X / * 40 abs - block-at t F_Y block-at rangi F_Y 52 40 [
+        either < block-at t F_C 30 [ fighter-hit 4 ] [ none ]
     ] [ none ]
     either < block-at t F_C -20 [ ts-free t ] [ none ]
 ]
@@ -128,10 +134,9 @@ fighter-foes: func [i] [
 fighter-zap: func [i best bz] [
     either < i ts-hi [
         either = ts-k i K_FOE [
-            either < abs - block-at ts-t i F_X block-at rangi F_X 90 [
-                either < abs - block-at ts-t i F_Y block-at rangi F_Y 72 [
-                    either < block-at ts-t i F_C bz [ fighter-zap + i 1 i block-at ts-t i F_C ] [ fighter-zap + i 1 best bz ]
-                ] [ fighter-zap + i 1 best bz ]
+            ;; cone: |dx| < 90 and |dy| < 72, as one test max(|dx|, |dy|*90/72) < 90
+            either < imax abs - block-at ts-t i F_X block-at rangi F_X / * 90 abs - block-at ts-t i F_Y block-at rangi F_Y 72 90 [
+                either < block-at ts-t i F_C bz [ fighter-zap + i 1 i block-at ts-t i F_C ] [ fighter-zap + i 1 best bz ]
             ] [ fighter-zap + i 1 best bz ]
         ] [ fighter-zap + i 1 best bz ]
     ] [ either < best 0 [ none ] [ ts-free ts-t best  score: + score 15  fkills: + fkills 1 ] ]
@@ -151,7 +156,7 @@ fighter-gates: func [] [
             gy: block-at rangi F_Y
             gv: + + + * block-at gate-k gg gy  * block-at gate-k + gg 1 - block-at rangi F_X can-x fprog
                     * block-at gate-k + gg 2 abs gy  block-at gate-k + gg 3
-            either > gv 0 [ none ] [ fighter-hit ]
+            either > gv 0 [ none ] [ fighter-hit 3 ]
         ] [ none ]
     ] [ none ]
 ]
@@ -164,7 +169,7 @@ fighter-run: func [] [
     ;; wall scrape: lose a shield step and bounce back just inside the wall, so
     ;; the ship never sits outside the visible canyon
     either > abs - block-at rangi F_X cen 80 [
-        fighter-hit
+        fighter-hit + 1 imax 0 sign - block-at rangi F_X cen
         block-set! rangi F_X + cen * 70 sign - block-at rangi F_X cen
     ] [ none ]
     ;; foes spawn at depth 420 = 140 ticks ahead, so they sit in the canyon there
@@ -254,12 +259,12 @@ fighter-debrief: func [] [
 ]
 
 ;; ---- fighter render (semantic ops; the host projects/draws) ---------------
-;; A px py phase shield boost laser prog   fighter frame header
+;; A px py phase shield boost laser prog w lives   fighter frame header
 ;; X present aligned                        station node
 ;; U ex ey ez behaviour                     foe
 ;; K bx by bz                               enemy bolt
 ;; Y on                                     player laser this tick
-;; Z score kills shots boosts hold          mission stats (the host shows the
+;; Z score kills shots boosts hold why          mission stats (the host shows the
 ;;                                          debrief in phase 4/5; FIRE counts
 ;;                                          once hold is 0)
 ;; G pattern                                approaching gate (depth from fprog)
@@ -279,9 +284,9 @@ fdraw: func [i] [
 fighter-scene: func [] [
     p-byte 65 p-num block-at rangi F_X p-num block-at rangi F_Y
     p-num block-at rangi F_STATE p-num block-at rangi F_C
-    p-num either > block-at rangi F_D 0 [ 1 ] [ 0 ] p-num krock p-num fprog p-num 80 p-eol
+    p-num either > block-at rangi F_D 0 [ 1 ] [ 0 ] p-num krock p-num fprog p-num 80 p-num block-at rangi F_B p-eol
     p-byte 90 p-num score p-num fkills p-num fshots p-num fboosts
-    p-num block-at rangi F_TARGET p-eol
+    p-num block-at rangi F_TARGET p-num fwhy p-eol
     either > fprog 120 [
         p-byte 71 p-num mod / - fprog 120 200 5 p-eol
     ] [ none ]

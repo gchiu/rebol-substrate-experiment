@@ -91,16 +91,14 @@ rangi: 0
 ;; dist = furthest world x the ranger has reached (monotonic progress; drives
 
 cam: 0 view-w: 640 dist: 480
-;; labels 0..5 = 100km, 75km, 50km, 25km, 5km, NEXT EXIT.
 ;; pest leftward speed by species (0 rat, 1 stoat, 2 possum). Tuned so a timed
 ;; 22-tick jump comfortably clears every ordinary ground pest; stoat>rat>possum.
 pest-speed: [ 4 5 3 ]
 ;; 1 once the ranger has travelled to the destination (no transition yet).
 cd: 0 glon-cd: 0
 berries: 1
-;; helmet-route mission state (owned by kaka-fighter.glon). fprog == 0 arms a
-;; fresh mission; fbomb 1 = the ONE bomb still available.
-fprog: 0 fbomb: 0 fshots: 0 fkills: 0 fboosts: 0 fdbr: 0
+;; helmet-route state + debrief stats (owned by kaka-fighter.glon)
+fprog: 0 fbomb: 0 fshots: 0 fkills: 0 fboosts: 0 fdbr: 0 fwhy: 0
 ;; packed world groups (fewer top-level bindings). Values are set by `reset`.
 ;;   nx = spawn timers (0 next-kaka, 1 next-pick, 2 next-tree-x)
 ;;   wv = wave/rhythm (0 wave, 1 wave-left, 2 wave-cd, 3 next-milestone)
