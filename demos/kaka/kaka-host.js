@@ -688,57 +688,59 @@
     var sc = fScale(W);
     return (H - fighterImg.naturalHeight * sc) + fAlt(W, H) + 628 * sc;
   }
-  /* Corridor rendering. The two CONTINUOUS floor rails stay dominant (the path
-     reads at a glance); the ceiling edges are lighter (height cue only); and a
-     set of spaced ribs gives repeated structural frames so the corridor feels
-     solid. Everything fades with depth, and the draw distance is capped so the
-     vanishing point does not become spaghetti. */
+  /* Corridor rendering. Each sampled cross-section has FOUR structural corners
+     (left/right floor, left/right ceiling) plus a mid-wall point per side. The
+     cross-sections are then CONNECTED by continuous longitudinal edges that
+     follow canX at every sample, so the winding renders as ONE continuous tube
+     rather than floating squares. A few spaced ribs give repeated structure.
+     Hierarchy: floor edges strongest, ceiling edges clear (enclosure), mid-wall
+     edges light (side solidity), everything fading with depth and the draw
+     distance capped so the vanishing point never turns to spaghetti. */
   function drawCanyonWalls(ctx, W, H) {
-    var top = -150, bot = 150;
+    var top = -150, mid = 0, bot = 150;
     var D_END = 1050, RAIL = 15, i, d, cur, prev;
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, W, Math.max(0, fDashTop(W, H))); ctx.clip();
     ctx.lineCap = "round"; ctx.lineJoin = "round";
-    function frame(dd) {
+    function cross(dd) {
       var cx = canX(fProg + dd), w = fCanW;
       return {
-        lt: fProj(W, H, cx - w, top, dd), lb: fProj(W, H, cx - w, bot, dd),
-        rt: fProj(W, H, cx + w, top, dd), rb: fProj(W, H, cx + w, bot, dd)
+        fl: fProj(W, H, cx - w, bot, dd), cl: fProj(W, H, cx - w, top, dd), ml: fProj(W, H, cx - w, mid, dd),
+        fr: fProj(W, H, cx + w, bot, dd), cr: fProj(W, H, cx + w, top, dd), mr: fProj(W, H, cx + w, mid, dd)
       };
     }
-    prev = frame(0);
+    /* continuous longitudinal edges: each class connects its point between the
+       previous and current sample, so the walls sweep around every bend */
+    function rail(k, base, wwidth) {
+      ctx.globalAlpha = base; ctx.strokeStyle = "#55ccff";
+      ctx.lineWidth = wwidth;
+      ctx.beginPath();
+      ctx.moveTo(prev[k + "l"].x, prev[k + "l"].y); ctx.lineTo(cur[k + "l"].x, cur[k + "l"].y);
+      ctx.moveTo(prev[k + "r"].x, prev[k + "r"].y); ctx.lineTo(cur[k + "r"].x, cur[k + "r"].y);
+      ctx.stroke();
+    }
+    prev = cross(0);
     for (d = RAIL; d <= D_END; d += RAIL) {
-      cur = frame(d);
+      cur = cross(d);
       var fade = Math.max(0, 1 - d / D_END);
-      /* 1a. the two dominant rails: the corridor's left/right floor edges */
-      ctx.globalAlpha = 0.92 * Math.pow(fade, 1.3);
-      ctx.strokeStyle = "#55ccff";
-      ctx.lineWidth = Math.max(1.2, 0.7 + 5.4 * fade);
-      ctx.beginPath();
-      ctx.moveTo(prev.lb.x, prev.lb.y); ctx.lineTo(cur.lb.x, cur.lb.y);
-      ctx.moveTo(prev.rb.x, prev.rb.y); ctx.lineTo(cur.rb.x, cur.rb.y);
-      ctx.stroke();
-      /* 1b. fainter ceiling edges: wall height only, never competing */
-      ctx.globalAlpha = 0.92 * Math.pow(fade, 1.3) * 0.32;
-      ctx.lineWidth = Math.max(0.8, 0.5 + 2.4 * fade);
-      ctx.beginPath();
-      ctx.moveTo(prev.lt.x, prev.lt.y); ctx.lineTo(cur.lt.x, cur.lt.y);
-      ctx.moveTo(prev.rt.x, prev.rt.y); ctx.lineTo(cur.rt.x, cur.rt.y);
-      ctx.stroke();
+      var base = 0.95 * Math.pow(fade, 1.25);
+      rail("f", base, Math.max(1.2, 0.7 + 5.4 * fade));            /* 1. floor */
+      rail("c", base * 0.62, Math.max(0.9, 0.5 + 3.0 * fade));     /* 2. ceiling */
+      rail("m", base * 0.34, Math.max(0.8, 0.5 + 2.2 * fade));     /* 3. mid-wall */
       prev = cur;
     }
-    /* 2. repeated structural ribs: nearest strongest, mid moderate, far faint */
+    /* 4. spaced structural ribs: nearest strongest, mid moderate, far faint */
     for (i = 0; i < FCAN_RIBS.length; i++) {
-      var f = frame(FCAN_RIBS[i]);
+      var f = cross(FCAN_RIBS[i]);
       var fa = Math.max(0, 1 - FCAN_RIBS[i] / D_END);
-      ctx.globalAlpha = 0.62 * Math.pow(fa, 1.15);
+      ctx.globalAlpha = 0.5 * Math.pow(fa, 1.15);
       ctx.strokeStyle = "#8fe0ff";
       ctx.lineWidth = Math.max(0.8, 0.8 + 2.3 * fa);
       ctx.beginPath();
-      ctx.moveTo(f.lt.x, f.lt.y); ctx.lineTo(f.lb.x, f.lb.y);
-      ctx.moveTo(f.rt.x, f.rt.y); ctx.lineTo(f.rb.x, f.rb.y);
-      ctx.moveTo(f.lt.x, f.lt.y); ctx.lineTo(f.rt.x, f.rt.y);
-      ctx.moveTo(f.lb.x, f.lb.y); ctx.lineTo(f.rb.x, f.rb.y);
+      ctx.moveTo(f.cl.x, f.cl.y); ctx.lineTo(f.fl.x, f.fl.y);
+      ctx.moveTo(f.cr.x, f.cr.y); ctx.lineTo(f.fr.x, f.fr.y);
+      ctx.moveTo(f.cl.x, f.cl.y); ctx.lineTo(f.cr.x, f.cr.y);
+      ctx.moveTo(f.fl.x, f.fl.y); ctx.lineTo(f.fr.x, f.fr.y);
       ctx.stroke();
     }
     ctx.restore();
