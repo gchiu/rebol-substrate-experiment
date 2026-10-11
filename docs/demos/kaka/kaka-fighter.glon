@@ -9,7 +9,7 @@
 ;; kaka.glon's `step` routes F_E == 2 to `fighter-step` (the only name it needs).
 ;;
 ;; Rangi field reuse in fighter mode:
-;;   F_X  lateral world  (+/-180)      F_Y  vertical world (+/-120)
+;;   F_X  lateral world  (+/-260)      F_Y  vertical world (+/-120)
 ;;   F_STATE  phase 0 run / 1 escape / 2 win / 3 fail / 4 win debrief / 5 fail debrief
 ;;   F_C  local shield (hits left)     F_A  brief invulnerability
 ;;   F_TARGET  laser cooldown / escape countdown   F_D  boost timer
@@ -27,13 +27,13 @@
 ;; ramp 40 -> 150 over the first wavelength. The first 60 ticks (2.4 s) are dead
 ;; straight; the first bend peaks at only ~67 (a fixed X still survives it),
 ;; later S-curves swing +/-150. Max |d centre/d fprog| ~2 stays well under the
-;; 5-unit/tick steering speed. This can-x and the half-width (80) are the
+;; 5-unit/tick steering speed. This can-x and the half-width (110) are the
 ;; SINGLE source of truth: collision, gates, foe spawns and the bomb use them,
 ;; and kaka-host.js mirrors the exact same LUT/step/ramp to draw the walls (if
 ;; you change it here, change it there).
 ;; The walls are continuous surfaces: a wall point is (side, s, v) = side -1/+1,
 ;; mission distance s, height v (-150 ceiling .. 150 floor), at world x
-;; can-x s + side * 80. Future wall-mounted things (emplacements, vents,
+;; can-x s + side * 110. Future wall-mounted things (emplacements, vents,
 ;; gantries, targets) should store that triple so they sit on the drawn wall.
 can-sin: [ 0 195 383 556 707 831 924 981 1000 981 924 831 707 556 383 195 0 -195 -383 -556 -707 -831 -924 -981 -1000 -981 -924 -831 -707 -556 -383 -195 0 ]
 can-amp: func [z] [ + 40 / * 110 imin z 480 480 ]
@@ -82,7 +82,7 @@ fighter-controls: func [] [
     sp: either > block-at rangi F_D 0 [ 9 ] [ 5 ]
     block-set! rangi F_X + block-at rangi F_X * - kr kl sp
     block-set! rangi F_Y + block-at rangi F_Y * - kd ku sp
-    block-set! rangi F_X imax -180 imin 180 block-at rangi F_X
+    block-set! rangi F_X imax -260 imin 260 block-at rangi F_X
     block-set! rangi F_Y imax -120 imin 120 block-at rangi F_Y
 ]
 ;; deterministic spawn: a foe every 18 ticks, <=5 live; behaviour = id mod 3
@@ -168,9 +168,9 @@ fighter-run: func [] [
     cen: can-x fprog
     ;; wall scrape: lose a shield step and bounce back just inside the wall, so
     ;; the ship never sits outside the visible canyon
-    either > abs - block-at rangi F_X cen 80 [
+    either > abs - block-at rangi F_X cen 110 [
         fighter-hit + 1 imax 0 sign - block-at rangi F_X cen
-        block-set! rangi F_X + cen * 70 sign - block-at rangi F_X cen
+        block-set! rangi F_X + cen * 100 sign - block-at rangi F_X cen
     ] [ none ]
     ;; foes spawn at depth 420 = 140 ticks ahead, so they sit in the canyon there
     fc: can-x + fprog 140
@@ -284,7 +284,7 @@ fdraw: func [i] [
 fighter-scene: func [] [
     p-byte 65 p-num block-at rangi F_X p-num block-at rangi F_Y
     p-num block-at rangi F_STATE p-num block-at rangi F_C
-    p-num either > block-at rangi F_D 0 [ 1 ] [ 0 ] p-num krock p-num fprog p-num 80 p-num block-at rangi F_B p-eol
+    p-num either > block-at rangi F_D 0 [ 1 ] [ 0 ] p-num krock p-num fprog p-num 110 p-num block-at rangi F_B p-eol
     p-byte 90 p-num score p-num fkills p-num fshots p-num fboosts
     p-num block-at rangi F_TARGET p-num fwhy p-eol
     either > fprog 120 [
