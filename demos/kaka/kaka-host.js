@@ -1084,6 +1084,19 @@
       }
       ctx.stroke(); ctx.globalAlpha = 1;
     }
+    /* re-entry funnel: dashed centreline along the opening (where Glon's
+       assist pulls the ship), brighter while the assist is engaged */
+    function landingFunnel() {
+      var i, n = S.length, on = fAssistOn();
+      ctx.save(); ctx.setLineDash([10, 9]); ctx.lineDashOffset = -(performance.now() / 40) % 19;
+      ctx.globalAlpha = on ? 0.95 : 0.55; ctx.strokeStyle = on ? "#7dffa0" : "#cfe9ff"; ctx.lineWidth = on ? 3 : 2;
+      ctx.beginPath();
+      for (i = 0; i < n; i += 2) {
+        var q = fProj(W, H, S[i].cx, top, S[i].z, 1);
+        if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
+      }
+      ctx.stroke(); ctx.restore();
+    }
     /* strong readable rim: where the solid surface ends and the opening is */
     function rimEdges() {
       var i, n = S.length, side;
@@ -1351,6 +1364,7 @@
        centre and its altitude (gates are canyon-relative); drawn as a HUD cue
        on top of everything so a bend can never hide it */
     function gateMarker(c) {
+      if (fPy <= CAN_TOP) return;     /* above the rim gates cannot hit: no lane cue */
       var m = fProj(W, H, c.cx + fPx - fCanX, fPy, c.z, 1), mr = Math.max(5, 22 * m.s);
       /* red when that crossing point is in the blocked region (the same rule
          Glon's fighter-gates applies at the crossing tick), else white */
@@ -1396,7 +1410,7 @@
        part of the canyon that is under metal, and only the opening between
        the two rim lines -- exactly where Glon lets the ship descend -- shows
        the canyon. Then surface detail, structures and a strong rim edge. */
-    if (above) { nearSurface(); surfaceDetail(); rimEdges(); }
+    if (above) { nearSurface(); surfaceDetail(); rimEdges(); landingFunnel(); }
     if (gateMark) gateMarker(gateMark);
     /* scrape warning: an amber glow on that screen edge, before any shield loss */
     if (ww.amt > 0) {
@@ -1774,9 +1788,11 @@
   }
   function drawTarget(ctx, W, H) {
     var c = fCenter(W, H);
+    if (fPhase === 1 || fPhase === 2) { drawJammed(ctx, W, H, c); return; }
     var present = (fProg >= 850 && fPhase === 0);
     if (!present) return;
-    var aligned = Math.abs(fPx - fCanX) < 70;
+    /* Glon's drop rule: < 70 off the centre AND inside the trench */
+    var inside = fPy > CAN_TOP, aligned = inside && Math.abs(fPx - fCanX) < 70;
     var r = 46 + 8 * Math.sin(performance.now() / 180);
     ctx.save();
     ctx.strokeStyle = aligned ? FXCOL.good : FXCOL.hot;
@@ -1787,7 +1803,38 @@
     ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, 2 * Math.PI); ctx.fill();
     ctx.fillStyle = aligned ? FXCOL.good : FXCOL.hot;
     ctx.font = "bold 14px system-ui, sans-serif"; ctx.textAlign = "center";
-    ctx.fillText(aligned ? "GLON LOCKED" : "ALIGN + GLON", c.x, c.y - r - 10);
+    ctx.fillText(aligned ? "DROP BERRIES (GLON)" : (inside ? "ALIGN + DROP BERRIES" : "DESCEND TO DROP"), c.x, c.y - r - 10);
+    ctx.restore();
+  }
+  /* The payload result: berry goo splatters over the station machinery, the
+     rings stop turning and spark. Shown through the escape (phase 1) until the
+     debrief; presentation only. */
+  var fJamT0 = 0;
+  function drawJammed(ctx, W, H, c) {
+    var now = performance.now(), t = Math.min(1, (now - fJamT0) / 900), i, k = Math.max(1, W / 640);
+    var r = 54 * k;
+    ctx.save();
+    ctx.strokeStyle = "#8f9bb0"; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, 2 * Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(c.x, c.y, r * 0.5, 0, 2 * Math.PI); ctx.stroke();
+    for (i = 0; i < 6; i++) {                                  /* stopped gear teeth */
+      var a = i * Math.PI / 3; ctx.beginPath();
+      ctx.moveTo(c.x + Math.cos(a) * r * 0.5, c.y + Math.sin(a) * r * 0.5); ctx.lineTo(c.x + Math.cos(a) * r, c.y + Math.sin(a) * r); ctx.stroke();
+    }
+    for (i = 0; i < 14; i++) {                                 /* berry goo blobs grow in */
+      var ang = i * 2.399963, d = r * (0.2 + (i * 37 % 10) / 12), br = (5 + (i * 13 % 9)) * k * t;
+      ctx.fillStyle = i % 3 ? "#8a1f6b" : "#c2185b";
+      ctx.beginPath(); ctx.arc(c.x + Math.cos(ang) * d, c.y + Math.sin(ang) * d * 0.8, br, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,.35)"; ctx.beginPath(); ctx.arc(c.x + Math.cos(ang) * d - br * 0.3, c.y + Math.sin(ang) * d * 0.8 - br * 0.3, br * 0.3, 0, 2 * Math.PI); ctx.fill();
+    }
+    if ((now / 90) % 2 < 1) {                                  /* sparks from the jammed rings */
+      ctx.strokeStyle = "#ffe08a"; ctx.lineWidth = 2;
+      for (i = 0; i < 4; i++) { var sa = (now / 300 + i * 1.7) % (2 * Math.PI);
+        ctx.beginPath(); ctx.moveTo(c.x + Math.cos(sa) * r, c.y + Math.sin(sa) * r); ctx.lineTo(c.x + Math.cos(sa) * (r + 12 * k), c.y + Math.sin(sa) * (r + 12 * k)); ctx.stroke(); }
+    }
+    ctx.fillStyle = "#ff8ad8"; ctx.font = "bold " + Math.round(16 * k) + "px system-ui, sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("BERRIES DELIVERED  -  MACHINERY JAMMED", c.x, c.y - r - 14 * k);
+    if (fPhase === 1) { ctx.fillStyle = "#cfeeff"; ctx.fillText("ESCAPE!", c.x, c.y + r + 22 * k); }
     ctx.restore();
   }
   /* ---- end-of-mission debrief (Glon phase 4 = complete, 5 = failed) --------
@@ -1808,8 +1855,9 @@
     var time = Math.floor(secs / 60) + ":" + ("0" + (secs % 60)).slice(-2);
     var rows = [["SCORE", "" + st.score], ["FIGHTERS DESTROYED", "" + st.kills],
                 ["SHOTS FIRED", "" + st.shots], ["HITS / ACCURACY", st.kills + " / " + acc + "%"],
-                ["SHIELD REMAINING", "" + fShield], ["BOOSTS USED", "" + st.boosts],
-                ["MISSION TIME", time]];
+                ["SHIELD REMAINING", "" + fShield], ["LIVES REMAINING", "" + fLives],
+                ["BOOSTS USED", "" + st.boosts], ["MISSION TIME", time]];
+    if (win) rows.unshift(["TARGET", "JAMMED WITH BERRIES"]);
     /* abandoning (6) ends the run with shields left, so the reason code wins;
        otherwise shields left at the end means the target was not destroyed */
     if (!win) rows.unshift(["CAUSE", st.why === 6 ? FWHY[6] : fShield > 0 ? "TARGET NOT DESTROYED" : (FWHY[st.why] || "SHIELDS LOST")]);
@@ -1837,11 +1885,23 @@
     ctx.fillText("FIRE TO CONTINUE  →  " + (win ? "FOREST" : "SKULL CAVE"), W / 2, y0 + ph - 22 * k);
     ctx.restore();
   }
+  /* Glon's re-entry assist engages while DOWN is held above the rim within
+     340 of the trench centre; the host only mirrors that to show the cue. */
+  function fAssistOn() {
+    return fPy < CAN_TOP && Math.abs(fPx - fCanX) < 340 && !!(held.down || applied.down || tapped.down);
+  }
   /* Mission discipline cues (Glon owns the rule: > 400 from the trench centre
      for 75 ticks abandons the run). Outside the trench an arrow points back
      to it; once Glon's stray clock runs, RETURN TO TRENCH counts down. */
   function drawTrenchGuide(ctx, W, H) {
     var dx = fCanX - fPx, stray = fStats ? fStats.stray : 0, k = Math.max(1, W / 640);
+    if (fAssistOn()) {
+      ctx.save(); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.font = "bold " + Math.round(15 * k) + "px system-ui, sans-serif";
+      ctx.globalAlpha = 0.7 + 0.3 * Math.sin(performance.now() / 120); ctx.fillStyle = "#7dffa0";
+      ctx.fillText("RE-ENTRY GUIDANCE", W / 2, H * 0.2);
+      ctx.restore();
+    }
     if (Math.abs(dx) <= fCanW && !stray) return;
     var left = dx < 0, ax = left ? 26 * k : W - 26 * k, ay = H * 0.42, dir = left ? -1 : 1;
     ctx.save();
@@ -1867,7 +1927,7 @@
     ctx.fillStyle = "#cfeeff";
     ctx.fillText("HELMET RUN  " + phase, 16, 12);
     ctx.fillStyle = fShield > 1 ? "#7fd18a" : "#ffd23f";
-    ctx.fillText("SHIELD " + fShield + "   BOMB " + (fBomb ? "READY" : "SPENT") + "   T" + Math.floor(fProg / 25) + "s", 16, 34);
+    ctx.fillText("SHIELD " + fShield + "   BERRIES " + (fBomb ? "READY" : "DROPPED") + "   T" + Math.floor(fProg / 25) + "s", 16, 34);
     ctx.restore();
   }
 
@@ -1888,6 +1948,7 @@
         prevFoes = fFoes.length; prevBolts = fBolts.length;
         fPx = +p[1]; fPy = +p[2]; fPhase = +p[3]; fShield = +p[4];
         fBoost = +p[5]; fLaser = +p[6]; fProg = +p[7];
+        if (fPhase === 1 && fPrevPhase === 0) fJamT0 = performance.now();
         if (fPhase >= 4) {                   /* frozen debrief: no fire/boost feedback */
           fLaser = 0; fBoost = 0;
           if (fPrevPhase < 4) { if (fPhase === 4) playSuccess(); else playFail(); }
@@ -2064,7 +2125,7 @@
   /* debug hook for headless screenshot/QA harnesses (no game rule lives here) */
   window.__kaka = { ev: ev, evVal: evVal, route: route, applyStart: applyStart,
     /* read-only fighter read-out for screenshot/QA harnesses (no game rule) */
-    fighter: function () { return { on: fActive, prog: fProg, x: fPx, can: fCanX, w: fCanW, shield: fShield }; },
+    fighter: function () { return { on: fActive, prog: fProg, x: fPx, y: fPy, can: fCanX, w: fCanW, shield: fShield, phase: fPhase }; },
     /* QA only: freeze the sim and paint one synthetic fighter frame (e.g. to
        screenshot the canyon at a given mission distance); pin(null) resumes */
     pin: function (script) { pinnedScript = script || null; if (script) drawScript(script); } };

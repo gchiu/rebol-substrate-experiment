@@ -217,6 +217,8 @@ int main(void) {
     check(run_int("fprog") == dprog && run_int("block-at rangi F_STATE") == 4, "S3 gameplay is frozen during the debrief");
     run_source("kf: 1  fighter-step  kf: 0");
     check(run_int("block-at rangi F_E") == 0 && run_int("fprog") == 0, "T success debrief -> FIRE -> FOREST");
+    run_source("step  tally");
+    check(run_int("over") == 0 && run_int("block-at tc2 0") > 0, "T2 the forest after success has trees and is not over");
     /* V. same actor id persists on the way back */
     check(run_int("block-at rangi F_ID") == 1, "V same Rangi actor persists on return");
 
@@ -252,6 +254,22 @@ int main(void) {
     ticks("fighter-run", 60);
     run_source("block-set! rangi F_X 0  block-set! rangi F_Y 0  fighter-run");
     check(run_int("fdbr") == 0 && run_int("block-at rangi F_STATE") == 0, "O6 returning to the trench resets the stray clock");
+
+    /* ---- re-entry assist (fprog 660: trench centre 150) --------------------- */
+    run_source(ENTER "fprog: 660  block-set! rangi F_X 0  block-set! rangi F_Y -300  block-set! rangi F_A 0  kd: 1");
+    ticks("fighter-run", 26);
+    long ax = run_int("block-at rangi F_X"), ayy = run_int("block-at rangi F_Y");
+    ticks("fighter-run", 20);
+    run_source("kd: 0");
+    check(ayy < -150 && ax > 130 && ax < 170 && run_int("block-at rangi F_Y") > -150 && run_int("block-at rangi F_C") == 3,
+          "A1 holding DOWN above the trench is captured and drops into it");
+    run_source(ENTER "fprog: 660  block-set! rangi F_X 0  block-set! rangi F_Y -300  block-set! rangi F_A 9999");
+    ticks("fighter-run", 10);
+    check(run_int("block-at rangi F_X") == 0, "A2 no pull without DOWN");
+    run_source(ENTER "fprog: 660  block-set! rangi F_X 500  block-set! rangi F_Y -400  block-set! rangi F_A 9999  kd: 1");
+    ticks("fighter-run", 5);
+    run_source("kd: 0");
+    check(run_int("block-at rangi F_X") == 500, "A3 no pull outside the 340 capture zone");
 
     /* ---- winding canyon (D12S.23) -----------------------------------------
        canyon centre = can-x fprog; half-width 110; collision/render share it.
