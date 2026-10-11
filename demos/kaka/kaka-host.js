@@ -633,30 +633,39 @@
      sine LUT + amplitude ramp + integer division here (keep in sync with
      kaka-fighter.glon) so rendering and collision share one smooth curve -- a
      piecewise-linear table aliased into the angular kinks that read as zig-zag. */
-  var CAN_L = 640, CAN_SIN_STEP = 20;
+  var CAN_L = 480, CAN_SIN_STEP = 15, CAN_STRAIGHT = 60;
   var CAN_SIN = [0,195,383,556,707,831,924,981,1000,981,924,831,707,556,383,195,
                  0,-195,-383,-556,-707,-831,-924,-981,-1000,-981,-924,-831,-707,-556,-383,-195,0];
   function truncDiv(a, b) { return a >= 0 ? Math.trunc(a / b) : -Math.trunc(-a / b); }
-  function canAmp(z) { z = z < 0 ? 0 : z; return 60 + truncDiv(110 * (z < 640 ? z : 640), 640); }
+  function canAmp(z) { return 40 + truncDiv(110 * (z < CAN_L ? z : CAN_L), CAN_L); }
   function canX(z) {
-    if (z < 0) z = 0;
+    z = Math.max(0, Math.floor(z) - CAN_STRAIGHT);
     var i = z % CAN_L, k = Math.floor(i / CAN_SIN_STEP), f = i - k * CAN_SIN_STEP;
-    var a = CAN_SIN[k] !== undefined ? CAN_SIN[k] : 0;
-    var b = CAN_SIN[k + 1] !== undefined ? CAN_SIN[k + 1] : 0;
-    var sv = a + truncDiv((b - a) * f, CAN_SIN_STEP);
+    var sv = CAN_SIN[k] + truncDiv((CAN_SIN[k + 1] - CAN_SIN[k]) * f, CAN_SIN_STEP);
     return truncDiv(canAmp(z) * sv, 1000);
   }
-  var fCanX = 0, fCanW = 80, fYawPx = 0;
-  /* Cross-section ribs at deliberately spaced depths: dense enough near/mid to
-     read as a solid tube, thinning with distance (fewer, fainter far frames) so
-     the winding never becomes a tangled cluster. The two continuous wall rails
-     carry the path; the ribs are the repeated structural frames. */
-  var FCAN_RIBS = [90, 180, 300, 450, 620, 820, 1050];
-  var FCAN_LOOK = 320;   /* look-ahead depth for the weak tangent yaw */
-  /* Deliberately WEAK yaw: a tangent-tracking camera straightens the bend on
-     screen (the corridor always ends up dead ahead). Under-applying it keeps
-     the curve sweeping left/right while still hinting at a turn. */
-  var FCAN_FOCAL = 20;
+  var fCanX = 0, fCanW = 80, fYaw = 0, fWallHit = 0, fWallSide = 0;
+  /* ONE world scale for everything in the trench: a canyon sample dd ticks
+     ahead sits at render depth dd * CAN_Z. Foes close 3 depth/tick while fprog
+     advances 1, so CAN_Z = 3 also places every foe/bolt (emitted in that depth
+     unit) in the same canyon cross-section Glon used to spawn it. */
+  var CAN_Z = 3;
+  var FCAN_NEAR = 6, FCAN_END = 200, FCAN_STEP = 4;   /* sampled ticks ahead */
+  var FCAN_RIB = 25;   /* one structural rib per second of flight, world-fixed */
+  var FFOCAL = 230;
+  /* WALL SURFACE COORDINATES. The canyon walls are continuous, addressable
+     surfaces, not just a collision limit: a point on a wall is (side, s, v)
+     with side -1 left / +1 right, s = mission distance (fprog units, the same
+     axis as can-x) and v = height (CAN_TOP ceiling .. CAN_BOT floor). The wall
+     renderer is built from canWall(), so anything attached later (gun
+     emplacements, machinery, vents, gantries, targetable structures) placed
+     with the same (side, s, v) sits exactly on the drawn and collided surface,
+     and scrolls/bends with it. Glon owns such entities' state; it only needs
+     can-x and the half-width to agree with this mapping. */
+  var CAN_TOP = -150, CAN_BOT = 150;
+  function canWall(side, s, v) { return { x: canX(s) + side * fCanW, y: v, s: s }; }
+  /* project a world point at mission distance s (a wall point, an attachment) */
+  function fProjS(W, H, p) { return fProj(W, H, p.x, p.y, (p.s - fProg) * CAN_Z, 1); }
   var prevFoes = 0, prevBolts = 0, lastLaserMs = 0, laserSide = false, wasBoost = false;
   var FXCOL = { wall: "#39b7ff", dim: "rgba(80,180,255,.45)", foe: "#ff3b3b",
                 bolt: "#ff8a3b", gate: "#5fd0ff", good: "#7fd18a", hot: "#ffd23f" };
@@ -669,17 +678,21 @@
     var sc = fScale(W);
     return { x: W * 0.5, y: (H - fighterImg.naturalHeight * sc) + 520 * sc, sc: sc };
   }
-  function fProj(W, H, ox, oy, oz) {
+  function fProj(W, H, ox, oy, oz, zmin) {
     var c = fCenter(W, H);
-    var z = Math.max(oz, 16);
+    var z = Math.max(oz, zmin || 16);
     /* The world uses the cockpit's own scale (design width 640) so the canyon
        keeps its size relative to the frame on wider phone canvases. */
     var vk = Math.max(1, W / 640);
-    var s = 230 * vk / z;
-    /* fYawPx rotates the camera onto the corridor tangent (a screen-space shift
-       is the small-angle approximation). It is deliberately UNDER-applied so a
-       bend still sweeps across the screen instead of cancelling out. */
-    return { x: c.x + fYawPx + (ox - fPx) * s, y: c.y + (oy - fPy) * s * 0.62, s: s };
+    var s = FFOCAL * vk / z;
+    return { x: c.x + fYawPx(W) + (ox - fPx) * s, y: c.y + (oy - fPy) * s * 0.62, s: s };
+  }
+  /* The camera heads along the canyon tangent at the ship (small-angle yaw =
+     a constant screen shift of focal * slope / CAN_Z), so the corridor near the
+     ship runs straight ahead and the bend ahead visibly sweeps off to one side. */
+  function fYawPx(W) {
+    var px = -FFOCAL * Math.max(1, W / 640) * fYaw / CAN_Z;
+    return Math.max(-W * 0.3, Math.min(W * 0.3, px));
   }
   /* Bottom of the cockpit's see-through trench window: the canyon wireframe is
      clipped to it so it never paints over the dashboard artwork. */
@@ -688,79 +701,112 @@
     var sc = fScale(W);
     return (H - fighterImg.naturalHeight * sc) + fAlt(W, H) + 628 * sc;
   }
-  /* Corridor rendering. Each sampled cross-section has FOUR structural corners
-     (left/right floor, left/right ceiling) plus a mid-wall point per side. The
-     cross-sections are then CONNECTED by continuous longitudinal edges that
-     follow canX at every sample, so the winding renders as ONE continuous tube
-     rather than floating squares. A few spaced ribs give repeated structure.
-     Hierarchy: floor edges strongest, ceiling edges clear (enclosure), mid-wall
-     edges light (side solidity), everything fading with depth and the draw
-     distance capped so the vanishing point never turns to spaghetti. */
-  function drawCanyonWalls(ctx, W, H) {
-    var top = -150, mid = 0, bot = 150;
-    var D_END = 1050, RAIL = 15, i, d, cur, prev;
+  /* Corridor rendering: a SOLID canyon. Every cross-section is derived from
+     the SAME canX(fProg + dd) +/- fCanW that Glon collides against, at render
+     depth dd * CAN_Z, so the surface that kills the ship is the surface drawn.
+     Between successive samples four dark surfaces are filled (floor, ceiling,
+     left wall, right wall), painted FAR to NEAR so a near wall on the inside of
+     a bend genuinely hides the corridor behind it. Neon edges ride on top:
+     continuous floor/ceiling rails (plus a faint mid-wall rail) carry the path,
+     and sparse world-fixed ribs (one per second of flight) stream past as the
+     depth/speed cue. Surfaces fog into the void with distance. Gate barriers
+     are drawn in the same cross-section, in their exact blocked region. */
+  var FBG = [1, 2, 10];
+  function fFog(rgb, t, hot) {
+    var k = Math.min(1, t * t * 1.1), r = rgb[0], g = rgb[1], b = rgb[2];
+    if (hot > 0) { r += (150 - r) * hot; g += (24 - g) * hot; b += (30 - b) * hot; }
+    return "rgb(" + Math.round(r + (FBG[0] - r) * k) + "," + Math.round(g + (FBG[1] - g) * k) +
+           "," + Math.round(b + (FBG[2] - b) * k) + ")";
+  }
+  function drawCanyonWalls(ctx, W, H, gate) {
+    var top = CAN_TOP, mid = 0, bot = CAN_BOT, w = fCanW, j, d, a, b, t, e;
+    var S = [], ribs = [], gd = -1, ri, gateMark = null;
+    var hot = fWallHit ? Math.max(0, 1 - (performance.now() - fWallHit) / 450) : 0;
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, W, Math.max(0, fDashTop(W, H))); ctx.clip();
     ctx.lineCap = "round"; ctx.lineJoin = "round";
+    /* one cross-section dd ticks ahead, built from the wall-surface mapping */
     function cross(dd) {
-      var cx = canX(fProg + dd), w = fCanW;
-      return {
-        fl: fProj(W, H, cx - w, bot, dd), cl: fProj(W, H, cx - w, top, dd), ml: fProj(W, H, cx - w, mid, dd),
-        fr: fProj(W, H, cx + w, bot, dd), cr: fProj(W, H, cx + w, top, dd), mr: fProj(W, H, cx + w, mid, dd)
-      };
+      var s = fProg + dd;
+      function wp(side, v) { return fProjS(W, H, canWall(side, s, v)); }
+      return { d: dd, cx: canX(s), z: dd * CAN_Z,
+        fl: wp(-1, bot), cl: wp(-1, top), ml: wp(-1, mid),
+        fr: wp(1, bot), cr: wp(1, top), mr: wp(1, mid) };
     }
-    /* continuous longitudinal edges: each class connects its point between the
-       previous and current sample, so the walls sweep around every bend */
-    function rail(k, base, wwidth, color) {
-      ctx.globalAlpha = base; ctx.strokeStyle = color; ctx.lineWidth = wwidth;
-      ctx.beginPath();
-      ctx.moveTo(prev[k + "l"].x, prev[k + "l"].y); ctx.lineTo(cur[k + "l"].x, cur[k + "l"].y);
-      ctx.moveTo(prev[k + "r"].x, prev[k + "r"].y); ctx.lineTo(cur[k + "r"].x, cur[k + "r"].y);
-      ctx.stroke();
-    }
-    /* Filled surfaces between successive cross-sections (Doom-style solidity).
-       The two vertical walls are exactly the collision planes canX +/- fCanW,
-       so the surface the player hits is the surface drawn. Edge lines ride on
-       top of the fills. */
-    function quad(a, b, c, e) {
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.lineTo(e.x, e.y);
+    function quad(p, q, r, s, col) {
+      ctx.fillStyle = col; ctx.beginPath();
+      ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.lineTo(r.x, r.y); ctx.lineTo(s.x, s.y);
       ctx.closePath(); ctx.fill();
     }
-    prev = cross(0);
-    for (d = RAIL; d <= D_END; d += RAIL) {
-      cur = cross(d);
-      var fade = Math.max(0, 1 - d / D_END);
-      var ff = Math.pow(fade, 0.9);
-      var base = 0.95 * Math.pow(fade, 1.25);
-      ctx.globalAlpha = 0.70 * ff; ctx.fillStyle = "#08131f";   /* floor    */
-      quad(prev.fl, cur.fl, cur.fr, prev.fr);
-      ctx.globalAlpha = 0.58 * ff; ctx.fillStyle = "#050d17";   /* ceiling  */
-      quad(prev.cl, cur.cl, cur.cr, prev.cr);
-      ctx.globalAlpha = 0.90 * ff; ctx.fillStyle = "#0b1e33";   /* LEFT wall  (collision plane) */
-      quad(prev.cl, cur.cl, cur.fl, prev.fl);
-      ctx.globalAlpha = 0.90 * ff; ctx.fillStyle = "#0b1e33";   /* RIGHT wall (collision plane) */
-      quad(prev.cr, cur.cr, cur.fr, prev.fr);
-      /* neon edges on top of the solid surfaces */
-      rail("f", base, Math.max(1.6, 0.9 + 6.4 * fade), "#8feaff");            /* floor */
-      rail("c", base * 0.80, Math.max(1.1, 0.7 + 4.0 * fade), "#6fd8ff");     /* ceiling */
-      rail("m", base * 0.28, Math.max(0.8, 0.5 + 2.0 * fade), "#3aa8d8");     /* mid-wall */
-      prev = cur;
-    }
-    /* 4. spaced structural ribs: nearest strongest, mid moderate, far faint */
-    for (i = 0; i < FCAN_RIBS.length; i++) {
-      var f = cross(FCAN_RIBS[i]);
-      var fa = Math.max(0, 1 - FCAN_RIBS[i] / D_END);
-      ctx.globalAlpha = 0.5 * Math.pow(fa, 1.15);
-      ctx.strokeStyle = "#8fe0ff";
-      ctx.lineWidth = Math.max(0.8, 0.8 + 2.3 * fa);
+    function edge(k, alpha, width, color) {
+      ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = width;
       ctx.beginPath();
-      ctx.moveTo(f.cl.x, f.cl.y); ctx.lineTo(f.fl.x, f.fl.y);
-      ctx.moveTo(f.cr.x, f.cr.y); ctx.lineTo(f.fr.x, f.fr.y);
-      ctx.moveTo(f.cl.x, f.cl.y); ctx.lineTo(f.cr.x, f.cr.y);
-      ctx.moveTo(f.fl.x, f.fl.y); ctx.lineTo(f.fr.x, f.fr.y);
+      ctx.moveTo(a[k + "l"].x, a[k + "l"].y); ctx.lineTo(b[k + "l"].x, b[k + "l"].y);
+      ctx.moveTo(a[k + "r"].x, a[k + "r"].y); ctx.lineTo(b[k + "r"].x, b[k + "r"].y);
       ctx.stroke();
     }
+    function rib(c) {
+      var f = Math.max(0, 1 - c.d / FCAN_END);
+      ctx.globalAlpha = 0.65 * Math.pow(f, 1.1); ctx.strokeStyle = "#8fe0ff";
+      ctx.lineWidth = 0.8 + 2.6 * f;
+      ctx.beginPath();
+      ctx.moveTo(c.fl.x, c.fl.y); ctx.lineTo(c.cl.x, c.cl.y); ctx.lineTo(c.cr.x, c.cr.y);
+      ctx.lineTo(c.fr.x, c.fr.y); ctx.closePath(); ctx.stroke();
+    }
+    /* gate barrier: exactly the region fighter-gates treats as blocked */
+    function gatePanel(c, p) {
+      var x0 = c.cx - w, x1 = c.cx + w, R;
+      if (p === 0) R = [[x0, x1, top, 0]];
+      else if (p === 1) R = [[x0, x1, 0, bot]];
+      else if (p === 2) R = [[x0, c.cx, top, bot]];
+      else if (p === 3) R = [[c.cx, x1, top, bot]];
+      else R = [[x0, x1, top, -60], [x0, x1, 60, bot]];
+      var f = Math.max(0, 1 - c.d / FCAN_END), i, r, p0, p1;
+      for (i = 0; i < R.length; i++) {
+        r = R[i];
+        p0 = fProj(W, H, r[0], r[2], c.z, 1); p1 = fProj(W, H, r[1], r[3], c.z, 1);
+        ctx.globalAlpha = 0.30 + 0.45 * f; ctx.fillStyle = "#b8461a";
+        ctx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
+        ctx.globalAlpha = 0.5 + 0.5 * f; ctx.strokeStyle = "#ffb347"; ctx.lineWidth = 1 + 3 * f;
+        ctx.strokeRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
+        ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y);
+        ctx.moveTo(p1.x, p0.y); ctx.lineTo(p0.x, p1.y); ctx.stroke();
+      }
+      ctx.globalAlpha = 0.5 + 0.5 * f; ctx.strokeStyle = FXCOL.gate; ctx.lineWidth = 1 + 2.5 * f;
+      ctx.beginPath(); ctx.moveTo(c.fl.x, c.fl.y); ctx.lineTo(c.cl.x, c.cl.y); ctx.lineTo(c.cr.x, c.cr.y);
+      ctx.lineTo(c.fr.x, c.fr.y); ctx.closePath(); ctx.stroke();
+      gateMark = c;
+    }
+    /* where the ship will cross the gate if it holds its offset from the canyon
+       centre and its altitude (gates are canyon-relative); drawn as a HUD cue
+       on top of everything so a bend can never hide it */
+    function gateMarker(c) {
+      var m = fProj(W, H, c.cx + fPx - fCanX, fPy, c.z, 1), mr = Math.max(5, 22 * m.s);
+      ctx.globalAlpha = 0.95; ctx.strokeStyle = "#eaffff"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(m.x, m.y - mr); ctx.lineTo(m.x + mr, m.y); ctx.lineTo(m.x, m.y + mr);
+      ctx.lineTo(m.x - mr, m.y); ctx.closePath(); ctx.stroke();
+    }
+    /* the nearest section sits almost at the camera so a wall beside the ship
+       fills its whole side of the screen (no void showing past a close wall) */
+    S.push(cross(0.5));
+    for (d = FCAN_NEAR; d <= FCAN_END; d += FCAN_STEP) S.push(cross(d));
+    for (d = FCAN_RIB - (fProg % FCAN_RIB); d <= FCAN_END; d += FCAN_RIB) if (d > FCAN_NEAR) ribs.push(d);
+    if (gate && fProg > 120) gd = 198 - ((fProg - 120) % 200);
+    ri = ribs.length - 1;
+    for (j = S.length - 1; j > 0; j--) {
+      a = S[j - 1]; b = S[j]; t = b.d / FCAN_END; e = Math.max(0, 1 - t);
+      ctx.globalAlpha = 1;
+      quad(a.fl, b.fl, b.fr, a.fr, fFog([7, 20, 38], t, 0));                         /* floor */
+      quad(a.cl, b.cl, b.cr, a.cr, fFog([4, 11, 24], t, 0));                         /* ceiling */
+      quad(a.cl, b.cl, b.fl, a.fl, fFog([12, 36, 66], t, fWallSide < 0 ? hot : 0));  /* LEFT wall  */
+      quad(a.cr, b.cr, b.fr, a.fr, fFog([12, 36, 66], t, fWallSide > 0 ? hot : 0));  /* RIGHT wall */
+      edge("f", 0.95 * Math.pow(e, 1.1), 1.2 + 5.5 * e, "#8feaff");   /* floor edges   */
+      edge("c", 0.80 * Math.pow(e, 1.1), 1.0 + 3.8 * e, "#6fd8ff");   /* ceiling edges */
+      edge("m", 0.25 * e, 0.8 + 1.6 * e, "#3aa8d8");                   /* mid-wall rail */
+      while (ri >= 0 && ribs[ri] > a.d) { if (ribs[ri] <= b.d) rib(cross(ribs[ri])); ri--; }
+      if (gd > a.d && gd <= b.d) gatePanel(cross(gd), gate.p);
+    }
+    if (gateMark) gateMarker(gateMark);
     ctx.restore();
   }
   /* Altitude ride: the fighter's real Glon altitude (F_Y -> fPy) shifts the
@@ -1011,13 +1057,13 @@
   }
   function drawFighterBackground(ctx, W, H) {
     var c = fCenter(W, H), t = performance.now() / 1000, sp = fSpeed();
-    var sx = 0, sy = 0;
-    if (fBoost > 0) { sx = Math.sin(t * 63) * 3 + Math.sin(t * 41) * 1.5; sy = Math.cos(t * 55) * 2.4; }
+    var sh = fShake(t);
     var ay = fAlt(W, H);                         /* ship altitude ride (F_Y) */
-    /* the world shifts the OPPOSITE way, so a climb sinks the trench */
-    var cw = { x: c.x, y: c.y - ay, sc: c.sc };
+    /* the world shifts the OPPOSITE way, so a climb sinks the trench; the
+       vanishing point follows the camera's canyon-tangent heading */
+    var cw = { x: c.x + fYawPx(W), y: c.y - ay, sc: c.sc };
     ctx.save();
-    ctx.translate(sx, sy);
+    ctx.translate(sh.x, sh.y);
     ctx.fillStyle = "#01020a"; ctx.fillRect(-10, -10, W + 20, H + 20);
     if (fighterImg) {
       var sc = fScale(W), iw = fighterImg.naturalWidth * sc, ih = fighterImg.naturalHeight * sc;
@@ -1048,7 +1094,18 @@
     if (fBoost > 0) {
       ctx.fillStyle = "rgba(120,200,255,.09)"; ctx.fillRect(-10, -10, W + 20, H + 20);
     }
-    drawCannons(ctx, W, H);          /* explicit ship cannons (tips = fGun) */
+    ctx.restore();
+  }
+  /* boost frame shake (shared by the background and the cannons) */
+  function fShake(t) {
+    if (fBoost <= 0) return { x: 0, y: 0 };
+    return { x: Math.sin(t * 63) * 3 + Math.sin(t * 41) * 1.5, y: Math.cos(t * 55) * 2.4 };
+  }
+  /* explicit ship cannons (tips = fGun), drawn OVER the solid canyon walls */
+  function drawFighterCannons(ctx, W, H) {
+    var sh = fShake(performance.now() / 1000);
+    ctx.save(); ctx.translate(sh.x, sh.y);
+    drawCannons(ctx, W, H);
     ctx.restore();
   }
   function drawFighterReticle(ctx, W, H, firing) {
@@ -1115,25 +1172,6 @@
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(q.x, q.y, s * 2.4, 0, 2 * Math.PI); ctx.fill();
     ctx.restore();
   }
-  function drawGate(ctx, pattern, pct) {
-    var W = ctx.canvas.width, H = ctx.canvas.height;
-    var c = fCenter(W, H);
-    var s = Math.max(0, Math.min(1, pct / 100));
-    var scale = s * s * 7 + 0.12;
-    var hw = 18 + scale * 300, hh = 12 + scale * 150;
-    var px = c.x + fYawPx + (fCanX - fPx) * scale * 0.9, py = c.y - fPy * scale * 0.5;
-    ctx.save();
-    ctx.strokeStyle = FXCOL.gate; ctx.lineWidth = 2 + s * 3;
-    ctx.globalAlpha = 0.35 + s * 0.65;
-    ctx.strokeRect(px - hw, py - hh, hw * 2, hh * 2);
-    ctx.fillStyle = "rgba(95,208,255,.16)";
-    if (pattern === 0) ctx.fillRect(px - hw, py - hh, hw * 2, hh * 0.7);
-    else if (pattern === 1) ctx.fillRect(px - hw, py + hh * 0.3, hw * 2, hh * 0.7);
-    else if (pattern === 2) ctx.fillRect(px - hw, py - hh, hw * 0.7, hh * 2);
-    else if (pattern === 3) ctx.fillRect(px + hw * 0.3, py - hh, hw * 0.7, hh * 2);
-    else { ctx.fillRect(px - hw, py - hh, hw * 2, hh * 0.5); ctx.fillRect(px - hw, py + hh * 0.5, hw * 2, hh * 0.5); }
-    ctx.restore();
-  }
   function drawTarget(ctx, W, H) {
     var c = fCenter(W, H);
     var present = (fProg >= 850 && fPhase === 0);
@@ -1185,12 +1223,20 @@
         fBoost = +p[5]; fLaser = +p[6]; fProg = +p[7];
         if (p[8] !== undefined && !isNaN(+p[8])) fCanW = +p[8];
         fCanX = canX(fProg);
-        /* weak yaw toward the corridor tangent (full tangent-tracking would
-           straighten the visible bend): look-ahead along the centreline */
-        var tan = (canX(fProg + FCAN_LOOK) - fCanX) / FCAN_LOOK;
-        fYawPx = Math.max(-90, Math.min(90, -tan * FCAN_FOCAL));
+        /* camera heading = canyon tangent at the ship */
+        fYaw = (canX(fProg + 8) - canX(Math.max(0, fProg - 8))) / (fProg + 8 - Math.max(0, fProg - 8));
         fFoes = []; fBolts = []; fGate = null; fBomb = 0;
-        if (fShield < fPrevShield) { fFlash = performance.now(); playHit(); }
+        /* the gate barrier is drawn inside the canyon pass (depth-sorted), so
+           read its pattern from the frame's G op before painting the walls */
+        for (var gi = i + 1; gi < lines.length; gi++) {
+          var gl = lines[gi].replace(/^\s+/, "");
+          if (gl.charAt(0) === "G" && gl.charAt(1) === " ") { var gp = gl.split(/\s+/); fGate = { p: +gp[1], pct: +gp[2] }; break; }
+        }
+        if (fShield < fPrevShield) {
+          fFlash = performance.now(); playHit();
+          /* Glon bounces a wall scrape to exactly centre +/- 70: light that wall */
+          if (Math.abs(fPx - fCanX) === 70) { fWallHit = fFlash; fWallSide = fPx > fCanX ? 1 : -1; }
+        }
         fPrevShield = fShield;
         if (fLaser) {                        /* fire once per press, then rapid-fire */
           var nowMs = performance.now();
@@ -1199,10 +1245,10 @@
         if (fBoost > 0 && !wasBoost) { wasBoost = true; startBoost(); }
         else if (fBoost === 0 && wasBoost) { wasBoost = false; stopBoost(); }
         drawFighterBackground(ctx, W, H);
-        drawCanyonWalls(ctx, W, H);          /* winding corridor over the void */
+        drawCanyonWalls(ctx, W, H, fGate);   /* solid winding canyon over the void */
+        drawFighterCannons(ctx, W, H);
       } else if (op === "G") {
-        fGate = { p: +p[1], pct: +p[2] };
-        drawGate(ctx, fGate.p, fGate.pct);
+        /* already drawn in the canyon pass (see op A) */
       } else if (op === "U") {
         drawFoe(ctx, +p[1], +p[2], +p[3], +p[4]);
       } else if (op === "K") {
@@ -1329,7 +1375,11 @@
   /* debug hook for headless screenshot/QA harnesses (no game rule lives here) */
   window.__kaka = { ev: ev, evVal: evVal, route: route, applyStart: applyStart,
     /* read-only fighter read-out for screenshot/QA harnesses (no game rule) */
-    fighter: function () { return { on: fActive, prog: fProg, x: fPx, can: fCanX, w: fCanW }; } };
+    fighter: function () { return { on: fActive, prog: fProg, x: fPx, can: fCanX, w: fCanW, shield: fShield }; },
+    /* QA only: freeze the sim and paint one synthetic fighter frame (e.g. to
+       screenshot the canyon at a given mission distance); pin(null) resumes */
+    pin: function (script) { pinnedScript = script || null; if (script) drawScript(script); } };
+  var pinnedScript = null;
 
   var KEY = { ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right",
               ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down",
@@ -1375,6 +1425,7 @@
   }
 
   function frame(now) {
+    if (pinnedScript) { lastTime = now; acc = 0; drawScript(pinnedScript); requestAnimationFrame(frame); return; }
     if (!lastTime) lastTime = now;      /* first callback: start the clock */
     var dt = now - lastTime;
     lastTime = now;

@@ -21,24 +21,28 @@
 
 ;; ---- winding canyon centreline (D12S.23) ---------------------------------
 ;; The helmet route is a WINDING canyon. The corridor centre is a smooth sine
-;; of forward mission distance fprog: a 32-step integer sine LUT (x1000) with
-;; linear interpolation, multiplied by a gentle amplitude ramp (60 -> 170 over
-;; the first wavelength) so the opening bends are broad/forgiving and later
-;; turns sweep further. Wavelength 640, so the mission crosses ~2 wide turns and
-;; the max |d centre/d fprog| (~1.7) stays well under the 5-unit/tick steering
-;; speed. This can-x and the half-width are the SINGLE source of truth:
-;; collision uses them directly, and kaka-host.js mirrors the exact same
-;; LUT/step/ramp/width to sample the corridor for rendering (if you change it
-;; here, change it there).
+;; of forward mission distance fprog: a 32-step integer sine LUT (x1000, 15-unit
+;; step, linear interpolation) with wavelength 480, multiplied by an amplitude
+;; ramp 40 -> 150 over the first wavelength. The first 60 ticks (2.4 s) are dead
+;; straight; the first bend peaks at only ~67 (a fixed X still survives it),
+;; later S-curves swing +/-150. Max |d centre/d fprog| ~2 stays well under the
+;; 5-unit/tick steering speed. This can-x and the half-width (80) are the
+;; SINGLE source of truth: collision, gates, foe spawns and the bomb use them,
+;; and kaka-host.js mirrors the exact same LUT/step/ramp to draw the walls (if
+;; you change it here, change it there).
+;; The walls are continuous surfaces: a wall point is (side, s, v) = side -1/+1,
+;; mission distance s, height v (-150 ceiling .. 150 floor), at world x
+;; can-x s + side * 80. Future wall-mounted things (emplacements, vents,
+;; gantries, targets) should store that triple so they sit on the drawn wall.
 can-sin: [ 0 195 383 556 707 831 924 981 1000 981 924 831 707 556 383 195 0 -195 -383 -556 -707 -831 -924 -981 -1000 -981 -924 -831 -707 -556 -383 -195 0 ]
-can-amp: func [z] [ + 60 / * 110 imin z 640 640 ]
+can-amp: func [z] [ + 40 / * 110 imin z 480 480 ]
 can-x: func [z] [
-    zc: imax z 0
-    i: mod zc 640
-    k: / i 20
-    f: mod i 20
+    zc: imax - z 60 0
+    i: mod zc 480
+    k: / i 15
+    f: mod i 15
     a: block-at can-sin k
-    sv: + a / * - block-at can-sin + k 1 a f 20
+    sv: + a / * - block-at can-sin + k 1 a f 15
     / * can-amp zc sv 1000
 ]
 
@@ -148,7 +152,14 @@ fighter-gates: func [] [
 fighter-run: func [] [
     fighter-controls
     cen: can-x fprog
-    either > abs - block-at rangi F_X cen 80 [ fighter-hit ] [ none ]
+    ;; wall scrape: lose a shield step and bounce back just inside the wall, so
+    ;; the ship never sits outside the visible canyon
+    either > abs - block-at rangi F_X cen 80 [
+        fighter-hit
+        block-set! rangi F_X + cen * 70 sign - block-at rangi F_X cen
+    ] [ none ]
+    ;; foes spawn at depth 420 = 140 ticks ahead, so they sit in the canyon there
+    fc: can-x + fprog 140
     ;; spawn a foe every 18 ticks, <=5 live (behaviour = id mod 3)
         either = 0 mod fprog 18 [
             either < ts-count K_FOE 5 [
@@ -158,11 +169,11 @@ fighter-run: func [] [
                     block-set! t F_A b  block-set! t F_D + 20 mod rnd 40
                     block-set! t F_C 420  block-set! t F_TARGET 0  block-set! t F_VY 0
                     either = b 0 [
-                        block-set! t F_X + cen either = 0 mod block-at t F_ID 2 [ -260 ] [ 260 ]
+                        block-set! t F_X + fc either = 0 mod block-at t F_ID 2 [ -260 ] [ 260 ]
                         block-set! t F_Y - 90 mod rnd 180
                         block-set! t F_B * -1 sign block-at t F_X
                     ] [
-                        block-set! t F_X + cen - 130 mod rnd 260
+                        block-set! t F_X + fc - 130 mod rnd 260
                         block-set! t F_Y - 90 mod rnd 180
                         block-set! t F_B 0
                     ]
