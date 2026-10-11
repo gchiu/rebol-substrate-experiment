@@ -20,19 +20,26 @@
 ;;   F_STATE 0 alive / 1 destroyed
 
 ;; ---- winding canyon centreline (D12S.23) ---------------------------------
-;; The helmet route is a WINDING canyon: the corridor centre is a smooth
-;; integer sine over forward mission distance fprog (amplitude 140, wavelength
-;; 320, 40-unit step), so the corridor visibly sweeps right then left within the
-;; first few seconds. This can-x and the half-width are the SINGLE source of
-;; truth: collision uses them directly, and kaka-host.js mirrors the exact same
-;; table/step/width (CAN_TAB/CAN_STEP/CAN_W) to sample the corridor densely for
-;; rendering. If you change the table here, change it there too.
-can-tab: [ 0 113 160 113 0 -113 -160 -113 0 113 160 113 0 -113 -160 -113 0 113 160 113 0 -113 -160 -113 0 113 160 113 0 -113 -160 -113 0 113 160 113 0 -113 -160 -113 0 113 160 113 0 -113 -160 -113 0 113 160 113 0 -113 -160 -113 0 113 ]
+;; The helmet route is a WINDING canyon. The corridor centre is a smooth sine
+;; of forward mission distance fprog: a 32-step integer sine LUT (x1000) with
+;; linear interpolation, multiplied by a gentle amplitude ramp (60 -> 170 over
+;; the first wavelength) so the opening bends are broad/forgiving and later
+;; turns sweep further. Wavelength 640, so the mission crosses ~2 wide turns and
+;; the max |d centre/d fprog| (~1.7) stays well under the 5-unit/tick steering
+;; speed. This can-x and the half-width are the SINGLE source of truth:
+;; collision uses them directly, and kaka-host.js mirrors the exact same
+;; LUT/step/ramp/width to sample the corridor for rendering (if you change it
+;; here, change it there).
+can-sin: [ 0 195 383 556 707 831 924 981 1000 981 924 831 707 556 383 195 0 -195 -383 -556 -707 -831 -924 -981 -1000 -981 -924 -831 -707 -556 -383 -195 0 ]
+can-amp: func [z] [ + 60 / * 110 imin z 640 640 ]
 can-x: func [z] [
-    i: / z 40
-    f: mod z 40
-    a: block-at can-tab i
-    + a / * - block-at can-tab + i 1 a f 40
+    zc: imax z 0
+    i: mod zc 640
+    k: / i 20
+    f: mod i 20
+    a: block-at can-sin k
+    sv: + a / * - block-at can-sin + k 1 a f 20
+    / * can-amp zc sv 1000
 ]
 
 ;; first fighter tick: fprog == 0 means "arm a fresh mission" (reset on every

@@ -629,22 +629,22 @@
   var fPx = 0, fPy = 0, fPhase = 0, fShield = 0, fBoost = 0, fLaser = 0, fProg = 0;
   var fFoes = [], fBolts = [], fGate = null, fBomb = 0, fFlash = 0, fPrevShield = -1;
   /* Winding canyon (D12S.23). Glon owns can-x (the collision centre) and emits
-     the half-width in the `A` header. The host MIRRORS the exact same table and
-     step here (keep in sync with kaka-fighter.glon) so it can sample the
-     corridor DENSELY for rendering -- a handful of emitted samples aliases the
-     sine and looks jagged. Rendering and collision therefore share one curve. */
-  var CAN_STEP = 40;
-  var CAN_TAB = [0,113,160,113,0,-113,-160,-113,0,113,160,113,0,-113,-160,-113,
-                 0,113,160,113,0,-113,-160,-113,0,113,160,113,0,-113,-160,-113,
-                 0,113,160,113,0,-113,-160,-113,0,113,160,113,0,-113,-160,-113,
-                 0,113,160,113,0,-113,-160,-113,0,113];
+     the half-width in the `A` header. The host MIRRORS the exact same integer
+     sine LUT + amplitude ramp + integer division here (keep in sync with
+     kaka-fighter.glon) so rendering and collision share one smooth curve -- a
+     piecewise-linear table aliased into the angular kinks that read as zig-zag. */
+  var CAN_L = 640, CAN_SIN_STEP = 20;
+  var CAN_SIN = [0,195,383,556,707,831,924,981,1000,981,924,831,707,556,383,195,
+                 0,-195,-383,-556,-707,-831,-924,-981,-1000,-981,-924,-831,-707,-556,-383,-195,0];
+  function truncDiv(a, b) { return a >= 0 ? Math.trunc(a / b) : -Math.trunc(-a / b); }
+  function canAmp(z) { z = z < 0 ? 0 : z; return 60 + truncDiv(110 * (z < 640 ? z : 640), 640); }
   function canX(z) {
     if (z < 0) z = 0;
-    var i = Math.floor(z / CAN_STEP), f = z - i * CAN_STEP;
-    var a = CAN_TAB[i] !== undefined ? CAN_TAB[i] : CAN_TAB[CAN_TAB.length - 1];
-    var b = CAN_TAB[i + 1] !== undefined ? CAN_TAB[i + 1] : a;
-    var d = b - a;
-    return a + (d >= 0 ? Math.trunc(d * f / CAN_STEP) : -Math.trunc(-d * f / CAN_STEP));
+    var i = z % CAN_L, k = Math.floor(i / CAN_SIN_STEP), f = i - k * CAN_SIN_STEP;
+    var a = CAN_SIN[k] !== undefined ? CAN_SIN[k] : 0;
+    var b = CAN_SIN[k + 1] !== undefined ? CAN_SIN[k + 1] : 0;
+    var sv = a + truncDiv((b - a) * f, CAN_SIN_STEP);
+    return truncDiv(canAmp(z) * sv, 1000);
   }
   var fCanX = 0, fCanW = 80, fYawPx = 0;
   /* Cross-section ribs at deliberately spaced depths: dense enough near/mid to
@@ -718,29 +718,33 @@
       ctx.moveTo(prev[k + "r"].x, prev[k + "r"].y); ctx.lineTo(cur[k + "r"].x, cur[k + "r"].y);
       ctx.stroke();
     }
-    /* The collision planes are the two vertical walls at canX +/- fCanW. Fill
-       their faces with a very dark translucent wash so the KILLING GEOMETRY is
-       a visible surface, then bright edges ride on top of it. */
-    function wallFill(base) {
-      ctx.globalAlpha = base; ctx.fillStyle = "#07233f";
+    /* Filled surfaces between successive cross-sections (Doom-style solidity).
+       The two vertical walls are exactly the collision planes canX +/- fCanW,
+       so the surface the player hits is the surface drawn. Edge lines ride on
+       top of the fills. */
+    function quad(a, b, c, e) {
       ctx.beginPath();
-      ctx.moveTo(prev.cl.x, prev.cl.y); ctx.lineTo(cur.cl.x, cur.cl.y);
-      ctx.lineTo(cur.fl.x, cur.fl.y); ctx.lineTo(prev.fl.x, prev.fl.y);
-      ctx.closePath(); ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(prev.cr.x, prev.cr.y); ctx.lineTo(cur.cr.x, cur.cr.y);
-      ctx.lineTo(cur.fr.x, cur.fr.y); ctx.lineTo(prev.fr.x, prev.fr.y);
+      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.lineTo(e.x, e.y);
       ctx.closePath(); ctx.fill();
     }
     prev = cross(0);
     for (d = RAIL; d <= D_END; d += RAIL) {
       cur = cross(d);
       var fade = Math.max(0, 1 - d / D_END);
+      var ff = Math.pow(fade, 0.9);
       var base = 0.95 * Math.pow(fade, 1.25);
-      wallFill(0.6 * Math.pow(fade, 1.15));                         /* wall surface */
-      rail("f", base, Math.max(1.4, 0.8 + 6.0 * fade), "#7fe8ff");  /* 1. floor  */
-      rail("c", base * 0.72, Math.max(1.0, 0.6 + 3.6 * fade), "#5fd0ff"); /* 2. ceiling */
-      rail("m", base * 0.30, Math.max(0.8, 0.5 + 2.2 * fade), "#3aa8d8"); /* 3. mid-wall */
+      ctx.globalAlpha = 0.70 * ff; ctx.fillStyle = "#08131f";   /* floor    */
+      quad(prev.fl, cur.fl, cur.fr, prev.fr);
+      ctx.globalAlpha = 0.58 * ff; ctx.fillStyle = "#050d17";   /* ceiling  */
+      quad(prev.cl, cur.cl, cur.cr, prev.cr);
+      ctx.globalAlpha = 0.90 * ff; ctx.fillStyle = "#0b1e33";   /* LEFT wall  (collision plane) */
+      quad(prev.cl, cur.cl, cur.fl, prev.fl);
+      ctx.globalAlpha = 0.90 * ff; ctx.fillStyle = "#0b1e33";   /* RIGHT wall (collision plane) */
+      quad(prev.cr, cur.cr, cur.fr, prev.fr);
+      /* neon edges on top of the solid surfaces */
+      rail("f", base, Math.max(1.6, 0.9 + 6.4 * fade), "#8feaff");            /* floor */
+      rail("c", base * 0.80, Math.max(1.1, 0.7 + 4.0 * fade), "#6fd8ff");     /* ceiling */
+      rail("m", base * 0.28, Math.max(0.8, 0.5 + 2.0 * fade), "#3aa8d8");     /* mid-wall */
       prev = cur;
     }
     /* 4. spaced structural ribs: nearest strongest, mid moderate, far faint */
