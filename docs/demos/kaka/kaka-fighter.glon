@@ -1,12 +1,8 @@
 ;; demos/kaka/kaka-fighter.glon -- D12S.12 "Helmet Route": the trench mission.
 ;;
-;; The SAME Rangi actor (id, tuple, slot) pilots the fighter in place: F_E == 2.
-;; No second player actor exists and the forest lives (F_B) are untouched -- the
-;; fighter uses a compact mission-local shield in F_C. Glon owns mission state,
-;; steering, spawn timing, collision, hits, target and bomb logic; the host owns
-;; projection/presentation of the cockpit + wireframe trench.
-;;
-;; kaka.glon's `step` routes F_E == 2 to `fighter-step` (the only name it needs).
+;; The SAME Rangi actor pilots the fighter in place (F_E == 2); forest lives
+;; (F_B) are untouched, the mission shield is F_C. Glon owns all mission rules;
+;; the host only presents. kaka.glon's `step` routes F_E == 2 to fighter-step.
 ;;
 ;; Rangi field reuse in fighter mode:
 ;;   F_X  lateral world  (+/-700)      F_Y  vertical world (-420 high .. 120 low;
@@ -23,20 +19,12 @@
 ;;   F_STATE 0 alive / 1 destroyed
 
 ;; ---- winding canyon centreline (D12S.23) ---------------------------------
-;; The helmet route is a WINDING canyon. The corridor centre is a smooth sine
-;; of forward mission distance fprog: a 32-step integer sine LUT (x1000, 15-unit
-;; step, linear interpolation) with wavelength 480, multiplied by an amplitude
-;; ramp 40 -> 150 over the first wavelength. The first 60 ticks (2.4 s) are dead
-;; straight; the first bend peaks at only ~67 (a fixed X still survives it),
-;; later S-curves swing +/-150. Max |d centre/d fprog| ~2 stays well under the
-;; 5-unit/tick steering speed. This can-x and the half-width (110) are the
-;; SINGLE source of truth: collision, gates, foe spawns and the bomb use them,
-;; and kaka-host.js mirrors the exact same LUT/step/ramp to draw the walls (if
-;; you change it here, change it there).
-;; The walls are continuous surfaces: a wall point is (side, s, v) = side -1/+1,
-;; mission distance s, height v (-150 ceiling .. 150 floor), at world x
-;; can-x s + side * 110. Future wall-mounted things (emplacements, vents,
-;; gantries, targets) should store that triple so they sit on the drawn wall.
+;; Centre = smooth sine of mission distance fprog (32-step x1000 LUT, 15-unit
+;; step, wavelength 480) x amplitude ramp 40 -> 150; straight for the first 60
+;; ticks; max slope ~2/tick vs 5/tick steering. can-x + half-width 110 are the
+;; single source of truth (collision, gates, foes, bomb); kaka-host.js mirrors
+;; the same LUT/step/ramp to draw it. Wall points are (side, s, v) at world x
+;; can-x s + side * 110 (v -150 rim .. 150 floor).
 can-sin: [ 0 195 383 556 707 831 924 981 1000 981 924 831 707 556 383 195 0 -195 -383 -556 -707 -831 -924 -981 -1000 -981 -924 -831 -707 -556 -383 -195 0 ]
 can-amp: func [z] [ + 40 / * 110 imin z 480 480 ]
 can-x: func [z] [
@@ -171,6 +159,9 @@ fighter-gates: func [] [
 fighter-run: func [] [
     fighter-controls
     cen: can-x fprog
+    ;; re-entry assist: holding DOWN above the rim within 340 of the trench
+    ;; centre pulls the ship 1/4 of the way to the centre each tick
+    block-set! rangi F_X - block-at rangi F_X * / - block-at rangi F_X cen 4  * * kd imax 0 sign - -150 block-at rangi F_Y  imax 0 sign - 340 abs - block-at rangi F_X cen
     ;; walls + Death Star surface: solid only when the ship is BOTH outside the
     ;; trench laterally (pl > 0) AND below the rim at -150 (pv > 0). Above the
     ;; rim the ship crosses over the walls freely. The smaller penetration
@@ -186,10 +177,8 @@ fighter-run: func [] [
             block-set! rangi F_X + cen * 100 sign - block-at rangi F_X cen
         ]
     ] [ none ]
-    ;; mission discipline: more than 400 from the trench centre for 75 ticks
-    ;; (3 s) abandons the run (reason 6). The stray clock reuses fdbr, which
-    ;; is idle in flight (debrief entry resets it): the WASM global context is
-    ;; full, so no new top-level global can be added. It drives the HUD countdown.
+    ;; > 400 from the trench centre for 75 ticks abandons the run (reason 6);
+    ;; the stray clock reuses fdbr (idle in flight): no room for a new global
     fdbr: * imax 0 sign - abs - block-at rangi F_X cen 400  + fdbr 1
     either > fdbr 75 [ fwhy: 6  block-set! rangi F_STATE 3 ] [ none ]
     ;; foes spawn at depth 420 = 140 ticks ahead, so they sit in the canyon there
@@ -246,6 +235,9 @@ fighter-exit: func [fail] [
     ] [
         block-set! rangi F_E 0  block-set! rangi F_X 3400  block-set! rangi F_Y 330  block-set! rangi F_A 30
         dist: 3400
+        ;; trees are planted from next-tree-x (only climbs): make sure the
+        ;; forest is re-planted from the return point (else 0 trees = game over)
+        block-set! nx 2 imax block-at nx 2 3400
         keep-visible
     ]
 ]
