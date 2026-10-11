@@ -704,19 +704,38 @@
      climbing ship's frame stays covered. */
   var FCOCKPIT = [345, 1341, 345, 835, -10, 336, -10, 137, 370, 770, 522, 765, 582, 697, 690, 670,
                   982, 670, 1090, 697, 1150, 765, 1302, 770, 1682, 137, 1682, 336, 1327, 835, 1327, 1341];
-  /* clip to the canopy window (whole view minus the cockpit body) */
-  function fWindowClip(ctx, W, H) {
-    ctx.beginPath(); ctx.rect(-10, -10, W + 20, H + 20);
-    if (fighterImg) {
-      var sc = fScale(W), ox = (W - fighterImg.naturalWidth * sc) / 2;
-      var oy = H - fighterImg.naturalHeight * sc + fAlt(W, H), i;
-      ctx.moveTo(ox + FCOCKPIT[0] * sc, oy + FCOCKPIT[1] * sc);
-      for (i = 2; i < FCOCKPIT.length; i += 2) ctx.lineTo(ox + FCOCKPIT[i] * sc, oy + FCOCKPIT[i + 1] * sc);
-      ctx.closePath();
+  /* The cockpit body as a cached overlay: the artwork cut down to FCOCKPIT
+     (window pixels transparent), built ONCE per canvas width. Each frame the
+     sky and canyon are drawn unclipped and this is stamped on top with one
+     drawImage. (A per-frame complex clip here multiplied GPU-process work ~10x
+     and was the cause of the long-run phone freeze / black screen.) */
+  var fCockpitCache = null;
+  function fCockpitOverlay(W) {
+    if (!fighterImg) return null;
+    if (fCockpitCache && fCockpitCache.W === W) return fCockpitCache.c;
+    var sc = fScale(W), iw = Math.round(fighterImg.naturalWidth * sc), ih = Math.round(fighterImg.naturalHeight * sc);
+    var c = document.createElement("canvas"), g, i;
+    c.width = iw; c.height = ih; g = c.getContext("2d");
+    g.drawImage(fighterImg, 0, 0, iw, ih);
+    g.globalCompositeOperation = "destination-in";
+    g.beginPath(); g.moveTo(FCOCKPIT[0] * sc, FCOCKPIT[1] * sc);
+    for (i = 2; i < FCOCKPIT.length; i += 2) g.lineTo(FCOCKPIT[i] * sc, FCOCKPIT[i + 1] * sc);
+    g.closePath(); g.fill();
+    fCockpitCache = { W: W, c: c };
+    return c;
+  }
+  /* cockpit body over the canyon (shakes with the boost like the cannons) */
+  function drawCockpit(ctx, W, H) {
+    var ov = fCockpitOverlay(W), sh = fShake(performance.now() / 1000), ay = fAlt(W, H);
+    ctx.save(); ctx.translate(sh.x, sh.y);
+    if (ov) {
+      ctx.drawImage(ov, (W - ov.width) / 2, H - ov.height + ay);
+      if (ay < 0) { ctx.fillStyle = "#01020a"; ctx.fillRect(-10, H + ay - 2, W + 20, -ay + 16); }
     } else {
-      ctx.rect(0, H * 0.72, W, H * 0.28);
+      ctx.fillStyle = "#01020a"; ctx.fillRect(0, H * 0.72, W, H * 0.28);
     }
-    ctx.clip("evenodd");
+    if (fBoost > 0) { ctx.fillStyle = "rgba(120,200,255,.09)"; ctx.fillRect(-10, -10, W + 20, H + 20); }
+    ctx.restore();
   }
   /* Corridor rendering: a SOLID canyon. Every cross-section is derived from
      the SAME canX(fProg + dd) +/- fCanW that Glon collides against, at render
@@ -752,7 +771,6 @@
     var hot = fWallHit ? Math.max(0, 1 - (performance.now() - fWallHit) / 450) : 0;
     var ww = fWallWarn(), wl, wr, near;
     ctx.save();
-    fWindowClip(ctx, W, H);
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     /* one cross-section dd ticks ahead, built from the wall-surface mapping */
     function cross(dd) {
@@ -762,13 +780,19 @@
         fl: wp(-1, bot), cl: wp(-1, top), ml: wp(-1, mid),
         fr: wp(1, bot), cr: wp(1, top), mr: wp(1, mid) };
     }
-    /* fill AND stroke in the same colour: the stroke closes the anti-aliased
-       hairline seams between neighbouring panels, so nothing behind a wall
-       leaks through */
+    /* q/r are the panel's FAR corners. Panels are painted far to near, so each
+       nearer panel is stretched ~1.5 px past the seam it shares with the panel
+       behind it: the anti-aliased hairline is covered and nothing leaks
+       through, without a per-panel stroke (which was costly on the GPU). */
+    function over(f, n) {
+      var dx = f.x - n.x, dy = f.y - n.y, l = Math.sqrt(dx * dx + dy * dy) || 1;
+      return { x: f.x + 1.5 * dx / l, y: f.y + 1.5 * dy / l };
+    }
     function quad(p, q, r, s, col) {
-      ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.beginPath();
-      ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.lineTo(r.x, r.y); ctx.lineTo(s.x, s.y);
-      ctx.closePath(); ctx.fill(); ctx.stroke();
+      var q2 = over(q, p), r2 = over(r, s);
+      ctx.fillStyle = col; ctx.beginPath();
+      ctx.moveTo(p.x, p.y); ctx.lineTo(q2.x, q2.y); ctx.lineTo(r2.x, r2.y); ctx.lineTo(s.x, s.y);
+      ctx.closePath(); ctx.fill();
     }
     function edge(k, alpha, width, color) {
       ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = width;
@@ -1110,22 +1134,10 @@
     ctx.save();
     ctx.translate(sh.x, sh.y);
     ctx.fillStyle = "#01020a"; ctx.fillRect(-10, -10, W + 20, H + 20);
-    if (fighterImg) {
-      var sc = fScale(W), iw = fighterImg.naturalWidth * sc, ih = fighterImg.naturalHeight * sc;
-      ctx.drawImage(fighterImg, (W - iw) / 2, H - ih + ay, iw, ih);
-      if (ay < 0) { ctx.fillStyle = "#01020a"; ctx.fillRect(-10, H + ay - 2, W + 20, -ay + 16); }
-      /* The baked cockpit art is a fully-drawn STRAIGHT trench; left visible it
-         dominates and the run reads as straight no matter what the centreline
-         does. Black the trench window out (blending into the dashboard) so the
-         dynamic winding corridor below is the only corridor on screen. */
-      ctx.save();
-      fWindowClip(ctx, W, H);
-      ctx.fillStyle = "#01020a"; ctx.fillRect(-10, -10, W + 20, H + 20);
-      ctx.restore();
-    }
-    /* sky cues live only in the canopy window (never over the cockpit body);
-       the opaque canyon walls drawn next then hide them behind every wall */
-    ctx.save(); fWindowClip(ctx, W, H);
+    /* The baked cockpit art contains a STRAIGHT trench in its windows, so the
+       art is not painted here: the cockpit body is stamped over the canyon
+       afterwards (drawCockpit) with its windows cut out. Sky cues go first;
+       the opaque walls and the cockpit body then hide them. */
     /* bright vanishing-point "warp core" — a strong depth/motion anchor */
     var wc = ctx.createRadialGradient(cw.x, cw.y, 1, cw.x, cw.y, 46 + (fBoost > 0 ? 24 : 0));
     wc.addColorStop(0, "rgba(190,240,255,.85)");
@@ -1134,10 +1146,6 @@
     ctx.fillStyle = wc; ctx.beginPath(); ctx.arc(cw.x, cw.y, 46 + (fBoost > 0 ? 24 : 0), 0, 2 * Math.PI); ctx.fill();
     fStars(ctx, W, H, cw, t, sp);
     fStreaks(ctx, W, H, cw, t, sp, fBoost > 0);
-    ctx.restore();
-    if (fBoost > 0) {
-      ctx.fillStyle = "rgba(120,200,255,.09)"; ctx.fillRect(-10, -10, W + 20, H + 20);
-    }
     ctx.restore();
   }
   /* boost frame shake (shared by the background and the cannons) */
@@ -1334,6 +1342,7 @@
         else if (fBoost === 0 && wasBoost) { wasBoost = false; stopBoost(); }
         drawFighterBackground(ctx, W, H);
         drawCanyonWalls(ctx, W, H, fGate);   /* solid winding canyon over the void */
+        drawCockpit(ctx, W, H);              /* cockpit body over the canyon */
         drawFighterCannons(ctx, W, H);
       } else if (op === "G") {
         /* already drawn in the canyon pass (see op A) */
