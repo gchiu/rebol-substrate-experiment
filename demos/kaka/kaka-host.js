@@ -711,22 +711,36 @@
     }
     /* continuous longitudinal edges: each class connects its point between the
        previous and current sample, so the walls sweep around every bend */
-    function rail(k, base, wwidth) {
-      ctx.globalAlpha = base; ctx.strokeStyle = "#55ccff";
-      ctx.lineWidth = wwidth;
+    function rail(k, base, wwidth, color) {
+      ctx.globalAlpha = base; ctx.strokeStyle = color; ctx.lineWidth = wwidth;
       ctx.beginPath();
       ctx.moveTo(prev[k + "l"].x, prev[k + "l"].y); ctx.lineTo(cur[k + "l"].x, cur[k + "l"].y);
       ctx.moveTo(prev[k + "r"].x, prev[k + "r"].y); ctx.lineTo(cur[k + "r"].x, cur[k + "r"].y);
       ctx.stroke();
+    }
+    /* The collision planes are the two vertical walls at canX +/- fCanW. Fill
+       their faces with a very dark translucent wash so the KILLING GEOMETRY is
+       a visible surface, then bright edges ride on top of it. */
+    function wallFill(base) {
+      ctx.globalAlpha = base; ctx.fillStyle = "#07233f";
+      ctx.beginPath();
+      ctx.moveTo(prev.cl.x, prev.cl.y); ctx.lineTo(cur.cl.x, cur.cl.y);
+      ctx.lineTo(cur.fl.x, cur.fl.y); ctx.lineTo(prev.fl.x, prev.fl.y);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(prev.cr.x, prev.cr.y); ctx.lineTo(cur.cr.x, cur.cr.y);
+      ctx.lineTo(cur.fr.x, cur.fr.y); ctx.lineTo(prev.fr.x, prev.fr.y);
+      ctx.closePath(); ctx.fill();
     }
     prev = cross(0);
     for (d = RAIL; d <= D_END; d += RAIL) {
       cur = cross(d);
       var fade = Math.max(0, 1 - d / D_END);
       var base = 0.95 * Math.pow(fade, 1.25);
-      rail("f", base, Math.max(1.2, 0.7 + 5.4 * fade));            /* 1. floor */
-      rail("c", base * 0.62, Math.max(0.9, 0.5 + 3.0 * fade));     /* 2. ceiling */
-      rail("m", base * 0.34, Math.max(0.8, 0.5 + 2.2 * fade));     /* 3. mid-wall */
+      wallFill(0.6 * Math.pow(fade, 1.15));                         /* wall surface */
+      rail("f", base, Math.max(1.4, 0.8 + 6.0 * fade), "#7fe8ff");  /* 1. floor  */
+      rail("c", base * 0.72, Math.max(1.0, 0.6 + 3.6 * fade), "#5fd0ff"); /* 2. ceiling */
+      rail("m", base * 0.30, Math.max(0.8, 0.5 + 2.2 * fade), "#3aa8d8"); /* 3. mid-wall */
       prev = cur;
     }
     /* 4. spaced structural ribs: nearest strongest, mid moderate, far faint */
