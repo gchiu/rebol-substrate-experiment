@@ -179,21 +179,22 @@ int main(void) {
 
     /* ---- winding canyon (D12S.23) -----------------------------------------
        canyon centre = can-x fprog; half-width 80; collision/render share it.
-       smooth sine table: +140@80, 0@160, -140@240 (40-unit step). */
-    check(run_int("can-x 80") > 0 && run_int("can-x 240") < 0 && run_int("can-x 560") < 0,
+       smooth 32-step sine (wavelength 640) x amplitude ramp 60->170:
+       +87@160, -142@480, +170@800, +68@918, -157@1080. */
+    check(run_int("can-x 160") > 0 && run_int("can-x 480") < 0,
           "N1 canyon centre bends both ways");
-    /* fprog 80 -> centre 140: holding a fixed world x leaves the corridor */
-    run_source(ENTER "fprog: 80  block-set! rangi F_X 0  block-set! rangi F_A 0  fighter-run");
+    /* fprog 800 -> centre 170: holding a fixed world x leaves the corridor */
+    run_source(ENTER "fprog: 800  block-set! rangi F_X 0  block-set! rangi F_A 0  fighter-run");
     check(run_int("block-at rangi F_C") == 2, "N2 fixed X hits the canyon wall at a bend");
-    run_source(ENTER "fprog: 80  block-set! rangi F_X 140  block-set! rangi F_A 0  fighter-run");
+    run_source(ENTER "fprog: 800  block-set! rangi F_X 170  block-set! rangi F_A 0  fighter-run");
     check(run_int("block-at rangi F_C") == 3, "N3 following the bend clears the wall");
-    /* fprog 918 -> centre -102: a lateral gate is relative to the centre */
+    /* fprog 918 -> centre 68: a lateral gate is relative to the centre */
     run_source(ENTER "fprog: 918  block-set! rangi F_X -180  block-set! rangi F_A 0  fighter-gates");
     check(run_int("block-at rangi F_C") == 3, "N4 gate follows the local canyon centre");
-    run_source(ENTER "fprog: 918  block-set! rangi F_X 0  block-set! rangi F_A 0  fighter-gates");
+    run_source(ENTER "fprog: 918  block-set! rangi F_X 120  block-set! rangi F_A 0  fighter-gates");
     check(run_int("block-at rangi F_C") == 2, "N5 gate blocked region is canyon-relative");
-    /* fprog 1080 -> centre 99: the node is acquired at the canyon centre */
-    run_source(ENTER "fprog: 1080  block-set! rangi F_X 99  kg: 1  fighter-run  kg: 0");
+    /* fprog 1080 -> centre -157: the node is acquired at the canyon centre */
+    run_source(ENTER "fprog: 1080  block-set! rangi F_X -157  kg: 1  fighter-run  kg: 0");
     check(run_int("block-at rangi F_STATE") == 1 && run_int("fbomb") == 0,
           "N6 node follows the canyon centre");
 
