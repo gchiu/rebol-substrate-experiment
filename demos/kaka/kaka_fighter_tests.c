@@ -257,7 +257,7 @@ int main(void) {
 
     /* ---- re-entry assist (fprog 660: trench centre 150) --------------------- */
     run_source(ENTER "fprog: 660  block-set! rangi F_X 0  block-set! rangi F_Y -300  block-set! rangi F_A 0  kd: 1");
-    ticks("fighter-run", 26);
+    ticks("fighter-run", 18);
     long ax = run_int("block-at rangi F_X"), ayy = run_int("block-at rangi F_Y");
     ticks("fighter-run", 20);
     run_source("kd: 0");
