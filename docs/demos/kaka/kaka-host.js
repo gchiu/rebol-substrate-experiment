@@ -2188,6 +2188,15 @@
       catch (err) { console.error("kaka: tick failed", err); acc = 0; break; }
       acc -= SIM_DT;
       steps++;
+      /* A quick tap (pressed AND released since the last frame) counts for ONE
+         tick. On a slow frame several catch-up ticks run back to back; without
+         this the tap stayed applied for all of them (up to 5x the movement), so
+         taps felt inconsistent and overshot. Held keys are unaffected. */
+      if (steps === 1) {
+        var rel = false, tk;
+        for (tk in tapped) if (!held[tk]) rel = true;
+        if (rel) { tapped = {}; syncInput(); }
+      }
     }
     if (acc >= SIM_DT) acc = 0;         /* still behind: drop it, never spiral */
     /* A press is released only once at least one tick has consumed it. Until

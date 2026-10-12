@@ -21,7 +21,7 @@
 ;; ---- winding canyon centreline (D12S.23) ---------------------------------
 ;; Centre = smooth sine of mission distance fprog (32-step x1000 LUT, 15-unit
 ;; step, wavelength 480) x amplitude ramp 40 -> 150; straight for the first 60
-;; ticks; max slope ~2/tick vs 5/tick steering. can-x + half-width 110 are the
+;; ticks; max slope ~2/tick vs 7/tick steering. can-x + half-width 110 are the
 ;; single source of truth (collision, gates, foes, bomb); kaka-host.js mirrors
 ;; the same LUT/step/ramp to draw it. Wall points are (side, s, v) at world x
 ;; can-x s + side * 110 (v -150 rim .. 150 floor).
@@ -70,7 +70,8 @@ fighter-controls: func [] [
     ;; a boost press counts once (only when no boost is already running)
     fboosts: + fboosts * kf imax 0 - 1 block-at rangi F_D
     either = kf 1 [ block-set! rangi F_D 24 ] [ none ]
-    sp: + 5 * 4 imin 1 block-at rangi F_D
+    ;; steering 7 units/tick on both axes (11 while boosting)
+    sp: + 7 * 4 imin 1 block-at rangi F_D
     block-set! rangi F_X + block-at rangi F_X * - kr kl sp
     block-set! rangi F_Y + block-at rangi F_Y * - kd ku sp
     ;; free flight: up out of the trench (rim at -150) to -420, wide laterally
