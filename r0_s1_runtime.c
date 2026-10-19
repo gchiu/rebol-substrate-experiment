@@ -268,111 +268,194 @@ static const raw_sym_t raw_syms[] = {
 };
 #define N_RAW_SYMS ((int)(sizeof raw_syms / sizeof raw_syms[0]))
 
+/* MASM-PRIVATE-NAMES: masm is a private sublanguage. A masm block is read by
+ * the assembler's own tokenizer (masm_read_block), not by the Glon reader, so
+ * its mnemonics, operands, symbolic registers and labels are never interned
+ * in the Glon symbol table and never lexically resolved against an enclosing
+ * func's parameters: a masm spelling may equal any Glon word or parameter
+ * without interacting with it. A token keeps its spelling as a slice of the
+ * source being parsed, which outlives the assembly. */
+enum { MT_OTHER, MT_INT, MT_WORD, MT_LABEL };
+typedef struct { int kind; cell ival; const char *s; int len; } masm_tok_t;
+#define MASM_TOK_CAP 511                      /* the Glon reader's block limit */
+static masm_tok_t masm_toks[MASM_TOK_CAP];
+
+static int mt_is(const masm_tok_t *t, const char *name) {
+    return t->kind == MT_WORD && (size_t)t->len == strlen(name)
+        && strncmp(t->s, name, (size_t)t->len) == 0;
+}
+
+/* a token's spelling as a C string, for diagnostics (the no-libc WASM build's
+ * printf has no %.*s) */
+static const char *mt_name(const char *s, int len) {
+    static char buf[64];
+    memcpy(buf, s, (size_t)len);
+    buf[len] = 0;
+    return buf;
+}
+
 /* resolve an operand token to a cell/offset: an integer literal, or a
  * symbolic ABI name. Returns 0 and sets *ok=0 if unresolved. */
-static cell raw_resolve(cell tok, int *ok) {
-    if (r0_tag(tok) == T_INT) { *ok = 1; return int_val(tok); }
-    if (r0_tag(tok) == T_WORD) {
-        const char *nm = syms[word_id(tok)];
+static cell raw_resolve(const masm_tok_t *tok, int *ok) {
+    if (tok->kind == MT_INT) { *ok = 1; return tok->ival; }
+    if (tok->kind == MT_WORD) {
         for (int i = 0; i < N_RAW_SYMS; i++)
-            if (strcmp(nm, raw_syms[i].name) == 0) { *ok = 1; return raw_syms[i].value; }
+            if (mt_is(tok, raw_syms[i].name)) { *ok = 1; return raw_syms[i].value; }
     }
     *ok = 0;
     return 0;
 }
 
-typedef struct { const char *name; cell addr; } raw_label_t;
+typedef struct { const char *name; int len; cell addr; } raw_label_t;
 static raw_label_t raw_labels[64];
 static int raw_nlabels;
-typedef struct { cell patch; const char *name; } raw_ref_t;
+typedef struct { cell patch; const char *name; int len; } raw_ref_t;
 static raw_ref_t raw_refs[128];
 static int raw_nrefs;
 
-static cell raw_find_label(const char *name) {
+static cell raw_find_label(const char *name, int len) {
     for (int i = 0; i < raw_nlabels; i++)
-        if (strcmp(raw_labels[i].name, name) == 0) return raw_labels[i].addr;
+        if (raw_labels[i].len == len && strncmp(raw_labels[i].name, name, (size_t)len) == 0)
+            return raw_labels[i].addr;
     return -1;
 }
 
-static cell assemble_raw(cell block) {
-    cell bp = r0_untag(block);
-    int n = (int)M[bp];
+static void raw_add_ref(cell patch, const masm_tok_t *op) {
+    raw_refs[raw_nrefs].patch = patch;
+    raw_refs[raw_nrefs].name = op->s;
+    raw_refs[raw_nrefs].len = op->len;
+    raw_nrefs++;
+}
+
+/* Read the masm block `[ ... ]` at P->pos into masm_toks with the Glon
+ * reader's token rules (integers; a word ends at whitespace or a bracket and
+ * is cut to 63 bytes; `name:` is a label), but without interning or lexical
+ * resolution. Forms that are neither instructions nor operands (`none`,
+ * `:get` and `'lit` forms, nested blocks, string literals) become inert
+ * tokens, which the assembler skips as before. Returns the token count, or
+ * -1 with P->err set. */
+static int masm_read_block(parser_t *P) {
+    int n = 0;
+    P->pos++;                                     /* '[' */
+    for (;;) {
+        skip_ws(P);
+        char c = P->s[P->pos];
+        if (c == ']') { P->pos++; return n; }
+        if (c == '\0') { P->err = 1; return -1; }
+        if (n >= MASM_TOK_CAP) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; return -1; }
+        masm_tok_t *t = &masm_toks[n++];
+        t->kind = MT_OTHER; t->ival = int_val(R0_NONE); t->s = ""; t->len = 0;
+        if (c == '[') {                           /* nested block: inert */
+            int depth = 0;
+            do {
+                if (P->s[P->pos] == '\0') { P->err = 1; return -1; }
+                if (P->s[P->pos] == '[') depth++;
+                else if (P->s[P->pos] == ']') depth--;
+                P->pos++;
+            } while (depth > 0);
+            continue;
+        }
+        if (c == '"') {                           /* string literal: inert */
+            P->pos++;
+            while (P->s[P->pos] && P->s[P->pos] != '"') P->pos++;
+            if (P->s[P->pos] != '"') { P->err = 1; return -1; }
+            P->pos++;
+            continue;
+        }
+        if ((c >= '0' && c <= '9') || (c == '-' && isdigit((unsigned char)P->s[P->pos + 1]))) {
+            t->kind = MT_INT;
+            t->ival = int_val(parse_int(P));
+            continue;
+        }
+        int start = P->pos;
+        while (P->s[P->pos] && !isspace((unsigned char)P->s[P->pos])
+               && P->s[P->pos] != '[' && P->s[P->pos] != ']') P->pos++;
+        int len = P->pos - start;
+        if (len > 63) len = 63;
+        const char *s = P->s + start;
+        if (len == 4 && strncmp(s, "none", 4) == 0) continue;
+        if (s[len - 1] == ':') { t->kind = MT_LABEL; t->s = s; t->len = len - 1; continue; }
+        if (s[0] == ':' || s[0] == '\'') continue;
+        t->kind = MT_WORD; t->s = s; t->len = len;
+    }
+}
+
+static cell assemble_raw(const masm_tok_t *tk, int n) {
+    const masm_tok_t none_tok = { MT_OTHER, int_val(R0_NONE), "", 0 };
     raw_nlabels = 0; raw_nrefs = 0;
     cell entry = asm_here();
     for (int i = 0; i < n; i++) {
-        cell tok = M[bp + BLK_DATA + i];
-        int t = r0_tag(tok);
-        if (t == T_SET) {                 /* label definition */
-            raw_labels[raw_nlabels].name = syms[word_id(tok)];
+        const masm_tok_t *tok = &tk[i];
+        if (tok->kind == MT_LABEL) {      /* label definition */
+            raw_labels[raw_nlabels].name = tok->s;
+            raw_labels[raw_nlabels].len = tok->len;
             raw_labels[raw_nlabels].addr = asm_here();
             raw_nlabels++;
             continue;
         }
-        if (t != T_WORD) continue;
-        const char *nm = syms[word_id(tok)];
-        if (strcmp(nm, "LIT") == 0 || strcmp(nm, "INT") == 0 || strcmp(nm, "ARITY") == 0
-            || strcmp(nm, "HOST") == 0 || strcmp(nm, "ZBRANCH") == 0
-            || strcmp(nm, "BRANCH") == 0 || strcmp(nm, "CALL") == 0) {
+        if (tok->kind != MT_WORD) continue;
+        if (mt_is(tok, "LIT") || mt_is(tok, "INT") || mt_is(tok, "ARITY")
+            || mt_is(tok, "HOST") || mt_is(tok, "ZBRANCH")
+            || mt_is(tok, "BRANCH") || mt_is(tok, "CALL")) {
             i++;
-            cell op = (i < n) ? M[bp + BLK_DATA + i] : R0_NONE;
-            if (strcmp(nm, "LIT") == 0 || strcmp(nm, "INT") == 0
-                || strcmp(nm, "ARITY") == 0 || strcmp(nm, "HOST") == 0) {
+            const masm_tok_t *op = (i < n) ? &tk[i] : &none_tok;
+            if (mt_is(tok, "LIT") || mt_is(tok, "INT")
+                || mt_is(tok, "ARITY") || mt_is(tok, "HOST")) {
                 int ok; cell v = raw_resolve(op, &ok);
                 if (!ok) {
-                    fprintf(stderr, "r0_s1: unresolved RAW operand in '%s'\n", nm);
+                    fprintf(stderr, "r0_s1: unresolved RAW operand in '%s'\n", mt_name(tok->s, tok->len));
                     continue;
                 }
-                if (strcmp(nm, "LIT") == 0) asm_lit(v);
-                else if (strcmp(nm, "INT") == 0) asm_lit(mk_int(v));
-                else if (strcmp(nm, "ARITY") == 0) asm_lit(mk_int(v));
+                if (mt_is(tok, "LIT")) asm_lit(v);
+                else if (mt_is(tok, "INT")) asm_lit(mk_int(v));
+                else if (mt_is(tok, "ARITY")) asm_lit(mk_int(v));
                 else asm_host((int)v);
-            } else if (strcmp(nm, "ZBRANCH") == 0) {
-                if (r0_tag(op) == T_WORD) { cell q = asm_zbranch_fwd(); raw_refs[raw_nrefs].patch = q; raw_refs[raw_nrefs].name = syms[word_id(op)]; raw_nrefs++; }
-                else asm_zbranch((int)int_val(op));
-            } else if (strcmp(nm, "BRANCH") == 0) {
-                if (r0_tag(op) == T_WORD) { cell q = asm_branch_fwd(); raw_refs[raw_nrefs].patch = q; raw_refs[raw_nrefs].name = syms[word_id(op)]; raw_nrefs++; }
-                else asm_branch((int)int_val(op));
-            } else if (strcmp(nm, "CALL") == 0) {
-                if (r0_tag(op) == T_WORD) {
-                    const char *cn = syms[word_id(op)];
+            } else if (mt_is(tok, "ZBRANCH")) {
+                if (op->kind == MT_WORD) raw_add_ref(asm_zbranch_fwd(), op);
+                else asm_zbranch((int)op->ival);
+            } else if (mt_is(tok, "BRANCH")) {
+                if (op->kind == MT_WORD) raw_add_ref(asm_branch_fwd(), op);
+                else asm_branch((int)op->ival);
+            } else if (mt_is(tok, "CALL")) {
+                if (op->kind == MT_WORD) {
                     /* symbolic managed-heap entry points (G1 STRING! primitives) */
-                    if (strcmp(cn, "alloc") == 0) asm_call(r_alloc);
-                    else if (strcmp(cn, "collect") == 0) asm_call(r_collect);
-                    else if (strcmp(cn, "lookup") == 0) asm_call(r_lookup);
-                    else if (strcmp(cn, "ESC_ANY") == 0) asm_call(r_esc_any);
-                    else if (strcmp(cn, "ESC_TRANSPORT") == 0) asm_call(r_esc_transport);
-                    else { cell q = emit_call_fwd(); raw_refs[raw_nrefs].patch = q; raw_refs[raw_nrefs].name = cn; raw_nrefs++; }
+                    if (mt_is(op, "alloc")) asm_call(r_alloc);
+                    else if (mt_is(op, "collect")) asm_call(r_collect);
+                    else if (mt_is(op, "lookup")) asm_call(r_lookup);
+                    else if (mt_is(op, "ESC_ANY")) asm_call(r_esc_any);
+                    else if (mt_is(op, "ESC_TRANSPORT")) asm_call(r_esc_transport);
+                    else raw_add_ref(emit_call_fwd(), op);
                 }
-                else asm_call((int)int_val(op));
+                else asm_call((int)op->ival);
             }
             continue;
         }
-        if (strcmp(nm, "DUP") == 0) asm_dup();
-        else if (strcmp(nm, "DROP") == 0) asm_drop();
-        else if (strcmp(nm, "@") == 0) asm_fetch();
-        else if (strcmp(nm, "!") == 0) asm_store();
-        else if (strcmp(nm, "EXIT") == 0) asm_exit();
-        else if (strcmp(nm, ">R") == 0) asm_toR();
-        else if (strcmp(nm, "R>") == 0) asm_fromR();
-        else if (strcmp(nm, "NONE") == 0) asm_lit(R0_NONE);
-        else if (strcmp(nm, "ADD") == 0) asm_host(HOST_ADD);
-        else if (strcmp(nm, "SUB") == 0) asm_host(HOST_SUB);
-        else if (strcmp(nm, "MUL") == 0) asm_host(HOST_MUL);
-        else if (strcmp(nm, "DIV") == 0) asm_host(HOST_DIV);
-        else if (strcmp(nm, "MOD") == 0) asm_host(HOST_MOD);
-        else if (strcmp(nm, "EQ") == 0) asm_host(HOST_EQ);
-        else if (strcmp(nm, "NE") == 0) asm_host(HOST_NE);
-        else if (strcmp(nm, "LT") == 0) asm_host(HOST_LT);
-        else if (strcmp(nm, "GT") == 0) asm_host(HOST_GT);
-        else if (strcmp(nm, "LE") == 0) asm_host(HOST_LE);
-        else if (strcmp(nm, "GE") == 0) asm_host(HOST_GE);
-        else if (strcmp(nm, "PRINT") == 0) asm_host(HOST_PRINT);
-        else if (strcmp(nm, "ALLOC") == 0) asm_host(HOST_ALLOC);
-        else fprintf(stderr, "r0_s1: unknown RAW mnemonic '%s'\n", nm);
+        if (mt_is(tok, "DUP")) asm_dup();
+        else if (mt_is(tok, "DROP")) asm_drop();
+        else if (mt_is(tok, "@")) asm_fetch();
+        else if (mt_is(tok, "!")) asm_store();
+        else if (mt_is(tok, "EXIT")) asm_exit();
+        else if (mt_is(tok, ">R")) asm_toR();
+        else if (mt_is(tok, "R>")) asm_fromR();
+        else if (mt_is(tok, "NONE")) asm_lit(R0_NONE);
+        else if (mt_is(tok, "ADD")) asm_host(HOST_ADD);
+        else if (mt_is(tok, "SUB")) asm_host(HOST_SUB);
+        else if (mt_is(tok, "MUL")) asm_host(HOST_MUL);
+        else if (mt_is(tok, "DIV")) asm_host(HOST_DIV);
+        else if (mt_is(tok, "MOD")) asm_host(HOST_MOD);
+        else if (mt_is(tok, "EQ")) asm_host(HOST_EQ);
+        else if (mt_is(tok, "NE")) asm_host(HOST_NE);
+        else if (mt_is(tok, "LT")) asm_host(HOST_LT);
+        else if (mt_is(tok, "GT")) asm_host(HOST_GT);
+        else if (mt_is(tok, "LE")) asm_host(HOST_LE);
+        else if (mt_is(tok, "GE")) asm_host(HOST_GE);
+        else if (mt_is(tok, "PRINT")) asm_host(HOST_PRINT);
+        else if (mt_is(tok, "ALLOC")) asm_host(HOST_ALLOC);
+        else fprintf(stderr, "r0_s1: unknown RAW mnemonic '%s'\n", mt_name(tok->s, tok->len));
     }
     for (int i = 0; i < raw_nrefs; i++) {
-        cell a = raw_find_label(raw_refs[i].name);
-        if (a < 0) { fprintf(stderr, "r0_s1: undefined RAW label '%s'\n", raw_refs[i].name); continue; }
+        cell a = raw_find_label(raw_refs[i].name, raw_refs[i].len);
+        if (a < 0) { fprintf(stderr, "r0_s1: undefined RAW label '%s'\n", mt_name(raw_refs[i].name, raw_refs[i].len)); continue; }
         s1_set_mem(raw_refs[i].patch, a);
     }
     return entry;
@@ -492,16 +575,16 @@ static cell parse_block(parser_t *P, int is_body) {
                     arity = (int)int_val(parse_int(P));
                 else
                     P->pos = save;
-                /* The RAW source block is dead once assembled (its mnemonics
-                 * are translated into emitted code); reclaim its loader-heap
-                 * space so self-contained demos that re-define the M1 library
-                 * do not exhaust the loader heap.  Only the 2-cell callable
-                 * [entry, arity] needs to survive. */
-                cell save_lhp = M[GC_LOADER_HP];
-                cell asm_block = parse_form(P);           /* [ instr... ] */
-                if (P->err) break;                        /* no operand: never assemble it */
-                cell entry = assemble_raw(asm_block);
-                M[GC_LOADER_HP] = save_lhp;
+                /* The assembly block is read by masm's own tokenizer, never
+                 * as a Glon block (MASM-PRIVATE-NAMES): it is not interned,
+                 * not lexically resolved, and takes no loader-heap space. Only
+                 * the 2-cell callable [entry, arity] survives. The operand
+                 * must be a block. */
+                skip_ws(P);
+                if (P->s[P->pos] != '[') { P->err = 1; break; }   /* no block: never assemble */
+                int ntok = masm_read_block(P);            /* [ instr... ] */
+                if (P->err) break;
+                cell entry = assemble_raw(masm_toks, ntok);
                 cell p = lalloc(2);
                 if (p < 0) {
                     parse_fail_set(R0S1_PARSE_LOADER_EXHAUSTED);
