@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glon LaTeX — numbers and notation on one runtime</title>
+<link rel="icon" href="data:,">
+<!-- KaTeX 0.16.22, served locally (katex/VENDOR.md, katex/LICENSE: MIT) -->
+<link rel="stylesheet" href="katex/katex.min.css">
+<link rel="stylesheet" href="latex.css">
+</head>
+<body>
+<header>
+  <h1>Glon LaTeX</h1>
+  <p class="lede">Two vocabularies on one small runtime. In Glon, <code>+ 1 2</code> is the
+  number 3, while <code>l/+ 1 2</code> is the notation <em>1+2</em>. Both are ordinary
+  words, evaluated by the same Glon interpreter running in your browser as
+  WebAssembly. Everything on this page is live: edit any example and press
+  <b>Run</b>.</p>
+  <p class="credit">The mathematical samples are from <b>Christopher Ross-Gill</b>'s Rebol
+  <a href="https://gist.github.com/rgchris/d7b31eee47efc6c86d87fcc21d6b45a4">LaTeX Equation
+  Notation Generator</a> (<code>math.test.reb</code>). Each of his expressions is shown beside
+  its Glon equivalent.</p>
+  <p id="status" class="status">Loading the Glon WebAssembly runtime…</p>
+</header>
+
+<main>
+
+<section>
+  <h2>Numbers and notation</h2>
+  <p>The same expression shape, read by two vocabularies. The bare words compute; the
+  qualified <code>l/</code> words describe. Numeric words inside a LaTeX expression are
+  evaluated first, and their results become part of the notation.</p>
+  <div class="ex solo">
+    <textarea spellcheck="false" aria-label="Glon program" rows="8">;; the numeric vocabulary computes...
+print - * + 2 3 4 / 9 3
+
+;; ...and the l/ vocabulary describes the same shape
+s/print l/render l/- l/* l/+ 2 3 4 l/frac 9 3
+
+;; numeric words inside notation are evaluated first
+s/print l/render l/^ "x" + 1 2</textarea>
+    <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+    <div class="out" aria-live="polite"></div>
+  </div>
+</section>
+
+<section>
+  <h2>Chris Ross-Gill's samples</h2>
+  <p>All seventeen figures from the seven <code>latex-math/render</code> calls in
+  <code>math.test.reb</code>. Rebol's infix operators run strictly left to right, and
+  Chris's generator uses Rebol's <code>( )</code> and <code>[ ]</code> to group. In Glon,
+  every call takes a fixed number of arguments, so the nesting of calls <em>is</em> the
+  expression tree, and the <code>l/</code> words add only the brackets that the grouping
+  needs. Where the original's typesetting loses its grouping, a note says so.</p>
+
+  <h3>Sample 1</h3>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 1</div><pre>sum infinity (t = 1) x ^ t = (1 / (1 - x))</pre></div>
+    <div class="ex" data-fig="1">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 1" rows="3">s/print l/render
+    l/= l/sum l/infinity l/= "t" 1 l/^ "x" "t"
+        l/frac 1 l/- 1 "x"</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <h3>Sample 2</h3>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 2a</div><pre>pi =~ ans</pre>
+      <p class="note">In <code>math.test.reb</code>, <code>ans: pi</code> holds Rebol's
+      <em>number</em> π; Glon's integers can't, so the numeral is written out.</p></div>
+    <div class="ex" data-fig="2a">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 2a" rows="2">ans: "3.141592653589793"
+s/print l/render l/approx l/pi ans</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 2b</div><pre>enclose/square (sum _ _ 1 + 2)</pre>
+      <p class="note">The original typesets <code>\sum1+2</code>, which reads as (∑1)+2.
+      Glon keeps the sum of 1+2.</p></div>
+    <div class="ex" data-fig="2b">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 2b" rows="1">s/print l/render l/bracket l/sum none none l/+ 1 2</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 2c</div><pre>sum n (i = 1) 3 + 4</pre></div>
+    <div class="ex" data-fig="2c">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 2c" rows="1">s/print l/render l/sum "n" l/= "i" 1 l/+ 3 4</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 2d</div><pre>sum n _ 3 + 4</pre></div>
+    <div class="ex" data-fig="2d">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 2d" rows="1">s/print l/render l/sum "n" none l/+ 3 4</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 2e</div><pre>sum _ (i = 1) 3 + 4</pre></div>
+    <div class="ex" data-fig="2e">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 2e" rows="1">s/print l/render l/sum none l/= "i" 1 l/+ 3 4</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 2f</div><pre>integrate _ _ 3 + 4 . x = 3 x + 4 . x ^ 2 + uc/c</pre>
+      <p class="note">Rebol evaluates <code>4 . x ^ 2</code> as (4x)², but it typesets as
+      4x²; Glon encodes what the figure shows, ∫(3+4x) = 3x+4x²+C.</p></div>
+    <div class="ex" data-fig="2f">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 2f" rows="3">s/print l/render
+    l/= l/int none none l/+ 3 l/. 4 "x"
+        l/+ l/+ l/. 3 "x" l/. 4 l/^ "x" 2 "C"</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <h3>Sample 3</h3>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 3</div><pre>[1 / 3 * 2 by 3 * 5 . 'x] / [10 * [20 + 'a] ^ (5 . 'x)] + 100</pre>
+      <p class="note">The Rebol blocks that group the numerator and denominator also print
+      as parentheses inside the fraction; Glon needs none there. Glon's <code>l/*</code>
+      prints · where Chris's <code>*</code> prints ×.</p></div>
+    <div class="ex" data-fig="3">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 3" rows="4">s/print l/render
+    l/+ l/frac l/* l/div l/* l/frac 1 3 2 3 l/. 5 "x"
+               l/* 10 l/^ l/+ 20 "a" l/. 5 "x"
+        100</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <h3>Sample 4</h3>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 4</div><pre>x + negate ln [3 * (4 / x) + 6 ^ (7 + 8)]</pre>
+      <p class="note">Glon brackets a negation that follows <code>+</code>, giving
+      x+(−ln …) rather than x+−ln ….</p></div>
+    <div class="ex" data-fig="4">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 4" rows="2">s/print l/render
+    l/+ "x" l/neg l/ln l/+ l/* 3 l/frac 4 "x" l/^ 6 l/+ 7 8</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <h3>Sample 5</h3>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 5a</div><pre>enclose (pi . lf . pi)</pre>
+      <p class="note">The original's line break (<code>{\\}</code>) does nothing in display
+      math, so it typesets as (ππ); Glon stacks π over π in an <code>array</code>.</p></div>
+    <div class="ex" data-fig="5a">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 5a" rows="1">s/print l/render l/paren l/stack l/pi l/pi</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 5b</div><pre>'a = pi . r ^ 2</pre></div>
+    <div class="ex" data-fig="5b">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 5b" rows="1">s/print l/render l/= "a" l/. l/pi l/^ "r" 2</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 5c</div><pre>(root 3 (x + 2.15))</pre></div>
+    <div class="ex" data-fig="5c">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 5c" rows="1">s/print l/render l/root 3 l/+ "x" "2.15"</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 5d</div><pre>root _ (x + 5)</pre></div>
+    <div class="ex" data-fig="5d">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 5d" rows="1">s/print l/render l/sqrt l/+ "x" 5</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 5e</div><pre>(dx / dy) + (dx / dt) = 100</pre></div>
+    <div class="ex" data-fig="5e">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 5e" rows="1">s/print l/render l/= l/+ l/frac "dx" "dy" l/frac "dx" "dt" 100</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <h3>Sample 6</h3>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 6a</div><pre>negate uc/a / (uc/a ^ 2) = negate (1 / uc/a)</pre></div>
+    <div class="ex" data-fig="6a">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 6a" rows="1">s/print l/render l/= l/neg l/frac "A" l/^ "A" 2 l/neg l/frac 1 "A"</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 6b</div><pre>limit/left x infinity (x + 1)</pre>
+      <p class="note">The original typesets <code>\lim…{x}+1</code>, which reads as
+      (lim x)+1. Glon keeps the limit of x+1.</p></div>
+    <div class="ex" data-fig="6b">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 6b" rows="1">s/print l/render l/lim "x" l/from-left l/infinity l/+ "x" 1</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <h3>Sample 7</h3>
+  <div class="fig">
+    <div class="rebol"><div class="label">Rebol · figure 7</div><pre>(d / dx) . (root _ x) = (1 / (2 . root _ x))</pre></div>
+    <div class="ex" data-fig="7">
+      <div class="label">Glon</div>
+      <textarea spellcheck="false" aria-label="Glon for figure 7" rows="3">s/print l/render
+    l/= l/. l/frac "d" "dx" l/sqrt "x"
+        l/frac 1 l/. 2 l/sqrt "x"</textarea>
+      <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+      <div class="out" aria-live="polite"></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Try it</h2>
+  <p>Write any Glon. Every line printed as <code>\[…\]</code> (<code>l/render</code>) or
+  <code>$…$</code> (<code>l/inline</code>) is typeset; anything else is shown as text.
+  Errors are shown as Glon reports them.</p>
+  <div class="ex solo" id="playground">
+    <textarea spellcheck="false" aria-label="Glon playground" rows="7">;; the quadratic formula
+s/print l/render
+    l/= "x" l/frac l/+ l/neg "b" l/sqrt l/- l/^ "b" 2 l/* l/* 4 "a" "c"
+               l/* 2 "a"
+
+;; grouping comes from the call tree: compare these two
+s/print l/inline l/* l/+ "a" "b" "c"
+s/print l/inline l/+ "a" l/* "b" "c"</textarea>
+    <div class="buttons"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button></div>
+    <div class="out" aria-live="polite"></div>
+  </div>
+
+  <details class="ref">
+    <summary>The <code>l/</code> vocabulary</summary>
+    <p>Operands are integers, strings of raw LaTeX (<code>"x"</code>, <code>"\pi"</code>,
+    <code>"2.15"</code>) or the result of another <code>l/</code> word.</p>
+    <table>
+      <tr><td><code>l/+ a b</code> <code>l/- a b</code></td><td>a+b, a−b</td></tr>
+      <tr><td><code>l/* a b</code> <code>l/div a b</code></td><td>a · b, a ÷ b</td></tr>
+      <tr><td><code>l/. a b</code></td><td>juxtaposition: a b</td></tr>
+      <tr><td><code>l/frac a b</code> <code>l/^ a b</code></td><td>a over b, a to the b</td></tr>
+      <tr><td><code>l/neg a</code> <code>l/sqrt a</code> <code>l/root n a</code> <code>l/ln a</code></td><td>−a, √a, ⁿ√a, ln a</td></tr>
+      <tr><td><code>l/= a b</code> <code>l/approx a b</code> <code>l/seq a b</code></td><td>a=b, a≈b, a, b</td></tr>
+      <tr><td><code>l/sum upper lower body</code> (also <code>l/prod</code>, <code>l/int</code>)</td><td><code>none</code> omits a limit</td></tr>
+      <tr><td><code>l/lim var target body</code> <code>l/from-left a</code> <code>l/from-right a</code></td><td>limits, a⁻, a⁺</td></tr>
+      <tr><td><code>l/paren a</code> <code>l/bracket a</code> <code>l/brace a</code> <code>l/stack a b</code></td><td>explicit delimiters, a over b</td></tr>
+      <tr><td><code>l/pi</code> <code>l/sigma</code> <code>l/theta</code> <code>l/infinity</code> <code>l/cdots</code></td><td>symbols</td></tr>
+      <tr><td><code>l/render a</code> <code>l/inline a</code> <code>l/text a</code></td><td>\[…\], $…$, bare LaTeX</td></tr>
+    </table>
+  </details>
+</section>
+
+</main>
+
+<footer>
+  <p>Mathematical samples © Christopher Ross-Gill, from his
+  <a href="https://gist.github.com/rgchris/d7b31eee47efc6c86d87fcc21d6b45a4">LaTeX Equation
+  Notation Generator</a> gist, used here with credit for comparison.</p>
+  <p>Typeset with <a href="https://katex.org/">KaTeX</a> 0.16.22, served from this site
+  (<a href="katex/LICENSE">MIT licence</a>). Glon runs as the unchanged shop WebAssembly
+  runtime; the <code>l/</code> vocabulary is
+  <a href="latex.glon">latex.glon</a>, ordinary Glon source.</p>
+</footer>
+
+<script src="katex/katex.min.js"></script>
+<script src="latex-host.js"></script>
+</body>
+</html>

@@ -1,0 +1,84 @@
+/* experiments/glon-latex/web/latex.css -- layout for the Glon LaTeX page. */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1d2125;
+  background: #f6f5f1;
+}
+header, main, footer { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+header { padding-top: 20px; }
+h1 { margin: 0 0 4px; font-size: 1.9rem; }
+h2 { margin: 32px 0 6px; font-size: 1.35rem; border-bottom: 1px solid #d8d4c8; padding-bottom: 4px; }
+h3 { margin: 22px 0 6px; font-size: 1.05rem; color: #555; }
+p { margin: 6px 0; }
+a { color: #1b5e9a; }
+code, pre, textarea { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+code { font-size: 0.92em; }
+.lede { font-size: 1.05rem; }
+.credit { color: #444; }
+.status { padding: 6px 10px; background: #e9eef3; border-radius: 6px; font-size: 0.92rem; }
+
+/* one figure: Chris's Rebol beside the Glon example */
+.fig {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 12px;
+  margin: 10px 0;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #e0dcd0;
+  border-radius: 8px;
+}
+.label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: #8a8576; margin-bottom: 4px; }
+.rebol pre {
+  margin: 0; padding: 8px 10px;
+  background: #f3f0e8; border-radius: 6px;
+  white-space: pre-wrap; word-break: break-word; font-size: 0.88rem;
+}
+.note { font-size: 0.85rem; color: #6a5d3a; margin-top: 8px; }
+
+.ex { min-width: 0; }
+.ex.solo { background: #fff; border: 1px solid #e0dcd0; border-radius: 8px; padding: 12px; }
+textarea {
+  width: 100%; resize: vertical;
+  font-size: 0.86rem; line-height: 1.45;
+  padding: 8px 10px; border: 1px solid #c9c4b6; border-radius: 6px;
+  background: #fcfcfa; color: #1d2125;
+  white-space: pre; overflow-x: auto;
+}
+textarea:focus { outline: 2px solid #8fb3d9; border-color: #8fb3d9; }
+.buttons { margin: 6px 0; display: flex; gap: 8px; }
+button {
+  font: inherit; font-size: 0.9rem; padding: 5px 16px; min-height: 36px;
+  border: 1px solid #9a9483; border-radius: 6px; background: #fff; cursor: pointer;
+}
+button.run { background: #1b5e9a; border-color: #1b5e9a; color: #fff; }
+button:disabled { opacity: 0.5; cursor: default; }
+
+.out { min-height: 1.5em; }
+.out .math { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+.out .math.display .katex-display { margin: 6px 0; }
+.out .math.inline { padding: 4px 0; }
+.out code.tex {
+  display: block; margin: 0 0 8px; padding: 4px 8px;
+  background: #f3f5f7; border-radius: 4px; color: #3b4652;
+  font-size: 0.78rem; white-space: pre-wrap; word-break: break-all;
+}
+.out .line { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.86rem; white-space: pre-wrap; word-break: break-word; }
+.out .res { color: #2c6a2f; }
+.out .sin, .out .tex-error { color: #a3221b; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.86rem; white-space: pre-wrap; }
+.out .diag { color: #888; }
+
+details.ref { margin: 14px 0; }
+details.ref summary { cursor: pointer; font-weight: 600; }
+details.ref table { border-collapse: collapse; margin-top: 6px; font-size: 0.9rem; }
+details.ref td { border-bottom: 1px solid #e3dfd3; padding: 4px 10px 4px 0; vertical-align: top; }
+
+footer { margin-top: 36px; padding-bottom: 32px; color: #666; font-size: 0.88rem; border-top: 1px solid #d8d4c8; }
+
+@media (max-width: 720px) {
+  body { font-size: 15px; }
+  .fig { grid-template-columns: minmax(0, 1fr); padding: 10px; }
+  h1 { font-size: 1.6rem; }
+}
