@@ -19,6 +19,11 @@ become LaTeX atoms: `l/^ "x" + 1 2` gives `x^{3}`. Loading the LaTeX words
 changes nothing about the numeric ones. 74 of 74 regression checks pass on a
 freshly built `glon`.
 
+> **v002** extends this vocabulary to reproduce Chris Ross-Gill's
+> `math.test.reb`: see [GLON-LATEX-V002.md](GLON-LATEX-V002.md). It adds two
+> precedence levels, changes the right slot of `*` from *pow* to *jux*, and
+> moves the test check words into `test-helpers.glon`.
+
 Inspired by Christopher Ross-Gill's Rebol *LaTeX Equation Notation Generator*
 (<https://gist.github.com/rgchris/d7b31eee47efc6c86d87fcc21d6b45a4>).
 

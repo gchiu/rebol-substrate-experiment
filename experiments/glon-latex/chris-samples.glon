@@ -1,0 +1,98 @@
+;; experiments/glon-latex/chris-samples.glon -- GLON-LATEX v002.
+;;
+;; The seven `latex-math/render` calls of Christopher Ross-Gill's math.test.reb
+;; (https://gist.github.com/rgchris/d7b31eee47efc6c86d87fcc21d6b45a4), written
+;; with the qualified l/ vocabulary. Each Rebol original is quoted above its
+;; Glon form. rg/1 .. rg/7 hold the rendered strings (the regression tests in
+;; latex-v002-tests.glon check them); the file prints each one.
+;;
+;; Reading rules for the translation (see GLON-LATEX-V002.md):
+;;  * Rebol infix runs strictly left to right, and an infix chain fills a
+;;    prefix function's argument. Where that tree differs from what the figure
+;;    shows (e.g. `4 . x ^ 2` is (4x)^2 in Rebol but typesets as 4x^2), the
+;;    Glon form encodes what the figure shows.
+;;  * Rebol `( )` and `[ ]` only steer evaluation order; Glon's call nesting
+;;    does that, and l/ adds brackets only where the grouping needs them. An
+;;    explicit `enclose` becomes l/paren / l/bracket.
+;;  * Variables are strings ("x"); Glon cannot spell a word as text. Chris's
+;;    `uc/a` is just "A"; decimals are strings ("2.15").
+;; Each figure is in its own do [ ] (the parser's 512-value block limit).
+
+;; In math.test.reb `ans: pi` is Rebol's NUMBER pi; inside the render block
+;; `pi` is the symbol but `ans` keeps its numeric value. Glon is integer-only,
+;; so the numeral is written out.
+ans: "3.141592653589793"
+
+;; 1.  sum infinity (t = 1) x ^ t = (1 / (1 - x))
+do [
+rg/1: l/render
+    l/= l/sum l/infinity l/= "t" 1 l/^ "x" "t"
+        l/frac 1 l/- 1 "x"
+]
+
+;; 2.  pi =~ ans
+;;     | enclose/square (sum _ _ 1 + 2)
+;;     | sum n (i = 1) 3 + 4
+;;     | sum n _ 3 + 4
+;;     | sum _ (i = 1) 3 + 4
+;;     | integrate _ _ 3 + 4 . x = 3 x + 4 . x ^ 2 + uc/c
+do [
+rg/2: l/render
+    l/seq l/approx l/pi ans
+    l/seq l/bracket l/sum none none l/+ 1 2
+    l/seq l/sum "n" l/= "i" 1 l/+ 3 4
+    l/seq l/sum "n" none l/+ 3 4
+    l/seq l/sum none l/= "i" 1 l/+ 3 4
+          l/= l/int none none l/+ 3 l/. 4 "x"
+              l/+ l/+ l/. 3 "x" l/. 4 l/^ "x" 2 "C"
+]
+
+;; 3.  [1 / 3 * 2 by 3 * 5 . 'x] / [10 * [20 + 'a] ^ (5 . 'x)] + 100
+do [
+rg/3: l/render
+    l/+ l/frac l/* l/div l/* l/frac 1 3 2 3 l/. 5 "x"
+               l/* 10 l/^ l/+ 20 "a" l/. 5 "x"
+        100
+]
+
+;; 4.  x + negate ln [3 * (4 / x) + 6 ^ (7 + 8)]
+do [
+rg/4: l/render
+    l/+ "x" l/neg l/ln l/+ l/* 3 l/frac 4 "x" l/^ 6 l/+ 7 8
+]
+
+;; 5.  enclose (pi . lf . pi)
+;;     | 'a = pi . r ^ 2
+;;     | (root 3 (x + 2.15))
+;;     | root _ (x + 5)
+;;     | (dx / dy) + (dx / dt) = 100
+do [
+rg/5: l/render
+    l/seq l/paren l/stack l/pi l/pi
+    l/seq l/= "a" l/. l/pi l/^ "r" 2
+    l/seq l/root 3 l/+ "x" "2.15"
+    l/seq l/sqrt l/+ "x" 5
+          l/= l/+ l/frac "dx" "dy" l/frac "dx" "dt" 100
+]
+
+;; 6.  negate uc/a / (uc/a ^ 2) = negate (1 / uc/a) | limit/left x infinity (x + 1)
+do [
+rg/6: l/render
+    l/seq l/= l/neg l/frac "A" l/^ "A" 2 l/neg l/frac 1 "A"
+          l/lim "x" l/from-left l/infinity l/+ "x" 1
+]
+
+;; 7.  (d / dx) . (root _ x) = (1 / (2 . root _ x))
+do [
+rg/7: l/render
+    l/= l/. l/frac "d" "dx" l/sqrt "x"
+        l/frac 1 l/. 2 l/sqrt "x"
+]
+
+s/print rg/1
+s/print rg/2
+s/print rg/3
+s/print rg/4
+s/print rg/5
+s/print rg/6
+s/print rg/7

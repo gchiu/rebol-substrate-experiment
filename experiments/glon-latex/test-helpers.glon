@@ -1,0 +1,37 @@
+;; experiments/glon-latex/test-helpers.glon -- the shared check words.
+;;
+;; Loaded before latex-tests.glon (v001) and latex-v002-tests.glon. Every check
+;; compares an exact result; a failure prints its name, what was produced and
+;; what was expected. Each suite resets lt/pass and lt/fail, reports them, and
+;; raises a SIN! when anything failed (glon exit status 1).
+
+lt/pass: 0
+lt/fail: 0
+
+lt/ok: func [name] [ lt/pass: + lt/pass 1 ]
+lt/bad: func [name] [ lt/fail: + lt/fail 1  s/print s/+ "FAIL " name ]
+
+;; lt/str: a string result against the expected string
+lt/str: func [name got want] [
+    either s/= got want [ lt/ok name ] [
+        lt/bad name
+        s/print s/+ "  got:  " got
+        s/print s/+ "  want: " want
+    ]
+]
+;; lt/tex: the bare LaTeX of a term against the expected string
+lt/tex: func [name got want] [ lt/str name l/text got want ]
+;; lt/num: an integer result against the expected integer
+lt/num: func [name got want] [
+    either = got want [ lt/ok name ] [
+        lt/bad name
+        print got
+        print want
+    ]
+]
+;; lt/sin: a judged block must raise SIN! with this id
+lt/sin: func [name e id] [
+    either sin? e [
+        either = sin-id e id [ lt/ok name ] [ lt/bad name ]
+    ] [ lt/bad name ]
+]

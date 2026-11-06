@@ -27,6 +27,17 @@
 ;;   l/neg a      -a
 ;;   l/sqrt a     \sqrt{a}
 ;;   l/= a b      a=b
+;; v002 (Chris's sample constructs):
+;;   l/. a b                 a b  (juxtaposition)    l/div a b     a \div b
+;;   l/approx a b            a \approx b             l/seq a b     a,\ b
+;;   l/sum  upper lower body \sum_{lower}^{upper} body   (none omits a limit)
+;;   l/prod upper lower body \prod...                l/int ...     \int...
+;;   l/lim var target body   \lim_{var\to target} body
+;;   l/from-left a           a^{-}                   l/from-right a  a^{+}
+;;   l/ln a                  \ln a                   l/root n a    \sqrt[n]{a}
+;;   l/paren a  l/bracket a  l/brace a   explicit \left( \left[ \left\{
+;;   l/stack a b             a over b (a one-column array)
+;;   l/pi l/sigma l/theta l/infinity l/cdots   symbol strings
 ;; ---- rendering (term or operand -> string) ---------------------------------
 ;;   l/text a     the bare LaTeX
 ;;   l/inline a   $...$
@@ -34,7 +45,8 @@
 ;;
 ;; ---- grouping --------------------------------------------------------------
 ;; A term is the managed block [precedence latex-string]. Levels:
-;;   0 rel (=)   1 add (+ -)   2 neg   3 mul   4 pow   8 frac   9 atom
+;;   -1 seq   0 rel (= \approx)   1 add (+ - and the big operators)   2 neg
+;;   3 mul (\cdot \div \ln)   4 jux   5 pow   8 frac   9 atom
 ;; Each argument slot has a minimum level; an argument below it is wrapped in
 ;; \left( \right). Right operands are strict (a+(b+c), a-(b-c), a*(b*c) keep
 ;; their brackets), so two different trees never print the same text. Braced
@@ -44,7 +56,10 @@
 ;;   + - left                add       -a+b, a-b+c read as written
 ;;   + - right               mul       a+(-b), a-(b-c), a+(b+c)
 ;;   * left                  mul       (a+b) \cdot c, (-a) \cdot b
-;;   * right                 pow       a \cdot (b \cdot c), a \cdot (-b)
+;;   * / div right           jux       a \cdot (b \cdot c), a \cdot (-b); a \cdot 5 x
+;;   jux left / right        jux / pow (a+b) x, a (b c); 4 x^{2}
+;;   big-operator body       mul       \sum (3+4), \lim (x+1); \sum a \cdot b
+;;   \ln argument            jux       \ln 4 x, \ln x^{2}, \ln (x+1)
 ;;   neg operand             mul       -(a+b), -(-a); -a \cdot b, -a^{2}
 ;;   ^ base                  atom      (1+x)^{2}, (a^{b})^{c}, (-3)^{2}
 ;;   = both sides            add       (a=b)=c
@@ -61,11 +76,15 @@ l/raw-int?:   masm 1 [ LIT 16 MOD LIT 0 EQ LIT 16 MUL ARITY 1 EXIT ]
 l/raw-block?: masm 1 [ LIT 16 MOD LIT T_BLOCK EQ LIT 16 MUL ARITY 1 EXIT ]
 
 ;; ---- precedence levels -------------------------------------------------------
+;; Only the ORDER matters. v002 added seq (below rel) and jux (between mul and
+;; pow); every v001 rule kept its meaning.
+l/p-seq: -1
 l/p-rel: 0
 l/p-add: 1
 l/p-neg: 2
 l/p-mul: 3
-l/p-pow: 4
+l/p-jux: 4
+l/p-pow: 5
 l/p-frac: 8
 l/p-atom: 9
 
@@ -115,7 +134,7 @@ l/raw-infix: func [prec a need-a sym b need-b] [
 ;; ---- the eight operations ------------------------------------------------------
 l/+: func [a b] [ l/raw-infix l/p-add a l/p-add "+" b l/p-mul ]
 l/-: func [a b] [ l/raw-infix l/p-add a l/p-add "-" b l/p-mul ]
-l/*: func [a b] [ l/raw-infix l/p-mul a l/p-mul " \cdot " b l/p-pow ]
+l/*: func [a b] [ l/raw-infix l/p-mul a l/p-mul " \cdot " b l/p-jux ]
 l/=: func [a b] [ l/raw-infix l/p-rel a l/p-add "=" b l/p-add ]
 
 l/^: func [a b] [
@@ -126,6 +145,71 @@ l/frac: func [a b] [
 ]
 l/neg: func [a] [ l/raw-mk l/p-neg s/+ "-" l/raw-slot a l/p-mul ]
 l/sqrt: func [a] [ l/raw-mk l/p-atom s/+ "\sqrt{" s/+ l/raw-latex l/term a "}" ]
+
+;; ==== v002: the constructs Chris Ross-Gill's math.test.reb uses ================
+;; Same shape as the eight above: ordinary funcs, already-evaluated arguments,
+;; one term out. No new mechanism.
+
+;; ---- more infix: juxtaposition, division sign, approximation, lists ----------
+;; l/. is implicit multiplication (4 x, \pi r^{2}, 2 \sqrt{x}): tighter than
+;; \cdot, looser than ^. The joining space ends a control word (\pi r, not \pir).
+l/.: func [a b] [ l/raw-infix l/p-jux a l/p-jux " " b l/p-pow ]
+l/div: func [a b] [ l/raw-infix l/p-mul a l/p-mul " \div " b l/p-jux ]
+l/approx: func [a b] [ l/raw-infix l/p-rel a l/p-add " \approx " b l/p-add ]
+;; l/seq: a displayed list, a,\ b (Chris's `|` separator); nests to the right
+l/seq: func [a b] [ l/raw-infix l/p-seq a l/p-rel ",\ " b l/p-seq ]
+
+;; ---- big operators: \sum \prod \int and \lim ------------------------------------
+;; Argument order follows Chris's api: upper, lower, body; `none` omits a
+;; limit. The body extends to the right over products but not over sums, so
+;; the body slot needs mul and the result sits at add level:
+;;   \sum_{i=1}^{n} \left(3+4\right)      the sum of 3+4
+;;   \sum x+2                             (\sum x)+2
+;;   \left(\sum x\right) \cdot y          (\sum x) times y
+l/raw-script: func [mark x] [
+    either = x none [ "" ] [ s/+ mark s/+ "{" s/+ l/text x "}" ]
+]
+l/raw-big: func [cmd upper lower body] [
+    l/raw-mk l/p-add s/+ cmd s/+ l/raw-script "_" lower s/+ l/raw-script "^" upper s/+ " " l/raw-slot body l/p-mul
+]
+l/sum:  func [upper lower body] [ l/raw-big "\sum" upper lower body ]
+l/prod: func [upper lower body] [ l/raw-big "\prod" upper lower body ]
+l/int:  func [upper lower body] [ l/raw-big "\int" upper lower body ]
+
+;; l/lim var target body: \lim_{var\to target} body (a big operator).
+;; One-sided targets are ordinary terms: l/from-left a is a^{-}.
+l/lim: func [var target body] [
+    l/raw-mk l/p-add s/+ "\lim_{" s/+ l/text var s/+ "\to " s/+ l/text target s/+ "} " l/raw-slot body l/p-mul
+]
+l/from-left:  func [a] [ l/raw-mk l/p-pow s/+ l/raw-slot a l/p-atom "^{-}" ]
+l/from-right: func [a] [ l/raw-mk l/p-pow s/+ l/raw-slot a l/p-atom "^{+}" ]
+
+;; ---- functions and roots ----------------------------------------------------------
+;; \ln takes a juxtaposition-tight argument (\ln 4 x, \ln x^{2}; else brackets)
+;; and is itself mul level, so \ln x \cdot y is (\ln x) times y and a following
+;; juxtaposition gets brackets: \left(\ln x\right) y.
+l/ln: func [a] [ l/raw-mk l/p-mul s/+ "\ln " l/raw-slot a l/p-jux ]
+l/root: func [n a] [
+    l/raw-mk l/p-atom s/+ "\sqrt[" s/+ l/text n s/+ "]{" s/+ l/text a "}"
+]
+
+;; ---- explicit delimiters and stacking ---------------------------------------------
+;; Explicit brackets the author asks for, whatever the precedence says.
+l/raw-delim: func [open a close] [ l/raw-mk l/p-atom s/+ open s/+ l/text a close ]
+l/paren:   func [a] [ l/raw-delim "\left(" a "\right)" ]
+l/bracket: func [a] [ l/raw-delim "\left[" a "\right]" ]
+l/brace:   func [a] [ l/raw-delim "\left\{" a "\right\}" ]
+;; l/stack a b: a over b, one centred column (Chris's `a . lf . b`)
+l/stack: func [a b] [
+    l/raw-mk l/p-atom s/+ "\begin{array}{c}" s/+ l/text a s/+ "\\" s/+ l/text b "\end{array}"
+]
+
+;; ---- symbols (strings are atoms; these just name them) -----------------------------
+l/pi: "\pi"
+l/sigma: "\sigma"
+l/theta: "\theta"
+l/infinity: "\infty"
+l/cdots: "\cdots"
 
 ;; ---- rendering ---------------------------------------------------------------
 l/text: func [a] [ l/raw-latex l/term a ]

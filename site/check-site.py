@@ -48,6 +48,10 @@ REQUIRED = [
     "demos/kaka/assets/ChatGPT Image Oct 6, 2026, 12_37_51 PM-2.png",
     "demos/kaka/assets/ChatGPT Image Oct 6, 2026, 12_37_53 PM-3.png",
     "demos/kaka/assets/ChatGPT Image Oct 6, 2026, 12_37_54 PM-4.png",
+    "latex/index.html", "latex/latex-host.js", "latex/latex.css", "latex/latex.glon",
+    "latex/glon.wasm", "latex/prelude.glon", "latex/strings.glon",
+    "latex/katex/katex.min.js", "latex/katex/katex.min.css", "latex/katex/LICENSE",
+    "latex/katex/fonts/KaTeX_Main-Regular.woff2",
 ]
 
 

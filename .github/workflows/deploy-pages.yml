@@ -80,6 +80,9 @@ jobs:
           python3 demo/shop/build-linda.py
           make wasm-linda-test
 
+      - name: Glon LaTeX page -- every example through the fresh WASM and the vendored KaTeX
+        run: node experiments/glon-latex/web/latex_node_test.mjs demo/shop/glon.wasm
+
       - name: Build the live Glon primer and run every example through WASM
         run: |
           python3 demo/shop/build-primer.py --check
@@ -146,11 +149,20 @@ jobs:
           # src as dst/assets on a later publish.
           mkdir -p pages/docs/demos/kaka/assets
           cp -r demos/kaka/assets/. pages/docs/demos/kaka/assets/
+          # Glon LaTeX (/latex/): the l/ vocabulary page on the same shop runtime and
+          # shared libraries, with the vendored KaTeX (see web/katex/VENDOR.md).
+          rm -rf pages/docs/latex && mkdir -p pages/docs/latex
+          cp experiments/glon-latex/web/latex.html pages/docs/latex/index.html
+          cp experiments/glon-latex/web/latex-host.js experiments/glon-latex/web/latex.css \
+             experiments/glon-latex/latex.glon pages/docs/latex/
+          cp -r experiments/glon-latex/web/katex pages/docs/latex/katex
+          cp demo/shop/glon.wasm pages/docs/latex/glon.wasm
+          cp jupyter/prelude.glon demo/shop/strings.glon pages/docs/latex/
           python3 site/check-site.py pages/docs
           cd pages
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/shop docs/demos/patrol docs/demos/kaka docs/index.html docs/r0-counter.html docs/demo.js docs/demo.wasm
+          git add docs/shop docs/demos/patrol docs/demos/kaka docs/latex docs/index.html docs/r0-counter.html docs/demo.js docs/demo.wasm
           if git diff --cached --quiet; then
             echo "docs/ unchanged; nothing to commit"
           else

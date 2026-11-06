@@ -1,0 +1,134 @@
+;; experiments/glon-latex/latex-v002-tests.glon -- GLON-LATEX v002 regression tests.
+;;
+;; Runs after latex.glon, test-helpers.glon (the lt/ check words) and
+;; chris-samples.glon (which defines rg/1..rg/7), in a glon session of its own:
+;; the loader heap is permanent, and v001's tests plus these do not fit in one
+;; session. Raises a SIN! (exit 1) if anything failed.
+
+lt/pass: 0
+lt/fail: 0
+
+;; ---- 1. juxtaposition --------------------------------------------------------
+do [
+lt/tex "4 x"                   l/. 4 "x" "4 x"
+lt/tex "control word spaced"   l/. l/pi "r" "\pi r"
+lt/tex "left-nested jux"       l/. l/. "a" "b" "c" "a b c"
+lt/tex "right-nested jux kept" l/. "a" l/. "b" "c" "a \left(b c\right)"
+lt/tex "4 x^2"                 l/. 4 l/^ "x" 2 "4 x^{2}"
+lt/tex "(4 x)^2"               l/^ l/. 4 "x" 2 "\left(4 x\right)^{2}"
+lt/tex "(a+b) x"               l/. l/+ "a" "b" "x" "\left(a+b\right) x"
+lt/tex "(a*b) x"               l/. l/* "a" "b" "x" "\left(a \cdot b\right) x"
+lt/tex "a*(b x) unwrapped"     l/* "a" l/. "b" "x" "a \cdot b x"
+lt/tex "(a b)*c"               l/* l/. "a" "b" "c" "a b \cdot c"
+lt/tex "2 sqrt x"              l/. 2 l/sqrt "x" "2 \sqrt{x}"
+lt/tex "frac jux"              l/. l/frac "d" "dx" "y" "\frac{d}{dx} y"
+lt/tex "x (-1)"                l/. "x" -1 "x \left(-1\right)"
+lt/tex "-(a b)"                l/neg l/. "a" "b" "-a b"
+]
+
+;; ---- 2. division sign, approximation, lists ----------------------------------
+do [
+lt/tex "a div b"               l/div "a" "b" "a \div b"
+lt/tex "div chain"             l/div l/div "a" "b" "c" "a \div b \div c"
+lt/tex "right div kept"        l/div "a" l/div "b" "c" "a \div \left(b \div c\right)"
+lt/tex "(a+b) div c"           l/div l/+ "a" "b" "c" "\left(a+b\right) \div c"
+lt/tex "a approx b"            l/approx l/pi "3.14" "\pi \approx 3.14"
+lt/tex "approx of sums"        l/approx l/+ 1 1 2 "1+1 \approx 2"
+lt/tex "seq"                   l/seq "a" "b" "a,\ b"
+lt/tex "seq nests right"       l/seq "a" l/seq "b" "c" "a,\ b,\ c"
+lt/tex "seq of relations"      l/seq l/= "a" 1 l/= "b" 2 "a=1,\ b=2"
+lt/tex "seq left-nested kept"  l/seq l/seq "a" "b" "c" "\left(a,\ b\right),\ c"
+]
+
+;; ---- 3. sums, products, integrals --------------------------------------------
+do [
+lt/tex "sum both limits"       l/sum "n" l/= "i" 1 "i" "\sum_{i=1}^{n} i"
+lt/tex "sum upper only"        l/sum "n" none "i" "\sum^{n} i"
+lt/tex "sum lower only"        l/sum none l/= "i" 1 "i" "\sum_{i=1} i"
+lt/tex "sum no limits"         l/sum none none "i" "\sum i"
+lt/tex "sum body sum kept"     l/sum none none l/+ 3 4 "\sum \left(3+4\right)"
+lt/tex "sum body product"      l/sum none none l/* "a" "b" "\sum a \cdot b"
+lt/tex "(sum x)+2"             l/+ l/sum none none "x" 2 "\sum x+2"
+lt/tex "2+(sum x) kept"        l/+ 2 l/sum none none "x" "2+\left(\sum x\right)"
+lt/tex "(sum x)*y kept"        l/* l/sum none none "x" "y" "\left(\sum x\right) \cdot y"
+lt/tex "-(sum x) kept"         l/neg l/sum none none "x" "-\left(\sum x\right)"
+lt/tex "sum = value"           l/= l/sum "n" l/= "i" 1 "i" l/frac l/. "n" l/+ "n" 1 2 "\sum_{i=1}^{n} i=\frac{n \left(n+1\right)}{2}"
+lt/tex "nested sums kept"      l/sum "n" l/= "i" 1 l/sum "m" l/= "j" 1 l/. "i" "j" "\sum_{i=1}^{n} \left(\sum_{j=1}^{m} i j\right)"
+lt/tex "product"               l/prod "n" l/= "k" 1 "k" "\prod_{k=1}^{n} k"
+lt/tex "product body kept"     l/prod "n" l/= "k" 1 l/+ "k" 1 "\prod_{k=1}^{n} \left(k+1\right)"
+lt/tex "integral"              l/int 1 0 l/. l/^ "x" 2 "dx" "\int_{0}^{1} x^{2} dx"
+lt/tex "integral no limits"    l/int none none l/+ 3 l/. 4 "x" "\int \left(3+4 x\right)"
+]
+
+;; ---- 4. limits ---------------------------------------------------------------
+do [
+lt/tex "limit"                 l/lim "x" 0 l/frac l/ln l/+ 1 "x" "x" "\lim_{x\to 0} \frac{\ln \left(1+x\right)}{x}"
+lt/tex "limit body kept"       l/lim "x" l/infinity l/+ "x" 1 "\lim_{x\to \infty} \left(x+1\right)"
+lt/tex "from the left"         l/lim "x" l/from-left l/infinity "x" "\lim_{x\to \infty^{-}} x"
+lt/tex "from the right"        l/lim "x" l/from-right 0 l/frac 1 "x" "\lim_{x\to 0^{+}} \frac{1}{x}"
+lt/tex "one-sided base kept"   l/from-left l/+ "a" 1 "\left(a+1\right)^{-}"
+]
+
+;; ---- 5. logarithms and roots ---------------------------------------------------
+do [
+lt/tex "ln x"                  l/ln "x" "\ln x"
+lt/tex "ln 4 x"                l/ln l/. 4 "x" "\ln 4 x"
+lt/tex "ln x^2"                l/ln l/^ "x" 2 "\ln x^{2}"
+lt/tex "ln of a sum kept"      l/ln l/+ "x" 1 "\ln \left(x+1\right)"
+lt/tex "ln of a product kept"  l/ln l/* "a" "b" "\ln \left(a \cdot b\right)"
+lt/tex "(ln x)*y"              l/* l/ln "x" "y" "\ln x \cdot y"
+lt/tex "(ln x) y kept"         l/. l/ln "x" "y" "\left(\ln x\right) y"
+lt/tex "(ln x)^2 kept"         l/^ l/ln "x" 2 "\left(\ln x\right)^{2}"
+lt/tex "-ln x"                 l/neg l/ln "x" "-\ln x"
+lt/tex "ln ln x"               l/ln l/ln "x" "\ln \left(\ln x\right)"
+lt/tex "cube root"             l/root 3 "x" "\sqrt[3]{x}"
+lt/tex "root groups by braces" l/root "n" l/+ "x" 1 "\sqrt[n]{x+1}"
+lt/tex "root index term"       l/root l/+ "n" 1 "x" "\sqrt[n+1]{x}"
+lt/tex "root as power base"    l/^ l/root 3 "x" 2 "\sqrt[3]{x}^{2}"
+]
+
+;; ---- 6. delimiters, stacking, symbols ----------------------------------------------
+do [
+lt/tex "paren"                 l/paren "x" "\left(x\right)"
+lt/tex "bracket"               l/bracket l/+ "a" "b" "\left[a+b\right]"
+lt/tex "brace"                 l/brace "x" "\left\{x\right\}"
+lt/tex "explicit no double"    l/* l/paren l/+ "a" "b" "c" "\left(a+b\right) \cdot c"
+lt/tex "bracket is an atom"    l/^ l/bracket l/+ "a" "b" 2 "\left[a+b\right]^{2}"
+lt/tex "stack"                 l/stack "a" "b" "\begin{array}{c}a\\b\end{array}"
+lt/tex "symbols"               l/seq l/pi l/seq l/sigma l/seq l/theta l/seq l/infinity l/cdots "\pi,\ \sigma,\ \theta,\ \infty,\ \cdots"
+]
+
+;; ---- 7. v001 rules unchanged by the new levels ----------------------------------------
+do [
+lt/tex "a*(b*c) still kept"    l/* "a" l/* "b" "c" "a \cdot \left(b \cdot c\right)"
+lt/tex "a*(-b) still kept"     l/* "a" l/neg "b" "a \cdot \left(-b\right)"
+lt/tex "a*b^2 still bare"      l/* "a" l/^ "b" 2 "a \cdot b^{2}"
+lt/tex "a*frac still bare"     l/* "a" l/frac 1 2 "a \cdot \frac{1}{2}"
+]
+
+;; ---- 8. Chris Ross-Gill's math.test.reb, figure by figure ------------------------------
+do [
+lt/str "math.test.reb 1"  rg/1 "\[\sum_{t=1}^{\infty} x^{t}=\frac{1}{1-x}\]"
+lt/str "math.test.reb 2"  rg/2 "\[\pi \approx 3.141592653589793,\ \left[\sum \left(1+2\right)\right],\ \sum_{i=1}^{n} \left(3+4\right),\ \sum^{n} \left(3+4\right),\ \sum_{i=1} \left(3+4\right),\ \int \left(3+4 x\right)=3 x+4 x^{2}+C\]"
+]
+do [
+lt/str "math.test.reb 3"  rg/3 "\[\frac{\frac{1}{3} \cdot 2 \div 3 \cdot 5 x}{10 \cdot \left(20+a\right)^{5 x}}+100\]"
+lt/str "math.test.reb 4"  rg/4 "\[x+\left(-\ln \left(3 \cdot \frac{4}{x}+6^{7+8}\right)\right)\]"
+lt/str "math.test.reb 5"  rg/5 "\[\left(\begin{array}{c}\pi\\\pi\end{array}\right),\ a=\pi r^{2},\ \sqrt[3]{x+2.15},\ \sqrt{x+5},\ \frac{dx}{dy}+\frac{dx}{dt}=100\]"
+lt/str "math.test.reb 6"  rg/6 "\[-\frac{A}{A^{2}}=-\frac{1}{A},\ \lim_{x\to \infty^{-}} \left(x+1\right)\]"
+lt/str "math.test.reb 7"  rg/7 "\[\frac{d}{dx} \sqrt{x}=\frac{1}{2 \sqrt{x}}\]"
+]
+
+;; ---- 9. errors ------------------------------------------------------------------------------
+do [
+lt/sin "sum body must be a term"   judge [ l/sum none none 'x ] 'l/term
+lt/sin "limit variable checked"    judge [ l/lim 'x 0 "x" ] 'l/term
+lt/sin "stack operand checked"     judge [ l/stack "a" reduce [ 1 2 3 ] ] 'l/term
+]
+
+;; ---- summary --------------------------------------------------------------------------
+print lt/pass
+print lt/fail
+either = lt/fail 0 [ s/print "glon-latex v002: all tests passed" ] [
+    raise create-sin 'test 'failed lt/fail
+]
