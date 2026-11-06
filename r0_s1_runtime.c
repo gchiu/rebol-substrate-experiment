@@ -764,8 +764,48 @@ static cell fw_mark_frame[32];  static int n_fw_mf;
 static cell call_mark_value(void) { cell c = emit_call_fwd(); fw_mark_value[n_fw_mv++] = c; return c; }
 static cell call_mark_frame(void) { cell c = emit_call_fwd(); fw_mark_frame[n_fw_mf++] = c; return c; }
 
+/* WORKLIST-FULL: the mark worklist has no room (GC_WORKLIST_CAP entries).
+ * Unreachable with the 64K map (r0_s1.h proves the bound at build time); this
+ * is defence in depth for any other heap size or for RAW code that allocates
+ * payloads smaller than 16 cells. It is a machine resource ceiling, not a SIN!
+ * (no judge can catch it), handled like CONTEXT_FULL, with one extra step: a
+ * collection is being abandoned half-way through its mark phase, so every mark
+ * bit is cleared first. The heap is then exactly as it was before the
+ * collection began (nothing was swept or freed), and a persistent session can
+ * keep running. The walk is the sweep's: headers from GC_HEAP_BASE, never past
+ * REG_HP or GC_HEAP_LIMIT, and it stops at a non-positive size rather than
+ * loop. Then: record R0S1_HALT_GC_WORKLIST_FULL, dump and HALT, before any
+ * write beyond the worklist. Uses GC_T6..GC_T8, which nothing reads after the
+ * halt. */
+static void emit_worklist_full_halt(void) {
+    asm_lit(GC_HEAP_BASE); e_setc(GC_T6);                    /* addr */
+    cell loop = asm_here();
+    e_cell(GC_T6); asm_lit(REG_HP); asm_fetch(); asm_host(HOST_LT);
+    cell j_end_hp = asm_zbranch_fwd();
+    e_cell(GC_T6); asm_lit(GC_HEAP_LIMIT); asm_host(HOST_LT);
+    cell j_end_lim = asm_zbranch_fwd();
+    e_cell(GC_T6); asm_fetch(); e_setc(GC_T7);               /* size */
+    e_cell(GC_T7); asm_lit(0); asm_host(HOST_GT);
+    cell j_end_bad = asm_zbranch_fwd();                      /* size <= 0: stop */
+    e_cell(GC_T6); asm_lit(GC_HDR_FLAGS); asm_host(HOST_ADD); asm_fetch(); e_setc(GC_T8); /* flags */
+    e_cell(GC_T8); asm_lit(2); asm_host(HOST_DIV); asm_lit(2); asm_host(HOST_MOD);        /* mark bit */
+    cell j_unmarked = asm_zbranch_fwd();
+    e_cell(GC_T8); asm_lit(GC_FLAG_MARK); asm_host(HOST_SUB);
+    e_cell(GC_T6); asm_lit(GC_HDR_FLAGS); asm_host(HOST_ADD); asm_store();               /* clear mark */
+    asm_patch_here(j_unmarked);
+    e_cell(GC_T6); e_cell(GC_T7); asm_host(HOST_ADD); e_setc(GC_T6);
+    asm_branch(loop);
+    asm_patch_here(j_end_hp);
+    asm_patch_here(j_end_lim);
+    asm_patch_here(j_end_bad);
+    asm_lit(0); e_setc(GC_WL_SP);
+    asm_lit(R0S1_HALT_GC_WORKLIST_FULL); e_setc(RV_HALTWHY);
+    asm_host(HOST_DUMP); asm_halt();
+}
+
 /* MARK-PUSH: ( p -- ) mark collected object p (payload ptr) if unmarked, push
- * it on the explicit mark worklist. */
+ * it on the explicit mark worklist. A full worklist fail-stops (above) before
+ * the object is marked or anything is written beyond the worklist. */
 static void emit_mark_push(void) {
     r_mark_push = asm_here();
     e_setc(GC_T1);                                   /* p */
@@ -775,6 +815,10 @@ static void emit_mark_push(void) {
     cell j_cont = asm_zbranch_fwd();                 /* not marked -> continue */
     asm_exit();                                      /* already marked */
     asm_patch_here(j_cont);
+    e_cell(GC_WL_SP); asm_lit(GC_WORKLIST_CAP); asm_host(HOST_GE);   /* worklist full? */
+    cell j_room = asm_zbranch_fwd();
+    emit_worklist_full_halt();
+    asm_patch_here(j_room);
     e_cell(GC_T3); asm_lit(GC_FLAG_MARK); asm_host(HOST_ADD); e_cell(GC_T2); asm_store(); /* set mark */
     e_cell(GC_T1);                                    /* value p */
     e_cell(GC_WL_SP); asm_lit(GC_WORKLIST); asm_host(HOST_ADD);  /* address */

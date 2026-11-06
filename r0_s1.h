@@ -71,7 +71,20 @@ enum {
 };
 
 /* --- memory layout ------------------------------------------------------ */
+/* The managed/loader boundary of the 64K reference memory map. It is NOT a
+ * build option: setting it on the command line is an error. The only other
+ * value is fixed here for the one explicitly identified TEST build,
+ * R0S1_GC_OVERFLOW_TEST_BUILD (`make gc-worklist-overflow-test`), which grows
+ * the managed heap to exercise the GC worklist bound. Never define that macro
+ * in a shipped build. */
+#if defined(R0S1_HEAP_BASE) || defined(GC_HEAP_LIMIT)
+#error "R0S1_HEAP_BASE / GC_HEAP_LIMIT are fixed by the 64K memory map, not build options"
+#endif
+#ifdef R0S1_GC_OVERFLOW_TEST_BUILD
+#define R0S1_HEAP_BASE 44000L   /* TEST BUILD ONLY: 11,232-cell managed heap */
+#else
 #define R0S1_HEAP_BASE 40000L
+#endif
 /* The loader heap grows upward to M1_ARENA_BASE (m1_layout.h). The G1E demo
  * launcher (launcher + shop + guide + merchant-flow) plus the per-dispatch
  * re-parse overhead from the G1A route/event bridge outgrew the original
@@ -157,7 +170,8 @@ _Static_assert(RV_HALTWHY < RV_RES_BUF, "RV_HALTWHY must stay below RV_RES_BUF")
  * catch them). A halt with no recorded reason reads as R0S1_HALT_NONE. */
 enum {
     R0S1_HALT_NONE = 0,
-    R0S1_HALT_CONTEXT_FULL = 1   /* a new binding would exceed the context's capacity */
+    R0S1_HALT_CONTEXT_FULL = 1,  /* a new binding would exceed the context's capacity */
+    R0S1_HALT_GC_WORKLIST_FULL = 2 /* the collector's mark worklist is full (see GC_WORKLIST_CAP) */
 };
 
 /* Generic scratch cells available to RAW fragments. They live in the free
@@ -211,7 +225,9 @@ enum {
  * M2-GC-DESIGN.md. */
 
 #define GC_HEAP_BASE   32768L   /* == s1.c HEAP_BASE (managed runtime heap) */
-#define GC_HEAP_LIMIT  40000L   /* == R0S1_HEAP_BASE (loader heap start)   */
+#define GC_HEAP_LIMIT  R0S1_HEAP_BASE   /* managed heap ends where the loader heap starts (40000) */
+_Static_assert(GC_HEAP_LIMIT == R0S1_HEAP_BASE,
+               "the managed heap must end exactly where the loader heap begins");
 
 /* standard S1 stack tops (also used to locate the scheduler/main world) */
 #define R0S1_DS_INIT   16384L
@@ -269,6 +285,27 @@ enum {
 #define GC_WORKLIST     25057    /* 256 entries -> ..25312 */
 #define GC_A1           25313    /* alloc()'s persistent extent */
 #define GC_A2           25314    /* alloc()'s persistent kind */
+
+/* GC mark worklist capacity (GLON-ARCHITECTURE-MEMORY.md, "GC worklist").
+ * The mark phase pushes each managed object at most once per collection (the
+ * mark bit is set before the push), and only objects inside the managed heap.
+ * Every managed object occupies at least GC_MIN_EXTENT cells: a 16-cell header
+ * plus a payload of at least 16 cells, because payloads are 16-aligned (a
+ * value keeps its tag in the low 4 bits). So the worklist can never hold more
+ * than (GC_HEAP_LIMIT - GC_HEAP_BASE) / GC_MIN_EXTENT entries: 226 for the 64K
+ * map, within the 256 available. A larger managed heap must enlarge the
+ * worklist first; this assertion makes that a build failure, not a latent
+ * overflow into GC_A1/GC_A2 and the G1 buffers. The runtime also bounds every
+ * push (R0S1_HALT_GC_WORKLIST_FULL) as defence in depth. Only the explicitly
+ * identified test build R0S1_GC_OVERFLOW_TEST_BUILD skips the assertion, to
+ * exercise that runtime bound; every other build keeps it. */
+#define GC_WORKLIST_CAP (GC_A1 - GC_WORKLIST)
+#define GC_MIN_EXTENT   (GC_HDR_STRIDE + 16)
+_Static_assert(GC_WORKLIST_CAP == 256, "the 64K map reserves 256 worklist entries before GC_A1");
+#ifndef R0S1_GC_OVERFLOW_TEST_BUILD
+_Static_assert(GC_WORKLIST_CAP >= (GC_HEAP_LIMIT - GC_HEAP_BASE) / GC_MIN_EXTENT,
+               "GC worklist too small for the managed heap: enlarge GC_WORKLIST_CAP before the heap");
+#endif
 
 /* --- FIB-PROFILE-P1: profiler counters (free region 24655..24858) -----------
  * Diagnostic-only counters, reset per r0_s1_run and read by the profiler
@@ -475,7 +512,8 @@ enum {
     R0S1_DETAIL_SITE_TABLE_FULL = 5,
     R0S1_DETAIL_CONTEXT_FULL = 6,
     R0S1_DETAIL_STACK_SENTRY = 7,
-    R0S1_DETAIL_MACHINE = 8
+    R0S1_DETAIL_MACHINE = 8,
+    R0S1_DETAIL_GC_WORKLIST_FULL = 9
 };
 typedef struct {
     int status, detail;

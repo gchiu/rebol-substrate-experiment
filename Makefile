@@ -1,7 +1,7 @@
 CC      ?= cc
 CFLAGS  ?= -std=c17 -Wall -Wextra -O0 -g
 
-OBJS = s1.o tests.o adversarial.o claims.o r0.o r0_tests.o r0_s1_runtime.o r0_s1_g1a.o r0_s1_tests.o r0_s1_debug_tests.o r0_s1_m1_tests.o r0_s1_m2_tests.o r0_s1_m3_tests.o r0_s1_m3b_tests.o r0_s1_m3c_tests.o r0_s1_m3d_tests.o r0_s1_nested_closure_tests.o r0_s1_p4_tests.o r0_s1_p5_tests.o r0_s1_g1a_tests.o r0_s1_g1b_tests.o r0_s1_g1c_tests.o r0_s1_g1d_tests.o r0_s1_g1e_tests.o r0_s1_lambda_tests.o r0_s1_masm_tests.o r0_s1_gc_safepoint_tests.o r0_s1_invoke_tests.o r0_s1_reduce_tests.o r0_s1_parse_tests.o r0_s1_equality_tests.o r0_s1_bound_tests.o r0_s1_case_tests.o r0_s1_escape_law_tests.o r0_s1_error_tests.o r0_s1_show.o r0_s1_primer_tests.o r0_s1_parse_hardening_tests.o r0_s1_context_capacity_tests.o r0_s1_session.o r0_s1_session_tests.o r0_s1_string_ops_tests.o r0_s1_traffic_tests.o r0_s1_newell_tests.o r0_s1_ovm_tests.o r0_s1_nasch_tests.o main.o
+OBJS = s1.o tests.o adversarial.o claims.o r0.o r0_tests.o r0_s1_runtime.o r0_s1_g1a.o r0_s1_tests.o r0_s1_debug_tests.o r0_s1_m1_tests.o r0_s1_m2_tests.o r0_s1_m3_tests.o r0_s1_m3b_tests.o r0_s1_m3c_tests.o r0_s1_m3d_tests.o r0_s1_nested_closure_tests.o r0_s1_p4_tests.o r0_s1_p5_tests.o r0_s1_g1a_tests.o r0_s1_g1b_tests.o r0_s1_g1c_tests.o r0_s1_g1d_tests.o r0_s1_g1e_tests.o r0_s1_lambda_tests.o r0_s1_masm_tests.o r0_s1_gc_safepoint_tests.o r0_s1_invoke_tests.o r0_s1_reduce_tests.o r0_s1_parse_tests.o r0_s1_equality_tests.o r0_s1_bound_tests.o r0_s1_case_tests.o r0_s1_escape_law_tests.o r0_s1_error_tests.o r0_s1_show.o r0_s1_primer_tests.o r0_s1_parse_hardening_tests.o r0_s1_context_capacity_tests.o r0_s1_gc_worklist_tests.o r0_s1_session.o r0_s1_session_tests.o r0_s1_string_ops_tests.o r0_s1_traffic_tests.o r0_s1_newell_tests.o r0_s1_ovm_tests.o r0_s1_nasch_tests.o main.o
 
 all: s1
 
@@ -36,6 +36,7 @@ r0_s1_show.o: r0_s1_show.c r0_s1.h s1.h
 r0_s1_primer_tests.o: r0_s1_primer_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_parse_hardening_tests.o: r0_s1_parse_hardening_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_context_capacity_tests.o: r0_s1_context_capacity_tests.c r0_s1.h m1_layout.h s1.h
+r0_s1_gc_worklist_tests.o: r0_s1_gc_worklist_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_session.o: r0_s1_session.c r0_s1.h s1.h
 r0_s1_session_tests.o: r0_s1_session_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_string_ops_tests.o: r0_s1_string_ops_tests.c r0_s1.h m1_layout.h s1.h
@@ -56,10 +57,21 @@ r0_s1_p4_tests.o: r0_s1_p4_tests.c r0_s1.h s1.h
 r0_s1_p5_tests.o: r0_s1_p5_tests.c r0_s1.h s1.h
 main.o: main.c s1.h
 
-test: s1
+test: s1 gc-worklist-overflow-test
 	./check-frozen-s1.sh
 	./s1
+	./gc-worklist-overflow-test
 	python3 demo/shop/build-primer.py --check
+
+# GC worklist overflow: a SEPARATE enlarged-heap TEST build (never shipped),
+# identified by R0S1_GC_OVERFLOW_TEST_BUILD, the only switch that enlarges the
+# managed heap (to 11,232 cells, fixed in r0_s1.h) and skips the build-time
+# worklist assertion, so the runtime bound (R0S1_HALT_GC_WORKLIST_FULL) can be
+# exercised. It compiles its own copy of the runtime; no other target defines
+# the switch. The shipped build keeps the 64K map and the assertion.
+GC_OVERFLOW_TEST_FLAGS = -DR0S1_GC_OVERFLOW_TEST_BUILD
+gc-worklist-overflow-test: gc_worklist_overflow_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c s1.c r0_s1.h s1.h m1_layout.h
+	$(CC) $(CFLAGS) $(GC_OVERFLOW_TEST_FLAGS) -I. -o $@ gc_worklist_overflow_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c s1.c
 
 # ---- FIB-PROFILE-P1: Fibonacci profiler (instrumented + baseline builds) ---
 # fib-profiler : counters + trace (compiles runtime AND driver with -DR0_S1_PROFILE)

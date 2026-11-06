@@ -194,23 +194,41 @@ brackets.
 | values per block / per string literal | 512 values (a quoted literal costs 2); 512 bytes per string literal | clean parse failure (`too_large`) |
 | loader heap | ~14,800 cells, permanent | `loader_exhausted`. Large test suites must be split across sessions (`experiments/glon-latex`) |
 | symbols, function sites | 512, 640 per session [handoff, 2026-09-25] | clean parse failure |
-| emitted code / data-stack headroom | 12,337 cells / ~3,791 cells [2026-11-06] | each native costs far more than it looks (a CALL ≈ 21 cells, an EXIT ≈ 17 [handoff]) |
+| emitted code / data-stack headroom | 12,454 cells / ~3,674 cells, after the GC worklist guard added 117 cells (from 12,337 / ~3,791) [2026-11-06] | each native costs far more than it looks (a CALL ≈ 21 cells, an EXIT ≈ 17 [handoff]) |
 
-**[MEASURED] GC worklist (investigated 2026-11-06).** The mark worklist has a
-fixed 256 entries, and its push has **no bounds check**.
+**[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
+worklist has a fixed 256 entries (`GC_WORKLIST_CAP`, the cells before `GC_A1`).
 - **It cannot overflow in the 64K configuration.** Each object is pushed at
   most once per collection (the mark bit is set first), only managed objects
-  are pushed, and the smallest object is 32 cells. So at most ⌊7,232 / 32⌋ =
-  **226** objects can exist, below 256. The highest value observed in valid
-  programs was 217.
-- **[FINDING]** On a scratchpad build with an 11,232-cell heap, a valid
-  program holding 257 or more live objects in one block overflowed it. That
-  overwrote `GC_A1`/`GC_A2` (the extent and kind of the pending allocation),
-  causing a spurious out-of-memory fail-stop. Deeper overflow reaches
-  `G1_OUT`. The same build with a relocated 512-entry worklist ran correctly.
-- **Consequence:** a managed heap larger than **8,192 cells** requires a
-  resized worklist and additional safeguards (§9). **None of these changes is
-  authorised or implemented.**
+  are pushed, and the smallest object is 32 cells (`GC_MIN_EXTENT`). So at
+  most ⌊7,232 / 32⌋ = **226** objects can exist, below 256. The highest value
+  observed in valid programs was 217.
+- **[DECISION] Two safeguards** (implemented 2026-11-06, approved by the user):
+  1. **Build-time:** `r0_s1.h` asserts `GC_WORKLIST_CAP ≥ (GC_HEAP_LIMIT −
+     GC_HEAP_BASE) / GC_MIN_EXTENT`, and that the managed heap ends where the
+     loader heap begins. A larger managed heap no longer builds until the
+     worklist is enlarged.
+  2. **Runtime:** every push is bounded. A full worklist is a machine resource
+     fail-stop, like `CONTEXT_FULL`, not a SIN! (no `judge` catches it):
+     - it first clears every mark bit, so the abandoned collection leaves the
+       heap exactly as it was;
+     - it then records `R0S1_HALT_GC_WORKLIST_FULL`;
+     - the session reports `RESOURCE_ERROR` / `gc_worklist_full`, and a
+       persistent session keeps working.
+  Unreachable at 64K; it also covers RAW code that allocates payloads under
+  16 cells.
+- **[FINDING]** The separate enlarged-heap test build
+  (`make gc-worklist-overflow-test`, the only build defining
+  `R0S1_GC_OVERFLOW_TEST_BUILD`: an 11,232-cell heap with the build-time
+  assertion skipped) exercises the runtime bound. Setting the heap boundary
+  any other way is a compile error.
+  - With the bound, every overflow case ends in a controlled `gc_worklist_full`
+    with nothing written past the worklist, and the session recovers.
+  - Against the previous runtime, the same test shows `GC_A1`/`GC_A2`
+    overwritten, a spurious out-of-memory and a broken session afterwards.
+- **Consequence:** a managed heap larger than **8,192 cells** still needs a
+  worklist sized by memory profile (§9, item (c)), which is **not authorised
+  or implemented**.
 
 **[MEASURED] A local WASM artefact can be stale.** `demo/shop/glon.wasm` is a
 *git-ignored local build output*, not a committed file. CI rebuilds it before
@@ -257,12 +275,13 @@ experiment, not a correction** to the 64K design.
 ## 9. Proposals (not authorised, not implemented)
 
 All of these are **[PROPOSAL]**s from investigations on 2026-11-06. None has
-been approved or built.
+been approved or built, except the two GC worklist safeguards now recorded in
+§6.
 
 | Proposal | Summary | Key conditions and risks |
 |---|---|---|
-| **GC worklist safeguards** | (a) a compile-time assertion that the worklist covers ⌊heap / 32⌋ objects (holds at 64K; zero behaviour change); (b) a bounded push that fail-stops with a structured reason such as `GC_WORKLIST_FULL`, like `CONTEXT_FULL`; (c) a worklist sized by memory profile (for example 2,048 entries for a 65,536-cell heap) | must land **before** any heap enlargement; (b) was prototyped only in a scratchpad build |
-| **256K memory profile** | a separate worktree or build. Only frozen change: `MEM_CELLS` → 262,144. Order-preserving map: main return stack ~65,536, managed heap ~65,536, loader ~49K, 8 tasks. Estimated ~675-deep recursion and ~15× usable heap | needs the worklist safeguards first; every fixed address in `r0_s1.h`/`m1_layout.h` and the seeded datatype addresses must move together; tests with literal addresses; slower GC sweeps; 4× WASM memory. The 64K reference stays the baseline |
+| **GC worklist sized by memory profile** | (c) a worklist sized by memory profile (for example 2,048 entries for a 65,536-cell heap), in a region of its own. Items (a), the build-time assertion, and (b), the bounded push, are **implemented** (§6) | must land with, or before, any heap enlargement; the build-time assertion enforces this |
+| **256K memory profile** | a separate worktree or build. Only frozen change: `MEM_CELLS` → 262,144. Order-preserving map: main return stack ~65,536, managed heap ~65,536, loader ~49K, 8 tasks. Estimated ~675-deep recursion and ~15× usable heap | needs the worklist sized by profile first (the build-time assertion will refuse it otherwise); every fixed address in `r0_s1.h`/`m1_layout.h` and the seeded datatype addresses must move together; tests with literal addresses; slower GC sweeps; 4× WASM memory. The 64K reference stays the baseline |
 | **Tail-call optimisation** | reuse the caller's frame for calls in tail position, including inside `either` and a final `do`; in an experimental build flag only | must not eliminate a frame an argument depends on (escape law (1), `return`, Guard of Binding, stack-local contexts); runaway loops would no longer halt, so it needs a fuel limit; diagnostics and benchmarks change. About 2× parser nesting; unbounded tail loops in general |
 | **Segmented return stack** | switch to a new segment at closure invocation; frames already save absolute RP, so returns restore the old segment | pointers stay stable, but it gives no capacity gain without more total memory |
 | **Smaller activations** | size contexts to their actual bindings instead of 16 slots (64 cells) | changes when `CONTEXT_FULL` fires; touches the context, hash and promotion code |

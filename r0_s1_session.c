@@ -58,6 +58,10 @@ int r0_s1_session_run_block(cell prog, r0_s1_outcome *out) {
         out->sin_type = t; out->sin_id = i; out->sin_arg = a;
     } else if (r0_s1_halt_reason() == R0S1_HALT_CONTEXT_FULL) {
         out->status = R0S1_OUT_RESOURCE_ERROR; out->detail = R0S1_DETAIL_CONTEXT_FULL;
+    } else if (r0_s1_halt_reason() == R0S1_HALT_GC_WORKLIST_FULL) {
+        /* the collector cleared every mark bit before halting, so the heap is
+         * as it was before the collection began: the session stays usable */
+        out->status = R0S1_OUT_RESOURCE_ERROR; out->detail = R0S1_DETAIL_GC_WORKLIST_FULL;
     } else {
         out->status = R0S1_OUT_HALT; out->detail = R0S1_DETAIL_MACHINE;
     }
@@ -117,6 +121,7 @@ const char *r0_s1_outcome_detail_name(int detail) {
     case R0S1_DETAIL_CONTEXT_FULL:      return "context_full";
     case R0S1_DETAIL_STACK_SENTRY:      return "stack_sentry";
     case R0S1_DETAIL_MACHINE:           return "machine";
+    case R0S1_DETAIL_GC_WORKLIST_FULL:  return "gc_worklist_full";
     }
     return "unknown";
 }

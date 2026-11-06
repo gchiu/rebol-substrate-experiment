@@ -29,3 +29,4 @@ demos/patrol/glon.wasm
 demos/patrol/prelude.glon
 demos/patrol/strings.glon
 patrol-test
+gc-worklist-overflow-test

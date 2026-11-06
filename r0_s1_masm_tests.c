@@ -42,9 +42,55 @@ static int has_sym(const char *name) {
     return 0;
 }
 
+/* Relocation-normalised checksum of the code masm emits for one source file.
+ *
+ * The emitted S1 code contains absolute addresses, so a raw checksum changes
+ * whenever the emitted runtime grows, although masm's output is the same. The
+ * stream is decoded exactly (only LIT, 0BRANCH and HOST carry an inline
+ * operand), and each operand is classified:
+ *   - an address inside this file's own emission (a branch target, label or
+ *     call continuation) is hashed as its OFFSET from the emission start;
+ *   - a LIT equal to one of the runtime entry points masm resolves by name
+ *     (CALL alloc / collect / lookup / ESC_ANY / ESC_TRANSPORT) is hashed as
+ *     that NAME. The addresses are found by assembling a one-line probe,
+ *     `masm 0 [ CALL name ]`, with the same assembler;
+ *   - every other operand (data, registers, scratch cells, HOST ids, a numeric
+ *     CALL target) and every opcode is hashed EXACTLY.
+ * So relocation is the only difference it ignores. A changed opcode, literal,
+ * branch target or callee still changes the checksum. */
+static const char *masm_routines[] = { "alloc", "collect", "lookup", "ESC_ANY", "ESC_TRANSPORT" };
+#define N_MASM_ROUTINES 5
+static cell masm_routine_addr[N_MASM_ROUTINES];
+
+static cell probe_routine(const char *name) {
+    char p[96];
+    snprintf(p, sizeof p, "[ x: masm 0 [ CALL %s ] ]", name);
+    r0_s1_init();
+    cell a = asm_here();
+    int err = 0;
+    r0_s1_parse(p, &err);
+    cell b = asm_here();
+    if (err) return -1;
+    /* a derived call ends ... LIT callee LIT REG_IP ! ; the callee lies outside the probe */
+    cell prev = -1, last = -1;
+    for (cell i = a; i < b; i++) {
+        cell op = s1_mem(i);
+        if (op == OP_LIT) { prev = last; last = s1_mem(++i); continue; }
+        if (op == OP_ZBRANCH || op == OP_HOST) { i++; last = -1; continue; }
+        if (op == OP_STORE && last == REG_IP && prev >= 256 && (prev < a || prev > b)) return prev;
+        last = -1;
+    }
+    return -1;
+}
+
+static unsigned fnv_h;
+static void fnv_mix(unsigned long long v) {
+    for (int k = 0; k < 8; k++) { fnv_h ^= (unsigned)((v >> (8 * k)) & 255u); fnv_h *= 16777619u; }
+}
+
 /* Parse one source file on a fresh session (comments stripped, as glon_load
- * does) and checksum (FNV-1a over each cell's 8 low-order bytes) the code
- * emitted during the parse, which is the masm assembly alone. */
+ * does) and checksum the code emitted during the parse (the masm assembly
+ * alone), normalised for relocation as described above. */
 static int masm_emission(const char *path, long *cells, unsigned *fnv) {
     FILE *fp = fopen(path, "rb");
     if (!fp) return 0;
@@ -60,13 +106,21 @@ static int masm_emission(const char *path, long *cells, unsigned *fnv) {
     r0_s1_parse(src, &err);
     cell b = asm_here();
     if (err) return 0;
-    unsigned h = 2166136261u;
+    fnv_h = 2166136261u;
     for (cell i = a; i < b; i++) {
-        unsigned long long v = (unsigned long long)s1_mem(i);
-        for (int k = 0; k < 8; k++) { h ^= (unsigned)((v >> (8 * k)) & 255u); h *= 16777619u; }
+        cell op = s1_mem(i);
+        fnv_mix(0); fnv_mix((unsigned long long)op);                 /* opcode: exact */
+        if (op != OP_LIT && op != OP_ZBRANCH && op != OP_HOST) continue;
+        if (++i >= b) return 0;                                       /* truncated operand */
+        cell v = s1_mem(i);
+        if (op != OP_HOST && v >= a && v <= b) { fnv_mix(1); fnv_mix((unsigned long long)(v - a)); continue; }
+        int named = 0;
+        for (int k = 0; op == OP_LIT && k < N_MASM_ROUTINES; k++)
+            if (v == masm_routine_addr[k]) { fnv_mix(2); fnv_mix((unsigned long long)k); named = 1; break; }
+        if (!named) { fnv_mix(3); fnv_mix((unsigned long long)v); }  /* operand: exact */
     }
     *cells = (long)(b - a);
-    *fnv = h;
+    *fnv = fnv_h;
     return 1;
 }
 
@@ -160,23 +214,30 @@ int run_r0_s1_masm_tests(void) {
           && has_sym("L") && has_sym("D"),
           "12: ordinary Glon words with masm spellings behave normally outside masm");
 
-    /* 13: the code masm emits for the shipped libraries is byte-identical to
-     * the pre-fix assembler (values recorded from the unmodified runtime at
-     * bdcfa9d with this same checksum). */
+    /* 13: the code masm emits for the shipped libraries is identical to the
+     * pre-fix assembler, up to relocation (see masm_emission). The reference
+     * values were computed with this same normalised checksum by the
+     * unmodified runtime at bdcfa9d (the assembler before MASM-PRIVATE-NAMES).
+     * The previous HEAD (0011803), and the runtime with the GC worklist bound,
+     * which grew the emitted runtime by 117 cells, give the same values. */
     {
+        int probes_ok = 1;
+        for (int k = 0; k < N_MASM_ROUTINES; k++)
+            if ((masm_routine_addr[k] = probe_routine(masm_routines[k])) < 0) probes_ok = 0;
+        CHECK(probes_ok, "13a: masm's named runtime entry points (alloc, collect, lookup, ESC_ANY, ESC_TRANSPORT) are located");
         static const struct { const char *path; long cells; unsigned fnv; } lib[] = {
-            { "demo/shop/bootstrap.glon",            802, 0xe5bd4101u },
-            { "demo/shop/common.glon",               147, 0x39f75e61u },
-            { "demo/shop/strings.glon",              304, 0x347eaff6u },
-            { "demo/shop/demos/linda.glon",         1969, 0x95cdd0ccu },
-            { "demo/shop/demos/merchant-flow.glon", 1017, 0xf13280a8u },
-            { "demo/shop/demos/tuple-space.glon",   1125, 0x2bb92f1au },
-            { "demo/shop/demos/traffic.glon",         55, 0x839e7ea3u },
-            { "demos/kaka/kaka-lib.glon",            988, 0x52c2b0c4u },
-            { "demos/patrol/patrol.glon",            285, 0x38b62f8cu },
-            { "jupyter/prelude.glon",                416, 0x4e525869u },
-            { "desktop/emit.glon",                   193, 0x5e9b7328u },
-            { "standalone/app.glon",                  63, 0x76729202u },
+            { "demo/shop/bootstrap.glon",             802, 0xf7eaead6u },
+            { "demo/shop/common.glon",                147, 0x8c74aceeu },
+            { "demo/shop/strings.glon",               304, 0x7a334bcfu },
+            { "demo/shop/demos/linda.glon",          1969, 0xb11d2c08u },
+            { "demo/shop/demos/merchant-flow.glon",  1017, 0x8711349bu },
+            { "demo/shop/demos/tuple-space.glon",    1125, 0xd1ae8fd9u },
+            { "demo/shop/demos/traffic.glon",          55, 0xd353a2c0u },
+            { "demos/kaka/kaka-lib.glon",             988, 0xfcaaab6bu },
+            { "demos/patrol/patrol.glon",             285, 0xede1a66au },
+            { "jupyter/prelude.glon",                 416, 0xf02b5d2du },
+            { "desktop/emit.glon",                    193, 0x74e29708u },
+            { "standalone/app.glon",                   63, 0xf0dc9b01u },
             { NULL, 0, 0 }
         };
         int ok = 1, seen = 0;
@@ -190,7 +251,7 @@ int run_r0_s1_masm_tests(void) {
                 ok = 0;
             }
         }
-        CHECK(ok && seen == 12, "13: masm-emitted code for the shipped libraries is byte-identical to the pre-fix assembler");
+        CHECK(ok && seen == 12 && probes_ok, "13: masm-emitted code for the shipped libraries is identical to the pre-fix assembler (up to relocation)");
     }
 
     if (failures == 0) printf("all MASM-surface tests passed\n");

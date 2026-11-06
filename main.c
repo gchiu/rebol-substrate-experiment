@@ -34,6 +34,7 @@ int run_r0_s1_error_tests(void);
 int run_r0_s1_primer_tests(void);
 int run_r0_s1_parse_hardening_tests(void);
 int run_r0_s1_context_capacity_tests(void);
+int run_r0_s1_gc_worklist_tests(void);
 int run_r0_s1_session_tests(void);
 int run_r0_s1_string_ops_tests(void);
 int run_r0_s1_traffic_tests(void);
@@ -76,6 +77,7 @@ int main(void) {
     failures += run_r0_s1_primer_tests();
     failures += run_r0_s1_parse_hardening_tests();
     failures += run_r0_s1_context_capacity_tests();
+    failures += run_r0_s1_gc_worklist_tests();
     failures += run_r0_s1_session_tests();
     failures += run_r0_s1_string_ops_tests();
     failures += run_r0_s1_traffic_tests();
