@@ -80,8 +80,10 @@ jobs:
           python3 demo/shop/build-linda.py
           make wasm-linda-test
 
-      - name: Glon LaTeX page -- every example through the fresh WASM and the vendored KaTeX
-        run: node experiments/glon-latex/web/latex_node_test.mjs demo/shop/glon.wasm
+      - name: Glon LaTeX page and infix front end -- through the fresh WASM and the vendored KaTeX
+        run: |
+          node experiments/glon-latex/web/latex_node_test.mjs demo/shop/glon.wasm
+          node experiments/glon-latex/web/infix_node_test.mjs demo/shop/glon.wasm
 
       - name: Build the live Glon primer and run every example through WASM
         run: |
@@ -153,7 +155,7 @@ jobs:
           # shared libraries, with the vendored KaTeX (see web/katex/VENDOR.md).
           rm -rf pages/docs/latex && mkdir -p pages/docs/latex
           cp experiments/glon-latex/web/latex.html pages/docs/latex/index.html
-          cp experiments/glon-latex/web/latex-host.js experiments/glon-latex/web/latex.css \
+          cp experiments/glon-latex/web/latex-host.js experiments/glon-latex/web/latex.css experiments/glon-latex/web/infix.js \
              experiments/glon-latex/latex.glon pages/docs/latex/
           cp -r experiments/glon-latex/web/katex pages/docs/latex/katex
           cp demo/shop/glon.wasm pages/docs/latex/glon.wasm

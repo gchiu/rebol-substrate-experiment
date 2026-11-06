@@ -12,8 +12,9 @@
 #   make samples    print Chris Ross-Gill's math.test.reb figures, in Glon
 #   make web        stage the /latex/ page in build/web/latex/, laid out exactly
 #                   as deploy-pages.yml publishes it to docs/latex/
-#   make web-test   run every page example through glon.wasm and the vendored
-#                   KaTeX (Node; WASM defaults to the shop build)
+#   make web-test   run every page example, and the infix front end
+#                   (web/infix.js), through glon.wasm and the vendored KaTeX
+#                   (Node; WASM defaults to the shop build)
 #   make clean
 #
 # The suites run as two glon sessions: the loader heap is permanent, and both
@@ -59,13 +60,14 @@ web:
 	rm -rf $(WEB)
 	mkdir -p $(WEB)
 	cp web/latex.html $(WEB)/index.html
-	cp web/latex-host.js web/latex.css latex.glon $(WEB)/
+	cp web/latex-host.js web/latex.css web/infix.js latex.glon $(WEB)/
 	cp -r web/katex $(WEB)/katex
 	cp $(WASM) $(WEB)/glon.wasm
 	cp $(ROOT)/jupyter/prelude.glon $(ROOT)/demo/shop/strings.glon $(WEB)/
 
 web-test:
 	$(NODE) web/latex_node_test.mjs $(WASM)
+	$(NODE) web/infix_node_test.mjs $(WASM)
 
 clean:
 	rm -rf build

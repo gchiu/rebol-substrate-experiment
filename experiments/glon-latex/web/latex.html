@@ -249,6 +249,66 @@ s/print l/render l/approx l/pi ans</textarea>
 </section>
 
 <section>
+  <h2>Infix input</h2>
+  <p>Type mathematics the usual way. A small JavaScript front end
+  (<a href="infix.js">infix.js</a>) translates it into Glon prefix source, and that Glon
+  runs on the same runtime and the same <code>l/</code> words as every example above.
+  The translator only rewrites notation: it evaluates nothing and builds no LaTeX.</p>
+  <div class="ix" id="infix">
+    <label class="label" for="infix-src">Infix</label>
+    <textarea id="infix-src" spellcheck="false" rows="2">(a + b) * c</textarea>
+    <div class="buttons"><button class="run" disabled>Translate and run</button><button class="reset" disabled>Reset</button></div>
+    <div class="label">Generated Glon</div>
+    <pre class="glon-out" aria-live="polite"></pre>
+    <div class="out" aria-live="polite"></div>
+  </div>
+  <p class="chips-label">Try:</p>
+  <div class="chips">
+    <button class="chip" data-infix="a + b * c">a + b * c</button>
+    <button class="chip" data-infix="a - (b - c)">a - (b - c)</button>
+    <button class="chip" data-infix="-a*b">-a*b</button>
+    <button class="chip" data-infix="-(a*b)">-(a*b)</button>
+    <button class="chip" data-infix="-a^2">-a^2</button>
+    <button class="chip" data-infix="(-a)^2">(-a)^2</button>
+    <button class="chip" data-infix="1/2x">1/2x</button>
+    <button class="chip" data-infix="(1/2)x">(1/2)x</button>
+    <button class="chip" data-infix="x = (-b + sqrt(b^2 - 4 a c)) / (2a)">quadratic formula</button>
+    <button class="chip" data-infix="sum(i = 1, n, i) = n (n + 1)/2">sum(…)</button>
+    <button class="chip" data-infix="lim(x, 0, ln(1 + x)/x)">lim(…)</button>
+    <button class="chip" data-infix="sum(t = 1, inf, x^t) = 1/(1 - x)">Chris, figure 1</button>
+  </div>
+  <details class="ref">
+    <summary>Infix syntax</summary>
+    <table>
+      <tr><th>Precedence (loosest first)</th><th>Operators</th><th>Glon</th></tr>
+      <tr><td>list</td><td><code>a, b</code></td><td><code>l/seq</code></td></tr>
+      <tr><td>relation (not chained)</td><td><code>=</code> <code>≈</code> (<code>~=</code>)</td><td><code>l/=</code> <code>l/approx</code></td></tr>
+      <tr><td>additive, left</td><td><code>+</code> <code>-</code></td><td><code>l/+</code> <code>l/-</code></td></tr>
+      <tr><td>multiplicative, left</td><td><code>*</code> (<code>×</code> <code>·</code>) <code>/</code> (fraction) <code>÷</code></td><td><code>l/*</code> <code>l/frac</code> <code>l/div</code></td></tr>
+      <tr><td>unary minus</td><td><code>-a</code></td><td><code>l/neg</code></td></tr>
+      <tr><td>implicit multiplication, left</td><td><code>4x</code> <code>a b</code> <code>2 sqrt(x)</code></td><td><code>l/.</code></td></tr>
+      <tr><td>power, right</td><td><code>^</code></td><td><code>l/^</code></td></tr>
+    </table>
+    <p>So <code>-a*b</code> is (−a)·b, <code>-a^2</code> is −(a²), and <code>(-a)^2</code> keeps
+    its grouping. A name of several letters is one variable (<code>dx</code>); write
+    <code>a b</code> for a product, and <code>x (y + 1)</code>, with a space, because
+    <code>x(…)</code> is read as a function call.</p>
+    <p><b>Implicit multiplication after division.</b> Implicit multiplication binds more
+    tightly than <code>/</code>, so <code>1/2x</code> means 1/(2x). Readers disagree about
+    this, so use parentheses: <code>(1/2)x</code> for one half of x, and <code>1/(2x)</code>
+    to make the other reading explicit.</p>
+    <p>Functions: <code>sqrt(x)</code>, <code>root(n, x)</code>, <code>ln(x)</code>,
+    <code>sum(lower, upper, body)</code>, <code>prod(…)</code>, <code>int(…)</code>
+    (<code>_</code> omits a limit), <code>lim(var, target, body)</code>,
+    <code>lim_left(…)</code>, <code>lim_right(…)</code>, <code>paren(x)</code>,
+    <code>brace(x)</code>, <code>stack(a, b)</code>, and <code>[ … ]</code> for square
+    brackets. Symbols: <code>pi</code> <code>π</code> <code>inf</code> <code>∞</code>
+    <code>sigma</code> <code>theta</code>. Decimals become text atoms; Glon numbers are
+    integers.</p>
+  </details>
+</section>
+
+<section>
   <h2>Try it</h2>
   <p>Write any Glon. Every line printed as <code>\[…\]</code> (<code>l/render</code>) or
   <code>$…$</code> (<code>l/inline</code>) is typeset; anything else is shown as text.
@@ -299,6 +359,7 @@ s/print l/inline l/+ "a" l/* "b" "c"</textarea>
 </footer>
 
 <script src="katex/katex.min.js"></script>
+<script src="infix.js"></script>
 <script src="latex-host.js"></script>
 </body>
 </html>

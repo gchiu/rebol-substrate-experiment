@@ -40,7 +40,9 @@ example once, in order.
 | `web/katex/` | `latex/katex/` | KaTeX 0.16.22, vendored unmodified with its MIT `LICENSE`; see `VENDOR.md` |
 | `latex.glon` | `latex/latex.glon` | the vocabulary, linked from the footer |
 | — | `latex/glon.wasm`, `prelude.glon`, `strings.glon` | the shop runtime and shared libraries, copied as for Patrol |
+| `web/infix.js` | `latex/infix.js` | v003: the infix-to-Glon front end used by the Infix input section ([GLON-LATEX-V003.md](GLON-LATEX-V003.md)) |
 | `web/latex_node_test.mjs` | (not published) | the headless page test, run in CI |
+| `web/infix_node_test.mjs` | (not published) | the infix translator test, run in CI |
 
 `make web` stages the page in `build/web/latex/`. The layout is identical to
 what `deploy-pages.yml` publishes; this was checked with `diff -r` against a
