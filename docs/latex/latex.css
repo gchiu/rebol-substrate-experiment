@@ -70,6 +70,23 @@ button:disabled { opacity: 0.5; cursor: default; }
 .out .sin, .out .tex-error { color: #a3221b; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.86rem; white-space: pre-wrap; }
 .out .diag { color: #888; }
 
+/* v003: infix input */
+.ix { background: #fff; border: 1px solid #e0dcd0; border-radius: 8px; padding: 12px; }
+.ix label.label { display: block; }
+.glon-out {
+  margin: 0 0 8px; padding: 8px 10px; min-height: 2.2em;
+  background: #eef3ee; border-radius: 6px; color: #23432a;
+  font-size: 0.84rem; white-space: pre-wrap; word-break: break-word;
+}
+.glon-out.sin { background: #fbefee; color: #a3221b; white-space: pre; overflow-x: auto; word-break: normal; }
+.chips-label { margin: 10px 0 4px; font-size: 0.9rem; color: #555; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+button.chip {
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.8rem;
+  min-height: 36px; padding: 3px 12px; border-radius: 16px; border-color: #c9c4b6; background: #fcfcfa;
+}
+details.ref th { text-align: left; font-size: 0.85rem; padding: 4px 10px 4px 0; border-bottom: 1px solid #d8d4c8; }
+
 details.ref { margin: 14px 0; }
 details.ref summary { cursor: pointer; font-weight: 600; }
 details.ref table { border-collapse: collapse; margin-top: 6px; font-size: 0.9rem; }

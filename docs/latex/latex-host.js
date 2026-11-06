@@ -166,6 +166,51 @@
     return go;
   }
 
+  // The Infix input section (v003). GlonInfix (infix.js) is the FRONT END: it
+  // rewrites infix text into Glon prefix source. That source then runs exactly
+  // like any other example; nothing here evaluates or typesets mathematics.
+  function wireInfix(box) {
+    var ta = box.querySelector("textarea");
+    var run = box.querySelector("button.run");
+    var reset = box.querySelector("button.reset");
+    var glonOut = box.querySelector(".glon-out");
+    var out = box.querySelector(".out");
+    function go() {
+      if (run.disabled) return Promise.resolve();
+      out.textContent = "";
+      glonOut.textContent = "";
+      glonOut.className = "glon-out";
+      var t = GlonInfix.translate(ta.value);
+      if (t.error) {
+        // the input line with a caret under the reported position
+        var lines = ta.value.split("\n"), at = t.pos, row = 0;
+        while (row < lines.length - 1 && at > lines[row].length) { at -= lines[row].length + 1; row++; }
+        glonOut.className = "glon-out sin";
+        glonOut.textContent = "infix error: " + t.error + "\n" + (lines[row] || "") + "\n" + new Array(at + 1).join(" ") + "^";
+        return Promise.resolve();
+      }
+      var source = GlonInfix.program(t.glon);
+      glonOut.textContent = source;
+      run.disabled = true;
+      busy(1);
+      out.textContent = "running…";
+      return runProgram(source).then(function (r) { show(out, r); })
+        .catch(function (e) { out.textContent = ""; out.appendChild(el("div", "line sin", "host error: " + (e && e.message || e))); })
+        .then(function () { run.disabled = false; busy(-1); });
+    }
+    run.addEventListener("click", go);
+    reset.addEventListener("click", function () { ta.value = ta.defaultValue; go(); });
+    ta.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); go(); }
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".chip[data-infix]"), function (chip) {
+      chip.addEventListener("click", function () { ta.value = chip.getAttribute("data-infix"); go(); });
+    });
+    run.disabled = false;
+    reset.disabled = false;
+    return go;
+  }
+
   if (typeof katex === "undefined") {
     statusEl.textContent = "Could not load the local KaTeX (katex/katex.min.js).";
     return;
@@ -175,6 +220,8 @@
     var names = WebAssembly.Module.exports(v[0]).map(function (e) { return e.name; });
     if (names.indexOf("glon_run") < 0) throw new Error("this glon.wasm predates glon_run");
     var runs = Array.prototype.map.call(document.querySelectorAll(".ex"), wire);
+    var infixBox = document.getElementById("infix");
+    if (infixBox && typeof GlonInfix !== "undefined") runs.push(wireInfix(infixBox));
     statusEl.textContent = "Running every example in the Glon WebAssembly runtime…";
     // Run every example once, in order, so the page opens with all figures drawn.
     return runs.reduce(function (p, go) { return p.then(go); }, Promise.resolve()).then(function () {
