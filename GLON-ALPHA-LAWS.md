@@ -200,6 +200,34 @@ An error value and error propagation are separate things.
   (managed allocation, byte access, frozen S1's byte output). Jupyter and
   Saturnine sessions load `strings.glon`; a page that needs only `str-eq`
   (the shop, the traffic simulator) does not.
+- **Optional extension** (`demo/shop/strings-ext.glon`,
+  loaded after `strings.glon` by the sessions that need it; no session loads it
+  by default). Indices are 0-based **byte** offsets; ranges are half-open,
+  `[start, end)`, with no negative indices and no clamping:
+  - `s/at s i` is the byte (0..255) at index `i`, or `none` when `i` is
+    outside `[0, length)`;
+  - `s/slice s start n` is a **new** string of the `n` bytes from `start`. It
+    requires `0 <= start`, `0 <= n` and `start + n <= length`, and otherwise
+    raises a SIN! of type `range`, id `s/slice`, arg `[start n]`;
+  - `s/span s start end` is a **new** string of the bytes in `[start, end)`,
+    equal to `s/slice s start end - start`. It requires
+    `0 <= start <= end <= length`, and otherwise raises a SIN! of type `range`,
+    id `s/span`, arg `[start end]`;
+  - `s/scan-set s i set` is the first index `>= i` whose byte is not one of the
+    bytes of the string `set`, or the length if there is none. `i` is clamped
+    to `[0, length]`: extraction is strict, but scanning at or beyond the end
+    is a normal state (the input is exhausted) and answers the length;
+  - `s/from-int n` is the decimal text of the integer `n`.
+
+  A wrong argument type raises `type` with the operation's name as the id, as
+  above. These operations work on **bytes**: a UTF-8 character of several
+  bytes is several indices, `s/slice` and `s/span` can split one, and a `set`
+  is a set of bytes. Integers are tagged cells, about ±2^59 natively and ±2^27
+  in the 32-bit WebAssembly build.
+
+  The module's `s/raw-...` masm workers are unchecked and must be called only
+  through these validated wrappers: given a bad index or count they read or
+  write outside the string.
 
 ## 10. Truth
 

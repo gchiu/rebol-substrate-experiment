@@ -242,8 +242,44 @@ build of the current sources.**
 | Item | Status | Where |
 |---|---|---|
 | `s/` strings (`s/+ s/= s/length s/print`) | shipped library | `demo/shop/strings.glon`; laws §9a |
+| `s/` string extension (`s/at s/slice s/span s/scan-set s/from-int`) | shipped **optional** library (API approved 2026-11-07); loaded after `strings.glon` only by sessions that need it | `demo/shop/strings-ext.glon`; laws §9a; tests `r0_s1_string_ext_tests.c` |
 | `l/` LaTeX vocabulary v001–v002, `/latex/` page, v003 infix front end (JS) | committed and deployed | `experiments/glon-latex/` |
-| `p/` Pratt parser v004, written in Glon, plus `s/at s/slice s/span s/from-int` | **[FINDING] proof of concept, frozen by checksum (`FROZEN.sha256`), uncommitted** | `experiments/glon-pratt/GLON-PRATT-V004.md` |
+| `p/` Pratt parser v004, written in Glon, plus `s/at s/slice s/span s/from-int` (its `s/span` is the byte-set scanner) | **[FINDING] proof of concept, frozen by checksum (`FROZEN.sha256`), uncommitted** | `experiments/glon-pratt/GLON-PRATT-V004.md` |
+
+**[DECISION] The string extension API (approved by the user 2026-11-07).**
+Five byte-level operations in a separate optional module,
+`strings-ext.glon`. Indices are 0-based bytes; ranges are half-open as in
+Python, but with no negative indices and no clamping:
+- `s/slice s start n`: start and length;
+- `s/span s start end`: start and exclusive end;
+- `s/scan-set s i set`: the first index at or after `i` whose byte is not in
+  `set`. Unlike extraction, it clamps `i` to [0, length], because scanning at
+  or beyond exhaustion is a normal use case;
+- `s/at s i` and `s/from-int n`.
+
+The unchecked `s/raw-...` masm workers must be called only through the
+validated public wrappers; the regression tests for invalid ranges
+(`r0_s1_string_ext_tests.c` B5–B8, E6–E9) must be kept.
+
+The extension stays optional: neither the 64K machine nor `strings.glon` is to
+be changed to accommodate it.
+
+v004 used the name `s/span` for the scanner. This API renames it
+`s/scan-set` and gives `s/span` to range extraction. Frozen v004 keeps its own
+copy under the old names, so the two files must not be loaded into one session.
+
+The module is separate because `strings.glon` is loaded by every interactive
+page. Folding the extension into `strings.glon` would need either Kaka to stop
+loading `strings.glon` or a capacity change.
+
+[MEASURED] (2026-11-07, 64K configuration)
+- The module costs 10 global bindings and 1,212 loader-heap cells.
+- Attack of the Mutant Kaka's browser session, which loads `strings.glon`, uses
+  252 of 256 global bindings with 242 loader cells free. With the extension it
+  fails to load.
+- Other sessions with `strings.glon`, global bindings without → with the
+  extension: Jupyter/CLI 40 → 50, primer 150 → 160, Patrol 120 → 130, LaTeX
+  page 95 → 105.
 
 **[FINDING] Pratt parser v004 (2026-11-06).** It is exact against the v003
 reference on its subset. Its limits under the 64K configuration:

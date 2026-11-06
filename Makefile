@@ -1,7 +1,7 @@
 CC      ?= cc
 CFLAGS  ?= -std=c17 -Wall -Wextra -O0 -g
 
-OBJS = s1.o tests.o adversarial.o claims.o r0.o r0_tests.o r0_s1_runtime.o r0_s1_g1a.o r0_s1_tests.o r0_s1_debug_tests.o r0_s1_m1_tests.o r0_s1_m2_tests.o r0_s1_m3_tests.o r0_s1_m3b_tests.o r0_s1_m3c_tests.o r0_s1_m3d_tests.o r0_s1_nested_closure_tests.o r0_s1_p4_tests.o r0_s1_p5_tests.o r0_s1_g1a_tests.o r0_s1_g1b_tests.o r0_s1_g1c_tests.o r0_s1_g1d_tests.o r0_s1_g1e_tests.o r0_s1_lambda_tests.o r0_s1_masm_tests.o r0_s1_gc_safepoint_tests.o r0_s1_invoke_tests.o r0_s1_reduce_tests.o r0_s1_parse_tests.o r0_s1_equality_tests.o r0_s1_bound_tests.o r0_s1_case_tests.o r0_s1_escape_law_tests.o r0_s1_error_tests.o r0_s1_show.o r0_s1_primer_tests.o r0_s1_parse_hardening_tests.o r0_s1_context_capacity_tests.o r0_s1_gc_worklist_tests.o r0_s1_session.o r0_s1_session_tests.o r0_s1_string_ops_tests.o r0_s1_traffic_tests.o r0_s1_newell_tests.o r0_s1_ovm_tests.o r0_s1_nasch_tests.o main.o
+OBJS = s1.o tests.o adversarial.o claims.o r0.o r0_tests.o r0_s1_runtime.o r0_s1_g1a.o r0_s1_tests.o r0_s1_debug_tests.o r0_s1_m1_tests.o r0_s1_m2_tests.o r0_s1_m3_tests.o r0_s1_m3b_tests.o r0_s1_m3c_tests.o r0_s1_m3d_tests.o r0_s1_nested_closure_tests.o r0_s1_p4_tests.o r0_s1_p5_tests.o r0_s1_g1a_tests.o r0_s1_g1b_tests.o r0_s1_g1c_tests.o r0_s1_g1d_tests.o r0_s1_g1e_tests.o r0_s1_lambda_tests.o r0_s1_masm_tests.o r0_s1_gc_safepoint_tests.o r0_s1_invoke_tests.o r0_s1_reduce_tests.o r0_s1_parse_tests.o r0_s1_equality_tests.o r0_s1_bound_tests.o r0_s1_case_tests.o r0_s1_escape_law_tests.o r0_s1_error_tests.o r0_s1_show.o r0_s1_primer_tests.o r0_s1_parse_hardening_tests.o r0_s1_context_capacity_tests.o r0_s1_gc_worklist_tests.o r0_s1_session.o r0_s1_session_tests.o r0_s1_string_ops_tests.o r0_s1_string_ext_tests.o r0_s1_traffic_tests.o r0_s1_newell_tests.o r0_s1_ovm_tests.o r0_s1_nasch_tests.o main.o
 
 all: s1
 
@@ -40,6 +40,7 @@ r0_s1_gc_worklist_tests.o: r0_s1_gc_worklist_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_session.o: r0_s1_session.c r0_s1.h s1.h
 r0_s1_session_tests.o: r0_s1_session_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_string_ops_tests.o: r0_s1_string_ops_tests.c r0_s1.h m1_layout.h s1.h
+r0_s1_string_ext_tests.o: r0_s1_string_ext_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_traffic_tests.o: r0_s1_traffic_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_newell_tests.o: r0_s1_newell_tests.c r0_s1.h m1_layout.h s1.h
 r0_s1_ovm_tests.o: r0_s1_ovm_tests.c r0_s1.h m1_layout.h s1.h
@@ -291,7 +292,7 @@ wasm-primer-test: demo/shop/glon.wasm primer.html
 # glon-lib/ is copied beside the executable; it is not compiled in.
 GLON_SRCS = glon.c r0_s1_session.c r0_s1_show.c r0_s1_runtime.c s1.c
 GLON_LIB_DIR = glon-lib
-GLON_LIBS = $(GLON_LIB_DIR)/prelude.glon $(GLON_LIB_DIR)/strings.glon
+GLON_LIBS = $(GLON_LIB_DIR)/prelude.glon $(GLON_LIB_DIR)/strings.glon $(GLON_LIB_DIR)/strings-ext.glon
 
 glon: $(GLON_SRCS) r0_s1.h s1.h m1_layout.h $(GLON_LIBS)
 	$(CC) $(CFLAGS) -I. -o $@ $(GLON_SRCS)
@@ -301,6 +302,12 @@ $(GLON_LIB_DIR)/prelude.glon: jupyter/prelude.glon
 	cp $< $@
 
 $(GLON_LIB_DIR)/strings.glon: demo/shop/strings.glon
+	@mkdir -p $(GLON_LIB_DIR)
+	cp $< $@
+
+# strings-ext.glon is distributed beside the core libraries but NOT loaded by
+# default (glon.c loads prelude + strings): load it explicitly when needed.
+$(GLON_LIB_DIR)/strings-ext.glon: demo/shop/strings-ext.glon
 	@mkdir -p $(GLON_LIB_DIR)
 	cp $< $@
 
