@@ -1,0 +1,18 @@
+;; experiments/glon-latex/examples.glon -- numeric and LaTeX words side by side.
+;; Run with: make examples   (or: build/glon latex.glon examples.glon)
+
+;; the same expression shape, evaluated by each vocabulary
+print            - * + 2 3 4 / 9 3
+s/print l/text   l/- l/* l/+ 2 3 4 l/frac 9 3
+
+;; grouping is carried by the call tree, and only the needed brackets print
+s/print l/inline l/* l/+ "a" "b" "c"
+s/print l/inline l/- "a" l/- "b" "c"
+s/print l/inline l/^ l/+ 1 "x" 2
+s/print l/inline l/^ "e" l/+ 1 "x"
+
+;; numeric words compute inside a LaTeX expression
+s/print l/inline l/^ "x" + 1 2
+
+;; display math
+s/print l/render l/= "x" l/frac l/+ l/neg "b" l/sqrt l/- l/^ "b" 2 l/* l/* 4 "a" "c" l/* 2 "a"

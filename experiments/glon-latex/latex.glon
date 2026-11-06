@@ -1,0 +1,135 @@
+;; experiments/glon-latex/latex.glon -- GLON-LATEX v001: a LaTeX vocabulary.
+;;
+;; A second semantic vocabulary over the same substrate as the numeric words.
+;; `+ 1 2` is the number 3; `l/+ 1 2` is a TERM describing the expression 1+2.
+;; Both are ordinary words evaluated by the one Glon evaluator: there is no
+;; parser, no tree walker and no rebinding. Each l/ word is a func that builds
+;; its LaTeX eagerly from already-evaluated arguments, exactly as `s/+` builds
+;; a string. Glon's prefix, fixed-arity calls make the call tree the expression
+;; tree, so grouping in the INPUT is never ambiguous; the vocabulary's only job
+;; is to put the minimum brackets into the OUTPUT so the grouping survives.
+;;
+;; Inspired by Christopher Ross-Gill's Rebol latex-math generator
+;; (https://gist.github.com/rgchris/d7b31eee47efc6c86d87fcc21d6b45a4).
+;;
+;; ---- operands --------------------------------------------------------------
+;;   integer   an atom; a negative integer is a negation ("-3")
+;;   string    raw LaTeX, taken as an atom: "x", "\pi", "2.15"
+;;   term      the result of any l/ word
+;; Anything else raises SIN! 'type 'l/term <value>.
+;;
+;; ---- operations (every one returns a term) ---------------------------------
+;;   l/+ a b      a+b
+;;   l/- a b      a-b
+;;   l/* a b      a \cdot b
+;;   l/frac a b   \frac{a}{b}
+;;   l/^ a b      a^{b}
+;;   l/neg a      -a
+;;   l/sqrt a     \sqrt{a}
+;;   l/= a b      a=b
+;; ---- rendering (term or operand -> string) ---------------------------------
+;;   l/text a     the bare LaTeX
+;;   l/inline a   $...$
+;;   l/render a   \[...\]   (display math)
+;;
+;; ---- grouping --------------------------------------------------------------
+;; A term is the managed block [precedence latex-string]. Levels:
+;;   0 rel (=)   1 add (+ -)   2 neg   3 mul   4 pow   8 frac   9 atom
+;; Each argument slot has a minimum level; an argument below it is wrapped in
+;; \left( \right). Right operands are strict (a+(b+c), a-(b-c), a*(b*c) keep
+;; their brackets), so two different trees never print the same text. Braced
+;; slots (\frac{}{}, ^{}, \sqrt{}) group by themselves and are never wrapped.
+;;
+;;   slot                    minimum   so that
+;;   + - left                add       -a+b, a-b+c read as written
+;;   + - right               mul       a+(-b), a-(b-c), a+(b+c)
+;;   * left                  mul       (a+b) \cdot c, (-a) \cdot b
+;;   * right                 pow       a \cdot (b \cdot c), a \cdot (-b)
+;;   neg operand             mul       -(a+b), -(-a); -a \cdot b, -a^{2}
+;;   ^ base                  atom      (1+x)^{2}, (a^{b})^{c}, (-3)^{2}
+;;   = both sides            add       (a=b)=c
+;;
+;; The file is wrapped in [ ] because it contains masm (a masm definition in an
+;; unwrapped file fail-stops; see GLON-LATEX-V001.md). Requires prelude.glon
+;; (mk-string, block-at, block-len, s/raw-string?) and strings.glon (s/+).
+[
+
+;; ---- mechanism: two type tests (the only masm) -----------------------------
+;; The public surface has no integer/block predicate; these mirror the shape
+;; of the prelude's s/raw-string? (tag test, result re-tagged as 1|0).
+l/raw-int?:   masm 1 [ LIT 16 MOD LIT 0 EQ LIT 16 MUL ARITY 1 EXIT ]
+l/raw-block?: masm 1 [ LIT 16 MOD LIT T_BLOCK EQ LIT 16 MUL ARITY 1 EXIT ]
+
+;; ---- precedence levels -------------------------------------------------------
+l/p-rel: 0
+l/p-add: 1
+l/p-neg: 2
+l/p-mul: 3
+l/p-pow: 4
+l/p-frac: 8
+l/p-atom: 9
+
+;; ---- integer -> decimal string (Glon has no FORM) --------------------------
+l/raw-digit: func [d] [ mk-string reduce [ + 48 d ] ]
+l/raw-digits: func [n] [
+    either > n 9 [
+        s/+ l/raw-digits / n 10 l/raw-digit - n * 10 / n 10
+    ] [ l/raw-digit n ]
+]
+
+;; ---- terms -------------------------------------------------------------------
+l/raw-mk: func [prec text] [ reduce [ prec text ] ]
+l/raw-prec: func [t] [ block-at t 0 ]
+l/raw-latex: func [t] [ block-at t 1 ]
+
+;; l/term: coerce an operand to a term.
+l/term: func [x] [
+    either l/raw-int? x [
+        either < x 0 [
+            l/raw-mk l/p-neg s/+ "-" l/raw-digits - 0 x
+        ] [ l/raw-mk l/p-atom l/raw-digits x ]
+    ] [
+        either s/raw-string? x [ l/raw-mk l/p-atom x ] [
+            either l/raw-block? x [
+                either = block-len x 2 [ x ] [ raise create-sin 'type 'l/term x ]
+            ] [ raise create-sin 'type 'l/term x ]
+        ]
+    ]
+]
+
+;; l/raw-slot: the LaTeX of operand x for a slot needing level `need`.
+;; (The term is passed as a parameter, not held in a set-word: a set-word
+;; would update any same-named global rather than make a local.)
+l/raw-wrap: func [t need] [
+    either < l/raw-prec t need [
+        s/+ "\left(" s/+ l/raw-latex t "\right)"
+    ] [ l/raw-latex t ]
+]
+l/raw-slot: func [x need] [ l/raw-wrap l/term x need ]
+
+;; l/raw-infix: a binary term `a sym b` at level prec.
+l/raw-infix: func [prec a need-a sym b need-b] [
+    l/raw-mk prec s/+ l/raw-slot a need-a s/+ sym l/raw-slot b need-b
+]
+
+;; ---- the eight operations ------------------------------------------------------
+l/+: func [a b] [ l/raw-infix l/p-add a l/p-add "+" b l/p-mul ]
+l/-: func [a b] [ l/raw-infix l/p-add a l/p-add "-" b l/p-mul ]
+l/*: func [a b] [ l/raw-infix l/p-mul a l/p-mul " \cdot " b l/p-pow ]
+l/=: func [a b] [ l/raw-infix l/p-rel a l/p-add "=" b l/p-add ]
+
+l/^: func [a b] [
+    l/raw-mk l/p-pow s/+ l/raw-slot a l/p-atom s/+ "^{" s/+ l/raw-latex l/term b "}"
+]
+l/frac: func [a b] [
+    l/raw-mk l/p-frac s/+ "\frac{" s/+ l/raw-latex l/term a s/+ "}{" s/+ l/raw-latex l/term b "}"
+]
+l/neg: func [a] [ l/raw-mk l/p-neg s/+ "-" l/raw-slot a l/p-mul ]
+l/sqrt: func [a] [ l/raw-mk l/p-atom s/+ "\sqrt{" s/+ l/raw-latex l/term a "}" ]
+
+;; ---- rendering ---------------------------------------------------------------
+l/text: func [a] [ l/raw-latex l/term a ]
+l/inline: func [a] [ s/+ "$" s/+ l/text a "$" ]
+l/render: func [a] [ s/+ "\[" s/+ l/text a "\]" ]
+
+]
