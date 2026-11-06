@@ -243,8 +243,8 @@ build of the current sources.**
 |---|---|---|
 | `s/` strings (`s/+ s/= s/length s/print`) | shipped library | `demo/shop/strings.glon`; laws §9a |
 | `s/` string extension (`s/at s/slice s/span s/scan-set s/from-int`) | shipped **optional** library (API approved 2026-11-07); loaded after `strings.glon` only by sessions that need it | `demo/shop/strings-ext.glon`; laws §9a; tests `r0_s1_string_ext_tests.c` |
-| `l/` LaTeX vocabulary v001–v002, `/latex/` page, v003 infix front end (JS) | committed and deployed | `experiments/glon-latex/` |
-| `p/` Pratt parser v004, written in Glon, plus `s/at s/slice s/span s/from-int` (its `s/span` is the byte-set scanner) | **[FINDING] proof of concept, frozen by checksum (`FROZEN.sha256`), uncommitted** | `experiments/glon-pratt/GLON-PRATT-V004.md` |
+| `l/` LaTeX vocabulary v001–v002, `/latex/` page, v003 infix front end (JS) | **deployed** (milestone complete 2026-11-07: `3bfabe9`, `6cdae85`, `e5df1a0`); tested in CI on every publish | `experiments/glon-latex/` |
+| `p/` Pratt parser v004, written in Glon, plus its own `s/at s/slice s/span s/from-int` (its `s/span` is the byte-set scanner) | **[FINDING] experiment, committed but not deployed; a subset of v003's grammar, not a replacement for it; frozen by checksum (`FROZEN.sha256`)** | `experiments/glon-pratt/GLON-PRATT-V004.md` |
 
 **[DECISION] The string extension API (approved by the user 2026-11-07).**
 Five byte-level operations in a separate optional module,
@@ -281,8 +281,19 @@ loading `strings.glon` or a capacity change.
   extension: Jupyter/CLI 40 → 50, primer 150 → 160, Patrol 120 → 130, LaTeX
   page 95 → 105.
 
-**[FINDING] Pratt parser v004 (2026-11-06).** It is exact against the v003
-reference on its subset. Its limits under the 64K configuration:
+**[FINDING] Pratt parser v004 (2026-11-06; re-verified 2026-11-07 against
+the runtime of `96a0d13`).** A native Glon Pratt parser for a **subset** of the
+v003 grammar: names, integers, decimals, parentheses, unary minus and
+`+ - * / ^`. It is **not** a replacement for v003, which stays the deployed
+translator: v004 lacks functions, relations, lists, implicit multiplication,
+`[ ]` and symbols, so it parses none of Chris Ross-Gill's 17 figures. It is
+exact against the v003 reference on its subset: 40/40 native fixtures and
+1,500/1,500 WASM differential checks.
+
+Names: v004 ships its own frozen `s-extra.glon`, in which `s/span s i set` is
+the **byte-set scanner**. In the standard `strings-ext.glon` that operation is
+`s/scan-set`, and `s/span s start end` extracts a half-open range. The two
+files must not be loaded into one session. Its limits under the 64K configuration:
 - 25-term operator chains;
 - 15 levels of parentheses;
 - 10 levels of nested products;

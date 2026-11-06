@@ -315,6 +315,28 @@ In order:
 | P10D TOS cache | `fib-p10d-tos-results` | `c93e5db` |
 | P10E TOS+NOS cache | `fib-p10e-nos-results` | `7bd42cb` |
 | P10F fall-through | `fib-p10f-fallthrough-results` | *(this phase)* |
+| Glon LaTeX v001–v003 (**deployed**: `/latex/` page) | *(untagged)* | `3bfabe9`, `6cdae85`, `e5df1a0` |
+| GC worklist bound + fail-stop | *(untagged)* | `a1d0f8a` |
+| `strings-ext.glon` optional string API | *(untagged)* | `96a0d13` |
+| Pratt parser v004 (**experiment, not deployed**) | *(untagged)* | *(the commit adding `experiments/glon-pratt/`)* |
+
+**Glon LaTeX milestone (2026-11-06/07).** What is deployed and what is
+experimental are different things:
+- **Deployed** (GitHub Pages `/latex/`): the `l/` LaTeX vocabulary in Glon
+  (v001), Chris Ross-Gill's `math.test.reb` figures rendered through KaTeX
+  (v002), and the infix-to-Glon translator **written in JavaScript**
+  (`web/infix.js`, v003). The page runs Glon in WASM; CI tests it on every
+  publish.
+- **Experimental, not deployed:** Pratt v004 (`experiments/glon-pratt/`), an
+  infix parser written in Glon itself. It handles only a **subset** of v003's
+  grammar (names, numbers, parentheses, unary minus, `+ - * / ^`), matches
+  `infix.js` exactly on that subset (40 fixtures, 1,500 WASM differential
+  checks), and is **not** a replacement for v003: it parses none of Chris's 17
+  figures, and its limits under the 64K map are small (25-term chains, 15
+  parenthesis levels, a 160-byte input cap). Its files are frozen by
+  `FROZEN.sha256`. Its `s/span` is a byte-set scanner, which the standard
+  `strings-ext.glon` calls `s/scan-set`; the standard `s/span` extracts a
+  range.
 
 ## 6. Lessons learned
 
@@ -514,5 +536,9 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `FIB-OPT-P10E-NOS.md`, `FIB-OPT-P10E-RESULTS.md` — P10E two-cell TOS+NOS cache.
 - `FIB-OPT-P10F-FALLTHROUGH.md`, `FIB-OPT-P10F-RESULTS.md` — P10F sequential fall-through.
 - `R3-FIB-COMPARISON.md` — local Rebol3 vs Glon P5 Fibonacci benchmark.
+- `GLON-ARCHITECTURE-MEMORY.md` — architectural decisions, measurements and
+  proposals (the memory map, capacities, vocabularies and experiments).
+- `experiments/glon-latex/` — the deployed LaTeX vocabulary and `/latex/` page.
+- `experiments/glon-pratt/GLON-PRATT-V004.md` — the Pratt parser experiment.
 - `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
 - `docs/distributed-glon-agents.md` — distributed/federated agent architecture.

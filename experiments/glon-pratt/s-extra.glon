@@ -1,0 +1,134 @@
+;; experiments/glon-pratt/s-extra.glon -- GLON-PRATT v004: four general STRING! operations.
+;;
+;; An EXPERIMENTAL extension of the string vocabulary, kept separate from it
+;; (demo/shop/strings.glon is unchanged). The shape is the one strings.glon
+;; uses: an unchecked masm worker (s/raw-...) for each mechanism, wrapped by a
+;; checked Glon func that holds the meaning. There is no substrate change.
+;;
+;;   s/at s i           the byte (0..255) at index i, or NONE when i is out of range
+;;   s/slice s start n  a NEW string of the n bytes from start (checked range)
+;;   s/span s i set     the first index >= i whose byte is NOT one of the bytes
+;;                      of the string `set` (or the length when there is none):
+;;                      it skips a run without one Glon call per byte
+;;   s/from-int n       the decimal text of the integer n
+;;
+;; A non-STRING!/non-integer argument raises SIN! 'type, and a bad slice range
+;; raises SIN! 'range. In both cases the id names the operation and the arg is the
+;; offending value. Strings stay immutable: nothing here changes an argument.
+;;
+;; The masm workers loop in S1, so long inputs cost no Glon recursion depth.
+;; s/span scans the set string for each byte (no lookup table): a 256-byte table
+;; would cost 272 cells of the ~7.2K-cell managed heap per set.
+;; They use only the safe scratch cells A/B/C/F (never SCRATCH_D/E, which hold
+;; live output state). An allocating worker keeps its inputs on the data stack
+;; (GC roots) across the allocation and pushes the new string at once. This is
+;; the s/raw-cat discipline.
+;;
+;; Requires prelude.glon (s/raw-string?) and strings.glon (s/length, s/+).
+;; Wrapped in [ ] because it contains masm.
+[
+
+;; s/raw-at ( string! i -> byte ): unchecked
+s/raw-at: masm 2 [
+    LIT 16 DIV LIT SCRATCH_A !
+    LIT T_STRING SUB LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL ARITY 1 EXIT
+]
+
+;; s/raw-slice ( string! start n -> string! ): unchecked; the caller checks the range
+s/raw-slice: masm 3 [
+    LIT 16 DIV LIT SCRATCH_F !
+    LIT 16 DIV LIT SCRATCH_B !
+    LIT SCRATCH_F @ LIT 16 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT SCRATCH_A !
+    LIT SCRATCH_F @ LIT SCRATCH_C @ !
+    LIT SCRATCH_C @ LIT T_STRING ADD
+    LIT SCRATCH_A @ LIT T_STRING SUB LIT 1 ADD LIT SCRATCH_B @ ADD LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+  sx-slice-loop:
+    LIT SCRATCH_F @ ZBRANCH sx-slice-done
+    LIT SCRATCH_A @ @ LIT SCRATCH_C @ !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT 1 SUB LIT SCRATCH_F !
+    BRANCH sx-slice-loop
+  sx-slice-done:
+    ARITY 1 EXIT
+]
+
+;; s/raw-span ( string! i set:string! -> index ): unchecked; 0 <= i <= length.
+;; The four safe scratch cells are not enough for a nested loop, so it allocates
+;; a 16-cell workspace (a length-0 STRING!, so the collector never scans its raw
+;; contents) for the pointers and lengths. The workspace is garbage on return.
+;; The inputs stay on the data stack (GC roots) across that allocation. Nothing
+;; allocates during the loop, so the raw pointers it keeps stay valid.
+;;   W+1 string payload   W+2 string length   W+3 set payload   W+4 set length
+;;   B index   C byte   A set cursor   F workspace
+s/raw-span: masm 3 [
+    LIT SCRATCH_C ! LIT SCRATCH_B ! LIT SCRATCH_A !
+    LIT SCRATCH_A @ LIT SCRATCH_B @ LIT SCRATCH_C @
+    LIT 16 LIT GC_KIND_STRING CALL alloc LIT SCRATCH_F !
+    LIT SCRATCH_C ! LIT SCRATCH_B ! LIT SCRATCH_A !
+    LIT 0 LIT SCRATCH_F @ !
+    LIT SCRATCH_A @ LIT T_STRING SUB LIT SCRATCH_F @ LIT 1 ADD !
+    LIT SCRATCH_A @ LIT T_STRING SUB @ LIT SCRATCH_F @ LIT 2 ADD !
+    LIT SCRATCH_C @ LIT T_STRING SUB LIT SCRATCH_F @ LIT 3 ADD !
+    LIT SCRATCH_C @ LIT T_STRING SUB @ LIT SCRATCH_F @ LIT 4 ADD !
+    LIT SCRATCH_B @ LIT 16 DIV LIT SCRATCH_B !
+  sx-span-outer:
+    LIT SCRATCH_B @ LIT SCRATCH_F @ LIT 2 ADD @ LT ZBRANCH sx-span-done
+    LIT SCRATCH_F @ LIT 1 ADD @ LIT 1 ADD LIT SCRATCH_B @ ADD @ LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT 4 ADD @ LIT SCRATCH_A !
+  sx-span-inner:
+    LIT SCRATCH_A @ ZBRANCH sx-span-done
+    LIT SCRATCH_A @ LIT 1 SUB LIT SCRATCH_A !
+    LIT SCRATCH_F @ LIT 3 ADD @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT SCRATCH_C @ EQ ZBRANCH sx-span-inner
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B !
+    BRANCH sx-span-outer
+  sx-span-done:
+    LIT SCRATCH_B @ LIT 16 MUL ARITY 1 EXIT
+]
+
+;; s/raw-int? ( value -> 1|0 ): the value is an INTEGER! (tag 0)
+s/raw-int?: masm 1 [ LIT 16 MOD LIT 0 EQ LIT 16 MUL ARITY 1 EXIT ]
+
+
+;; ---- the checked operations ----------------------------------------------------
+s/at: func [s i] [
+    either s/raw-string? s [
+        either s/raw-int? i [
+            either either < i 0 [ 0 ] [ < i s/length s ] [ s/raw-at s i ] [ none ]
+        ] [ raise create-sin 'type 's/at i ]
+    ] [ raise create-sin 'type 's/at s ]
+]
+
+s/slice: func [s start n] [
+    either s/raw-string? s [
+        either either s/raw-int? start [ s/raw-int? n ] [ 0 ] [
+            either either either >= start 0 [ >= n 0 ] [ 0 ] [ <= + start n s/length s ] [ 0 ] [
+                s/raw-slice s start n
+            ] [ raise create-sin 'range 's/slice reduce [ start n ] ]
+        ] [ raise create-sin 'type 's/slice reduce [ start n ] ]
+    ] [ raise create-sin 'type 's/slice s ]
+]
+
+s/span: func [s i set] [
+    either either s/raw-string? s [ s/raw-string? set ] [ 0 ] [
+        either s/raw-int? i [
+            s/raw-span s either < i 0 [ 0 ] [ either > i s/length s [ s/length s ] [ i ] ] set
+        ] [ raise create-sin 'type 's/span i ]
+    ] [ raise create-sin 'type 's/span either s/raw-string? s [ set ] [ s ] ]
+]
+
+;; s/from-int: digits by recursion over the number's digits (at most 19 frames)
+s/raw-digits: func [n] [
+    either > n 9 [
+        s/+ s/raw-digits / n 10 mk-string reduce [ + 48 - n * 10 / n 10 ]
+    ] [ mk-string reduce [ + 48 n ] ]
+]
+s/from-int: func [n] [
+    either s/raw-int? n [
+        either < n 0 [ s/+ "-" s/raw-digits - 0 n ] [ s/raw-digits n ]
+    ] [ raise create-sin 'type 's/from-int n ]
+]
+
+]

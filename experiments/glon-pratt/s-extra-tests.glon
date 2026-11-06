@@ -1,0 +1,79 @@
+;; experiments/glon-pratt/s-extra-tests.glon -- tests for s-extra.glon (native).
+;; A failure prints FAIL and the last line raises a SIN! (exit status 1).
+
+t/pass: 0
+t/fail: 0
+t/ok: func [name] [ t/pass: + t/pass 1 ]
+t/bad: func [name] [ t/fail: + t/fail 1  s/print s/+ "FAIL " name ]
+t/num: func [name got want] [ either = got want [ t/ok name ] [ t/bad name  print got  print want ] ]
+t/str: func [name got want] [
+    either s/= got want [ t/ok name ] [ t/bad name  s/print s/+ "  got:  " got  s/print s/+ "  want: " want ]
+]
+t/sin: func [name e type op] [
+    either sin? e [ either either = sin-type e type [ = sin-id e op ] [ 0 ] [ t/ok name ] [ t/bad name ] ] [ t/bad name ]
+]
+t/none: func [name v] [ either = v none [ t/ok name ] [ t/bad name ] ]
+
+do [
+s: "(a + b) * c"
+t/num  "at 0"                 s/at s 0 40
+t/num  "at 1"                 s/at s 1 97
+t/num  "at last"              s/at s 10 99
+t/none "at length is none"    s/at s 11
+t/none "at -1 is none"        s/at s -1
+t/num  "at a byte above 127"  s/at mk-string reduce [ 200 ] 0 200
+t/sin  "at a non-string"      judge [ s/at 5 0 ] 'type 's/at
+t/sin  "at a non-integer"     judge [ s/at s "0" ] 'type 's/at
+]
+
+do [
+s: "(a + b) * c"
+t/str  "slice middle"         s/slice s 1 5 "a + b"
+t/str  "slice end"            s/slice s 10 1 "c"
+t/num  "slice empty"          s/length s/slice s 4 0 0
+t/str  "slice whole"          s/slice s 0 11 s
+t/str  "slice leaves the input" s "(a + b) * c"
+t/sin  "slice past the end"   judge [ s/slice s 5 7 ] 'range 's/slice
+t/sin  "slice negative start" judge [ s/slice s -1 2 ] 'range 's/slice
+t/sin  "slice negative length" judge [ s/slice s 2 -1 ] 'range 's/slice
+t/sin  "slice a non-string"   judge [ s/slice 7 0 1 ] 'type 's/slice
+]
+
+do [
+s: "   abc123_x+y"
+t/num  "span spaces"          s/span s 0 " " 3
+t/num  "span letters"         s/span s 3 "abcdefghijklmnopqrstuvwxyz" 6
+t/num  "span digits"          s/span s 6 "0123456789" 9
+t/num  "span none matching"   s/span s 0 "q" 0
+t/num  "span to the end"      s/span "aaaa" 0 "a" 4
+t/num  "span from the end"    s/span "aaaa" 4 "a" 4
+t/num  "span clamps i"        s/span "aaaa" 9 "a" 4
+t/num  "span clamps -i"       s/span "ab" -3 "a" 1
+t/num  "span empty set"       s/span "abc" 1 "" 1
+t/num  "span empty string"    s/span "" 0 "a" 0
+t/num  "span byte 0 and 255"  s/span mk-string reduce [ 0 255 7 ] 0 mk-string reduce [ 255 0 ] 2
+t/sin  "span a non-string set" judge [ s/span s 0 5 ] 'type 's/span
+t/sin  "span a block set"     judge [ s/span s 0 [ 1 2 ] ] 'type 's/span
+t/num  "span a repeated-byte set" s/span "aab" 0 "aaa" 2
+]
+
+do [
+;; s/span loops in masm: a long run costs no Glon recursion depth
+long: s/+ s/+ s/+ "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "b"
+t/num  "span a 300-byte run"  s/span long 0 "a" 300
+]
+
+do [
+t/str  "from-int 0"           s/from-int 0 "0"
+t/str  "from-int 7"           s/from-int 7 "7"
+t/str  "from-int 1234567890"  s/from-int 1234567890 "1234567890"
+t/str  "from-int -42"         s/from-int -42 "-42"
+t/str  "from-int 100"         s/from-int 100 "100"
+t/sin  "from-int a string"    judge [ s/from-int "1" ] 'type 's/from-int
+]
+
+print t/pass
+print t/fail
+either = t/fail 0 [ s/print "s-extra: all tests passed" ] [ raise create-sin 'test 'failed t/fail ]

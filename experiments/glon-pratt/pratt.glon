@@ -1,0 +1,274 @@
+;; experiments/glon-pratt/pratt.glon -- GLON-PRATT v004: a generic Pratt parser, in Glon.
+;;
+;; Translates infix TEXT into prefix Glon SOURCE TEXT, driven by a grammar given
+;; as data (see p/grammar, and math-grammar.glon for one grammar). The engine
+;; knows nothing of what the target words mean; nothing here is LaTeX-specific.
+;; The output is returned as a string. The engine never evaluates the input
+;; or the output. A host may run that text as a separate program.
+;;
+;;   p/grammar infix prefix ops   -> a grammar
+;;       infix  rows [ byte lbp rbp word ]   left assoc: rbp = lbp, right: rbp = lbp - 1
+;;       prefix rows [ byte bp word ]        word NONE: "unary X is not supported"
+;;       ops    a string of every operator byte the grammar uses
+;;   p/translate grammar src      -> prefix text, or raises SIN! 'parse 'syntax (or 'too-deep)
+;;                                   whose arg is [ message position ]
+;;   p/run grammar src            -> prints the prefix text, or "error POS: MESSAGE"
+;;
+;; Operands: integers (leading zeros dropped; more than 15 digits become a
+;; quoted atom), decimals (quoted atoms) and names [A-Za-z][A-Za-z0-9]* (quoted
+;; atoms). A name directly followed by "(" is reported as an unknown function.
+;; "(" ... ")" groups. Behaviour, messages and positions follow the v003
+;; JavaScript reference (experiments/glon-latex/web/infix.js) for the grammar
+;; it is given.
+;;
+;; Positions are byte offsets. The parse is checked in advance for bytes the
+;; grammar cannot use, and only ASCII is accepted, so every position is
+;; also a character position.
+;;
+;; Resources: Glon has no loops and no tail calls, and the return stack holds
+;; about 84 nested calls. The parser therefore passes a DEPTH count down every
+;; recursive call (parse, nud, chain and the nud helpers), and a HELD count of
+;; pending operator-chain calls, and raises a catchable SIN! 'parse 'too-deep
+;; once it exceeds p/max-depth. That happens BEFORE the machine's return stack
+;; runs out; exhausting it would be a fail-stop that judge cannot catch.
+;; The limits were measured; see GLON-PRATT-V004.md. Two different resources
+;; run out, and each has its own limit:
+;;   return stack  DEPTH counts every call on the recursive path; nesting shapes
+;;                 halt beyond about 71, so p/max-depth is 64 (a margin for the
+;;                 caller's own frames);
+;;   managed heap  (~7.2K cells, one cell per string byte, non-moving collector)
+;;                 HELD counts the operator-chain calls pending on the path, since
+;;                 each keeps its token, its right operand and its partial result.
+;;                 Chains halt at 30-40 of them, so p/max-chain is 24. Fragmentation
+;;                 makes the heap limit depend on operand sizes too (a chain of
+;;                 14-byte names halted at 224 bytes of input), so input over
+;;                 p/max-length bytes is refused up front ('too-long).
+;; Both guards raise the same catchable SIN! 'parse 'too-deep before the machine
+;; would fail-stop.
+;;
+;; Locals use a pt- prefix, so that no set-word ever rebinds a global.
+;; Requires prelude.glon, strings.glon and s-extra.glon.
+
+do [
+p/max-depth: 64
+p/max-chain: 24
+p/max-length: 160
+
+p/q: mk-string reduce [ 34 ]
+p/ws: mk-string reduce [ 32 9 10 11 12 13 ]
+p/digits: "0123456789"
+p/letters: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+p/alnum: s/+ p/letters p/digits
+p/name-chars: s/+ p/alnum "_"
+
+;; token kinds; a token is [ kind start end first-byte ]
+p/k-int: 1
+p/k-dec: 2
+p/k-name: 3
+p/k-op: 4
+p/k-none: 5
+p/k-end: 6
+
+p/grammar: func [infix prefix ops] [
+    reduce [ infix prefix s/+ s/+ s/+ s/+ p/name-chars "." p/ws "()" ops
+             s/+ s/+ s/+ p/name-chars p/ws "()" ops ]
+]
+
+p/fail: func [message pos] [ raise create-sin 'parse 'syntax reduce [ message pos ] ]
+p/guard: func [depth held pos] [
+    either either > depth p/max-depth [ 1 ] [ > held p/max-chain ] [
+        raise create-sin 'parse 'too-deep reduce [ "expression too deeply nested for this parser" pos ]
+    ] [ none ]
+]
+p/quote: func [x] [ s/+ p/q s/+ x p/q ]
+p/text: func [src tk] [ s/slice src block-at tk 1 - block-at tk 2 block-at tk 1 ]
+p/digit?: func [b] [ either = b none [ 0 ] [ either >= b 48 [ <= b 57 ] [ 0 ] ] ]
+p/letter?: func [b] [ either >= b 97 [ <= b 122 ] [ either >= b 65 [ <= b 90 ] [ 0 ] ] ]
+p/is?: func [tk b] [ either = block-at tk 0 p/k-op [ = block-at tk 3 b ] [ 0 ] ]
+p/describe: func [src tk] [
+    either = block-at tk 0 p/k-end [ "end of input" ] [ s/+ "'" s/+ p/text src tk "'" ]
+]
+
+;; p/find rows b: the row whose first element is b, or NONE
+p/find-at: func [rows b i n] [
+    either < i n [
+        either = block-at block-at rows i 0 b [ block-at rows i ] [ p/find-at rows b + i 1 n ]
+    ] [ none ]
+]
+p/find: func [rows b] [ p/find-at rows b 0 block-len rows ]
+]
+
+;; ---- the lexer: one token at a time, from a byte position ----------------------
+do [
+p/token: func [src pos] [
+    pt-st: s/span src pos p/ws
+    pt-b: s/at src pt-st
+    either = pt-b none [ reduce [ p/k-end pt-st pt-st none ] ] [ p/token-at src pt-st pt-b ]
+]
+p/token-at: func [src st b] [
+    pt-num: either p/digit? b [ 1 ] [ either = b 46 [ p/digit? s/at src + st 1 ] [ 0 ] ]
+    either pt-num [ p/number src st ] [
+        either p/letter? b [ reduce [ p/k-name st s/span src st p/name-chars b ] ] [
+            either = b 95 [ reduce [ p/k-none st + st 1 b ] ] [
+                either = b 46 [ p/fail "unexpected character '.'" st ] [ reduce [ p/k-op st + st 1 b ] ]
+            ]
+        ]
+    ]
+]
+p/number: func [src st] [
+    pt-e: s/span src st p/digits
+    either either = s/at src pt-e 46 [ p/digit? s/at src + pt-e 1 ] [ 0 ] [
+        reduce [ p/k-dec st s/span src + pt-e 1 p/digits 46 ]
+    ] [ reduce [ p/k-int st pt-e 48 ] ]
+]
+]
+
+;; ---- operands ------------------------------------------------------------------------
+do [
+p/number-text: func [src tk] [
+    pt-txt: p/text src tk
+    either = block-at tk 0 p/k-dec [ p/quote pt-txt ] [
+        pt-z: s/span pt-txt 0 "0"
+        pt-n: either = pt-z s/length pt-txt [ "0" ] [ s/slice pt-txt pt-z - s/length pt-txt pt-z ]
+        either > s/length pt-n 15 [ p/quote pt-txt ] [ pt-n ]
+    ]
+]
+p/name-text: func [src tk] [
+    pt-txt: p/text src tk
+    either = s/at src block-at tk 2 40 [
+        p/fail s/+ "unknown function '" s/+ pt-txt "'" block-at tk 1
+    ] [
+        either < s/span pt-txt 0 p/alnum s/length pt-txt [
+            p/fail "names may not contain '_'" block-at tk 1
+        ] [ p/quote pt-txt ]
+    ]
+]
+]
+
+;; ---- the Pratt core --------------------------------------------------------------------
+;; p/parse, p/nud and the nud helpers return [ text position ]. DEPTH counts the
+;; recursive calls on the path (one unit per call).
+;;
+;; The operator loop is p/chain. For a left-associative run
+;;   a op1 r1 op2 r2 op3 r3   the prefix text is   op3 op2 op1 a r1 r2 r3
+;; so p/chain returns [ ops args position ]: the operator words, latest first,
+;; and the right operands in order. p/parse joins ops + left + args. Built this
+;; way, each pending call holds only its own right operand, and the text is
+;; assembled on the way back up. Folding into a growing "left" string instead
+;; would keep one copy per pending call: live data quadratic in the chain length,
+;; which exhausts the ~7.2K-cell managed heap at about 16 terms.
+do [
+p/parse: func [g src pos minbp depth held] [
+    p/guard depth held pos
+    pt-r: p/nud g src pos + depth 1 held
+    pt-c: p/chain g src block-at pt-r 1 minbp + depth 1 held
+    reduce [ s/+ block-at pt-c 0 s/+ block-at pt-r 0 block-at pt-c 1 block-at pt-c 2 ]
+]
+
+p/nud: func [g src pos depth held] [
+    pt-tk: p/token src pos
+    pt-k: block-at pt-tk 0
+    either <= pt-k p/k-dec [ reduce [ p/number-text src pt-tk block-at pt-tk 2 ] ] [
+        either = pt-k p/k-name [ reduce [ p/name-text src pt-tk block-at pt-tk 2 ] ] [
+            either = pt-k p/k-none [ p/fail "'_' may only stand for an omitted limit" block-at pt-tk 1 ] [
+                p/nud-op g src pt-tk + depth 1 held
+            ]
+        ]
+    ]
+]
+
+p/nud-op: func [g src tk depth held] [
+    either p/is? tk 40 [ p/paren g src tk + depth 1 held ] [
+        pt-row: either = block-at tk 0 p/k-op [ p/find block-at g 1 block-at tk 3 ] [ none ]
+        either = pt-row none [
+            p/fail s/+ "expected a number, name or '(' but found " p/describe src tk block-at tk 1
+        ] [ p/prefix g src tk pt-row + depth 1 held ]
+    ]
+]
+
+p/prefix: func [g src tk row depth held] [
+    either = block-at row 2 none [
+        p/fail s/+ "unary " s/+ p/text src tk " is not supported" block-at tk 1
+    ] [
+        pt-r: p/parse g src block-at tk 2 block-at row 1 + depth 1 held
+        reduce [ s/+ block-at row 2 s/+ " " block-at pt-r 0 block-at pt-r 1 ]
+    ]
+]
+
+p/paren: func [g src tk depth held] [
+    either p/is? p/token src block-at tk 2 41 [
+        p/fail "empty parentheses" block-at p/token src block-at tk 2 1
+    ] [
+        pt-r: p/parse g src block-at tk 2 0 + depth 1 held
+        pt-close: p/token src block-at pt-r 1
+        either p/is? pt-close 41 [ reduce [ block-at pt-r 0 block-at pt-close 2 ] ] [
+            p/fail "unbalanced '(' (opened here)" block-at tk 1
+        ]
+    ]
+]
+
+p/chain: func [g src pos minbp depth held] [
+    p/guard depth held pos
+    pt-tk: p/token src pos
+    pt-row: either = block-at pt-tk 0 p/k-op [ p/find block-at g 0 block-at pt-tk 3 ] [ none ]
+    pt-go: either = pt-row none [ 0 ] [ > block-at pt-row 1 minbp ]
+    either pt-go [
+        pt-r: p/parse g src block-at pt-tk 2 block-at pt-row 2 + depth 1 + held 1
+        pt-t: p/chain g src block-at pt-r 1 minbp + depth 1 + held 1
+        reduce [ s/+ block-at pt-t 0 s/+ block-at pt-row 3 " "
+                 s/+ " " s/+ block-at pt-r 0 block-at pt-t 1
+                 block-at pt-t 2 ]
+    ] [ reduce [ "" "" pos ] ]
+]
+]
+
+;; ---- entry points -------------------------------------------------------------------------
+do [
+p/utf8-len: func [b] [ either >= b 240 [ 4 ] [ either >= b 224 [ 3 ] [ either >= b 192 [ 2 ] [ 1 ] ] ] ]
+p/bad-char: func [src i] [
+    pt-n: p/utf8-len s/at src i
+    pt-n: either > + i pt-n s/length src [ - s/length src i ] [ pt-n ]
+    p/fail s/+ "unexpected character '" s/+ s/slice src i pt-n "'" i
+]
+
+;; p/first-bad: the first byte the grammar cannot use, or a "." that does not
+;; begin or continue a number, scanning the whole input before any parsing (as
+;; the reference does). One s/span per "."; the dots are counted against the guard.
+p/first-bad: func [g src i depth] [
+    p/guard depth 0 i
+    pt-j: s/span src i block-at g 3
+    either either < pt-j s/length src [ = s/at src pt-j 46 ] [ 0 ] [
+        either p/digit? s/at src + pt-j 1 [ p/first-bad g src + pt-j 1 + depth 1 ] [ pt-j ]
+    ] [ pt-j ]
+]
+
+p/translate: func [g src] [
+    either > s/length src p/max-length [
+        raise create-sin 'parse 'too-long reduce [ s/+ "expression too long for this parser (" s/+ s/from-int s/length src " bytes)" 0 ]
+    ] [ p/translate-text g src ]
+]
+p/translate-text: func [g src] [
+    either = s/span src 0 p/ws s/length src [ p/fail "nothing to translate" 0 ] [
+        pt-i: p/first-bad g src 0 0
+        either < pt-i s/length src [ p/bad-char src pt-i ] [
+            pt-r: p/parse g src 0 0 0 0
+            pt-tk: p/token src block-at pt-r 1
+            either = block-at pt-tk 0 p/k-end [ block-at pt-r 0 ] [
+                either p/is? pt-tk 41 [ p/fail "unmatched ')'" block-at pt-tk 1 ] [
+                    p/fail s/+ "unexpected " p/describe src pt-tk block-at pt-tk 1
+                ]
+            ]
+        ]
+    ]
+]
+
+;; p/run: the text, or "error POS: MESSAGE" (a SIN! that is not 'parse is re-raised)
+p/run: func [g src] [
+    pt-e: judge [ p/translate g src ]
+    either sin? pt-e [
+        either = sin-type pt-e 'parse [
+            s/print s/+ "error " s/+ s/from-int block-at sin-arg pt-e 1 s/+ ": " block-at sin-arg pt-e 0
+        ] [ raise pt-e ]
+    ] [ s/print pt-e ]
+]
+]

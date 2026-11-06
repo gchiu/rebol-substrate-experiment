@@ -1,0 +1,72 @@
+;; experiments/glon-pratt/pratt-tests.glon -- native unit tests for the p/ engine.
+;; Pure Glon. The broad comparison with the v003 reference is in
+;; pratt_node_test.mjs and build/fixtures.glon; these tests check the engine's
+;; own guarantees: generic grammars, positioned errors, and the depth guard.
+
+t/pass: 0
+t/fail: 0
+t/ok: func [name] [ t/pass: + t/pass 1 ]
+t/bad: func [name] [ t/fail: + t/fail 1  s/print s/+ "FAIL " name ]
+t/res: func [g src] [
+    pt-e: judge [ p/translate g src ]
+    either sin? pt-e [ s/+ "error " s/+ s/from-int block-at sin-arg pt-e 1 s/+ ": " block-at sin-arg pt-e 0 ] [ pt-e ]
+]
+t/is: func [name g src want] [
+    pt-got: t/res g src
+    either s/= pt-got want [ t/ok name ] [ t/bad name  s/print s/+ "  got:  " pt-got  s/print s/+ "  want: " want ]
+]
+q: mk-string reduce [ 34 ]
+qq: func [x] [ s/+ q s/+ x q ]
+
+;; ---- the math grammar (target words are just text) -----------------------------
+do [
+t/is "brief example"         m/grammar "(a + b) * c"   s/+ "l/* l/+ " s/+ qq "a" s/+ " " s/+ qq "b" s/+ " " qq "c"
+t/is "precedence"            m/grammar "a + b * c"     s/+ "l/+ " s/+ qq "a" s/+ " l/* " s/+ qq "b" s/+ " " qq "c"
+t/is "left assoc"            m/grammar "8 - 4 - 2"     "l/- l/- 8 4 2"
+t/is "right assoc"           m/grammar "2 ^ 3 ^ 2"     "l/^ 2 l/^ 3 2"
+t/is "unary vs *"            m/grammar "-2*3"          "l/* l/neg 2 3"
+t/is "unary vs ^"            m/grammar "-2^2"          "l/neg l/^ 2 2"
+t/is "explicit grouping"     m/grammar "(-2)^2"        "l/^ l/neg 2 2"
+t/is "negative exponent"     m/grammar "2^-1"          "l/^ 2 l/neg 1"
+t/is "fraction"              m/grammar "1/(1 - 2)"     "l/frac 1 l/- 1 2"
+t/is "whitespace"            m/grammar "  ( 1+2 )*3  " "l/* l/+ 1 2 3"
+]
+
+;; ---- errors and positions -----------------------------------------------------------
+do [
+t/is "missing operand"       m/grammar "1 +"     "error 3: expected a number, name or '(' but found end of input"
+t/is "unbalanced"            m/grammar "(1 + 2"  "error 0: unbalanced '(' (opened here)"
+t/is "unmatched"             m/grammar "1 + 2)"  "error 5: unmatched ')'"
+t/is "unary plus"            m/grammar "+1"      "error 0: unary + is not supported"
+t/is "bad character"         m/grammar "1 # 2"   "error 2: unexpected character '#'"
+t/is "non-ASCII character"   m/grammar "1 × 2"   "error 2: unexpected character '×'"
+t/is "nothing"               m/grammar "   "     "error 0: nothing to translate"
+]
+
+;; ---- the engine is generic: a different grammar, different words -----------------
+do [
+;; a grammar for integer arithmetic over Glon's own numeric words, with a
+;; right-associative "-" just to show that associativity is data too
+n/grammar: p/grammar
+    reduce [ reduce [ 43 30 30 "+" ] reduce [ 42 40 40 "*" ] reduce [ 45 30 29 "-" ] ]
+    reduce [ reduce [ 45 50 "- 0" ] ]
+    "+*-"
+t/is "numeric words"         n/grammar "1 + 2 * 3"  "+ 1 * 2 3"
+t/is "right-assoc minus"     n/grammar "8 - 4 - 2"  "- 8 - 4 2"
+t/is "prefix as text"        n/grammar "-5 + 1"     "+ - 0 5 1"
+t/is "no ^ in this grammar"  n/grammar "2 ^ 3"      "error 2: unexpected character '^'"
+;; the generated text is ordinary Glon: run it, as a host would, as data first
+t/is "generated source is text" n/grammar "(1 + 2) * 3" "* + 1 2 3"
+]
+
+;; ---- the depth guard ------------------------------------------------------------------------
+do [
+deep: "((((((((((((((((((((((((((((((((((((((((a))))))))))))))))))))))))))))))))))))))))"
+pt-d: t/res m/grammar deep
+either s/= s/slice pt-d 0 6 "error " [ t/ok "deep input: a catchable error, not a halt" ] [ t/bad "deep input" ]
+t/is "the parser still works afterwards" m/grammar "1+2" "l/+ 1 2"
+]
+
+print t/pass
+print t/fail
+either = t/fail 0 [ s/print "glon-pratt: all tests passed" ] [ raise create-sin 'test 'failed t/fail ]

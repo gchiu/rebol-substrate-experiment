@@ -1,0 +1,26 @@
+;; experiments/glon-pratt/math-grammar.glon -- one grammar for the generic p/ engine.
+;;
+;; The arithmetic subset of the v003 infix grammar (experiments/glon-latex/web/
+;; infix.js), targeting the l/ vocabulary's word names. The target names are
+;; just strings here: the parser never evaluates them. Precedence, loosest first:
+;;
+;;   + -     additive        left    lbp 30, rbp 30
+;;   * /     multiplicative  left    lbp 40, rbp 40      (/ is a fraction: l/frac)
+;;   -x      unary minus             operand bp 50: binds tighter than * /,
+;;                                   looser than ^, so -a*b is (-a)*b, -a^2 is -(a^2)
+;;   ^       power           right   lbp 60, rbp 59      (the exponent may be -x)
+;;   +x      rejected: "unary + is not supported" (as in v003)
+
+m/grammar: p/grammar
+    reduce [
+        reduce [ 43 30 30 "l/+" ]
+        reduce [ 45 30 30 "l/-" ]
+        reduce [ 42 40 40 "l/*" ]
+        reduce [ 47 40 40 "l/frac" ]
+        reduce [ 94 60 59 "l/^" ]
+    ]
+    reduce [
+        reduce [ 45 50 "l/neg" ]
+        reduce [ 43 0 none ]
+    ]
+    "+-*/^"
