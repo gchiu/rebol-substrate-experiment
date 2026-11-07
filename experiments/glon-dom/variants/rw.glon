@@ -1,0 +1,16 @@
+;; experiments/glon-dom/variants/rw.glon -- GLON-DOM v001 measurement BASELINE:
+;; a plain recursive walk, counting events. What a consumer writes without an
+;; iterator. It holds about 2 Glon activations per nesting level on the return
+;; stack (siblings are visited by balanced recursion), and fail-stops beyond about
+;; 42 levels. Used only by measure.sh. Requires dom.glon (dom/kids?).
+rw/n: 0
+rw/node: func [c] [
+    either s/raw-string? c [ rw/n: + rw/n 1 ] [
+        either dom/kids? block-at c 2 c [ rw/n: + rw/n 2  rw/kids block-at c 2 0 block-len block-at c 2 ] [ rw/n: + rw/n 1 ]
+    ]
+]
+rw/kids: func [k a b] [
+    either >= a b [ none ] [
+        either = b + a 1 [ rw/node block-at k a ] [ rw/kids k a / + a b 2  rw/kids k / + a b 2 b ]
+    ]
+]

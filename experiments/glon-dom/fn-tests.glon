@@ -1,0 +1,27 @@
+;; experiments/glon-dom/fn-tests.glon -- tests for the measured alternative,
+;; variants/dom-fn.glon (K): the explicit-state walk gives the same events, and a
+;; saved state can be resumed more than once. Load after variants/dom-fn.glon and
+;; t-common.glon.
+f/acc: ""
+f/run: func [st k] [
+    either = k 0 [ st ] [
+        fr-r: df/step st
+        either it/end? fr-r [ f/acc: s/+ f/acc "$"  st ] [
+            f/acc: s/+ f/acc t/ev fr-r
+            f/run block-at fr-r 3 - k 1
+        ]
+    ]
+]
+f/trace: func [st k] [ f/acc: ""  f/run st k  f/acc ]
+do [
+t/str "K1 same events as the closure walk" f/trace df/start tree 40 "<#><a><b/><c/><d><e/></d>f</a></#>$"
+f/acc: ""
+mid: f/run df/start tree 5
+t/str "K2 resume from a saved state" f/trace mid 40 "<e/></d>f</a></#>$"
+t/str "K3 the SAME state again (fork / backtrack for free)" f/trace mid 40 "<e/></d>f</a></#>$"
+t/str "K4 close from a saved state" f/trace df/close mid 40 "</d>f</a></#>$"
+t/num "K5 deep chain" t/counted dom/walk deep 256 119
+]
+print t/pass
+print t/fail
+either = t/fail 0 [ s/print "glon-dom explicit-state variant: all tests passed" ] [ raise create-sin 'test 'failed t/fail ]

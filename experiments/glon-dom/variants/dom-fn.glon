@@ -1,0 +1,32 @@
+;; experiments/glon-dom/variants/dom-fn.glon -- GLON-DOM v001, the MEASURED
+;; ALTERNATIVE (not adopted): the same walk with explicit, immutable state and no
+;; closure. It is not an it/ iterator. It allocates about twice as much per event
+;; (64 cells for empty/text, 96 for open, 32 for close), but any saved state can be
+;; resumed more than once (fork, backtrack). See GLON-DOM-V001.md.
+;; A state is [ kids index parent-state element depth ]; the parent state already
+;; points past the open element, so the chain of states IS the traversal stack.
+;;   df/start root   the initial state
+;;   df/step st      [ kind node depth next-state ], or it/end
+;;   df/close st     the state just before the innermost open element's close
+;; Requires dom.glon (dom/element? dom/kids?) and iter.glon.
+do [
+df/start: func [root] [ reduce [ reduce [ root ] 0 none none 0 ] ]
+df/step: func [st] [
+    df-k: block-at st 0  df-i: block-at st 1  df-d: block-at st 4
+    either < df-i block-len df-k [
+        df-c: block-at df-k df-i
+        either s/raw-string? df-c [ reduce [ 'text df-c df-d reduce [ df-k + df-i 1 block-at st 2 block-at st 3 df-d ] ] ] [
+            either dom/element? df-c [
+                either dom/kids? block-at df-c 2 df-c [
+                    reduce [ 'open df-c df-d reduce [ block-at df-c 2 0 reduce [ df-k + df-i 1 block-at st 2 block-at st 3 df-d ] df-c + df-d 1 ] ]
+                ] [ reduce [ 'empty df-c df-d reduce [ df-k + df-i 1 block-at st 2 block-at st 3 df-d ] ] ]
+            ] [ raise create-sin 'type 'dom/node df-c ]
+        ]
+    ] [
+        either = block-at st 2 none [ it/end ] [ reduce [ 'close block-at st 3 - df-d 1 block-at st 2 ] ]
+    ]
+]
+df/close: func [st] [
+    either = block-at st 2 none [ st ] [ reduce [ block-at st 0 block-len block-at st 0 block-at st 2 block-at st 3 block-at st 4 ] ]
+]
+]

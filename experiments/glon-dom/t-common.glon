@@ -1,0 +1,70 @@
+;; experiments/glon-dom/t-common.glon -- GLON-DOM v001 shared test helpers and
+;; fixtures: Chris's example tree (tree) and a literal 60-level chain (deep).
+;; Load after strings-ext.glon, iter.glon and dom.glon, before a test file.
+;; A failure prints FAIL; each test file's last line raises a SIN! (exit 1).
+;;
+;; t/trace i k   the next k events as text: <a> </a> <a/> text, $ at the end
+;; t/counted i k the number of events up to the end (at most k); t/dsum sums depths
+;; Both drive the iterator with BALANCED recursion (depth log2 k): a plain
+;; one-call-per-event loop would exhaust the return stack after about 84 events.
+t/pass: 0
+t/fail: 0
+t/ok: func [name] [ t/pass: + t/pass 1 ]
+t/bad: func [name] [ t/fail: + t/fail 1  s/print s/+ "FAIL " name ]
+t/num: func [name got want] [ either = got want [ t/ok name ] [ t/bad name  print got  print want ] ]
+t/str: func [name got want] [
+    either s/= got want [ t/ok name ] [ t/bad name  s/print s/+ "  got:  " got  s/print s/+ "  want: " want ]
+]
+t/end: func [name v] [ either it/end? v [ t/ok name ] [ t/bad name ] ]
+t/sin: func [name e type op] [
+    either sin? e [ either either = sin-type e type [ = sin-id e op ] [ 0 ] [ t/ok name ] [ t/bad name ] ] [ t/bad name ]
+]
+
+;; trace text of one event: <a> </a> <a/> text ; the root name may be a word
+t/name: func [n] [ either s/raw-string? block-at n 0 [ block-at n 0 ] [ "#" ] ]
+t/ev: func [ev] [
+    either it/end? ev [ "$" ] [
+        either = block-at ev 0 'text [ block-at ev 1 ] [
+            either = block-at ev 0 'open [ s/+ s/+ "<" t/name block-at ev 1 ">" ] [
+                either = block-at ev 0 'close [ s/+ s/+ "</" t/name block-at ev 1 ">" ] [
+                    s/+ s/+ "<" t/name block-at ev 1 "/>"
+                ]
+            ]
+        ]
+    ]
+]
+;; the trace of the next k events (stops after the end marker); balanced, depth log2 k
+t/acc: ""
+t/at-end: 0
+t/walk: func [i k] [
+    either = k 1 [
+        either t/at-end [ none ] [
+            tw-e: it/next i
+            t/acc: s/+ t/acc t/ev tw-e
+            either it/end? tw-e [ t/at-end: 1 ] [ none ]
+        ]
+    ] [ t/walk i / k 2  t/walk i - k / k 2 ]
+]
+t/trace: func [i k] [ t/acc: ""  t/at-end: 0  t/walk i k  t/acc ]
+;; event counter: kinds summed, depth summed, until the end (balanced)
+t/cnt: 0
+t/dsum: 0
+t/count: func [i k] [
+    either = k 1 [
+        either t/at-end [ none ] [
+            tc-e: it/next i
+            either it/end? tc-e [ t/at-end: 1 ] [ t/cnt: + t/cnt 1  t/dsum: + t/dsum block-at tc-e 2 ]
+        ]
+    ] [ t/count i / k 2  t/count i - k / k 2 ]
+]
+t/counted: func [i k] [ t/cnt: 0  t/dsum: 0  t/at-end: 0  t/count i k  t/cnt ]
+
+tree: reduce [ 'document none reduce [
+    reduce [ "a" none reduce [
+        reduce [ "b" none none ]
+        reduce [ "c" none [] ]
+        reduce [ "d" none reduce [ reduce [ "e" none none ] ] ]
+        "f"
+    ] ]
+] ]
+do [ deep: [ n0 none [ [ n1 none [ [ n2 none [ [ n3 none [ [ n4 none [ [ n5 none [ [ n6 none [ [ n7 none [ [ n8 none [ [ n9 none [ [ n10 none [ [ n11 none [ [ n12 none [ [ n13 none [ [ n14 none [ [ n15 none [ [ n16 none [ [ n17 none [ [ n18 none [ [ n19 none [ [ n20 none [ [ n21 none [ [ n22 none [ [ n23 none [ [ n24 none [ [ n25 none [ [ n26 none [ [ n27 none [ [ n28 none [ [ n29 none [ [ n30 none [ [ n31 none [ [ n32 none [ [ n33 none [ [ n34 none [ [ n35 none [ [ n36 none [ [ n37 none [ [ n38 none [ [ n39 none [ [ n40 none [ [ n41 none [ [ n42 none [ [ n43 none [ [ n44 none [ [ n45 none [ [ n46 none [ [ n47 none [ [ n48 none [ [ n49 none [ [ n50 none [ [ n51 none [ [ n52 none [ [ n53 none [ [ n54 none [ [ n55 none [ [ n56 none [ [ n57 none [ [ n58 none [ [ n59 none none ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] none ]

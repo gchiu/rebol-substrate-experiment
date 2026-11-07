@@ -1,0 +1,133 @@
+;; experiments/glon-dom/dom-tests.glon -- GLON-DOM v001 walker tests (A-H).
+;; Load after t-common.glon.
+;; ---- A. Chris's example tree ----------------------------------------------------
+do [
+t/str "A1 full walk" t/trace dom/walk tree 64 "<#><a><b/><c/><d><e/></d>f</a></#>$"
+d: dom/walk tree
+t/str "A2 up to <d>" t/trace d 5 "<#><a><b/><c/><d>"
+t/str "A3 close returns the element" block-at it/close d 0 "d"
+t/str "A4 close then continue (Chris's output)" t/trace d 64 "</d>f</a></#>$"
+t/num "A5 pos = events consumed" it/pos d 9
+t/end "A6 next stays at end" it/next d
+t/end "A7 peek stays at end" it/peek d
+t/num "A8 pos stays" it/pos d 9
+t/num "A9 close at end is none" it/close d none
+]
+
+;; ---- B. peek does not advance; close discards a peeked event ----------------------
+do [
+d: dom/walk tree
+t/num "B1 peek open root" block-at it/peek d 0 'open
+t/num "B2 peek same event (cached)" = it/peek d it/peek d 1
+t/num "B3 next returns the peeked event" = it/peek d it/next d 1
+t/num "B4 pos 1" it/pos d 1
+t/str "B5 peek <a>" t/ev it/peek d "<a>"
+t/str "B6 close before <a> was consumed closes the ROOT" t/name it/close d "#"
+t/str "B7 the peeked <a> is gone" t/trace d 64 "</#>$"
+d: dom/walk tree
+t/num "B8 close before any event: nothing open" it/close d none
+t/str "B9 and the walk is unchanged" t/trace d 64 "<#><a><b/><c/><d><e/></d>f</a></#>$"
+d: dom/walk tree
+t/trace d 2
+t/str "B10 peek <b/> then close <a>" t/ev it/peek d "<b/>"
+it/close d
+t/str "B11 rest" t/trace d 64 "</a></#>$"
+d: dom/walk tree
+t/trace d 3
+it/close d
+it/close d
+t/str "B12 close twice closes <a> only (next must deliver </a> first)" t/trace d 64 "</a></#>$"
+]
+
+;; ---- C. pause, resume, independent iterators ----------------------------------------
+do [
+d: dom/walk tree
+e: dom/walk tree
+t/str "C1 d 3" t/trace d 3 "<#><a><b/>"
+t/str "C2 e 1" t/trace e 1 "<#>"
+junk: s/+ "pressure " s/from-int 12345
+t/str "C3 d resumes" t/trace d 2 "<c/><d>"
+it/close d
+t/str "C4 e unaffected by d's close" t/trace e 64 "<a><b/><c/><d><e/></d>f</a></#>$"
+t/str "C5 d continues" t/trace d 64 "</d>f</a></#>$"
+f: dom/walk block-at block-at tree 2 0
+t/str "C6 a subtree is a tree" t/trace f 64 "<a><b/><c/><d><e/></d>f</a>$"
+t/num "C7 the tree is unchanged" block-len block-at block-at block-at tree 2 0 2 4
+]
+
+;; ---- D. empty elements, roots, mixed text ----------------------------------------------
+do [
+t/str "D1 children none" t/trace dom/walk reduce [ "x" none none ] 64 "<x/>$"
+t/str "D2 children word none (literal)" t/trace dom/walk [ x none none ] 64 "<#/>$"
+t/str "D3 children []" t/trace dom/walk reduce [ "x" none [] ] 64 "<x/>$"
+t/str "D4 a text root" t/trace dom/walk "hi" 64 "hi$"
+t/str "D5 an empty text node is an event" t/trace dom/walk reduce [ "p" none reduce [ "" "" ] ] 64 "<p></p>$"
+t/str "D6 mixed content"
+    t/trace dom/walk reduce [ "p" none reduce [ "Hello, " reduce [ "b" reduce [ "class" "x" ] reduce [ "big" ] ] " world" reduce [ "br" none none ] "!" ] ] 64
+    "<p>Hello, <b>big</b> world<br/>!</p>$"
+t/str "D7 nested empties" t/trace dom/walk reduce [ "a" none reduce [ reduce [ "b" none reduce [ reduce [ "c" none [] ] ] ] ] ] 64 "<a><b><c/></b></a>$"
+d: dom/walk reduce [ "a" none reduce [ "t" ] ]
+t/str "D8 open" t/ev it/next d "<a>"
+t/str "D9 text node" block-at it/next d 1 "t"
+t/num "D10 peeked close depth" block-at it/peek d 2 0
+t/num "D11 close depth" block-at it/next d 2 0
+]
+
+;; ---- E. completion is distinct from every data value -------------------------------------
+do [
+d: dom/walk reduce [ "a" none reduce [ "" reduce [ "none" none none ] ] ]
+t/num "E1 an open event is not the end" it/end? it/next d 0
+t/num "E2 an empty text event is not the end" it/end? it/next d 0
+t/num "E3 an element named none is not the end" it/end? it/next d 0
+t/num "E4 close" it/end? it/next d 0
+t/end "E5 end" it/next d
+e: judge [ it/next dom/walk it/end ]
+t/sin "E6 it/end inside the tree is not a node (raises, not ends)" e 'type 'dom/node
+]
+
+;; ---- F. errors: raise without changing state; close recovers ------------------------------------
+do [
+d: dom/walk reduce [ "a" none reduce [ "x" 42 "y" ] ]
+t/str "F1 before the bad node" t/trace d 2 "<a>x"
+t/sin "F2 a non-node raises" judge [ it/next d ] 'type 'dom/node
+t/sin "F3 peek raises too" judge [ it/peek d ] 'type 'dom/node
+t/num "F4 pos unchanged" it/pos d 2
+it/close d
+t/str "F5 close skips past it" t/trace d 64 "</a>$"
+t/sin "F6 bad children slot" judge [ it/next dom/walk reduce [ "a" none 5 ] ] 'type 'dom/children
+t/sin "F7 wrong arity element" judge [ it/next dom/walk reduce [ "a" none ] ] 'type 'dom/node
+t/sin "F8 it/close on a non-iterator" judge [ it/close 5 ] 'type 'it/close
+t/sin "F9 it/skip on a dom iterator" judge [ it/skip dom/walk tree "a" ] 'type 'dom/message
+t/sin "F10 it/peek2 on a dom iterator" judge [ it/peek2 dom/walk tree ] 'type 'dom/message
+]
+
+;; ---- G. the protocol is shared with the byte iterator ----------------------------------------------
+do [
+b: it/bytes reduce [ "ab" ]
+t/num "G1 it/peek on bytes" it/peek b 97
+;; KNOWN LIMITATION (documented, v001 unchanged): a byte iterator does not know
+;; message 6, which falls into its skip path, so the error names s/scan-set.
+e: judge [ it/close b ]
+t/sin "G2 it/close on a byte iterator: a misleading 'type 's/scan-set" e 'type 's/scan-set
+t/num "G2b its arg is the none message argument" sin-arg e none
+t/num "G3 the byte iterator still works" it/next b 97
+]
+
+;; ---- H. depth: literal 60-level chain, return stack does not grow with depth ----------------
+do [
+t/num "H1 events in a 60-deep chain" t/counted dom/walk deep 256 119
+t/num "H2 depth sum" t/dsum + * 2 1711 59
+d: dom/walk deep
+t/num "H3 down to the bottom" t/counted d 59 59
+t/num "H4 the 60th event is empty at depth 59" block-at it/peek d 2 59
+t/num "H5 close at depth 59 element 58" block-at it/close d 0 'n58
+t/num "H6 the next event closes n58" block-at block-at it/next d 1 0 'n58
+t/num "H7 then the remaining closes" t/counted d 256 58
+d: dom/walk deep
+t/counted d 30
+it/close d
+t/num "H8 skip the 30-deep subtree: its close, then 29 closes" t/counted d 256 30
+]
+print t/pass
+print t/fail
+either = t/fail 0 [ s/print "glon-dom walker: all tests passed" ] [ raise create-sin 'test 'failed t/fail ]

@@ -247,6 +247,7 @@ build of the current sources.**
 | `l/` LaTeX vocabulary v001–v002, `/latex/` page, v003 infix front end (JS) | **deployed** (milestone complete 2026-11-07: `3bfabe9`, `6cdae85`, `e5df1a0`); tested in CI on every publish | `experiments/glon-latex/` |
 | `p/` Pratt parser v004, written in Glon, plus its own `s/at s/slice s/span s/from-int` (its `s/span` is the byte-set scanner) | **[FINDING] experiment, committed but not deployed; a subset of v003's grammar, not a replacement for it; frozen by checksum (`FROZEN.sha256`)** | `experiments/glon-pratt/GLON-PRATT-V004.md` |
 | `it/` iterator vocabulary v001 and `lx/` lexer over it (after Chris Ross-Gill's iterator concept) | **[FINDING] experiment, not deployed, not yet used by a parser** | `experiments/glon-iter/GLON-ITER-V001.md` |
+| `dom/walk` DOM-tree event iterator v001 and `it/close` (after Chris Ross-Gill's DOM iterator) | **[FINDING] experiment, not deployed, not used by an application** | `experiments/glon-dom/GLON-DOM-V001.md` |
 
 **[DECISION] The string extension API (approved by the user 2026-11-07).**
 Five byte-level operations in a separate optional module,
@@ -333,6 +334,42 @@ scanner (`variants/iter-masm.glon`) was measured and not adopted:
   of hundreds of fragments.
 
 Not yet run in WASM. Details are in `experiments/glon-iter/GLON-ITER-V001.md`.
+
+**[FINDING] DOM-tree iterator v001 (2026-11-07, 64K configuration, native).**
+The v001 iterator protocol generalises to hierarchical traversal with no
+change to `iter.glon`:
+- **Mechanism:** `dom.glon` walks a tree held as Glon data (text is a STRING!,
+  an element is `[name attrs children]`). It produces `[kind node depth]`
+  events, `open close empty text`, ending with `it/end`. The v001 words
+  `it/peek it/next it/pos` work on it unchanged. One new word, `it/close`
+  (message 6), skips a subtree.
+- **State:** the closure's parameters hold the innermost level. Each open level
+  is one 32-cell parent frame in managed data; no Glon activation is held
+  between events.
+- **Tests:** 87 native tests pass (67 + 8 + 7 + 5).
+
+[MEASURED] costs:
+- 6 bindings, 1,033 loader cells, 0 code cells;
+- 176 managed cells per walker, plus 32 per open level;
+- `next` allocates 32 cells (64 for open);
+- the return stack per advance is **5 probe frames at depth 0 and at depth
+  59**. A plain recursive walk uses about 2 frames per level and fails beyond
+  about 42 levels.
+- **Depth is bounded by the managed heap:** 150 levels walk; 160 exhaust it
+  with the test fixtures loaded. At that limit the free cells are 32-cell holes,
+  so an allocation larger than 32 cells (an 80-cell string) fails while ~600
+  cells are free.
+
+Known limitations:
+- `it/close` on a v001 byte iterator raises a misleading `'type 's/scan-set`.
+  v001 is deliberately not changed for this.
+- A consumer that drains any iterator one recursive call per event exhausts the
+  return stack after about 84 events, because Glon has no loop construct; the
+  tests use balanced drivers.
+- An explicit immutable-state alternative allocates about 2× per event but can
+  be resumed more than once (fork); it was not adopted.
+
+Details are in `experiments/glon-dom/GLON-DOM-V001.md`.
 
 ## 8. Why more memory is a separate scaling experiment
 

@@ -1,0 +1,35 @@
+;; experiments/glon-dom/deep-tests.glon -- GLON-DOM v001 depth test (L): a
+;; literal 150-level chain, walked to the end and skipped from its bottom. Every
+;; open level keeps one 32-cell parent frame, so the bottom holds 149 frames
+;; (4,768 managed cells). A separate session (the literal fills the loader heap).
+;; Load after t-common.glon. Depth is bounded by the MANAGED HEAP (32 cells per
+;; open level): at the bottom, 149 frames plus the session hold about 6,600 of
+;; 7,232 cells, so the session first releases t-common's example tree (480 cells).
+;; At the bottom the free cells (about 600) are 32-cell holes left by frames and
+;; events, and the collector does not move objects, so an allocation larger than
+;; 32 cells can fail there. The test names in the do block below are therefore
+;; kept short (a string of up to 15 bytes is a 32-cell object); a 50-byte name
+;; exhausts the heap at L4 even with about 600 cells free.
+tree: none
+do [ deep150: [ n0 none [ [ n1 none [ [ n2 none [ [ n3 none [ [ n4 none [ [ n5 none [ [ n6 none [ [ n7 none [ [ n8 none [ [ n9 none [ [ n10 none [ [ n11 none [ [ n12 none [ [ n13 none [ [ n14 none [ [ n15 none [ [ n16 none [ [ n17 none [ [ n18 none [ [ n19 none [ [ n20 none [ [ n21 none [ [ n22 none [ [ n23 none [ [ n24 none [ [ n25 none [ [ n26 none [ [ n27 none [ [ n28 none [ [ n29 none [ [ n30 none [ [ n31 none [ [ n32 none [ [ n33 none [ [ n34 none [ [ n35 none [ [ n36 none [ [ n37 none [ [ n38 none [ [ n39 none [ [ n40 none [ [ n41 none [ [ n42 none [ [ n43 none [ [ n44 none [ [ n45 none [ [ n46 none [ [ n47 none [ [ n48 none [ [ n49 none [ [ n50 none [ [ n51 none [ [ n52 none [ [ n53 none [ [ n54 none [ [ n55 none [ [ n56 none [ [ n57 none [ [ n58 none [ [ n59 none [ [ n0 none [ [ n1 none [ [ n2 none [ [ n3 none [ [ n4 none [ [ n5 none [ [ n6 none [ [ n7 none [ [ n8 none [ [ n9 none [ [ n10 none [ [ n11 none [ [ n12 none [ [ n13 none [ [ n14 none [ [ n15 none [ [ n16 none [ [ n17 none [ [ n18 none [ [ n19 none [ [ n20 none [ [ n21 none [ [ n22 none [ [ n23 none [ [ n24 none [ [ n25 none [ [ n26 none [ [ n27 none [ [ n28 none [ [ n29 none [ [ n30 none [ [ n31 none [ [ n32 none [ [ n33 none [ [ n34 none [ [ n35 none [ [ n36 none [ [ n37 none [ [ n38 none [ [ n39 none [ [ n40 none [ [ n41 none [ [ n42 none [ [ n43 none [ [ n44 none [ [ n45 none [ [ n46 none [ [ n47 none [ [ n48 none [ [ n49 none [ [ n50 none [ [ n51 none [ [ n52 none [ [ n53 none [ [ n54 none [ [ n55 none [ [ n56 none [ [ n57 none [ [ n58 none [ [ n59 none [ [ n0 none [ [ n1 none [ [ n2 none [ [ n3 none [ [ n4 none [ [ n5 none [ [ n6 none [ [ n7 none [ [ n8 none [ [ n9 none [ [ n10 none [ [ n11 none [ [ n12 none [ [ n13 none [ [ n14 none [ [ n15 none [ [ n16 none [ [ n17 none [ [ n18 none [ [ n19 none [ [ n20 none [ [ n21 none [ [ n22 none [ [ n23 none [ [ n24 none [ [ n25 none [ [ n26 none [ [ n27 none [ [ n28 none [ [ z none none ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ] ]  none ]
+do [
+;; L1 a 150-level chain: 299 events
+t/num "L1" t/counted dom/walk deep150 1024 299
+;; L2 depth sum
+t/num "L2" t/dsum + * 2 11026 149
+d: dom/walk deep150
+;; L3 down 149 opens
+t/num "L3" t/counted d 149 149
+;; L4 the innermost element is empty at depth 149
+t/num "L4" block-at it/peek d 2 149
+;; L5 close returns the element at depth 148 (n28)
+t/num "L5" block-at it/close d 0 'n28
+;; L6 then 149 closes and the end
+t/num "L6" t/counted d 1024 149
+;; L7 end
+t/end "L7" it/next d
+]
+
+print t/pass
+print t/fail
+either = t/fail 0 [ s/print "glon-dom depth: all tests passed" ] [ raise create-sin 'test 'failed t/fail ]

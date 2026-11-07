@@ -1,0 +1,103 @@
+;; experiments/glon-dom/dom.glon -- GLON-DOM v001: an event iterator over a
+;; DOM-like tree held entirely as Glon data, on the it/ protocol of GLON-ITER v001.
+;; After Chris Ross-Gill's DOM iterator (gist rgchris/9770ab0f...): the walk
+;; reports each stage of the traversal as an event, and can be paused anywhere.
+;;
+;; TREE. A node is a STRING! (text) or an element, a 3-element BLOCK!
+;;   [ name attrs children ]         (the r3:xml module's block shape)
+;; name and attrs are not interpreted (attributes are not walked). children is a
+;; non-empty BLOCK! of nodes, or "no children": NONE, the word none, or [].
+;; A tree with text must be built with reduce: an unevaluated "..." is not a
+;; STRING!. An element-only tree can be a literal block (loader heap).
+;;
+;; EVENTS. it/next and it/peek return an event [ kind node depth ]:
+;;   open   an element with children, before them      close  after them
+;;   empty  an element without children               text   a STRING! node
+;; The root is depth 0 and gets its own open/close; an element's open and close
+;; share a depth; its children are one deeper. Empty text nodes are events.
+;; End of stream is it/end (identity-unique: no event and no node equals it).
+;; At the end, peek and next keep returning it/end and it/pos stops.
+;;
+;;   dom/walk root   a walker (an it/ iterator) over the tree root
+;;   it/peek w       the next event, without advancing (cached until consumed)
+;;   it/next w       the next event, then advance past it
+;;   it/pos w        the number of events consumed by it/next
+;;   it/close w      skip the rest of the innermost OPEN element: the next event
+;;                   is its close. Returns that element, or none when nothing is
+;;                   open (before the first event, or at the end). Discards a
+;;                   peeked event. (NEW word, message 6; it/skip is not overloaded.)
+;; it/peek2, it/skip and it/take raise SIN! 'type 'dom/message on a walker.
+;; A malformed node raises SIN! 'type 'dom/node (or 'dom/children) BEFORE any
+;; state changes: it/pos is unchanged and it/close can skip past it.
+;;
+;; KNOWN LIMITATION: it/close on a GLON-ITER v001 byte iterator raises a
+;; misleading SIN! 'type 's/scan-set (arg none): v001 does not know message 6 and
+;; treats it as a skip. The byte iterator is left unchanged. v001 is not modified.
+;;
+;; STATE. The closure's parameters hold the innermost level: children block,
+;; index, the open element, depth, events consumed, cached event. Each open
+;; pushes one managed PARENT FRAME [ parent-frame kids index element ] (32 cells);
+;; each close pops one. No Glon activation is suspended between events.
+;;
+;; COST (64K machine, 2026-11-07): 6 global bindings, 1,033 loader cells, 0 code
+;; cells; 176 managed cells per walker (+32 with a cached event, +32 per open
+;; level). next allocates 32 cells (64 for open); peek of a cached event, pos and
+;; close allocate nothing. The return stack per advance does not depend on depth
+;; (5 probe frames at depth 0 and at depth 59); a 150-level chain is walked, and
+;; depth is bounded by the managed heap. See GLON-DOM-V001.md.
+;;
+;; Requires prelude, strings, strings-ext and iter.glon. Locals use a dm- prefix.
+do [
+dom/element?: func [c] [ either = it/raw-tag c 6 [ = block-len c 3 ] [ 0 ] ]
+;; 1 when children slot h has children, 0 when it has none; raises otherwise
+dom/kids?: func [h c] [
+    either = it/raw-tag h 6 [ > block-len h 0 ] [
+        either = h none [ 0 ] [ either = h 'none [ 0 ] [ raise create-sin 'type 'dom/children c ] ]
+    ]
+]
+;; the event at a state, computed without changing it
+dom/event: func [k i s e d] [
+    either < i block-len k [
+        dm-c: block-at k i
+        either s/raw-string? dm-c [ reduce [ 'text dm-c d ] ] [
+            either dom/element? dm-c [
+                either dom/kids? block-at dm-c 2 dm-c [ reduce [ 'open dm-c d ] ] [ reduce [ 'empty dm-c d ] ]
+            ] [ raise create-sin 'type 'dom/node dm-c ]
+        ]
+    ] [
+        either = s none [ it/end ] [ reduce [ 'close e - d 1 ] ]
+    ]
+]
+dom/walk: func [root] [ dom/walk* reduce [ root ] 0 none none 0 0 none ]
+dom/walk*: func [dm-k dm-i dm-s dm-e dm-d dm-n dm-v] [
+    reduce [ func [m x] [
+        either = m 2 [ dm-n ] [
+            either = m 6 [
+                ;; close: skip the rest of the innermost open element
+                either = dm-s none [ none ] [ dm-v: none  dm-i: block-len dm-k  dm-e ]
+            ] [
+                either = dm-v none [ dm-v: dom/event dm-k dm-i dm-s dm-e dm-d ] [ none ]
+                either = m 0 [ dm-v ] [
+                    either = m 1 [
+                        either it/end? dm-v [ dm-v ] [
+                            dm-w: block-at dm-v 0
+                            either = dm-w 'close [
+                                dm-k: block-at dm-s 1  dm-i: block-at dm-s 2  dm-e: block-at dm-s 3
+                                dm-s: block-at dm-s 0  dm-d: - dm-d 1
+                            ] [
+                                either = dm-w 'open [
+                                    dm-s: reduce [ dm-s dm-k + dm-i 1 dm-e ]
+                                    dm-e: block-at dm-v 1  dm-k: block-at dm-e 2  dm-i: 0  dm-d: + dm-d 1
+                                ] [ dm-i: + dm-i 1 ]
+                            ]
+                            dm-n: + dm-n 1
+                            dm-w: dm-v  dm-v: none  dm-w
+                        ]
+                    ] [ raise create-sin 'type 'dom/message m ]
+                ]
+            ]
+        ]
+    ] ]
+]
+it/close: func [i] [ either it/iter? i [ invoke block-at i 0 6 none ] [ raise create-sin 'type 'it/close i ] ]
+]

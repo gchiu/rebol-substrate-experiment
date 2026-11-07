@@ -320,6 +320,7 @@ In order:
 | `strings-ext.glon` optional string API | *(untagged)* | `96a0d13` |
 | Pratt parser v004 (**experiment, not deployed**) | *(untagged)* | *(the commit adding `experiments/glon-pratt/`)* |
 | Iterator vocabulary v001 (**experiment, not deployed**) | *(untagged)* | *(the commit adding `experiments/glon-iter/`)* |
+| DOM-tree iterator v001 (**experiment, not deployed**) | *(untagged)* | *(the commit adding `experiments/glon-dom/`)* |
 
 **Glon LaTeX milestone (2026-11-06/07).** What is deployed and what is
 experimental are different things:
@@ -543,5 +544,7 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `experiments/glon-pratt/GLON-PRATT-V004.md` — the Pratt parser experiment.
 - `experiments/glon-iter/GLON-ITER-V001.md` — the iterator vocabulary
   experiment (`it/`, and an `lx/` lexer that matches v004's tokens).
+- `experiments/glon-dom/GLON-DOM-V001.md` — the DOM-tree event iterator
+  experiment (`dom/walk`, `it/close`), on the `it/` protocol.
 - `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
 - `docs/distributed-glon-agents.md` — distributed/federated agent architecture.

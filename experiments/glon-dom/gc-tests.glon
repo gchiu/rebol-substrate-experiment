@@ -1,0 +1,22 @@
+;; experiments/glon-dom/gc-tests.glon -- GLON-DOM v001 collection test (I).
+;; A separate session: the wide literal tree needs the loader heap. Load after
+;; t-common.glon.
+;; ---- I. collection during traversal: 4 walks of 152 events allocate ~20K cells (heap 7,232) ----
+do [
+wide: [ w none [ [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] [ e none none ] ] ]
+a: dom/walk wide
+b: dom/walk deep
+t/num "I1 a: first 75 events" t/counted a 75 75
+t/num "I2 b: down 59 levels (59 frames live)" t/counted b 59 59
+c: dom/walk wide
+t/num "I3 c: whole walk" t/counted c 512 152
+t/num "I3b another whole walk (forces collections)" t/counted dom/walk wide 512 152
+t/num "I3c and another" t/counted dom/walk wide 512 152
+t/num "I4 a resumes after collections" t/counted a 512 77
+t/num "I5 b's frames survived: 60 more events" t/counted b 256 60
+t/num "I6 a again: still at the end" t/counted a 4 0
+]
+
+print t/pass
+print t/fail
+either = t/fail 0 [ s/print "glon-dom collection: all tests passed" ] [ raise create-sin 'test 'failed t/fail ]
