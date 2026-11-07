@@ -1,0 +1,164 @@
+;; experiments/glon-iter/iter-tests.glon -- native tests for iter.glon.
+;; Load after strings-ext.glon and iter.glon.
+;; A failure prints FAIL and the last line raises a SIN! (exit status 1).
+
+t/pass: 0
+t/fail: 0
+t/ok: func [name] [ t/pass: + t/pass 1 ]
+t/bad: func [name] [ t/fail: + t/fail 1  s/print s/+ "FAIL " name ]
+t/num: func [name got want] [ either = got want [ t/ok name ] [ t/bad name  print got  print want ] ]
+t/str: func [name got want] [
+    either s/= got want [ t/ok name ] [ t/bad name  s/print s/+ "  got:  " got  s/print s/+ "  want: " want ]
+]
+t/end: func [name v] [ either it/end? v [ t/ok name ] [ t/bad name ] ]
+t/sin: func [name e type op] [
+    either sin? e [ either either = sin-type e type [ = sin-id e op ] [ 0 ] [ t/ok name ] [ t/bad name ] ] [ t/bad name ]
+]
+t/tok: func [name tk k st en b] [
+    either either either either = block-at tk 0 k [ = block-at tk 1 st ] [ 0 ] [ = block-at tk 2 en ] [ 0 ] [ = block-at tk 3 b ] [ 0 ] [
+        t/ok name
+    ] [ t/bad name ]
+]
+t/digits: "0123456789"
+
+;; ---- A. one fragment: peek, next, pos -------------------------------------------
+do [
+i: it/bytes reduce [ "ab" ]
+t/num "A1 peek"                   it/peek i 97
+t/num "A2 peek again (no advance)" it/peek i 97
+t/num "A3 pos 0"                  it/pos i 0
+t/num "A4 peek2"                  it/peek2 i 98
+t/num "A5 next"                   it/next i 97
+t/num "A6 pos 1"                  it/pos i 1
+t/end "A7 peek2 at the last byte" it/peek2 i
+t/num "A8 next"                   it/next i 98
+t/end "A9 peek at the end"        it/peek i
+t/end "A10 next at the end"       it/next i
+t/end "A11 next stays at the end" it/next i
+t/num "A12 pos stays at the end"  it/pos i 2
+]
+
+;; ---- B. empty input and empty fragments --------------------------------------------
+do [
+t/end "B1 no fragments"            it/peek it/bytes reduce [ ]
+t/end "B2 only empty fragments"    it/next it/bytes reduce [ "" "" "" ]
+t/num "B3 pos of an empty stream"  it/pos it/bytes reduce [ "" "" ] 0
+i: it/bytes reduce [ "" "" "a" "" "" "b" "" ]
+t/num "B4 leading empties"         it/next i 97
+t/num "B5 peek2 across empties"    it/peek2 it/bytes reduce [ "a" "" "" "b" ] 98
+t/num "B6 empties between"         it/next i 98
+t/num "B7 pos across empties"      it/pos i 2
+t/end "B8 trailing empties"        it/peek i
+]
+
+;; ---- C. bytes 0 and 255, none and 0 are not the end ---------------------------------------
+do [
+i: it/bytes reduce [ mk-string reduce [ 0 ] "" mk-string reduce [ 255 0 ] ]
+t/num "C1 byte 0"                  it/peek i 0
+t/num "C2 next 0"                  it/next i 0
+t/num "C3 peek2 0 across fragments" it/peek2 i 0
+t/num "C4 byte 255"                it/next i 255
+t/num "C5 byte 0 last"             it/next i 0
+t/end "C6 then the end"            it/next i
+t/num "C7 0 is not the end"        it/end? 0 0
+t/num "C8 none is not the end"     it/end? none 0
+t/num "C9 a block is not the end"  it/end? reduce [ 'end ] 0
+t/num "C10 the end is the end"     it/end? it/end 1
+]
+
+;; ---- D. skip (no text) --------------------------------------------------------------------
+do [
+i: it/bytes reduce [ "12" "" "34" "5x6" ]
+t/num "D1 skip across fragments"   it/skip i t/digits 5
+t/num "D2 lands on the first other byte" it/peek i 120
+t/num "D3 skip an empty run"       it/skip i t/digits 5
+t/num "D4 skip an empty set"       it/skip i "" 5
+it/next i
+t/num "D5 skip to the end"         it/skip i t/digits 7
+t/end "D6 at the end"              it/peek i
+t/num "D7 skip at the end"         it/skip i t/digits 7
+t/num "D8 skip within a fragment"  it/skip it/bytes reduce [ "112x" ] t/digits 3
+t/num "D9 skip whole fragments then stop at a fragment start" it/skip it/bytes reduce [ "11" "1" "" "x" ] t/digits 3
+]
+
+;; ---- E. take (a new string) ---------------------------------------------------------------
+do [
+i: it/bytes reduce [ "a1" "23" "" "" "4" "b56" ]
+it/next i
+t/str "E1 take across fragments and empties" it/take i t/digits "1234"
+t/num "E2 pos after take"          it/pos i 5
+t/str "E3 take an empty run"       it/take i t/digits ""
+t/num "E4 next after take"         it/next i 98
+t/str "E5 take to the end"         it/take i t/digits "56"
+t/end "E6 at the end"              it/peek i
+t/str "E7 take at the end"         it/take i t/digits ""
+t/str "E8 take within a fragment"  it/take it/bytes reduce [ "123x" ] t/digits "123"
+t/str "E9 take an empty set"       it/take it/bytes reduce [ "123" ] "" ""
+t/str "E10 take the whole stream"  it/take it/bytes reduce [ "" "1" "" "2" "3" "" ] t/digits "123"
+t/str "E11 take bytes 0 and 255"   it/take it/bytes reduce [ mk-string reduce [ 0 255 ] "" mk-string reduce [ 0 ] "x" ] mk-string reduce [ 255 0 ] mk-string reduce [ 0 255 0 ]
+]
+
+;; ---- F. many fragments: the return stack does not grow with the fragments crossed -----------
+do [
+x: "x"  e: ""
+;; 201 fragments: 100 "x", 100 "" and a final "y". The block repeats two
+;; strings, so it costs about 200 cells; 201 distinct strings would not fit.
+g: reduce [
+  x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e
+  x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e
+  x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e
+  x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e
+  x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e x e
+  "y" ]
+t/num "F1 201 fragments"           block-len g 201
+t/num "F2 skip across 200 fragments" it/skip it/bytes g "x" 100
+F-take: it/take it/bytes g "x"
+t/num "F3 take across 200 fragments: length" s/length F-take 100
+t/num "F4 take across 200 fragments: last byte" s/at F-take 99 120
+F-i: it/bytes g
+it/take F-i "x"
+t/num "F5 then the byte after"     it/next F-i 121
+t/end "F6 then the end"            it/next F-i
+;; the same take, deep in the return stack (60 pending calls)
+F-deep: func [n] [ either = n 0 [ s/length it/take it/bytes g "x" ] [ + 0 F-deep - n 1 ] ]
+t/num "F7 take across 200 fragments at depth 60" F-deep 60 100
+F-deep2: func [n] [ either = n 0 [ it/skip it/bytes g "x" ] [ + 0 F-deep2 - n 1 ] ]
+t/num "F8 skip across 200 fragments at depth 60" F-deep2 60 100
+;; release: every live iterator holds managed-heap cells (see GLON-ITER-V001.md)
+g: none  F-take: none  F-i: none  i: none
+]
+
+;; ---- G. independent iterators over the same fragments ------------------------------------------
+do [
+fr: reduce [ "ab" "" "c" ]
+i: it/bytes fr
+j: it/bytes fr
+t/num "G1 i next"                  it/next i 97
+t/num "G2 i next"                  it/next i 98
+t/num "G3 j unaffected"            it/next j 97
+t/num "G4 i continues"             it/next i 99
+t/num "G5 j continues"             it/peek j 98
+t/num "G6 positions differ"        - it/pos i it/pos j 2
+t/str "G7 fragments unchanged"     block-at fr 0 "ab"
+fr: none  i: none  j: none
+]
+
+;; ---- H. errors ------------------------------------------------------------------------------------
+do [
+t/sin "H1 it/bytes of a string"    judge [ it/bytes "ab" ] 'type 'it/bytes
+t/sin "H2 it/bytes of a non-string element" judge [ it/bytes reduce [ "a" 1 ] ] 'type 'it/bytes
+t/sin "H3 it/bytes of none"        judge [ it/bytes none ] 'type 'it/bytes
+t/sin "H4 take with a non-string set" judge [ it/take it/bytes reduce [ "a" ] 5 ] 'type 'it/take
+t/sin "H5 skip with a non-string set" judge [ it/skip it/bytes reduce [ "a" ] none ] 'type 'it/skip
+t/sin "H6 peek of an integer"      judge [ it/peek 5 ] 'type 'it/peek
+t/sin "H7 next of a block of an integer" judge [ it/next reduce [ 5 ] ] 'type 'it/next
+t/sin "H8 pos of an empty block"   judge [ it/pos reduce [ ] ] 'type 'it/pos
+t/sin "H9 peek2 of a string"       judge [ it/peek2 "ab" ] 'type 'it/peek2
+t/sin "H10 take of none"           judge [ it/take none "a" ] 'type 'it/take
+t/sin "H11 skip of a string"       judge [ it/skip "ab" "a" ] 'type 'it/skip
+t/num "H12 a closure in a block is accepted" it/peek reduce [ func [m x] [ 42 ] ] 42
+]
+
+print t/pass
+print t/fail
+either = t/fail 0 [ s/print "glon-iter bytes: all tests passed" ] [ raise create-sin 'test 'failed t/fail ]

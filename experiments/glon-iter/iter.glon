@@ -1,0 +1,182 @@
+;; experiments/glon-iter/iter.glon -- GLON-ITER v001: a byte iterator over
+;; string fragments, as an optional loadable vocabulary (no substrate change).
+;;
+;; After Chris Ross-Gill's iterator concept: an iterator is a value that keeps
+;; its own traversal state between calls, so a consumer asks for "the next
+;; value" instead of carrying a source and a position through every call.
+;;
+;;   it/bytes frags   an iterator over a BLOCK! of STRING!s, read as one byte
+;;                    stream (empty fragments are allowed anywhere)
+;;   it/peek i        the current byte (0..255), without advancing; it/end at the end
+;;   it/peek2 i       the byte after the current one; it/end if there is none
+;;   it/next i        the current byte, then advance past it; it/end at the end
+;;   it/pos i         the 0-based byte offset of the cursor, counted across fragments
+;;   it/skip i set    advance past the run of bytes that are in the string `set`;
+;;                    returns the new it/pos. Allocates nothing.
+;;   it/take i set    the same advance, returning that run as a NEW string
+;;   it/end           the end-of-stream marker; it/end? v is 1 only for it
+;;
+;; END OF STREAM. it/end is a unique BLOCK!, and = compares blocks by identity
+;; (GLON-ALPHA-LAWS.md §9), so no byte, no NONE and no 0 can equal it. At the
+;; end, peek/peek2/next keep returning it/end, skip returns the final position
+;; and take returns "".
+;;
+;; THE PROTOCOL. An iterator is a one-element BLOCK! holding a closure
+;; func [m x]; the words above send it a message number m (0 peek, 1 next,
+;; 2 pos, 3 peek2, 4 skip, 5 take) with argument x. The block matters: a
+;; closure is CALLED wherever its word is evaluated, so a bare closure could not
+;; be passed by name. Any iterator that answers messages 0-2 (peek, next, pos)
+;; works with it/peek, it/next and it/pos; iter-lexer.glon's token stream is one.
+;; The public words check their arguments and raise SIN! 'type: block-at and
+;; invoke are unchecked, and a non-iterator would otherwise fail-stop the machine.
+;;
+;; STATE. The constructor's PARAMETERS hold the state (fragment index, byte
+;; index within it, absolute position). Parameters are always local, and the
+;; closure updates them in place with set-words. Every other local name has an
+;; it- prefix, because a set-word updates the nearest existing binding, which
+;; can be a global.
+;;
+;; BOUNDED RETURN STACK. No operation recurses once per byte or once per
+;; fragment:
+;;   - within a fragment, a run is scanned by s/scan-set (a masm loop);
+;;   - fragments are searched, counted, joined and validated by BALANCED
+;;     recursion over fragment ranges: depth about log2(fragments), and
+;;     none when the run ends inside its own fragment (the parser's case).
+;; GLON-ITER-V001.md compares this with a masm cross-fragment scanner
+;; (variants/iter-masm.glon): equally bounded, but 586 cells of code space.
+;;
+;; COST (64K machine, 2026-11-07): 19 global bindings, 2,153 loader-heap
+;; cells, 27 code cells; 144 managed-heap cells per live iterator. peek, next,
+;; pos and peek2 allocate nothing.
+;;
+;; Requires prelude.glon, strings.glon and demo/shop/strings-ext.glon.
+;; Wrapped in [ ] because it contains masm.
+[
+it/end: reduce [ 'end ]
+it/end?: func [v] [ = v it/end ]
+
+;; it/raw-tag ( v -> int ): the type tag of any value (6 BLOCK!, 8 closure,
+;; 12 STRING!; r0_s1.h). Safe for every value: it reads no memory.
+it/raw-tag: masm 1 [ LIT 16 MOD LIT 16 MUL ARITY 1 EXIT ]
+
+it/iter?: func [i] [
+    either = it/raw-tag i 6 [ either > block-len i 0 [ = it/raw-tag block-at i 0 8 ] [ 0 ] ] [ 0 ]
+]
+it/peek:  func [i] [ either it/iter? i [ invoke block-at i 0 0 none ] [ raise create-sin 'type 'it/peek i ] ]
+it/next:  func [i] [ either it/iter? i [ invoke block-at i 0 1 none ] [ raise create-sin 'type 'it/next i ] ]
+it/pos:   func [i] [ either it/iter? i [ invoke block-at i 0 2 none ] [ raise create-sin 'type 'it/pos i ] ]
+it/peek2: func [i] [ either it/iter? i [ invoke block-at i 0 3 none ] [ raise create-sin 'type 'it/peek2 i ] ]
+it/skip:  func [i set] [ it/run i set 4 'it/skip ]
+it/take:  func [i set] [ it/run i set 5 'it/take ]
+it/run: func [i set m op] [
+    either it/iter? i [
+        either s/raw-string? set [ invoke block-at i 0 m set ] [ raise create-sin 'type op set ]
+    ] [ raise create-sin 'type op i ]
+]
+
+;; Balanced recursion over the fragment range [a, b) of frags: each call
+;; splits the range at its midpoint / + a b 2, so the depth is about
+;; log2(b - a) whatever the input's length.
+;; it/full: the first fragment in [a, b) NOT made entirely of bytes in `set`
+;; (with set "", the first non-empty one); b if there is none. An empty
+;; fragment is skipped without a scan (s/scan-set allocates a workspace).
+it/full: func [frags a b set] [
+    either >= a b [ b ] [
+        either = b + a 1 [
+            either = s/length block-at frags a 0 [ b ] [
+                either = s/scan-set block-at frags a 0 set s/length block-at frags a [ b ] [ a ]
+            ]
+        ] [
+            it-r: it/full frags a / + a b 2 set
+            either < it-r / + a b 2 [ it-r ] [ it/full frags / + a b 2 b set ]
+        ]
+    ]
+]
+;; it/lens: the total length of fragments [a, b)
+it/lens: func [frags a b] [
+    either >= a b [ 0 ] [
+        either = b + a 1 [ s/length block-at frags a ] [
+            + it/lens frags a / + a b 2 it/lens frags / + a b 2 b
+        ]
+    ]
+]
+;; it/join: fragments [a, b) joined into one string
+it/join: func [frags a b] [
+    either >= a b [ "" ] [
+        either = b + a 1 [ block-at frags a ] [
+            s/+ it/join frags a / + a b 2 it/join frags / + a b 2 b
+        ]
+    ]
+]
+;; it/strings?: 1 when every element of [a, b) is a STRING!
+it/strings?: func [frags a b] [
+    either >= a b [ 1 ] [
+        either = b + a 1 [ s/raw-string? block-at frags a ] [
+            either it/strings? frags a / + a b 2 [ it/strings? frags / + a b 2 b ] [ 0 ]
+        ]
+    ]
+]
+
+;; it/live frags f: f, or the first non-empty fragment after it (or the end)
+it/live: func [frags f] [
+    either < f block-len frags [
+        either = s/length block-at frags f 0 [ it/full frags f block-len frags "" ] [ f ]
+    ] [ f ]
+]
+;; it/gather: the bytes from (f0, i0) up to (f1, i1)
+it/gather: func [frags f0 i0 f1 i1] [
+    either = f0 f1 [ s/span block-at frags f0 i0 i1 ] [
+        s/+ s/+ s/span block-at frags f0 i0 s/length block-at frags f0
+                it/join frags + f0 1 f1
+            either < f1 block-len frags [ s/span block-at frags f1 0 i1 ] [ "" ]
+    ]
+]
+
+it/bytes: func [frags] [
+    either either = it/raw-tag frags 6 [ it/strings? frags 0 block-len frags ] [ 0 ] [
+        it/bytes* frags it/live frags 0 0 0
+    ] [ raise create-sin 'type 'it/bytes frags ]
+]
+;; Invariant: it-f is the block length (the end) or a NON-EMPTY fragment, and
+;; it-i is a valid index into it.
+it/bytes*: func [frags it-f it-i it-n] [
+    reduce [ func [m x] [
+        either = m 2 [ it-n ] [
+            either < it-f block-len frags [
+                either = m 0 [ s/at block-at frags it-f it-i ] [
+                    either = m 1 [
+                        it-b: s/at block-at frags it-f it-i
+                        it-i: + it-i 1  it-n: + it-n 1
+                        either < it-i s/length block-at frags it-f [ none ] [
+                            it-f: it/live frags + it-f 1  it-i: 0
+                        ]
+                        it-b
+                    ] [
+                        either = m 3 [
+                            either < + it-i 1 s/length block-at frags it-f [ s/at block-at frags it-f + it-i 1 ] [
+                                it-g: it/live frags + it-f 1
+                                either < it-g block-len frags [ s/at block-at frags it-g 0 ] [ it/end ]
+                            ]
+                        ] [
+                            ;; 4 skip, 5 take: the run of bytes in x
+                            it-f0: it-f  it-i0: it-i
+                            it-e: s/scan-set block-at frags it-f it-i x
+                            either < it-e s/length block-at frags it-f [
+                                it-n: + it-n - it-e it-i  it-i: it-e
+                            ] [
+                                it-g: it/full frags + it-f 1 block-len frags x
+                                it-n: + it-n + - s/length block-at frags it-f it-i it/lens frags + it-f 1 it-g
+                                it-f: it-g  it-i: 0
+                                either < it-f block-len frags [
+                                    it-i: s/scan-set block-at frags it-f 0 x  it-n: + it-n it-i
+                                ] [ none ]
+                            ]
+                            either = m 4 [ it-n ] [ it/gather frags it-f0 it-i0 it-f it-i ]
+                        ]
+                    ]
+                ]
+            ] [ either = m 4 [ it-n ] [ either = m 5 [ "" ] [ it/end ] ] ]
+        ]
+    ] ]
+]
+]

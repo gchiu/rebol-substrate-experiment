@@ -1,0 +1,26 @@
+;; experiments/glon-iter/dump-iter.glon -- the token walk under test: lx/tokens
+;; over it/bytes over a BLOCK! of fragments. Prints exactly what dump-v004.glon
+;; prints. Load after strings-ext.glon, iter.glon and iter-lexer.glon.
+;; Driven by build/iter-NN.glon (iter_corpus.mjs).
+do [
+d/t: none
+d/done: 0
+d/line: func [tk] [
+    s/print s/+ s/from-int block-at tk 0 s/+ " " s/+ s/from-int block-at tk 1 s/+ " " s/+ s/from-int block-at tk 2 s/+ " " s/from-int block-at tk 3
+]
+d/start: func [frags] [ d/t: lx/tokens it/bytes frags  d/done: 0 ]
+d/one: func [z] [
+    d-tk: it/next d/t
+    either it/end? d-tk [ s/print s/+ "end " s/from-int it/pos d/t  d/done: 1 ] [ d/line d-tk ]
+]
+d/steps: func [k] [
+    either either = k 0 [ 1 ] [ d/done ] [ none ] [
+        d-e: judge [ d/one 0 ]
+        either sin? d-e [
+            s/print s/+ "error " s/+ s/from-int block-at sin-arg d-e 1 s/+ ": " block-at sin-arg d-e 0
+            d/done: 1
+        ] [ none ]
+        d/steps - k 1
+    ]
+]
+]

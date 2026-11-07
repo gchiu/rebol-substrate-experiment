@@ -1,0 +1,102 @@
+;; experiments/glon-iter/lexer-tests.glon -- native tests for iter-lexer.glon
+;; over iter.glon. Load after strings-ext.glon, iter.glon and iter-lexer.glon.
+;; A failure prints FAIL and the last line raises a SIN! (exit status 1).
+
+t/pass: 0
+t/fail: 0
+t/ok: func [name] [ t/pass: + t/pass 1 ]
+t/bad: func [name] [ t/fail: + t/fail 1  s/print s/+ "FAIL " name ]
+t/num: func [name got want] [ either = got want [ t/ok name ] [ t/bad name  print got  print want ] ]
+t/str: func [name got want] [
+    either s/= got want [ t/ok name ] [ t/bad name  s/print s/+ "  got:  " got  s/print s/+ "  want: " want ]
+]
+t/end: func [name v] [ either it/end? v [ t/ok name ] [ t/bad name ] ]
+t/sin: func [name e type op] [
+    either sin? e [ either either = sin-type e type [ = sin-id e op ] [ 0 ] [ t/ok name ] [ t/bad name ] ] [ t/bad name ]
+]
+t/tok: func [name tk k st en b] [
+    either either either either = block-at tk 0 k [ = block-at tk 1 st ] [ 0 ] [ = block-at tk 2 en ] [ 0 ] [ = block-at tk 3 b ] [ 0 ] [
+        t/ok name
+    ] [ t/bad name ]
+]
+t/digits: "0123456789"
+
+;; ---- I. the lexer: position-based tokens -----------------------------------------------------------------------
+do [
+t: lx/tokens it/bytes reduce [ "  ab" "_1 + " "" "1." "5*(.5)" ]   ;; "ab_1" is one name
+t/tok "I1 name across fragments"   it/peek t 3 2 6 97
+t/tok "I2 peek again"              it/peek t 3 2 6 97
+t/num "I3 token pos"               it/pos t 2
+t/tok "I4 next"                    it/next t 3 2 6 97
+t/tok "I5 op"                      it/next t 4 7 8 43
+t/tok "I6 decimal across fragments" it/next t 2 9 12 46
+t/tok "I7 op"                      it/next t 4 12 13 42
+t/tok "I8 op"                      it/next t 4 13 14 40
+t/tok "I9 decimal with a leading point" it/next t 2 14 16 46
+t/tok "I10 op"                     it/next t 4 16 17 41
+t/num "I11 pos before the end"     it/pos t 17
+t/end "I12 end"                    it/next t
+t/num "I13 end pos"                it/pos t 17
+t/end "I14 stays at the end"       it/peek t
+t/tok "I15 underscore"             it/next lx/tokens it/bytes reduce [ " _" ] 5 1 2 95
+t/tok "I16 int then a lone point"  it/next lx/tokens it/bytes reduce [ "1." "x" ] 1 0 1 48
+I-t: lx/tokens it/bytes reduce [ "1 " ". " ]
+t/tok "I17 int before a lone point" it/next I-t 1 0 1 48
+t/sin "I18 a lone point raises v004's error" judge [ it/next I-t ] 'parse 'syntax
+t/end "I19 empty input"            it/peek lx/tokens it/bytes reduce [ "" " " ]
+t/num "I20 empty input pos"        it/pos lx/tokens it/bytes reduce [ "" "   " ] 3
+t: none  I-t: none
+]
+
+;; ---- J. under collection: 518 one-byte tokens over 74 fragments (about 20K cells allocated) --------------
+do [
+tp: "a+1*b-2/a+1*b-2/"
+tr0: s/span tp 0 7  tr1: s/span tp 1 8  tr2: s/span tp 2 9  tr3: s/span tp 3 10
+tr4: s/span tp 4 11  tr5: s/span tp 5 12  tr6: s/span tp 6 13  tr7: s/span tp 7 14
+J-frags: reduce [ tr0 tr7 tr6 tr5 tr4 tr3 tr2 tr1 tr0 tr7 tr6 tr5 tr4 tr3 tr2 tr1 tr0 tr7 tr6 tr5 tr4 tr3 tr2 tr1 tr0 tr7 tr6 tr5 tr4 tr3 tr2 tr1 tr0 tr7 tr6 tr5 tr4 tr3 tr2 tr1 tr0 tr7 tr6 tr5 tr4 tr3 tr2 tr1 tr0 tr7 tr6 tr5 tr4 tr3 tr2 tr1 tr0 tr7 tr6 tr5 tr4 tr3 tr2 tr1 tr0 tr7 tr6 tr5 tr4 tr3 tr2 tr1 tr0 tr7 ]
+J-t: lx/tokens it/bytes J-frags
+J-n: 0  J-st: 0  J-en: 0  J-b: 0
+J-eat: func [k] [
+    either = k 0 [ 0 ] [
+        j-tk: it/next J-t
+        either it/end? j-tk [ 0 ] [
+            J-n: + J-n 1  J-st: + J-st block-at j-tk 1  J-en: + J-en block-at j-tk 2  J-b: + J-b block-at j-tk 3
+            J-eat - k 1
+        ]
+    ]
+]
+J-eat 30  J-eat 30  J-eat 30  J-eat 30  J-eat 30  J-eat 30  J-eat 30  J-eat 30  J-eat 30
+J-eat 30  J-eat 30  J-eat 30  J-eat 30  J-eat 30  J-eat 30  J-eat 30  J-eat 30  J-eat 30
+t/num "J1 token count"             J-n 518
+t/num "J2 sum of starts"           J-st 133903
+t/num "J3 sum of ends"             J-en 134421
+t/num "J4 sum of first bytes"      J-b 30325
+t/end "J5 then the end"            it/next J-t
+t/num "J6 end pos"                 it/pos J-t 518
+J-t: none
+]
+
+;; ---- K. bytes under collection: interleave garbage with a byte walk ------------------------------------
+do [
+K-i: it/bytes J-frags
+K-sum: 0  K-n: 0
+K-eat: func [k] [
+    either = k 0 [ 0 ] [
+        k-b: it/next K-i
+        either it/end? k-b [ 0 ] [
+            k-g: s/+ "garbage garbage garbage garbage garbage garbage" tp
+            K-n: + K-n 1  K-sum: + K-sum k-b
+            K-eat - k 1
+        ]
+    ]
+]
+K-eat 30  K-eat 30  K-eat 30  K-eat 30  K-eat 30  K-eat 30  K-eat 30  K-eat 30  K-eat 30
+K-eat 30  K-eat 30  K-eat 30  K-eat 30  K-eat 30  K-eat 30  K-eat 30  K-eat 30  K-eat 30
+t/num "K1 bytes read"              K-n 518
+t/num "K2 byte sum"                K-sum 30518
+K-i: none  J-frags: none
+]
+
+print t/pass
+print t/fail
+either = t/fail 0 [ s/print "glon-iter lexer: all tests passed" ] [ raise create-sin 'test 'failed t/fail ]

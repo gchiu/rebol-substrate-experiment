@@ -1,0 +1,79 @@
+;; experiments/glon-iter/iter-lexer.glon -- GLON-ITER v001: a lexer over a
+;; byte iterator, producing POSITION-BASED tokens.
+;;
+;; It reproduces the frozen Pratt v004 lexer (experiments/glon-pratt/pratt.glon,
+;; p/token) token for token, but reads bytes from an iterator instead of
+;; indexing a source string. A token is the v004 token:
+;;   [ kind start end first-byte ]      kinds 1 int, 2 decimal, 3 name, 4 op, 5 "_"
+;; with absolute byte positions [start, end). No token text is allocated: a
+;; consumer that needs the text slices it from its source when it emits it, as
+;; v004's p/text does.
+;;
+;;   lx/token b     the next token from byte iterator b, or it/end; a "." that
+;;                  starts no number raises v004's SIN! 'parse 'syntax
+;;                  [ "unexpected character '.'" position ]
+;;   lx/tokens b    a TOKEN ITERATOR over b, with one cached token of lookahead:
+;;                  it/peek, it/next and it/pos work on it as on bytes, and
+;;                  it/pos is the start of the next token (or the end position)
+;;
+;; COST (64K machine, 2026-11-07): 15 global bindings, 1,177 loader-heap
+;; cells; a token iterator keeps 288 managed-heap cells alive (320 with its
+;; cached token). Its tokens are identical to v004's p/token on 1,200 walks
+;; (make test-lexer-diff).
+;;
+;; Requires iter.glon. Locals use an lx- prefix (a set-word can rebind a global).
+do [
+lx/ws: mk-string reduce [ 32 9 10 11 12 13 ]
+lx/digits: "0123456789"
+lx/name-chars: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_"
+lx/k-int: 1
+lx/k-dec: 2
+lx/k-name: 3
+lx/k-op: 4
+lx/k-none: 5
+
+lx/digit?: func [c] [ either it/end? c [ 0 ] [ either >= c 48 [ <= c 57 ] [ 0 ] ] ]
+lx/letter?: func [c] [ either >= c 97 [ <= c 122 ] [ either >= c 65 [ <= c 90 ] [ 0 ] ] ]
+
+lx/token: func [b] [
+    lx-st: it/skip b lx/ws
+    lx-c: it/peek b
+    either it/end? lx-c [ it/end ] [ lx/token-at b lx-st lx-c ]
+]
+lx/token-at: func [b st c] [
+    either either lx/digit? c [ 1 ] [ either = c 46 [ lx/digit? it/peek2 b ] [ 0 ] ] [ lx/number b st ] [
+        either lx/letter? c [ reduce [ lx/k-name st it/skip b lx/name-chars c ] ] [
+            either = c 46 [
+                raise create-sin 'parse 'syntax reduce [ "unexpected character '.'" st ]
+            ] [
+                it/next b
+                reduce [ either = c 95 [ lx/k-none ] [ lx/k-op ] st + st 1 c ]
+            ]
+        ]
+    ]
+]
+;; digits, then "." and digits only when a digit follows the "."
+lx/number: func [b st] [
+    lx-e: it/skip b lx/digits
+    either either = it/peek b 46 [ lx/digit? it/peek2 b ] [ 0 ] [
+        it/next b
+        reduce [ lx/k-dec st it/skip b lx/digits 46 ]
+    ] [ reduce [ lx/k-int st lx-e 48 ] ]
+]
+
+lx/tokens: func [b] [ lx/tokens* b none ]
+lx/tokens*: func [b lx-t] [
+    reduce [ func [m x] [
+        either = lx-t none [ lx-t: lx/token b ] [ none ]
+        either = m 0 [ lx-t ] [
+            either = m 1 [
+                lx-u: lx-t
+                either it/end? lx-t [ none ] [ lx-t: none ]
+                lx-u
+            ] [
+                either = m 2 [ either it/end? lx-t [ it/pos b ] [ block-at lx-t 1 ] ] [ it/end ]
+            ]
+        ]
+    ] ]
+]
+]

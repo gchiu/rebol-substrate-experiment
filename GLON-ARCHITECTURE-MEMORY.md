@@ -195,6 +195,7 @@ brackets.
 | loader heap | ~14,800 cells, permanent | `loader_exhausted`. Large test suites must be split across sessions (`experiments/glon-latex`) |
 | symbols, function sites | 512, 640 per session [handoff, 2026-09-25] | clean parse failure |
 | emitted code / data-stack headroom | 12,454 cells / ~3,674 cells, after the GC worklist guard added 117 cells (from 12,337 / ~3,791) [2026-11-06] | each native costs far more than it looks (a CALL ≈ 21 cells, an EXIT ≈ 17 [handoff]) |
+| masm library code | masm workers are assembled into the same code area, which grows towards the data stack: `prelude` 416 cells, `strings` 304, `strings-ext` 504. With `prelude` + `strings` loaded, code ends at 13,473, leaving 2,911 cells below the data-stack top (16,384); the data stack used ≤ 91 cells at maximum recursion depth [2026-11-07, `experiments/glon-iter`] | a third budget beside bindings and the loader heap, shared by every masm library in a session |
 
 **[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
 worklist has a fixed 256 entries (`GC_WORKLIST_CAP`, the cells before `GC_A1`).
@@ -245,6 +246,7 @@ build of the current sources.**
 | `s/` string extension (`s/at s/slice s/span s/scan-set s/from-int`) | shipped **optional** library (API approved 2026-11-07); loaded after `strings.glon` only by sessions that need it | `demo/shop/strings-ext.glon`; laws §9a; tests `r0_s1_string_ext_tests.c` |
 | `l/` LaTeX vocabulary v001–v002, `/latex/` page, v003 infix front end (JS) | **deployed** (milestone complete 2026-11-07: `3bfabe9`, `6cdae85`, `e5df1a0`); tested in CI on every publish | `experiments/glon-latex/` |
 | `p/` Pratt parser v004, written in Glon, plus its own `s/at s/slice s/span s/from-int` (its `s/span` is the byte-set scanner) | **[FINDING] experiment, committed but not deployed; a subset of v003's grammar, not a replacement for it; frozen by checksum (`FROZEN.sha256`)** | `experiments/glon-pratt/GLON-PRATT-V004.md` |
+| `it/` iterator vocabulary v001 and `lx/` lexer over it (after Chris Ross-Gill's iterator concept) | **[FINDING] experiment, not deployed, not yet used by a parser** | `experiments/glon-iter/GLON-ITER-V001.md` |
 
 **[DECISION] The string extension API (approved by the user 2026-11-07).**
 Five byte-level operations in a separate optional module,
@@ -302,6 +304,35 @@ files must not be loaded into one session. Its limits under the 64K configuratio
 Two different resources bound it: the **return stack** for nesting, and the
 **managed heap** (including fragmentation) for long chains. Three guards turn
 both into catchable errors before a fail-stop.
+
+**[FINDING] Iterator vocabulary v001 (2026-11-07, 64K configuration, native).**
+An optional library, `iter.glon`, implements iterators in plain Glon:
+- **Mechanism:** an iterator is a one-element block holding a closure that
+  answers numbered messages. Its state lives in the constructor's parameters.
+  It needs no ITERATOR! type, evaluator change or substrate change.
+- **API:** `it/bytes frags` reads a block of strings as one byte stream, with
+  `it/peek it/peek2 it/next it/pos it/skip it/take it/end it/end?`.
+- **Lexer:** `lx/tokens` in `iter-lexer.glon` is itself an iterator. Its
+  position-based tokens are identical to frozen v004's `p/token` on 1,200
+  walks (400 inputs, each cut into fragments 3 ways).
+- **Tests:** 77 + 28 native tests pass.
+
+[MEASURED] costs:
+- `iter.glon`: 19 bindings, 2,153 loader cells, 27 code cells;
+- `iter-lexer.glon`: 15 bindings, 1,177 loader cells;
+- managed heap kept alive: 144 cells per byte iterator, 288–320 per token
+  iterator;
+- byte `peek` and `next` allocate nothing; a token costs about 80 cells;
+- the return stack per advance does not depend on input length; crossing
+  fragments costs about log2(fragments) frames.
+
+The bounded cross-fragment `it/take` uses balanced Glon recursion. A masm
+scanner (`variants/iter-masm.glon`) was measured and not adopted:
+- **Against:** it is equally bounded, but costs 586 code cells;
+- **For:** it is 2.4× faster and allocates up to 14× less, but only on streams
+  of hundreds of fragments.
+
+Not yet run in WASM. Details are in `experiments/glon-iter/GLON-ITER-V001.md`.
 
 ## 8. Why more memory is a separate scaling experiment
 
