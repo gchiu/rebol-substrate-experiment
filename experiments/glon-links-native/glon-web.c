@@ -437,7 +437,9 @@ int main(int argc, char **argv) {
             Doc *d = lookup(atoi(arg));
             if (!d) { char m[64]; snprintf(m, sizeof m, "stale or unknown handle %.32s", arg); rc = reply_error(m); continue; }
             release(d);
-            break;                                  /* the program is finished with the page */
+            /* tell Glon; a program with more to do answers with its next request
+             * (links.glon ignores the event, so its conversation ends here) */
+            rc = dispatch("dom-released", arg, (int)strlen(arg));
         } else {
             char m[300]; snprintf(m, sizeof m, "unknown request %s", op); rc = reply_error(m);
         }

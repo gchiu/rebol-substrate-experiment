@@ -113,7 +113,8 @@ code runs in the browser, through `glon-live.wasm`
 | host → Glon | `web-loaded` / `web-error` | a document handle / a message |
 | Glon → host | `dom-next` | `"handle max close-depth attrs bytes"`, e.g. `"257 64 -1 href 120"` |
 | host → Glon | `dom-events` | one batch of encoded events |
-| Glon → host | `dom-release` | handle: the host frees the document; the conversation ends |
+| Glon → host | `dom-release` | handle: the host frees the document |
+| host → Glon | `dom-released` | the handle; a program that answers with no request ends the conversation |
 
 **Batch format.** Each event is one record (u16 means two bytes, high byte
 first):

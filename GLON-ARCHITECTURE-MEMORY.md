@@ -496,6 +496,52 @@ A dynamically growing *contiguous* return stack was investigated and **not
 recommended**. It would relocate frames and stack-local contexts that are
 referenced by absolute address, and it would require changing the frozen `s1.c`.
 
+### PARKED — M1 cooperative multitasking and GLON_LIVE integration
+
+**Status:** deferred (recorded 2026-11-08). The working DOM demonstrations
+(`experiments/glon-dom-host/`, `glon-links-native/`, `glon-links-multi/`) do
+not need it.
+
+**Established capabilities**
+- **[FINDING]** M1 cooperative multitasking works: independent task stacks,
+  lexical closures and shared garbage-collected memory. It needs no new S1
+  primitive (`M1-MULTITASKING-RESULTS.md`).
+- **[FINDING]** `GLON_LIVE` supports an asynchronous host request/reply. Glon
+  ends a dispatch with a host-call request fragment; the host answers with a new
+  dispatch (`glon_event_bytes`). See §7, host-backed DOM traversal.
+- **[FINDING]** (2026-11-07, `experiments/glon-links-multi/`, uncommitted when
+  this was written.) Two independent DOM link extractors process different
+  documents through manually interleaved batches (A, B, A, B, ...).
+  - They share vocabulary definitions but keep separate closure state.
+  - All five tests give exact results in document order, including the same
+    document as both instances, with collection during both walks.
+
+**Current limitation** ([FINDING], from the code, 2026-11-07)
+- **M1 has no `WAITING` task state.** A task is `TASK_RUNNABLE`,
+  `TASK_FINISHED` or `TASK_EMPTY` (`m1_layout.h`).
+- **A task awaiting a host reply can only keep yielding.** It stays runnable,
+  and `run-tasks` returns only when no task is runnable. So the scheduler never
+  returns control to the host, and the reply, which can arrive only as a new
+  dispatch after the run ends, is never delivered.
+- **`GLON_LIVE` supports one outstanding host request per run.** The request is
+  the dispatch's single result fragment.
+
+**Future investigation** ([PROPOSAL]: not authorised, not implemented)
+- Add task suspension and selective resumption.
+- Associate host replies with the correct waiting task.
+- Allow the scheduler to return control to the host when no runnable tasks
+  remain.
+- Investigate supporting multiple outstanding host requests.
+- Preserve frozen S1 if feasible. The M1 scheduler is assembled from the frozen
+  primitives as masm library code, so a waiting state may not need an S1 change.
+  This is unverified.
+
+**Acceptance test:** two Glon tasks request different host resources, suspend
+independently, and resume correctly when the replies arrive in reverse order.
+
+**Priority:** parked until an application requires independently scheduled
+asynchronous operations.
+
 ## 10. Before changing the runtime
 
 1. Read this document and the authoritative sources it cites for the area you

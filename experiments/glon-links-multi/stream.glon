@@ -1,0 +1,4 @@
+;; experiments/glon-links-multi/stream.glon -- load after multi.glon: each
+;; extractor prints its links as it finds them (labelled ~A / ~B) instead of
+;; keeping them, so two LONG documents can be walked at once within the heap.
+mj/stream: 1

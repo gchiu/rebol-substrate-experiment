@@ -1,0 +1,225 @@
+;; experiments/glon-links-multi/multi.glon -- TWO independent link extractors
+;; over two documents, interleaved batch by batch, in one Glon machine.
+;;
+;;   ../glon-links-native/build/glon-web multi.glon "URL-A URL-B"
+;;
+;; THE EXTRACTOR AS AN INSTANCE. glon-dom-links/links.glon keeps its state in
+;; globals (lk/found, lk/anchor, lk/text, ...), so only one extraction can run.
+;; Here mx/new makes an extractor whose state lives in the PARAMETERS of its own
+;; closure (as the it/ iterators keep theirs): every instance is made by the
+;; same mx/new, runs the same code, and shares the same pure helpers from
+;; links.glon (lk/link?, lk/attr), but no two instances share a variable.
+;;
+;;   mx/new sink       a new extractor (a block holding a closure). sink none:
+;;                     keep the links (mx/result); sink a label: print each link
+;;                     when found, as "~label" then two netstrings, and keep none
+;;   mx/event e ev     give extractor e one event (from any it/ walker)
+;;   mx/done? e        1 once e has seen it/end
+;;   mx/count e        links found so far
+;;   mx/result e       the links, [ [ href text ] ... ] in document order
+;;
+;; THE JOBS. A job is one document: its label, URL, handle, host-backed walker
+;; (hw/walk) and extractor. The program loads both documents, then asks for
+;; batches ALTERNATELY, A, B, A, B, ... (only one host request can be
+;; outstanding, so mj/current names the job it was made for). When a job's walk
+;; ends, its links are printed and its document released; the other job goes on.
+;;
+;; OUTPUT: "== A n" (n links found) then the kept links as netstrings ("len:href" "len:text"), the same
+;; for B, then "# order ABAB..." (the job of each batch, in the order processed).
+;; With stream.glon loaded after this file, each link is printed when found
+;; ("~A" or "~B", then its two netstrings), and none are kept.
+;;
+;; Requires the glon-web libraries (prelude, emit, strings, strings-ext, iter,
+;; dom, list-block, links, hostwalk). Locals use mx- / mj- prefixes.
+
+;; ---- the extractor instance --------------------------------------------------------
+mx/new: func [sink] [ mx/new* sink none 0 none none none 0 ]
+;; mx-sink, mx-found chain of [href text] pairs (newest first), mx-count,
+;; mx-anchor the <a> being read, mx-href, mx-text its text so far, mx-done
+mx/new*: func [mx-sink mx-found mx-count mx-anchor mx-href mx-text mx-done] [
+    reduce [ func [m x] [
+        either = m 1 [
+            ;; one event: the logic of lk/event, on this instance's state
+            either it/end? x [ mx-done: 1 ] [
+                mx-k: block-at x 0
+                mx-n: block-at x 1
+                either = mx-anchor none [
+                    either either = mx-k 'text [ 0 ] [ lk/link? mx-n ] [
+                        either = mx-k 'open [
+                            mx-anchor: mx-n
+                            mx-href: lk/attr block-at mx-n 1 lk/href-name
+                            mx-text: none
+                        ] [
+                            either = mx-k 'empty [
+                                mx-p: reduce [ lk/attr block-at mx-n 1 lk/href-name lk/no-text ]
+                                either = mx-sink none [ mx-found: lb/push mx-p mx-found ] [ mx/emit mx-sink mx-p ]
+                                mx-count: + mx-count 1
+                            ] [ none ]
+                        ]
+                    ] [ none ]
+                ] [
+                    either = mx-k 'text [
+                        mx-text: either = mx-text none [ mx-n ] [ s/+ mx-text mx-n ]
+                    ] [
+                        either either = mx-k 'close [ = mx-n mx-anchor ] [ 0 ] [
+                            mx-p: reduce [ mx-href either = mx-text none [ lk/no-text ] [ mx-text ] ]
+                            either = mx-sink none [ mx-found: lb/push mx-p mx-found ] [ mx/emit mx-sink mx-p ]
+                            mx-count: + mx-count 1
+                            mx-anchor: none
+                        ] [ none ]
+                    ]
+                ]
+            ]
+        ] [
+            either = m 2 [ mx-done ] [
+                ;; a streaming instance keeps nothing: its result is empty (lb/to-block
+                ;; is unchecked: its count must be the chain's length)
+                either = m 3 [ mx-count ] [ either = mx-sink none [ lb/to-block mx-found mx-count ] [ lb/to-block none 0 ] ]
+            ]
+        ]
+    ] ]
+]
+;; a streamed link: "~label", then href and text as netstrings
+mx/emit: func [label pair] [
+    s/print s/+ "~" label
+    mj/net block-at pair 0
+    mj/net block-at pair 1
+]
+mx/event: func [e ev] [ invoke block-at e 0 1 ev ]
+mx/done?: func [e] [ invoke block-at e 0 2 none ]
+mx/count: func [e] [ invoke block-at e 0 3 none ]
+mx/result: func [e] [ invoke block-at e 0 4 none ]
+
+;; ---- driving one walker into one extractor until the batch runs out -------------------
+;; balanced (depth log2 n); no flag: each step looks at the walker and extractor
+mx/stop?: func [w e] [ either mx/done? e [ 1 ] [ hw/wait? it/peek w ] ]
+mx/steps: func [w e n] [
+    either mx/stop? w e [ none ] [
+        either = n 1 [ mx/event e it/next w ] [
+            mx/steps w e / n 2
+            mx/steps w e - n / n 2
+        ]
+    ]
+]
+mx/pump: func [w e n] [
+    mx/steps w e n
+    either mx/stop? w e [ none ] [ mx/pump w e * n 2 ]
+]
+
+;; ---- the two jobs ------------------------------------------------------------------------
+;; a job: [ label url doc walker extractor ], made when its document is loaded
+mj/a: none
+mj/b: none
+mj/urls: none           ;; [ url-a url-b ]
+mj/current: none        ;; the job the outstanding request was made for (or 'a/'b while loading)
+mj/order: ""            ;; the job of each batch, in processing order
+mj/stream: 0            ;; 1: each extractor prints its links as found (stream.glon)
+mj/max: 64
+mj/bytes: 120
+mj/attrs: reduce [ "href" ]
+mj/space: mk-string reduce [ 32 ]
+
+emit-host-call: func [op arg] [
+    emit-clear  emit-byte 1  emit-text op  emit-byte 0  emit-text arg  emit-finish
+]
+mj/nothing: func [] [ emit-clear emit-finish ]
+mj/int: func [s] [ mj/int-at s 0 0 ]
+mj/int-at: func [s i acc] [
+    either < i s/length s [ mj/int-at s + i 1 + * acc 10 - s/at s i 48 ] [ acc ]
+]
+;; "url-a url-b" -> [ url-a url-b ] (URLs are separated by spaces)
+mj/split: func [s] [
+    mj-i: s/scan-set s 0 mj/word-bytes
+    reduce [ s/span s 0 mj-i s/span s s/scan-set s mj-i mj/space s/length s ]
+]
+mj/word-bytes: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&()*+,;=%"
+;; (the bytes a URL may hold, unescaped: the first other byte ends URL A)
+
+mj/label: func [job] [ block-at job 0 ]
+mj/walker: func [job] [ block-at job 3 ]
+mj/extractor: func [job] [ block-at job 4 ]
+;; a finished job is replaced by a stub [ label none none none none ]: its walker,
+;; extractor and results become garbage (CLEANUP: two collecting extractions
+;; would not both fit in the heap otherwise)
+mj/done?: func [job] [
+    either = job none [ 0 ] [ either = mj/extractor job none [ 1 ] [ mx/done? mj/extractor job ] ]
+]
+mj/other: func [job] [ either s/= mj/label job "A" [ mj/b ] [ mj/a ] ]
+mj/retire: func [job] [
+    either s/= mj/label job "A" [ mj/a: reduce [ "A" none none none none ] ] [ mj/b: reduce [ "B" none none none none ] ]
+]
+
+mj/next-for: func [job] [
+    mj/current: job
+    emit-host-call "dom-next" hw/request mj/walker job
+]
+mj/net: func [s] [ s/print s/+ s/+ s/from-int s/length s ":" s ]
+mj/print-links: func [links i] [
+    either < i block-len links [
+        mj/net block-at block-at links i 0
+        mj/net block-at block-at links i 1
+        mj/print-links links + i 1
+    ] [ none ]
+]
+mj/finish: func [job] [
+    mj-r: mx/result mj/extractor job
+    s/print s/+ s/+ s/+ "== " mj/label job " " s/from-int mx/count mj/extractor job
+    mj/print-links mj-r 0
+    mj-r: none
+    mj/retire job
+    mj/current: either s/= mj/label job "A" [ mj/a ] [ mj/b ]
+    emit-host-call "dom-release" block-at job 2
+]
+
+mj/start: func [urls] [
+    mj/urls: mj/split urls
+    mj/current: 'a
+    emit-host-call "web-load" block-at mj/urls 0
+]
+mj/loaded: func [doc] [
+    mj-job: reduce [ either = mj/current 'a [ "A" ] [ "B" ]
+                     block-at mj/urls either = mj/current 'a [ 0 ] [ 1 ]
+                     doc
+                     hw/walk mj/int doc mj/attrs mj/max mj/bytes
+                     mx/new either mj/stream [ either = mj/current 'a [ "A" ] [ "B" ] ] [ none ] ]
+    either = mj/current 'a [
+        mj/a: mj-job
+        mj/current: 'b
+        emit-host-call "web-load" block-at mj/urls 1
+    ] [
+        mj/b: mj-job
+        mj/next-for mj/a
+    ]
+]
+mj/batch: func [bytes] [
+    mj-job: mj/current
+    hw/feed mj/walker mj-job bytes
+    mj/order: s/+ mj/order mj/label mj-job
+    mx/pump mj/walker mj-job mj/extractor mj-job 16
+    either mj/done? mj-job [ mj/finish mj-job ] [
+        ;; alternate: the other job next, unless it has finished
+        either mj/done? mj/other mj-job [ mj/next-for mj-job ] [ mj/next-for mj/other mj-job ]
+    ]
+]
+mj/released: func [doc] [
+    either mj/done? mj/other mj/current [
+        s/print s/+ "# order " mj/order
+        mj/nothing
+    ] [ mj/next-for mj/other mj/current ]
+]
+
+do-event: [
+    either = current-event 'start [ mj/start current-value ] [
+        either = current-event 'web-loaded [ mj/loaded current-value ] [
+            either = current-event 'dom-events [ mj/batch current-value ] [
+                either = current-event 'dom-released [ mj/released current-value ] [
+                    either = current-event 'web-error [
+                        s/print s/+ "error: " current-value
+                        mj/nothing
+                    ] [ mj/nothing ]
+                ]
+            ]
+        ]
+    ]
+]
+route: [ mj/nothing ]
