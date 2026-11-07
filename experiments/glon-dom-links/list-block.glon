@@ -1,0 +1,44 @@
+;; experiments/glon-dom-links/list-block.glon -- turn a chain of pairs into a block.
+;;
+;; WHY THIS EXISTS. Core Glon cannot build a block whose length depends on the
+;; data: `reduce` returns exactly as many values as its source block has
+;; expressions, and there is no append. A consumer that finds "some number" of
+;; results therefore keeps them in a chain of pairs, [ item rest ], newest
+;; first, ending in none, and converts the chain once at the end.
+;;
+;;   lb/push item chain      a new chain with item in front
+;;   lb/to-block chain n     a new block of the chain's n items, OLDEST first
+;;
+;; lb/raw-to-block is a masm worker (core Glon has no block-filling operation),
+;; written like tuple-space's new-tuple. It is UNCHECKED: chain must be built by
+;; lb/push and n must be its length. lb/to-block checks the arguments' types.
+;; The chain stays on the data stack until after the allocation, so a collection
+;; during it cannot free the chain.
+[
+lb/push: func [item chain] [ reduce [ item chain ] ]
+
+lb/raw-to-block: masm 2 [
+    LIT 16 DIV LIT SCRATCH_C !                       ;; n
+    LIT SCRATCH_C @ LIT 2 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL
+    LIT GC_KIND_BLOCK CALL alloc LIT SCRATCH_A !     ;; result payload
+    LIT SCRATCH_C @ LIT SCRATCH_A @ !                ;; count = n
+    LIT 0 LIT SCRATCH_A @ LIT 1 ADD !                ;; site = 0, as reduce's blocks
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !               ;; cur = the first pair (consumes the chain)
+    LIT SCRATCH_C @ LIT SCRATCH_D !                  ;; i = n
+  lb-loop:
+    LIT SCRATCH_D @ LIT 0 GT ZBRANCH lb-done
+    LIT SCRATCH_D @ LIT 1 SUB LIT SCRATCH_D !        ;; i = i - 1
+    LIT SCRATCH_B @ LIT 2 ADD @                      ;; the pair's item
+    LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_D @ ADD !  ;; result[i] = item
+    LIT SCRATCH_B @ LIT 3 ADD @ DUP LIT 16 MOD SUB LIT SCRATCH_B !   ;; cur = rest
+    BRANCH lb-loop
+  lb-done:
+    LIT SCRATCH_A @ LIT T_BLOCK ADD ARITY 1 EXIT
+]
+
+lb/to-block: func [chain n] [
+    either either = chain none [ 1 ] [ = it/raw-tag chain 6 ] [ lb/raw-to-block chain n ] [
+        raise create-sin 'type 'lb/to-block chain
+    ]
+]
+]

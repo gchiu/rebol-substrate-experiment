@@ -1,0 +1,151 @@
+;; experiments/glon-links-native/links.glon -- print the hyperlinks of a web page.
+;;
+;;   glon-web links.glon URL
+;;
+;; The native host (glon-web.c) fetches URL and parses it with libxml2, and keeps
+;; the document. THIS program walks it, in Glon, through the host-backed walker
+;; (../glon-dom-host/hostwalk.glon: it/peek, it/next, it/pos, it/close), decides
+;; which elements are links with lk/event (../glon-dom-links/links.glon,
+;; unchanged), and prints them.
+;;
+;; The conversation with the host (GLON_LIVE: Glon ends a dispatch with a
+;; host-call request; the host answers with the next event):
+;;   host -> Glon  start         URL
+;;   Glon -> host  web-load      URL           host -> Glon  web-loaded  handle
+;;                                                       (or web-error message)
+;;   Glon -> host  dom-next      "handle max close-depth attrs bytes"
+;;   host -> Glon  dom-events    a batch       ... until the batch holds the end
+;;   Glon -> host  dom-release   handle        the host frees the document
+;; GLON owns the handle: it is valid from web-loaded until Glon releases it; the
+;; host rejects any later use as stale.
+;;
+;; OUTPUT. Each link is printed when it is found, "href<TAB>text", the text with
+;; whitespace runs collapsed and cut at 80 bytes; nothing is kept (memory does
+;; not grow with the number of links). With web/collect: 1 (glon-web --collect)
+;; the links are kept in a block, as lk/extract does, and printed at the end.
+;; With web/raw: 1 (glon-web --raw / --check) each link is printed exactly, as two
+;; netstrings "len:href" "len:text".
+;;
+;; Requires the libraries glon-web loads first: prelude, emit, strings,
+;; strings-ext, iter, list-block, links (lk/), hostwalk (hw/).
+
+web/collect: 0
+web/raw: 0
+web/page: none
+web/doc: none           ;; the document handle (a string, as the host sent it)
+web/count: 0
+web/batches: 0
+web/max: 64
+web/bytes: 120          ;; see ../glon-dom-host/REPORT.md: small batches keep the
+                        ;; batch string placeable in a fragmented heap
+web/attrs: reduce [ "href" ]
+web/tab: mk-string reduce [ 9 ]
+web/space: " "
+web/ws: mk-string reduce [ 32 9 10 11 12 13 ]
+;; every byte that is not whitespace (s/scan-set finds the first byte NOT in a set)
+web/word: mk-string [ 0 1 2 3 4 5 6 7 8 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159 160 161 162 163 164 165 166 167 168 169 170 171 172 173 174 175 176 177 178 179 180 181 182 183 184 185 186 187 188 189 190 191 192 193 194 195 196 197 198 199 200 201 202 203 204 205 206 207 208 209 210 211 212 213 214 215 216 217 218 219 220 221 222 223 224 225 226 227 228 229 230 231 232 233 234 235 236 237 238 239 240 241 242 243 244 245 246 247 248 249 250 251 252 253 254 255 ]
+web/cut: 80
+hl/stop: 0
+
+web/int: func [s] [ web/int-at s 0 0 ]
+web/int-at: func [s i acc] [
+    either < i s/length s [ web/int-at s + i 1 + * acc 10 - s/at s i 48 ] [ acc ]
+]
+
+;; the text with whitespace runs collapsed to one space and trimmed, cut at
+;; web/cut bytes (so the recursion, one call per word, stays short)
+web/tidy: func [t] [
+    either > s/length t web/cut [ s/+ web/tidy-at s/slice t 0 web/cut 0 "" "..." ] [ web/tidy-at t 0 "" ]
+]
+web/tidy-at: func [t i acc] [
+    tt-j: s/scan-set t i web/ws                 ;; skip whitespace
+    either < tt-j s/length t [
+        tt-k: s/scan-set t tt-j web/word        ;; the end of the word
+        web/tidy-at t tt-k
+            either = s/length acc 0 [ s/span t tt-j tt-k ] [ s/+ s/+ acc web/space s/span t tt-j tt-k ]
+    ] [ acc ]
+]
+
+web/net: func [s] [ s/print s/+ s/+ s/from-int s/length s ":" s ]
+web/show: func [href text] [
+    either web/raw [ web/net href  web/net text ] [ s/print s/+ s/+ href web/tab web/tidy text ]
+]
+web/show-all: func [links i] [
+    either < i block-len links [
+        web/show block-at block-at links i 0 block-at block-at links i 1
+        web/show-all links + i 1
+    ] [ none ]
+]
+
+;; streaming: replace lk/keep (links.glon) so a link is printed, not kept
+lk/keep-collect: :lk/keep
+lk/keep: func [href text] [
+    either web/collect [ lk/keep-collect href text ] [
+        web/show href text
+        lk/count: + lk/count 1
+    ]
+]
+
+;; ---- the driver: as lk/steps (balanced), but it also stops at hw/wait --------------
+hl/steps: func [w n] [
+    either either lk/done [ 1 ] [ hl/stop ] [ none ] [
+        either = n 1 [
+            either hw/wait? it/peek w [ hl/stop: 1 ] [ lk/event it/next w ]
+        ] [
+            hl/steps w / n 2
+            hl/steps w - n / n 2
+        ]
+    ]
+]
+hl/pump: func [w n] [
+    hl/steps w n
+    either either lk/done [ 1 ] [ hl/stop ] [ none ] [ hl/pump w * n 2 ]
+]
+
+emit-host-call: func [op arg] [
+    emit-clear  emit-byte 1  emit-text op  emit-byte 0  emit-text arg  emit-finish
+]
+web/nothing: func [] [ emit-clear emit-finish ]
+
+web/load: func [url] [ emit-host-call "web-load" url ]
+web/start: func [doc] [
+    web/doc: doc
+    web/page: hw/walk web/int doc web/attrs web/max web/bytes
+    lk/found: none  lk/count: 0  lk/anchor: none  lk/text: none  lk/done: 0
+    emit-host-call "dom-next" hw/request web/page
+]
+web/batch: func [bytes] [
+    hw/feed web/page bytes
+    web/batches: + web/batches 1
+    hl/stop: 0
+    hl/pump web/page 16
+    either lk/done [ web/finish ] [ emit-host-call "dom-next" hw/request web/page ]
+]
+web/finish: func [] [
+    either web/collect [
+        web/links: lb/to-block lk/found lk/count
+        lk/found: none
+        web/show-all web/links 0
+    ] [ none ]
+    s/print s/+ s/+ s/+ s/+ "# " s/from-int lk/count " links, " s/from-int it/pos web/page " events"
+    s/print s/+ s/+ "# " s/from-int web/batches " batches"
+    web/page: none
+    ;; the document is no longer needed: give it back (the handle becomes stale)
+    emit-host-call "dom-release" web/doc
+]
+web/links: none
+
+do-event: [
+    either = current-event 'start [ web/load current-value ] [
+        either = current-event 'web-loaded [ web/start current-value ] [
+            either = current-event 'dom-events [ web/batch current-value ] [
+                either = current-event 'web-error [
+                    s/print s/+ "error: " current-value
+                    web/page: none
+                    web/nothing
+                ] [ web/nothing ]
+            ]
+        ]
+    ]
+]
+route: [ web/nothing ]

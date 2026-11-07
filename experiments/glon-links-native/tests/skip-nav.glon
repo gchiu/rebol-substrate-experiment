@@ -1,0 +1,30 @@
+;; experiments/glon-links-native/tests/skip-nav.glon -- load after links.glon. The
+;; same program, but the driver skips every <nav> subtree with it/close as soon as
+;; its open event arrives: lk/event never sees it. A <nav> larger than one batch
+;; makes the HOST do the skip (the walker sends the close depth with dom-next).
+skip/nav: "nav"
+skip/count: 0
+hl/steps: func [w n] [
+    either either lk/done [ 1 ] [ hl/stop ] [ none ] [
+        either = n 1 [
+            sk-e: it/peek w
+            either hw/wait? sk-e [ hl/stop: 1 ] [
+                either either it/end? sk-e [ 0 ] [
+                    either = block-at sk-e 0 'open [ s/= block-at block-at sk-e 1 0 skip/nav ] [ 0 ]
+                ] [
+                    it/next w           ;; consume the open, then skip its contents
+                    it/close w
+                    skip/count: + skip/count 1
+                ] [ lk/event it/next w ]
+            ]
+        ] [
+            hl/steps w / n 2
+            hl/steps w - n / n 2
+        ]
+    ]
+]
+web/finish-links: :web/finish
+web/finish: func [] [
+    s/print s/+ "# skipped navs: " s/from-int skip/count
+    web/finish-links
+]

@@ -1,0 +1,14 @@
+;; experiments/glon-dom-links/example.glon -- run the link extractor on page.glon
+;; and print what it finds. Load after links.glon and page.glon (see Makefile).
+
+show: func [links i] [
+    either < i block-len links [
+        s/print s/+ s/+ block-at block-at links i 0 "  ->  " block-at block-at links i 1
+        show links + i 1
+    ] [ none ]
+]
+
+links: lk/extract page
+print block-len links
+show links 0
+links

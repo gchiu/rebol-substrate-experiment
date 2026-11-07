@@ -1,0 +1,34 @@
+;; experiments/glon-dom-host/emit.glon -- the four output words the GLON_LIVE
+;; dispatcher needs (a rendered fragment, or a host-call request fragment),
+;; copied VERBATIM from demo/shop/common.glon, as jupyter/prelude.glon copies its
+;; words. Loading these instead of all of common.glon (whose web-page vocabulary
+;; this experiment does not use) saves 71 global bindings and about 3,000 live
+;; managed cells. With prelude.glon they give the live dispatcher all it calls
+;; (mk-string, s/+, emit-*).
+;;
+;; Output goes to the fixed G1_OUT buffer (4,096 bytes). emit-byte and emit-text
+;; do NOT check that bound: only short, fixed text is emitted here.
+[
+emit-clear: masm [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
+emit-byte: masm 1 [
+    LIT SCRATCH_E @ LIT G1_OUT_DATA ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    ARITY 0 EXIT
+]
+emit-finish: masm [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
+emit-text: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_A !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  emit-text-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH emit-text-done
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL
+    LIT G1_OUT_DATA LIT SCRATCH_E @ ADD
+    !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH emit-text-loop
+  emit-text-done:
+    ARITY 0 EXIT
+]
+]

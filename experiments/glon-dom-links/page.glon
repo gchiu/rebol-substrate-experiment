@@ -1,0 +1,37 @@
+;; experiments/glon-dom-links/page.glon -- the example web page as Glon DOM data.
+;;
+;; The HTML, written by hand in the [ name attrs children ] convention of
+;; experiments/glon-dom/dom.glon. No HTML is parsed. Attributes are a flat block
+;; of name/value strings, [ "href" "/docs" ], or none. Whitespace-only text
+;; between tags is left out (a browser DOM would include it).
+;;
+;; <html>
+;;   <body>
+;;     <h1>Thinking Glon</h1>
+;;     <p>Read the <a href="/docs">documentation</a>.</p>
+;;     <ul>
+;;       <li><a href="/examples">Examples</a></li>
+;;       <li><a href="https://github.com/gchiu/rebol-substrate-experiment">GitHub</a></li>
+;;     </ul>
+;;   </body>
+;; </html>
+
+do [ page: reduce [ "html" none reduce [
+    reduce [ "body" none reduce [
+        reduce [ "h1" none reduce [ "Thinking Glon" ] ]
+        reduce [ "p" none reduce [
+            "Read the "
+            reduce [ "a" reduce [ "href" "/docs" ] reduce [ "documentation" ] ]
+            "."
+        ] ]
+        reduce [ "ul" none reduce [
+            reduce [ "li" none reduce [
+                reduce [ "a" reduce [ "href" "/examples" ] reduce [ "Examples" ] ]
+            ] ]
+            reduce [ "li" none reduce [
+                reduce [ "a" reduce [ "href" "https://github.com/gchiu/rebol-substrate-experiment" ] reduce [ "GitHub" ] ]
+            ] ]
+        ] ]
+    ] ]
+] ]
+none ]   ;; (the CLI prints a file's last value)

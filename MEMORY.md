@@ -320,7 +320,8 @@ In order:
 | `strings-ext.glon` optional string API | *(untagged)* | `96a0d13` |
 | Pratt parser v004 (**experiment, not deployed**) | *(untagged)* | *(the commit adding `experiments/glon-pratt/`)* |
 | Iterator vocabulary v001 (**experiment, not deployed**) | *(untagged)* | *(the commit adding `experiments/glon-iter/`)* |
-| DOM-tree iterator v001 (**experiment, not deployed**) | *(untagged)* | *(the commit adding `experiments/glon-dom/`)* |
+| DOM-tree iterator v001 (**experiment, not deployed**) | *(untagged)* | `369a3f0` |
+| Host-backed DOM and native `glon-web` link extraction (**experimental milestone, not deployed**) | *(untagged)* | *(the commit adding `experiments/glon-dom-links/`, `glon-dom-host/`, `glon-links-native/`)* |
 
 **Glon LaTeX milestone (2026-11-06/07).** What is deployed and what is
 experimental are different things:
@@ -546,5 +547,11 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
   experiment (`it/`, and an `lx/` lexer that matches v004's tokens).
 - `experiments/glon-dom/GLON-DOM-V001.md` — the DOM-tree event iterator
   experiment (`dom/walk`, `it/close`), on the `it/` protocol.
+- `experiments/glon-dom-links/README.md` — link extraction over `dom/walk`
+  (`lk/`, `lb/`).
+- `experiments/glon-dom-host/REPORT.md` — the host-backed DOM walker (`hw/`) and
+  the browser host.
+- `experiments/glon-links-native/README.md` — `glon-web`: a native Glon program
+  prints a real page's hyperlinks (libcurl, libxml2).
 - `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
 - `docs/distributed-glon-agents.md` — distributed/federated agent architecture.

@@ -1,0 +1,182 @@
+;; experiments/glon-dom-host/hostwalk.glon -- a HOST-BACKED DOM walker: the same
+;; event iterator as experiments/glon-dom/dom.glon, over a DOM that the browser
+;; owns and Glon never copies whole.
+;;
+;; WHY BATCHES. The WASM host interface cannot return a value to running Glon
+;; code: Glon asks with a host-call request at the end of a dispatch, and the
+;; host answers later with a new dispatch (glon_event_bytes). So the walker
+;; holds a BATCH of encoded events received from the host, decodes one at a time,
+;; and when the batch is used up reports hw/wait: "ask the host for more".
+;;
+;;   hw/walk doc attrs max bytes
+;;                           a walker over host document `doc` (an integer
+;;                           handle). attrs is a block of attribute-name strings
+;;                           the host reports for every element (Glon chooses
+;;                           them; the host does not filter elements). max is the
+;;                           most events per batch, bytes the most bytes (the host
+;;                           sends at least one event, and splits long text).
+;;   it/peek w, it/next w    the next event [ kind node depth ], as dom/walk;
+;;                           it/end at the end; hw/wait when the batch is used up
+;;   it/pos w                events consumed by it/next
+;;   it/close w              skip the rest of the innermost open element (in the
+;;                           batch, and at the host if the batch runs out first)
+;;   hw/request w            the argument for the next "dom-next" request:
+;;                           "doc max close-depth names bytes", e.g.
+;;                           "1 64 -1 href 240"
+;;   hw/feed w bytes         give the walker the host's reply (a batch)
+;;
+;; A NODE is a view built from the batch: [ name attrs parent ], with attrs a flat
+;; [ name value ... ] block of the requested attributes the element has (or
+;; none), and parent the view of the enclosing element (none at the root). A text
+;; node is a STRING!. The element's open and close events carry the SAME view, so
+;; identity tests work as with dom/walk.
+;; DIFFERENCE FROM dom/walk: the third slot is the PARENT, not the children
+;; (children are never in Glon). The chain of open views is the walker's stack,
+;; so an open level costs one view and its name string (64 cells), and a
+;; consumer can read an element's ancestors (Chris's `path`).
+;;
+;; BATCH FORMAT (bytes; u16 = two bytes, high first):
+;;   open 1 | empty 3:  kind, depth u16, name-len u8, name, then per requested
+;;                      attribute: value-len u16 (65535 = absent), value
+;;   close 2:           kind, depth u16
+;;   text 4:            kind, depth u16, len u16, bytes
+;;   end 5:             kind, depth u16 (0)
+;;
+;; Requires prelude/common, strings, strings-ext, iter.glon, list-block.glon,
+;; and ../glon-dom/dom.glon for the word it/close (message 6), which DOM v001 defines.
+;; Locals use an hw- prefix.
+do [
+hw/wait: reduce [ 'wait ]
+hw/wait?: func [v] [ = v hw/wait ]
+hw/absent: 65535
+
+hw/u16: func [b i] [ + * 256 s/at b i s/at b + i 1 ]
+
+;; the attributes of an element record, from offset i: a flat block of the
+;; present ones, or none; and the offset after them. Returns [ attrs next ].
+hw/attrs: func [b i names] [ hw/attrs-at b i names 0 none 0 ]
+hw/attrs-at: func [b i names k chain n] [
+    either < k block-len names [
+        hw-l: hw/u16 b i
+        either = hw-l hw/absent [ hw/attrs-at b + i 2 names + k 1 chain n ] [
+            hw/attrs-at b + + i 2 hw-l names + k 1
+                lb/push s/span b + i 2 + + i 2 hw-l lb/push block-at names k chain
+                + n 2
+        ]
+    ] [ reduce [ either = n 0 [ none ] [ lb/to-block chain n ] i ] ]
+]
+
+;; the attribute names joined with commas, for the request: "href,title"
+hw/names-text: func [names k] [
+    either < k block-len names [
+        either = + k 1 block-len names [ block-at names k ] [
+            s/+ s/+ block-at names k "," hw/names-text names + k 1
+        ]
+    ] [ "" ]
+]
+
+;; the size in bytes of the record at offset i
+hw/size: func [b i names] [
+    hw-k: s/at b i
+    either either = hw-k 2 [ 1 ] [ = hw-k 5 ] [ 3 ] [
+        either = hw-k 4 [ + 5 hw/u16 b + i 3 ] [
+            - block-at hw/attrs b + + i 4 s/at b + i 3 names 1 i
+        ]
+    ]
+]
+
+;; the event at offset i of batch b, without changing anything: [ ev next ]
+;; (open: the innermost open element's view, or none)
+hw/decode: func [b i names open] [
+    hw-k: s/at b i
+    hw-d: hw/u16 b + i 1
+    either = hw-k 2 [
+        either = open none [ raise create-sin 'host 'hw/close hw-d ] [ none ]
+        reduce [ reduce [ 'close open hw-d ] + i 3 ]
+    ] [
+        either = hw-k 4 [
+            hw-l: hw/u16 b + i 3
+            reduce [ reduce [ 'text s/span b + i 5 + + i 5 hw-l hw-d ] + + i 5 hw-l ]
+        ] [
+            either = hw-k 5 [ reduce [ it/end + i 3 ] ] [
+                hw-e: + + i 4 s/at b + i 3
+                hw-a: hw/attrs b hw-e names
+                reduce [
+                    reduce [ either = hw-k 1 [ 'open ] [ 'empty ]
+                             reduce [ s/span b + i 4 hw-e block-at hw-a 0 open ] hw-d ]
+                    block-at hw-a 1
+                ]
+            ]
+        ]
+    ]
+]
+
+;; skip records from offset i to the close at depth d: its offset, or none
+;; when the batch ends first
+hw/skip-to: func [b i d names] [
+    either < i s/length b [
+        either either = s/at b i 2 [ = hw/u16 b + i 1 d ] [ 0 ] [ i ] [
+            hw/skip-to b + i hw/size b i names d names
+        ]
+    ] [ none ]
+]
+
+hw/walk: func [doc attrs max bytes] [ hw/walk* doc attrs max bytes none 0 0 none none 0 0 -1 ]
+;; hw-z the byte budget, hw-b batch or none, hw-i offset, hw-n events consumed, hw-v cached [ ev next ],
+;; hw-s the innermost open view (its parents are the stack), hw-d depth, hw-f 1 after it/end, hw-x the
+;; depth the host must close at (-1: none)
+hw/walk*: func [hw-doc hw-names hw-max hw-z hw-b hw-i hw-n hw-v hw-s hw-d hw-f hw-x] [
+    reduce [ func [m x] [
+        either = m 2 [ hw-n ] [
+            either = m 7 [ hw-b: x  hw-i: 0  hw-v: none ] [
+                either = m 8 [
+                    hw-r: s/+ s/+ s/+ s/from-int hw-doc " " s/from-int hw-max s/+ " " s/from-int hw-x
+                    hw-r: s/+ s/+ hw-r " " hw/names-text hw-names 0
+                    hw-r: s/+ s/+ hw-r " " s/from-int hw-z
+                    hw-x: -1
+                    hw-r
+                ] [
+                    either = m 6 [
+                        ;; close: skip the rest of the innermost open element
+                        either = hw-s none [ none ] [
+                            hw-v: none
+                            hw-j: either = hw-b none [ none ] [ hw/skip-to hw-b hw-i - hw-d 1 hw-names ]
+                            either = hw-j none [
+                                hw-b: none  hw-x: - hw-d 1
+                            ] [ hw-i: hw-j ]
+                            hw-s
+                        ]
+                    ] [
+                        either hw-f [ it/end ] [
+                            ;; a used-up batch is released at once: it is the largest object here
+                            either either = hw-b none [ 1 ] [ >= hw-i s/length hw-b ] [ hw-b: none  hw/wait ] [
+                                either = hw-v none [ hw-v: hw/decode hw-b hw-i hw-names hw-s ] [ none ]
+                                hw-e: block-at hw-v 0
+                                either = m 0 [ hw-e ] [
+                                    either = m 1 [
+                                        either it/end? hw-e [ hw-f: 1 ] [
+                                            either = block-at hw-e 0 'open [
+                                                hw-s: block-at hw-e 1  hw-d: + hw-d 1
+                                            ] [
+                                                either = block-at hw-e 0 'close [
+                                                    hw-s: block-at hw-s 2  hw-d: - hw-d 1
+                                                ] [ none ]
+                                            ]
+                                        ]
+                                        hw-i: block-at hw-v 1  hw-v: none  hw-n: + hw-n 1
+                                        hw-e
+                                    ] [ raise create-sin 'type 'hw/message m ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ] ]
+]
+hw/feed: func [w bytes] [
+    either s/raw-string? bytes [ invoke block-at w 0 7 bytes ] [ raise create-sin 'type 'hw/feed bytes ]
+]
+hw/request: func [w] [ invoke block-at w 0 8 none ]
+]

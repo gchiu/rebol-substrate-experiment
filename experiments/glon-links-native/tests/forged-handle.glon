@@ -1,0 +1,18 @@
+;; experiments/glon-links-native/tests/forged-handle.glon -- load after links.glon.
+;; On web-loaded, ask for events with a handle one GENERATION off (a stale or
+;; forged handle): the host must refuse it with web-error, not dereference it.
+;; Then release the real handle, which ends the run cleanly.
+web/start: func [doc] [
+    web/doc: doc
+    emit-host-call "dom-next" s/+ s/from-int + web/int doc 1 " 64 -1 href 120"
+]
+do-event: [
+    either = current-event 'start [ web/load current-value ] [
+        either = current-event 'web-loaded [ web/start current-value ] [
+            either = current-event 'web-error [
+                s/print s/+ "refused: " current-value
+                emit-host-call "dom-release" web/doc
+            ] [ web/nothing ]
+        ]
+    ]
+]

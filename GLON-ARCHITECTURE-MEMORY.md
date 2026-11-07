@@ -248,6 +248,9 @@ build of the current sources.**
 | `p/` Pratt parser v004, written in Glon, plus its own `s/at s/slice s/span s/from-int` (its `s/span` is the byte-set scanner) | **[FINDING] experiment, committed but not deployed; a subset of v003's grammar, not a replacement for it; frozen by checksum (`FROZEN.sha256`)** | `experiments/glon-pratt/GLON-PRATT-V004.md` |
 | `it/` iterator vocabulary v001 and `lx/` lexer over it (after Chris Ross-Gill's iterator concept) | **[FINDING] experiment, not deployed, not yet used by a parser** | `experiments/glon-iter/GLON-ITER-V001.md` |
 | `dom/walk` DOM-tree event iterator v001 and `it/close` (after Chris Ross-Gill's DOM iterator) | **[FINDING] experiment, not deployed, not used by an application** | `experiments/glon-dom/GLON-DOM-V001.md` |
+| `lk/` link extractor over `dom/walk`, and `lb/` chain-to-block helper | **[FINDING] experiment, not deployed** | `experiments/glon-dom-links/README.md` |
+| `hw/` host-backed DOM walker; browser host (`glon-live.wasm`) | **[FINDING] experiment, not deployed; one WASM failure unexplained** | `experiments/glon-dom-host/REPORT.md` |
+| `glon-web`: a native host (libcurl, libxml2) running a Glon link-extraction program | **[FINDING] experimental milestone, not deployed; a separate executable (the `glon` CLI is unchanged)** | `experiments/glon-links-native/README.md` |
 
 **[DECISION] The string extension API (approved by the user 2026-11-07).**
 Five byte-level operations in a separate optional module,
@@ -370,6 +373,94 @@ Known limitations:
   be resumed more than once (fork); it was not adopted.
 
 Details are in `experiments/glon-dom/GLON-DOM-V001.md`.
+
+**[FINDING] Host-backed DOM traversal and native `glon-web` (2026-11-07, 64K
+configuration).**
+
+What was shown:
+- **Real HTML from a native host.** `glon-web` retrieves real HTML with libcurl
+  and parses it with libxml2's HTML parser. A Glon program performs the
+  traversal and the hyperlink extraction: it decides which elements are links,
+  joins their text across nested elements, and builds the results.
+- **Exact results on real pages.** The links of iana.org (31), rebol.com (20) and
+  Wikipedia "Rebol" (449) equal libxml2's own `[href, text content]` lists, byte
+  for byte.
+- **The same Glon code in the browser.** It runs in Chromium through
+  `glon-live.wasm`, and matches a JavaScript reference on the test page and the
+  100- and 1,000-node pages.
+- **Glon never holds the document.** It holds:
+  - a document handle;
+  - the current batch (at most 120 bytes);
+  - one view `[name attrs parent]` per open element.
+
+  The host keeps the document and the cursor. `lk/event` (glon-dom-links) is
+  reused unchanged.
+
+**[DECISION] The host boundary is asynchronous; no new primitive.**
+- Frozen S1 has no host operation that reads. A synchronous Glon → host call
+  returning a value would need a new frozen-S1 primitive, so none was added.
+- Host-backed traversal uses the existing `GLON_LIVE` asynchronous request/reply
+  mechanism. Glon ends a dispatch with a request fragment
+  (`dom-next "handle max close-depth attrs bytes"`). The host replies with
+  `glon_event_bytes`; the dispatcher reclaims the loader heap its wrapper used.
+- Within a batch, `it/peek`, `it/next`, `it/pos` and `it/close` keep their
+  meaning. When the batch is used up, the walker answers a third sentinel,
+  `hw/wait`, and the consumer resumes after the reply.
+- Writing host replies into Glon's memory from inside `host_print` was rejected
+  as an undocumented side channel.
+
+**[DECISION] Glon owns the handle's lifetime.** In `glon-web`, a handle is valid
+until Glon sends `dom-release`. The host then frees the document and changes the
+slot's generation, so a stale or forged handle is refused, never dereferenced.
+The browser host still releases at the end of a walk.
+
+[MEASURED] (native, `-O1`):
+
+| Measurement | gen-100 | gen-1,000 | gen-10,000 |
+|---|---|---|---|
+| Nodes | 144 | 1,048 | 10,048 |
+| Glon peak above baseline, printing links as found | +1,728 | +1,344 | +1,424 |
+| Return stack | 1,413 cells | 1,526 cells | 1,526 cells |
+
+- **Constant Glon heap.** Glon's heap usage for the 10,048-node document is
+  approximately the same as for the smaller pages. The return stack stays at
+  1,413–1,526 cells, and loader growth is 0. The baseline before any page is
+  2,992 of 7,232 cells.
+- **Session cost:** 149 of 256 bindings; loader 11,119 used, 3,681 free; code
+  ends at 14,371.
+- **Host memory is outside Glon:** libxml2 holds the document (1.4 MB for 10,048
+  nodes, 1.9 MB for the Wikipedia page).
+- **Printing links as they are found avoids the result-retention limit.**
+  Keeping links costs about 120 cells each during the walk (about 100 after), so
+  about 50 fit. The Wikipedia page's 449 links print within +1,792 cells.
+- **Copying the whole document into Glon** as `[name attrs children]` blocks costs
+  about 70 managed and 37 loader cells per node. It fails at about 100 nodes, and
+  a 1,250-child element exceeds a block's 512 values.
+- **Performance** is approximately 1.1 ms per event (23 s for 10,048 nodes).
+  Glon is the bottleneck, at about one collection per batch.
+- **Smaller live baseline.** Loading `emit.glon` (four words copied from
+  `common.glon`) instead of `common.glon` cuts the live baseline from 5,344 to
+  2,368 cells.
+
+**Outstanding limitations:**
+- **The WASM sequential-session failure is unexplained.** In the browser, the
+  10,000-node page exhausts the managed heap when it follows another page in the
+  same session. It passes in a fresh session, and natively in repeated runs,
+  with no leak.
+- **Deep nesting and non-moving heap fragmentation remain limits.**
+  - Each open element costs 64 cells in Glon.
+  - A batch string needs one contiguous block: 240-byte batches fail beyond
+    about 30 levels, and 120 bytes reaches 40–50.
+- **The existing `glon` CLI is unchanged.** It has no host extension point and
+  treats every argument as a file. `glon-web` is a separate executable, so
+  `glon links.glon URL` would need an approved CLI change.
+- **No scripts run.** libxml2 is not an HTML5 browser, and scripts do not run in
+  either host, so links created by JavaScript are not seen.
+- **Text tidying is shallow.** The readable output's whitespace tidying recurses
+  once per word, so displayed text is cut at 80 bytes (`--raw` is exact).
+- **Two earlier findings still apply:** Glon has no growable block (the link
+  experiment adds a masm chain-to-block worker), and the extractor's state is
+  global, so it is not re-entrant.
 
 ## 8. Why more memory is a separate scaling experiment
 

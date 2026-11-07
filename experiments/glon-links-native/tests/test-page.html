@@ -1,0 +1,35 @@
+<!doctype html>
+<!-- experiments/glon-links-native/tests/test-page.html (a copy of ../glon-dom-host/test-page.html) -- a page with
+     links, nested markup and irrelevant content, for the host-backed walk. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Thinking Glon: test page</title>
+  <style>a { color: teal; } /* <a href="/not-a-link-in-css">no</a> */</style>
+  <script>var notALink = '<a href="/not-a-link-in-script">no</a>';</script>
+</head>
+<body>
+  <!-- <a href="/commented-out">not a link</a> -->
+  <nav>
+    <a href="/">Home</a> |
+    <a href="/docs">Docs</a> |
+    <a name="top">an anchor without href</a>
+  </nav>
+  <main>
+    <h1>Thinking Glon</h1>
+    <p>Read the <a href="/docs/primer" title="Primer">Glon <em>primer</em></a>, then the
+       <a href="/docs/laws"><strong>alpha <span>laws</span></strong></a>.</p>
+    <ul>
+      <li><a href="/examples">Examples</a></li>
+      <li><a href="https://github.com/gchiu/rebol-substrate-experiment">GitHub</a></li>
+      <li><a href="/search?q=a&amp;b=&quot;c&quot;">A query with &amp; and "quotes"</a></li>
+      <li><a href="/unicode">Ünïcödé — 漢字 ✓</a></li>
+    </ul>
+    <table><tr><td>Irrelevant</td><td><img src="x.png" alt="an image"></td></tr></table>
+    <p>An empty link: <a href="/empty"></a>; a link around an image:
+       <a href="/image"><img src="y.png" alt="y"></a>.</p>
+    <form><input name="q"><button>Not a link</button></form>
+  </main>
+  <footer><p>Footer text with a <a href="mailto:someone@example.com">mail link</a>.</p></footer>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!doctype html>
+<!-- experiments/glon-dom-host/index.html -- Glon walks a real browser DOM.
+     Serve the REPOSITORY ROOT over http (make serve) and open
+     /experiments/glon-dom-host/index.html. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Glon: links of a real page, via a host-backed DOM walk</title>
+<style>
+  body { font: 15px/1.45 system-ui, sans-serif; margin: 2rem auto; max-width: 52rem; padding: 0 1rem; }
+  form { display: flex; gap: .5rem; } input { flex: 1; padding: .3rem; }
+  table { border-collapse: collapse; margin-top: 1rem; width: 100%; }
+  td, th { border-bottom: 1px solid #ddd; padding: .25rem .5rem; text-align: left; vertical-align: top; }
+  .glon-summary { margin-top: 1rem; font-weight: 600; } #metrics { color: #555; font-size: 13px; }
+  code { word-break: break-all; }
+</style>
+</head>
+<body>
+<h1>Links of a real page, found by Glon</h1>
+<p>The browser fetches and parses the page and keeps its DOM. Glon walks it in small
+batches through the host interface, decides which elements are links and builds the
+results. This page only displays them.</p>
+<form id="f"><input id="url" value="test-page.html" aria-label="URL (same origin)"><button>Load</button></form>
+<div id="glon-view"></div>
+<table id="links"><thead><tr><th>#</th><th>href</th><th>text</th></tr></thead><tbody></tbody></table>
+<p id="metrics"></p>
+<script src="host.js"></script>
+<script>
+  var ready = glonDomHost.boot("build/glon-live.wasm");
+  document.getElementById("f").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var url = document.getElementById("url").value;
+    ready.then(function () { return glonDomHost.extract(url); }).then(show).catch(function (err) {
+      document.getElementById("metrics").textContent = "Error: " + err.message;
+    });
+  });
+  function show(r) {
+    var tb = document.querySelector("#links tbody"); tb.textContent = "";
+    r.links.forEach(function (l, i) {
+      var tr = tb.insertRow();
+      tr.insertCell().textContent = i + 1;
+      var c = tr.insertCell().appendChild(document.createElement("code")); c.textContent = l[0];
+      tr.insertCell().textContent = JSON.stringify(l[1]);
+    });
+    var m = r.metrics;
+    document.getElementById("metrics").textContent =
+      r.glonEvents + " events in " + r.glonBatches + " batches (" + m.bytes + " bytes); " +
+      "walk " + m.wallMs.toFixed(0) + " ms, of which Glon " + m.glonMs.toFixed(0) + " ms and host " +
+      m.hostMs.toFixed(0) + " ms; deepest host stack " + m.maxStack + "; documents still held: " + r.docsHeld;
+  }
+</script>
+</body>
+</html>

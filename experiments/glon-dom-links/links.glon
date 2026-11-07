@@ -1,0 +1,116 @@
+;; experiments/glon-dom-links/links.glon -- extract a page's hyperlinks with the
+;; DOM iterator (experiments/glon-dom/dom.glon, v001, used unchanged).
+;;
+;;   lk/extract root   a block of [ href text ] pairs, in document order, for
+;;                     every <a> element that has an href attribute
+;;
+;; A link's text is ALL the text inside it, at any depth, joined:
+;; <a href="/x"><b>Git</b>Hub</a> gives [ "/x" "GitHub" ]. An <a> without an
+;; href is skipped (as a browser's document.links does). An <a> inside another
+;; <a> is read as part of the outer link's content.
+;;
+;; HOW IT WORKS. dom/walk turns the tree into a stream of events, and
+;; lk/event looks at one event at a time:
+;;   open <a href>    start a link: remember the element, its href, and ""
+;;   text             inside a link: add the text to the link's text
+;;   close <a>        the link's own close: keep [ href text ]
+;;   empty <a href>   a link with no content: keep [ href "" ]
+;;   it/end           stop
+;; Every other event is ignored. The walker keeps its own position, so no
+;; function here recurses into the tree.
+;;
+;; THE DRIVER. Glon has no loop, and one recursive call per event would exhaust
+;; the return stack after about 84 events. lk/steps takes n events by splitting
+;; n in halves (recursion depth about log2 n); lk/run doubles n until the end.
+;;
+;; STATE lives in the lk/ globals below, so lk/extract is not re-entrant.
+;; Requires prelude, strings, strings-ext, ../glon-iter/iter.glon,
+;; ../glon-dom/dom.glon and list-block.glon.
+
+lk/found: none      ;; the links found so far, a chain of pairs, newest first
+lk/count: 0         ;; how many
+lk/anchor: none     ;; the <a> element being read, or none
+lk/href: none       ;; its href
+lk/text: none       ;; its text so far: none, or a string
+lk/done: 0          ;; 1 once the walker has returned it/end
+
+;; constants: a string literal makes a new 32-cell string each time it is
+;; evaluated, so the names compared on every event are made once, here
+lk/a: "a"
+lk/href-name: "href"
+lk/no-text: ""
+
+;; the value of attribute `name` in a flat [ name value ... ] block, or none
+lk/attr: func [attrs name] [ lk/attr-at attrs name 0 ]
+lk/attr-at: func [attrs name i] [
+    either either = attrs none [ 0 ] [ < + i 1 block-len attrs ] [
+        either s/= block-at attrs i name [ block-at attrs + i 1 ] [ lk/attr-at attrs name + i 2 ]
+    ] [ none ]
+]
+
+;; 1 when node is an <a> element with an href
+lk/link?: func [node] [
+    either s/raw-string? block-at node 0 [
+        either s/= block-at node 0 lk/a [ s/raw-string? lk/attr block-at node 1 lk/href-name ] [ 0 ]
+    ] [ 0 ]
+]
+
+lk/keep: func [href text] [
+    lk/found: lb/push reduce [ href text ] lk/found
+    lk/count: + lk/count 1
+]
+
+;; handle one event from the walker
+lk/event: func [ev] [
+    either it/end? ev [ lk/done: 1 ] [
+        lk-kind: block-at ev 0
+        lk-node: block-at ev 1
+        either = lk/anchor none [
+            ;; outside a link: only an <a href> matters (a text node is not an
+            ;; element, and block-at must not be applied to it)
+            either either = lk-kind 'text [ 0 ] [ lk/link? lk-node ] [
+                either = lk-kind 'open [
+                    lk/anchor: lk-node
+                    lk/href: lk/attr block-at lk-node 1 lk/href-name
+                    lk/text: none
+                ] [
+                    either = lk-kind 'empty [ lk/keep lk/attr block-at lk-node 1 lk/href-name lk/no-text ] [ none ]
+                ]
+            ] [ none ]
+        ] [
+            ;; inside a link: collect text until the link's own close
+            ;; (a link's first text is kept as it is: only a second piece copies)
+            either = lk-kind 'text [
+                lk/text: either = lk/text none [ lk-node ] [ s/+ lk/text lk-node ]
+            ] [
+                either either = lk-kind 'close [ = lk-node lk/anchor ] [ 0 ] [
+                    lk/keep lk/href either = lk/text none [ lk/no-text ] [ lk/text ]
+                    lk/anchor: none
+                ] [ none ]
+            ]
+        ]
+    ]
+]
+
+;; take up to n events from walker w (stops at the end)
+lk/steps: func [w n] [
+    either lk/done [ none ] [
+        either = n 1 [ lk/event it/next w ] [
+            lk/steps w / n 2
+            lk/steps w - n / n 2
+        ]
+    ]
+]
+lk/run: func [w n] [
+    lk/steps w n
+    either lk/done [ none ] [ lk/run w * n 2 ]
+]
+
+lk/extract: func [root] [
+    lk/found: none  lk/count: 0  lk/anchor: none  lk/text: none  lk/done: 0
+    lk/run dom/walk root 16
+    lk/result: lb/to-block lk/found lk/count
+    lk/found: none
+    lk/result
+]
+lk/result: none

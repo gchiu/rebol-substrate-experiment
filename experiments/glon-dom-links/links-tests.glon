@@ -1,0 +1,87 @@
+;; experiments/glon-dom-links/links-tests.glon -- regression tests for lk/extract.
+;; Load after links.glon and page.glon. A failure prints FAIL; the last line
+;; raises a SIN! (exit status 1).
+
+t/pass: 0
+t/fail: 0
+t/ok: func [name] [ t/pass: + t/pass 1 ]
+t/bad: func [name] [ t/fail: + t/fail 1  s/print s/+ "FAIL " name ]
+t/num: func [name got want] [ either = got want [ t/ok name ] [ t/bad name  print got  print want ] ]
+;; link i of links is [ href text ]
+t/link: func [name links i href text] [
+    either either < i block-len links [
+        either s/= block-at block-at links i 0 href [ s/= block-at block-at links i 1 text ] [ 0 ]
+    ] [ 0 ] [ t/ok name ] [ t/bad name ]
+]
+;; a one-element tree: a <p> holding the given children
+t/p: func [kids] [ reduce [ "p" none kids ] ]
+
+;; ---- 1. the example page: three links, in document order --------------------------
+do [
+links: lk/extract page
+t/num  "1.1 three links"           block-len links 3
+t/link "1.2 first: /docs"          links 0 "/docs" "documentation"
+t/link "1.3 second: /examples"     links 1 "/examples" "Examples"
+t/link "1.4 third: GitHub"         links 2 "https://github.com/gchiu/rebol-substrate-experiment" "GitHub"
+t/num  "1.5 each link is a pair"   block-len block-at links 2 2
+again: lk/extract page
+t/num  "1.6 a second run: same count (state is reset)" block-len again 3
+t/link "1.7 a second run: same first link" again 0 "/docs" "documentation"
+t/num  "1.8 a new block each run"  = links again 0
+]
+
+;; ---- 2. nested elements inside a link -----------------------------------------------
+do [
+links: lk/extract t/p reduce [
+    reduce [ "a" reduce [ "href" "/x" ] reduce [ reduce [ "b" none reduce [ "Git" ] ] "Hub" ] ]
+]
+t/link "2.1 <a><b>Git</b>Hub</a>" links 0 "/x" "GitHub"
+links: lk/extract t/p reduce [
+    reduce [ "a" reduce [ "class" "c" "href" "/y" ] reduce [
+        "a "
+        reduce [ "span" none reduce [ reduce [ "em" none reduce [ "deeply" ] ] " nested" ] ]
+        reduce [ "br" none none ]
+        " link"
+    ] ]
+]
+t/link "2.2 text at several depths, href not first" links 0 "/y" "a deeply nested link"
+links: lk/extract t/p reduce [
+    reduce [ "a" reduce [ "href" "/out" ] reduce [ "outer " reduce [ "a" reduce [ "href" "/in" ] reduce [ "inner" ] ] ] ]
+    "after"
+]
+t/num  "2.3 an <a> inside an <a> is the outer link's content" block-len links 1
+t/link "2.4 ... and its text is included" links 0 "/out" "outer inner"
+]
+
+;; ---- 3. edge cases --------------------------------------------------------------------
+do [
+t/num  "3.1 no links: an empty block" block-len lk/extract t/p reduce [ "just text" ] 0
+links: lk/extract t/p reduce [ reduce [ "a" reduce [ "href" "/e" ] none ] reduce [ "a" reduce [ "href" "/f" ] [] ] ]
+t/link "3.2 an empty <a href> (children none)" links 0 "/e" ""
+t/link "3.3 an empty <a href> (children [])" links 1 "/f" ""
+links: lk/extract t/p reduce [ reduce [ "a" none reduce [ "no href" ] ] reduce [ "a" reduce [ "name" "x" ] reduce [ "anchor" ] ] ]
+t/num  "3.4 <a> without href is skipped" block-len links 0
+links: lk/extract reduce [ "a" reduce [ "href" "/root" ] reduce [ "root link" ] ]
+t/link "3.5 the root itself is a link" links 0 "/root" "root link"
+t/num  "3.6 a text root" block-len lk/extract "plain" 0
+links: lk/extract t/p reduce [ reduce [ "A" reduce [ "href" "/upper" ] reduce [ "x" ] ] ]
+t/num  "3.7 names are compared exactly (A is not a)" block-len links 0
+]
+
+;; ---- 4. many links: the driver is not limited by the return stack ------------------------
+;; 40 links take 210 events: one recursive call per event would exhaust the return
+;; stack after about 84. (The managed heap limits the count: each link found keeps
+;; 64 cells until the end, so about 54 fit in this session; see README.md.)
+do [
+l: reduce [ "li" none reduce [ reduce [ "a" reduce [ "href" "/n" ] reduce [ "n" ] ] ] ]
+ten: reduce [ "ul" none reduce [ l l l l l l l l l l ] ]
+forty: reduce [ "div" none reduce [ ten ten ten ten ] ]
+links: lk/extract forty
+t/num  "4.1 40 links (210 events)" block-len links 40
+t/link "4.2 the last one" links 39 "/n" "n"
+l: none  ten: none  forty: none  links: none
+]
+
+print t/pass
+print t/fail
+either = t/fail 0 [ s/print "glon-dom-links: all tests passed" ] [ raise create-sin 'test 'failed t/fail ]
