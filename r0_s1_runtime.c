@@ -380,6 +380,45 @@ static int masm_read_block(parser_t *P) {
     }
 }
 
+/* The exact number of cells assemble_raw will emit for tk[0..n), computed
+ * before anything is emitted. It follows assemble_raw's dispatch token for
+ * token; the per-form sizes are those of the frozen s1.c assembler (LIT, HOST
+ * and ZBRANCH 2 cells; DUP DROP @ ! 1; asm_branch / asm_branch_fwd 5; asm_toR /
+ * asm_fromR 14; asm_exit 17; asm_call / emit_call_fwd 21), which cannot change.
+ * The parser checks the result against R0S1_CODE_LIMIT before assembling, and
+ * after assembling that the emitted size is exactly this. */
+static cell raw_size(const masm_tok_t *tk, int n) {
+    const masm_tok_t none_tok = { MT_OTHER, int_val(R0_NONE), "", 0 };
+    cell size = 0;
+    for (int i = 0; i < n; i++) {
+        const masm_tok_t *tok = &tk[i];
+        if (tok->kind != MT_WORD) continue;                 /* labels emit nothing */
+        if (mt_is(tok, "LIT") || mt_is(tok, "INT") || mt_is(tok, "ARITY")
+            || mt_is(tok, "HOST") || mt_is(tok, "ZBRANCH")
+            || mt_is(tok, "BRANCH") || mt_is(tok, "CALL")) {
+            i++;
+            const masm_tok_t *op = (i < n) ? &tk[i] : &none_tok;
+            if (mt_is(tok, "LIT") || mt_is(tok, "INT")
+                || mt_is(tok, "ARITY") || mt_is(tok, "HOST")) {
+                int ok; (void)raw_resolve(op, &ok);
+                if (ok) size += 2;                          /* unresolved: nothing emitted */
+            } else if (mt_is(tok, "ZBRANCH")) size += 2;
+            else if (mt_is(tok, "BRANCH")) size += 5;
+            else size += 21;                                /* CALL, every form */
+            continue;
+        }
+        if (mt_is(tok, "DUP") || mt_is(tok, "DROP") || mt_is(tok, "@") || mt_is(tok, "!")) size += 1;
+        else if (mt_is(tok, "EXIT")) size += 17;
+        else if (mt_is(tok, ">R") || mt_is(tok, "R>")) size += 14;
+        else if (mt_is(tok, "NONE") || mt_is(tok, "ADD") || mt_is(tok, "SUB") || mt_is(tok, "MUL")
+                 || mt_is(tok, "DIV") || mt_is(tok, "MOD") || mt_is(tok, "EQ") || mt_is(tok, "NE")
+                 || mt_is(tok, "LT") || mt_is(tok, "GT") || mt_is(tok, "LE") || mt_is(tok, "GE")
+                 || mt_is(tok, "PRINT") || mt_is(tok, "ALLOC")) size += 2;
+        /* an unknown mnemonic emits nothing (assemble_raw reports it) */
+    }
+    return size;
+}
+
 static cell assemble_raw(const masm_tok_t *tk, int n) {
     const masm_tok_t none_tok = { MT_OTHER, int_val(R0_NONE), "", 0 };
     raw_nlabels = 0; raw_nrefs = 0;
@@ -584,12 +623,34 @@ static cell parse_block(parser_t *P, int is_body) {
                 if (P->s[P->pos] != '[') { P->err = 1; break; }   /* no block: never assemble */
                 int ntok = masm_read_block(P);            /* [ instr... ] */
                 if (P->err) break;
-                cell entry = assemble_raw(masm_toks, ntok);
+                /* Code-space bound: refuse, BEFORE emitting anything, a block
+                 * whose code would end above R0S1_CODE_LIMIT (the data stack
+                 * keeps R0S1_DS_RESERVE cells). The parse then fails as
+                 * too_large and is rolled back like any failed parse; no
+                 * binding is made, because the source never runs. */
+                cell need = raw_size(masm_toks, ntok);
+                if (asm_here() + need > R0S1_CODE_LIMIT) {
+                    fprintf(stderr, "r0_s1: masm code space exhausted: the block needs %ld cells, "
+                                    "%ld are free below the code limit %ld\n",
+                            (long)need, (long)(R0S1_CODE_LIMIT - asm_here()), (long)R0S1_CODE_LIMIT);
+                    parse_fail_set(R0S1_PARSE_TOO_LARGE);
+                    P->err = 1;
+                    break;
+                }
+                /* the callable's record first, so that a full loader heap
+                 * also fails before any code is emitted */
                 cell p = lalloc(2);
                 if (p < 0) {
                     parse_fail_set(R0S1_PARSE_LOADER_EXHAUSTED);
                     P->err = 1;
                     break;
+                }
+                cell entry = assemble_raw(masm_toks, ntok);
+                if (asm_here() - entry != need) {
+                    /* raw_size no longer matches the assembler: a runtime bug */
+                    fprintf(stderr, "r0_s1: internal error: masm block emitted %ld cells, %ld were checked\n",
+                            (long)(asm_here() - entry), (long)need);
+                    abort();
                 }
                 M[p + RAW_ENTRY] = entry;
                 M[p + RAW_ARITY] = (cell)arity;
@@ -3637,7 +3698,11 @@ static cell parse_program(parser_t *P) {
  * func-site counter and the symbol table are restored to their state at entry,
  * so a failed parse consumes nothing and earlier session state is untouched.
  * The return value is then R0_NONE and must not be run. (Emitted code from a
- * `masm` form inside the failed source is the one thing not reclaimed.) */
+ * `masm` form inside the failed source is the one thing not reclaimed: the
+ * assembler's cursor is a static of the frozen s1.c and cannot move back. A
+ * block that would not fit is refused before it emits anything, but code of
+ * EARLIER masm blocks of the same source stays in place, unreachable: no
+ * binding refers to it, because the failed source never runs.) */
 cell r0_s1_parse(const char *src, int *err) {
     parser_t P; P.s = src; P.pos = 0; P.err = 0;
     cell save_lhp = M[GC_LOADER_HP];
@@ -3665,16 +3730,24 @@ cell r0_s1_parse(const char *src, int *err) {
 int r0_s1_parse_error_kind(void) { return parse_fail; }
 
 /* STACK-SENTRY: after a run the SP/RP must be back inside the legal region of
- * the world the run ended in (main DS [code_end, DS_INIT], main RS
+ * the world the run ended in (main DS [end of emitted code, DS_INIT], main RS
  * [DS_INIT, RS_INIT], or a task DS [base, base+M1_DS_OFF] / task RS
  * [base+M1_DS_OFF, base+M1_RS_OFF]). A violation is reported immediately, with
  * the offending register state, not a later GC or unrelated failure. */
 static void r0_s1_stack_sentry(void) {
     cell sp = s1_mem(REG_SP), rp = s1_mem(REG_RP);
+    /* The code boundary is the CURRENT end of emitted code: the runtime's own
+     * code plus every masm library assembled since (code_end is only the
+     * runtime's). RV_SPMIN is the deepest SP the run recorded (at every
+     * closure invocation; reset at each run), so growth into code that
+     * shrank back before the end is detected too. */
+    cell code_top = asm_here();
     const char *what = NULL;
     if (sp <= R0S1_DS_INIT) {
         /* main world */
-        if (sp < code_end)              what = "main data-stack overflow (SP < code)";
+        if (sp < code_top)              what = "main data-stack overflow (SP < code)";
+        else if (s1_mem(RV_SPMIN) < code_top)
+                                        what = "main data-stack overflow during the run (deepest SP < code)";
         else if (rp > R0S1_RS_INIT)     what = "main return-stack underflow (RP > RS_INIT)";
         else if (rp < R0S1_DS_INIT)     what = "main return-stack overflow (RP < DS_INIT)";
     } else if (sp >= M1_ARENA_BASE &&

@@ -232,6 +232,14 @@ _Static_assert(GC_HEAP_LIMIT == R0S1_HEAP_BASE,
 /* standard S1 stack tops (also used to locate the scheduler/main world) */
 #define R0S1_DS_INIT   16384L
 #define R0S1_RS_INIT   24576L
+/* Code-space bound for masm library code (2026-11-09). Emitted code grows up
+ * from CODE_BASE towards the main data stack, which grows down from
+ * R0S1_DS_INIT. The masm assembler refuses a block whose emitted cells would
+ * end above R0S1_CODE_LIMIT, so R0S1_DS_RESERVE cells always remain for the
+ * data stack (the deepest use measured in every workload was 87 cells,
+ * experiments/glon-masm). Not a memory-map change: no region moves. */
+#define R0S1_DS_RESERVE 256L
+#define R0S1_CODE_LIMIT (R0S1_DS_INIT - R0S1_DS_RESERVE)
 
 /* allocation header: 16-cell stride before each 16-aligned payload. */
 #define GC_HDR_SIZE     0
