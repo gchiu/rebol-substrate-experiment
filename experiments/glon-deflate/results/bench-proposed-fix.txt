@@ -1,0 +1,20 @@
+host: dzhost built against a scratch copy of the runtime with proposal/gc-object-start-check.patch applied (outside the repository)
+
+workload                              in B   out B | Glon KB/s  first ms live max  RS max    GCs | zlib MB/s    ratio
+---------------------------------------------------------------------------------------------------------------------
+text 20 KB, dynamic                   3558   20000 |      2.30       628     4496    3864    159 |     701.7  297955x
+text 4 KB, fixed                      1015    4000 |      2.15       215     3824    2865     24 |    1088.8  494565x
+noise 3 KB (dynamic, ~1:1)            3044    3000 |      0.41      1145     4544    3604    185 |     255.5  608516x
+noise 3 KB, stored                    3010    3000 |     11.83        10     3808    2306     11 |    6265.2  517188x
+'a' x 20 KB (overlapping copies)        37   20000 |      8.89       210     4528    3864    102 |     559.0   61402x
+
+Glon KB/s: decompressed bytes per second of the whole conversation (feeds, reads, output frames);
+first ms: time from opening the decoder to the first output; live max: managed cells live after the
+fullest collection (heap 7,232); RS max: deepest return stack in cells (8,192); ratio: zlib / Glon.
+
+startup: libraries 20.8 ms (parse + load of prelude, strings, strings-ext, inflate, progress, app: 105 bindings, 10721 loader cells, code ends at 14150); decoder creation 1.32 ms
+
+suspension / resumption (text, dynamic): each read returns to the host and resumes the decoder
+  read     1 bytes:   2005 reads,   3615.2 us per read,    0.27 KB/s, 2000 bytes out
+  read   100 bytes:    217 reads,  39723.6 us per read,    2.25 KB/s, 20000 bytes out
+  read  4096 bytes:     88 reads,  94915.2 us per read,    2.31 KB/s, 20000 bytes out

@@ -1,0 +1,33 @@
+--- a/r0_s1_runtime.c
++++ b/r0_s1_runtime.c
+@@ -1016,7 +1016,30 @@
+     asm_lit(4); asm_host(HOST_DIV); asm_lit(8); asm_host(HOST_MOD);                     /* kind */
+     asm_lit(GC_KIND_CLOSURE); asm_host(HOST_EQ);
+     cell j4 = asm_zbranch_fwd();                     /* not a closure -> skip */
++    /* PROPOSAL (experiments/glon-deflate): the kind bits alone do not identify
++     * a closure. A STRING! holds one byte per cell, so the inside of a string
++     * can carry "closure flags" (a byte 8-11) at p - 15, and an integer n is
++     * the 16-aligned cell n * 16. p - 16 must therefore be a real object
++     * header: walk the object sizes from GC_HEAP_BASE up to the frontier, and
++     * skip p unless the walk lands exactly on p - 16. */
++    asm_lit(GC_HEAP_BASE); e_setc(GC_T2);            /* a */
++    e_cell(GC_T1); asm_lit(GC_HDR_STRIDE); asm_host(HOST_SUB); e_setc(GC_T3); /* h */
++    e_cell(GC_T3); asm_lit(REG_HP); asm_fetch(); asm_host(HOST_LT);
++    cell j_wfront = asm_zbranch_fwd();               /* h at/after the frontier */
++    cell wl = asm_here();
++    e_cell(GC_T2); e_cell(GC_T3); asm_host(HOST_LT);
++    cell j_wdone = asm_zbranch_fwd();
++    e_cell(GC_T2); asm_fetch(); asm_lit(0); asm_host(HOST_GT);
++    cell j_wbad = asm_zbranch_fwd();                 /* size 0: give up */
++    e_cell(GC_T2); e_cell(GC_T2); asm_fetch(); asm_host(HOST_ADD); e_setc(GC_T2);
++    asm_branch(wl);
++    asm_patch_here(j_wdone);
++    e_cell(GC_T2); e_cell(GC_T3); asm_host(HOST_EQ);
++    cell j_wno = asm_zbranch_fwd();                  /* not an object start */
+     e_cell(GC_T1); asm_call(r_mark_push);
++    asm_patch_here(j_wno);
++    asm_patch_here(j_wbad);
++    asm_patch_here(j_wfront);
+     asm_patch_here(j4);
+     asm_patch_here(j3);
+     asm_patch_here(j2);

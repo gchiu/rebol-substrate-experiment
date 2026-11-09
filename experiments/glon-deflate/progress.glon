@@ -1,0 +1,38 @@
+;; experiments/glon-deflate/progress.glon -- ASCII progress presentation.
+;; Pure presentation: it knows nothing about DEFLATE; it is given counts.
+;;
+;;   pb/line done total in out   one status line, e.g.
+;;       Inflating [############--------]  60%  in 6144/10240  out 30000
+;;     done/total are compressed bytes consumed / known total. When total is
+;;     0 (unknown) no percentage is invented:
+;;       Inflating  in 6144 bytes  out 30000 bytes
+;;   pb/redraw line              the line prefixed with ESC[1A ESC[2K CR, so
+;;     that, printed after a previous line, it replaces it in place on an ANSI
+;;     terminal. s/print always ends with a newline (the only byte-output word
+;;     Glon has without masm), so "carriage-return" updates are cursor-up,
+;;     clear-line, carriage return, then the text and that newline.
+;;
+;; Requires strings.glon and strings-ext.glon (s/from-int). Locals: pb-.
+pb/width: 20
+;; the 1-byte string s repeated to n bytes (doubling), or "" when n <= 0
+pb/rep: func [s n] [
+    either > n 0 [ either >= s/length s n [ s/slice s 0 n ] [ pb/rep s/+ s s n ] ] [ "" ]
+]
+;; n right-aligned in k columns
+pb/pad: func [n k] [
+    pb-t: s/from-int n
+    s/+ pb/rep " " - k s/length pb-t pb-t
+]
+pb/line: func [done total in out] [
+    either > total 0 [
+        pb-f: / * pb/width either > done total [ total ] [ done ] total
+        s/+ s/+ s/+ s/+ s/+ s/+ s/+ s/+ s/+
+            "Inflating [" pb/rep "#" pb-f pb/rep "-" - pb/width pb-f "] "
+            pb/pad / * 100 either > done total [ total ] [ done ] total 3 "%  in "
+            s/from-int in s/+ "/" s/from-int total
+            "  out " s/from-int out
+    ] [
+        s/+ s/+ s/+ s/+ "Inflating  in " s/from-int in " bytes  out " s/from-int out " bytes"
+    ]
+]
+pb/redraw: func [line] [ s/+ mk-string [ 27 91 49 65 27 91 50 75 13 ] line ]

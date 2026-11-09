@@ -1,0 +1,73 @@
+;; experiments/glon-deflate/app.glon -- the decoder's conversation with a host,
+;; over the existing GLON_LIVE byte-event ABI (r0_s1_g1a_live_event_bytes): the
+;; host sends an event token and a byte payload (current-value, a STRING!); the
+;; dispatch's result fragment, here one status byte, is the reply.
+;;
+;;   event   payload             effect
+;;   open    window (decimal)    a new decoder, dz/new window
+;;   total   bytes (decimal)     known compressed size for progress (0: unknown)
+;;   show    0 / 1 / 2           0 data frames; 1 progress lines; 2 ANSI in place
+;;   feed    compressed bytes    dz/feed
+;;   finish  -                   dz/finish
+;;   read    n (decimal)         dz/read d n, then output (below)
+;;
+;; Reply byte: R ready, N need-input, D done, E error.
+;; Output on stdout (frames, so any byte value passes):
+;;   "D <n>" newline, then the n bytes, then a newline     (show 0)
+;;   "E <id>" newline                                       on an error
+;;   a progress line                                         (show 1 / 2)
+;;
+;; The app's own words keep their state in globals (app/...), and its locals
+;; carry an ap- prefix. do-event runs at top level: it calls functions only.
+app/d: none
+app/total: 0
+app/show: 0
+app/drawn: 0
+app/int: func [s i n] [
+    either < i s/length s [ app/int s + i 1 + * n 10 - s/at s i 48 ] [ n ]
+]
+app/name: func [id] [
+    either = id 'truncated [ "truncated" ] [ either = id 'block-type [ "block-type" ] [
+    either = id 'stored-length [ "stored-length" ] [ either = id 'counts [ "counts" ] [
+    either = id 'code-lengths [ "code-lengths" ] [ either = id 'repeat [ "repeat" ] [
+    either = id 'no-end-code [ "no-end-code" ] [ either = id 'bad-code [ "bad-code" ] [
+    either = id 'symbol [ "symbol" ] [ either = id 'distance-symbol [ "distance-symbol" ] [
+    either = id 'distance [ "distance" ] [ either = id 'window [ "window" ] [ "other" ]
+    ] ] ] ] ] ] ] ] ] ] ]
+]
+app/code: func [] [
+    either = app/d none [ reduce [ 69 ] ] [
+        ap-s: dz/state app/d
+        either = ap-s 'ready [ reduce [ 82 ] ] [ either = ap-s 'need-input [ reduce [ 78 ] ] [
+            either = ap-s 'done [ reduce [ 68 ] ] [ reduce [ 69 ] ]
+        ] ]
+    ]
+]
+app/fail: func [e] [ s/print s/+ "E " app/name sin-id e ]
+app/progress: func [] [
+    ap-l: pb/line dz/in-pos app/d app/total dz/in-pos app/d dz/out-pos app/d
+    either either = app/show 2 [ = app/drawn 1 ] [ 0 ] [ s/print pb/redraw ap-l ] [ s/print ap-l ]
+    app/drawn: 1
+]
+app/read: func [n] [
+    ap-r: judge [ dz/read app/d n ]
+    either sin? ap-r [ app/fail ap-r ] [
+        either = app/show 0 [
+            s/print s/+ "D " s/from-int s/length ap-r
+            s/print ap-r
+        ] [ app/progress ]
+        ;; a read that ends in an error returns its good bytes first: report now
+        either = dz/state app/d 'error [ app/fail dz/error app/d ] [ none ]
+    ]
+]
+
+do-event: [
+    either = current-event 'read [ app/read app/int current-value 0 0 ] [
+    either = current-event 'feed [ dz/feed app/d current-value ] [
+    either = current-event 'finish [ dz/finish app/d ] [
+    either = current-event 'open [ app/d: dz/new app/int current-value 0 0  app/drawn: 0 ] [
+    either = current-event 'total [ app/total: app/int current-value 0 0 ] [
+    either = current-event 'show [ app/show: app/int current-value 0 0 ] [ none ]
+    ] ] ] ] ]
+    app/code
+]

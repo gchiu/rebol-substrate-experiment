@@ -1,0 +1,45 @@
+demo: 6000 bytes of text, 1159 compressed (raw DEFLATE, zlib windowBits -10)
+-- known total (compressed size), reading 512 bytes per request, feeding 128-byte chunks
+Inflating [--------------------]   0%  in 0/1159  out 0
+Inflating [##------------------]  11%  in 128/1159  out 202
+Inflating [###-----------------]  16%  in 187/1159  out 458
+Inflating [####----------------]  20%  in 236/1159  out 714
+Inflating [####----------------]  22%  in 255/1159  out 832
+Inflating [#####---------------]  25%  in 296/1159  out 1088
+Inflating [#####---------------]  29%  in 345/1159  out 1344
+Inflating [######--------------]  33%  in 384/1159  out 1585
+Inflating [#######-------------]  37%  in 430/1159  out 1841
+Inflating [########------------]  41%  in 476/1159  out 2097
+Inflating [########------------]  44%  in 512/1159  out 2337
+Inflating [#########-----------]  48%  in 558/1159  out 2593
+[dump] IP=1899 SP=16382 RP=24158 HP=40000 top=39740
+dzhost: dispatch failed (machine halt 0; last collection: 0 live, 0 free in 0 blocks)
+-- unknown total: counters only
+Inflating  in 0 bytes  out 0 bytes
+Inflating  in 128 bytes  out 202 bytes
+Inflating  in 187 bytes  out 458 bytes
+Inflating  in 236 bytes  out 714 bytes
+Inflating  in 255 bytes  out 832 bytes
+Inflating  in 296 bytes  out 1088 bytes
+Inflating  in 345 bytes  out 1344 bytes
+Inflating  in 384 bytes  out 1585 bytes
+Inflating  in 430 bytes  out 1841 bytes
+Inflating  in 476 bytes  out 2097 bytes
+Inflating  in 512 bytes  out 2337 bytes
+Inflating  in 558 bytes  out 2593 bytes
+Inflating  in 607 bytes  out 2849 bytes
+Inflating  in 640 bytes  out 3052 bytes
+Inflating  in 688 bytes  out 3308 bytes
+Inflating  in 738 bytes  out 3564 bytes
+Inflating  in 768 bytes  out 3761 bytes
+Inflating  in 814 bytes  out 4017 bytes
+Inflating  in 857 bytes  out 4273 bytes
+Inflating  in 895 bytes  out 4476 bytes
+Inflating  in 938 bytes  out 4732 bytes
+Inflating  in 982 bytes  out 4988 bytes
+Inflating  in 1023 bytes  out 5209 bytes
+Inflating  in 1065 bytes  out 5465 bytes
+Inflating  in 1108 bytes  out 5721 bytes
+Inflating  in 1151 bytes  out 5967 bytes
+Inflating  in 1159 bytes  out 6000 bytes
+-- data run: output EQUALS the original (6000 bytes)

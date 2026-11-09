@@ -251,6 +251,7 @@ build of the current sources.**
 | `lk/` link extractor over `dom/walk`, and `lb/` chain-to-block helper | **[FINDING] experiment, not deployed** | `experiments/glon-dom-links/README.md` |
 | `hw/` host-backed DOM walker; browser host (`glon-live.wasm`) | **[FINDING] experiment, not deployed; one WASM failure unexplained** | `experiments/glon-dom-host/REPORT.md` |
 | `glon-web`: a native host (libcurl, libxml2) running a Glon link-extraction program | **[FINDING] experimental milestone, not deployed; a separate executable (the `glon` CLI is unchanged)** | `experiments/glon-links-native/README.md` |
+| `dz/` streaming DEFLATE decompressor (RFC 1951) in Glon, after Chris Ross-Gill's `deflate.reb` | **[FINDING] experiment, not deployed; found a collector defect (fix proposed, not applied)** | `experiments/glon-deflate/README.md` |
 
 **[DECISION] The string extension API (approved by the user 2026-11-07).**
 Five byte-level operations in a separate optional module,
@@ -461,6 +462,59 @@ The browser host still releases at the end of a walk.
 - **Two earlier findings still apply:** Glon has no growable block (the link
   experiment adds a masm chain-to-block worker), and the extractor's state is
   global, so it is not re-entrant.
+
+**[FINDING] Streaming DEFLATE decompressor (2026-11-09, 64K configuration,
+native, `experiments/glon-deflate/`).**
+
+What was shown:
+- **Plain Glon, no runtime change.** `inflate.glon` decodes raw DEFLATE: stored,
+  fixed and dynamic blocks, canonical Huffman codes, overlapping copies,
+  malformed and truncated input. It has no masm, no new native, and no
+  change to S1, the runtime or the ABI.
+- **A resumable iterator.** `dz/feed`, `dz/read`, `dz/state` and `dz/finish`.
+  Input arrives through the existing GLON_LIVE byte event, in any split down
+  to 1 byte. Each unit runs under `judge`, and the bit reader rolls back to a
+  checkpoint when input runs out mid-unit.
+- **Conformance.** Of 480 differential runs against C zlib (164 fixtures, 7
+  chunk/read schedules), 478 pass on the unchanged runtime and 479 with the
+  proposed collector fix. Every malformed (222) and truncated (24) case
+  matches zlib's class and its bytes before the error. No run produced a wrong
+  byte: the failures are fail-stops.
+
+[MEASURED] limits and costs:
+- **No 32 KB window fits.** At one cell per byte, the managed heap cannot hold
+  RFC 1951's window. `dz/new w` keeps w bytes, 768 in the host (covering zlib
+  `windowBits` ≤ 10), and a longer distance raises `'window`.
+- **Input and read sizes.** Input chunks are ≤ 128 bytes per feed; a read
+  returns ≤ 256 bytes.
+- **Memory.** Peak live is about 4,500–5,000 of 7,232 cells. The session's 64
+  closures alone take 2,048 cells (32 per `func`).
+- **Fragmentation.** A dynamic header needs strings of about 300 contiguous
+  cells, so one run in 480 fail-stops on heap fragmentation (2,944 cells free
+  in 19 holes).
+- **Speed.** About 2.4 KB/s for text against about 840 MB/s for C zlib (about
+  340,000× slower). One suspend/resume round trip costs about 2.8 ms. A
+  dynamic header costs 0.5–0.9 s.
+- **Accumulators in recursion are retained.** Glon has no tail calls, so an
+  accumulator passed down a recursion is kept alive in every pending frame.
+  Build by balanced halves, or update one variable in place.
+
+**[FINDING] Collector defect: the return-stack closure scan accepts interior
+pointers into STRING!s** (found by the DEFLATE experiment, 2026-11-09).
+- **The test.** `emit_mark_closure_inline` treats a 16-aligned heap value p
+  as a closure if the cell at p − 15 has the closure kind.
+- **The hole.** Inside a STRING! (one byte per cell), a byte of 8–11 passes
+  that test. A stale integer n in an unbound stack-context slot is the
+  aligned cell 16n.
+- **The effect.** `mark_push` then writes the mark bit into a byte of a live
+  immutable string. Its "fields" may also fail-stop the mark phase
+  (out-of-range T_CONTEXT/T_USER/T_STRING/T_BLOCK).
+- **Reproduction.** `experiments/glon-deflate/tests/gc-interior-repro.glon`, in
+  plain Glon, prints `corrupted at 0 ...` and `11`.
+- **[PROPOSAL]** `experiments/glon-deflate/proposal/gc-object-start-check.patch`
+  accepts p only if a walk of object sizes from `GC_HEAP_BASE` lands on
+  p − 16. It is not applied and needs approval. An object-start bitmap would
+  be the cheaper exact alternative.
 
 ## 8. Why more memory is a separate scaling experiment
 

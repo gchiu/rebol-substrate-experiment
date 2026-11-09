@@ -1,0 +1,65 @@
+;; experiments/glon-deflate/tests/gc-interior-repro.glon -- a minimal, DEFLATE-free
+;; reproduction of a collector defect found by this experiment (README.md,
+;; "Runtime defect"). Plain Glon: prelude.glon, strings.glon, strings-ext.glon;
+;; no masm, no host.
+;;
+;; The return-stack scan treats a 16-aligned cell value p inside the managed
+;; heap as a closure pointer when the cell at p - 15 (its would-be header flags)
+;; carries the closure kind. A STRING! stores one byte per cell, so a byte of 8-11
+;; (or 40-43, 72-75, ...) at the right offset inside a string passes that test,
+;; and an integer n is the cell n * 16, which is 16-aligned. A stale integer left
+;; in an unbound slot of a live stack context, with 2048 <= n < 2500, therefore
+;; "points" into a string. The collector then traces the string's bytes as a
+;; closure, and mark_push writes the mark bit into the byte that it took for
+;; header flags. The sweep never visits that fake header, so the byte stays
+;; changed (9 becomes 11): an IMMUTABLE string is silently modified. With other
+;; neighbouring bytes (a 7 is a CONTEXT! with payload 0) the collector
+;; fail-stops instead.
+;;
+;; Expected output when the defect is present: "corrupted at" an index of the
+;; string, then the byte found there (11, not 9). Without the defect: "intact".
+;; (Continuing past the first change ends in a fail-stop: a changed byte 11 is
+;; then traced as a USER! value with payload 0.)
+;; one 300-byte string of byte 9, made by ONE allocation (mk-string of a
+;; literal block), so that no other string, live or garbage, holds a 9
+rp/big: mk-string [ 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 ]
+;; the first index in [a, b) whose byte is not 9, or b; allocates nothing
+rp/find: func [a b] [
+    either = b + a 1 [ either = 9 s/at rp/big a [ b ] [ a ] ] [
+        rp-m: rp/find a / + a b 2
+        either < rp-m / + a b 2 [ rp-m ] [ rp/find / + a b 2 b ]
+    ]
+]
+;; writes the integer a into 14 context slots
+rp/spray: func [a] [
+    q1: a  q2: a  q3: a  q4: a  q5: a  q6: a  q7: a  q8: a  q9: a  q10: a  q11: a  q12: a  q13: a  q14: a
+    0
+]
+;; same frame position, one binding: the other slots keep the stale integers;
+;; allocates enough garbage to run the collector while they are on the stack
+;; (garbage of byte 97, which cannot pass for closure flags)
+rp/churn: func [k] [
+    either = k 0 [ 0 ] [ rp/junk: s/+ "aaaaaaaaa" "aaaaaaaaa"  rp/churn - k 1 ]
+]
+rp/victim: func [a] [ rp/churn 40 ]
+rp/done: 0
+rp/round: func [a] [
+    either = rp/done 0 [
+        rp/spray a  rp/victim a
+        rp/at: rp/find 0 300
+        either < rp/at s/length rp/big [
+            rp/done: 1
+            s/print s/+ s/+ s/+ "corrupted at " s/from-int rp/at " after spraying from " s/from-int a
+            print s/at rp/big rp/at
+        ] [ none ]
+    ] [ none ]
+]
+;; a = lo, lo + 1, ... (n rounds), in ascending order, balanced
+rp/sweep: func [lo n] [
+    either = n 1 [ rp/round lo ] [
+        rp/sweep lo / n 2
+        rp/sweep + lo / n 2 - n / n 2
+    ]
+]
+rp/sweep 2048 452
+either = rp/done 0 [ s/print "intact" ] [ none ]

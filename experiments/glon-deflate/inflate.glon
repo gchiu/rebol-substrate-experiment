@@ -1,0 +1,588 @@
+;; experiments/glon-deflate/inflate.glon -- a streaming RFC 1951 (raw DEFLATE)
+;; decompressor written entirely in Glon: no masm, no new native, no host help.
+;; After Christopher Ross-Gill's pull-streaming DEFLATE decoder
+;; (rgchris/Scripts r3-oldes/deflate.reb 0.5.0), and Mark Adler's puff.c for
+;; the canonical Huffman decode.
+;;
+;; THE DECODER IS AN ITERATOR. It keeps all of its state between calls and does
+;; only as much work as a request needs:
+;;   dz/new w        a decoder keeping a w-byte history window (see WINDOW)
+;;   dz/feed d s     append the compressed bytes of STRING! s (any split)
+;;   dz/finish d     declare that no more compressed input will come
+;;   dz/read d n     up to n decompressed bytes, at most dz/max-read (256) per
+;;                   call, as a STRING!. Fewer than that only when the decoder
+;;                   stops: see dz/state. Raises the decoder's SIN! when it has
+;;                   failed and has nothing left to return. (A STRING! costs a
+;;                   managed cell per byte and needs one contiguous block, so a
+;;                   larger result could not be placed in the 7,232-cell heap.)
+;;   dz/state d      'ready       more output can be produced now
+;;                   'need-input  every fed byte is used; feed more (or finish)
+;;                   'done        the final block has ended
+;;                   'error       malformed or truncated input (dz/error d)
+;;   dz/error d      the SIN! (type 'inflate) once the state is 'error, else none
+;;   dz/in-pos d     compressed bytes consumed so far
+;;   dz/out-pos d    decompressed bytes returned so far
+;;   dz/rest d       compressed bytes fed but unused (after 'done: trailing data)
+;;
+;; ERRORS (SIN! type 'inflate, id below). Malformed: 'block-type, 'stored-length,
+;; 'counts, 'code-lengths (over-subscribed or invalid incomplete code), 'repeat,
+;; 'no-end-code, 'bad-code (no symbol matches), 'symbol (literal/length 286-287),
+;; 'distance-symbol (30-31), 'distance (reaches before the start of the output).
+;; Input: 'truncated (finished before the stream ended). Resource limit, not a
+;; malformation: 'window (a legal distance beyond the w bytes kept).
+;; 'need-input is not an error; it is the state 'need-input.
+;;
+;; WINDOW. RFC 1951 allows distances up to 32,768. A STRING! costs one managed
+;; cell per byte and the reference machine's managed heap is 7,232 cells, so a
+;; full window cannot be held. The decoder keeps at least the last w bytes (w a
+;; multiple of 8) and refuses a longer distance with 'window. Streams made with
+;; zlib windowBits <= 10 never need more than 1,024 (zlib's largest distance is
+;; 2^wbits - 262). The window is 8 SEGMENTS of w/8 bytes, aligned to absolute
+;; output positions, plus the current partial segment. A full segment shifts in
+;; without copying a byte, and no allocation is larger than about w/8 cells: the
+;; managed heap is never compacted, so large strings fail in a fragmented heap.
+;;
+;; RESUMPTION. Input is consumed in UNITS: a block header (for a dynamic block
+;; the whole table description), one literal, one length/distance pair, or a
+;; run of stored bytes. Each unit runs under judge; if the input runs out inside
+;; it, the bit reader rolls back to the last committed point, the state becomes
+;; 'need-input, and the unit is decoded again after dz/feed. Nothing is ever
+;; decoded twice into the output, and nothing is decoded ahead of a request
+;; except a match's remaining length, which is kept as a count.
+;;
+;; LENGTH BYTES. Code lengths are stored as length + 16 (bytes 16-31). The
+;; runtime's return-stack scan can mistake the inside of a STRING! for a
+;; closure when a byte of 8-11 (40-43, ...) sits at a 16-cell boundary, and
+;; then writes a mark bit into that byte (README.md, "Runtime defect"). Length
+;; strings are dense in 7, 8 and 9; bytes 16-31 can never pass that test. This
+;; lowers the exposure; it cannot remove it (window and input bytes are data).
+;;
+;; BOUNDED RETURN STACK. Glon has no loops. Every loop here is balanced
+;; recursion: dz/loop b i k runs a step up to 2^k times at depth k+1, and
+;; strings are built by splitting ranges in halves.
+;;
+;; Requires prelude.glon, strings.glon and demo/shop/strings-ext.glon. Local
+;; names carry a br- hf- or dz- prefix (a set-word updates the nearest existing
+;; binding, which could otherwise be a global).
+
+dz/pow: [ 1 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192 16384 32768 65536 ]
+dz/min: func [a b] [ either < a b [ a ] [ b ] ]
+
+;; ---------------------------------------------------------------- loops --
+;; dz/loop b i k: invoke the closure at index i of block b until it answers 0,
+;; at most 2^k times. Answers 0 if it stopped, 1 if the budget ran out.
+dz/loop: func [b i k] [
+    either = k 0 [ invoke block-at b i ] [
+        either = 0 dz/loop b i - k 1 [ 0 ] [ dz/loop b i - k 1 ]
+    ]
+]
+
+;; ------------------------------------------------------- Huffman tables --
+;; A code is decoded as puff.c does: one bit at a time, comparing the code so
+;; far with the first code of each length. The walk needs only the counts; it
+;; answers the code's length and its index among the codes of that length,
+;; and the table maps (length, index) to a symbol.
+;;
+;; hf/walk v n len code first index counts: v holds n available bits, next
+;; bit lowest. Answers ((g * 512) + i) * 16 + length, where g is the code's
+;; index in canonical order and i its index among the codes of its length;
+;; -1 when more than n bits are needed; -2 when no code of length <= 15
+;; matches (an incomplete code). (At most 2,363,407: within 32-bit WASM's
+;; 28-bit integers.)
+hf/walk: func [v n len code first index counts] [
+    either > len 15 [ -2 ] [
+        either > len n [ -1 ] [
+            hf-c: + code - v * / v 2 2
+            hf-k: block-at counts len
+            either < - hf-c hf-k first [
+                + * 16 + * 512 + index - hf-c first - hf-c first len
+            ] [
+                hf/walk / v 2 n + len 1 * hf-c 2 * + first hf-k 2 + index hf-k counts
+            ]
+        ]
+    ]
+]
+;; A table is a block [ counts lowc syms ]:
+;;   counts  16 integers, counts/l = the number of codes of length l
+;;   lowc    16 integers, lowc/l = how many of them are symbols 0-255
+;;   syms    one STRING!, a byte per symbol in canonical order (length, then
+;;           symbol): symbol mod 256. Of the codes of length l, the first
+;;           lowc/l are below 256, the rest are 256 more than their byte.
+;; One byte per symbol keeps the largest string near 290 cells: the managed
+;; heap is never compacted, and a 600-cell string (two bytes per symbol) could
+;; not be placed once it was fragmented.
+;; The FIXED tables (RFC 1951 3.2.6) are literal blocks in the loader heap with
+;; a word in place of lowc, and cost no managed memory: their symbols follow
+;; from (length, index).
+hf/fixed-lit:  [ [ 0 0 0 0 0 0 0 24 152 112 0 0 0 0 0 0 ] fixed ]
+hf/fixed-dist: [ [ 0 0 0 0 0 32 0 0 0 0 0 0 0 0 0 0 ] fixed-dist ]
+;; the symbol of walk result r in table t
+hf/sym: func [t r] [
+    hf-l: block-at t 1
+    hf-n: - r * 16 / r 16
+    hf-i: / r 16
+    hf-i: - hf-i * 512 / hf-i 512
+    either = hf-l 'fixed [
+        either = hf-n 7 [ + 256 hf-i ] [ either = hf-n 9 [ + 144 hf-i ] [ either < hf-i 144 [ hf-i ] [ + 136 hf-i ] ] ]
+    ] [
+        either = hf-l 'fixed-dist [ hf-i ] [
+            either < hf-i block-at hf-l hf-n [ s/at block-at t 2 / r 8192 ] [ + 256 s/at block-at t 2 / r 8192 ]
+        ]
+    ]
+]
+
+hf/empty: ""
+hf/zero: mk-string [ 16 ]
+hf/d16: mk-string [ 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 ]
+;; every length byte except l + 16: s/scan-set with it stops at the next length l
+hf/not: func [l] [ s/+ s/slice hf/d16 0 l s/slice hf/d16 + l 1 - 15 l ]
+;; s (not empty) repeated to exactly n bytes, by doubling; the last step adds
+;; only what is missing, so nothing larger than n bytes is ever allocated
+hf/rep: func [s n] [
+    either >= s/length s n [ either = s/length s n [ s ] [ s/slice s 0 n ] ] [
+        either >= * 2 s/length s n [ s/+ s s/slice s 0 - n s/length s ] [ hf/rep s/+ s s n ]
+    ]
+]
+;; the symbols in [a, b) whose length byte in ls is the one byte not in set:
+;; with c = 0 as a string, a byte each (symbol mod 256) in symbol order; with
+;; c = 1 only their number, building no string. Balanced on the range.
+hf/syms: func [ls a b set c] [
+    hf-i: s/scan-set ls a set
+    either >= hf-i b [ either = c 1 [ 0 ] [ hf/empty ] ] [
+        either = b + hf-i 1 [
+            either = c 1 [ 1 ] [ mk-string reduce [ - hf-i * / hf-i 256 256 ] ]
+        ] [
+            hf-m: / + hf-i b 2
+            either = c 1 [ + hf/syms ls hf-i hf-m set 1 hf/syms ls hf-m b set 1 ] [
+                s/+ hf/syms ls hf-i hf-m set 0 hf/syms ls hf-m b set 0
+            ]
+        ]
+    ]
+]
+;; counts per length 0..15 of the symbols in [a, b), as a block of 16
+hf/counts: func [ls a b] [
+    either >= a b [ [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ] ] [
+        reduce [ 0
+            hf/syms ls a b hf/not 1 1   hf/syms ls a b hf/not 2 1   hf/syms ls a b hf/not 3 1
+            hf/syms ls a b hf/not 4 1   hf/syms ls a b hf/not 5 1   hf/syms ls a b hf/not 6 1
+            hf/syms ls a b hf/not 7 1   hf/syms ls a b hf/not 8 1   hf/syms ls a b hf/not 9 1
+            hf/syms ls a b hf/not 10 1  hf/syms ls a b hf/not 11 1  hf/syms ls a b hf/not 12 1
+            hf/syms ls a b hf/not 13 1  hf/syms ls a b hf/not 14 1  hf/syms ls a b hf/not 15 1 ]
+    ]
+]
+;; the symbol string for lengths [a, b): each length's symbols are found at
+;; the leaf and the halves joined (balanced). Live at once: about two copies of
+;; the result. (An accumulator passed down a chain of calls would keep every
+;; earlier accumulator alive in the pending frames: Glon has no tail calls.)
+hf/cat: func [ls a b] [
+    either = b + a 1 [
+        hf-n: s/length ls
+        either > hf-n 256 [
+            s/+ hf/syms ls 0 256 hf/not a 0  hf/syms ls 256 hf-n hf/not a 0
+        ] [ hf/syms ls 0 hf-n hf/not a 0 ]
+    ] [
+        s/+ hf/cat ls a / + a b 2 hf/cat ls / + a b 2 b
+    ]
+]
+;; codes left unused after lengths l..15, starting from left: < 0 is
+;; over-subscribed, > 0 incomplete
+hf/left: func [c l left] [
+    either > l 15 [ left ] [
+        either < - * 2 left block-at c l 0 [ -1 ] [ hf/left c + l 1 - * 2 left block-at c l ]
+    ]
+]
+;; hf/build ls kind: the table for the code lengths in STRING! ls (one byte per
+;; symbol: its length, 0 to 15, PLUS 16; see LENGTH BYTES). kind 'codes (the code-length code) must be complete or
+;; empty; kind 'lens (literal/length, distance) may also be a single code of
+;; length 1, as zlib allows.
+hf/build: func [ls kind] [
+    hf-c: hf/counts ls 0 s/length ls
+    hf-l: hf/left hf-c 1 1
+    either < hf-l 0 [ raise create-sin 'inflate 'code-lengths kind ] [
+        ;; incomplete (hf-l > 0) is allowed when empty (2^15 left), or for
+        ;; 'lens when it is one code of length 1 (2^14 left)
+        either either = hf-l 0 [ 1 ] [
+            either = hf-l 32768 [ 1 ] [
+                either = kind 'lens [ either = hf-l 16384 [ = 1 block-at hf-c 1 ] [ 0 ] ] [ 0 ]
+            ]
+        ] [
+            either > s/length ls 256 [
+                reduce [ hf-c hf/counts ls 0 256 hf/cat ls 1 16 ]
+            ] [ reduce [ hf-c hf-c hf/cat ls 1 16 ] ]
+        ] [ raise create-sin 'inflate 'code-lengths kind ]
+    ]
+]
+
+;; ------------------------------------------------------------ bit reader --
+;; A bit reader is a one-element block holding a closure func [m x]:
+;;   0 bits k    the next k bits (k <= 16), least significant first
+;;   1 decode t  the next symbol of Huffman table t
+;;   2 align     drop the bits up to the next byte boundary
+;;   3 take k    up to k whole bytes as a STRING! (byte-aligned, no bits held)
+;;   4 commit    the current position becomes the rollback point
+;;   5 rollback  return to the rollback point
+;;   6 feed s    append compressed bytes (keeps only the unconsumed part)
+;;   7 finish    no more input will come
+;;   8 pos       bytes consumed (bytes loaded, less whole bytes still held)
+;;   9 rest      bytes fed and not consumed
+;; Running out of input raises 'need-input, or 'truncated after finish.
+br/make*: func [br-in br-ip br-bb br-bc br-fin br-base br-cip br-cbb br-cbc] [
+    ;; load whole bytes until br-bc >= k or the input is used up (<= 3 bytes)
+    br-fill: func [k] [
+        either < br-bc k [
+            either < br-ip s/length br-in [
+                br-bb: + br-bb * s/at br-in br-ip block-at dz/pow br-bc
+                br-bc: + br-bc 8
+                br-ip: + br-ip 1
+                br-fill k
+            ] [ none ]
+        ] [ none ]
+    ]
+    br-starve: func [] [
+        either = br-fin 1 [ raise create-sin 'inflate 'truncated + br-base br-ip ] [ raise create-sin 'inflate 'need-input none ]
+    ]
+    reduce [ func [m x] [
+        either = m 1 [
+            br-fill 15
+            br-r: hf/walk br-bb br-bc 1 0 0 0 block-at x 0
+            either < br-r 0 [
+                either = br-r -1 [ br-starve ] [ raise create-sin 'inflate 'bad-code none ]
+            ] [
+                br-k: - br-r * / br-r 16 16
+                br-bb: / br-bb block-at dz/pow br-k
+                br-bc: - br-bc br-k
+                hf/sym x br-r
+            ]
+        ] [
+        either = m 0 [
+            br-fill x
+            either < br-bc x [ br-starve ] [
+                br-k: block-at dz/pow x
+                br-r: - br-bb * / br-bb br-k br-k
+                br-bb: / br-bb br-k
+                br-bc: - br-bc x
+                br-r
+            ]
+        ] [
+        either = m 4 [ br-cip: br-ip  br-cbb: br-bb  br-cbc: br-bc  none ] [
+        either = m 5 [ br-ip: br-cip  br-bb: br-cbb  br-bc: br-cbc  none ] [
+        either = m 3 [
+            br-r: s/slice br-in br-ip dz/min x - s/length br-in br-ip
+            br-ip: + br-ip s/length br-r
+            br-r
+        ] [
+        either = m 2 [
+            br-k: - br-bc * / br-bc 8 8
+            br-bb: / br-bb block-at dz/pow br-k
+            br-bc: - br-bc br-k
+            none
+        ] [
+        either = m 6 [
+            br-in: s/+ s/span br-in br-cip s/length br-in x
+            br-base: + br-base br-cip
+            br-ip: - br-ip br-cip
+            br-cip: 0
+            none
+        ] [
+        either = m 7 [ br-fin: 1  none ] [
+        either = m 8 [ - + br-base br-ip / br-bc 8 ] [
+        either = m 9 [ + - s/length br-in br-ip / br-bc 8 ] [ none ]
+        ] ] ] ] ] ] ] ] ]
+    ] ]
+]
+
+;; length and distance bases and extra bits (RFC 1951 3.2.5)
+dz/lbase: [ 3 4 5 6 7 8 9 10 11 13 15 17 19 23 27 31 35 43 51 59 67 83 99 115 131 163 195 227 258 ]
+dz/lext:  [ 0 0 0 0 0 0 0 0 1 1 1 1 2 2 2 2 3 3 3 3 4 4 4 4 5 5 5 5 0 ]
+dz/dbase: [ 1 2 3 4 5 7 9 13 17 25 33 49 65 97 129 193 257 385 513 769 1025 1537
+            2049 3073 4097 6145 8193 12289 16385 24577 ]
+dz/dext:  [ 0 0 0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7 8 8 9 9 10 10 11 11 12 12 13 13 ]
+
+;; ------------------------------------------------------- dynamic header --
+;; k values of `width` bits each, in stream order, as a STRING! (balanced)
+dz/readn: func [r k width] [
+    either = k 0 [ hf/empty ] [
+        either = k 1 [ mk-string reduce [ + 16 invoke block-at r 0 0 width ] ] [
+            s/+ dz/readn r / k 2 width dz/readn r - k / k 2 width
+        ]
+    ]
+]
+;; the description of a dynamic block (after its 3 header bits): [ lit dist ]
+dz/dynamic: func [r] [
+    dz-nl: + 257 invoke block-at r 0 0 5
+    dz-nd: + 1 invoke block-at r 0 0 5
+    dz-nc: + 4 invoke block-at r 0 0 4
+    either either > dz-nl 286 [ 1 ] [ > dz-nd 30 ] [ raise create-sin 'inflate 'counts reduce [ dz-nl dz-nd ] ] [ none ]
+    ;; code-length code lengths arrive in the order 16 17 18 0 8 7 9 6 10 5
+    ;; 11 4 12 3 13 2 14 1 15; dz-o holds them in that order
+    dz-o: s/+ dz/readn r dz-nc 3 hf/rep hf/zero - 19 dz-nc
+    dz-ct: hf/build mk-string reduce [
+        s/at dz-o 3  s/at dz-o 17 s/at dz-o 15 s/at dz-o 13 s/at dz-o 11 s/at dz-o 9  s/at dz-o 7
+        s/at dz-o 5  s/at dz-o 4  s/at dz-o 6  s/at dz-o 8  s/at dz-o 10 s/at dz-o 12 s/at dz-o 14
+        s/at dz-o 16 s/at dz-o 18 s/at dz-o 0  s/at dz-o 1  s/at dz-o 2
+    ] 'codes
+    dz-tot: + dz-nl dz-nd
+    dz-ls: hf/empty
+    dz-pv: none
+    ;; one code length (or one run) per step, at most 316 steps (2^9 = 512).
+    ;; The step closure updates dz-ls in place. (Passing the lengths down as an
+    ;; argument would keep every earlier copy alive in the pending frames:
+    ;; Glon has no tail calls.)
+    dz/loop reduce [ func [] [
+        either >= s/length dz-ls dz-tot [ 0 ] [
+            dz-sy: invoke block-at r 0 1 dz-ct
+            either < dz-sy 16 [
+                dz-ls: s/+ dz-ls mk-string reduce [ + 16 dz-sy ]
+                dz-pv: dz-sy
+            ] [
+                either = dz-sy 16 [
+                    either = dz-pv none [ raise create-sin 'inflate 'repeat 16 ] [ none ]
+                    dz-ls: s/+ dz-ls hf/rep mk-string reduce [ + 16 dz-pv ] + 3 invoke block-at r 0 0 2
+                ] [
+                    either = dz-sy 17 [
+                        dz-ls: s/+ dz-ls hf/rep hf/zero + 3 invoke block-at r 0 0 3
+                    ] [
+                        dz-ls: s/+ dz-ls hf/rep hf/zero + 11 invoke block-at r 0 0 7
+                    ]
+                    dz-pv: 0
+                ]
+            ]
+            1
+        ]
+    ] ] 0 9
+    dz-ct: none
+    either > s/length dz-ls dz-tot [ raise create-sin 'inflate 'repeat dz-tot ] [ none ]
+    either = 16 s/at dz-ls 256 [ raise create-sin 'inflate 'no-end-code none ] [ none ]
+    reduce [
+        hf/build s/slice dz-ls 0 dz-nl 'lens
+        hf/build s/span dz-ls dz-nl dz-tot 'lens
+    ]
+]
+
+;; ------------------------------------------------------------ the copy --
+;; The history is the window block ws (8 segments of sz bytes; the last ends
+;; at absolute output position wp), then cur (the partial segment starting at
+;; wp), then out (the bytes of the current piece). dz/fetch: bytes [p, p + n)
+;; of the history, by absolute position. Crosses at most 4 pieces (n <= 258).
+dz/fetch: func [ws cur out wp sz p n] [
+    dz-q: - p wp
+    either >= dz-q s/length cur [ s/slice out - dz-q s/length cur n ] [
+        either >= dz-q 0 [
+            dz-k: dz/min n - s/length cur dz-q
+            either = dz-k n [ s/slice cur dz-q n ] [
+                s/+ s/slice cur dz-q dz-k dz/fetch ws cur out wp sz + p dz-k - n dz-k
+            ]
+        ] [
+            dz-q: + dz-q * 8 sz
+            dz-i: / dz-q sz
+            dz-q: - dz-q * dz-i sz
+            dz-k: dz/min n - sz dz-q
+            either = dz-k n [ s/slice block-at ws dz-i dz-q n ] [
+                s/+ s/slice block-at ws dz-i dz-q dz-k dz/fetch ws cur out wp sz + p dz-k - n dz-k
+            ]
+        ]
+    ]
+]
+;; an overlapping copy (length > distance) repeats the last `distance` bytes:
+;; hf/rep repeats them to the length
+
+;; ------------------------------------------------------------- decoder --
+;; A decoder is a block of two closures sharing the constructor's state:
+;;   0 message closure func [m x]: 0 begin n, 1 end, 2 feed s, 3 finish,
+;;     4 state, 5 error, 6 in-pos, 7 out-pos, 8 rest
+;;   1 step closure func []: one step; 1 to go on, 0 to stop
+;; State: dz-st is 'header 'stored 'codes 'copy 'eob 'done or 'error; dz-m is
+;; a pending match, length * 65536 + distance (or the stored bytes left).
+;; A function holds at most 16 bindings: these 14 parameters and dz-stop.
+dz/new: func [w] [
+    either either s/raw-int? w [ either >= w 8 [ = w * 8 / w 8 ] [ 0 ] ] [ 0 ] [ none ] [
+        raise create-sin 'type 'dz/new w
+    ]
+    dz/make* br/make* hf/empty 0 0 0 0 0 0 0 0 'header 0 none none 0 reduce [ hf/empty hf/empty hf/empty hf/empty hf/empty hf/empty hf/empty hf/empty ] hf/empty hf/empty 0 / w 8 none 0 0
+]
+dz/make*: func [dz-rd dz-st dz-last dz-lt dz-dt dz-m dz-ws dz-cur dz-out dz-wp dz-sz dz-err dz-need dz-wait] [
+    ;; a SIN! from a unit: roll back; 'need-input waits, anything else fails
+    dz-stop: func [e] [
+        invoke block-at dz-rd 0 5 none
+        either = sin-id e 'need-input [ dz-wait: 1 ] [ dz-err: e  dz-st: 'error ]
+        0
+    ]
+    reduce [
+        func [m x] [
+            either = m 0 [
+                ;; a piece never crosses a segment boundary
+                dz-out: hf/empty
+                dz-need: dz/min x - dz-sz s/length dz-cur
+                dz-wait: 0
+                none
+            ] [
+            either = m 1 [
+                ;; the piece is over: its bytes join the current segment
+                dz-r: dz-out
+                dz-out: hf/empty
+                either = 0 s/length dz-r [ none ] [
+                    dz-cur: either = 0 s/length dz-cur [ dz-r ] [ s/+ dz-cur dz-r ]
+                    either = s/length dz-cur dz-sz [
+                        dz-ws: reduce [ block-at dz-ws 1 block-at dz-ws 2 block-at dz-ws 3 block-at dz-ws 4
+                                        block-at dz-ws 5 block-at dz-ws 6 block-at dz-ws 7 dz-cur ]
+                        dz-wp: + dz-wp dz-sz
+                        dz-cur: hf/empty
+                    ] [ none ]
+                ]
+                dz-r
+            ] [
+            either = m 4 [
+                either = dz-st 'done [ 'done ] [
+                    either = dz-st 'error [ 'error ] [ either = dz-wait 1 [ 'need-input ] [ 'ready ] ]
+                ]
+            ] [
+            either = m 2 [ invoke block-at dz-rd 0 6 x  dz-wait: 0  none ] [
+            either = m 3 [ invoke block-at dz-rd 0 7 none  dz-wait: 0  none ] [
+            either = m 5 [ dz-err ] [
+            either = m 6 [ invoke block-at dz-rd 0 8 none ] [
+            either = m 7 [ + + dz-wp s/length dz-cur s/length dz-out ] [
+            either = m 8 [ invoke block-at dz-rd 0 9 none ] [ none ]
+            ] ] ] ] ] ] ] ]
+        ]
+        func [] [
+            either >= s/length dz-out dz-need [ 0 ] [
+            either = dz-st 'codes [
+                dz-u: judge [
+                    dz-s: invoke block-at dz-rd 0 1 dz-lt
+                    either < dz-s 256 [ dz-s ] [
+                        either = dz-s 256 [ 256 ] [
+                            either > dz-s 285 [ raise create-sin 'inflate 'symbol dz-s ] [ none ]
+                            dz-i: - dz-s 257
+                            dz-l: + block-at dz/lbase dz-i invoke block-at dz-rd 0 0 block-at dz/lext dz-i
+                            dz-i: invoke block-at dz-rd 0 1 dz-dt
+                            either > dz-i 29 [ raise create-sin 'inflate 'distance-symbol dz-i ] [ none ]
+                            + * 65536 dz-l + block-at dz/dbase dz-i invoke block-at dz-rd 0 0 block-at dz/dext dz-i
+                        ]
+                    ]
+                ]
+                either sin? dz-u [ dz-stop dz-u ] [
+                    invoke block-at dz-rd 0 4 none
+                    either < dz-u 256 [ dz-out: s/+ dz-out mk-string reduce [ dz-u ]  1 ] [
+                        either = dz-u 256 [ dz-st: 'eob  1 ] [
+                            ;; a distance before the first byte is malformed; one
+                            ;; beyond the bytes kept is the window limit
+                            dz-d: - dz-u * 65536 / dz-u 65536
+                            dz-t: + + dz-wp s/length dz-cur s/length dz-out
+                            either > dz-d dz-t [ dz-stop create-sin 'inflate 'distance dz-d ] [
+                                either > dz-d - dz-t - dz-wp * 8 dz-sz [ dz-stop create-sin 'inflate 'window dz-d ] [
+                                    dz-m: dz-u  dz-st: 'copy  1
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ] [
+            either = dz-st 'copy [
+                dz-l: / dz-m 65536
+                dz-d: - dz-m * 65536 dz-l
+                dz-k: dz/min dz-l - dz-need s/length dz-out
+                dz-t: + + dz-wp s/length dz-cur s/length dz-out
+                dz-out: s/+ dz-out hf/rep dz/fetch dz-ws dz-cur dz-out dz-wp dz-sz - dz-t dz-d dz/min dz-k dz-d dz-k
+                dz-m: - dz-m * 65536 dz-k
+                either < dz-m 65536 [ dz-st: 'codes ] [ none ]
+                1
+            ] [
+            either = dz-st 'header [
+                dz-u: judge [
+                    dz-h: invoke block-at dz-rd 0 0 3
+                    dz-t: / dz-h 2
+                    either = dz-t 0 [
+                        invoke block-at dz-rd 0 2 none
+                        dz-n: invoke block-at dz-rd 0 0 16
+                        either = 65535 + dz-n invoke block-at dz-rd 0 0 16 [ reduce [ dz-h dz-n ] ] [ raise create-sin 'inflate 'stored-length dz-n ]
+                    ] [
+                        either = dz-t 1 [ reduce [ dz-h hf/fixed-lit hf/fixed-dist ] ] [
+                            either = dz-t 2 [
+                                dz-n: dz/dynamic dz-rd
+                                reduce [ dz-h block-at dz-n 0 block-at dz-n 1 ]
+                            ] [ raise create-sin 'inflate 'block-type dz-t ]
+                        ]
+                    ]
+                ]
+                either sin? dz-u [ dz-stop dz-u ] [
+                    invoke block-at dz-rd 0 4 none
+                    dz-h: block-at dz-u 0
+                    dz-last: - dz-h * 2 / dz-h 2
+                    either = 0 / dz-h 2 [ dz-m: block-at dz-u 1  dz-st: 'stored ] [
+                        dz-lt: block-at dz-u 1
+                        dz-dt: block-at dz-u 2
+                        dz-st: 'codes
+                    ]
+                    1
+                ]
+            ] [
+            either = dz-st 'stored [
+                either = dz-m 0 [ dz-st: 'eob  1 ] [
+                    dz-s: invoke block-at dz-rd 0 3 dz/min dz-m - dz-need s/length dz-out
+                    either = 0 s/length dz-s [
+                        dz-stop judge [ invoke block-at dz-rd 0 0 8 ]
+                    ] [
+                        invoke block-at dz-rd 0 4 none
+                        dz-out: s/+ dz-out dz-s
+                        dz-m: - dz-m s/length dz-s
+                        1
+                    ]
+                ]
+            ] [
+            either = dz-st 'eob [
+                ;; drop the block's tables before the next header is decoded
+                dz-lt: none  dz-dt: none
+                either = dz-last 1 [ dz-st: 'done  0 ] [ dz-st: 'header  1 ]
+            ] [ 0 ]
+            ] ] ] ] ]
+        ]
+    ]
+]
+
+;; ------------------------------------------------------------ the API --
+;; A decoder argument is checked only against the values Glon can test without
+;; masm (STRING!, INTEGER!, NONE). There is no shipped non-masm predicate for
+;; BLOCK! or closure (iter.glon's it/raw-tag is masm), so a block or closure
+;; that is not a decoder reaches block-at/invoke unchecked, as with prelude's
+;; own block-at. See README.md, "Findings".
+dz/msg: func [d m x op] [
+    either either s/raw-string? d [ 1 ] [ either s/raw-int? d [ 1 ] [ = d none ] ] [
+        raise create-sin 'type op d
+    ] [ invoke block-at d 0 m x ]
+]
+dz/feed: func [d s] [
+    either s/raw-string? s [ dz/msg d 2 s 'dz/feed ] [ raise create-sin 'type 'dz/feed s ]
+]
+dz/finish: func [d] [ dz/msg d 3 none 'dz/finish ]
+dz/state: func [d] [ dz/msg d 4 none 'dz/state ]
+dz/error: func [d] [ dz/msg d 5 none 'dz/error ]
+dz/in-pos: func [d] [ dz/msg d 6 none 'dz/in-pos ]
+dz/out-pos: func [d] [ dz/msg d 7 none 'dz/out-pos ]
+dz/rest: func [d] [ dz/msg d 8 none 'dz/rest ]
+
+;; at most n bytes, within one window segment: exactly that many unless the
+;; decoder stops, in which case its state is not 'ready
+dz/piece: func [d n] [
+    invoke block-at d 0 0 n
+    dz/loop d 1 12
+    dz-o: invoke block-at d 0 1 none
+    either either < s/length dz-o n [ = dz/state d 'ready ] [ 0 ] [
+        s/+ dz-o dz/piece d - n s/length dz-o
+    ] [ dz-o ]
+]
+;; larger requests are split in halves (depth log2(n / 128)); a short half
+;; means the decoder stopped
+dz/read*: func [d n] [
+    either > n 128 [
+        dz-a: dz/read* d / n 2
+        either = s/length dz-a / n 2 [ s/+ dz-a dz/read* d - n / n 2 ] [ dz-a ]
+    ] [ dz/piece d n ]
+]
+dz/max-read: 256
+dz/read: func [d n] [
+    dz/msg d 4 none 'dz/read
+    either either s/raw-int? n [ > n 0 ] [ 0 ] [ none ] [ raise create-sin 'type 'dz/read n ]
+    either = dz/state d 'error [ raise dz/error d ] [ none ]
+    dz-r: dz/read* d dz/min n dz/max-read
+    either either = 0 s/length dz-r [ = dz/state d 'error ] [ 0 ] [ raise dz/error d ] [ dz-r ]
+]

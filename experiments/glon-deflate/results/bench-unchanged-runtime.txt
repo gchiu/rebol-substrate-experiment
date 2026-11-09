@@ -1,0 +1,20 @@
+host: build/dzhost (unchanged runtime)
+
+workload                              in B   out B | Glon KB/s  first ms live max  RS max    GCs | zlib MB/s    ratio
+---------------------------------------------------------------------------------------------------------------------
+text 20 KB, dynamic                   3558   20000 |      2.43       503     4496    3864    159 |     837.7  336653x
+text 4 KB, fixed                      1015    4000 |      2.16       229     3824    2865     24 |    1223.7  553228x
+noise 3 KB (dynamic, ~1:1)            3044    3000 |      0.45       878     4544    3604    185 |     269.5  584958x
+noise 3 KB, stored                    3010    3000 |     14.51        12     3808    2306     11 |    8647.5  582003x
+'a' x 20 KB (overlapping copies)        37   20000 |     12.39       157     4528    3864    102 |     587.7   46322x
+
+Glon KB/s: decompressed bytes per second of the whole conversation (feeds, reads, output frames);
+first ms: time from opening the decoder to the first output; live max: managed cells live after the
+fullest collection (heap 7,232); RS max: deepest return stack in cells (8,192); ratio: zlib / Glon.
+
+startup: libraries 18.9 ms (parse + load of prelude, strings, strings-ext, inflate, progress, app: 105 bindings, 10721 loader cells, code ends at 13934); decoder creation 1.81 ms
+
+suspension / resumption (text, dynamic): each read returns to the host and resumes the decoder
+  read     1 bytes:   2005 reads,   3204.9 us per read,    0.30 KB/s, 2000 bytes out
+  read   100 bytes:    217 reads,  38291.1 us per read,    2.34 KB/s, 20000 bytes out
+  read  4096 bytes:     88 reads,  91448.0 us per read,    2.41 KB/s, 20000 bytes out

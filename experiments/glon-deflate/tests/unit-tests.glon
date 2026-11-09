@@ -1,0 +1,148 @@
+;; experiments/glon-deflate/tests/unit-tests.glon -- unit tests of inflate.glon's
+;; iterator contract, run in the plain glon CLI (make unit):
+;;   build/glon demo/shop/strings-ext.glon inflate.glon tests/unit-tests.glon
+;; The streams are small literal byte blocks made with Python's zlib or by hand
+;; (RFC 1951); the conformance corpus (tests/run_tests.py) is the main test.
+;; A failure prints FAIL; the last line raises a SIN! if anything failed.
+;; Each section is a do [ ] block: a block holds at most 512 values.
+t/pass: 0
+t/fail: 0
+t/ok: func [name] [ t/pass: + t/pass 1 ]
+t/bad: func [name] [ t/fail: + t/fail 1  s/print s/+ "FAIL " name ]
+t/num: func [name got want] [ either = got want [ t/ok name ] [ t/bad name  print got  print want ] ]
+t/str: func [name got want] [
+    either s/= got want [ t/ok name ] [ t/bad name  s/print s/+ "  got:  " got  s/print s/+ "  want: " want ]
+]
+t/sin: func [name e type id] [
+    either sin? e [ either either = sin-type e type [ = sin-id e id ] [ 0 ] [ t/ok name ] [ t/bad name ] ] [ t/bad name ]
+]
+
+;; zlib, raw, level 9: "hello hello hello world" (a fixed block with a match)
+t/hello: mk-string [ 203 72 205 201 201 87 200 64 34 203 243 139 114 82 0 ]
+
+;; A: one feed, reads of 5, then the rest; positions and states
+do [
+d: dz/new 1024
+t/num "A1 a new decoder is ready (it has not yet looked for input)" dz/state d 'ready
+t/num "A2 nothing consumed" dz/in-pos d 0
+dz/feed d t/hello
+t/str "A3 first 5 bytes" dz/read d 5 "hello"
+t/num "A4 ready after a partial read" dz/state d 'ready
+t/num "A5 out-pos counts returned bytes" dz/out-pos d 5
+t/str "A6 the rest" dz/read d 100 " hello hello world"
+t/num "A7 done" dz/state d 'done
+t/num "A8 all input consumed" dz/in-pos d 15
+t/num "A9 no trailing bytes" dz/rest d 0
+t/str "A10 a read after done is empty" dz/read d 10 ""
+
+]
+;; B: byte-at-a-time input; need-input between feeds; same output
+do [
+d: dz/new 1024
+t/b-out: ""
+t/feed-read: func [i] [
+    dz/feed d s/slice t/hello i 1
+    t/b-out: s/+ t/b-out dz/read d 1000
+]
+t/num "B1 empty decoder waits" s/length dz/read d 4 0
+t/num "B2 state need-input" dz/state d 'need-input
+t/feed-read 0  t/feed-read 1  t/feed-read 2  t/feed-read 3  t/feed-read 4
+t/num "B3 still waiting mid-stream" dz/state d 'need-input
+t/feed-read 5  t/feed-read 6  t/feed-read 7  t/feed-read 8  t/feed-read 9
+t/feed-read 10 t/feed-read 11 t/feed-read 12 t/feed-read 13 t/feed-read 14
+t/str "B4 identical output" t/b-out "hello hello hello world"
+t/num "B5 done" dz/state d 'done
+
+]
+;; C: truncation is distinguished from waiting
+do [
+d: dz/new 1024
+dz/feed d s/slice t/hello 0 7
+t/c-part: dz/read d 100
+t/num "C1 waiting, not failed" dz/state d 'need-input
+dz/finish d
+t/sin "C2 after finish, the read raises 'truncated" judge [ dz/read d 100 ] 'inflate 'truncated
+t/num "C2b state error" dz/state d 'error
+t/sin "C3 the error is 'truncated" dz/error d 'inflate 'truncated
+t/sin "C4 a further read raises it" judge [ dz/read d 1 ] 'inflate 'truncated
+
+]
+;; D: malformed input: block type 3; good bytes first, then the error
+do [
+d: dz/new 1024
+dz/feed d mk-string [ 7 0 0 ]
+t/sin "D1 block type 3" judge [ dz/read d 10 ] 'inflate 'block-type
+t/num "D2 state error" dz/state d 'error
+;; stored "abc" (non-final), then a stored block whose LEN/NLEN do not match
+d: dz/new 1024
+dz/feed d mk-string [ 0 3 0 252 255 97 98 99 1 5 0 5 0 ]
+t/str "D3 the good block's bytes come first" dz/read d 10 "abc"
+t/sin "D4 then the error" judge [ dz/read d 10 ] 'inflate 'stored-length
+
+]
+;; E: a stored block, the empty fixed block, trailing bytes after the end
+do [
+d: dz/new 1024
+dz/feed d mk-string [ 0 2 0 253 255 79 75 3 0 222 173 ]
+t/str "E1 stored then empty fixed final" dz/read d 50 "OK"
+t/num "E2 done" dz/state d 'done
+t/num "E3 trailing bytes are left over" dz/rest d 2
+t/num "E4 consumed stops at the end" dz/in-pos d 9
+
+]
+;; F: distance before the start of the output (fixed: 'a', then <3, 6>)
+do [
+d: dz/new 1024
+dz/feed d mk-string [ 75 4 146 0 ]
+t/str "F1 the literal before the bad match is returned" dz/read d 10 "a"
+t/sin "F2 then the distance before the output is malformed" judge [ dz/read d 10 ] 'inflate 'distance
+
+]
+;; G: argument checks (the values Glon can test without masm)
+do [
+t/sin "G1 window must be a positive multiple of 8" judge [ dz/new 100 ] 'type 'dz/new
+t/sin "G2 window must be an integer" judge [ dz/new "x" ] 'type 'dz/new
+t/sin "G3 feed takes a STRING!" judge [ dz/feed dz/new 64 5 ] 'type 'dz/feed
+t/sin "G4 read takes a positive count" judge [ dz/read dz/new 64 0 ] 'type 'dz/read
+t/sin "G5 a string is not a decoder" judge [ dz/read "x" 1 ] 'type 'dz/read
+t/sin "G6 none is not a decoder" judge [ dz/state none ] 'type 'dz/state
+
+]
+;; H: two decoders are independent
+do [
+d1: dz/new 1024
+d2: dz/new 1024
+dz/feed d1 t/hello
+dz/feed d2 t/hello
+t/h1: dz/read d1 6
+t/h2: dz/read d2 11
+t/str "H1 first decoder" s/+ t/h1 dz/read d1 100 "hello hello hello world"
+t/str "H2 second decoder" s/+ t/h2 dz/read d2 100 "hello hello hello world"
+
+]
+;; release the earlier decoders: each holds its window (about 1,300 cells)
+do [
+d1: none  d2: none  d: none  t/h1: none  t/h2: none  t/b-out: none
+
+]
+;; I: a read is capped at dz/max-read; asking again continues exactly
+do [
+d: dz/new 1024
+dz/feed d mk-string [ 75 76 28 5 163 96 20 12 119 0 0 ]
+t/i1: dz/read d 100000
+t/num "I1 capped at dz/max-read" s/length t/i1 dz/max-read
+t/num "I2 still ready" dz/state d 'ready
+t/num "I3 all 'a'" s/scan-set t/i1 0 "a" 256
+t/i1: none
+;; (the rest is checked piece by piece: a 1,000-byte string would itself need
+;; a 1,016-cell contiguous block of the 7,232-cell heap)
+t/i2: dz/read d 100000
+t/i3: dz/read d 100000
+t/i4: dz/read d 100000
+t/num "I4 the rest in three more reads" + + s/length t/i2 s/length t/i3 s/length t/i4 744
+t/num "I5 all 'a'" + + s/scan-set t/i2 0 "a" s/scan-set t/i3 0 "a" s/scan-set t/i4 0 "a" 744
+t/num "I6 done" dz/state d 'done
+
+]
+s/print s/+ s/+ s/+ "unit tests: " s/from-int t/pass " passed, " s/+ s/from-int t/fail " failed"
+either = t/fail 0 [ none ] [ raise create-sin 'test 'failed t/fail ]
