@@ -707,6 +707,54 @@ scoped repair of these two defects).**
   - The per-block label and reference arrays (64 and 128) are still not
     bounds-checked (out of scope).
 
+**[FINDING] Machine-integrity audit (2026-11-09,
+`MACHINE-INTEGRITY-AUDIT.md`; tests only, no runtime change).** New target
+`make machine-integrity` (≈ 3 s), plus `make machine-integrity-wasm`. Known
+defects are strict XFAILs: an XPASS fails the target until the check is
+promoted.
+
+The audit sharpens the limitations listed above:
+
+- **Data-stack excursions also come from plain Glon, not only masm (K1, K2).**
+  - **Mechanism.** Each pending native-operator argument holds one data-stack
+    cell, and no closure is entered, so `RV_SPMIN` never sees the depth. One
+    512-value block reaches 260 cells, which is already past the 256 reserve.
+    Nesting through `either` blocks has no depth bound.
+  - **Measured.** `+ 1` nested 3,600 deep (36 blocks × 100) overwrote the
+    runtime's own code at 12,926 and was reported `OK`. With code full of
+    masm libraries, 400 deep overwrote library code.
+  - **Consequence.** The 256-cell reserve is a measured allowance for
+    observed workloads, not an enforced bound.
+- **The label/reference arrays overflow host memory (K5).** With 65 labels or
+  129 references in one block, AddressSanitizer reports a
+  `global-buffer-overflow` write into `raw_nlabels`/`raw_nrefs`. This is host
+  C undefined behaviour reachable from any masm source; ordinary tests never
+  execute it.
+- **The refused-source code leak (K3) exhausts masm for the session.** Each
+  refusal leaves 21 or more cells; 153 refusals exhaust a fresh code space.
+  Bindings, the loader heap, the limit and plain Glon are unaffected.
+- **masm in an unwrapped source fail-stops (K4).** The keyword is recognised
+  only by `parse_block`, not by the unwrapped `parse_program` path that
+  `./glon` uses. First recorded in `experiments/glon-latex`.
+- [MEASURED] **Integrity that holds:**
+  - **Determinism.** Identical sessions give identical 64K memory.
+  - **Residue.** `r0_s1_init` is not a memory clear (dead cells keep residue),
+    but sessions on poisoned or reused memory behave and end identically.
+  - **Code.** Runtime code is never written by any failure kind.
+  - **Recovery.** Nine failure kinds, each repeated 10 times, return code,
+    globals and the live heap to the same state, and the loader heap grows by
+    the same amount every round.
+  - **GC.** Binary strings holding every byte value at every granule
+    alignment survive 272 collections with interior stale integers, natively
+    and in WASM, identically. The pre-repair collector fail-stops on the same
+    test.
+- **Repair priorities (not authorised):**
+  1. K5 bounds;
+  2. data-stack depth (K2/K1), by a parse-time nesting bound and/or a
+     code-end canary;
+  3. size all masm blocks before emitting any (K3);
+  4. K4.
+
 **[PROPOSAL]s (not authorised):**
 - **(a)** a compact call through a per-block stub, about 14 cells instead of
   38 [E];
