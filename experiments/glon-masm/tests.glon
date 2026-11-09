@@ -1,0 +1,35 @@
+;; experiments/glon-masm/tests.glon -- every variant must compute the same
+;; function; run natively (glon) and in WASM (run-wasm.js). Prints FAIL on a
+;; mismatch and a summary line; the last line raises if anything failed.
+t/pass: 0
+t/fail: 0
+t/num: func [name got want] [
+    either = got want [ t/pass: + t/pass 1 ] [ t/fail: + t/fail 1  s/print s/+ "FAIL " name  print got  print want ]
+]
+t/u: func [t] [ - + * t 3 1 * 65521 / + * t 3 1 65521 ]
+t/w: func [t] [ - + * t 5 7 * 65521 / + * t 5 7 65521 ]
+t/check: func [x] [
+    t/num "min" x/min x x
+    t/num "inl" x/inl x t/u t/u t/u t/u x
+    t/num "sub" x/sub x t/u t/u t/u t/u x
+    t/num "loop" x/loop x t/u t/u t/u t/u x
+    t/num "sel" x/sel x t/u t/u t/u t/u x
+    t/num "inl2" x/inl2 x t/w t/u t/w t/u x
+    t/num "sub2" x/sub2 x t/w t/u t/w t/u x
+    t/num "sub2x" x/sub2x x t/w t/u t/w t/u x
+    t/num "u" x/u x t/u x
+    t/num "xc" x/xc x :x/u t/u t/u t/u t/u x
+    t/num "two" x/two x :x/u t/u t/u t/u t/u x
+    t/num "glon" x/glon x t/u t/u t/u t/u x
+    t/num "g4" x/g4 x t/u t/u t/u t/u x
+]
+t/check 0
+t/check 1
+t/check 12345
+t/check 65520
+;; the cross-word call refuses what is not a 1-argument masm word
+t/num "xc refuses an integer" x/xc 5 7 none
+t/num "xc refuses a function" x/xc 5 :t/u none
+t/num "xc refuses a 2-argument masm word" x/xc 5 :x/xc none
+s/print s/+ s/+ s/+ "masm variants: " s/from-int t/pass " passed, " s/+ s/from-int t/fail " failed"
+either = t/fail 0 [ none ] [ raise create-sin 'test 'failed t/fail ]

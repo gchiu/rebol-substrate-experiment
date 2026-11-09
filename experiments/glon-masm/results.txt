@@ -1,0 +1,93 @@
+word      tokens  cells
+x/min          3     19
+x/inl         63     99
+x/sub         28    140
+x/loop        41     64
+x/sel         86    126
+x/inl2        63     99
+x/sub2        45    177
+x/sub2x       47    165
+x/u           18     39
+x/two         64    100
+x/xc          64    176
+x/glon         0      0
+x/g4           0      0
+
+per call (native -O1, K=1000, median of 3; loop overhead 56.4 us subtracted)
+word        us/call S1 instr/call
+x/min          1.03        227.0
+x/inl          0.81        267.0
+x/sub          0.83        363.0
+x/loop         0.79        321.0
+x/sel          1.15        348.0
+x/inl2         0.49        267.0
+x/sub2         1.35        363.0
+x/sub2x        2.14        369.0
+x/u            0.78        237.0
+x/two          3.07        675.0
+x/xc           3.70        812.0
+x/glon         7.87       1673.0
+x/g4          15.06       3023.0
+
+code ends at 15354 (data-stack top 16384); the runtime's own code is 12670 cells
+word      tokens  cells
+x/min          3     19
+x/inl         63     99
+x/sub         28    140
+x/loop        41     64
+x/sel         86    126
+x/inl2        63     99
+x/sub2        45    177
+x/sub2x       47    165
+x/u           18     39
+x/two         64    100
+x/xc          64    176
+x/glon         0      0
+x/g4           0      0
+
+per call (native -O1, K=3000, median of 3; loop overhead 43.2 us subtracted)
+word        us/call S1 instr/call
+x/min          0.42            -
+x/inl          0.78            -
+x/sub          1.52            -
+x/loop         1.64            -
+x/sel          0.96            -
+x/inl2         1.16            -
+x/sub2         2.35            -
+x/sub2x        1.29            -
+x/u            1.41            -
+x/two          3.24            -
+x/xc           3.56            -
+x/glon         7.74            -
+x/g4          12.95            -
+
+code ends at 15354 (data-stack top 16384); the runtime's own code is 12670 cells
+file                                               code end DS deepest   DS room RS deepest
+../../demo/shop/strings-ext.glon                     14150         8      2226         7
+../glon-mem/mem.glon                                 15727         8       649       121
+mem tests: 66 passed, 0 failed
+../glon-mem/mem-tests.glon                           15727        21       636      1884
+file                                               code end DS deepest   DS room RS deepest
+80
+build/deep.glon                                      13646        87      2651      7783
+file                                               code end DS deepest   DS room RS deepest
+../../demo/shop/strings-ext.glon                     14150         8      2226         7
+../glon-deflate/inflate.glon                         14150         8      2226         8
+unit tests: 44 passed, 0 failed
+../glon-deflate/tests/unit-tests.glon                14150        28      2206      2862
+file                                               code end DS deepest   DS room RS deepest
+../../demo/shop/strings-ext.glon                     14150         8      2226         7
+../glon-iter/iter.glon                               14177         8      2199         9
+77
+0
+glon-iter bytes: all tests passed
+../glon-iter/iter-tests.glon                         14177        78      2129      7386
+file                                               code end DS deepest   DS room RS deepest
+../../demo/shop/strings-ext.glon                     14150         8      2226         7
+variants.glon                                        15354         8      1022         7
+masm variants: 55 passed, 0 failed
+tests.glon                                           15354        12      1018       323
+file                                               code end DS deepest   DS room RS deepest
+../../demo/shop/strings-ext.glon                     14150         8      2226         7
+../glon-mem/mem.glon                                 15727         8       649       121
+variants.glon                                        16931         0      -547      8192

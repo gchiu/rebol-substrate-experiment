@@ -1,0 +1,38 @@
+;; experiments/glon-masm/variants.glon -- masm code-density microbenchmarks.
+;; Every variant maps a tagged integer t through U (and W) four times, where
+;;   U(t) = ((t/16) * 3 + 1) mod 65521, as a tagged integer
+;;   W(t) = ((t/16) * 5 + 7) mod 65521
+;; so results, code cells and times are comparable. Each definition is one
+;; line, so measure.c can load each separately and count its cells.
+;;
+;; x/xc is the cross-word call: it is given another masm word as a VALUE
+;; (:x/u), checks that it is a RAW value whose record has arity 1, and calls its
+;; entry through a 3-cell trampoline (tr: LIT REG_IP !), reached by CALL so
+;; that the callee's ARITY 1 EXIT returns to the caller, which drops the count.
+[
+;; minimal word (identity)
+x/min: masm 1 [ ARITY 1 EXIT ]
+;; U four times, inline
+x/inl: masm 1 [ LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL ARITY 1 EXIT ]
+;; U as a local subroutine, 4 CALL sites
+x/sub: masm 1 [ CALL u CALL u CALL u CALL u ARITY 1 EXIT u: LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL EXIT ]
+;; U in a counted loop
+x/loop: masm 1 [ LIT 4 LIT SCRATCH_A ! l: LIT SCRATCH_A @ ZBRANCH d LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL LIT SCRATCH_A @ LIT 1 SUB LIT SCRATCH_A ! BRANCH l d: ARITY 1 EXIT ]
+;; U reached by BRANCH, returning through a selector cell (no CALL/EXIT)
+x/sel: masm 1 [ LIT 1 LIT SCRATCH_F ! BRANCH u r1: LIT 2 LIT SCRATCH_F ! BRANCH u r2: LIT 3 LIT SCRATCH_F ! BRANCH u r3: LIT 4 LIT SCRATCH_F ! BRANCH u r4: ARITY 1 EXIT u: LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL LIT SCRATCH_F @ LIT 1 EQ ZBRANCH s2 BRANCH r1 s2: LIT SCRATCH_F @ LIT 2 EQ ZBRANCH s3 BRANCH r2 s3: LIT SCRATCH_F @ LIT 3 EQ ZBRANCH s4 BRANCH r3 s4: BRANCH r4 ]
+;; U W U W inline
+x/inl2: masm 1 [ LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL LIT 16 DIV LIT 5 MUL LIT 7 ADD LIT 65521 MOD LIT 16 MUL LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL LIT 16 DIV LIT 5 MUL LIT 7 ADD LIT 65521 MOD LIT 16 MUL ARITY 1 EXIT ]
+;; U and W as subroutines, an EXIT each
+x/sub2: masm 1 [ CALL u CALL w CALL u CALL w ARITY 1 EXIT u: LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL EXIT w: LIT 16 DIV LIT 5 MUL LIT 7 ADD LIT 65521 MOD LIT 16 MUL EXIT ]
+;; U and W sharing one EXIT (u branches to it, w falls into it)
+x/sub2x: masm 1 [ CALL u CALL w CALL u CALL w ARITY 1 EXIT u: LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL BRANCH xr w: LIT 16 DIV LIT 5 MUL LIT 7 ADD LIT 65521 MOD LIT 16 MUL xr: EXIT ]
+;; U as its own word: callable from Glon, and shareable
+x/u: masm 1 [ LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL ARITY 1 EXIT ]
+;; control for x/xc: two arguments (the second a get-word), U four times inline
+x/two: masm 2 [ DROP LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL LIT 16 DIV LIT 3 MUL LIT 1 ADD LIT 65521 MOD LIT 16 MUL ARITY 1 EXIT ]
+;; calls another, separately assembled word (passed as a value) 4 times
+x/xc: masm 2 [ DUP LIT 16 MOD LIT 10 EQ ZBRANCH bad LIT 10 SUB DUP LIT 1 ADD @ LIT 1 EQ ZBRANCH bad @ LIT SCRATCH_B ! LIT SCRATCH_B @ CALL tr DROP LIT SCRATCH_B @ CALL tr DROP LIT SCRATCH_B @ CALL tr DROP LIT SCRATCH_B @ CALL tr DROP ARITY 1 EXIT bad: DROP DROP NONE ARITY 1 EXIT tr: LIT REG_IP ! ]
+;; a Glon wrapper around a masm word, and Glon-level composition
+x/glon: func [t] [ x/inl t ]
+x/g4: func [t] [ x/u x/u x/u x/u t ]
+]
