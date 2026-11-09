@@ -194,7 +194,7 @@ brackets.
 | values per block / per string literal | 512 values (a quoted literal costs 2); 512 bytes per string literal | clean parse failure (`too_large`) |
 | loader heap | ~14,800 cells, permanent | `loader_exhausted`. Large test suites must be split across sessions (`experiments/glon-latex`) |
 | symbols, function sites | 512, 640 per session [handoff, 2026-09-25] | clean parse failure |
-| emitted code / data-stack headroom | 12,454 cells / ~3,674 cells, after the GC worklist guard added 117 cells (from 12,337 / ~3,791) [2026-11-06] | each native costs far more than it looks (a CALL ≈ 21 cells, an EXIT ≈ 17 [handoff]) |
+| emitted code / data-stack headroom | 12,670 cells / ~3,458 cells, after the GC object-start check added 216 cells [2026-11-09] (12,454 / ~3,674 after the GC worklist guard added 117, from 12,337 / ~3,791 [2026-11-06]) | each native costs far more than it looks (a CALL ≈ 21 cells, an EXIT ≈ 17 [handoff]) |
 | masm library code | masm workers are assembled into the same code area, which grows towards the data stack: `prelude` 416 cells, `strings` 304, `strings-ext` 504. With `prelude` + `strings` loaded, code ends at 13,473, leaving 2,911 cells below the data-stack top (16,384); the data stack used ≤ 91 cells at maximum recursion depth [2026-11-07, `experiments/glon-iter`] | a third budget beside bindings and the loader heap, shared by every masm library in a session |
 
 **[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
@@ -251,7 +251,7 @@ build of the current sources.**
 | `lk/` link extractor over `dom/walk`, and `lb/` chain-to-block helper | **[FINDING] experiment, not deployed** | `experiments/glon-dom-links/README.md` |
 | `hw/` host-backed DOM walker; browser host (`glon-live.wasm`) | **[FINDING] experiment, not deployed; one WASM failure unexplained** | `experiments/glon-dom-host/REPORT.md` |
 | `glon-web`: a native host (libcurl, libxml2) running a Glon link-extraction program | **[FINDING] experimental milestone, not deployed; a separate executable (the `glon` CLI is unchanged)** | `experiments/glon-links-native/README.md` |
-| `dz/` streaming DEFLATE decompressor (RFC 1951) in Glon, after Chris Ross-Gill's `deflate.reb` | **[FINDING] experiment, not deployed; found a collector defect (fix proposed, not applied)** | `experiments/glon-deflate/README.md` |
+| `dz/` streaming DEFLATE decompressor (RFC 1951) in Glon, after Chris Ross-Gill's `deflate.reb` | **[FINDING] experiment, not deployed; found a collector defect, since repaired** | `experiments/glon-deflate/README.md` |
 
 **[DECISION] The string extension API (approved by the user 2026-11-07).**
 Five byte-level operations in a separate optional module,
@@ -499,8 +499,9 @@ What was shown:
   accumulator passed down a recursion is kept alive in every pending frame.
   Build by balanced halves, or update one variable in place.
 
-**[FINDING] Collector defect: the return-stack closure scan accepts interior
-pointers into STRING!s** (found by the DEFLATE experiment, 2026-11-09).
+**[FINDING] Collector defect (now repaired): the return-stack closure scan
+accepted interior pointers into STRING!s** (found by the DEFLATE experiment,
+2026-11-09).
 - **The test.** `emit_mark_closure_inline` treats a 16-aligned heap value p
   as a closure if the cell at p − 15 has the closure kind.
 - **The hole.** Inside a STRING! (one byte per cell), a byte of 8–11 passes
@@ -511,10 +512,41 @@ pointers into STRING!s** (found by the DEFLATE experiment, 2026-11-09).
   (out-of-range T_CONTEXT/T_USER/T_STRING/T_BLOCK).
 - **Reproduction.** `experiments/glon-deflate/tests/gc-interior-repro.glon`, in
   plain Glon, prints `corrupted at 0 ...` and `11`.
-- **[PROPOSAL]** `experiments/glon-deflate/proposal/gc-object-start-check.patch`
-  accepts p only if a walk of object sizes from `GC_HEAP_BASE` lands on
-  p − 16. It is not applied and needs approval. An object-start bitmap would
-  be the cheaper exact alternative.
+- **Scope.** This is the only conservative identification in the collector.
+  The other roots are exact: the global context, `RV_CTX`/`RV_CHILD`, the
+  frame chain (`mark_frame`), stack contexts traced up to their bound count,
+  and the data stack under the GC-safepoint invariant (tagged values only).
+  Real closure payloads are always p − 16 = header, so the check rejects no
+  genuine pointer. Stale integers that equal a real closure's payload can
+  still retain that closure (conservative retention), which is harmless.
+
+**[DECISION] Repaired (2026-11-09, approved as a correctness repair: "if the
+fix is sound, implement it").**
+- **The fix.** `emit_mark_closure_inline` accepts p only if a walk of object
+  sizes from `GC_HEAP_BASE` up to `REG_HP` lands exactly on p − 16.
+  - **Why the walk is exact:** every cell below the frontier belongs to one
+    allocated or free block (alloc splits write remainder headers; sweep
+    writes coalesced headers), and the mark phase changes only flags.
+  - **What it changes:** no S1 file, no memory-map change, no language
+    semantics.
+- **Regression test:** `r0_s1_gc_interior_tests.c`, in the `s1` suite.
+  - **Unchanged runtime:** 4 of 8 checks fail (byte 9 silently becomes 11,
+    then a fail-stop).
+  - **Fixed runtime:** 8 of 8 pass, including closures referenced only from
+    the stack surviving collections (no premature collection).
+- **All suites unchanged.** `make test` (985 checks), `glon-live-native-test`,
+  `patrol-test`, the seven `kaka-*` tests and `glon-smoke` pass identically on
+  both runtimes. Only code addresses in the dumps of deliberate fail-stop
+  tests move.
+- **[MEASURED] cost:**
+  - **code:** +216 emitted cells (12,454 → 12,670), so data-stack headroom
+    falls to ~3,458;
+  - **collection time:** about +40–60% in a microbenchmark with 183 live
+    objects and 10 closure frames (0.9–1.4 ms → 1.3–2.2 ms per collection);
+  - **DEFLATE end to end:** 5–30% slower.
+- **[PROPOSAL] A cheaper exact check.** An object-start bitmap (452 bits for
+  the 64K heap, kept by alloc and sweep), or one sorted pass over all
+  candidates per collection. Neither is authorised.
 
 ## 8. Why more memory is a separate scaling experiment
 

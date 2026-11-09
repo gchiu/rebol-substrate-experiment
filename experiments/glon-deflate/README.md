@@ -63,8 +63,11 @@ found a defect in the runtime's collector.**
      bit into one of them. Depending on the neighbouring bytes, that is a
      fail-stop or a silent change to the data.
    - `tests/gc-interior-repro.glon` shows it in 60 lines of plain Glon.
-   - A fix is proposed in `proposal/gc-object-start-check.patch`. It is **not
-     applied**.
+   - **Since repaired** (2026-11-09, a separate correctness commit): the
+     runtime now applies `proposal/gc-object-start-check.patch`, with the
+     regression test `r0_s1_gc_interior_tests.c`. The results in `results/`
+     are kept as they were recorded before the repair; `results/AFTER-FIX.md`
+     gives the rerun.
 
 **Performance.** Compared with C zlib on the same machine:
 
@@ -459,8 +462,10 @@ On the unchanged runtime the defect stopped up to 24 of 164 runs in earlier
 layouts. In the final layout it stops 1 of 480 runs, and the progress demo.
 **A Glon program cannot avoid it**, because data bytes are arbitrary.
 
-**Proposed fix** (`proposal/gc-object-start-check.patch`): **not applied** to
-the runtime; it needs approval (AGENTS.md).
+**The fix** (`proposal/gc-object-start-check.patch`). When this experiment was
+recorded it was **not applied**. It was then reviewed and applied as a
+separate correctness repair; see GLON-ARCHITECTURE-MEMORY.md, "Collector
+defect".
 - **What it does:** before marking a candidate, walk the heap's object sizes
   from `GC_HEAP_BASE` up to the frontier, and accept *p* only if the walk
   lands exactly on `p − 16`.

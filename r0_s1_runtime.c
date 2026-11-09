@@ -1016,7 +1016,33 @@ static void emit_mark_closure_inline(void) {
     asm_lit(4); asm_host(HOST_DIV); asm_lit(8); asm_host(HOST_MOD);                     /* kind */
     asm_lit(GC_KIND_CLOSURE); asm_host(HOST_EQ);
     cell j4 = asm_zbranch_fwd();                     /* not a closure -> skip */
+    /* Object-start check (2026-11-09; r0_s1_gc_interior_tests.c). The kind
+     * bits alone do not identify a closure: a STRING! holds one byte per cell,
+     * so the inside of a string can carry "closure flags" (a byte 8-11) at
+     * p - 15, and an INTEGER! n is the 16-aligned cell n * 16. Marking such a
+     * p wrote the mark bit into a string byte. So p - 16 must be a real object
+     * header: walk the object sizes from GC_HEAP_BASE (every cell below the
+     * frontier belongs to exactly one allocated or free block, and the mark
+     * phase changes only flags, never sizes) and skip p unless the walk lands
+     * exactly on p - 16. Cost: O(objects) per closure-kind candidate. */
+    asm_lit(GC_HEAP_BASE); e_setc(GC_T2);            /* a */
+    e_cell(GC_T1); asm_lit(GC_HDR_STRIDE); asm_host(HOST_SUB); e_setc(GC_T3); /* h */
+    e_cell(GC_T3); asm_lit(REG_HP); asm_fetch(); asm_host(HOST_LT);
+    cell j_wfront = asm_zbranch_fwd();               /* h at/after the frontier */
+    cell wl = asm_here();
+    e_cell(GC_T2); e_cell(GC_T3); asm_host(HOST_LT);
+    cell j_wdone = asm_zbranch_fwd();
+    e_cell(GC_T2); asm_fetch(); asm_lit(0); asm_host(HOST_GT);
+    cell j_wbad = asm_zbranch_fwd();                 /* size 0: give up */
+    e_cell(GC_T2); e_cell(GC_T2); asm_fetch(); asm_host(HOST_ADD); e_setc(GC_T2);
+    asm_branch(wl);
+    asm_patch_here(j_wdone);
+    e_cell(GC_T2); e_cell(GC_T3); asm_host(HOST_EQ);
+    cell j_wno = asm_zbranch_fwd();                  /* not an object start */
     e_cell(GC_T1); asm_call(r_mark_push);
+    asm_patch_here(j_wno);
+    asm_patch_here(j_wbad);
+    asm_patch_here(j_wfront);
     asm_patch_here(j4);
     asm_patch_here(j3);
     asm_patch_here(j2);
