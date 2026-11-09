@@ -1,0 +1,192 @@
+;; experiments/glon-mem/mem-tests.glon -- tests of the GLON-MEM v001 prototype.
+;; Native:  build/glon demo/shop/strings-ext.glon mem.glon mem-tests.glon
+;; WASM:    node run-wasm.js (the same files, the same expected output)
+;; A failure prints FAIL; the last line raises a SIN! if anything failed.
+;; Each section is a do [ ] block: a block holds at most 512 values.
+t/pass: 0
+t/fail: 0
+t/ok: func [name] [ t/pass: + t/pass 1 ]
+t/bad: func [name] [ t/fail: + t/fail 1  s/print s/+ "FAIL " name ]
+t/num: func [name got want] [ either = got want [ t/ok name ] [ t/bad name  print got  print want ] ]
+t/sin: func [name e type] [
+    either sin? e [ either = sin-type e type [ t/ok name ] [ t/bad name ] ] [ t/bad name ]
+]
+;; the sum of bytes [a, b) of r, and how many differ from v (balanced)
+t/sum: func [r a b] [
+    either = b + a 1 [ mem/byte r a ] [ + t/sum r a / + a b 2 t/sum r / + a b 2 b ]
+]
+t/diff: func [r a b v] [
+    either = b + a 1 [ either = mem/byte r a v [ 0 ] [ 1 ] ] [
+        + t/diff r a / + a b 2 v t/diff r / + a b 2 b v
+    ]
+]
+;; store byte (i * m + c) mod 256 at [a, b)
+t/fill: func [r a b m c] [
+    either = b + a 1 [ mem/set-byte r a - + * a m c * 256 / + * a m c 256 ] [
+        t/fill r a / + a b 2 m c  t/fill r / + a b 2 b m c
+    ]
+]
+;; how many of [a, b) differ from the pattern (i * m + c) mod 256, shifted by d
+t/check: func [r a b m c d] [
+    either = b + a 1 [
+        either = mem/byte r a - + * - a d m c * 256 / + * - a d m c 256 [ 0 ] [ 1 ]
+    ] [ + t/check r a / + a b 2 m c d t/check r / + a b 2 b m c d ]
+]
+
+;; 1. allocation and release
+do [
+r: mem/alloc 10
+t/num "1a size" mem/size r 10
+t/num "1b new memory is zero" t/sum r 0 10 0
+t/num "1c not released" mem/released? r 0
+mem/release r
+t/num "1d released" mem/released? r 1
+t/sin "1e byte after release" judge [ mem/byte r 0 ] 'released
+t/sin "1f size after release" judge [ mem/size r ] 'released
+t/sin "1g release twice" judge [ mem/release r ] 'released
+t/sin "1h alloc 0" judge [ mem/alloc 0 ] 'range
+t/sin "1i alloc negative" judge [ mem/alloc -5 ] 'range
+t/sin "1j alloc a string" judge [ mem/alloc "x" ] 'type
+r1: mem/alloc 1
+t/num "1k one-byte region" mem/size r1 1
+]
+
+;; 2. bytes, including 0 and 255, at every position within a packed cell
+do [
+r: mem/alloc 7
+mem/set-byte r 0 255  mem/set-byte r 1 0  mem/set-byte r 2 255
+mem/set-byte r 3 0    mem/set-byte r 4 255 mem/set-byte r 5 128  mem/set-byte r 6 1
+t/num "2a byte 0 = 255" mem/byte r 0 255
+t/num "2b byte 1 = 0" mem/byte r 1 0
+t/num "2c byte 2 = 255" mem/byte r 2 255
+t/num "2d byte 3 = 0" mem/byte r 3 0
+t/num "2e byte 4 = 255" mem/byte r 4 255
+t/num "2f byte 5 = 128" mem/byte r 5 128
+t/num "2g byte 6 = 1" mem/byte r 6 1
+mem/set-byte r 1 255  mem/set-byte r 1 0
+t/num "2h rewriting the middle byte leaves its neighbours" + mem/byte r 0 mem/byte r 2 510
+r: mem/alloc 300
+t/fill r 0 300 7 3
+t/num "2i 300 bytes of a pattern read back" t/check r 0 300 7 3 0 0
+]
+
+;; 3. cells: 4 bytes, little-endian, two's complement, any offset
+do [
+r: mem/alloc 16
+mem/set-cell r 0 16909060
+t/num "3a 0x01020304 low byte first" mem/byte r 0 4
+t/num "3b ... byte 3" mem/byte r 3 1
+t/num "3c cell read" mem/cell r 0 16909060
+mem/set-cell r 5 -1
+t/num "3d -1 at an odd offset" mem/cell r 5 -1
+t/num "3e -1 is four 255 bytes" t/sum r 5 9 1020
+mem/set-cell r 9 -134217728
+t/num "3f the most negative portable cell" mem/cell r 9 -134217728
+mem/set-cell r 12 134217727
+t/num "3g the most positive portable cell" mem/cell r 12 134217727
+mem/set-cell r 2 -2
+t/num "3h overlapping write" mem/cell r 2 -2
+t/num "3i ... changed byte 1? no" mem/byte r 1 3
+;; only a build with wider integers (64-bit native) can even name a value
+;; outside the portable range; in 32-bit WASM no integer lies outside it
+t/wide: = / * 134217727 2 2 134217727
+either t/wide [
+    t/sin "3j above the portable range" judge [ mem/set-cell r 0 + 134217727 1 ] 'range
+    t/sin "3k below it" judge [ mem/set-cell r 0 - -134217728 1 ] 'range
+] [ s/print "SKIP 3j 3k: this build has no integer outside the portable range" ]
+mem/set-byte r 3 8
+t/sin "3l a cell whose bytes exceed the portable range" judge [ mem/cell r 0 ] 'range
+t/sin "3m a non-integer cell value" judge [ mem/set-cell r 0 "x" ] 'type
+]
+
+;; 4. bounds
+do [
+r: mem/alloc 8
+t/sin "4a byte -1" judge [ mem/byte r -1 ] 'range
+t/sin "4b byte at size" judge [ mem/byte r 8 ] 'range
+t/sin "4c cell over the end" judge [ mem/cell r 5 ] 'range
+t/num "4d cell at the last full offset" mem/cell r 4 0
+t/sin "4e set-byte 256" judge [ mem/set-byte r 0 256 ] 'range
+t/sin "4f set-byte -1" judge [ mem/set-byte r 0 -1 ] 'range
+t/sin "4g index not an integer" judge [ mem/byte r "0" ] 'type
+t/sin "4h move past the source end" judge [ mem/move r 4 r 0 5 ] 'range
+t/sin "4i move past the destination end" judge [ mem/move r 0 r 4 5 ] 'range
+t/sin "4j move a negative count" judge [ mem/move r 0 r 1 -1 ] 'range
+t/sin "4k a string is not a region" judge [ mem/byte "abc" 0 ] 'type
+t/sin "4l a block is not a region" judge [ mem/byte [ 1 2 ] 0 ] 'type
+t/sin "4m none is not a region" judge [ mem/size none ] 'type
+t/sin "4n to-string past the end" judge [ mem/to-string r 6 3 ] 'range
+t/sin "4o from-string past the end" judge [ mem/from-string r 6 "abc" ] 'range
+mem/set-byte r 0 9
+t/sin "4p a failed write changes nothing" judge [ mem/set-byte r 0 300 ] 'range
+t/num "4q ... byte 0 is still 9" mem/byte r 0 9
+]
+
+;; 5. overlapping copies in both directions, between regions, and k = 0
+do [
+r: mem/alloc 200
+t/fill r 0 200 1 0
+mem/move r 0 r 10 100
+t/num "5a forward overlap (dst > src): bytes 10..109 = 0..99" t/check r 10 110 1 0 10 0
+t/num "5b ... bytes 0..9 unchanged" t/check r 0 10 1 0 0 0
+t/fill r 0 200 1 0
+mem/move r 10 r 0 100
+t/num "5c backward overlap (dst < src): bytes 0..99 = 10..109" t/check r 0 100 1 0 -10 0
+t/num "5d ... bytes 100..199 unchanged" t/check r 100 200 1 0 0 0
+t/fill r 0 200 1 0
+mem/move r 3 r 4 1
+t/num "5e a one-byte overlapping move" mem/byte r 4 3
+q: mem/alloc 50
+mem/move r 7 q 1 40
+t/num "5f between regions" t/check q 1 41 1 0 -6 0
+t/num "5g ... outside the copy, zero" + mem/byte q 0 t/sum q 41 50 0
+mem/move r 0 q 0 0
+t/num "5h k = 0 copies nothing" mem/byte q 0 0
+t/fill r 0 200 1 0
+mem/move r 5 r 5 20
+t/num "5i a move onto itself" t/check r 0 200 1 0 0 0
+mem/from-string q 0 "Hello"
+t/num "5j from-string" mem/byte q 4 111
+t/num "5k to-string" s/= mem/to-string q 0 5 "Hello" 1
+t/num "5l to-string with bytes 0 and 255" s/at mem/to-string r 0 1 0 0
+]
+
+;; 6. repeated allocation and release: 400 regions of 3,000 bytes (about 1,000
+;; cells each, 400,000 cells in all, in a 7,232-cell heap) are reclaimed
+do [
+t/n: 0
+t/cycle: func [k] [
+    either = k 1 [
+        t-r: mem/alloc 3000
+        mem/set-byte t-r 2999 7
+        t/n: + t/n mem/byte t-r 2999
+        mem/release t-r
+    ] [ t/cycle / k 2  t/cycle - k / k 2 ]
+]
+t/cycle 400
+t/num "6a 400 regions allocated, used and released" t/n 2800
+]
+
+;; 7. GC safety and lifetime: a region survives collections while referenced;
+;; its bytes are never traced (bytes 6, 7, 11, 12 would be pointers if they
+;; were); an integer on the stack that points inside it changes nothing
+do [
+r: mem/alloc 600
+t/fill r 0 600 1 0
+t/churn: func [k] [ either = k 1 [ t-junk: s/+ "abcdefghijklmnop" "qrstuvwxyz" none ] [ t/churn / k 2  t/churn - k / k 2 ] ]
+t/churn 2000
+t/num "7a contents intact after about 2,000 collections' worth of garbage" t/check r 0 600 1 0 0 0
+t/f: func [x] [ t/churn 500  mem/byte x 599 ]
+t/num "7b a region referenced only by an argument" t/f mem/alloc 600 0
+t/g: func [n] [ t/churn 60  0 ]
+;; every byte 9: each packed cell is 9 + 9*256 + 9*65536, and the cell after
+;; the region's header looks like nothing; still, sweep integers over the heap
+t/nines: mem/alloc 900
+t/fill t/nines 0 900 0 9
+t/spray: func [a k] [ either = k 1 [ t/g a ] [ t/spray a / k 2  t/spray + a / k 2 - k / k 2 ] ]
+t/spray 2048 452
+t/num "7c no byte changed under stale interior integers" t/diff t/nines 0 900 9 0
+]
+
+s/print s/+ s/+ s/+ "mem tests: " s/from-int t/pass " passed, " s/+ s/from-int t/fail " failed"
+either = t/fail 0 [ none ] [ raise create-sin 'test 'failed t/fail ]
