@@ -254,6 +254,7 @@ build of the current sources.**
 | `dz/` streaming DEFLATE decompressor (RFC 1951) in Glon, after Chris Ross-Gill's `deflate.reb` | **[FINDING] experiment, not deployed; found a collector defect, since repaired** | `experiments/glon-deflate/README.md` |
 | Glon/Binary: an optional `bin/` binary-buffer library | **[PROPOSAL] investigated, not implemented** | `GLON-BINARY-FEASIBILITY.md` |
 | `mem/` minimal addressable-memory vocabulary (Forth-style: alloc, release, byte, cell, move) over M3 USER objects | **[FINDING] prototype v002, not deployed and not adopted; native and WASM tested** | `experiments/glon-mem/README.md` |
+| masm code density and composition (microbenchmarks, stack high-water marks) | **[FINDING] investigation** | `experiments/glon-masm/README.md` |
 
 **[DECISION] The string extension API (approved by the user 2026-11-07).**
 Five byte-level operations in a separate optional module,
@@ -617,6 +618,64 @@ fix is sound, implement it").**
 space or move speed must first be resolved: either a code/data-stack boundary
 moved by an approved profile, or a validated masm move (≈400–450 more code
 cells, estimated).
+
+**[FINDING] masm code density and composition (2026-11-09, 64K
+configuration, native and WASM, `experiments/glon-masm/`).**
+
+[MEASURED] **Costs:**
+- **Cell costs.** S1 has no call, return or jump. The frozen assembler derives
+  `BRANCH` (5 cells), `>R`/`R>` (14), `EXIT` (17) and `CALL` (21) over the
+  memory-mapped IP and RP. A masm word costs at least 19 cells (`ARITY n
+  EXIT`).
+- **Executed instructions:**
+
+  | Operation | S1 instructions |
+  |---|---|
+  | a call/return pair | 24 |
+  | a call of a masm word from Glon | ~227 |
+  | a Glon function wrapper around it | ~1,400 more |
+  | passing a get-word argument | ~408 |
+
+- **Break-even.** A local subroutine saves space only when its body exceeds
+  (21k + 17)/(k − 1) cells for k call sites: 34 cells at 4 sites, never under
+  21.
+
+[MEASURED] **Code space and stacks:**
+- **The budget.** The runtime's code ends at 12,926, and every masm library
+  shares the 3,458 cells up to the data-stack top (16,384). The assembler's
+  cursor is a `static` of frozen `s1.c`, so code cannot be placed elsewhere.
+- **Stack use.** The data stack never exceeded 87 cells in any workload
+  measured. The return stack reached 7,783 of 8,192 cells at 80 nested calls.
+- **Coexistence.** `mem/` v002 (1,577 cells) plus another ~1,200-cell masm
+  library does not fit.
+
+[FINDING] **Composition:**
+- **What can be shared.** A masm word can call another, separately assembled
+  word passed to it as a value: check the RAW record's arity, call its entry
+  through a 3-cell trampoline, and drop the result count. It costs ~34
+  instructions and 25 cells per site. That is safe only for callees that
+  validate their own (tagged) arguments.
+- **What cannot.** Internal raw-pointer helpers cannot be shared safely. masm
+  cannot name a code address (`LIT label` is refused), and the loader links no
+  names across blocks. These are assembler limits (`r0_s1_runtime.c`), as are
+  the 510-token, 64-label and 128-reference block caps, not S1.
+
+[FINDING] **Two safety gaps** (runtime-level; not fixed):
+1. The masm assembler emits past `DS_INIT` without error: `mem/` + the
+   variants reached 16,932, into the return stack.
+2. The stack sentry checks SP against the runtime's own `code_end`, not the
+   current end of library code, so a data stack growing over masm library
+   code is not detected.
+
+**[PROPOSAL]s (not authorised):**
+- **(a)** a compact call through a per-block stub, about 14 cells instead of
+  38 [E];
+- **(b)** load-time cross-block linking of names;
+- **(c)** the two bound checks above;
+- **(d)** larger or streamed assembler buffers.
+
+All are assembler or runtime changes, not S1 changes. A larger memory profile
+does not add code space unless it also moves `DS_INIT` (frozen).
 
 ## 8. Why more memory is a separate scaling experiment
 
