@@ -456,6 +456,84 @@ static void raw_counts(const masm_tok_t *tk, int n, int *labels, int *refs) {
     }
 }
 
+/* Validate a masm block before anything is emitted (K6; 2026-11-10).
+ * assemble_raw used to skip what it could not assemble, with only a warning:
+ * an unknown mnemonic or a stray token, an instruction without its operand,
+ * an unresolved operand, a HOST id outside S1's closed set, an undefined label
+ * (patched as address 0) or a label defined twice. Each is now an error.
+ * Answers 0, or -1 after printing the reason. */
+static int raw_is_mnemonic(const masm_tok_t *t) {
+    static const char *const ops[] = {
+        "LIT", "INT", "ARITY", "HOST", "ZBRANCH", "BRANCH", "CALL",
+        "DUP", "DROP", "@", "!", "EXIT", ">R", "R>", "NONE",
+        "ADD", "SUB", "MUL", "DIV", "MOD", "EQ", "NE", "LT", "GT", "LE", "GE",
+        "PRINT", "ALLOC" };
+    for (unsigned i = 0; i < sizeof ops / sizeof ops[0]; i++) if (mt_is(t, ops[i])) return 1;
+    return 0;
+}
+static int raw_is_named_entry(const masm_tok_t *t) {
+    return mt_is(t, "alloc") || mt_is(t, "collect") || mt_is(t, "lookup")
+        || mt_is(t, "ESC_ANY") || mt_is(t, "ESC_TRANSPORT");
+}
+static int raw_validate(const masm_tok_t *tk, int n) {
+    int last = -1;                      /* index of the last instruction token */
+    int label_after_last = 0;
+    for (int i = 0; i < n; i++) {
+        const masm_tok_t *t = &tk[i];
+        if (t->kind == MT_LABEL) {
+            for (int j = 0; j < i; j++)
+                if (tk[j].kind == MT_LABEL && tk[j].len == t->len && strncmp(tk[j].s, t->s, (size_t)t->len) == 0) {
+                    fprintf(stderr, "r0_s1: invalid masm block: label '%s' is defined twice\n", mt_name(t->s, t->len));
+                    return -1;
+                }
+            label_after_last = 1;
+            continue;
+        }
+        if (t->kind != MT_WORD) {
+            fprintf(stderr, "r0_s1: invalid masm block: token %d is not an instruction (a number, block, string or other form)\n", i + 1);
+            return -1;
+        }
+        if (!raw_is_mnemonic(t)) {
+            fprintf(stderr, "r0_s1: invalid masm block: unknown mnemonic '%s'\n", mt_name(t->s, t->len));
+            return -1;
+        }
+        last = i; label_after_last = 0;
+        int lit = mt_is(t, "LIT") || mt_is(t, "INT") || mt_is(t, "ARITY") || mt_is(t, "HOST");
+        int jump = mt_is(t, "ZBRANCH") || mt_is(t, "BRANCH") || mt_is(t, "CALL");
+        if (!lit && !jump) continue;
+        if (i + 1 >= n) { fprintf(stderr, "r0_s1: invalid masm block: '%s' has no operand\n", mt_name(t->s, t->len)); return -1; }
+        const masm_tok_t *op = &tk[++i];
+        if (lit) {
+            int ok; cell v = raw_resolve(op, &ok);
+            if (!ok) {
+                fprintf(stderr, "r0_s1: invalid masm block: '%s' has an unresolved operand (token %d)\n", mt_name(t->s, t->len), i + 1);
+                return -1;
+            }
+            if (mt_is(t, "HOST") && (v < 0 || v > HOST_DUMP)) {
+                fprintf(stderr, "r0_s1: invalid masm block: HOST %ld is not an S1 host operation (0..%d)\n", (long)v, (int)HOST_DUMP);
+                return -1;
+            }
+            if (mt_is(t, "ARITY") && v < 0) { fprintf(stderr, "r0_s1: invalid masm block: ARITY %ld is negative\n", (long)v); return -1; }
+            continue;
+        }
+        if (op->kind == MT_INT) continue;                        /* an absolute address (RAW) */
+        if (op->kind != MT_WORD) {
+            fprintf(stderr, "r0_s1: invalid masm block: '%s' has no target (token %d)\n", mt_name(t->s, t->len), i + 1);
+            return -1;
+        }
+        if (mt_is(t, "CALL") && raw_is_named_entry(op)) continue;
+        int found = 0;
+        for (int j = 0; j < n && !found; j++)
+            if (tk[j].kind == MT_LABEL && tk[j].len == op->len && strncmp(tk[j].s, op->s, (size_t)op->len) == 0) found = 1;
+        if (!found) {
+            fprintf(stderr, "r0_s1: invalid masm block: label '%s' is not defined in this block\n", mt_name(op->s, op->len));
+            return -1;
+        }
+    }
+    (void)last; (void)label_after_last;
+    return 0;
+}
+
 static cell assemble_raw(const masm_tok_t *tk, int n) {
     const masm_tok_t none_tok = { MT_OTHER, int_val(R0_NONE), "", 0 };
     raw_nlabels = 0; raw_nrefs = 0;
@@ -606,6 +684,13 @@ static int parse_masm(parser_t *P, cell *out) {
     int block_pos = P->pos;
     int ntok = masm_read_block(P);            /* [ instr... ] */
     if (P->err) return -1;
+    /* Well-formedness (raw_validate): refused as a syntax error, before
+     * anything is emitted or recorded. */
+    if (raw_validate(masm_toks, ntok) < 0) {
+        parse_fail_set(R0S1_PARSE_SYNTAX);
+        P->err = 1;
+        return -1;
+    }
     /* Table bounds: a block with more labels or label references than the
      * assembler's tables hold is refused as too_large. */
     {

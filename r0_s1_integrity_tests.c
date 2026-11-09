@@ -605,9 +605,10 @@ static void section_M(void) {
     n = 0;
     for (unsigned k = 0; k < sizeof f / sizeof f[0]; k++) {
         fresh();
-        snprintf(b, sizeof b, "X: %s", f[k].form);
-        if (masm_parse(b, 0, &e) != R0S1_OUT_OK || e != f[k].cells) {
-            sizes_ok = 0; printf("    M3: '%s' emitted %ld, expected %ld\n", f[k].form, (long)e, f[k].cells);
+        /* every block must end in a transfer: a fixed 21-cell tail */
+        snprintf(b, sizeof b, "X: %s INT 0 ARITY 1 EXIT", f[k].form);
+        if (masm_parse(b, 0, &e) != R0S1_OUT_OK || e - 21 != f[k].cells) {
+            sizes_ok = 0; printf("    M3: '%s' emitted %ld, expected %ld\n", f[k].form, (long)e - 21, f[k].cells);
         }
         sum += f[k].cells;
     }
@@ -616,7 +617,80 @@ static void section_M(void) {
     n = snprintf(b, sizeof b, "X: ");
     for (unsigned k = 0; k < sizeof f / sizeof f[0]; k++)
         if (strcmp(f[k].form, "Y:")) n += snprintf(b + n, sizeof b - (size_t)n, "%s ", f[k].form);
-    CHECK(masm_parse(b, 0, &e) == R0S1_OUT_OK && e == sum, "M3: and all of them together in one block emit the sum");
+    snprintf(b + n, sizeof b - (size_t)n, "INT 0 ARITY 1 EXIT");
+    CHECK(masm_parse(b, 0, &e) == R0S1_OUT_OK && e - 21 == sum, "M3: and all of them together in one block emit the sum");
+}
+
+/* ---- V: masm well-formedness (K6; repaired 2026-11-10) ----------------------
+ * Until the repair, invalid masm was accepted with a warning on stderr:
+ * undefined labels were patched as address 0, unresolved operands, unknown
+ * mnemonics and operand-less instructions were dropped, duplicate labels and
+ * out-of-range HOST ids accepted. Now each is refused as a syntax error
+ * before anything is emitted, recorded, bound or kept. No refused block is
+ * ever run here. */
+static void section_V(const char *root) {
+    printf("== V: masm well-formedness\n");
+    struct { const char *body; const char *what; } bad[] = {
+        { "BRANCH nowhere INT 1 ARITY 1 EXIT", "an undefined label (BRANCH)" },
+        { "INT 0 ZBRANCH nowhere INT 1 ARITY 1 EXIT", "an undefined label (ZBRANCH)" },
+        { "CALL nowhere INT 1 ARITY 1 EXIT",   "an undefined label (CALL)" },
+        { "LIT nosuch INT 1 ARITY 1 EXIT",     "an unresolved operand (LIT)" },
+        { "HOST nosuch INT 1 ARITY 1 EXIT",    "an unresolved operand (HOST)" },
+        { "FROB INT 1 ARITY 1 EXIT",           "an unknown mnemonic" },
+        { "lit 1 ARITY 1 EXIT",                "a mnemonic in the wrong case" },
+        { "L: L: INT 1 ARITY 1 EXIT",          "a label defined twice" },
+        { "HOST 99 INT 1 ARITY 1 EXIT",        "a HOST id outside S1's closed set (99)" },
+        { "HOST -1 INT 1 ARITY 1 EXIT",        "a negative HOST id" },
+        { "INT 1 ARITY 1 EXIT LIT",            "an instruction without its operand at the end" },
+        { "INT 1 ARITY -1 EXIT",               "a negative ARITY" },
+        { "5 INT 1 ARITY 1 EXIT",              "a bare number in instruction position" },
+        { "\"text\" INT 1 ARITY 1 EXIT",     "a string in instruction position" },
+        { "[ x ] INT 1 ARITY 1 EXIT",          "a nested block in instruction position" },
+        { "BRANCH L: INT 1 ARITY 1 EXIT",      "a branch whose operand is a label definition" },
+    };
+    int nbad = (int)(sizeof bad / sizeof bad[0]);
+    setup(root);
+    for (int k = 0; k < nbad; k++) {
+        load_state_t t = load_state();
+        cell e; int st = masm_parse(bad[k].body, 0, &e);
+        char m[256];
+        snprintf(m, sizeof m, "V%d: a masm block with %s is refused as a syntax error, emitting, binding and keeping nothing",
+                 k + 1, bad[k].what);
+        CHECK(st == R0S1_OUT_PARSE_ERROR && r0_s1_parse_error_kind() == R0S1_PARSE_SYNTAX
+              && e == 0 && load_same(load_state(), t), m);
+    }
+    CHECK(sess("ix/ok 6 7", NULL) == R0S1_OUT_OK && got() == 42
+          && sess("v-ok: masm 0 [ INT 9 ARITY 1 EXIT ] v-ok", NULL) == R0S1_OUT_OK && got() == 9,
+          "V: after all the refusals, Glon and a new masm word run (42, 9)");
+
+    /* valid forms the rules must keep accepting */
+    struct { const char *body; int arity; const char *call; long want; const char *what; } good[] = {
+        { "INT 5 ARITY 1 EXIT", 0, "vg", 5, "a block ending in EXIT" },
+        { "INT 7 ARITY 1 EXIT L: INT 0 BRANCH L", 0, "vg", 7, "code after EXIT ending in BRANCH (unreachable)" },
+        { "LIT 1 L1: DUP LIT 5 LT ZBRANCH L2 LIT 1 ADD BRANCH L1 L2: LIT 16 MUL ARITY 1 EXIT", 0, "vg", 5,
+          "labels, a loop and forward and backward branches" },
+        { "DROP CALL collect INT 3 ARITY 1 EXIT", 1, "vg 0", 3, "CALL of a named runtime entry" },
+        { "DUP LIT 0 ADD DROP INT 4 ARITY 1 EXIT", 1, "vg 1", 4, "HOST forms and stack words" },
+        { "INT 6 ARITY 1 EXIT", 0, "vg", 6, "ARITY 1 EXIT with an INT result" },
+    };
+    for (unsigned k = 0; k < sizeof good / sizeof good[0]; k++) {
+        static char w[1024];
+        fresh();
+        snprintf(w, sizeof w, "vg: masm %d [ %s ] %s", good[k].arity, good[k].body, good[k].call);
+        char m[256]; snprintf(m, sizeof m, "V: still accepted and correct: %s (%ld)", good[k].what, good[k].want);
+        CHECK(sess(w, NULL) == R0S1_OUT_OK && got() == good[k].want, m);
+    }
+    /* an indirect jump as the last instruction (the M1 scheduler idiom) and a
+     * numeric branch target (an absolute address) assemble; not run */
+    fresh();
+    cell e;
+    CHECK(masm_parse("LIT SCRATCH_A @ LIT REG_IP !", 0, &e) == R0S1_OUT_OK,
+          "V: still accepted: a block ending in an indirect jump (LIT REG_IP !)");
+    CHECK(masm_parse("INT 0 ZBRANCH 300 INT 1 ARITY 1 EXIT", 0, &e) == R0S1_OUT_OK,
+          "V: still accepted: a numeric (absolute) branch target");
+    /* the libraries that contain masm all still load (also the scan of every
+     * masm block in the repository, MACHINE-INTEGRITY-AUDIT.md) */
+    CHECK(setup(root) == 0, "V: prelude, strings and strings-ext still load");
 }
 
 int main(int argc, char **argv) {
@@ -735,6 +809,7 @@ int main(int argc, char **argv) {
     section_L(root);
     section_U(root);
     section_M();
+    section_V(root);
 
     /* ---- K: known defects (strict XFAIL) ----------------------------------- */
     printf("== K: known defects (expected failures; XPASS means fixed: promote)\n");
@@ -761,38 +836,13 @@ int main(int argc, char **argv) {
         int bad = clean_but_code_changed("ix/exc", &clean);
         XFAIL(!bad, "K1: a masm word that pushes the data stack 400 deep into loaded code is stopped or not reported clean (needs a frozen-S1 change)");
     }
-    /* K6: invalid masm is accepted with only a warning on stderr. Each check
-     * parses the block and never runs it (some would execute memory that is
-     * not code). Found 2026-11-10 while extending the assembler tests. */
-    {
-        struct { const char *body; const char *what, *today; } inv[] = {
-            { "BRANCH nowhere INT 1 ARITY 1 EXIT", "an undefined label (BRANCH)", "it would branch to address 0" },
-            { "CALL nowhere INT 1 ARITY 1 EXIT",   "an undefined label (CALL)", "it would call address 0" },
-            { "LIT nosuch INT 1 ARITY 1 EXIT",     "an unresolved operand", "the instruction is dropped" },
-            { "FROB INT 1 ARITY 1 EXIT",           "an unknown mnemonic", "it is dropped" },
-            { "L: L: INT 1 ARITY 1 EXIT",          "a label defined twice", "the first wins" },
-            { "HOST 99 INT 1 ARITY 1 EXIT",        "a HOST id outside S1's closed set", "S1 ignores it at run time" },
-            { "INT 1 ARITY 1 EXIT LIT",            "an instruction without its operand", "it is dropped" },
-        };
-        for (unsigned k = 0; k < sizeof inv / sizeof inv[0]; k++) {
-            fresh();
-            cell e; int st = masm_parse(inv[k].body, 0, &e);
-            char m[256]; snprintf(m, sizeof m, "K6: a masm block with %s is refused at parse (today: accepted; %s)",
-                                  inv[k].what, inv[k].today);
-            XFAIL(st == R0S1_OUT_PARSE_ERROR && e == 0, m);
-        }
-    }
     /* K7: an empty masm block emits nothing, and its callable's entry is the
-     * end of code: calling it runs whatever follows (later code, or memory
-     * that is not code). Checked without calling it. */
+     * end of code: calling it runs whatever follows. Checked without calling it. */
     {
         fresh();
-        r0_s1_outcome oc; quiet(); sess("k: masm 0 [ ] :k", &oc); loud();
-        cell v = oc.status == R0S1_OUT_OK && oc.count >= 1 ? r0_s1_result(oc.count - 1, oc.count) : 0;
-        int refused = oc.status == R0S1_OUT_PARSE_ERROR;
-        int entry_in_code = !refused && r0_tag(v) == T_RAW && M[r0_untag(v) + RAW_ENTRY] < asm_here();
-        XFAIL(refused || entry_in_code,
-              "K7: an empty masm block is refused, or its callable enters emitted code (today: the end of code)");
+        cell e; int st = masm_parse("", 0, &e);
+        XFAIL(st == R0S1_OUT_PARSE_ERROR && e == 0,
+              "K7: an empty masm block is refused (today: its callable enters the end of code)");
     }
 
     printf("\nmachine-integrity: %d failure(s), %d expected failure(s), %d unexpected pass(es)\n",

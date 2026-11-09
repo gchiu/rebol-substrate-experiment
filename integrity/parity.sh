@@ -10,7 +10,7 @@
 # before the failure point and one after it that must not appear.
 mode=$1; wasm=$2; node=$3; fail=0
 LIBS="jupyter/prelude.glon demo/shop/strings.glon demo/shop/strings-ext.glon"
-for name in binary-strings gc-values stack-ok stack-exhaust stack-underflow masm-unwrapped masm-limits masm-refused; do
+for name in binary-strings gc-values stack-ok stack-exhaust stack-underflow masm-unwrapped masm-limits masm-refused masm-invalid; do
     if [ "$mode" = native ]; then
         out=$(./glon demo/shop/strings-ext.glon integrity/$name.glon 2>/dev/null | grep '^parity:')
     else

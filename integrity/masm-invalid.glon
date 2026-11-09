@@ -1,0 +1,9 @@
+;; integrity/masm-invalid.glon -- a source whose masm block branches to a label
+;; it never defines is refused at parse, natively and in WASM, so nothing in
+;; it runs and it prints nothing. (Until 2026-11-10, K6, the label was patched
+;; as address 0 and the block was accepted with a warning.)
+;; Run by integrity/parity.sh.
+[
+s/print "parity: masm-invalid (must not print)"
+bad: masm 0 [ BRANCH nowhere INT 1 ARITY 1 EXIT ]
+]
