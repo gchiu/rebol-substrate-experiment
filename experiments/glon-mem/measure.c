@@ -81,14 +81,14 @@ int main(int argc, char **argv) {
         "lpc: func [a b] [ either = b + a 1 [ mem/cell r a ] [ lpc a / + a b 2 lpc / + a b 2 b ] ] "
         "lpd: func [a b] [ either = b + a 1 [ mem/set-cell r a -5 ] [ lpd a / + a b 2 lpd / + a b 2 b ] ] "
         "lpa: func [a b] [ either = b + a 1 [ s/at s 5 ] [ lpa a / + a b 2 lpa / + a b 2 b ] ] "
-        "lpr: func [a b] [ either = b + a 1 [ mem/raw-get r a ] [ lpr a / + a b 2 lpr / + a b 2 b ] ]");
+        "lpr: func [a b] [ either = b + a 1 [ mem/acc 0 0 r a mem/w ] [ lpr a / + a b 2 lpr / + a b 2 b ] ]");
     int K = 3000;
     char s[160];
     snprintf(s, sizeof s, "lp0 0 %d", K); double t0 = secs(s);
     struct { const char *name, *fn; } ops[] = {
         { "mem/byte (checked)", "lpb" }, { "mem/set-byte (checked)", "lps" },
         { "mem/cell (checked, 4 bytes)", "lpc" }, { "mem/set-cell (checked)", "lpd" },
-        { "mem/raw-get (unchecked worker)", "lpr" }, { "s/at on a STRING! (checked)", "lpa" } };
+        { "mem/acc (validated masm, no SIN!)", "lpr" }, { "s/at on a STRING! (checked)", "lpa" } };
     printf("\nper operation (native -O1; %d ops each, loop overhead %.1f us/op subtracted):\n", K, t0 * 1e6 / K);
     for (int i = 0; i < 6; i++) {
         snprintf(s, sizeof s, "%s 0 %d", ops[i].fn, K);

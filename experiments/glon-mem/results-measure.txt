@@ -1,5 +1,5 @@
-code ends at 14193 before mem.glon, 15291 after (data stack top 16384)
-library: 28 bindings, 1931 loader cells, 1098 code cells, 608 managed cells live
+code ends at 14193 before mem.glon, 15770 after (data stack top 16384)
+library: 17 bindings, 1758 loader cells, 1577 code cells, 448 managed cells live
 
 storage (cells, header included), region vs STRING! of n bytes:
   n =     1: region    32 (measured    32), STRING!    32, ratio 1.00
@@ -9,15 +9,15 @@ storage (cells, header included), region vs STRING! of n bytes:
   n =  3000: region  1024 (measured  1024), STRING!  3024, ratio 2.95
   n =  6000: region  2032 (measured  2032), STRING!  6032, ratio 2.97
 
-per operation (native -O1; 3000 ops each, loop overhead 49.6 us/op subtracted):
-  mem/byte (checked)                 118.8 us
-  mem/set-byte (checked)             149.7 us
-  mem/cell (checked, 4 bytes)        185.6 us
-  mem/set-cell (checked)             357.3 us
-  mem/raw-get (unchecked worker)       4.3 us
-  s/at on a STRING! (checked)         42.6 us
-  mem/move, between regions           0.72 us per byte (3,000 bytes)
-  mem/move, overlapping (backward)    0.73 us per byte (3,000 bytes)
-  mem/to-string                      317.2 us per byte (256 bytes)
-  mem/from-string                    135.8 us per byte (32 bytes)
-  mem/alloc                          116.0 us (3,000 bytes, zero-filled)
+per operation (native -O1; 3000 ops each, loop overhead 50.2 us/op subtracted):
+  mem/byte (checked)                  36.2 us
+  mem/set-byte (checked)              27.5 us
+  mem/cell (checked, 4 bytes)         40.6 us
+  mem/set-cell (checked)              29.1 us
+  mem/acc (validated masm, no SIN!)     8.5 us
+  s/at on a STRING! (checked)         41.7 us
+  mem/move, between regions           2.32 us per byte (3,000 bytes)
+  mem/move, overlapping (backward)    2.37 us per byte (3,000 bytes)
+  mem/to-string                        0.4 us per byte (256 bytes)
+  mem/from-string                      3.6 us per byte (32 bytes)
+  mem/alloc                           93.0 us (3,000 bytes, zero-filled)

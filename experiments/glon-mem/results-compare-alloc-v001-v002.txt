@@ -1,0 +1,28 @@
+=== variants/mem-v001.glon
+
+  mem/byte r 5                                                        0.0 managed cells allocated per op (n=3000)
+  mem/set-byte r 5 7                                                  0.0 managed cells allocated per op (n=3000)
+  mem/cell r 5                                                        0.0 managed cells allocated per op (n=3000)
+  mem/set-cell r 5 -5                                                 0.0 managed cells allocated per op (n=3000)
+  mem/size r                                                          0.0 managed cells allocated per op (n=3000)
+  s/at s300 5                                                         0.0 managed cells allocated per op (n=3000)
+  mem/move r 0 q 0 256                                               32.0 managed cells allocated per op (n=30)
+  mem/move r 0 r 1 256                                               32.0 managed cells allocated per op (n=30)
+  mem/to-string r 0 256                                           25824.0 managed cells allocated per op (n=30)
+  mem/from-string q 0 s300                                            0.0 managed cells allocated per op (n=30)
+  mem/move r 0 q 0 3000                                              32.0 managed cells allocated per op (n=10)
+  mem/move r 0 r 1 3000                                              32.0 managed cells allocated per op (n=10)
+=== mem.glon
+
+  mem/byte r 5                                                        0.0 managed cells allocated per op (n=3000)
+  mem/set-byte r 5 7                                                  0.0 managed cells allocated per op (n=3000)
+  mem/cell r 5                                                        0.0 managed cells allocated per op (n=3000)
+  mem/set-cell r 5 -5                                                 0.0 managed cells allocated per op (n=3000)
+  mem/size r                                                          0.0 managed cells allocated per op (n=3000)
+  s/at s300 5                                                         0.0 managed cells allocated per op (n=3000)
+  mem/move r 0 q 0 256                                              288.0 managed cells allocated per op (n=30)
+  mem/move r 0 r 1 256                                              288.0 managed cells allocated per op (n=30)
+  mem/to-string r 0 256                                             288.0 managed cells allocated per op (n=30)
+  mem/from-string q 0 s300                                            0.0 managed cells allocated per op (n=30)
+  mem/move r 0 q 0 3000                                            3376.0 managed cells allocated per op (n=10)
+  mem/move r 0 r 1 3000                                            3376.0 managed cells allocated per op (n=10)

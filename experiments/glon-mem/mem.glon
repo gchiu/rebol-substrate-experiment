@@ -1,11 +1,9 @@
-;; experiments/glon-mem/mem.glon -- GLON-MEM v001: a minimal addressable-memory
+;; experiments/glon-mem/mem.glon -- GLON-MEM v002: a minimal addressable-memory
 ;; vocabulary, as an optional loadable library. PROTOTYPE (experiment).
+;; The same API and contract as v001 (variants/mem-v001.glon), rebuilt for
+;; cost: the checks run inside masm instead of in layers of Glon calls.
 ;;
-;; After Forth's @ ! C@ C! ALLOT MOVE: general-purpose memory from which
-;; libraries can build buffers, rings, bitstreams and other structures. It is
-;; not a binary! datatype and has no string, compression or image operations.
-;;
-;;   mem/alloc n            a new REGION of n bytes (1 <= n <= mem/max), all 0
+;;   mem/alloc n            a new REGION of n bytes (1 <= n <= 1,000,000), all 0
 ;;   mem/release r          end r's life: every later use raises 'released
 ;;   mem/released? r        1 after release, else 0
 ;;   mem/size r             n
@@ -16,268 +14,352 @@
 ;;   mem/move src si dst di k
 ;;                          copy k bytes from src[si..] to dst[di..] as if
 ;;                          through a temporary (overlap-safe, like MOVE)
-;; and, as the only bridge to the existing byte type:
 ;;   mem/to-string r i k    a NEW STRING! of bytes [i, i+k)
 ;;   mem/from-string r i s  store the bytes of STRING! s at i
 ;;
-;; CELLS. A cell is 4 bytes, little-endian, two's complement, at ANY byte
-;; offset (no alignment rule). Cell values are limited to the integers every
-;; Glon build holds, [-2^27, 2^27) (the 32-bit WASM build's range); set-cell
-;; outside it raises 'range, and so does reading a cell whose 4 bytes (written
-;; byte by byte) hold a value outside it. Only integers can be stored: memory
-;; is not traced by the collector, so a reference stored in it would not keep
-;; its object alive.
+;; The contract is v001's (README.md, "The vocabulary"):
+;;   CELLS   4 bytes, little-endian, two's complement, any offset; values in
+;;           the portable range [-2^27, 2^27)
+;;   ERRORS  SIN! 'type, 'range or 'released, raised before anything changes;
+;;           an allocation beyond the heap is the out-of-memory fail-stop
+;;   STORAGE an M3 USER object: p+0 desc (mem/w), p+1 count 0 (nothing traced),
+;;           p+2 size, p+3 state (1 live, 0 released), p+4... bytes, 3 per cell
 ;;
-;; ERRORS. Every check runs before anything changes; a failure raises a SIN!:
-;;   'type     an argument of the wrong type (a non-region, a non-integer)
-;;   'range    an index, count, byte or cell value out of range
-;;   'released the region was released
-;; Running out of managed memory while allocating is the machine's existing
-;; out-of-memory fail-stop (GLON-ALPHA-LAWS.md §6a), not a SIN!.
+;; CHECKING. The three masm words, mem/acc, mem/bulk and mem/reg, each check
+;; every argument themselves (region type and identity, liveness, integer
+;; types, ranges, byte and cell values). On any failure they change nothing
+;; and answer none, and the public word asks mem/err, which repeats the checks
+;; in Glon only to raise the precise SIN!. So no unchecked memory access is
+;; reachable from Glon. (v001's mem/raw-... workers were unchecked globals.)
 ;;
-;; LIFETIME AND GC. A region is an M3 USER object, a T_USER value:
-;;   p+0 desc   mem/kind (the identity of every region)
-;;   p+1 count  0: the collector traces no content cell
-;;   p+2 size   bytes (a raw integer)
-;;   p+3 state  1 live, 0 released (a raw integer)
-;;   p+4 ...    the bytes, 3 per cell: byte i is bits 8*(i mod 3) of cell i/3
-;; The collector reclaims a region when no value refers to it; mem/release
-;; only ends its use. Three bytes per cell keep every stored cell value below
-;; 2^24, so the packing is identical in 64-bit native and 32-bit WASM cells.
-;; (The return-stack scan's object-start check, r0_s1_gc_interior_tests.c,
-;; keeps raw region contents from being taken for closures.)
+;; WHY THREE masm WORDS, NOT ONE. A masm block holds at most 510 tokens
+;; (MASM_TOK_CAP, the Glon reader's block limit), and masm cannot CALL another
+;; masm word, only labels of its own block. mem/move is a Glon loop over
+;; mem/bulk chunks (through a temporary STRING! of at most 256 bytes), which
+;; replaces v001's 552-cell move worker.
 ;;
-;; The mem/raw-... masm workers are unchecked: call them only through the
-;; wrappers. Requires prelude.glon, strings.glon and demo/shop/strings-ext.glon.
-;; Locals carry an mm- prefix. Wrapped in [ ] because it contains masm.
+;; THE WORKSPACE. mem/w is a length-0 STRING! of 16 cells, made once; the
+;; collector never scans a string's contents. Its address is every region's
+;; descriptor (identity), and its cells W+2..W+5 hold loop state. The masm
+;; words run to completion without calling Glon, so one workspace serves.
+;;
+;; Requires prelude.glon, strings.glon and demo/shop/strings-ext.glon. Locals
+;; carry an mm- prefix. Wrapped in [ ] because it contains masm.
 [
-mem/kind: reduce [ 'mem-region ]
-mem/max: 1000000
+mem/w: s/slice "" 0 0
 
-;; ( v -> tag ): the type tag of any value; reads no memory
-mem/raw-tag: masm 1 [ LIT 16 MOD LIT 16 MUL ARITY 1 EXIT ]
-;; ( region -> desc )
-mem/raw-desc: masm 1 [ LIT T_USER SUB @ ARITY 1 EXIT ]
-;; ( region k -> the raw cell p+k, as an integer )
-mem/raw-num: masm 2 [ LIT 16 DIV LIT SCRATCH_A ! LIT T_USER SUB LIT SCRATCH_A @ ADD @ LIT 16 MUL ARITY 1 EXIT ]
-;; ( region state -> ): state 0 releases
-mem/raw-state: masm 2 [
-    LIT 16 DIV LIT SCRATCH_A !
-    LIT T_USER SUB LIT 3 ADD LIT SCRATCH_B !
-    LIT SCRATCH_A @ LIT SCRATCH_B @ !
-    ARITY 0 EXIT
+;; THE masm WORDS. Each validates everything it is given and answers none on
+;; any failure, changing nothing. Code space is a budget shared with every masm
+;; library (it grows towards the data stack), and S1 derives its control words:
+;; BRANCH costs 5 cells, >R / R> 14, EXIT 17, CALL 21. So these words have no
+;; subroutines, no >R / R>, and one ARITY 1 EXIT each; every path branches to
+;; it. A byte read and a cell read are one loop over 1 or 4 bytes; so are the
+;; two writes. Registers: A = W (tagged; W+k is A + k - 12), B = the region
+;; (then its payload p), C = the index (then raw), F = op (then a temporary).
+;; W+2 width, W+3 loop end, W+5 256^(i mod 3) (mem/bulk).
+
+;; mem/acc ( x op r i W -> result | none ): op 0 byte, 1 set-byte (x), 9 cell,
+;; 10 set-cell (x); x stays on the data stack until it is used.
+mem/acc: masm 5 [
+    LIT SCRATCH_A !  LIT SCRATCH_C !  LIT SCRATCH_B !  LIT 16 DIV LIT SCRATCH_F !
+    LIT SCRATCH_B @ LIT 16 MOD LIT 11 EQ ZBRANCH a-fail
+    LIT SCRATCH_B @ LIT 11 SUB LIT SCRATCH_B !
+    LIT SCRATCH_B @ @ LIT SCRATCH_A @ EQ ZBRANCH a-fail
+    LIT SCRATCH_B @ LIT 3 ADD @ ZBRANCH a-fail
+    LIT 1 LIT SCRATCH_F @ LIT 8 GT ZBRANCH a-w
+    DROP LIT 4
+  a-w:
+    LIT SCRATCH_A @ LIT 10 SUB !
+    LIT SCRATCH_C @ LIT 16 MOD ZBRANCH a-i1
+    BRANCH a-fail
+  a-i1:
+    LIT SCRATCH_C @ LIT 16 DIV LIT SCRATCH_C !
+    LIT SCRATCH_C @ LIT 0 GE ZBRANCH a-fail
+    LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 10 SUB @ ADD LIT SCRATCH_B @ LIT 2 ADD @ LE ZBRANCH a-fail
+    LIT SCRATCH_F @ ZBRANCH a-rd
+    LIT SCRATCH_F @ LIT 9 EQ ZBRANCH a-wr
+    ;; read: acc = acc * 256 + byte, for F = C + w - 1 down to C; a cell's
+    ;; top byte (F = C + 3) decides its sign and whether it is in range
+  a-rd:
+    DROP LIT 0
+    LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 10 SUB @ ADD LIT 1 SUB LIT SCRATCH_F !
+  a-rl:
+    LIT 256 MUL
+    LIT SCRATCH_B @ LIT 4 ADD LIT SCRATCH_F @ LIT 3 DIV ADD @
+    LIT SCRATCH_F @ LIT 3 MOD DUP ZBRANCH a-g0
+    LIT 1 EQ ZBRANCH a-g2
+    LIT 256 DIV BRANCH a-gx
+  a-g2:
+    LIT 65536 DIV BRANCH a-gx
+  a-g0:
+    DROP
+  a-gx:
+    LIT 256 MOD
+    LIT SCRATCH_F @ LIT SCRATCH_C @ LIT 3 ADD EQ ZBRANCH a-ra
+    DUP LIT 7 GT ZBRANCH a-ra
+    DUP LIT 248 LT ZBRANCH a-rn
+    DROP DROP BRANCH a-fail0
+  a-rn:
+    LIT 256 SUB
+  a-ra:
+    ADD
+    LIT SCRATCH_F @ LIT SCRATCH_C @ GT ZBRANCH a-rx
+    LIT SCRATCH_F @ LIT 1 SUB LIT SCRATCH_F !
+    BRANCH a-rl
+  a-rx:
+    LIT 16 MUL BRANCH a-ret
+    ;; write: x an integer; a byte 0..255 (op 1), a cell in [-2^27, 2^27)
+    ;; (op 10). For F = C to C + w - 1: byte = ((v mod 256) + 256) mod 256
+    ;; into index F, then v = (v - byte) / 256 exactly (no 2^32: WASM-safe).
+    ;; The loop end goes to W+3; C then holds 256^(F mod 3).
+  a-wr:
+    DUP LIT 16 MOD ZBRANCH a-x1
+    BRANCH a-fail
+  a-x1:
+    LIT 16 DIV
+    LIT SCRATCH_F @ LIT 1 EQ ZBRANCH a-x10
+    DUP LIT 0 GE ZBRANCH a-fail
+    DUP LIT 255 GT ZBRANCH a-st
+    BRANCH a-fail
+  a-x10:
+    LIT SCRATCH_F @ LIT 10 EQ ZBRANCH a-fail
+    DUP LIT 134217727 LE ZBRANCH a-fail
+    DUP LIT 0 LIT 134217728 SUB LT ZBRANCH a-st
+    BRANCH a-fail
+  a-st:
+    LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 10 SUB @ ADD LIT SCRATCH_A @ LIT 9 SUB !
+    LIT SCRATCH_C @ LIT SCRATCH_F !
+  a-sl:
+    LIT SCRATCH_F @ LIT SCRATCH_A @ LIT 9 SUB @ LT ZBRANCH a-sx
+    LIT SCRATCH_F @ LIT 3 MOD DUP ZBRANCH a-p0
+    LIT 1 EQ ZBRANCH a-p2
+    LIT 256 BRANCH a-pw
+  a-p2:
+    LIT 65536 BRANCH a-pw
+  a-p0:
+    DROP LIT 1
+  a-pw:
+    LIT SCRATCH_C !
+    DUP LIT 256 MOD LIT 256 ADD LIT 256 MOD
+    DUP LIT SCRATCH_C @ MUL
+    LIT SCRATCH_B @ LIT 4 ADD LIT SCRATCH_F @ LIT 3 DIV ADD @
+    DUP LIT SCRATCH_C @ DIV LIT 256 MOD LIT SCRATCH_C @ MUL SUB ADD
+    LIT SCRATCH_B @ LIT 4 ADD LIT SCRATCH_F @ LIT 3 DIV ADD !
+    SUB LIT 256 DIV
+    LIT SCRATCH_F @ LIT 1 ADD LIT SCRATCH_F !
+    BRANCH a-sl
+  a-sx:
+    DROP LIT 0 BRANCH a-ret
+  a-fail:
+    DROP
+  a-fail0:
+    NONE
+  a-ret:
+    ARITY 1 EXIT
 ]
 
-;; ( kind n -> region ): payload = 4 + ceil(n/3) cells, rounded up to 16;
-;; every cell after the header is zeroed (a reused block holds old data)
-mem/raw-alloc: masm 2 [
-    LIT 16 DIV LIT SCRATCH_A !
-    LIT SCRATCH_B !
-    LIT SCRATCH_A @ LIT 2 ADD LIT 3 DIV LIT 4 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL LIT SCRATCH_F !
+;; mem/bulk ( x op r i W -> result | none ): op 5 to-string (x = k), op 6
+;; from-string (x = a STRING!), op 7 check only (r live and [i, i + k) inside;
+;; answers 0, allocates nothing). to-string allocates its STRING! with the
+;; data stack empty; r is referenced by the calling wrapper and W by mem/w.
+;; F walks the string's bytes; the count runs on the data stack.
+mem/bulk: masm 5 [
+    LIT SCRATCH_A !  LIT SCRATCH_C !  LIT SCRATCH_B !  LIT 16 DIV LIT SCRATCH_F !
+    LIT SCRATCH_B @ LIT 16 MOD LIT 11 EQ ZBRANCH b-fail
+    LIT SCRATCH_B @ LIT 11 SUB LIT SCRATCH_B !
+    LIT SCRATCH_B @ @ LIT SCRATCH_A @ EQ ZBRANCH b-fail
+    LIT SCRATCH_B @ LIT 3 ADD @ ZBRANCH b-fail
+    LIT SCRATCH_F @ LIT 6 EQ ZBRANCH b-k
+    DUP LIT 16 MOD LIT 12 EQ ZBRANCH b-fail
+    DUP LIT T_STRING SUB @ BRANCH b-kw
+  b-k:
+    DUP LIT 16 MOD ZBRANCH b-k1
+    BRANCH b-fail
+  b-k1:
+    DUP LIT 16 DIV DUP LIT 0 LT ZBRANCH b-kw
+    DROP BRANCH b-fail
+  b-kw:
+    LIT SCRATCH_A @ LIT 10 SUB !
+    LIT SCRATCH_C @ LIT 16 MOD ZBRANCH b-i1
+    BRANCH b-fail
+  b-i1:
+    LIT SCRATCH_C @ LIT 16 DIV LIT SCRATCH_C !
+    LIT SCRATCH_C @ LIT 0 GE ZBRANCH b-fail
+    LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 10 SUB @ ADD LIT SCRATCH_B @ LIT 2 ADD @ LE ZBRANCH b-fail
+    LIT SCRATCH_F @ LIT 7 EQ ZBRANCH b-op
+    DROP LIT 0 BRANCH b-ret
+  b-op:
+    LIT SCRATCH_F @ LIT 6 EQ ZBRANCH b-to
+    LIT T_STRING SUB LIT 1 ADD LIT SCRATCH_F !
+    LIT SCRATCH_A @ LIT 10 SUB @
+  b-fl:
+    DUP ZBRANCH b-fd
+    LIT SCRATCH_C @ LIT 3 MOD DUP ZBRANCH b-p0
+    LIT 1 EQ ZBRANCH b-p2
+    LIT 256 BRANCH b-pw
+  b-p2:
+    LIT 65536 BRANCH b-pw
+  b-p0:
+    DROP LIT 1
+  b-pw:
+    LIT SCRATCH_A @ LIT 7 SUB !
+    LIT SCRATCH_F @ @ LIT SCRATCH_A @ LIT 7 SUB @ MUL
+    LIT SCRATCH_B @ LIT 4 ADD LIT SCRATCH_C @ LIT 3 DIV ADD @
+    DUP LIT SCRATCH_A @ LIT 7 SUB @ DIV LIT 256 MOD LIT SCRATCH_A @ LIT 7 SUB @ MUL SUB ADD
+    LIT SCRATCH_B @ LIT 4 ADD LIT SCRATCH_C @ LIT 3 DIV ADD !
+    LIT SCRATCH_F @ LIT 1 ADD LIT SCRATCH_F !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT 1 SUB BRANCH b-fl
+  b-fd:
+    DROP LIT 0 BRANCH b-ret
+  b-to:
+    LIT SCRATCH_F @ LIT 5 EQ ZBRANCH b-fail
+    DROP
+    LIT SCRATCH_A @ LIT 10 SUB @ LIT 16 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc
+    DUP LIT SCRATCH_A @ LIT 9 SUB !
+    LIT SCRATCH_A @ LIT 10 SUB @ LIT SCRATCH_A @ LIT 9 SUB @ !
+    LIT 1 ADD LIT SCRATCH_F !
+    LIT SCRATCH_A @ LIT 10 SUB @
+  b-tl:
+    DUP ZBRANCH b-td
+    LIT SCRATCH_B @ LIT 4 ADD LIT SCRATCH_C @ LIT 3 DIV ADD @
+    LIT SCRATCH_C @ LIT 3 MOD DUP ZBRANCH b-g0
+    LIT 1 EQ ZBRANCH b-g2
+    LIT 256 DIV BRANCH b-gx
+  b-g2:
+    LIT 65536 DIV BRANCH b-gx
+  b-g0:
+    DROP
+  b-gx:
+    LIT 256 MOD LIT SCRATCH_F @ !
+    LIT SCRATCH_F @ LIT 1 ADD LIT SCRATCH_F !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT 1 SUB BRANCH b-tl
+  b-td:
+    DROP LIT SCRATCH_A @ LIT 9 SUB @ LIT T_STRING ADD BRANCH b-ret
+  b-fail:
+    DROP NONE
+  b-ret:
+    ARITY 1 EXIT
+]
+
+;; mem/reg ( x op W -> result | none ): op 8 alloc (x = n, 1 <= n <=
+;; 1,000,000), op 2 size, op 3 release, op 4 released? (x = r). Allocation:
+;; payload 4 + ceil(n/3) cells rounded up to 16, every cell after the header
+;; zeroed (a reused block holds old data); the data stack is empty at it.
+mem/reg: masm 3 [
+    LIT SCRATCH_A !  LIT 16 DIV LIT SCRATCH_F !  LIT SCRATCH_B !
+    LIT SCRATCH_F @ LIT 8 EQ ZBRANCH r-reg
+    LIT SCRATCH_B @ LIT 16 MOD ZBRANCH r-1
+    BRANCH r-fail
+  r-1:
+    LIT SCRATCH_B @ LIT 16 DIV LIT SCRATCH_B !
+    LIT SCRATCH_B @ LIT 1 GE ZBRANCH r-fail
+    LIT SCRATCH_B @ LIT 1000000 LE ZBRANCH r-fail
+    LIT SCRATCH_B @ LIT 2 ADD LIT 3 DIV LIT 4 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL LIT SCRATCH_F !
     LIT SCRATCH_F @ LIT GC_KIND_USER CALL alloc LIT SCRATCH_C !
-    LIT SCRATCH_B @ LIT SCRATCH_C @ !
+    LIT SCRATCH_A @ LIT SCRATCH_C @ !
     LIT 0 LIT SCRATCH_C @ LIT 1 ADD !
-    LIT SCRATCH_A @ LIT SCRATCH_C @ LIT 2 ADD !
+    LIT SCRATCH_B @ LIT SCRATCH_C @ LIT 2 ADD !
     LIT 1 LIT SCRATCH_C @ LIT 3 ADD !
-    LIT 4 LIT SCRATCH_A !
-  mem-z-loop:
-    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH mem-z-done
-    LIT 0 LIT SCRATCH_C @ LIT SCRATCH_A @ ADD !
-    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
-    BRANCH mem-z-loop
-  mem-z-done:
-    LIT SCRATCH_C @ LIT T_USER ADD ARITY 1 EXIT
+    LIT SCRATCH_C @ LIT SCRATCH_F @ ADD LIT SCRATCH_B !
+    LIT SCRATCH_C @ LIT 4 ADD LIT SCRATCH_F !
+  r-z:
+    LIT SCRATCH_F @ LIT SCRATCH_B @ LT ZBRANCH r-zd
+    LIT 0 LIT SCRATCH_F @ !
+    LIT SCRATCH_F @ LIT 1 ADD LIT SCRATCH_F !
+    BRANCH r-z
+  r-zd:
+    LIT SCRATCH_C @ LIT T_USER ADD BRANCH r-ret
+  r-reg:
+    LIT SCRATCH_B @ LIT 16 MOD LIT 11 EQ ZBRANCH r-fail
+    LIT SCRATCH_B @ LIT 11 SUB LIT SCRATCH_B !
+    LIT SCRATCH_B @ @ LIT SCRATCH_A @ EQ ZBRANCH r-fail
+    LIT SCRATCH_F @ LIT 4 EQ ZBRANCH r-live
+    LIT 1 LIT SCRATCH_B @ LIT 3 ADD @ SUB LIT 16 MUL BRANCH r-ret
+  r-live:
+    LIT SCRATCH_B @ LIT 3 ADD @ ZBRANCH r-fail
+    LIT SCRATCH_F @ LIT 2 EQ ZBRANCH r-rel
+    LIT SCRATCH_B @ LIT 2 ADD @ LIT 16 MUL BRANCH r-ret
+  r-rel:
+    LIT SCRATCH_F @ LIT 3 EQ ZBRANCH r-fail
+    LIT 0 LIT SCRATCH_B @ LIT 3 ADD ! LIT 0 BRANCH r-ret
+  r-fail:
+    NONE
+  r-ret:
+    ARITY 1 EXIT
 ]
 
-;; ( region i -> byte ): unchecked; 0 <= i < size
-mem/raw-get: masm 2 [
-    LIT 16 DIV LIT SCRATCH_A !
-    LIT T_USER SUB LIT 4 ADD LIT SCRATCH_A @ LIT 3 DIV ADD @ LIT SCRATCH_C !
-    LIT SCRATCH_A @ LIT 3 MOD LIT SCRATCH_A !
-    LIT SCRATCH_A @ ZBRANCH mem-g-0
-    LIT SCRATCH_A @ LIT 1 EQ ZBRANCH mem-g-2
-    LIT SCRATCH_C @ LIT 256 DIV LIT SCRATCH_C !
-    BRANCH mem-g-0
-  mem-g-2:
-    LIT SCRATCH_C @ LIT 65536 DIV LIT SCRATCH_C !
-  mem-g-0:
-    LIT SCRATCH_C @ LIT 256 MOD LIT 16 MUL ARITY 1 EXIT
-]
-
-;; ( region i byte -> ): unchecked; 0 <= i < size, 0 <= byte <= 255
-mem/raw-put: masm 3 [
-    LIT 16 DIV LIT SCRATCH_F !
-    LIT 16 DIV LIT SCRATCH_A !
-    LIT T_USER SUB LIT 4 ADD LIT SCRATCH_A @ LIT 3 DIV ADD LIT SCRATCH_B !
-    LIT SCRATCH_A @ LIT 3 MOD LIT SCRATCH_A !
-    LIT 1 LIT SCRATCH_C !
-    LIT SCRATCH_A @ ZBRANCH mem-p-k
-    LIT 256 LIT SCRATCH_C !
-    LIT SCRATCH_A @ LIT 2 EQ ZBRANCH mem-p-k
-    LIT 65536 LIT SCRATCH_C !
-  mem-p-k:
-    LIT SCRATCH_B @ @
-    LIT SCRATCH_B @ @ LIT SCRATCH_C @ DIV LIT 256 MOD LIT SCRATCH_C @ MUL
-    SUB
-    LIT SCRATCH_F @ LIT SCRATCH_C @ MUL ADD
-    LIT SCRATCH_B @ !
-    ARITY 0 EXIT
-]
-
-;; ( src si dst di k -> ): unchecked; both ranges inside their regions.
-;; The loop state lives in a 16-cell workspace, a length-0 STRING! (the
-;; collector never scans its contents), as s/raw-scan-set does:
-;;   W+1 src payload  W+2 si  W+3 dst payload  W+4 di  W+5 k left
-;;   W+6 step (1 forward, -1 backward)  W+7 the byte in flight
-;; src and si stay on the data stack (GC roots) across that allocation; dst is
-;; referenced by the calling wrapper's arguments. Same region with di > si
-;; copies backward, from the last byte, so overlap never reads a written byte.
-mem/raw-move: masm 5 [
-    LIT 16 DIV LIT SCRATCH_F !
-    LIT 16 DIV LIT SCRATCH_C !
-    LIT SCRATCH_B !
-    LIT 16 LIT GC_KIND_STRING CALL alloc LIT SCRATCH_A !
-    LIT 0 LIT SCRATCH_A @ !
-    LIT SCRATCH_B @ LIT T_USER SUB LIT SCRATCH_A @ LIT 3 ADD !
-    LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 4 ADD !
-    LIT SCRATCH_F @ LIT SCRATCH_A @ LIT 5 ADD !
-    LIT 16 DIV LIT SCRATCH_A @ LIT 2 ADD !
-    LIT T_USER SUB LIT SCRATCH_A @ LIT 1 ADD !
-    LIT 1 LIT SCRATCH_A @ LIT 6 ADD !
-    LIT SCRATCH_A @ LIT 1 ADD @ LIT SCRATCH_A @ LIT 3 ADD @ EQ ZBRANCH mem-m-loop
-    LIT SCRATCH_A @ LIT 4 ADD @ LIT SCRATCH_A @ LIT 2 ADD @ GT ZBRANCH mem-m-loop
-    LIT 0 LIT 1 SUB LIT SCRATCH_A @ LIT 6 ADD !
-    LIT SCRATCH_A @ LIT 2 ADD @ LIT SCRATCH_A @ LIT 5 ADD @ ADD LIT 1 SUB LIT SCRATCH_A @ LIT 2 ADD !
-    LIT SCRATCH_A @ LIT 4 ADD @ LIT SCRATCH_A @ LIT 5 ADD @ ADD LIT 1 SUB LIT SCRATCH_A @ LIT 4 ADD !
-  mem-m-loop:
-    LIT SCRATCH_A @ LIT 5 ADD @ ZBRANCH mem-m-done
-    ;; get: B = the source cell, C = i mod 3, F = 256^(i mod 3)
-    LIT SCRATCH_A @ LIT 1 ADD @ LIT 4 ADD LIT SCRATCH_A @ LIT 2 ADD @ LIT 3 DIV ADD @ LIT SCRATCH_B !
-    LIT SCRATCH_A @ LIT 2 ADD @ LIT 3 MOD LIT SCRATCH_C !
-    LIT 1 LIT SCRATCH_F !
-    LIT SCRATCH_C @ ZBRANCH mem-m-g
-    LIT 256 LIT SCRATCH_F !
-    LIT SCRATCH_C @ LIT 2 EQ ZBRANCH mem-m-g
-    LIT 65536 LIT SCRATCH_F !
-  mem-m-g:
-    LIT SCRATCH_B @ LIT SCRATCH_F @ DIV LIT 256 MOD LIT SCRATCH_A @ LIT 7 ADD !
-    ;; put: B = the destination cell's address, C, F as above
-    LIT SCRATCH_A @ LIT 3 ADD @ LIT 4 ADD LIT SCRATCH_A @ LIT 4 ADD @ LIT 3 DIV ADD LIT SCRATCH_B !
-    LIT SCRATCH_A @ LIT 4 ADD @ LIT 3 MOD LIT SCRATCH_C !
-    LIT 1 LIT SCRATCH_F !
-    LIT SCRATCH_C @ ZBRANCH mem-m-p
-    LIT 256 LIT SCRATCH_F !
-    LIT SCRATCH_C @ LIT 2 EQ ZBRANCH mem-m-p
-    LIT 65536 LIT SCRATCH_F !
-  mem-m-p:
-    LIT SCRATCH_B @ @
-    LIT SCRATCH_B @ @ LIT SCRATCH_F @ DIV LIT 256 MOD LIT SCRATCH_F @ MUL
-    SUB
-    LIT SCRATCH_A @ LIT 7 ADD @ LIT SCRATCH_F @ MUL ADD
-    LIT SCRATCH_B @ !
-    ;; advance
-    LIT SCRATCH_A @ LIT 2 ADD @ LIT SCRATCH_A @ LIT 6 ADD @ ADD LIT SCRATCH_A @ LIT 2 ADD !
-    LIT SCRATCH_A @ LIT 4 ADD @ LIT SCRATCH_A @ LIT 6 ADD @ ADD LIT SCRATCH_A @ LIT 4 ADD !
-    LIT SCRATCH_A @ LIT 5 ADD @ LIT 1 SUB LIT SCRATCH_A @ LIT 5 ADD !
-    BRANCH mem-m-loop
-  mem-m-done:
-    ARITY 0 EXIT
-]
-
-;; ------------------------------------------------------------ checks --
-mem/region?: func [r] [
-    either = mem/raw-tag r 11 [ = mem/raw-desc r mem/kind ] [ 0 ]
-]
-;; r must be a live region; raises otherwise
-mem/live: func [r op] [
-    either mem/region? r [
-        either = 1 mem/raw-num r 3 [ r ] [ raise create-sin 'released op r ]
-    ] [ raise create-sin 'type op r ]
-]
-mem/int: func [v op] [ either s/raw-int? v [ v ] [ raise create-sin 'type op v ] ]
-;; 0 <= i and i + k <= size (k >= 0); raises 'range with [i k]
-mem/span: func [r i k op] [
-    either either >= i 0 [ either >= k 0 [ <= + i k mem/raw-num r 2 ] [ 0 ] ] [ 0 ] [ none ] [
-        raise create-sin 'range op reduce [ i k ]
+;; the precise SIN! for a failed check: the checks again, in Glon, in the order
+;; the masm words make them; answers none if none fails (the caller then
+;; raises what remains). k is the kind of x: 'byte 'cell 'count 'string 'none;
+;; width is the bytes the access covers (for 'count and 'string, x's size).
+mem/err: func [op r i x k width] [
+    either = none mem/reg r 4 mem/w [ raise create-sin 'type op r ] [ none ]
+    either = 1 mem/reg r 4 mem/w [ raise create-sin 'released op r ] [ none ]
+    either s/raw-int? i [ none ] [ raise create-sin 'type op i ]
+    either = k 'count [ either s/raw-int? x [ none ] [ raise create-sin 'type op x ] ] [ none ]
+    either = k 'string [ either s/raw-string? x [ none ] [ raise create-sin 'type op x ] ] [ none ]
+    mm-w: either = k 'count [ x ] [ either = k 'string [ s/length x ] [ width ] ]
+    either either >= i 0 [ either >= mm-w 0 [ <= + i mm-w mem/reg r 2 mem/w ] [ 0 ] ] [ 0 ] [ none ] [
+        raise create-sin 'range op reduce [ i mm-w ]
     ]
+    either either = k 'byte [ 1 ] [ = k 'cell ] [
+        either s/raw-int? x [ raise create-sin 'range op x ] [ raise create-sin 'type op x ]
+    ] [ none ]
 ]
 
 ;; --------------------------------------------------------------- API --
 mem/alloc: func [n] [
-    mem/int n 'mem/alloc
-    either either >= n 1 [ <= n mem/max ] [ 0 ] [ mem/raw-alloc mem/kind n ] [
-        raise create-sin 'range 'mem/alloc n
-    ]
+    either = none mm-v: mem/reg n 8 mem/w [
+        either s/raw-int? n [ raise create-sin 'range 'mem/alloc n ] [ raise create-sin 'type 'mem/alloc n ]
+    ] [ mm-v ]
 ]
-mem/release: func [r] [ mem/live r 'mem/release  mem/raw-state r 0 ]
-mem/released?: func [r] [
-    either mem/region? r [ either = 1 mem/raw-num r 3 [ 0 ] [ 1 ] ] [ raise create-sin 'type 'mem/released? r ]
-]
-mem/size: func [r] [ mem/live r 'mem/size  mem/raw-num r 2 ]
-mem/byte: func [r i] [
-    mem/live r 'mem/byte  mem/int i 'mem/byte  mem/span r i 1 'mem/byte
-    mem/raw-get r i
-]
-mem/set-byte: func [r i b] [
-    mem/live r 'mem/set-byte  mem/int i 'mem/set-byte  mem/int b 'mem/set-byte
-    mem/span r i 1 'mem/set-byte
-    either either >= b 0 [ <= b 255 ] [ 0 ] [ mem/raw-put r i b ] [ raise create-sin 'range 'mem/set-byte b ]
-]
-;; cells: 4 bytes little-endian two's complement, value in [-2^27, 2^27)
+mem/release: func [r] [ either = none mem/reg r 3 mem/w [ mem/err 'mem/release r 0 0 'none 0 ] [ none ] ]
+mem/released?: func [r] [ either = none mm-v: mem/reg r 4 mem/w [ raise create-sin 'type 'mem/released? r ] [ mm-v ] ]
+mem/size: func [r] [ either = none mm-v: mem/reg r 2 mem/w [ mem/err 'mem/size r 0 0 'none 0 ] [ mm-v ] ]
+mem/byte: func [r i] [ either = none mm-v: mem/acc 0 0 r i mem/w [ mem/err 'mem/byte r i 0 'none 1 ] [ mm-v ] ]
+mem/set-byte: func [r i b] [ either = none mem/acc b 1 r i mem/w [ mem/err 'mem/set-byte r i b 'byte 1 ] [ none ] ]
 mem/cell: func [r i] [
-    mem/live r 'mem/cell  mem/int i 'mem/cell  mem/span r i 4 'mem/cell
-    mm-b: mem/raw-get r + i 3
-    ;; the value is inside [-2^27, 2^27) only when the top byte is 0..7
-    ;; (non-negative) or 248..255 (negative)
-    either either < mm-b 8 [ 1 ] [ > mm-b 247 ] [ none ] [ raise create-sin 'range 'mem/cell i ]
-    + + + mem/raw-get r i * 256 mem/raw-get r + i 1 * 65536 mem/raw-get r + i 2
-        * 16777216 either > mm-b 127 [ - mm-b 256 ] [ mm-b ]
+    either = none mm-v: mem/acc 0 9 r i mem/w [
+        mem/err 'mem/cell r i 0 'none 4
+        raise create-sin 'range 'mem/cell i
+    ] [ mm-v ]
 ]
-;; floor(v / 256) for any sign (Glon / truncates toward zero)
-mem/fdiv: func [v] [ either < v 0 [ either = v * 256 / v 256 [ / v 256 ] [ - / v 256 1 ] ] [ / v 256 ] ]
-mem/set-cell: func [r i v] [
-    mem/live r 'mem/set-cell  mem/int i 'mem/set-cell  mem/int v 'mem/set-cell
-    mem/span r i 4 'mem/set-cell
-    either either >= v -134217728 [ <= v 134217727 ] [ 0 ] [ none ] [ raise create-sin 'range 'mem/set-cell v ]
-    mm-q: mem/fdiv v
-    mem/raw-put r i - v * 256 mm-q
-    mm-v: mm-q  mm-q: mem/fdiv mm-v
-    mem/raw-put r + i 1 - mm-v * 256 mm-q
-    mm-v: mm-q  mm-q: mem/fdiv mm-v
-    mem/raw-put r + i 2 - mm-v * 256 mm-q
-    mem/raw-put r + i 3 - mm-q * 256 mem/fdiv mm-q
-]
-mem/move: func [src si dst di k] [
-    mem/live src 'mem/move  mem/live dst 'mem/move
-    mem/int si 'mem/move  mem/int di 'mem/move  mem/int k 'mem/move
-    mem/span src si k 'mem/move  mem/span dst di k 'mem/move
-    either = k 0 [ none ] [ mem/raw-move src si dst di k ]
-]
+mem/set-cell: func [r i v] [ either = none mem/acc v 10 r i mem/w [ mem/err 'mem/set-cell r i v 'cell 4 ] [ none ] ]
+mem/to-string: func [r i k] [ either = none mm-v: mem/bulk k 5 r i mem/w [ mem/err 'mem/to-string r i k 'count 0 ] [ mm-v ] ]
+mem/from-string: func [r i s] [ either = none mem/bulk s 6 r i mem/w [ mem/err 'mem/from-string r i s 'string 0 ] [ none ] ]
 
-;; bridges to STRING! (balanced: depth log2 k)
-mem/to-string: func [r i k] [
-    mem/live r 'mem/to-string  mem/int i 'mem/to-string  mem/int k 'mem/to-string
-    mem/span r i k 'mem/to-string
-    mem/str r i k
-]
-mem/str: func [r i k] [
-    either = k 0 [ "" ] [
-        either = k 1 [ mk-string reduce [ mem/raw-get r i ] ] [
-            s/+ mem/str r i / k 2 mem/str r + i / k 2 - k / k 2
-        ]
+;; move: the whole request is checked first (both regions live, both ranges
+;; inside, with mem/bulk's allocation-free op 7), then copied in chunks of at
+;; most 256 bytes, each through a temporary STRING!. With dst the same region
+;; and di > si, the chunks go from the last to the first, so no chunk reads
+;; bytes an earlier chunk wrote; otherwise from the first. Balanced over the
+;; chunks: depth log2(k / 256).
+mem/move: func [src si dst di k] [
+    either either = none mem/bulk k 7 src si mem/w [ 1 ] [ = none mem/bulk k 7 dst di mem/w ] [
+        mem/err 'mem/move src si k 'count 0
+        mem/err 'mem/move dst di k 'count 0
+        raise create-sin 'range 'mem/move k
+    ] [
+        mem/chunks src si dst di k 0 / + k 255 256 either = src dst [ > di si ] [ 0 ]
     ]
 ]
-mem/from-string: func [r i s] [
-    mem/live r 'mem/from-string  mem/int i 'mem/from-string
-    either s/raw-string? s [ none ] [ raise create-sin 'type 'mem/from-string s ]
-    mem/span r i s/length s 'mem/from-string
-    mem/put-str r i s 0 s/length s
-]
-mem/put-str: func [r i s a b] [
+;; chunks [a, b) of the move, in order (back = 0) or reverse order (back = 1)
+mem/chunks: func [src si dst di k a b back] [
     either >= a b [ none ] [
-        either = b + a 1 [ mem/raw-put r + i a s/at s a ] [
-            mem/put-str r i s a / + a b 2
-            mem/put-str r i s / + a b 2 b
+        either = b + a 1 [
+            mm-o: * a 256
+            mem/bulk mem/bulk either < - k mm-o 256 [ - k mm-o ] [ 256 ] 5 src + si mm-o mem/w 6 dst + di mm-o mem/w
+        ] [
+            mm-m: / + a b 2
+            either = back 1 [
+                mem/chunks src si dst di k mm-m b back
+                mem/chunks src si dst di k a mm-m back
+            ] [
+                mem/chunks src si dst di k a mm-m back
+                mem/chunks src si dst di k mm-m b back
+            ]
         ]
     ]
 ]
