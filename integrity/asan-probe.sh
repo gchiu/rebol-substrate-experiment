@@ -3,7 +3,7 @@
 # AddressSanitizer (integrity/asan_probe.c), one block per process.
 # At capacity a block must assemble; past it, it must be refused as too_large
 # with nothing emitted, and in every case with no out-of-bounds access.
-# (Known defect K5 until the 2026-11-09 repair: past capacity, ASan reported a
+# (Known defect K5 until the 2026-11-10 repair: past capacity, ASan reported a
 # global-buffer-overflow write.)
 probe=$1; fail=0
 run() {  # name expect(assembled|refused) args...

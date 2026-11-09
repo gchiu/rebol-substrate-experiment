@@ -245,7 +245,7 @@ _Static_assert(GC_HEAP_LIMIT == R0S1_HEAP_BASE,
  * experiments/glon-masm). Not a memory-map change: no region moves. */
 #define R0S1_DS_RESERVE 256L
 #define R0S1_CODE_LIMIT (R0S1_DS_INIT - R0S1_DS_RESERVE)
-/* Data-stack guard (2026-11-09). Every evaluation step enters the
+/* Data-stack guard (2026-11-10). Every evaluation step enters the
  * evaluator's SUBEXPR routine; on entry it fail-stops (R0S1_HALT_DS_EXHAUSTED)
  * if SP is below the current world's floor: for the main world the end of
  * emitted code plus R0S1_DS_GUARD (RV_DSLIM), for an M1 task its stack slot's

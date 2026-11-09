@@ -3,7 +3,7 @@
  *
  * The assembler records a block's labels in raw_labels[64] and its label
  * references in raw_refs[128] (r0_s1_runtime.c), while a block may hold up to
- * 510 tokens. Until the K5 repair (2026-11-09) neither was bounds-checked: a
+ * 511 tokens. Until the K5 repair (2026-11-10) neither was bounds-checked: a
  * block with 65 labels or 129 references wrote past a C array. The parser now
  * counts both and refuses such a block as too_large before emitting anything.
  * This probe runs ONE block per process in an AddressSanitizer build, so a

@@ -563,7 +563,7 @@ static cell parse_string_literal(parser_t *P) {
     return b;
 }
 
-/* Deferred masm emission (2026-11-09). A source's masm blocks are emitted
+/* Deferred masm emission (2026-11-10). A source's masm blocks are emitted
  * only when the whole source has parsed: until then each block is recorded
  * by the position of its `[` in the source, its exact size (raw_size) and the
  * entry address it will have (the code end plus the sizes of the blocks

@@ -360,7 +360,7 @@ static void section_S(const char *root) {
     /* underflow: a masm word that declares a result it did not leave pops a
      * cell from above the data stack (the return stack's bottom cell), and
      * the next push would overwrite it (examples/raw-memory.r0 did this until
-     * 2026-11-09). The guard fail-stops at the next evaluation step. */
+     * 2026-11-10). The guard fail-stops at the next evaluation step. */
     setup(root);
     sess("ix/sink: masm 1 [ LIT SCRATCH_A ! ARITY 1 EXIT ] 0", NULL);
     const cell P = (cell)0x5A5A5A5;
@@ -374,7 +374,7 @@ static void section_S(const char *root) {
 
 /* ---- L: failed loads emit and keep nothing --------------------------------
  * masm blocks are emitted only when the whole source has parsed (K3, repaired
- * 2026-11-09): before, a source whose first block fitted and whose second did
+ * 2026-11-10): before, a source whose first block fitted and whose second did
  * not was refused but left the first block's code behind, and repeated
  * refusals exhausted the code space. */
 typedef struct { cell here, lhp, globals; unsigned long code; } load_state_t;
@@ -456,7 +456,7 @@ static void section_L(const char *root) {
 
 /* ---- U: unwrapped sources ---------------------------------------------------
  * A source file may be wrapped in one outer [ ] or not (./glon and WASM
- * glon_load parse files as given). Until 2026-11-09 (K4) masm was recognised
+ * glon_load parse files as given). Until 2026-11-10 (K4) masm was recognised
  * only inside a block, so an unwrapped `k: masm 1 [ ... ]` loaded as plain
  * words and fail-stopped when run. */
 static int parse_run(const char *text, r0_s1_outcome *oc) {
@@ -763,7 +763,7 @@ int main(int argc, char **argv) {
     }
     /* K6: invalid masm is accepted with only a warning on stderr. Each check
      * parses the block and never runs it (some would execute memory that is
-     * not code). Found 2026-11-09 while extending the assembler tests. */
+     * not code). Found 2026-11-10 while extending the assembler tests. */
     {
         struct { const char *body; const char *what, *today; } inv[] = {
             { "BRANCH nowhere INT 1 ARITY 1 EXIT", "an undefined label (BRANCH)", "it would branch to address 0" },

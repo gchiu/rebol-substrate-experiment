@@ -413,7 +413,7 @@ static void audit_runtime_clean(void) {
 }
 
 /* K: a task's data stack is guarded like the main one (R0S1_DS_GUARD,
- * 2026-11-09). A task's data stack is the bottom M1_DS_OFF cells of its slot;
+ * 2026-11-10). A task's data stack is the bottom M1_DS_OFF cells of its slot;
  * below the first slot is the top of the loader heap. Before the guard, the
  * 500-deep nesting below ran "cleanly" and wrote below its slot. Now it
  * fail-stops (data-stack exhaustion) first. */

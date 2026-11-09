@@ -144,7 +144,7 @@ int run_r0_s1_masm_bound_tests(void) {
     CHECK(eval(last) == 0 && got() == 0, "5: the last filler word, ending at the limit, still runs");
 
     /* ---- 6b: a source whose SECOND masm block does not fit ----------------
-     * Until 2026-11-09 the first block's code stayed in place (the frozen
+     * Until 2026-11-10 the first block's code stayed in place (the frozen
      * assembler cannot move back), unreachable. masm blocks are now emitted
      * only when the whole source has parsed, so the refused source emits
      * nothing at all. */
@@ -175,7 +175,7 @@ int run_r0_s1_masm_bound_tests(void) {
     /* ---- 7: data-stack growth into loaded code is prevented --------------- */
     /* nested 15-argument calls: each level holds 14 arguments on the data
      * stack while the next level is evaluated. Since the data-stack guard
-     * (R0S1_DS_GUARD, 2026-11-09) the evaluator fail-stops before the stack
+     * (R0S1_DS_GUARD, 2026-11-10) the evaluator fail-stops before the stack
      * reaches the end of emitted code; before it, the post-run sentry detected
      * the growth after the code had been overwritten. */
     static char nest[1 << 15];

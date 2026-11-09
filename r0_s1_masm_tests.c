@@ -228,7 +228,7 @@ int run_r0_s1_masm_tests(void) {
         static const struct { const char *path; long cells; unsigned fnv; } lib[] = {
             { "demo/shop/bootstrap.glon",             802, 0xf7eaead6u },
             /* common.glon is unwrapped (no outer [ ]). Until the K4 repair
-             * (2026-11-09) masm was recognised only inside a block, so its
+             * (2026-11-10) masm was recognised only inside a block, so its
              * top-level masm definitions were not assembled (147 cells,
              * 0x8c74acee); now it emits exactly what its wrapped bundle,
              * bootstrap.glon above, emits. */
