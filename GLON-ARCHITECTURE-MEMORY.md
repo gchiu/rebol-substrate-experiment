@@ -195,7 +195,9 @@ brackets.
 | loader heap | ~14,800 cells, permanent | `loader_exhausted`. Large test suites must be split across sessions (`experiments/glon-latex`) |
 | symbols, function sites | 512, 640 per session [handoff, 2026-09-25] | clean parse failure |
 | masm code-space limit | `R0S1_CODE_LIMIT` = 16,128 (data stack keeps 256 cells) [2026-11-09] | a masm block that would end above it is refused before emitting (`too_large`); the stack sentry compares the deepest SP with the current code end |
-| emitted code / data-stack headroom | 12,670 cells / ~3,458 cells, after the GC object-start check added 216 cells [2026-11-09] (12,454 / ~3,674 after the GC worklist guard added 117, from 12,337 / ~3,791 [2026-11-06]) | each native costs far more than it looks (a CALL ≈ 21 cells, an EXIT ≈ 17 [handoff]) |
+| masm block | 511 tokens, 64 labels, 128 label references [2026-11-10] | refused at parse (`too_large`), nothing emitted; a source's blocks are emitted only once the whole source has parsed |
+| data stack (guarded) | the evaluator fail-stops before SP passes the end of emitted code + `R0S1_DS_GUARD` (64), or a task slot's base + 64 [2026-11-10]. Deepest `+ 1` nesting: 2,080 with prelude + strings + strings-ext loaded, 192 with code full | `R0S1_HALT_DS_EXHAUSTED` / `R0S1_HALT_DS_UNDERFLOW` (outcome HALT / machine); masm words are not covered between steps (K1) |
+| emitted code / data-stack headroom | 12,861 cells / ~3,267 cells, after the data-stack guard and the masm result check added 191 cells [2026-11-10]; 12,670 / ~3,458 after the GC object-start check added 216 cells [2026-11-09] (12,454 / ~3,674 after the GC worklist guard added 117, from 12,337 / ~3,791 [2026-11-06]) | each native costs far more than it looks (a CALL ≈ 21 cells, an EXIT ≈ 17 [handoff]) |
 | masm library code | masm workers are assembled into the same code area, which grows towards the data stack: `prelude` 416 cells, `strings` 304, `strings-ext` 504. With `prelude` + `strings` loaded, code ends at 13,473, leaving 2,911 cells below the data-stack top (16,384); the data stack used ≤ 91 cells at maximum recursion depth [2026-11-07, `experiments/glon-iter`] | a third budget beside bindings and the loader heap, shared by every masm library in a session |
 
 **[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
@@ -748,12 +750,70 @@ The audit sharpens the limitations listed above:
     alignment survive 272 collections with interior stale integers, natively
     and in WASM, identically. The pre-repair collector fail-stops on the same
     test.
-- **Repair priorities (not authorised):**
+- **Repair priorities (not authorised at the time):**
   1. K5 bounds;
   2. data-stack depth (K2/K1), by a parse-time nesting bound and/or a
      code-end canary;
   3. size all masm blocks before emitting any (K3);
   4. K4.
+
+**[DECISION] Machine-integrity repairs (2026-11-10, approved: "repair the
+five documented machine-integrity defects in priority order").** Four
+repairs, each its own commit, with regression tests. Frozen S1, the
+memory map and the host ABI are unchanged.
+- **K5 (`4580c68`).** The parser counts a block's labels and references and
+  refuses more than 64 or 128 as `too_large`, before emitting.
+  `assemble_raw` also checks each index.
+- **K2 (`9ec4872`). The data-stack guard.**
+  - **Where.** `SUBEXPR`, which every evaluation step enters.
+  - **Main world.** It fail-stops if SP < `RV_DSLIM` (end of emitted code +
+    `R0S1_DS_GUARD` 64; set at initialisation, after each masm assembly,
+    and at each run start).
+  - **M1 task.** It fail-stops unless base + 64 <= SP <= base +
+    `M1_DS_OFF`; any other SP is an underflow.
+  - **masm results.** `r_invoke_raw` checks that a masm word's result set
+    lies inside the stack it returned on.
+  - **New halt reasons:** `R0S1_HALT_DS_EXHAUSTED` 3 and
+    `R0S1_HALT_DS_UNDERFLOW` 4 (session outcome HALT / machine).
+  - **New runtime cells:** `RV_DSLIM`, `RV_DSBASE`, in the existing RV area.
+  - [MEASURED] **Basis for 64:** runtime routines and shipped masm
+    libraries grow the data stack by at most 16 cells between two
+    evaluation steps, over the `./s1` suite, glon-mem, glon-masm and
+    `binary-strings.glon` (instrumented scratch S1).
+  - [MEASURED] **Cost:** +3.1% S1 instructions on `fib 20`, +0.9–3.0%
+    elsewhere.
+  - **Also fixed:** M1 task stacks overflowed into the loader heap's top
+    unreported.
+  - **`examples/raw-memory.r0`** declared `ARITY 1` on `( v -- )` words, an
+    underflow; it now says `ARITY 0`, with the same results.
+- **K3 (`ef5f2a2`). Deferred emission.** A source's masm blocks are recorded
+  by source position, size and predicted entry, and assembled only after the
+  whole source has parsed. A failed parse emits no code. Blocks are kept by
+  position because the WASM `malloc` never frees.
+- **K4 (`e0b6692`).** `parse_masm`, shared by blocks and the unwrapped
+  top-level path. masm test 13's fingerprint for the unwrapped
+  `demo/shop/common.glon` had recorded the defect (147 cells). It now equals
+  its wrapped bundle `bootstrap.glon` (802 cells).
+- **K1 is not repaired.** Preventing a masm word from pushing into code
+  between evaluation steps needs a bound inside S1, which executes pushes
+  unchecked: see the [PROPOSAL] in §9. It remains a strict expected failure.
+- **Tests.** `make machine-integrity` (≈ 3 s: 150 checks; expected
+  failures K1, K6, K7) and `make machine-integrity-wasm` (8 Glon-level
+  files, native and WASM, against `integrity/expected/`).
+  `MACHINE-INTEGRITY-AUDIT.md`, "Repairs (2026-11-10)".
+
+[FINDING] **Found during the repairs (not repaired):**
+- **K6. Invalid masm is accepted with a stderr warning only:**
+  - undefined labels, whose branch or call goes to address 0;
+  - silently dropped instructions: unresolved operands, unknown mnemonics,
+    a trailing instruction without its operand;
+  - duplicate labels;
+  - HOST ids outside S1's set.
+- **K7.** An empty masm block's callable enters the end of code.
+- **Unwrapped sources.** A top-level `func` in an unwrapped source gets no
+  func site of its own, unlike in a wrapped source (a semantics question).
+- **`glon_load`.** It reports a halted run's garbage top-of-stack as success
+  or failure (a host-ABI question).
 
 **[PROPOSAL]s (not authorised):**
 - **(a)** a compact call through a per-block stub, about 14 cells instead of
@@ -797,6 +857,10 @@ been approved or built, except the two GC worklist safeguards now recorded in
 | **`mem/` as the Glon/Core memory facility** | adopt the `experiments/glon-mem/` vocabulary as the optional standard memory library, the lower-level alternative to a `binary!`-style `bin/` library. Before adoption: masm bulk string bridges, and a decision on an unchecked fast path for trusted libraries | code space (1,098 cells) is shared with every masm library; checked single-byte access is about 3× slower than `s/at` |
 | **Glon/Binary (`bin/`)** | an optional binary-buffer library behind an implementation-neutral contract (`GLON-BINARY-FEASIBILITY.md`). Recommended first backing: heap-backed masm over M3 USER objects (packed bytes after `count`, untraced), which needs no ABI or frozen change | capacity bounded by the 7,232-cell heap: ≈ 12–16 KiB at 4 bytes per cell [E]. A 32 KiB DEFLATE window does not fit any in-heap representation on 64K. The routes that fit (the M1 arena region, the 256K profile, a synchronous host `HOST_CAP` op) are each a memory-map, frozen-S1 or [DECISION]-reversing change. Asynchronous host buffers via GLON_LIVE need no change but cannot offer synchronous reads |
 | **Smaller activations** | size contexts to their actual bindings instead of 16 slots (64 cells) | changes when `CONTEXT_FULL` fires; touches the context, hash and promotion code |
+| **S1 data-stack limit (K1)** (2026-11-10) | a memory-mapped limit register in S1 (e.g. `REG_SPLIM`); `push` fail-stops when `SP - 1 < M[REG_SPLIM]`, optionally `pop` against a top register. The only way to stop a masm word pushing into code between evaluation steps | a **frozen S1** change (`s1.c`, `s1.h`, the machine contract). Every masm stack switcher (the M1 scheduler library, the debugger fixture) must set the register when it switches SP. Could replace the runtime guard and its ~3% cost |
+| **masm validation (K6, K7)** (2026-11-10) | refuse at parse: undefined or duplicate labels, unresolved operands, unknown mnemonics, an instruction without its operand, HOST ids outside the closed set; refuse empty blocks or give them a valid entry | parser only, like K5; rejects sources that load today with warnings (none of the shipped libraries, per the test suite) |
+| **Wrapped/unwrapped equivalence** (2026-11-10) | parse an unwrapped source exactly as `[ source ]`, so that top-level `func`s get their own site and lexical scope | language semantics for about 40 unwrapped files in the repository; needs a behaviour comparison across them |
+| **`glon_load` outcome** (2026-11-10) | return the session outcome status instead of a count derived from the top data-stack cell | host-ABI change for WASM hosts |
 
 A dynamically growing *contiguous* return stack was investigated and **not
 recommended**. It would relocate frames and stack-local contexts that are

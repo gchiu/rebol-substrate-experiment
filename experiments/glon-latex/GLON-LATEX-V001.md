@@ -160,7 +160,9 @@ right-slot minimum from `mul` to `add`, makes the run fail with exit 1 and
    definition runs. This happens even with a fresh build. The same definition
    in a wrapped file works, which is why `latex.glon` is wrapped (as
    `strings.glon` is). This looks like a loader/CLI defect worth a separate
-   look; it is not fixed here.
+   look; it is not fixed here. *(Repaired 2026-11-10 as machine-integrity
+   defect K4, commit `e0b6692`: masm definitions now load the same wrapped or
+   unwrapped. See `MACHINE-INTEGRITY-AUDIT.md`.)*
 2. **512 values per block, and a string literal costs two.** A quoted literal
    loads as `mk-string [bytes]`. The flat test file exceeded the limit
    (`parse error: too_large`), so each test section sits in its own `do [ … ]`

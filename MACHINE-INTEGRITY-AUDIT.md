@@ -1,6 +1,232 @@
 # Machine Integrity Test Coverage Audit
 
-2026-11-09, branch `glon-shop-g1a`, from commit `72dca7a`.
+2026-11-09, branch `glon-shop-g1a`, from commit `72dca7a`. Repairs and the
+expanded suite: 2026-11-10, see "Repairs (2026-11-10)" below. The sections from
+"Scope" to "Priorities" record the audit as it was made.
+
+## Repairs (2026-11-10)
+
+Four of the five defects are repaired, in priority order. Each repair is its
+own commit, with its expected failure promoted to ordinary regression checks.
+K1 cannot be prevented without changing frozen S1, so it is not repaired; the
+necessary change is described below.
+
+| Defect | Status | Commit | What changed |
+|---|---|---|---|
+| **K5** label/reference tables overflow host memory | **repaired** | `4580c68` | The parser counts a block's labels and references (`raw_counts`) and refuses a block over 64 or 128 as `too_large`, before emitting anything. `assemble_raw` also checks each index (internal-error abort). |
+| **K2** plain Glon nesting overwrites code, reported clean | **repaired** | `9ec4872` | A data-stack guard at `SUBEXPR` entry, which every evaluation step passes through. A masm word's result set is also checked on return. Details below. |
+| **K3** refused multi-block sources leak code | **repaired** | `ef5f2a2` | A source's masm blocks are emitted only after the whole source parses. Each callable gets its predicted entry; a failed parse emits nothing. |
+| **K4** masm in unwrapped sources fail-stops | **repaired** | `e0b6692` | One `parse_masm` function, shared by `parse_block` and the unwrapped top-level path. |
+| **K1** a masm word pushes into code between steps | **not repaired: needs a frozen-S1 change** | — | Explained below; still a strict expected failure. |
+
+Tests followed each repair, then the expansion in `c20c8a5`. Every commit
+was verified with:
+- `make test`;
+- `make machine-integrity` and `make machine-integrity-wasm`;
+- `kaka-test`, `patrol-test`, `glon-smoke` and `glon-live-native-test`;
+- the glon-mem tests (native and WASM) and the glon-masm tests.
+
+The DEFLATE corpus gave 479/480 after K2, unchanged; the one failure is the
+known fragmentation fail-stop. Frozen S1 is unchanged throughout.
+
+### K2: the data-stack guard
+
+**Main world.** On entry, `SUBEXPR` fail-stops if SP is below `RV_DSLIM`:
+- `RV_DSLIM` is the end of emitted code plus `R0S1_DS_GUARD` = 64.
+- It is set at initialisation, after each masm assembly, and at each run
+  start.
+
+**M1 task.** The bounds are `base + 64 <= SP <= base + M1_DS_OFF`.
+
+**Any other SP** is an underflow.
+
+**Halt reasons.** Two new reasons: `R0S1_HALT_DS_EXHAUSTED` (3) and
+`R0S1_HALT_DS_UNDERFLOW` (4). The session outcome stays HALT / machine, so
+the host ABI does not change.
+
+**Why 64 cells.** The guard is the most the stack may grow between two
+evaluation steps. It was measured with instrumented scratch copies of S1 and
+the runtime, over the whole `./s1` suite, the glon-mem and glon-masm suites
+and `binary-strings.glon`:
+- no runtime routine and no shipped masm library pushed more than 16 cells
+  between two steps;
+- the only larger excursions were deliberate masm stack misuse in tests (the
+  m2 sentry tests and the debugger fixture's stack switch).
+
+**The deepest nesting that runs**, measured by bisection (integrity S2):
+
+| Configuration | Deepest nesting that runs | One level deeper |
+|---|---|---|
+| libraries loaded (2,144 cells of stack room) | 2,080 levels | fail-stops |
+| code full | 192 levels | fail-stops |
+
+In both cases the lowest cell written stays at least 59 cells above the end
+of code.
+
+**The masm result check.** `r_invoke_raw` checks, on return, that a masm
+word's result set lies inside the stack it returned on. A word that declares
+more results than it left would hand back a return stack's bottom cell, and
+`block_eval`'s next `CALL` (whose continuation literal passes through the
+data stack) wrote there, one push before the next guard check.
+`examples/raw-memory.r0` did exactly this:
+- its words are documented `( v -- )` but said `ARITY 1`;
+- they now say `ARITY 0`, with the same results.
+
+**Code size.** The guard and the result check add 191 cells to the runtime's
+emitted code: 12,861 cells, leaving 3,267 below the data-stack top (was
+3,458).
+
+**Cost:** about 3% more S1 instructions on call-heavy code, exact counts with
+`s1_prof.c`:
+
+| Workload | Change |
+|---|---|
+| `fib 20` | +3.1% |
+| balanced recursive sum | +3.0% |
+| `s/from-int` (masm) | +2.6% |
+| string building | +0.9% |
+
+**Also repaired by K2: M1 task stacks.** A task nesting 500 deep in its
+400-cell stack used to run "clean" while writing into the top of the loader
+heap. It now fail-stops (M1 test K, verified failing on the old runtime).
+
+### K1: why it needs a frozen-S1 change
+
+**The mechanism.** A masm word runs raw S1 instructions between two
+evaluation steps. `s1.c` executes `LIT`, `DUP`, `@` and `HOST` pushes with
+`M[--SP] = v` and no bound, so:
+- only the S1 machine can stop a push into code;
+- the guard sees nothing until the word returns;
+- a word that pushes 400 cells and pops them again is invisible to both the
+  guard and the sentry.
+
+**No non-S1 alternative prevents it:**
+- A masm verifier cannot bound masm. masm can store to any address (`!`) and
+  write `REG_SP` directly, and the M1 scheduler and the debugger fixture rely
+  on exactly that to switch stacks.
+- Sampling after the word returns would only detect damage already done,
+  which is the workaround the repair brief rules out.
+
+**The necessary change, for approval.** A data-stack limit in S1 itself:
+- a memory-mapped limit register (for example `REG_SPLIM` in the low cells);
+- `push` fail-stops when `SP - 1 < M[REG_SPLIM]`, with one more compare per
+  push in the C interpreter;
+- optionally, `pop` checks a top register for underflow.
+
+Its consequences:
+- **Frozen files.** This changes `s1.c` and `s1.h` and the S1 machine
+  contract.
+- **Stack switchers.** The runtime would set the register for the main world.
+  Every masm stack switcher (the M1 scheduler library, the debugger fixture)
+  must also set it when it switches SP.
+- **Performance.** It could replace the runtime guard and its ~3% cost.
+
+Until then, masm is a trusted trapdoor and K1 stays an expected failure.
+
+### New findings during the repairs and the expansion
+
+- **K6. Invalid masm is accepted with only a warning on stderr** (new
+  expected failures; not repaired):
+  - **Undefined labels.** In `BRANCH` and `CALL`, the target is patched to
+    address 0. Running the word executes the register cells as code: in the
+    probe, "bad opcode at 1".
+  - **Silently dropped:** unresolved operands (`LIT nosuch`), unknown
+    mnemonics, and an instruction at the end without its operand.
+  - **Duplicate labels:** the first definition wins.
+  - **`HOST` ids outside S1's closed set:** S1 prints "bad host id" at run
+    time and does nothing.
+
+  The checks only parse. They never run the invalid words.
+- **K7. An empty masm block** (`masm 0 [ ]`) emits nothing, and its callable's
+  entry is the end of code. Calling it runs whatever follows. In the isolated
+  probe this drove SP down to 10,656, inside the runtime's code. The check
+  reads the entry; it does not call it.
+- **Unwrapped and wrapped top-level `func`s differ.** In an unwrapped source
+  (`./glon` and WASM `glon_load` parse files as given), a top-level `func`
+  gets no func site and no lexical scope of its own; the session facade wraps
+  every cell, so there it does. No test found a behaviour difference, but the
+  binding laws are written for the wrapped form. Making the two forms
+  identical is a language-semantics change for 40 unwrapped files in the
+  repository, so it needs a proposal; K4 deliberately changed only masm.
+- **`glon_load` cannot report a halted run.** `r0_s1_run_persistent` returns
+  the top data-stack cell divided by 16, and on a halt that is whatever was
+  on top. `glon_load` turns it into 0 or −3, so a WASM host can take a halted
+  load for a successful one. The parity tests therefore compare printed
+  output. Changing it is a host-ABI change.
+- **The masm token maximum is 511**, not 510 (`MASM_TOK_CAP` 511; 512 is
+  refused).
+- **The masm test 13 fingerprint for `demo/shop/common.glon` recorded the K4
+  defect:** before K4, only 147 cells, because its top-level masm definitions
+  were never assembled. It now equals its wrapped bundle `bootstrap.glon`
+  (802 cells), which independently confirms the repair.
+
+### The machine-integrity suite now
+
+**Targets:**
+
+| Target | What it runs | Time |
+|---|---|---|
+| `make machine-integrity` | frozen-S1 check; `machine-integrity-test` (150 checks, 9 expected failures: K1, K6 ×7, K7); the ASan table probe (8 checks); `integrity/parity.sh native` (8 Glon-level files) | ≈ 3.2 s |
+| `make machine-integrity-wasm` | `parity.sh` native and in the standalone WASM build; both must match `integrity/expected/` | ≈ 6 s with the WASM build |
+
+**Sections of `r0_s1_integrity_tests.c`:**
+
+| Section | Covers |
+|---|---|
+| **R** | the GC-interior and masm-bound regressions |
+| **A** | determinism and residue independence |
+| **B** | ten failure kinds ×10 return to a fixed state, including data-stack exhaustion |
+| **C** | runtime code immutability |
+| **S** | stack boundaries: K2's reproduction, exact deepest nesting with libraries loaded and with code full, `values` accumulation, closure arguments, recursion, a collection 150 deep, underflow |
+| **L** | failed-load recovery (K3) |
+| **U** | unwrapped sources (K4) |
+| **M** | assembler limits: tokens 511/512, labels 64/65, references 128/129 (BRANCH and CALL), named CALLs, every form's size against the frozen expansions |
+| **K** | known defects |
+
+Also: M1 test K (task stacks).
+
+**Glon-level parity files**, each run in a fresh session, with the
+`parity:` lines natively and in WASM compared with `integrity/expected/`:
+
+| File | Checks |
+|---|---|
+| `binary-strings` | binary `STRING!` preservation |
+| `gc-values` | a block, a string and a closure probed with stale integers over 81 collections |
+| `stack-ok` | permitted deep stacks |
+| `stack-exhaust`, `stack-underflow` | the line before the failure prints, the line after does not |
+| `masm-unwrapped` | masm in an unwrapped source |
+| `masm-limits` | blocks at the table limits |
+| `masm-refused` | a refused source prints nothing |
+
+### Coverage matrix after the repairs
+
+Changed rows only; the others are as in Phase 5.
+
+| Invariant | After the audit (2026-11-09) | Now |
+|---|---|---|
+| S1 data stack never enters code | XF K1, K2 | ✔ for all Glon evaluation (guard, S1–S8, M1 K, parity); **XF K1** for masm (needs S1) |
+| S3 underflow detected | ✔ post-run sentry | ✔ before the next push (S7, parity) |
+| M2 refused source emits nothing | XF K3 | ✔ L1–L6, U3, masm_bound 6b |
+| M3 host tables in bounds | XF K5 | ✔ M2, ASan probe |
+| M5 masm in every source form | XF K4 | ✔ U1–U3, parity |
+| M7 *(new)* invalid masm refused at parse | — | **XF K6, K7** |
+| M8 *(new)* emitted size equals the frozen expansions, for every form | ◐ M4 internal abort | ✔ M3 |
+| G2/G1 preservation under stale integers | ✔ strings, native + WASM | ✔ strings, blocks, closures and contexts, native + WASM |
+| E6 native/WASM parity | ◐ one file | ✔ 8 files incl. failures (printed output; see the `glon_load` finding) |
+
+### Remaining priorities
+
+1. **K1** needs approval of the S1 data-stack limit described above.
+2. **K6/K7** should refuse invalid masm at parse:
+   - undefined or duplicate labels;
+   - unresolved operands and unknown mnemonics;
+   - an instruction without its operand;
+   - HOST ids outside the closed set;
+   - empty blocks, or give them a valid entry.
+
+   This is a small parser change, like K5.
+3. **Wrapped vs unwrapped `func` semantics**, and **`glon_load`'s return
+   code**: each needs a proposal (language semantics; host ABI).
 
 ## Scope
 
@@ -367,7 +593,7 @@ These are recorded so that they are not mistaken for covered:
 - **WASM parity of the C sections (A, B, K).** These use the C API, which the
   standalone WASM module does not export.
 
-## Priorities for future repairs (none made here)
+## Priorities for future repairs (as audited; see "Repairs (2026-11-10)")
 
 1. **K5. Label/reference bounds.** This is host undefined behaviour,
    reachable from any masm source. The repair is small and local: refuse a
