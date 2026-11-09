@@ -253,6 +253,7 @@ build of the current sources.**
 | `glon-web`: a native host (libcurl, libxml2) running a Glon link-extraction program | **[FINDING] experimental milestone, not deployed; a separate executable (the `glon` CLI is unchanged)** | `experiments/glon-links-native/README.md` |
 | `dz/` streaming DEFLATE decompressor (RFC 1951) in Glon, after Chris Ross-Gill's `deflate.reb` | **[FINDING] experiment, not deployed; found a collector defect, since repaired** | `experiments/glon-deflate/README.md` |
 | Glon/Binary: an optional `bin/` binary-buffer library | **[PROPOSAL] investigated, not implemented** | `GLON-BINARY-FEASIBILITY.md` |
+| `mem/` minimal addressable-memory vocabulary (Forth-style: alloc, release, byte, cell, move) over M3 USER objects | **[FINDING] prototype, not deployed; native and WASM tested** | `experiments/glon-mem/README.md` |
 
 **[DECISION] The string extension API (approved by the user 2026-11-07).**
 Five byte-level operations in a separate optional module,
@@ -549,6 +550,39 @@ fix is sound, implement it").**
   the 64K heap, kept by alloc and sweep), or one sorted pass over all
   candidates per collection. Neither is authorised.
 
+**[FINDING] Minimal memory vocabulary `mem/` (2026-11-09, 64K configuration,
+`experiments/glon-mem/`).**
+- **The vocabulary.** An optional library: `mem/alloc release released? size
+  byte set-byte cell set-cell move`, plus two STRING! bridges.
+  - A region is an M3 USER object with `count` 0, so the collector never
+    traces its payload.
+  - Bytes are packed 3 per cell, identical in 64-bit native and 32-bit WASM.
+  - A cell is 4 bytes, little-endian, at any offset, with values limited to
+    the portable range [−2^27, 2^27).
+- **No change below the library.** No change to S1, the ABI or the runtime.
+- **The collector repair (`e988c19`) is a prerequisite.** Packed contents can
+  carry closure-kind bits, and the pre-repair runtime fail-stops on the tests.
+- **Gap and limit.** What was missing was a *checked, owned, mutable* object
+  at the language level (S1 `@ !` already address every cell). The 7,232-cell
+  heap is a separate storage limit.
+- **Tests:** 66/66 native; 64/64 in `glon.wasm` under node, with 2 cases not
+  expressible in 32-bit integers reported as skipped.
+- **The M3 datatype vocabulary** (`make`, `type?`) is not loaded in ordinary
+  sessions. The library therefore identifies regions by descriptor identity.
+
+[MEASURED] (native, `-O1`):
+- **Library cost:** 28 bindings, 1,931 loader cells, 1,098 code cells (code
+  then ends at 15,291 of 16,384), 608 managed cells.
+- **Density:** a region holds about 3 bytes per cell (1,024 cells for 3,000
+  bytes against a STRING!'s 3,024).
+- **Speed:**
+  - `move` costs 0.5–0.6 µs per byte;
+  - checked byte access costs 94–118 µs, against 32 µs for `s/at`; the
+    unchecked worker takes 3 µs, so the Glon checks dominate;
+  - the string bridges, Glon recursions, cost 110–264 µs per byte.
+- **A 32 KiB window does not fit:** one region needs 10,944 cells, more than
+  the whole managed heap.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling
@@ -574,9 +608,10 @@ been approved or built, except the two GC worklist safeguards now recorded in
 | Proposal | Summary | Key conditions and risks |
 |---|---|---|
 | **GC worklist sized by memory profile** | (c) a worklist sized by memory profile (for example 2,048 entries for a 65,536-cell heap), in a region of its own. Items (a), the build-time assertion, and (b), the bounded push, are **implemented** (§6) | must land with, or before, any heap enlargement; the build-time assertion enforces this |
-| **256K memory profile** | a separate worktree or build. Only frozen change: `MEM_CELLS` → 262,144. Order-preserving map: main return stack ~65,536, managed heap ~65,536, loader ~49K, 8 tasks. Estimated ~675-deep recursion and ~15× usable heap | needs the worklist sized by profile first (the build-time assertion will refuse it otherwise); every fixed address in `r0_s1.h`/`m1_layout.h` and the seeded datatype addresses must move together; tests with literal addresses; slower GC sweeps; 4× WASM memory. The 64K reference stays the baseline |
+| **256K memory profile** | (re-examined 2026-11-09 in `GLON-MEMORY-PROFILES.md`: still not configuration-only; it would hold a 32 KiB DEFLATE window, about 11K cells as a `mem/` region; it should come with an object-start bitmap, because the repaired return-stack scan walks O(objects) per candidate) a separate worktree or build. Only frozen change: `MEM_CELLS` → 262,144. Order-preserving map: main return stack ~65,536, managed heap ~65,536, loader ~49K, 8 tasks. Estimated ~675-deep recursion and ~15× usable heap | needs the worklist sized by profile first (the build-time assertion will refuse it otherwise); every fixed address in `r0_s1.h`/`m1_layout.h` and the seeded datatype addresses must move together; tests with literal addresses; slower GC sweeps; 4× WASM memory. The 64K reference stays the baseline |
 | **Tail-call optimisation** | reuse the caller's frame for calls in tail position, including inside `either` and a final `do`; in an experimental build flag only | must not eliminate a frame an argument depends on (escape law (1), `return`, Guard of Binding, stack-local contexts); runaway loops would no longer halt, so it needs a fuel limit; diagnostics and benchmarks change. About 2× parser nesting; unbounded tail loops in general |
 | **Segmented return stack** | switch to a new segment at closure invocation; frames already save absolute RP, so returns restore the old segment | pointers stay stable, but it gives no capacity gain without more total memory |
+| **`mem/` as the Glon/Core memory facility** | adopt the `experiments/glon-mem/` vocabulary as the optional standard memory library, the lower-level alternative to a `binary!`-style `bin/` library. Before adoption: masm bulk string bridges, and a decision on an unchecked fast path for trusted libraries | code space (1,098 cells) is shared with every masm library; checked single-byte access is about 3× slower than `s/at` |
 | **Glon/Binary (`bin/`)** | an optional binary-buffer library behind an implementation-neutral contract (`GLON-BINARY-FEASIBILITY.md`). Recommended first backing: heap-backed masm over M3 USER objects (packed bytes after `count`, untraced), which needs no ABI or frozen change | capacity bounded by the 7,232-cell heap: ≈ 12–16 KiB at 4 bytes per cell [E]. A 32 KiB DEFLATE window does not fit any in-heap representation on 64K. The routes that fit (the M1 arena region, the 256K profile, a synchronous host `HOST_CAP` op) are each a memory-map, frozen-S1 or [DECISION]-reversing change. Asynchronous host buffers via GLON_LIVE need no change but cannot offer synchronous reads |
 | **Smaller activations** | size contexts to their actual bindings instead of 16 slots (64 cells) | changes when `CONTEXT_FULL` fires; touches the context, hash and promotion code |
 
