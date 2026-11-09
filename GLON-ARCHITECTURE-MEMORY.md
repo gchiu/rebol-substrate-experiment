@@ -194,6 +194,7 @@ brackets.
 | values per block / per string literal | 512 values (a quoted literal costs 2); 512 bytes per string literal | clean parse failure (`too_large`) |
 | loader heap | ~14,800 cells, permanent | `loader_exhausted`. Large test suites must be split across sessions (`experiments/glon-latex`) |
 | symbols, function sites | 512, 640 per session [handoff, 2026-09-25] | clean parse failure |
+| masm code-space limit | `R0S1_CODE_LIMIT` = 16,128 (data stack keeps 256 cells) [2026-11-09] | a masm block that would end above it is refused before emitting (`too_large`); the stack sentry compares the deepest SP with the current code end |
 | emitted code / data-stack headroom | 12,670 cells / ~3,458 cells, after the GC object-start check added 216 cells [2026-11-09] (12,454 / ~3,674 after the GC worklist guard added 117, from 12,337 / ~3,791 [2026-11-06]) | each native costs far more than it looks (a CALL ≈ 21 cells, an EXIT ≈ 17 [handoff]) |
 | masm library code | masm workers are assembled into the same code area, which grows towards the data stack: `prelude` 416 cells, `strings` 304, `strings-ext` 504. With `prelude` + `strings` loaded, code ends at 13,473, leaving 2,911 cells below the data-stack top (16,384); the data stack used ≤ 91 cells at maximum recursion depth [2026-11-07, `experiments/glon-iter`] | a third budget beside bindings and the loader heap, shared by every masm library in a session |
 
@@ -660,18 +661,58 @@ configuration, native and WASM, `experiments/glon-masm/`).**
   names across blocks. These are assembler limits (`r0_s1_runtime.c`), as are
   the 510-token, 64-label and 128-reference block caps, not S1.
 
-[FINDING] **Two safety gaps** (runtime-level; not fixed):
-1. The masm assembler emits past `DS_INIT` without error: `mem/` + the
+[FINDING] **Two safety gaps**, since repaired (see below):
+1. The masm assembler emitted past `DS_INIT` without error: `mem/` + the
    variants reached 16,932, into the return stack.
-2. The stack sentry checks SP against the runtime's own `code_end`, not the
+2. The stack sentry checked SP against the runtime's own `code_end`, not the
    current end of library code, so a data stack growing over masm library
-   code is not detected.
+   code was not detected.
+
+**[DECISION] Code/stack boundary repaired (2026-11-09, approved as a narrowly
+scoped repair of these two defects).**
+- **Assembler bound.**
+  - **The limit.** Code-space limit `R0S1_CODE_LIMIT` = `R0S1_DS_INIT` −
+    `R0S1_DS_RESERVE` (256) = 16,128 (`r0_s1.h`). The 256-cell reserve is
+    about 3× the deepest data-stack use measured (87). No region moves.
+  - **The check.** The parser computes a masm block's exact emitted size
+    (`raw_size`, which mirrors the frozen expansions) and refuses, **before
+    emitting anything**, a block that would end above the limit. The parse
+    fails as `too_large`, with a message on stderr. No new error kind, so no
+    ABI change.
+  - **Defence.** After assembly, the emitted size must equal the computed
+    size, or the runtime aborts as an internal error. The callable's
+    loader-heap record is now allocated before assembly, so a full loader
+    heap also fails without emitting code.
+- **Sentry.** After each run, the final SP **and the deepest SP the run
+  recorded** (`RV_SPMIN`, updated at every closure invocation) are compared
+  with the current end of emitted code (`asm_here()`), not the runtime's
+  `code_end`. There is no per-instruction cost.
+- **Regression test:** `r0_s1_masm_bound_tests.c`, in the `s1` suite.
+  - **Coverage:** exact fill to the limit, refusals, return stack and code
+    untouched, cursor and bindings consistent, earlier words still running,
+    detected data-stack growth into code, and the original `mem/` + variants
+    sequence.
+  - **Result:** 0 failures, against 14 on the runtime before the repair.
+- **Native and WASM behave identically** (the same refusal: 126 cells needed,
+  79 free).
+- [MEASURED] **Cost:** no measurable change (library loading 2.6–2.7 ms per
+  session before and after; short runs within build-layout noise).
+- **Remaining limitations:**
+  - Code emitted by *earlier* masm blocks of a source that is then refused
+    stays in place, unreachable and without bindings, because the frozen
+    assembler cursor cannot move back.
+  - The sentry detects data-stack growth after the run, as before. Growth is
+    sampled at closure invocations, so a masm word that pushes deep between
+    invocations is seen only through the final SP.
+  - The per-block label and reference arrays (64 and 128) are still not
+    bounds-checked (out of scope).
 
 **[PROPOSAL]s (not authorised):**
 - **(a)** a compact call through a per-block stub, about 14 cells instead of
   38 [E];
 - **(b)** load-time cross-block linking of names;
-- **(c)** the two bound checks above;
+- **(c)** the two bound checks above (since implemented, see the [DECISION]
+  above);
 - **(d)** larger or streamed assembler buffers.
 
 All are assembler or runtime changes, not S1 changes. A larger memory profile

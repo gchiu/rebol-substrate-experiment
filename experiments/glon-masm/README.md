@@ -194,8 +194,10 @@ trampoline, about 50 cells.
 - **The return stack** is the tight one: 7,783 of 8,192 cells at 80 nested
   calls.
 
-**Two safety gaps found (no frozen change needed to close them; not changed
-here):**
+**Two safety gaps found** (no frozen change needed to close them). Both have
+since been repaired: see GLON-ARCHITECTURE-MEMORY.md, "Code/stack boundary
+repaired", and `r0_s1_masm_bound_tests.c`. The measurements below were made
+before the repair.
 1. **The assembler does not check its bound.** `mem/` v002 followed by
    `variants.glon` was assembled to 16,932, 548 cells **past** the data-stack
    top and into the return stack, with no error (`make stack`, last run).
