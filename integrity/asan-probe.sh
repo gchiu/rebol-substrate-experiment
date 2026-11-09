@@ -22,10 +22,10 @@ run() {  # name expect(assembled|refused) args...
 echo "== M (ASan): masm label/reference tables"
 run "M-A1: 64 labels (capacity) assemble, no out-of-bounds access"            assembled 64 0
 run "M-A2: 65 labels are refused as too_large, nothing emitted, no overflow"   refused 65 0
-run "M-A3: 505 labels (a full 510-token block) are refused, no overflow"     refused 505 0
+run "M-A3: 505 labels (a 510-token block) are refused, no overflow"          refused 505 0
 run "M-A4: 128 ZBRANCH references (capacity) assemble"                         assembled 0 128
 run "M-A5: 129 ZBRANCH references are refused, nothing emitted, no overflow"   refused 0 129
-run "M-A6: 252 ZBRANCH references (a full 510-token block) are refused"      refused 0 252
+run "M-A6: 252 ZBRANCH references (a 510-token block) are refused"           refused 0 252
 run "M-A7: 128 CALL references (capacity) assemble"                            assembled 0 128 call
 run "M-A8: 129 CALL references are refused, nothing emitted, no overflow"      refused 0 129 call
 exit $fail

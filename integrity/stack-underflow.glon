@@ -1,0 +1,12 @@
+;; integrity/stack-underflow.glon -- a masm word that declares a result it did
+;; not leave (it consumes its argument, then says ARITY 1) would hand back the
+;; return stack's bottom cell. The masm return check fail-stops first,
+;; natively and in WASM: the line before prints, the line after does not.
+;; Run by integrity/parity.sh; prints "parity:" lines.
+[
+sink: masm 1 [ LIT SCRATCH_A ! ARITY 1 EXIT ]
+s/print "parity: stack-underflow before"
+sink 10
+sink 20
+s/print "parity: stack-underflow after (must not print)"
+]

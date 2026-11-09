@@ -341,10 +341,27 @@ static void section_S(const char *root) {
     CHECK(run_poisoned("ix/deep 20", &low, &oc) == R0S1_OUT_OK && got() == 1000,
           "S6: control: 20 levels (1,000 pending values) compute 1000");
 
+    /* a collection deep in the stack: the collector's own data-stack use stays
+     * inside the guard (it was measured at no more than 16 cells) */
+    setup(root);
+    CHECK(fill_to(R0S1_CODE_LIMIT) == 0, "S8 setup: code filled to R0S1_CODE_LIMIT");
+    sess("ix/junk: func [n] [ either = n 0 [ 0 ] [ s/length s/+ s/from-int n \"x\"  ix/junk - n 1 ] ] 0", NULL);
+    here = asm_here(); code = checksum(256, here);
+    {
+        /* 150-deep nesting whose innermost value allocates and collects */
+        int k = 0;
+        for (int i = 0; i < 150; i++) k += snprintf(w + k, sizeof w - (size_t)k, "+ 1 ");
+        snprintf(w + k, sizeof w - (size_t)k, "+ ix/junk 30 ix/gc 0");
+    }
+    CHECK(run_poisoned(w, &low, &oc) == R0S1_OUT_OK && got() == 150 + 0 && low >= here && checksum(256, here) == code
+          && r0_s1_gc_count() > 0,
+          "S8: with code full, a collection 150 values deep runs and writes nothing below the end of code");
+
     /* underflow: a masm word that declares a result it did not leave pops a
      * cell from above the data stack (the return stack's bottom cell), and
      * the next push would overwrite it (examples/raw-memory.r0 did this until
      * 2026-11-09). The guard fail-stops at the next evaluation step. */
+    setup(root);
     sess("ix/sink: masm 1 [ LIT SCRATCH_A ! ARITY 1 EXIT ] 0", NULL);
     const cell P = (cell)0x5A5A5A5;
     M[R0S1_DS_INIT] = P;
@@ -516,6 +533,92 @@ static void section_U(const char *root) {
           "U3: an unwrapped source whose second block cannot fit is refused, emitting nothing");
 }
 
+/* ---- M: assembler limits ----------------------------------------------------
+ * A masm block holds at most 511 tokens, 64 labels and 128 label references,
+ * and its code must end at or below R0S1_CODE_LIMIT; anything larger is
+ * refused as too_large with nothing emitted (masm_bound covers the code
+ * limit; integrity/asan-probe.sh repeats the table limits under
+ * AddressSanitizer). */
+static int masm_parse(const char *body, int arity, cell *emitted) {
+    static char w[1 << 15];
+    snprintf(w, sizeof w, "mm-w: masm %d [ %s ] 0", arity, body);
+    cell h = asm_here(); r0_s1_outcome oc;
+    quiet(); sess(w, &oc); loud();
+    *emitted = asm_here() - h;
+    return oc.status;
+}
+static void section_M(void) {
+    printf("== M: assembler limits\n");
+    static char b[1 << 15];
+    cell e; int n;
+    /* tokens: 167 x "LIT 0 DROP" (501) + "INT 1 ARITY 1 EXIT" (5), padded with labels */
+    for (int total = 511; total <= 512; total++) {
+        fresh();
+        n = 0;
+        int labels = total - 167 * 3 - 5;
+        for (int i = 0; i < 167; i++) n += snprintf(b + n, sizeof b - (size_t)n, "LIT 0 DROP ");
+        for (int i = 0; i < labels; i++) n += snprintf(b + n, sizeof b - (size_t)n, "P%d: ", i);
+        snprintf(b + n, sizeof b - (size_t)n, "INT 1 ARITY 1 EXIT");
+        int st = masm_parse(b, 0, &e);
+        if (total == 511)
+            CHECK(st == R0S1_OUT_OK && e == 167 * 3 + 21 && sess("mm-w", NULL) == R0S1_OUT_OK && got() == 1,
+                  "M1: a block of 511 tokens (the maximum) assembles and runs");
+        else
+            CHECK(st == R0S1_OUT_PARSE_ERROR && r0_s1_parse_error_kind() == R0S1_PARSE_TOO_LARGE && e == 0,
+                  "M1: a block of 512 tokens is refused (too_large), emitting nothing");
+    }
+    struct { int labels, refs, call; int ok; const char *what; } t[] = {
+        { 64, 0, 0, 1, "M2: 64 labels assemble" },
+        { 65, 0, 0, 0, "M2: 65 labels are refused, emitting nothing" },
+        { 0, 128, 0, 1, "M2: 128 BRANCH label references assemble" },
+        { 0, 129, 0, 0, "M2: 129 BRANCH label references are refused, emitting nothing" },
+        { 0, 128, 1, 1, "M2: 128 CALL label references assemble" },
+        { 0, 129, 1, 0, "M2: 129 CALL label references are refused, emitting nothing" },
+        { 0, 129, 2, 1, "M2: 129 CALLs of a named runtime entry (collect) are not label references: they assemble" },
+    };
+    for (int k = 0; k < 7; k++) {
+        fresh();
+        n = 0;
+        /* `labels` labels in all, counting the T: the references jump to */
+        for (int i = 0; i + 1 < t[k].labels; i++) n += snprintf(b + n, sizeof b - (size_t)n, "L%d: ", i);
+        const char *ref = t[k].call == 0 ? "BRANCH T " : t[k].call == 1 ? "CALL T " : "CALL collect ";
+        for (int i = 0; i < t[k].refs; i++) n += snprintf(b + n, sizeof b - (size_t)n, "%s", ref);
+        snprintf(b + n, sizeof b - (size_t)n, "T: INT 1 ARITY 1 EXIT");
+        int st = masm_parse(b, 0, &e);
+        int ok = t[k].ok ? (st == R0S1_OUT_OK && e > 0)
+                         : (st == R0S1_OUT_PARSE_ERROR && r0_s1_parse_error_kind() == R0S1_PARSE_TOO_LARGE && e == 0);
+        CHECK(ok, t[k].what);
+    }
+    /* every form's emitted size, against the frozen s1.c expansions (an
+     * independent table: LIT/INT/ARITY/HOST ops 2, ZBRANCH 2, BRANCH 5, >R and
+     * R> 14, EXIT 17, CALL 21, DUP DROP @ ! 1, a label 0) */
+    struct { const char *form; long cells; } f[] = {
+        { "LIT 7", 2 }, { "INT 7", 2 }, { "ARITY 1", 2 }, { "HOST 0", 2 }, { "NONE", 2 },
+        { "ADD", 2 }, { "SUB", 2 }, { "MUL", 2 }, { "DIV", 2 }, { "MOD", 2 }, { "EQ", 2 }, { "NE", 2 },
+        { "LT", 2 }, { "GT", 2 }, { "LE", 2 }, { "GE", 2 }, { "PRINT", 2 }, { "ALLOC", 2 },
+        { "ZBRANCH X", 2 }, { "ZBRANCH 300", 2 }, { "BRANCH X", 5 }, { "BRANCH 300", 5 },
+        { ">R", 14 }, { "R>", 14 }, { "EXIT", 17 }, { "CALL X", 21 }, { "CALL 300", 21 }, { "CALL alloc", 21 },
+        { "CALL collect", 21 }, { "CALL lookup", 21 }, { "CALL ESC_ANY", 21 }, { "CALL ESC_TRANSPORT", 21 },
+        { "DUP", 1 }, { "DROP", 1 }, { "@", 1 }, { "!", 1 }, { "Y:", 0 },
+    };
+    int sizes_ok = 1; long sum = 0;
+    n = 0;
+    for (unsigned k = 0; k < sizeof f / sizeof f[0]; k++) {
+        fresh();
+        snprintf(b, sizeof b, "X: %s", f[k].form);
+        if (masm_parse(b, 0, &e) != R0S1_OUT_OK || e != f[k].cells) {
+            sizes_ok = 0; printf("    M3: '%s' emitted %ld, expected %ld\n", f[k].form, (long)e, f[k].cells);
+        }
+        sum += f[k].cells;
+    }
+    CHECK(sizes_ok, "M3: every masm form emits exactly its frozen S1 expansion size (37 forms)");
+    fresh();
+    n = snprintf(b, sizeof b, "X: ");
+    for (unsigned k = 0; k < sizeof f / sizeof f[0]; k++)
+        if (strcmp(f[k].form, "Y:")) n += snprintf(b + n, sizeof b - (size_t)n, "%s ", f[k].form);
+    CHECK(masm_parse(b, 0, &e) == R0S1_OUT_OK && e == sum, "M3: and all of them together in one block emit the sum");
+}
+
 int main(int argc, char **argv) {
     const char *root = ".";
     for (int i = 1; i < argc; i++) { if (!strcmp(argv[i], "-v")) verbose = 1; else root = argv[i]; }
@@ -631,6 +734,7 @@ int main(int argc, char **argv) {
     section_S(root);
     section_L(root);
     section_U(root);
+    section_M();
 
     /* ---- K: known defects (strict XFAIL) ----------------------------------- */
     printf("== K: known defects (expected failures; XPASS means fixed: promote)\n");
@@ -657,6 +761,40 @@ int main(int argc, char **argv) {
         int bad = clean_but_code_changed("ix/exc", &clean);
         XFAIL(!bad, "K1: a masm word that pushes the data stack 400 deep into loaded code is stopped or not reported clean (needs a frozen-S1 change)");
     }
+    /* K6: invalid masm is accepted with only a warning on stderr. Each check
+     * parses the block and never runs it (some would execute memory that is
+     * not code). Found 2026-11-09 while extending the assembler tests. */
+    {
+        struct { const char *body; const char *what, *today; } inv[] = {
+            { "BRANCH nowhere INT 1 ARITY 1 EXIT", "an undefined label (BRANCH)", "it would branch to address 0" },
+            { "CALL nowhere INT 1 ARITY 1 EXIT",   "an undefined label (CALL)", "it would call address 0" },
+            { "LIT nosuch INT 1 ARITY 1 EXIT",     "an unresolved operand", "the instruction is dropped" },
+            { "FROB INT 1 ARITY 1 EXIT",           "an unknown mnemonic", "it is dropped" },
+            { "L: L: INT 1 ARITY 1 EXIT",          "a label defined twice", "the first wins" },
+            { "HOST 99 INT 1 ARITY 1 EXIT",        "a HOST id outside S1's closed set", "S1 ignores it at run time" },
+            { "INT 1 ARITY 1 EXIT LIT",            "an instruction without its operand", "it is dropped" },
+        };
+        for (unsigned k = 0; k < sizeof inv / sizeof inv[0]; k++) {
+            fresh();
+            cell e; int st = masm_parse(inv[k].body, 0, &e);
+            char m[256]; snprintf(m, sizeof m, "K6: a masm block with %s is refused at parse (today: accepted; %s)",
+                                  inv[k].what, inv[k].today);
+            XFAIL(st == R0S1_OUT_PARSE_ERROR && e == 0, m);
+        }
+    }
+    /* K7: an empty masm block emits nothing, and its callable's entry is the
+     * end of code: calling it runs whatever follows (later code, or memory
+     * that is not code). Checked without calling it. */
+    {
+        fresh();
+        r0_s1_outcome oc; quiet(); sess("k: masm 0 [ ] :k", &oc); loud();
+        cell v = oc.status == R0S1_OUT_OK && oc.count >= 1 ? r0_s1_result(oc.count - 1, oc.count) : 0;
+        int refused = oc.status == R0S1_OUT_PARSE_ERROR;
+        int entry_in_code = !refused && r0_tag(v) == T_RAW && M[r0_untag(v) + RAW_ENTRY] < asm_here();
+        XFAIL(refused || entry_in_code,
+              "K7: an empty masm block is refused, or its callable enters emitted code (today: the end of code)");
+    }
+
     printf("\nmachine-integrity: %d failure(s), %d expected failure(s), %d unexpected pass(es)\n",
            failures, xfails, xpasses);
     return (failures || xpasses) ? 1 : 0;

@@ -18,7 +18,7 @@
 ;; WASM:    node integrity/run-wasm.js glon.wasm jupyter/prelude.glon
 ;;              demo/shop/strings.glon demo/shop/strings-ext.glon
 ;;              integrity/binary-strings.glon
-;; Both print the same "binary-strings:" lines (make machine-integrity-wasm
+;; Both print the same "parity: binary-strings" lines (integrity/parity.sh
 ;; compares them); a changed byte raises a SIN! (exit status 1).
 ;; masm is the RAW trapdoor: the test needs addresses and arbitrary bytes.
 ;; The file is wrapped in [ ]: masm is recognised only inside a block.
@@ -69,8 +69,8 @@ i/rot: func [r] [
     ]
 ]
 i/total: i/rot 0
-s/print s/+ "binary-strings: strings checked " s/from-int 16
-s/print s/+ "binary-strings: collections " s/from-int i/collections
-s/print s/+ "binary-strings: changed bytes " s/from-int i/total
+s/print s/+ "parity: binary-strings strings checked " s/from-int 16
+s/print s/+ "parity: binary-strings collections " s/from-int i/collections
+s/print s/+ "parity: binary-strings changed bytes " s/from-int i/total
 either = i/total 0 [ 0 ] [ raise create-sin 'integrity 'binary-string-changed i/total ]
 ]

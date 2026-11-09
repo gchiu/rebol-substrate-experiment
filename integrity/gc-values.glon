@@ -1,0 +1,57 @@
+;; integrity/gc-values.glon -- managed values survive collections whatever
+;; stale integers are on the stacks.
+;;
+;; A managed BLOCK! (holding integers, a STRING! and a closure), the STRING!
+;; and the closure's captured context are each probed: for every granule from
+;; 2 before to 24 after each object's address, an integer equal to that address
+;; is held in a live stack context while garbage is allocated and a full
+;; collection runs; then every element, every byte and the closure's state are
+;; compared with what they must be. (binary-strings.glon does the same for
+;; every byte value inside strings.)
+;; Run natively and in WASM by integrity/parity.sh; prints "parity:" lines.
+[
+g/gc: masm 1 [ DROP CALL collect LIT 0 ARITY 1 EXIT ]
+;; the INTEGER! whose cell is a managed value's address
+g/addr: masm 1 [ DUP LIT 16 MOD SUB ARITY 1 EXIT ]
+
+mk: func [n] [ func [] [ n: + n 1  n ] ]
+c: mk 100
+cn: 100
+s: s/from-int 123456789      ;; within the portable integer range (WASM: 2^27)
+b: reduce [ 11 22 33 s :c 44 ]   ;; :c the closure itself (c would call it)
+collections: 0
+
+;; how many things differ from what they must be (0 when intact)
+g/bad: func [x want] [ either = :x :want [ 0 ] [ 1 ] ]
+g/check: func [] [
+    cn: + cn 1
+    + + + + + + + + + +
+    g/bad block-len b 6
+    g/bad block-at b 0 11
+    g/bad block-at b 1 22
+    g/bad block-at b 2 33
+    g/bad block-at b 5 44
+    g/bad block-at b 4 :c
+    g/bad s/at s 0 49
+    g/bad s/at s 8 57
+    g/bad s/length block-at b 3 9
+    g/bad c cn
+    g/bad s/length s 9
+]
+;; n: the stale integer, live in this activation during the collection
+g/probe: func [n] [
+    j1: s/from-int + n 7
+    j2: reduce [ n n n ]
+    j3: func [] [ n ]
+    g/gc 0
+    collections: + collections 1
+    g/check
+]
+;; probe the granules [base - 2, base + k)
+g/walk: func [base k] [ either = k -3 [ 0 ] [ + g/probe + base k  g/walk base - k 1 ] ]
+total: + + g/walk g/addr b 24 g/walk g/addr s 24 g/walk g/addr :c 24
+s/print s/+ "parity: gc-values collections " s/from-int collections
+s/print s/+ "parity: gc-values damaged " s/from-int total
+s/print s/+ "parity: gc-values closure state " s/from-int c
+either = total 0 [ 0 ] [ raise create-sin 'integrity 'gc-damaged total ]
+]

@@ -1,0 +1,11 @@
+;; integrity/masm-unwrapped.glon -- an UNWRAPPED source (no outer [ ]) with
+;; masm definitions: one block with labels and a loop, and three blocks in one
+;; source, which are emitted only after the whole source has parsed, each at
+;; the entry its callable was given.
+;; Run by integrity/parity.sh; prints "parity:" lines.
+inc: masm 1 [ LIT 16 ADD ARITY 1 EXIT ]
+five: masm 0 [ LIT 1 L1: DUP LIT 5 LT ZBRANCH L2 LIT 1 ADD BRANCH L1 L2: LIT 16 MUL ARITY 1 EXIT ]
+mul: masm 2 [ MUL LIT 16 DIV ARITY 1 EXIT ]
+s/print s/+ "parity: unwrapped masm inc 41 -> " s/from-int inc 41
+s/print s/+ "parity: unwrapped masm five -> " s/from-int five
+s/print s/+ "parity: unwrapped masm mul 6 7 -> " s/from-int mul 6 7

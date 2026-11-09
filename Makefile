@@ -573,12 +573,13 @@ integrity-asan-probe: $(ASAN_PROBE_SRCS) r0_s1.h s1.h m1_layout.h
 machine-integrity: machine-integrity-test integrity-asan-probe glon
 	./check-frozen-s1.sh
 	./machine-integrity-test
-	./glon demo/shop/strings-ext.glon integrity/binary-strings.glon
 	./integrity/asan-probe.sh ./integrity-asan-probe
+	./integrity/parity.sh native
 	@echo "machine-integrity: PASS"
 
-# the Glon-level integrity tests in the standalone WASM build, whose output
-# must equal the native CLI's (needs emsdk: EMSDK=~/emsdk by default)
+# the Glon-level integrity tests (integrity/*.glon) in the standalone WASM
+# build: each file's "parity:" lines must equal integrity/expected/, as they
+# must natively (needs emsdk: EMSDK=~/emsdk by default)
 EMSDK ?= $(HOME)/emsdk
 INTEGRITY_EMCC ?= $(EMSDK)/upstream/emscripten/emcc
 INTEGRITY_NODE ?= $(firstword $(wildcard $(EMSDK)/node/*/bin/node) node)
@@ -589,11 +590,8 @@ integrity/build/glon.wasm: standalone/glon.c s1.c r0_s1_runtime.c r0_s1_show.c r
 	  standalone/glon.c s1.c r0_s1_runtime.c r0_s1_show.c r0_s1_g1a.c -o $@
 
 machine-integrity-wasm: integrity/build/glon.wasm glon
-	./glon demo/shop/strings-ext.glon integrity/binary-strings.glon | grep '^binary-strings:' > integrity/build/native.out
-	$(INTEGRITY_NODE) integrity/run-wasm.js integrity/build/glon.wasm jupyter/prelude.glon demo/shop/strings.glon \
-	  demo/shop/strings-ext.glon integrity/binary-strings.glon | grep '^binary-strings:' > integrity/build/wasm.out
-	diff integrity/build/native.out integrity/build/wasm.out
-	@cat integrity/build/wasm.out
-	@echo "machine-integrity-wasm: PASS (native and WASM output identical)"
+	./integrity/parity.sh native
+	./integrity/parity.sh wasm integrity/build/glon.wasm $(INTEGRITY_NODE)
+	@echo "machine-integrity-wasm: PASS (native and WASM output as expected, identical)"
 
 .PHONY: machine-integrity machine-integrity-wasm
