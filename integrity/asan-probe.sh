@@ -1,27 +1,31 @@
 #!/bin/sh
-# integrity/asan-probe.sh PROBE -- run the masm label/reference table probe
-# (integrity/asan_probe.c, an AddressSanitizer build) at and past each table's
-# capacity. At capacity the block must assemble cleanly. Past it, the invariant
-# is that the block is refused without an out-of-bounds write; today ASan
-# reports a global-buffer-overflow (known defect K5: expected failure). If a
-# repair makes the refusal clean, the check reports XPASS and fails, so that
-# it is promoted to an ordinary check deliberately.
+# integrity/asan-probe.sh PROBE -- the masm label/reference tables under
+# AddressSanitizer (integrity/asan_probe.c), one block per process.
+# At capacity a block must assemble; past it, it must be refused as too_large
+# with nothing emitted, and in every case with no out-of-bounds access.
+# (Known defect K5 until the 2026-11-09 repair: past capacity, ASan reported a
+# global-buffer-overflow write.)
 probe=$1; fail=0
-run() {  # labels refs expect(ok|xfail) name
-    out=$("$probe" "$1" "$2" 2>&1); rc=$?
-    overflow=0; echo "$out" | grep -q "global-buffer-overflow" && overflow=1
-    if [ "$3" = ok ]; then
-        if [ $rc -eq 0 ] && [ $overflow -eq 0 ]; then echo "  ok: $4"
-        else echo "  FAIL: $4"; echo "$out" | head -5; fail=1; fi
-    else
-        if [ $overflow -eq 1 ]; then echo "  xfail (known defect): $4"
-        elif [ $rc -eq 0 ]; then echo "  XPASS (known defect now fixed: promote this check): $4"; fail=1
-        else echo "  FAIL (other error): $4"; echo "$out" | head -5; fail=1; fi
+run() {  # name expect(assembled|refused) args...
+    name=$1; want=$2; shift 2
+    out=$("$probe" "$@" 2>&1); rc=$?
+    if echo "$out" | grep -q "AddressSanitizer"; then
+        echo "  FAIL: $name (AddressSanitizer report)"; echo "$out" | grep -m3 "ERROR\|WRITE\|located"; fail=1; return
     fi
+    if [ $rc -ne 0 ]; then echo "  FAIL: $name (exit $rc)"; echo "$out" | tail -3; fail=1; return; fi
+    case "$want" in
+        assembled) echo "$out" | grep -q ": assembled," || { echo "  FAIL: $name"; echo "$out" | tail -2; fail=1; return; } ;;
+        refused)   echo "$out" | grep -q "refused (too_large), 0 cells emitted" || { echo "  FAIL: $name"; echo "$out" | tail -2; fail=1; return; } ;;
+    esac
+    echo "  ok: $name"
 }
-echo "== K5: masm label/reference tables (AddressSanitizer)"
-run 64 0 ok    "K5: a block with 64 labels (the table's capacity) assembles with no out-of-bounds access"
-run 0 128 ok   "K5: a block with 128 references (the table's capacity) assembles with no out-of-bounds access"
-run 65 0 xfail "K5: a block with 65 labels is refused without writing past raw_labels[64]"
-run 0 129 xfail "K5: a block with 129 references is refused without writing past raw_refs[128]"
+echo "== M (ASan): masm label/reference tables"
+run "M-A1: 64 labels (capacity) assemble, no out-of-bounds access"            assembled 64 0
+run "M-A2: 65 labels are refused as too_large, nothing emitted, no overflow"   refused 65 0
+run "M-A3: 505 labels (a full 510-token block) are refused, no overflow"     refused 505 0
+run "M-A4: 128 ZBRANCH references (capacity) assemble"                         assembled 0 128
+run "M-A5: 129 ZBRANCH references are refused, nothing emitted, no overflow"   refused 0 129
+run "M-A6: 252 ZBRANCH references (a full 510-token block) are refused"      refused 0 252
+run "M-A7: 128 CALL references (capacity) assemble"                            assembled 0 128 call
+run "M-A8: 129 CALL references are refused, nothing emitted, no overflow"      refused 0 129 call
 exit $fail

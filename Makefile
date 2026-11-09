@@ -558,8 +558,8 @@ traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 # STRING! preservation under GC churn, and the known defects as strict
 # expected failures (XFAIL; an XPASS fails the target so that a repaired
 # defect's check is promoted deliberately). The masm label/reference table
-# overflow (host C undefined behaviour) runs only in an AddressSanitizer
-# probe, one block per process. Nothing here changes the runtime.
+# bounds are also checked in an AddressSanitizer probe, one block per
+# process, so that any out-of-bounds access is caught.
 INTEGRITY_SRCS = r0_s1_integrity_tests.c r0_s1_gc_interior_tests.c r0_s1_masm_bound_tests.c \
 	r0_s1_runtime.c r0_s1_session.c r0_s1_show.c s1.c
 ASAN_PROBE_SRCS = integrity/asan_probe.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c s1.c

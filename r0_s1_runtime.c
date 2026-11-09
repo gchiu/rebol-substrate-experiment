@@ -306,11 +306,18 @@ static cell raw_resolve(const masm_tok_t *tok, int *ok) {
     return 0;
 }
 
+/* Per-block label and forward-reference tables. A block may hold up to
+ * MASM_TOK_CAP tokens, more than either table, so the parser counts a block's
+ * labels and references (raw_counts) and refuses it as too_large before
+ * anything is emitted; assemble_raw also checks each index (an internal error
+ * if the parser's count was wrong). */
+#define RAW_LABEL_CAP 64
+#define RAW_REF_CAP   128
 typedef struct { const char *name; int len; cell addr; } raw_label_t;
-static raw_label_t raw_labels[64];
+static raw_label_t raw_labels[RAW_LABEL_CAP];
 static int raw_nlabels;
 typedef struct { cell patch; const char *name; int len; } raw_ref_t;
-static raw_ref_t raw_refs[128];
+static raw_ref_t raw_refs[RAW_REF_CAP];
 static int raw_nrefs;
 
 static cell raw_find_label(const char *name, int len) {
@@ -321,6 +328,10 @@ static cell raw_find_label(const char *name, int len) {
 }
 
 static void raw_add_ref(cell patch, const masm_tok_t *op) {
+    if (raw_nrefs >= RAW_REF_CAP) {
+        fprintf(stderr, "r0_s1: internal error: masm reference table overflow\n");
+        abort();
+    }
     raw_refs[raw_nrefs].patch = patch;
     raw_refs[raw_nrefs].name = op->s;
     raw_refs[raw_nrefs].len = op->len;
@@ -419,6 +430,31 @@ static cell raw_size(const masm_tok_t *tk, int n) {
     return size;
 }
 
+/* How many label definitions and label references assemble_raw will record
+ * for tk[0..n): it follows assemble_raw's dispatch (a ZBRANCH, BRANCH or CALL
+ * whose operand is a word other than CALL's named runtime entry points adds a
+ * reference). */
+static void raw_counts(const masm_tok_t *tk, int n, int *labels, int *refs) {
+    *labels = 0; *refs = 0;
+    for (int i = 0; i < n; i++) {
+        const masm_tok_t *tok = &tk[i];
+        if (tok->kind == MT_LABEL) { (*labels)++; continue; }
+        if (tok->kind != MT_WORD) continue;
+        if (mt_is(tok, "LIT") || mt_is(tok, "INT") || mt_is(tok, "ARITY")
+            || mt_is(tok, "HOST") || mt_is(tok, "ZBRANCH")
+            || mt_is(tok, "BRANCH") || mt_is(tok, "CALL")) {
+            int is_ref = mt_is(tok, "ZBRANCH") || mt_is(tok, "BRANCH") || mt_is(tok, "CALL");
+            int is_call = mt_is(tok, "CALL");
+            i++;
+            if (i >= n || !is_ref || tk[i].kind != MT_WORD) continue;
+            const masm_tok_t *op = &tk[i];
+            if (is_call && (mt_is(op, "alloc") || mt_is(op, "collect") || mt_is(op, "lookup")
+                            || mt_is(op, "ESC_ANY") || mt_is(op, "ESC_TRANSPORT"))) continue;
+            (*refs)++;
+        }
+    }
+}
+
 static cell assemble_raw(const masm_tok_t *tk, int n) {
     const masm_tok_t none_tok = { MT_OTHER, int_val(R0_NONE), "", 0 };
     raw_nlabels = 0; raw_nrefs = 0;
@@ -426,6 +462,10 @@ static cell assemble_raw(const masm_tok_t *tk, int n) {
     for (int i = 0; i < n; i++) {
         const masm_tok_t *tok = &tk[i];
         if (tok->kind == MT_LABEL) {      /* label definition */
+            if (raw_nlabels >= RAW_LABEL_CAP) {
+                fprintf(stderr, "r0_s1: internal error: masm label table overflow\n");
+                abort();
+            }
             raw_labels[raw_nlabels].name = tok->s;
             raw_labels[raw_nlabels].len = tok->len;
             raw_labels[raw_nlabels].addr = asm_here();
@@ -628,6 +668,21 @@ static cell parse_block(parser_t *P, int is_body) {
                  * keeps R0S1_DS_RESERVE cells). The parse then fails as
                  * too_large and is rolled back like any failed parse; no
                  * binding is made, because the source never runs. */
+                /* Table bounds: a block with more labels or label
+                 * references than the assembler's tables hold is refused
+                 * the same way, before anything is emitted. */
+                {
+                    int nlab, nref;
+                    raw_counts(masm_toks, ntok, &nlab, &nref);
+                    if (nlab > RAW_LABEL_CAP || nref > RAW_REF_CAP) {
+                        fprintf(stderr, "r0_s1: masm block too large: %d labels (at most %d), "
+                                        "%d label references (at most %d)\n",
+                                nlab, RAW_LABEL_CAP, nref, RAW_REF_CAP);
+                        parse_fail_set(R0S1_PARSE_TOO_LARGE);
+                        P->err = 1;
+                        break;
+                    }
+                }
                 cell need = raw_size(masm_toks, ntok);
                 if (asm_here() + need > R0S1_CODE_LIMIT) {
                     fprintf(stderr, "r0_s1: masm code space exhausted: the block needs %ld cells, "
