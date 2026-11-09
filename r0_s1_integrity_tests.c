@@ -355,6 +355,88 @@ static void section_S(const char *root) {
     CHECK(sess("ix/ok 6 7", NULL) == R0S1_OUT_OK && got() == 42, "S7: the session continues (6 * 7)");
 }
 
+/* ---- L: failed loads emit and keep nothing --------------------------------
+ * masm blocks are emitted only when the whole source has parsed (K3, repaired
+ * 2026-11-09): before, a source whose first block fitted and whose second did
+ * not was refused but left the first block's code behind, and repeated
+ * refusals exhausted the code space. */
+typedef struct { cell here, lhp, globals; unsigned long code; } load_state_t;
+static load_state_t load_state(void) {
+    load_state_t t; cell cap;
+    t.here = asm_here(); t.lhp = M[GC_LOADER_HP]; r0_s1_global_usage(&t.globals, &cap);
+    t.code = checksum(256, t.here);
+    return t;
+}
+static int load_same(load_state_t a, load_state_t b) {
+    return a.here == b.here && a.lhp == b.lhp && a.globals == b.globals && a.code == b.code;
+}
+static void section_L(const char *root) {
+    printf("== L: failed-load recovery\n");
+    static char w[1 << 15];
+    setup(root);
+    const char *ok_block = "lx-a: masm 0 [ LIT 0 ARITY 1 EXIT ] ";
+
+    /* the K3 reproduction: the second block can never fit */
+    int n = snprintf(w, sizeof w, "%slx-b: masm 0 [ x: ", ok_block);
+    for (int i = 0; i < 250; i++) n += snprintf(w + n, sizeof w - (size_t)n, "CALL x ");
+    snprintf(w + n, sizeof w - (size_t)n, "LIT 0 ARITY 1 EXIT ] 0");
+    load_state_t t0 = load_state();
+    int refused = 1;
+    quiet(); for (int i = 0; i < 200; i++) if (sess(w, NULL) != R0S1_OUT_PARSE_ERROR) refused = 0; loud();
+    CHECK(refused, "L1: 200 sources whose second masm block cannot fit are each refused (too_large)");
+    CHECK(load_same(load_state(), t0),
+          "L1: ... and leave code end, code, loader heap and bindings exactly as they were");
+    CHECK(sess("lx-ok: masm 0 [ INT 5 ARITY 1 EXIT ] lx-ok", NULL) == R0S1_OUT_OK && got() == 5,
+          "L1: a masm word still loads and runs afterwards");
+
+    /* every other way a source with masm can fail after its first block */
+    struct { const char *name; const char *tail; int kind; } f[] = {
+        { "a syntax error",                         "y: [ oops",                               R0S1_PARSE_SYNTAX },
+        { "a 600-value block",                      NULL,                                      R0S1_PARSE_TOO_LARGE },
+        { "a masm block with 65 labels",            NULL,                                      R0S1_PARSE_TOO_LARGE },
+        { "a masm block inside a func body, then a syntax error",
+                                                    "lx-f: func [] [ k: masm 0 [ LIT 1 ARITY 1 EXIT ] k ] y: [ oops",
+                                                                                               R0S1_PARSE_SYNTAX },
+    };
+    for (int k = 0; k < 4; k++) {
+        setup(root);   /* independent of L1 (which, unrepaired, fills the code space) */
+        n = snprintf(w, sizeof w, "%s", ok_block);
+        if (k == 1) { n += snprintf(w + n, sizeof w - (size_t)n, "b: [ ");
+                      for (int i = 0; i < 600; i++) n += snprintf(w + n, sizeof w - (size_t)n, "1 ");
+                      snprintf(w + n, sizeof w - (size_t)n, "] 0"); }
+        else if (k == 2) { n += snprintf(w + n, sizeof w - (size_t)n, "lx-l: masm 0 [ ");
+                      for (int i = 0; i < 65; i++) n += snprintf(w + n, sizeof w - (size_t)n, "L%d: ", i);
+                      snprintf(w + n, sizeof w - (size_t)n, "LIT 0 ARITY 1 EXIT ] 0"); }
+        else snprintf(w + n, sizeof w - (size_t)n, "%s", f[k].tail);
+        load_state_t t = load_state();
+        r0_s1_outcome oc; quiet(); sess(w, &oc); loud();
+        int kind_ok = oc.status == R0S1_OUT_PARSE_ERROR && r0_s1_parse_error_kind() == f[k].kind;
+        char m[256];
+        snprintf(m, sizeof m, "L%d: a masm block followed by %s: refused, no code emitted, nothing kept", k + 2, f[k].name);
+        CHECK(kind_ok && load_same(load_state(), t), m);
+    }
+
+    /* a source that parses: its blocks land where their callables say, with
+     * exactly the code the same blocks get when loaded one per source */
+    const char *blocks[] = {
+        "lx-p: masm 1 [ LIT 16 ADD ARITY 1 EXIT ] ",
+        "lx-q: masm 0 [ LIT 1 L1: DUP LIT 5 LT ZBRANCH L2 LIT 1 ADD BRANCH L1 L2: LIT 16 MUL ARITY 1 EXIT ] ",
+        "lx-r: masm 2 [ MUL LIT 16 DIV ARITY 1 EXIT ] ",
+    };
+    setup(root);
+    cell h0 = asm_here();
+    n = 0;
+    for (int i = 0; i < 3; i++) n += snprintf(w + n, sizeof w - (size_t)n, "%s", blocks[i]);
+    snprintf(w + n, sizeof w - (size_t)n, "+ + lx-p 1 lx-q lx-r 6 7");
+    int multi = sess(w, NULL) == R0S1_OUT_OK && got() == 2 + 5 + 42;
+    cell h1 = asm_here(); unsigned long sum_multi = checksum(h0, h1);
+    setup(root);
+    for (int i = 0; i < 3; i++) { snprintf(w, sizeof w, "%s 0", blocks[i]); sess(w, NULL); }
+    int single = asm_here() == h1 && checksum(h0, asm_here()) == sum_multi;
+    CHECK(multi, "L6: three masm blocks in one source run correctly (2 + 5 + 42)");
+    CHECK(single, "L6: they emit exactly the code the same blocks emit loaded one per source, at the same addresses");
+}
+
 int main(int argc, char **argv) {
     const char *root = ".";
     for (int i = 1; i < argc; i++) { if (!strcmp(argv[i], "-v")) verbose = 1; else root = argv[i]; }
@@ -468,6 +550,7 @@ int main(int argc, char **argv) {
           "C2: and equals the code a fresh initialisation emits");
 
     section_S(root);
+    section_L(root);
 
     /* ---- K: known defects (strict XFAIL) ----------------------------------- */
     printf("== K: known defects (expected failures; XPASS means fixed: promote)\n");
@@ -493,29 +576,6 @@ int main(int argc, char **argv) {
         CHECK(ok && asm_here() == R0S1_CODE_LIMIT, "K1 setup: code filled to R0S1_CODE_LIMIT with masm words");
         int bad = clean_but_code_changed("ix/exc", &clean);
         XFAIL(!bad, "K1: a masm word that pushes the data stack 400 deep into loaded code is stopped or not reported clean (needs a frozen-S1 change)");
-    }
-    /* K3: a source whose first masm block fits and whose second does not is
-     * refused, but the first block's code stays; repeated, the refusals use up
-     * the whole code space. */
-    {
-        fresh();
-        static char w[8192];
-        int n = snprintf(w, sizeof w, "a: masm 0 [ LIT 0 ARITY 1 EXIT ] b: masm 0 [ x: ");
-        for (int i = 0; i < 250; i++) n += snprintf(w + n, sizeof w - n, "CALL x ");
-        snprintf(w + n, sizeof w - n, "LIT 0 ARITY 1 EXIT ] 0");
-        cell h0 = asm_here(); cell g0, g1, cap; r0_s1_global_usage(&g0, &cap);
-        int refused = 1; quiet();
-        for (int i = 0; i < 200; i++) if (sess(w, NULL) != R0S1_OUT_PARSE_ERROR) refused = 0;
-        loud();
-        r0_s1_global_usage(&g1, &cap);
-        CHECK(refused && g1 == g0, "K3: 200 such sources are each refused (too_large) and bind nothing");
-        if (verbose) printf("    K3: code %ld -> %ld (limit %ld)\n", (long)h0, (long)asm_here(), (long)R0S1_CODE_LIMIT);
-        XFAIL(asm_here() == h0, "K3: refused sources leave the code end where it was (today they leak 21 cells each, to exhaustion)");
-        CHECK(asm_here() <= R0S1_CODE_LIMIT, "K3: the leak never passes R0S1_CODE_LIMIT");
-        quiet(); int st = sess("ok: masm 0 [ LIT 5 ARITY 1 EXIT ] ok", NULL); loud();
-        if (verbose) printf("    K3: a 21-cell word afterwards: status %d\n", st);
-        CHECK(sess("ix-f: func [x] [ + x 1 ] ix-f 41", NULL) == R0S1_OUT_OK && got() == 42,
-              "K3: plain Glon still runs after the code space is exhausted");
     }
     /* K4: `masm` is recognised only inside a block (parse_block); a source
      * that is not wrapped in [ ] (the glon CLI parses files as given) loads

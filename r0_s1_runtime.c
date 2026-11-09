@@ -563,6 +563,24 @@ static cell parse_string_literal(parser_t *P) {
     return b;
 }
 
+/* Deferred masm emission (2026-11-09). A source's masm blocks are emitted
+ * only when the whole source has parsed: until then each block is recorded
+ * by the position of its `[` in the source, its exact size (raw_size) and the
+ * entry address it will have (the code end plus the sizes of the blocks
+ * before it). The callable [entry, arity] gets that predicted entry. At the
+ * end of a successful parse the blocks are read again from the same source
+ * (the masm tokenizer is deterministic) and assembled in order; each must land
+ * exactly at its predicted entry with its computed size. A parse that fails
+ * for any reason, at any point, therefore emits no code: the frozen
+ * assembler's cursor never has to move back. Blocks of size 0 emit nothing
+ * and are not recorded. At most RAW_PENDING_CAP blocks per source (each
+ * emits at least one cell; the code space holds about 3,200). */
+#define RAW_PENDING_CAP 1024
+typedef struct { int pos; cell need, at; } raw_pending_t;
+static raw_pending_t raw_pending[RAW_PENDING_CAP];
+static int raw_npending;
+static cell raw_pending_cells;
+
 static cell parse_block(parser_t *P, int is_body) {
     P->pos++; /* '[' */
     cell tmp[512];
@@ -662,6 +680,7 @@ static cell parse_block(parser_t *P, int is_body) {
                  * must be a block. */
                 skip_ws(P);
                 if (P->s[P->pos] != '[') { P->err = 1; break; }   /* no block: never assemble */
+                int block_pos = P->pos;
                 int ntok = masm_read_block(P);            /* [ instr... ] */
                 if (P->err) break;
                 /* Code-space bound: refuse, BEFORE emitting anything, a block
@@ -685,31 +704,35 @@ static cell parse_block(parser_t *P, int is_body) {
                     }
                 }
                 cell need = raw_size(masm_toks, ntok);
-                if (asm_here() + need > R0S1_CODE_LIMIT) {
+                cell at = asm_here() + raw_pending_cells;   /* after this source's earlier blocks */
+                if (at + need > R0S1_CODE_LIMIT) {
                     fprintf(stderr, "r0_s1: masm code space exhausted: the block needs %ld cells, "
                                     "%ld are free below the code limit %ld\n",
-                            (long)need, (long)(R0S1_CODE_LIMIT - asm_here()), (long)R0S1_CODE_LIMIT);
+                            (long)need, (long)(R0S1_CODE_LIMIT - at), (long)R0S1_CODE_LIMIT);
                     parse_fail_set(R0S1_PARSE_TOO_LARGE);
                     P->err = 1;
                     break;
                 }
-                /* the callable's record first, so that a full loader heap
-                 * also fails before any code is emitted */
+                if (need > 0 && raw_npending >= RAW_PENDING_CAP) {
+                    fprintf(stderr, "r0_s1: masm: more than %d blocks in one source\n", RAW_PENDING_CAP);
+                    parse_fail_set(R0S1_PARSE_TOO_LARGE);
+                    P->err = 1;
+                    break;
+                }
                 cell p = lalloc(2);
                 if (p < 0) {
                     parse_fail_set(R0S1_PARSE_LOADER_EXHAUSTED);
                     P->err = 1;
                     break;
                 }
-                cell entry = assemble_raw(masm_toks, ntok);
-                if (asm_here() - entry != need) {
-                    /* raw_size no longer matches the assembler: a runtime bug */
-                    fprintf(stderr, "r0_s1: internal error: masm block emitted %ld cells, %ld were checked\n",
-                            (long)(asm_here() - entry), (long)need);
-                    abort();
+                if (need > 0) {                           /* emitted when the source has parsed */
+                    raw_pending[raw_npending].pos = block_pos;
+                    raw_pending[raw_npending].need = need;
+                    raw_pending[raw_npending].at = at;
+                    raw_npending++;
+                    raw_pending_cells += need;
                 }
-                ds_floor_update();
-                M[p + RAW_ENTRY] = entry;
+                M[p + RAW_ENTRY] = at;
                 M[p + RAW_ARITY] = (cell)arity;
                 tmp[n++] = mk_raw(p);
                 continue;
@@ -3853,12 +3876,28 @@ static cell parse_program(parser_t *P) {
  * says why, and the parse is rolled back completely: the loader heap, the
  * func-site counter and the symbol table are restored to their state at entry,
  * so a failed parse consumes nothing and earlier session state is untouched.
- * The return value is then R0_NONE and must not be run. (Emitted code from a
- * `masm` form inside the failed source is the one thing not reclaimed: the
- * assembler's cursor is a static of the frozen s1.c and cannot move back. A
- * block that would not fit is refused before it emits anything, but code of
- * EARLIER masm blocks of the same source stays in place, unreachable: no
- * binding refers to it, because the failed source never runs.) */
+ * The return value is then R0_NONE and must not be run. A failed source
+ * emits no code either: its masm blocks are assembled only after the whole
+ * source has parsed (see raw_pending), because the frozen assembler's cursor
+ * cannot move back. */
+/* Assemble the masm blocks of a source that parsed (see raw_pending). */
+static void raw_emit_pending(const char *src) {
+    for (int i = 0; i < raw_npending; i++) {
+        parser_t Q; Q.s = src; Q.pos = raw_pending[i].pos; Q.err = 0;
+        int ntok = masm_read_block(&Q);
+        cell entry = (ntok >= 0 && !Q.err) ? assemble_raw(masm_toks, ntok) : -1;
+        if (entry != raw_pending[i].at || asm_here() - entry != raw_pending[i].need) {
+            /* the block did not land where its callable says: a runtime bug */
+            fprintf(stderr, "r0_s1: internal error: masm block %d emitted at %ld (%ld cells); "
+                            "%ld (%ld cells) were recorded\n", i, (long)entry,
+                    (long)(asm_here() - entry), (long)raw_pending[i].at, (long)raw_pending[i].need);
+            abort();
+        }
+    }
+    raw_npending = 0; raw_pending_cells = 0;
+    ds_floor_update();
+}
+
 cell r0_s1_parse(const char *src, int *err) {
     parser_t P; P.s = src; P.pos = 0; P.err = 0;
     cell save_lhp = M[GC_LOADER_HP];
@@ -3869,8 +3908,13 @@ cell r0_s1_parse(const char *src, int *err) {
     site_depth = 0;
     lex_depth = 0;
     parse_func_depth = 0;
+    raw_npending = 0; raw_pending_cells = 0;
     cell b = parse_program(&P);
-    if (!P.err && !parse_fail) return b;
+    if (!P.err && !parse_fail) {
+        raw_emit_pending(src);
+        return b;
+    }
+    raw_npending = 0; raw_pending_cells = 0;   /* a failed source emits no code */
     if (!parse_fail) parse_fail = R0S1_PARSE_SYNTAX;
     M[GC_LOADER_HP] = save_lhp;
     next_site = save_site;

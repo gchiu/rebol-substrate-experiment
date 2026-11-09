@@ -144,8 +144,10 @@ int run_r0_s1_masm_bound_tests(void) {
     CHECK(eval(last) == 0 && got() == 0, "5: the last filler word, ending at the limit, still runs");
 
     /* ---- 6b: a source whose SECOND masm block does not fit ----------------
-     * The first block's code stays (the frozen assembler cannot move back), but
-     * nothing refers to it and the session stays consistent. */
+     * Until 2026-11-09 the first block's code stayed in place (the frozen
+     * assembler cannot move back), unreachable. masm blocks are now emitted
+     * only when the whole source has parsed, so the refused source emits
+     * nothing at all. */
     fresh();
     {
         static char big[1 << 15];
@@ -164,11 +166,10 @@ int run_r0_s1_masm_bound_tests(void) {
                    "  a2: masm 0 [ LIT 0 DROP LIT 0 DROP LIT 0 DROP LIT 0 ARITY 1 EXIT ] a3: 5 ]") == -1,
               "6b: a source whose second masm block does not fit is refused");
         r0_s1_global_usage(&used1, &cap);
-        CHECK(asm_here() == before + 24 && asm_here() <= R0S1_CODE_LIMIT,
-              "6b: only the first block's 24 cells were emitted, below the limit (unreachable)");
+        CHECK(asm_here() == before, "6b: the refused source emitted no code (not even its first block)");
         CHECK(used1 == used0, "6b: no binding from the refused source (not a1, a2 or a3)");
-        CHECK(eval("[ fits: masm 0 [ LIT 0 ARITY 1 EXIT ] fits ]") == -1,
-              "6b: the 6 cells left are honestly accounted (a 21-cell word no longer fits)");
+        CHECK(eval("[ fits: masm 0 [ LIT 0 ARITY 1 EXIT ] fits ]") == 0 && got() == 0,
+              "6b: the 30 cells left are all still usable (a 21-cell word fits and runs)");
     }
 
     /* ---- 7: data-stack growth into loaded code is prevented --------------- */
