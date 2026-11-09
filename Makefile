@@ -550,3 +550,50 @@ traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
 .PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon-lib glon-smoke glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test kaka-wave-test kaka-serve wasm-kaka-test kaka-browser-regression kaka-refresh-regression
+
+# ---- machine integrity (MACHINE-INTEGRITY-AUDIT.md) ------------------------
+# Machine-level invariants, separate from the functional suite (./s1): the
+# boundary regressions, determinism and residue independence, recovery to a
+# fixed state after every failure kind, runtime-code immutability, binary
+# STRING! preservation under GC churn, and the known defects as strict
+# expected failures (XFAIL; an XPASS fails the target so that a repaired
+# defect's check is promoted deliberately). The masm label/reference table
+# overflow (host C undefined behaviour) runs only in an AddressSanitizer
+# probe, one block per process. Nothing here changes the runtime.
+INTEGRITY_SRCS = r0_s1_integrity_tests.c r0_s1_gc_interior_tests.c r0_s1_masm_bound_tests.c \
+	r0_s1_runtime.c r0_s1_session.c r0_s1_show.c s1.c
+ASAN_PROBE_SRCS = integrity/asan_probe.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c s1.c
+
+machine-integrity-test: $(INTEGRITY_SRCS) r0_s1.h s1.h m1_layout.h
+	$(CC) $(CFLAGS) -I. -o $@ $(INTEGRITY_SRCS)
+
+integrity-asan-probe: $(ASAN_PROBE_SRCS) r0_s1.h s1.h m1_layout.h
+	$(CC) -std=c17 -g -O1 -fsanitize=address -fno-omit-frame-pointer -I. -o $@ $(ASAN_PROBE_SRCS)
+
+machine-integrity: machine-integrity-test integrity-asan-probe glon
+	./check-frozen-s1.sh
+	./machine-integrity-test
+	./glon demo/shop/strings-ext.glon integrity/binary-strings.glon
+	./integrity/asan-probe.sh ./integrity-asan-probe
+	@echo "machine-integrity: PASS"
+
+# the Glon-level integrity tests in the standalone WASM build, whose output
+# must equal the native CLI's (needs emsdk: EMSDK=~/emsdk by default)
+EMSDK ?= $(HOME)/emsdk
+INTEGRITY_EMCC ?= $(EMSDK)/upstream/emscripten/emcc
+INTEGRITY_NODE ?= $(firstword $(wildcard $(EMSDK)/node/*/bin/node) node)
+integrity/build/glon.wasm: standalone/glon.c s1.c r0_s1_runtime.c r0_s1_show.c r0_s1_g1a.c r0_s1.h s1.h m1_layout.h
+	@mkdir -p integrity/build
+	EM_NODE_JS=$(INTEGRITY_NODE) $(INTEGRITY_EMCC) -O1 -nostdlib -fno-builtin \
+	  -s STANDALONE_WASM=1 -s ALLOW_MEMORY_GROWTH=1 -Wl,--no-entry -Wl,--export-memory -I. \
+	  standalone/glon.c s1.c r0_s1_runtime.c r0_s1_show.c r0_s1_g1a.c -o $@
+
+machine-integrity-wasm: integrity/build/glon.wasm glon
+	./glon demo/shop/strings-ext.glon integrity/binary-strings.glon | grep '^binary-strings:' > integrity/build/native.out
+	$(INTEGRITY_NODE) integrity/run-wasm.js integrity/build/glon.wasm jupyter/prelude.glon demo/shop/strings.glon \
+	  demo/shop/strings-ext.glon integrity/binary-strings.glon | grep '^binary-strings:' > integrity/build/wasm.out
+	diff integrity/build/native.out integrity/build/wasm.out
+	@cat integrity/build/wasm.out
+	@echo "machine-integrity-wasm: PASS (native and WASM output identical)"
+
+.PHONY: machine-integrity machine-integrity-wasm

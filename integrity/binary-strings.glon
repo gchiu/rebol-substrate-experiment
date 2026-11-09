@@ -1,0 +1,76 @@
+;; integrity/binary-strings.glon -- binary STRING! preservation under GC churn.
+;;
+;; The invariant: a collection never changes a live STRING!, whatever bytes it
+;; holds and whatever stale integers are on the stacks. The collector scans
+;; the return stack conservatively, so the dangerous inputs are strings whose
+;; bytes look like object headers and integers equal to addresses inside them
+;; (GLON-ARCHITECTURE-MEMORY.md, "Collector defect"; the regression for the
+;; first case found is r0_s1_gc_interior_tests.c, which uses byte 9 only).
+;;
+;; Here: for each rotation r in 0..15, a 256-byte string with byte i =
+;; (i + r) mod 256, so that over the 16 rotations every byte value 0..255 sits
+;; at every position within a 16-cell granule. For each of the string's 17
+;; granules, an integer equal to that interior address is held in a live
+;; stack context while garbage (strings and closures) is allocated and a full
+;; collection runs; then every byte is compared with its pattern.
+;;
+;; Native:  ./glon demo/shop/strings-ext.glon integrity/binary-strings.glon
+;; WASM:    node integrity/run-wasm.js glon.wasm jupyter/prelude.glon
+;;              demo/shop/strings.glon demo/shop/strings-ext.glon
+;;              integrity/binary-strings.glon
+;; Both print the same "binary-strings:" lines (make machine-integrity-wasm
+;; compares them); a changed byte raises a SIN! (exit status 1).
+;; masm is the RAW trapdoor: the test needs addresses and arbitrary bytes.
+;; The file is wrapped in [ ]: masm is recognised only inside a block.
+[
+
+;; i/pat k     a new STRING! of n = k mod 4096 bytes, byte i = (i + k / 4096) mod 256
+i/pat: masm 1 [
+    LIT 16 DIV LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 4096 MOD LIT 16 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT 4096 MOD LIT SCRATCH_C @ !
+    LIT 0 LIT SCRATCH_A !
+  Ln: LIT SCRATCH_A @ LIT SCRATCH_F @ LIT 4096 MOD LT ZBRANCH Ld
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LIT 4096 DIV ADD LIT 256 MOD
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_A @ ADD !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A ! BRANCH Ln
+  Ld: LIT SCRATCH_C @ LIT T_STRING ADD ARITY 1 EXIT ]
+;; i/bad s r   how many bytes of s differ from (i + r) mod 256
+i/bad: masm 2 [
+    LIT 16 DIV LIT SCRATCH_B !
+    LIT T_STRING SUB LIT SCRATCH_C !
+    LIT 0 LIT SCRATCH_F ! LIT 0 LIT SCRATCH_A !
+  Ln: LIT SCRATCH_A @ LIT SCRATCH_C @ @ LT ZBRANCH Ld
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_A @ ADD @
+    LIT SCRATCH_A @ LIT SCRATCH_B @ ADD LIT 256 MOD EQ ZBRANCH Lx BRANCH Lk
+  Lx: LIT SCRATCH_F @ LIT 1 ADD LIT SCRATCH_F !
+  Lk: LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A ! BRANCH Ln
+  Ld: LIT SCRATCH_F @ LIT 16 MUL ARITY 1 EXIT ]
+;; i/addr s    the INTEGER! whose cell equals s's payload address
+i/addr: masm 1 [ LIT T_STRING SUB ARITY 1 EXIT ]
+;; i/gc x      a full collection; answers 0
+i/gc: masm 1 [ DROP CALL collect LIT 0 ARITY 1 EXIT ]
+
+i/collections: 0
+;; n: the stale interior integer, live in this stack context during the collection
+i/probe: func [n s r] [
+    g1: i/pat + * r 4096 40
+    g2: func [] [ n ]
+    g3: i/pat + * - 255 r 4096 23
+    i/gc 0
+    i/collections: + i/collections 1
+    i/bad s r
+]
+i/walk: func [s r k] [ either = k 0 [ 0 ] [ + i/probe + i/addr s k s r  i/walk s r - k 1 ] ]
+i/rot: func [r] [
+    either = r 16 [ 0 ] [
+        s: i/pat + * r 4096 256
+        + + i/walk s r 17 i/bad s r  i/rot + r 1
+    ]
+]
+i/total: i/rot 0
+s/print s/+ "binary-strings: strings checked " s/from-int 16
+s/print s/+ "binary-strings: collections " s/from-int i/collections
+s/print s/+ "binary-strings: changed bytes " s/from-int i/total
+either = i/total 0 [ 0 ] [ raise create-sin 'integrity 'binary-string-changed i/total ]
+]

@@ -30,3 +30,8 @@ demos/patrol/prelude.glon
 demos/patrol/strings.glon
 patrol-test
 gc-worklist-overflow-test
+
+# machine-integrity (generated)
+machine-integrity-test
+integrity-asan-probe
+integrity/build/
