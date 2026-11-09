@@ -143,12 +143,19 @@ static int setup(const char *root) {
                 "ix/inf: func [n] [ + 1 ix/inf n ] "
                 "ix/dbl: func [s n] [ either = n 0 [ s/length s ] [ ix/dbl s/+ s s - n 1 ] ] "
                 "ix/mk: func [n] [ func [] [ n: + n 1 ] ] "
+                /* each level holds 50 pending `+` arguments on the data stack:
+                 * 80 levels need ~4,000 cells, more than the data stack has */
+                "ix/deep: func [n] [ either = n 0 [ 0 ] [ "
+                "+ 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 "
+                "+ 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 "
+                "ix/deep - n 1 ] ] "
                 "0", NULL) == R0S1_OUT_OK ? 0 : -1;
 }
 
 /* ---- the failure kinds of B ---------------------------------------------- */
 typedef struct { const char *name, *prog; int want; } fail_t;
 static char too_large[4096];
+static char deep_nest[1 << 16];     /* `+ 1` nested 3,600 deep (filled in main) */
 static fail_t fails[] = {
     { "parse error (syntax)",          "y: [ oops",                                      R0S1_OUT_PARSE_ERROR },
     { "parse error (too large)",       too_large,                                        R0S1_OUT_PARSE_ERROR },
@@ -159,6 +166,7 @@ static fail_t fails[] = {
     { "context full (17 bindings)",    "ix/f17: func [] [ a1: 1 a2: 2 a3: 3 a4: 4 a5: 5 a6: 6 a7: 7 a8: 8 "
                                        "a9: 9 a10: 10 a11: 11 a12: 12 a13: 13 a14: 14 a15: 15 a16: 16 a17: 17 ] ix/f17",
                                                                                          R0S1_OUT_RESOURCE_ERROR },
+    { "data-stack exhaustion (recursion, 50 pending per level)", "ix/deep 80",        R0S1_OUT_HALT },
     { "judge-caught SIN! (control)",   "judge [ raise create-sin 'ix 'oops 7 ] 0",        R0S1_OUT_OK },
     { "closure churn (control)",       "c: ix/mk 0  c c c  c: 0  0",                      R0S1_OUT_OK },
 };
@@ -206,9 +214,151 @@ static int clean_but_code_changed(const char *prog, int *clean) {
     return *clean && checksum(256, here) != s0;
 }
 
+/* `+ 1` nested `depth` deep: 100 per block, each further 100 inside an
+ * `either 1 [ ... ] [ 0 ]` (a block holds at most 512 values); computes depth + 1 */
+static void build_nest(char *out, size_t cap, int depth) {
+    int n = 0, open = 0;
+    for (int i = 0; i < depth; i++) {
+        n += snprintf(out + n, cap - (size_t)n, "+ 1 ");
+        if (i % 100 == 99 && i + 1 < depth) { n += snprintf(out + n, cap - (size_t)n, "either 1 [ "); open++; }
+    }
+    n += snprintf(out + n, cap - (size_t)n, "1 ");
+    while (open--) n += snprintf(out + n, cap - (size_t)n, "] [ 0 ] ");
+}
+/* run `prog` with the free data stack [here, DS_INIT) poisoned; answers the
+ * status and sets *lowest to the lowest cell the run wrote there. The
+ * programs here bind nothing that refers to their source, so the loader-heap
+ * mark is restored afterwards (every parsed cell is otherwise kept, and the
+ * bisection below parses thousands of values per run). */
+static int run_poisoned(const char *prog, cell *lowest, r0_s1_outcome *oc) {
+    const cell P = (cell)0x5A5A5A5;
+    cell here = asm_here(), lhp = M[GC_LOADER_HP];
+    for (cell c = here; c < R0S1_DS_INIT; c++) M[c] = P;
+    quiet(); sess(prog, oc); loud();
+    M[GC_LOADER_HP] = lhp;
+    *lowest = R0S1_DS_INIT;
+    for (cell c = here; c < R0S1_DS_INIT; c++) if (M[c] != P) { *lowest = c; break; }
+    return oc->status;
+}
+/* the deepest `+ 1` nesting that runs, by bisection; checks the boundary */
+static void depth_boundary(const char *where) {
+    static char w[1 << 16];
+    r0_s1_outcome oc; cell low;
+    cell here = asm_here(); unsigned long code = checksum(256, here);
+    int lo = 1, hi = 4000, runs = 0, other = 0;   /* lo runs; hi does not */
+    while (hi - lo > 1) {
+        int mid = (lo + hi) / 2;
+        build_nest(w, sizeof w, mid);
+        int st = run_poisoned(w, &low, &oc); runs++;
+        if (st == R0S1_OUT_OK) lo = mid;
+        else { hi = mid; if (!(st == R0S1_OUT_HALT && r0_s1_halt_reason() == R0S1_HALT_DS_EXHAUSTED)) other++; }
+    }
+    char m[256];
+    snprintf(m, sizeof m, "S: %s: every bisection run either completes or fail-stops as data-stack exhaustion", where);
+    CHECK(other == 0, m);
+    build_nest(w, sizeof w, lo);
+    int ok = run_poisoned(w, &low, &oc) == R0S1_OUT_OK && got() == lo + 1;
+    snprintf(m, sizeof m, "S: %s: the deepest nesting that runs (%d) computes %d, writing nothing below the end of code "
+             "(lowest cell written %ld, code ends at %ld)", where, lo, lo + 1, (long)low, (long)here);
+    CHECK(ok && low >= here, m);
+    build_nest(w, sizeof w, hi);
+    run_poisoned(w, &low, &oc);
+    snprintf(m, sizeof m, "S: %s: one level deeper (%d) fail-stops as data-stack exhaustion, writing nothing below the end of code",
+             where, hi);
+    CHECK(oc.status == R0S1_OUT_HALT && r0_s1_halt_reason() == R0S1_HALT_DS_EXHAUSTED && low >= here, m);
+    snprintf(m, sizeof m, "S: %s: no code changed by the bisection's %d runs", where, runs);
+    CHECK(checksum(256, here) == code, m);
+    if (verbose) printf("    %s: room %ld cells, deepest nesting %d\n", where, (long)(R0S1_DS_INIT - here), lo);
+}
+
+static void section_S(const char *root) {
+    printf("== S: stack boundaries (data-stack guard, R0S1_DS_GUARD = %ld)\n", (long)R0S1_DS_GUARD);
+    r0_s1_outcome oc; cell low;
+    static char w[1 << 16];
+
+    /* the K2 reproduction: ordinary Glon, no masm, 3,600 deep */
+    setup(root);
+    cell here = asm_here(); unsigned long code = checksum(256, here);
+    run_poisoned(deep_nest, &low, &oc);
+    CHECK(oc.status == R0S1_OUT_HALT && oc.detail == R0S1_DETAIL_MACHINE && r0_s1_halt_reason() == R0S1_HALT_DS_EXHAUSTED,
+          "S1: `+ 1` nested 3,600 deep (no masm) fail-stops as data-stack exhaustion (HALT / machine)");
+    CHECK(low >= here && checksum(256, here) == code,
+          "S1: ... before writing below the end of code: the runtime and libraries are unchanged");
+    CHECK(sess("ix/ok 6 7", NULL) == R0S1_OUT_OK && got() == 42 && !r0_s1_stack_sentry_fired(),
+          "S1: the session continues (6 * 7) with no stack-sentry report");
+
+    /* the exact boundary, with the libraries' code and with code full */
+    depth_boundary("libraries loaded");
+    setup(root);
+    CHECK(fill_to(R0S1_CODE_LIMIT) == 0 && asm_here() == R0S1_CODE_LIMIT, "S2: code filled to R0S1_CODE_LIMIT with masm words");
+    depth_boundary("code full");
+    CHECK(sess("fill-0", NULL) == R0S1_OUT_OK && got() == 0, "S2: a library word still runs");
+
+    /* values that accumulate on the data stack: `values` returns every
+     * value of its block (a top-level block keeps only its last) */
+    int n = snprintf(w, sizeof w, "0 1 2 ");
+    for (int i = 0; i < 400; i++) n += snprintf(w + n, sizeof w - (size_t)n, "%d ", i);
+    here = asm_here(); code = checksum(256, here);
+    CHECK(run_poisoned(w, &low, &oc) == R0S1_OUT_OK && oc.count == 1 && low >= here,
+          "S3: with code full, a top-level block of 400 values runs (only the last value is kept)");
+    n = snprintf(w, sizeof w, "values [ ");
+    for (int i = 0; i < 400; i++) n += snprintf(w + n, sizeof w - (size_t)n, "%d ", i);
+    snprintf(w + n, sizeof w - (size_t)n, "]");
+    run_poisoned(w, &low, &oc);
+    CHECK(oc.status == R0S1_OUT_HALT && r0_s1_halt_reason() == R0S1_HALT_DS_EXHAUSTED && low >= here
+          && checksum(256, here) == code,
+          "S3: with code full, `values` of 400 values (all kept on the data stack) fail-stops before reaching code");
+    n = snprintf(w, sizeof w, "values [ ");
+    for (int i = 0; i < 100; i++) n += snprintf(w + n, sizeof w - (size_t)n, "%d ", i);
+    snprintf(w + n, sizeof w - (size_t)n, "]");
+    CHECK(run_poisoned(w, &low, &oc) == R0S1_OUT_OK && oc.count == 100 && low >= here,
+          "S3: control: `values` of 100 values fits (100 values returned)");
+    n = snprintf(w, sizeof w, "b: reduce [ ");
+    for (int i = 0; i < 400; i++) n += snprintf(w + n, sizeof w - (size_t)n, "%d ", i);
+    snprintf(w + n, sizeof w - (size_t)n, "] 0");
+    CHECK(run_poisoned(w, &low, &oc) == R0S1_OUT_OK && low >= here,
+          "S4: with code full, `reduce` of 400 values still runs (it does not accumulate on the data stack)");
+
+    /* the guard and the sentry together: closure arguments (the sentry samples
+     * at closure entry; the guard stops the growth first) */
+    sess("ix/g15: func [a b c d e f h i j k l m n o p] [ 0 ] 0", NULL);
+    here = asm_here(); code = checksum(256, here);
+    n = 0;
+    for (int d = 0; d < 30; d++) n += snprintf(w + n, sizeof w - (size_t)n, "ix/g15 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ");
+    snprintf(w + n, sizeof w - (size_t)n, "0");
+    run_poisoned(w, &low, &oc);
+    CHECK(oc.status == R0S1_OUT_HALT && r0_s1_halt_reason() == R0S1_HALT_DS_EXHAUSTED && low >= here
+          && checksum(256, here) == code && !r0_s1_stack_sentry_fired(),
+          "S5: with code full, 30 nested 15-argument calls fail-stop before reaching code (no sentry needed)");
+
+    /* recursion whose activations hold data-stack values (B8's failure kind) */
+    setup(root);
+    here = asm_here(); code = checksum(256, here);
+    run_poisoned("ix/deep 80", &low, &oc);
+    CHECK(oc.status == R0S1_OUT_HALT && r0_s1_halt_reason() == R0S1_HALT_DS_EXHAUSTED && low >= here
+          && checksum(256, here) == code,
+          "S6: recursion holding 50 pending values per level fail-stops on the data stack (not the return stack), before reaching code");
+    CHECK(run_poisoned("ix/deep 20", &low, &oc) == R0S1_OUT_OK && got() == 1000,
+          "S6: control: 20 levels (1,000 pending values) compute 1000");
+
+    /* underflow: a masm word that declares a result it did not leave pops a
+     * cell from above the data stack (the return stack's bottom cell), and
+     * the next push would overwrite it (examples/raw-memory.r0 did this until
+     * 2026-11-09). The guard fail-stops at the next evaluation step. */
+    sess("ix/sink: masm 1 [ LIT SCRATCH_A ! ARITY 1 EXIT ] 0", NULL);
+    const cell P = (cell)0x5A5A5A5;
+    M[R0S1_DS_INIT] = P;
+    quiet(); sess("ix/sink 10  ix/sink 20  0", &oc); loud();
+    CHECK(oc.status == R0S1_OUT_HALT && r0_s1_halt_reason() == R0S1_HALT_DS_UNDERFLOW,
+          "S7: a top-level pop past the data stack's top fail-stops as data-stack underflow");
+    CHECK(M[R0S1_DS_INIT] == P, "S7: ... before the next push writes the return stack's bottom cell");
+    CHECK(sess("ix/ok 6 7", NULL) == R0S1_OUT_OK && got() == 42, "S7: the session continues (6 * 7)");
+}
+
 int main(int argc, char **argv) {
     const char *root = ".";
     for (int i = 1; i < argc; i++) { if (!strcmp(argv[i], "-v")) verbose = 1; else root = argv[i]; }
+    build_nest(deep_nest, sizeof deep_nest, 3600);
     {   int n = snprintf(too_large, sizeof too_large, "b: [ ");
         for (int i = 0; i < 600; i++) n += snprintf(too_large + n, sizeof too_large - n, "1 ");
         snprintf(too_large + n, sizeof too_large - n, "] 0"); }
@@ -317,12 +467,19 @@ int main(int argc, char **argv) {
     CHECK(memcmp(snap0 + 256, M + 256, sizeof(cell) * (size_t)r0_s1_code_size()) == 0,
           "C2: and equals the code a fresh initialisation emits");
 
+    section_S(root);
+
     /* ---- K: known defects (strict XFAIL) ----------------------------------- */
     printf("== K: known defects (expected failures; XPASS means fixed: promote)\n");
     int clean;
-    /* K1: a masm word pushes 400 values and pops them again with no closure
-     * entry in between, so RV_SPMIN never sees the depth; with masm libraries
-     * filling code to the limit the pushes overwrite them. */
+    /* K1: a masm word pushes 400 values and pops them again. masm runs raw S1
+     * instructions between evaluation steps, and frozen S1 executes LIT, DUP,
+     * @ and HOST pushes with no bound, so neither the data-stack guard (at
+     * each evaluation step) nor the post-run sentry (final SP and RV_SPMIN,
+     * sampled at closure entry) can see a push-and-pop inside one masm word.
+     * With masm libraries filling code to the limit, the pushes overwrite
+     * them. Preventing it needs a bound in S1 itself (MACHINE-INTEGRITY-AUDIT.md,
+     * "K1"): this stays an expected failure until that change is approved. */
     {
         setup(root);
         static char w[4096];
@@ -335,36 +492,7 @@ int main(int argc, char **argv) {
         int ok = sess(w, NULL) == R0S1_OUT_OK && fill_to(R0S1_CODE_LIMIT) == 0;
         CHECK(ok && asm_here() == R0S1_CODE_LIMIT, "K1 setup: code filled to R0S1_CODE_LIMIT with masm words");
         int bad = clean_but_code_changed("ix/exc", &clean);
-        XFAIL(!bad, "K1: a run that pushes the data stack 400 deep into loaded code (masm, no closure entry) is not reported clean");
-    }
-    /* K2: the same with no masm at all: `+ 1` nested 3,600 deep across 36
-     * `either` blocks (each block within the 512-value limit). Each pending `+`
-     * holds a cell on the data stack and no closure is entered, so the run
-     * reaches the runtime's own code and is reported clean. */
-    {
-        fresh();
-        static char w[1 << 16];
-        int n = 0;
-        for (int l = 0; l < 36; l++) {
-            for (int i = 0; i < 100; i++) n += snprintf(w + n, sizeof w - n, "+ 1 ");
-            n += snprintf(w + n, sizeof w - n, "either 1 [ ");
-        }
-        n += snprintf(w + n, sizeof w - n, "1 ");
-        for (int l = 0; l < 36; l++) n += snprintf(w + n, sizeof w - n, "] [ 0 ] ");
-        unsigned long rt = checksum(256, runtime_code_end());
-        int bad = clean_but_code_changed(w, &clean);
-        if (verbose) printf("    K2: clean=%d runtime code changed=%d\n", clean, checksum(256, runtime_code_end()) != rt);
-        XFAIL(!bad, "K2: ordinary Glon nesting 3,600 deep (no masm) that overwrites the runtime's code is not reported clean");
-        fresh();   /* the overwritten session is discarded, not run further */
-        static char v[1 << 16];
-        n = 0;
-        for (int l = 0; l < 2; l++) {
-            for (int i = 0; i < 100; i++) n += snprintf(v + n, sizeof v - n, "+ 1 ");
-            n += snprintf(v + n, sizeof v - n, "either 1 [ ");
-        }
-        n += snprintf(v + n, sizeof v - n, "1 ");
-        for (int l = 0; l < 2; l++) n += snprintf(v + n, sizeof v - n, "] [ 0 ] ");
-        CHECK(sess(v, NULL) == R0S1_OUT_OK && got() == 201, "K2 control: the same form 200 deep computes 201 and is correct");
+        XFAIL(!bad, "K1: a masm word that pushes the data stack 400 deep into loaded code is stopped or not reported clean (needs a frozen-S1 change)");
     }
     /* K3: a source whose first masm block fits and whose second does not is
      * refused, but the first block's code stays; repeated, the refusals use up

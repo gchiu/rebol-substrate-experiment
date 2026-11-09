@@ -412,6 +412,39 @@ static void audit_runtime_clean(void) {
     CHECK(violations == 0, "frozen runtime/host contains no task scheduling semantics");
 }
 
+/* K: a task's data stack is guarded like the main one (R0S1_DS_GUARD,
+ * 2026-11-09). A task's data stack is the bottom M1_DS_OFF cells of its slot;
+ * below the first slot is the top of the loader heap. Before the guard, the
+ * 500-deep nesting below ran "cleanly" and wrote below its slot. Now it
+ * fail-stops (data-stack exhaustion) first. */
+static void m1_nest(char *out, size_t cap, int levels) {
+    int n = snprintf(out, cap, " r: 0  task-a: spawn [ r: ");
+    for (int l = 0; l < levels; l++) {
+        for (int i = 0; i < 100; i++) n += snprintf(out + n, cap - (size_t)n, "+ 1 ");
+        n += snprintf(out + n, cap - (size_t)n, "either 1 [ ");
+    }
+    n += snprintf(out + n, cap - (size_t)n, "1 ");
+    for (int l = 0; l < levels; l++) n += snprintf(out + n, cap - (size_t)n, "] [ 0 ] ");
+    snprintf(out + n, cap - (size_t)n, "] run-tasks r ");
+}
+static void test_task_ds_guard(void) {
+    printf("m1: K a task's data stack is guarded\n");
+    static char p[8192];
+    m1_nest(p, sizeof p, 2);
+    expect1(p, mk_int(201), "K: control: 200-deep nesting inside a task computes 201");
+    /* poison the cells below the first task slot (initialisation does not
+     * touch them), then run the deep nesting in that slot */
+    const cell POISON = 0x5A5A5A5;
+    for (cell c = M1_ARENA_BASE - 512; c < M1_ARENA_BASE; c++) M[c] = POISON;
+    m1_nest(p, sizeof p, 5);
+    int N; m1_run(p, &N);
+    CHECK(!r0_s1_ran_cleanly() && r0_s1_halt_reason() == R0S1_HALT_DS_EXHAUSTED,
+          "K: 500-deep nesting inside a task (400-cell data stack) fail-stops (data-stack exhaustion)");
+    int intact = 1;
+    for (cell c = M1_ARENA_BASE - 512; c < M1_ARENA_BASE; c++) if (M[c] != POISON) intact = 0;
+    CHECK(intact, "K: nothing below the task's stack slot (the loader heap's top) was written");
+}
+
 int run_r0_s1_m1_tests(void) {
     printf("R0-S1 M1: cooperative multitasking above frozen R0/S1\n");
 
@@ -444,6 +477,16 @@ int run_r0_s1_m1_tests(void) {
         if (strstr(buf, "[dump]"))     { printf("  FAIL: unexpected '[dump]' (unbound/error)\n"); bad = 1; }
     }
     CHECK(bad == 0, "no bad-opcode / unbound-word diagnostics across all M1 tests");
+
+    /* K provokes a fail-stop on purpose (its [dump] is expected), so it runs
+     * after the diagnostics scan above, with stderr set aside */
+    {
+        int keep = dup(2), nul = open("/dev/null", O_WRONLY);
+        if (nul >= 0) { dup2(nul, 2); close(nul); }
+        test_task_ds_guard();
+        fflush(stderr);
+        if (keep >= 0) { dup2(keep, 2); close(keep); }
+    }
 
     audit_runtime_clean();
 

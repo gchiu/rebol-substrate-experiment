@@ -216,6 +216,7 @@ static cell parse_word(parser_t *P) {
 
 static cell parse_form(parser_t *P);
 static cell emit_call_fwd(void);   /* forward decl (defined in the emitter section) */
+static void ds_floor_update(void); /* forward decl (defined with the stack guards) */
 
 /* ================= MASM: S1 macroassembler (loader/toolchain) ==============
  * Translates symbolic S1 assembly (mnemonics + operands + labels) into S1
@@ -707,6 +708,7 @@ static cell parse_block(parser_t *P, int is_body) {
                             (long)(asm_here() - entry), (long)need);
                     abort();
                 }
+                ds_floor_update();
                 M[p + RAW_ENTRY] = entry;
                 M[p + RAW_ARITY] = (cell)arity;
                 tmp[n++] = mk_raw(p);
@@ -1782,6 +1784,93 @@ static void emit_rs_guard(cell margin) {
     asm_host(HOST_DUMP); asm_halt();          /* return-stack exhaustion */
     asm_patch_here(j_room);
 }
+
+/* Data-stack bounds check (see R0S1_DS_GUARD), emitted at SUBEXPR entry.
+ *   main world, SP <= DS_INIT: SP must be >= RV_DSLIM (end of code + guard);
+ *   M1 task world, SP in the task arena: with base = the slot's first cell,
+ *     base + guard <= SP <= base + M1_DS_OFF;
+ *   anything else (DS_INIT < SP < the arena, or past it): underflow.
+ * The main path costs 10 S1 instructions. Uses the data stack and the
+ * guard's own scratch cell RV_DSBASE only (no call, nothing else live).
+ * A violation is a fatal fail-stop, before the step pushes anything:
+ * R0S1_HALT_DS_EXHAUSTED below the floor, R0S1_HALT_DS_UNDERFLOW above the
+ * top. */
+static void emit_ds_guard(void) {
+    asm_lit(REG_SP); asm_fetch();                         /* sp */
+    asm_dup(); asm_lit(R0S1_DS_INIT); asm_host(HOST_GT);  /* sp (sp > DS_INIT) */
+    cell j_main = asm_zbranch_fwd();
+    /* not the main data stack: a task's, or an underflow */
+    asm_dup(); asm_lit(M1_ARENA_BASE); asm_host(HOST_LT);
+    cell j_inarena = asm_zbranch_fwd();
+    cell j_under1 = asm_branch_fwd();                     /* DS_INIT < sp < arena */
+    asm_patch_here(j_inarena);
+    asm_dup(); asm_lit(M1_ARENA_BASE + M1_MAX_TASKS * M1_TASK_CELLS); asm_host(HOST_LT);
+    cell j_past = asm_zbranch_fwd();                      /* sp past the arena */
+    asm_dup(); asm_lit(M1_ARENA_BASE); asm_host(HOST_SUB);
+    asm_lit(M1_TASK_CELLS); asm_host(HOST_DIV);
+    asm_lit(M1_TASK_CELLS); asm_host(HOST_MUL);
+    asm_lit(M1_ARENA_BASE); asm_host(HOST_ADD); e_setc(RV_DSBASE);  /* sp */
+    asm_dup(); e_cell(RV_DSBASE); asm_lit(M1_DS_OFF); asm_host(HOST_ADD);
+    asm_host(HOST_GT);                                    /* sp (sp > base + DS_OFF) */
+    cell j_tasktop = asm_zbranch_fwd();
+    cell j_under2 = asm_branch_fwd();
+    asm_patch_here(j_tasktop);
+    e_cell(RV_DSBASE); asm_lit(R0S1_DS_GUARD); asm_host(HOST_ADD); /* sp floor */
+    cell j_cmp = asm_branch_fwd();
+    asm_patch_here(j_main);
+    e_cell(RV_DSLIM);                                     /* sp floor */
+    asm_patch_here(j_cmp);
+    asm_host(HOST_LT);
+    cell j_ok = asm_zbranch_fwd();
+    asm_lit(R0S1_HALT_DS_EXHAUSTED); e_setc(RV_HALTWHY);
+    asm_host(HOST_DUMP); asm_halt();                      /* data-stack exhaustion */
+    asm_patch_here(j_under1);
+    asm_patch_here(j_past);
+    asm_patch_here(j_under2);
+    asm_lit(R0S1_HALT_DS_UNDERFLOW); e_setc(RV_HALTWHY);
+    asm_host(HOST_DUMP); asm_halt();                      /* data-stack underflow */
+    asm_patch_here(j_ok);
+}
+
+/* ( cell -- ) fail-stop as data-stack underflow unless `cell` is below the
+ * top of the data stack SP is in: DS_INIT for the main world, base +
+ * M1_DS_OFF for an M1 task (an SP elsewhere is itself an underflow). Uses
+ * the data stack only. */
+static void emit_ds_top_check(void) {
+    asm_lit(REG_SP); asm_fetch();                         /* c sp */
+    asm_dup(); asm_lit(R0S1_DS_INIT); asm_host(HOST_GT);
+    cell j_main = asm_zbranch_fwd();
+    asm_dup(); asm_lit(M1_ARENA_BASE); asm_host(HOST_LT);
+    cell j_inarena = asm_zbranch_fwd();
+    asm_drop(); asm_drop();
+    cell j_under1 = asm_branch_fwd();
+    asm_patch_here(j_inarena);
+    asm_dup(); asm_lit(M1_ARENA_BASE + M1_MAX_TASKS * M1_TASK_CELLS); asm_host(HOST_LT);
+    cell j_inside = asm_zbranch_fwd();
+    asm_lit(M1_ARENA_BASE); asm_host(HOST_SUB);
+    asm_lit(M1_TASK_CELLS); asm_host(HOST_DIV);
+    asm_lit(M1_TASK_CELLS); asm_host(HOST_MUL);
+    asm_lit(M1_ARENA_BASE + M1_DS_OFF); asm_host(HOST_ADD); /* c top */
+    cell j_cmp = asm_branch_fwd();
+    asm_patch_here(j_inside);
+    asm_drop(); asm_drop();
+    cell j_under2 = asm_branch_fwd();
+    asm_patch_here(j_main);
+    asm_drop(); asm_lit(R0S1_DS_INIT);                    /* c top */
+    asm_patch_here(j_cmp);
+    asm_host(HOST_LT);                                    /* c < top */
+    cell j_bad = asm_zbranch_fwd();
+    cell j_ok = asm_branch_fwd();
+    asm_patch_here(j_bad);
+    asm_patch_here(j_under1);
+    asm_patch_here(j_under2);
+    asm_lit(R0S1_HALT_DS_UNDERFLOW); e_setc(RV_HALTWHY);
+    asm_host(HOST_DUMP); asm_halt();                      /* data-stack underflow */
+    asm_patch_here(j_ok);
+}
+
+/* the main data-stack floor follows the end of emitted code */
+static void ds_floor_update(void) { M[RV_DSLIM] = asm_here() + R0S1_DS_GUARD; }
 
 static void emit_gc(void) {
     emit_mark_push();
@@ -3327,6 +3416,16 @@ static void emit_invoke_raw(void) {
     asm_branch(arg_loop);
     asm_patch_here(j_done);
     emit_call_indirect(RV_T5);                          /* CALL entry */
+    /* The result set [v1 .. vn, n] must lie inside the data stack the word
+     * returned on: a word that declares more results than it left (ARITY n
+     * after consuming its arguments) hands back cells above the stack's top,
+     * the bottom of a return stack, and the caller's next push writes there.
+     * Fail-stop as data-stack underflow first. (The word may return on
+     * another stack: masm code may switch stacks, as the M1 tasks do.) */
+    asm_lit(REG_SP); asm_fetch();                       /* sp */
+    asm_dup(); asm_fetch(); asm_lit(16); asm_host(HOST_DIV);
+    asm_host(HOST_ADD);                                 /* sp + n: the last result cell */
+    emit_ds_top_check();
     asm_exit();                                         /* return the result set */
 }
 
@@ -3334,6 +3433,7 @@ static void emit_invoke_raw(void) {
 static void emit_subexpr(void) {
     r_subexpr = asm_here();
     cell fw_disp_word, fw_disp_bound;   /* forward branches to the shared value dispatch */
+    emit_ds_guard();                    /* fail-stop before the data stack reaches code */
 #ifdef R0_S1_PROFILE
     pf_incr(PF_SUBEXPR);
 #endif
@@ -3595,6 +3695,7 @@ cell r0_s1_init(void) {
     for (int i = 0; i < n_esc_refs; i++)
         s1_set_mem(esc_refs[i].patch, *esc_refs[i].slot);
     code_end = asm_here();
+    ds_floor_update();
 
     for (int i = 0; i < n_subexpr; i++) s1_set_mem(to_subexpr[i], r_subexpr);
     for (int i = 0; i < n_block_eval; i++) s1_set_mem(to_block_eval[i], r_block_eval);
@@ -3839,6 +3940,7 @@ int r0_s1_run_ex(cell block, int preserve_hp) {
     stack_sentry_fired = 0;
     M[RV_ERRUNC] = 0;          /* SIN!: no pending or uncaught error */
     M[RV_HALTWHY] = R0S1_HALT_NONE;
+    ds_floor_update();         /* code may have grown since (masm, compiled code) */
     M[RV_ERRV] = R0_NONE; M[RV_ERRT] = R0_NONE; M[RV_ERRI] = R0_NONE; M[RV_ERRA] = R0_NONE;
 #ifdef R0_S1_PROFILE
     for (cell c = PF_BASE; c <= PF_HASH_FALLBACK_SLOTS; c++)
@@ -3894,6 +3996,7 @@ int r0_s1_run_compiled(cell block, void (*run_fn)(cell *, cell)) {
     stack_sentry_fired = 0;
     M[RV_ERRUNC] = 0;          /* SIN!: no pending or uncaught error */
     M[RV_HALTWHY] = R0S1_HALT_NONE;
+    ds_floor_update();         /* code may have grown since (masm, compiled code) */
     M[RV_ERRV] = R0_NONE; M[RV_ERRT] = R0_NONE; M[RV_ERRI] = R0_NONE; M[RV_ERRA] = R0_NONE;
 #ifdef R0_S1_PROFILE
     for (cell c = PF_BASE; c <= PF_HASH_FALLBACK_SLOTS; c++)

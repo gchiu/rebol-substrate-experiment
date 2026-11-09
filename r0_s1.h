@@ -161,17 +161,22 @@ enum {
     RV_ERRRET   = RV_BASE + 32, /* judge's caller return address (raw, transient) */
     RV_ERRUNC   = RV_BASE + 33, /* 1 iff the last run halted on an uncaught error */
     RV_HALTWHY  = RV_BASE + 34, /* why the last run fail-stopped (R0S1_HALT_*), or 0 */
+    RV_DSLIM    = RV_BASE + 35, /* main data-stack floor: end of emitted code + R0S1_DS_GUARD */
+    RV_DSBASE   = RV_BASE + 36, /* scratch of the data-stack guard (a task slot's base) */
     RV_RES_BUF  = RV_BASE + 40  /* scratch: preserved result set (16 cells) */
 };
 _Static_assert(RV_ERRUNC < RV_RES_BUF, "SIN! registers must stay below RV_RES_BUF");
 _Static_assert(RV_HALTWHY < RV_RES_BUF, "RV_HALTWHY must stay below RV_RES_BUF");
+_Static_assert(RV_DSBASE < RV_RES_BUF, "the data-stack guard cells must stay below RV_RES_BUF");
 
 /* Structured reasons for a machine-level fail-stop (not SIN!s: no judge can
  * catch them). A halt with no recorded reason reads as R0S1_HALT_NONE. */
 enum {
     R0S1_HALT_NONE = 0,
     R0S1_HALT_CONTEXT_FULL = 1,  /* a new binding would exceed the context's capacity */
-    R0S1_HALT_GC_WORKLIST_FULL = 2 /* the collector's mark worklist is full (see GC_WORKLIST_CAP) */
+    R0S1_HALT_GC_WORKLIST_FULL = 2, /* the collector's mark worklist is full (see GC_WORKLIST_CAP) */
+    R0S1_HALT_DS_EXHAUSTED = 3,     /* the data stack reached its floor (see R0S1_DS_GUARD) */
+    R0S1_HALT_DS_UNDERFLOW = 4      /* SP above its data stack's top, or outside every data stack */
 };
 
 /* Generic scratch cells available to RAW fragments. They live in the free
@@ -240,6 +245,22 @@ _Static_assert(GC_HEAP_LIMIT == R0S1_HEAP_BASE,
  * experiments/glon-masm). Not a memory-map change: no region moves. */
 #define R0S1_DS_RESERVE 256L
 #define R0S1_CODE_LIMIT (R0S1_DS_INIT - R0S1_DS_RESERVE)
+/* Data-stack guard (2026-11-09). Every evaluation step enters the
+ * evaluator's SUBEXPR routine; on entry it fail-stops (R0S1_HALT_DS_EXHAUSTED)
+ * if SP is below the current world's floor: for the main world the end of
+ * emitted code plus R0S1_DS_GUARD (RV_DSLIM), for an M1 task its stack slot's
+ * base plus R0S1_DS_GUARD. The guard is the most the data stack may grow
+ * between two evaluation steps: the runtime's own routines (natives,
+ * allocation, collection, invocation) and the shipped masm libraries were
+ * measured at no more than 16 cells over the whole test suite. So no
+ * evaluation, however deeply nested, writes below the end of emitted code.
+ * The same check fail-stops (R0S1_HALT_DS_UNDERFLOW) when SP is above its
+ * data stack's top (DS_INIT, or a task's base + M1_DS_OFF) or outside every
+ * data stack: a pop past the top reads, and the next push writes, the bottom
+ * of a return stack.
+ * Not covered: a masm word, which runs raw S1 instructions between steps and
+ * can push without limit (frozen S1 executes pushes unchecked). */
+#define R0S1_DS_GUARD 64L
 
 /* allocation header: 16-cell stride before each 16-aligned payload. */
 #define GC_HDR_SIZE     0

@@ -171,10 +171,12 @@ int run_r0_s1_masm_bound_tests(void) {
               "6b: the 6 cells left are honestly accounted (a 21-cell word no longer fits)");
     }
 
-    /* ---- 7: data-stack growth into loaded code is detected ---------------- */
+    /* ---- 7: data-stack growth into loaded code is prevented --------------- */
     /* nested 15-argument calls: each level holds 14 arguments on the data
-     * stack while the next level is evaluated; the innermost call records the
-     * deepest SP (RV_SPMIN) */
+     * stack while the next level is evaluated. Since the data-stack guard
+     * (R0S1_DS_GUARD, 2026-11-09) the evaluator fail-stops before the stack
+     * reaches the end of emitted code; before it, the post-run sentry detected
+     * the growth after the code had been overwritten. */
     static char nest[1 << 15];
     const char *g = "[ g: func [a b c d e f h i j k l m n o p] [ 0 ] ]";
     int depth_small = 6, depth_big = 30;
@@ -204,9 +206,15 @@ int run_r0_s1_masm_bound_tests(void) {
         for (int d = 0; d < depth_big; d++) n += snprintf(nest + n, sizeof nest - (size_t)n, "g 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ");
         n += snprintf(nest + n, sizeof nest - (size_t)n, "0 ]");
     }
-    eval(nest);
-    CHECK(r0_s1_stack_sentry_fired(),
-          "7: data-stack growth past the reserve into loaded masm code is detected (deepest SP < code end)");
+    {
+        cell top = asm_here(); unsigned long before = checksum(256, top);
+        eval(nest);
+        CHECK(!r0_s1_ran_cleanly() && r0_s1_halt_reason() == R0S1_HALT_DS_EXHAUSTED,
+              "7: data-stack growth past the reserve towards loaded masm code fail-stops (data-stack exhaustion)");
+        CHECK(checksum(256, top) == before,
+              "7: ... before writing any code cell (runtime and masm libraries unchanged)");
+        CHECK(eval("[ fill-0 ]") == 0 && got() == 0, "7: the session continues: a library word still runs");
+    }
 
     /* ---- 8: several masm libraries; the original failing sequence ---------- */
     fresh();
