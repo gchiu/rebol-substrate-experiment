@@ -227,7 +227,12 @@ int run_r0_s1_masm_tests(void) {
         CHECK(probes_ok, "13a: masm's named runtime entry points (alloc, collect, lookup, ESC_ANY, ESC_TRANSPORT) are located");
         static const struct { const char *path; long cells; unsigned fnv; } lib[] = {
             { "demo/shop/bootstrap.glon",             802, 0xf7eaead6u },
-            { "demo/shop/common.glon",                147, 0x8c74aceeu },
+            /* common.glon is unwrapped (no outer [ ]). Until the K4 repair
+             * (2026-11-09) masm was recognised only inside a block, so its
+             * top-level masm definitions were not assembled (147 cells,
+             * 0x8c74acee); now it emits exactly what its wrapped bundle,
+             * bootstrap.glon above, emits. */
+            { "demo/shop/common.glon",                802, 0xf7eaead6u },
             { "demo/shop/strings.glon",               304, 0x7a334bcfu },
             { "demo/shop/demos/linda.glon",          1969, 0xb11d2c08u },
             { "demo/shop/demos/merchant-flow.glon",  1017, 0x8711349bu },

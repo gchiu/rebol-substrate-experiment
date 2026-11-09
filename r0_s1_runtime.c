@@ -581,6 +581,84 @@ static raw_pending_t raw_pending[RAW_PENDING_CAP];
 static int raw_npending;
 static cell raw_pending_cells;
 
+/* `masm` (canonical) or `raw` (alias): P->pos is just after the keyword.
+ * Reads the optional arity and the assembly block, checks the block's tables
+ * and size, makes the 2-cell callable [entry, arity] and records the block
+ * for emission when the whole source has parsed (raw_pending). Answers the
+ * callable in *out, or -1 with P->err (and parse_fail) set. Shared by blocks
+ * (parse_block) and unwrapped top-level sources (parse_program), so that a
+ * masm definition means the same in both. */
+static int parse_masm(parser_t *P, cell *out) {
+    int arity = 0;
+    /* optional integer arity before the assembly block */
+    int save = P->pos;
+    skip_ws(P);
+    if (P->s[P->pos] >= '0' && P->s[P->pos] <= '9')
+        arity = (int)int_val(parse_int(P));
+    else
+        P->pos = save;
+    /* The assembly block is read by masm's own tokenizer, never as a Glon
+     * block (MASM-PRIVATE-NAMES): it is not interned, not lexically
+     * resolved, and takes no loader-heap space. Only the 2-cell callable
+     * [entry, arity] survives. The operand must be a block. */
+    skip_ws(P);
+    if (P->s[P->pos] != '[') { P->err = 1; return -1; }   /* no block: never assemble */
+    int block_pos = P->pos;
+    int ntok = masm_read_block(P);            /* [ instr... ] */
+    if (P->err) return -1;
+    /* Table bounds: a block with more labels or label references than the
+     * assembler's tables hold is refused as too_large. */
+    {
+        int nlab, nref;
+        raw_counts(masm_toks, ntok, &nlab, &nref);
+        if (nlab > RAW_LABEL_CAP || nref > RAW_REF_CAP) {
+            fprintf(stderr, "r0_s1: masm block too large: %d labels (at most %d), "
+                            "%d label references (at most %d)\n",
+                    nlab, RAW_LABEL_CAP, nref, RAW_REF_CAP);
+            parse_fail_set(R0S1_PARSE_TOO_LARGE);
+            P->err = 1;
+            return -1;
+        }
+    }
+    /* Code-space bound: refuse a block whose code would end above
+     * R0S1_CODE_LIMIT (the data stack keeps R0S1_DS_RESERVE cells). The parse
+     * then fails as too_large and is rolled back like any failed parse; no
+     * code is emitted and no binding is made, because the source never runs. */
+    cell need = raw_size(masm_toks, ntok);
+    cell at = asm_here() + raw_pending_cells;   /* after this source's earlier blocks */
+    if (at + need > R0S1_CODE_LIMIT) {
+        fprintf(stderr, "r0_s1: masm code space exhausted: the block needs %ld cells, "
+                        "%ld are free below the code limit %ld\n",
+                (long)need, (long)(R0S1_CODE_LIMIT - at), (long)R0S1_CODE_LIMIT);
+        parse_fail_set(R0S1_PARSE_TOO_LARGE);
+        P->err = 1;
+        return -1;
+    }
+    if (need > 0 && raw_npending >= RAW_PENDING_CAP) {
+        fprintf(stderr, "r0_s1: masm: more than %d blocks in one source\n", RAW_PENDING_CAP);
+        parse_fail_set(R0S1_PARSE_TOO_LARGE);
+        P->err = 1;
+        return -1;
+    }
+    cell p = lalloc(2);
+    if (p < 0) {
+        parse_fail_set(R0S1_PARSE_LOADER_EXHAUSTED);
+        P->err = 1;
+        return -1;
+    }
+    if (need > 0) {                           /* emitted when the source has parsed */
+        raw_pending[raw_npending].pos = block_pos;
+        raw_pending[raw_npending].need = need;
+        raw_pending[raw_npending].at = at;
+        raw_npending++;
+        raw_pending_cells += need;
+    }
+    M[p + RAW_ENTRY] = at;
+    M[p + RAW_ARITY] = (cell)arity;
+    *out = mk_raw(p);
+    return 0;
+}
+
 static cell parse_block(parser_t *P, int is_body) {
     P->pos++; /* '[' */
     cell tmp[512];
@@ -665,76 +743,9 @@ static cell parse_block(parser_t *P, int is_body) {
              * same S1 macroassembler path; nothing below differs. */
             if ((len == 3 && strncmp(P->s + start, "raw", 3) == 0) ||
                 (len == 4 && strncmp(P->s + start, "masm", 4) == 0)) {
-                int arity = 0;
-                /* optional integer arity before the assembly block */
-                int save = P->pos;
-                skip_ws(P);
-                if (P->s[P->pos] >= '0' && P->s[P->pos] <= '9')
-                    arity = (int)int_val(parse_int(P));
-                else
-                    P->pos = save;
-                /* The assembly block is read by masm's own tokenizer, never
-                 * as a Glon block (MASM-PRIVATE-NAMES): it is not interned,
-                 * not lexically resolved, and takes no loader-heap space. Only
-                 * the 2-cell callable [entry, arity] survives. The operand
-                 * must be a block. */
-                skip_ws(P);
-                if (P->s[P->pos] != '[') { P->err = 1; break; }   /* no block: never assemble */
-                int block_pos = P->pos;
-                int ntok = masm_read_block(P);            /* [ instr... ] */
-                if (P->err) break;
-                /* Code-space bound: refuse, BEFORE emitting anything, a block
-                 * whose code would end above R0S1_CODE_LIMIT (the data stack
-                 * keeps R0S1_DS_RESERVE cells). The parse then fails as
-                 * too_large and is rolled back like any failed parse; no
-                 * binding is made, because the source never runs. */
-                /* Table bounds: a block with more labels or label
-                 * references than the assembler's tables hold is refused
-                 * the same way, before anything is emitted. */
-                {
-                    int nlab, nref;
-                    raw_counts(masm_toks, ntok, &nlab, &nref);
-                    if (nlab > RAW_LABEL_CAP || nref > RAW_REF_CAP) {
-                        fprintf(stderr, "r0_s1: masm block too large: %d labels (at most %d), "
-                                        "%d label references (at most %d)\n",
-                                nlab, RAW_LABEL_CAP, nref, RAW_REF_CAP);
-                        parse_fail_set(R0S1_PARSE_TOO_LARGE);
-                        P->err = 1;
-                        break;
-                    }
-                }
-                cell need = raw_size(masm_toks, ntok);
-                cell at = asm_here() + raw_pending_cells;   /* after this source's earlier blocks */
-                if (at + need > R0S1_CODE_LIMIT) {
-                    fprintf(stderr, "r0_s1: masm code space exhausted: the block needs %ld cells, "
-                                    "%ld are free below the code limit %ld\n",
-                            (long)need, (long)(R0S1_CODE_LIMIT - at), (long)R0S1_CODE_LIMIT);
-                    parse_fail_set(R0S1_PARSE_TOO_LARGE);
-                    P->err = 1;
-                    break;
-                }
-                if (need > 0 && raw_npending >= RAW_PENDING_CAP) {
-                    fprintf(stderr, "r0_s1: masm: more than %d blocks in one source\n", RAW_PENDING_CAP);
-                    parse_fail_set(R0S1_PARSE_TOO_LARGE);
-                    P->err = 1;
-                    break;
-                }
-                cell p = lalloc(2);
-                if (p < 0) {
-                    parse_fail_set(R0S1_PARSE_LOADER_EXHAUSTED);
-                    P->err = 1;
-                    break;
-                }
-                if (need > 0) {                           /* emitted when the source has parsed */
-                    raw_pending[raw_npending].pos = block_pos;
-                    raw_pending[raw_npending].need = need;
-                    raw_pending[raw_npending].at = at;
-                    raw_npending++;
-                    raw_pending_cells += need;
-                }
-                M[p + RAW_ENTRY] = at;
-                M[p + RAW_ARITY] = (cell)arity;
-                tmp[n++] = mk_raw(p);
+                cell v;
+                if (parse_masm(P, &v) < 0) break;
+                tmp[n++] = v;
                 continue;
             }
             P->pos = start;
@@ -3859,6 +3870,24 @@ static cell parse_program(parser_t *P) {
             tmp[n++] = parse_string_literal(P);
             if (n >= 512) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; break; }
             continue;
+        }
+        {   /* `masm`/`raw`: the same definition form as inside a block */
+            char c = P->s[P->pos];
+            if (c != '[' && c != '-' && !(c >= '0' && c <= '9')) {
+                int start = P->pos;
+                while (P->s[P->pos] && !isspace((unsigned char)P->s[P->pos])
+                       && P->s[P->pos] != '[' && P->s[P->pos] != ']') P->pos++;
+                int len = P->pos - start;
+                if ((len == 3 && strncmp(P->s + start, "raw", 3) == 0) ||
+                    (len == 4 && strncmp(P->s + start, "masm", 4) == 0)) {
+                    cell v;
+                    if (parse_masm(P, &v) < 0) break;
+                    tmp[n++] = v;
+                    if (n >= 512) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; break; }
+                    continue;
+                }
+                P->pos = start;
+            }
         }
         tmp[n++] = parse_form(P);
         if (n >= 512) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; break; }

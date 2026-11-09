@@ -437,6 +437,85 @@ static void section_L(const char *root) {
     CHECK(single, "L6: they emit exactly the code the same blocks emit loaded one per source, at the same addresses");
 }
 
+/* ---- U: unwrapped sources ---------------------------------------------------
+ * A source file may be wrapped in one outer [ ] or not (./glon and WASM
+ * glon_load parse files as given). Until 2026-11-09 (K4) masm was recognised
+ * only inside a block, so an unwrapped `k: masm 1 [ ... ]` loaded as plain
+ * words and fail-stopped when run. */
+static int parse_run(const char *text, r0_s1_outcome *oc) {
+    static char b[1 << 17];
+    snprintf(b, sizeof b, "%s", text);
+    int err = 0;
+    cell prog = r0_s1_parse(b, &err);
+    if (err) { r0_s1_session_parse_error(oc); return oc->status; }
+    quiet(); r0_s1_session_run_block(prog, oc); loud();
+    N = oc->status == R0S1_OUT_OK ? oc->count : -1;
+    return oc->status;
+}
+/* a library file as text (comments stripped), and the same without its outer [ ] */
+static int read_lib(const char *root, const char *rel, char *wrapped, char *unwrapped, size_t cap) {
+    char path[4096]; snprintf(path, sizeof path, "%s/%s", root, rel);
+    FILE *f = fopen(path, "rb"); if (!f) return -1;
+    size_t n = fread(wrapped, 1, cap - 1, f); fclose(f); wrapped[n] = 0;
+    char *r = wrapped, *w = wrapped;
+    while (*r) { if (r[0] == ';' && r[1] == ';') { while (*r && *r != '\n') r++; continue; } *w++ = *r++; }
+    *w = 0;
+    char *open = strchr(wrapped, '['), *close = strrchr(wrapped, ']');
+    if (!open || !close || close < open) return -1;
+    for (char *p = wrapped; p < open; p++) if (*p != ' ' && *p != '\n' && *p != '\t' && *p != '\r') return -1;
+    size_t len = (size_t)(close - open - 1);
+    memcpy(unwrapped, open + 1, len); unwrapped[len] = 0;
+    return 0;
+}
+static void section_U(const char *root) {
+    printf("== U: unwrapped sources\n");
+    r0_s1_outcome oc;
+    fresh();
+    cell h0 = asm_here();
+    int ok = parse_run("k: masm 1 [ DROP INT 7 ARITY 1 EXIT ]  k 5", &oc) == R0S1_OUT_OK && got() == 7;
+    cell h1 = asm_here(); unsigned long sum_u = checksum(h0, h1);
+    CHECK(ok, "U1: an unwrapped source defines and runs a masm word (k 5 -> 7)");
+    fresh();
+    parse_run("[ k: masm 1 [ DROP INT 7 ARITY 1 EXIT ]  k 5 ]", &oc);
+    CHECK(asm_here() == h1 && checksum(h0, h1) == sum_u, "U1: it emits the same code as the wrapped source");
+
+    /* the shipped masm libraries, loaded unwrapped: the same code */
+    static char wrapped[1 << 17], unwrapped[1 << 17];
+    const char *libs[] = { "jupyter/prelude.glon", "demo/shop/strings.glon", "demo/shop/strings-ext.glon",
+                           "experiments/glon-mem/mem.glon" };
+    int same_code = 1, all_ok = 1;
+    unsigned long sums[2]; cell ends[2];
+    for (int form = 0; form < 2; form++) {
+        fresh();
+        for (int i = 0; i < 4; i++) {
+            if (read_lib(root, libs[i], wrapped, unwrapped, sizeof wrapped)) { all_ok = 0; continue; }
+            if (parse_run(form ? unwrapped : wrapped, &oc) != R0S1_OUT_OK) all_ok = 0;
+        }
+        ends[form] = asm_here(); sums[form] = checksum(256, asm_here());
+    }
+    if (ends[0] != ends[1] || sums[0] != sums[1]) same_code = 0;
+    CHECK(all_ok, "U2: prelude, strings, strings-ext and mem/ load unwrapped");
+    CHECK(same_code, "U2: ... emitting exactly the code they emit wrapped");
+    CHECK(sess("mm-r: mem/alloc 4  mem/set-byte mm-r 2 99  mem/byte mm-r 2", NULL) == R0S1_OUT_OK && got() == 99,
+          "U2: the unwrapped mem/ library works");
+
+    /* refusals are the same unwrapped */
+    fresh();
+    static char w[1 << 15];
+    int n = snprintf(w, sizeof w, "k: masm 0 [ ");
+    for (int i = 0; i < 65; i++) n += snprintf(w + n, sizeof w - (size_t)n, "L%d: ", i);
+    snprintf(w + n, sizeof w - (size_t)n, "LIT 0 ARITY 1 EXIT ]");
+    load_state_t t = load_state();
+    CHECK(parse_run(w, &oc) == R0S1_OUT_PARSE_ERROR && r0_s1_parse_error_kind() == R0S1_PARSE_TOO_LARGE
+          && load_same(load_state(), t), "U3: an unwrapped block with 65 labels is refused, emitting nothing");
+    n = snprintf(w, sizeof w, "a: masm 0 [ LIT 0 ARITY 1 EXIT ] b: masm 0 [ x: ");
+    for (int i = 0; i < 250; i++) n += snprintf(w + n, sizeof w - (size_t)n, "CALL x ");
+    snprintf(w + n, sizeof w - (size_t)n, "LIT 0 ARITY 1 EXIT ]");
+    t = load_state();
+    CHECK(parse_run(w, &oc) == R0S1_OUT_PARSE_ERROR && load_same(load_state(), t),
+          "U3: an unwrapped source whose second block cannot fit is refused, emitting nothing");
+}
+
 int main(int argc, char **argv) {
     const char *root = ".";
     for (int i = 1; i < argc; i++) { if (!strcmp(argv[i], "-v")) verbose = 1; else root = argv[i]; }
@@ -551,6 +630,7 @@ int main(int argc, char **argv) {
 
     section_S(root);
     section_L(root);
+    section_U(root);
 
     /* ---- K: known defects (strict XFAIL) ----------------------------------- */
     printf("== K: known defects (expected failures; XPASS means fixed: promote)\n");
@@ -577,23 +657,6 @@ int main(int argc, char **argv) {
         int bad = clean_but_code_changed("ix/exc", &clean);
         XFAIL(!bad, "K1: a masm word that pushes the data stack 400 deep into loaded code is stopped or not reported clean (needs a frozen-S1 change)");
     }
-    /* K4: `masm` is recognised only inside a block (parse_block); a source
-     * that is not wrapped in [ ] (the glon CLI parses files as given) loads
-     * `k: masm 1 [ ... ]` as plain words and fail-stops when it runs. */
-    {
-        fresh();
-        strcpy(src, "k: masm 1 [ DROP LIT 0 ARITY 1 EXIT ] k 5");
-        int err = 0; cell b = r0_s1_parse(src, &err);
-        r0_s1_outcome oc;
-        quiet(); if (!err) r0_s1_session_run_block(b, &oc); loud();
-        int unwrapped_ok = !err && oc.status == R0S1_OUT_OK;
-        strcpy(src, "[ k: masm 1 [ DROP LIT 0 ARITY 1 EXIT ] k 5 ]");
-        b = r0_s1_parse(src, &err);
-        int wrapped_ok = !err && r0_s1_session_run_block(b, &oc) == R0S1_OUT_OK;
-        CHECK(wrapped_ok, "K4 control: the wrapped source defines and runs the masm word");
-        XFAIL(unwrapped_ok, "K4: an unwrapped source defines a masm word as the wrapped one does (today: machine fail-stop)");
-    }
-
     printf("\nmachine-integrity: %d failure(s), %d expected failure(s), %d unexpected pass(es)\n",
            failures, xfails, xpasses);
     return (failures || xpasses) ? 1 : 0;
