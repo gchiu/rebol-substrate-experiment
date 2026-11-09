@@ -1,4 +1,10 @@
-# GLON-MEM v001 — a minimal addressable-memory vocabulary (prototype)
+# GLON-MEM — a minimal addressable-memory vocabulary (prototype)
+
+> **Current version: v002** (`mem.glon`), the result of the cost investigation
+> in §8. The same API, contract and tests as v001.
+>
+> v001 (`variants/mem-v001.glon`) and its measurements are kept unchanged for
+> comparison. §1–§7 describe v001 as first recorded.
 
 > **Status (2026-11-09): experiment, not deployed.** An optional loadable
 > library, `mem.glon`, on the unchanged machine:
@@ -247,4 +253,203 @@ whole 7,232-cell heap.
 | `run-wasm.js` | runs Glon files, in order, in one `glon.wasm` session under node |
 | `measure.c` | storage and per-operation measurements. Measurement only: it defines a masm `m-gc` probe |
 | `Makefile` | `make test`, `make wasm-test`, `make measure` |
-| `results-measure.txt` | the `make measure` output recorded on 2026-11-09 |
+| `results-measure.txt` | the `make measure` output for v002 (single runs) |
+| `results-compare-v001-v002.txt`, `results-compare-alloc-v001-v002.txt` | v001 against v002 on one harness: time, and managed cells allocated |
+| `tools/profile.c`, `tools/split.py`, `tools/compare.sh` | per-definition cost accounting and per-operation timing for any library version |
+| `variants/mem-v001.glon`, `variants/results-measure-v001.txt` | v001 and its original measurements |
+
+## 8. v002: the cost investigation (2026-11-09)
+
+### 8.1 Where v001's cost went
+
+Measured with `tools/profile.c` (native `-O1`, loop overhead subtracted).
+
+**Code: 1,098 cells, all in the masm workers.**
+
+| Worker | Code cells |
+|---|---|
+| `raw-move` | **552** |
+| `raw-alloc` | 174 |
+| `raw-put` | 130 |
+| `raw-get` | 107 |
+| tag, descriptor, number and state accessors | 135 |
+
+- **Why S1 code is large.** S1 derives control flow from its 7 primitives,
+  so some masm forms are expensive:
+
+  | Form | S1 cells |
+  |---|---|
+  | `LIT`, a HOST op (`ADD`…), `ZBRANCH` | 2 each |
+  | `BRANCH` | 5 |
+  | `>R` / `R>` | 14 each |
+  | `EXIT` | 17 |
+  | `CALL` | 21 |
+
+  A local subroutine therefore costs 38 cells per call site plus return, and
+  each `ARITY 1 EXIT` return point 19.
+- **Where the code goes.** The code area grows towards the data stack (top
+  16,384), so every code cell is a cell of data-stack room lost.
+
+**Bindings: 28.**
+- 2 data, 8 masm workers, 4 Glon check functions, 14 API and helper words.
+- Each Glon function is also a 32-cell managed closure: 608 cells.
+
+**Time: a checked `mem/byte` cost 100 µs.**
+
+| Part | Cost |
+|---|---|
+| `mem/live` (region? + liveness) | 38 µs |
+| `mem/span` (range) | 38 µs |
+| `mem/int` | 13 µs |
+| the wrapper call | ~7 µs |
+| the masm read itself | **2.3 µs** |
+
+- A Glon function call costs 4–8 µs before it does anything, and each check
+  was several calls.
+- The string bridges were balanced Glon recursions that built 1-byte strings
+  and joined them: 25,824 managed cells allocated per 256-byte `to-string`.
+
+**Safety: v001's unchecked workers were global words.** Glon has no privacy,
+so any program could call `mem/raw-put r 100000 7` and write outside a region.
+
+### 8.2 What v002 changes
+
+**One validating layer.** Three masm words, each checking every argument
+itself and answering `none` on any failure:
+
+| Word | Ops |
+|---|---|
+| `mem/acc` | byte, set-byte, cell, set-cell |
+| `mem/bulk` | to-string, from-string, range check |
+| `mem/reg` | alloc, size, release, released? |
+
+- **Checks:** region type and descriptor identity, liveness, integer types,
+  ranges, byte and cell values.
+- **Errors:** the public words call `mem/err`, which repeats the checks in
+  Glon only to raise the precise SIN!, so the failure path alone pays for
+  them.
+- **No unchecked word is reachable from Glon.**
+
+**Code shape:**
+- **No subroutines.** A byte read and a cell read are one loop with one inline
+  byte fetch; the two writes are one loop with one inline store.
+- **One `ARITY 1 EXIT` per word.** Every other path branches to it.
+- **No `>R`/`R>`.**
+- **Single-branch failure checks.** Each check with a separately labelled
+  "OK" target was folded into one `ZBRANCH` straight to the failure exit (8
+  of them).
+
+**Constraint: a masm block holds at most 510 tokens** (`MASM_TOK_CAP`, the
+Glon reader's block limit), and masm cannot `CALL` another masm word. So one
+shared entry point (1,740 tokens) was impossible, and the region and index
+checks repeat in each word.
+
+**`mem/move`** became a Glon loop over chunks of at most 256 bytes, each
+copied through a temporary STRING! (`mem/bulk`), ordered backward when dst
+overlaps above src. A dedicated validated masm move did not fit the code
+budget (§8.4).
+
+**Workspace.** `mem/w`, a length-0 STRING!, is both every region's descriptor
+and the masm words' loop state; the collector does not scan its contents.
+
+### 8.3 Results
+
+Source: `results-compare-v001-v002.txt` and
+`results-compare-alloc-v001-v002.txt`.
+- **Harness:** both versions on one harness (`tools/compare.sh`), native,
+  `-O1`, 3,000 operations each (30 or 10 for bulk), median of 3, with the
+  balanced loop's own ~42 µs per operation subtracted.
+- **Noise:** min–max spread within 5% except a first move, whose up to 30%
+  is the first collection.
+- **`results-measure.txt`:** single runs of `measure.c`, up to about 20% off
+  these medians.
+
+| Metric | v001 | v002 |
+|---|---|---|
+| Bindings | 28 | **17** |
+| Managed cells (closures and data) | 608 | **448** |
+| Loader cells | 2,274 | **1,954** |
+| Code cells | **1,098** | 1,577 |
+| Data-stack headroom (prelude + strings + strings-ext loaded) | **1,093** | 614 |
+| Checked byte read / write | 101 / 129 µs | **31 / 26 µs** |
+| Checked cell read / write | 159 / 308 µs | **34 / 25 µs** |
+| Validated masm access, no SIN! (`mem/acc` directly) | — (2.3 µs unchecked) | **6.6 µs** |
+| `s/at` on a STRING!, for comparison | 36 µs | 36 µs |
+| Move, 256 bytes | **384 µs (1.5 µs/byte)** | 481 µs (1.9 µs/byte) |
+| Move, 3,000 bytes | **0.58 µs/byte, 32 cells allocated** | 2.1 µs/byte, 3,376 cells allocated |
+| `to-string`, 256 bytes | 287 µs/byte, 25,824 cells allocated | **1.3 µs/byte, 288 cells (the result only)** |
+| `from-string`, 300 bytes | 118 µs/byte | **0.31 µs/byte** |
+| Native tests | 66 / 66 | 66 / 66 |
+| WASM tests | 64 / 64 (2 skipped) | 64 / 64 (2 skipped) |
+
+**What remains in a checked access, about 30 µs for a read:**
+
+| Part | Cost |
+|---|---|
+| the Glon call | 8 µs |
+| the local the result is kept in, created per call | ~9 µs; a global slot measured the same |
+| `either = none …` | ~6 µs |
+| the validated masm word | 6.6 µs, against 2.3 µs unchecked |
+
+**Unchanged:** the GC interior regression test (`r0_s1_gc_interior_tests.c`),
+`glon-smoke` and `./check-frozen-s1.sh` pass.
+
+### 8.4 Answers
+
+1. **The smallest practical vocabulary.**
+   - `alloc`, `release` (with `released?`), `size`, `byte`/`set-byte`,
+     `cell`/`set-cell`, `move`: 8 words. Plus two bridges to STRING!, which
+     any I/O needs.
+   - Nothing smaller covers Forth's `ALLOT C@ C! @ ! MOVE`. Release could be
+     dropped (the collector reclaims), at the cost of deterministic
+     invalidation.
+2. **The unavoidable cost.**
+   - **About 20 µs per raising call:** the floor of any Glon function that
+     can raise (call, `either`, result slot). Validation itself costs about
+     4 µs in masm.
+   - **Code:** about 1,500 cells for three validated words under the 510-token
+     cap and S1's derived-control costs. The region and index checks repeat in
+     each, a few hundred cells.
+   - **Memory:** a region costs 16 + 16·⌈(4 + ⌈n/3⌉)/16⌉ cells: 3 bytes per
+     cell, the most a 32-bit WASM cell can hold with simple non-negative
+     arithmetic.
+3. **Repeated byte operations without extending S1: partly.**
+   - **Bulk operations are efficient:** 0.3–2 µs per byte.
+   - **Per byte from Glon, the cost is the loop, not the memory word.** One
+     balanced-recursion iteration costs about 42 µs, and a validated access
+     adds about 7 µs.
+   - **The fast path for library code** is to call the validated masm words
+     directly and handle `none`. It is safe, because they never touch memory
+     out of range, and 4–5× cheaper than the raising words.
+   - **What cannot be provided safely:** a cheaper per-byte path. Glon has no
+     privacy, so an unchecked worker would be callable by any program.
+     (Lexical capture inside a constructor could hide one; it was not
+     needed.)
+4. **M3 USER storage is still the right representation.**
+   - It is collectable, typed by descriptor, has an untraced payload, is
+     identical in native and WASM, and needs no runtime change.
+   - Its limit is the contiguous allocation of large regions in the
+     non-moving 7,232-cell heap, not the representation.
+5. **A larger memory profile would raise capacity but not fix the
+   bottlenecks.**
+   - The costs measured here are the Glon call (4–8 µs) and loop iteration
+     (~42 µs) overheads, and code space.
+   - Code space is bounded by the data-stack top (16,384, `DS_INIT` in frozen
+     `s1.h`), not by heap size. A larger profile helps only if it also moves
+     that boundary.
+6. **Is it suitable for adoption? Not yet.**
+   - **Ready:** v002 has the right safety properties (no unchecked reachable
+     word, precise errors), and it is fast where it matters for Glon code:
+     single accesses and the string bridges.
+   - **Not ready:**
+     - its 1,577 code cells leave 614 cells of data-stack room in a session
+       with prelude, strings and strings-ext, a budget every other masm
+       library shares;
+     - large moves are 3.6× slower than v001's, with garbage per chunk.
+
+   **Recommendation:** keep v002 as the reference prototype. Do not adopt it
+   into Glon/Core until one of these is decided:
+   - **(a)** code space is accepted, or relieved by a profile that moves the
+     code/data-stack boundary (a frozen-file and memory-map decision);
+   - **(b)** move is restored as validated masm, costing about 400–450 more
+     code cells (estimate, not built).

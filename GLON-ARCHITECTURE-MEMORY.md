@@ -253,7 +253,7 @@ build of the current sources.**
 | `glon-web`: a native host (libcurl, libxml2) running a Glon link-extraction program | **[FINDING] experimental milestone, not deployed; a separate executable (the `glon` CLI is unchanged)** | `experiments/glon-links-native/README.md` |
 | `dz/` streaming DEFLATE decompressor (RFC 1951) in Glon, after Chris Ross-Gill's `deflate.reb` | **[FINDING] experiment, not deployed; found a collector defect, since repaired** | `experiments/glon-deflate/README.md` |
 | Glon/Binary: an optional `bin/` binary-buffer library | **[PROPOSAL] investigated, not implemented** | `GLON-BINARY-FEASIBILITY.md` |
-| `mem/` minimal addressable-memory vocabulary (Forth-style: alloc, release, byte, cell, move) over M3 USER objects | **[FINDING] prototype, not deployed; native and WASM tested** | `experiments/glon-mem/README.md` |
+| `mem/` minimal addressable-memory vocabulary (Forth-style: alloc, release, byte, cell, move) over M3 USER objects | **[FINDING] prototype v002, not deployed and not adopted; native and WASM tested** | `experiments/glon-mem/README.md` |
 
 **[DECISION] The string extension API (approved by the user 2026-11-07).**
 Five byte-level operations in a separate optional module,
@@ -582,6 +582,41 @@ fix is sound, implement it").**
   - the string bridges, Glon recursions, cost 110–264 µs per byte.
 - **A 32 KiB window does not fit:** one region needs 10,944 cells, more than
   the whole managed heap.
+
+**[FINDING] Memory-library cost investigation, GLON-MEM v002 (2026-11-09,
+64K configuration, native and WASM).**
+- **Same contract, rebuilt.** The same API, contract and tests, rebuilt
+  around three self-validating masm words that answer `none` on any failure.
+  The public words raise the precise SIN! only on the failure path.
+- **v001 safety defect fixed.** v001's unchecked workers were global words,
+  so any program could write outside a region. v002 has no unchecked
+  reachable word.
+
+[MEASURED] (v001 → v002, one harness, `-O1`, median of 3):
+- **Checked access:** byte read/write 101/129 → 31/26 µs; cell 159/308 →
+  34/25 µs.
+- **String bridges:** `to-string` 287 → 1.3 µs/byte, allocating 25,824 → 288
+  cells per 256 bytes; `from-string` 118 → 0.31 µs/byte.
+- **Library footprint:** bindings 28 → 17, managed cells 608 → 448.
+- **Worse:**
+  - code 1,098 → 1,577 cells, so data-stack room with prelude, strings and
+    strings-ext falls 1,093 → 614;
+  - large moves 0.58 → 2.1 µs/byte, through temporary strings.
+- **Where checked access goes:** a Glon function call costs 4–8 µs, a
+  balanced-loop iteration ~42 µs, a validated masm access 6.6 µs (2.3
+  unchecked).
+
+[MEASURED] **Constraints on masm libraries:**
+- **Block size:** a masm block holds at most 510 tokens (`MASM_TOK_CAP`), and
+  masm cannot `CALL` another masm word.
+- **Control-flow cost:** S1 derives `BRANCH` (5 cells), `>R`/`R>` (14), `EXIT`
+  (17) and `CALL` (21). So subroutines and multiple return points dominate
+  code size, and code size is data-stack room.
+
+**[PROPOSAL] (not adopted):** `mem/` is not yet ready for Glon/Core. Code
+space or move speed must first be resolved: either a code/data-stack boundary
+moved by an approved profile, or a validated masm move (≈400–450 more code
+cells, estimated).
 
 ## 8. Why more memory is a separate scaling experiment
 
