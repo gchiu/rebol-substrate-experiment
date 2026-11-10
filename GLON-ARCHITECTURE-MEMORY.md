@@ -759,8 +759,8 @@ The audit sharpens the limitations listed above:
 
 **[DECISION] Machine-integrity repairs (2026-11-10, approved: "repair the
 five documented machine-integrity defects in priority order").** Four
-repairs, each its own commit, with regression tests. Frozen S1, the
-memory map and the host ABI are unchanged.
+repairs of the original five, plus K6 and K7, each its own commit, with
+regression tests. Frozen S1, the memory map and the host ABI are unchanged.
 - **K5 (`4580c68`).** The parser counts a block's labels and references and
   refuses more than 64 or 128 as `too_large`, before emitting.
   `assemble_raw` also checks each index.
@@ -794,22 +794,26 @@ memory map and the host ABI are unchanged.
   top-level path. masm test 13's fingerprint for the unwrapped
   `demo/shop/common.glon` had recorded the defect (147 cells). It now equals
   its wrapped bundle `bootstrap.glon` (802 cells).
+- **K6 (`360e0a1`). Invalid masm refused at parse.** `raw_validate` rejects
+  undefined or duplicate labels, unresolved operands, unknown mnemonics, an
+  instruction without its operand, and HOST ids outside S1's closed set,
+  before anything is emitted. Section V1–V16 and the `masm-invalid` parity
+  file hold the repair.
+- **K7 (`a9f3f8b`). Blocks that could enter or run past their end.** The same
+  validator refuses an empty block, labels only, a final instruction that is
+  not EXIT/BRANCH/`LIT REG_IP !`, and a label after the last instruction. A
+  final CALL is refused because it returns to the end of the block. Section
+  V17–V21 and the `masm-empty` parity file hold the repair.
 - **K1 is not repaired.** Preventing a masm word from pushing into code
   between evaluation steps needs a bound inside S1, which executes pushes
-  unchecked: see the [PROPOSAL] in §9. It remains a strict expected failure.
-- **Tests.** `make machine-integrity` (≈ 3 s: 150 checks; expected
-  failures K1, K6, K7) and `make machine-integrity-wasm` (8 Glon-level
-  files, native and WASM, against `integrity/expected/`).
+  unchecked: see the [PROPOSAL] in §9. It is now the only strict expected
+  failure.
+- **Tests.** `make machine-integrity` (≈ 3 s: 201 checks; expected failure
+  K1) and `make machine-integrity-wasm` (10 Glon-level files, native and
+  WASM, against `integrity/expected/`).
   `MACHINE-INTEGRITY-AUDIT.md`, "Repairs (2026-11-10)".
 
 [FINDING] **Found during the repairs (not repaired):**
-- **K6. Invalid masm is accepted with a stderr warning only:**
-  - undefined labels, whose branch or call goes to address 0;
-  - silently dropped instructions: unresolved operands, unknown mnemonics,
-    a trailing instruction without its operand;
-  - duplicate labels;
-  - HOST ids outside S1's set.
-- **K7.** An empty masm block's callable enters the end of code.
 - **Unwrapped sources.** A top-level `func` in an unwrapped source gets no
   func site of its own, unlike in a wrapped source (a semantics question).
 - **`glon_load`.** It reports a halted run's garbage top-of-stack as success
@@ -858,7 +862,6 @@ been approved or built, except the two GC worklist safeguards now recorded in
 | **Glon/Binary (`bin/`)** | an optional binary-buffer library behind an implementation-neutral contract (`GLON-BINARY-FEASIBILITY.md`). Recommended first backing: heap-backed masm over M3 USER objects (packed bytes after `count`, untraced), which needs no ABI or frozen change | capacity bounded by the 7,232-cell heap: ≈ 12–16 KiB at 4 bytes per cell [E]. A 32 KiB DEFLATE window does not fit any in-heap representation on 64K. The routes that fit (the M1 arena region, the 256K profile, a synchronous host `HOST_CAP` op) are each a memory-map, frozen-S1 or [DECISION]-reversing change. Asynchronous host buffers via GLON_LIVE need no change but cannot offer synchronous reads |
 | **Smaller activations** | size contexts to their actual bindings instead of 16 slots (64 cells) | changes when `CONTEXT_FULL` fires; touches the context, hash and promotion code |
 | **S1 data-stack limit (K1)** (2026-11-10) | a memory-mapped limit register in S1 (e.g. `REG_SPLIM`); `push` fail-stops when `SP - 1 < M[REG_SPLIM]`, optionally `pop` against a top register. The only way to stop a masm word pushing into code between evaluation steps | a **frozen S1** change (`s1.c`, `s1.h`, the machine contract). Every masm stack switcher (the M1 scheduler library, the debugger fixture) must set the register when it switches SP. Could replace the runtime guard and its ~3% cost |
-| **masm validation (K6, K7)** (2026-11-10) | refuse at parse: undefined or duplicate labels, unresolved operands, unknown mnemonics, an instruction without its operand, HOST ids outside the closed set; refuse empty blocks or give them a valid entry | parser only, like K5; rejects sources that load today with warnings (none of the shipped libraries, per the test suite) |
 | **Wrapped/unwrapped equivalence** (2026-11-10) | parse an unwrapped source exactly as `[ source ]`, so that top-level `func`s get their own site and lexical scope | language semantics for about 40 unwrapped files in the repository; needs a behaviour comparison across them |
 | **`glon_load` outcome** (2026-11-10) | return the session outcome status instead of a count derived from the top data-stack cell | host-ABI change for WASM hosts |
 

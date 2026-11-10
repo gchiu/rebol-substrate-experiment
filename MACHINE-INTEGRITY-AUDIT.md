@@ -6,10 +6,11 @@ expanded suite: 2026-11-10, see "Repairs (2026-11-10)" below. The sections from
 
 ## Repairs (2026-11-10)
 
-Four of the five defects are repaired, in priority order. Each repair is its
-own commit, with its expected failure promoted to ordinary regression checks.
-K1 cannot be prevented without changing frozen S1, so it is not repaired; the
-necessary change is described below.
+Four of the five original defects are repaired, in priority order. Each
+repair is its own commit, with its expected failure promoted to ordinary
+regression checks. Two further defects found during the work, K6 and K7, were
+also repaired. K1 cannot be prevented without changing frozen S1, so it is not
+repaired; the necessary change is described below.
 
 | Defect | Status | Commit | What changed |
 |---|---|---|---|
@@ -17,7 +18,9 @@ necessary change is described below.
 | **K2** plain Glon nesting overwrites code, reported clean | **repaired** | `9ec4872` | A data-stack guard at `SUBEXPR` entry, which every evaluation step passes through. A masm word's result set is also checked on return. Details below. |
 | **K3** refused multi-block sources leak code | **repaired** | `ef5f2a2` | A source's masm blocks are emitted only after the whole source parses. Each callable gets its predicted entry; a failed parse emits nothing. |
 | **K4** masm in unwrapped sources fail-stops | **repaired** | `e0b6692` | One `parse_masm` function, shared by `parse_block` and the unwrapped top-level path. |
-| **K1** a masm word pushes into code between steps | **not repaired: needs a frozen-S1 change** | — | Explained below; still a strict expected failure. |
+| **K6** invalid masm accepted with a warning | **repaired** | `360e0a1` | `raw_validate` refuses undefined or duplicate labels, unresolved operands, unknown mnemonics, an instruction without its operand, and HOST ids outside S1's closed set, before emitting anything. |
+| **K7** masm blocks can enter or run past their end | **repaired** | `a9f3f8b` | `raw_validate` refuses an empty block, a block with only labels, a block whose last instruction is not EXIT, BRANCH or the indirect jump `LIT REG_IP !`, and a label after the last instruction. A final CALL is refused because its return falls off the end. |
+| **K1** a masm word pushes into code between steps | **not repaired: needs a frozen-S1 change** | — | Explained below; still the only strict expected failure. |
 
 Tests followed each repair, then the expansion in `c20c8a5`. Every commit
 was verified with:
@@ -125,22 +128,35 @@ Until then, masm is a trusted trapdoor and K1 stays an expected failure.
 
 ### New findings during the repairs and the expansion
 
-- **K6. Invalid masm is accepted with only a warning on stderr** (new
-  expected failures; not repaired):
-  - **Undefined labels.** In `BRANCH` and `CALL`, the target is patched to
-    address 0. Running the word executes the register cells as code: in the
+- **K6. Invalid masm was accepted with only a warning on stderr.** Before
+  the repair:
+  - **Undefined labels.** In `BRANCH` and `CALL`, the target was patched to
+    address 0. Running the word executed the register cells as code: in the
     probe, "bad opcode at 1".
   - **Silently dropped:** unresolved operands (`LIT nosuch`), unknown
     mnemonics, and an instruction at the end without its operand.
-  - **Duplicate labels:** the first definition wins.
-  - **`HOST` ids outside S1's closed set:** S1 prints "bad host id" at run
-    time and does nothing.
+  - **Duplicate labels:** the first definition won.
+  - **`HOST` ids outside S1's closed set:** S1 printed "bad host id" at run
+    time and did nothing.
 
-  The checks only parse. They never run the invalid words.
-- **K7. An empty masm block** (`masm 0 [ ]`) emits nothing, and its callable's
-  entry is the end of code. Calling it runs whatever follows. In the isolated
-  probe this drove SP down to 10,656, inside the runtime's code. The check
-  reads the entry; it does not call it.
+  **Repaired in `360e0a1`.** `raw_validate` now refuses all of these before
+  anything is emitted. Section V, cases 1–16, hold the repair; none of the
+  refused words is run.
+- **K7. A masm block could enter or run past its own end.** An empty block
+  (`masm 0 [ ]`) emitted nothing, and its callable's entry was the end of
+  code; calling it ran whatever followed. In the isolated probe this drove SP
+  down to 10,656, inside the runtime's code. **Repaired in `a9f3f8b`.**
+  `raw_validate` now refuses:
+  - an empty block, or a block with only labels;
+  - a block whose last instruction is not EXIT, BRANCH, or the indirect jump
+    `LIT REG_IP !`;
+  - a label after the last instruction;
+  - a final CALL: the callee returns to the instruction after the call, which
+    is the end of the block (the existing MASM probe was made well formed by
+    adding EXIT).
+
+  Section V, cases 17–21, and the valid-form checks hold the repair. In the
+  probe the check reads the entry; it never calls it.
 - **Unwrapped and wrapped top-level `func`s differ.** In an unwrapped source
   (`./glon` and WASM `glon_load` parse files as given), a top-level `func`
   gets no func site and no lexical scope of its own; the session facade wraps
@@ -166,7 +182,7 @@ Until then, masm is a trusted trapdoor and K1 stays an expected failure.
 
 | Target | What it runs | Time |
 |---|---|---|
-| `make machine-integrity` | frozen-S1 check; `machine-integrity-test` (150 checks, 9 expected failures: K1, K6 ×7, K7); the ASan table probe (8 checks); `integrity/parity.sh native` (8 Glon-level files) | ≈ 3.2 s |
+| `make machine-integrity` | frozen-S1 check; `machine-integrity-test` (201 checks, 1 expected failure: K1); the ASan table probe (8 checks); `integrity/parity.sh native` (10 Glon-level files) | ≈ 3.2 s |
 | `make machine-integrity-wasm` | `parity.sh` native and in the standalone WASM build; both must match `integrity/expected/` | ≈ 6 s with the WASM build |
 
 **Sections of `r0_s1_integrity_tests.c`:**
@@ -196,7 +212,7 @@ Also: M1 test K (task stacks).
 | `stack-exhaust`, `stack-underflow` | the line before the failure prints, the line after does not |
 | `masm-unwrapped` | masm in an unwrapped source |
 | `masm-limits` | blocks at the table limits |
-| `masm-refused` | a refused source prints nothing |
+| `masm-refused`, `masm-invalid`, `masm-empty` | a refused source prints nothing (K6, K7) |
 
 ### Coverage matrix after the repairs
 
@@ -209,24 +225,19 @@ Changed rows only; the others are as in Phase 5.
 | M2 refused source emits nothing | XF K3 | ✔ L1–L6, U3, masm_bound 6b |
 | M3 host tables in bounds | XF K5 | ✔ M2, ASan probe |
 | M5 masm in every source form | XF K4 | ✔ U1–U3, parity |
-| M7 *(new)* invalid masm refused at parse | — | **XF K6, K7** |
+| M7 *(new)* invalid masm refused at parse | — | ✔ K6 in V1–V16; K7 in V17–V21 and the valid-form checks; `masm-invalid` and `masm-empty` |
 | M8 *(new)* emitted size equals the frozen expansions, for every form | ◐ M4 internal abort | ✔ M3 |
 | G2/G1 preservation under stale integers | ✔ strings, native + WASM | ✔ strings, blocks, closures and contexts, native + WASM |
-| E6 native/WASM parity | ◐ one file | ✔ 8 files incl. failures (printed output; see the `glon_load` finding) |
+| E6 native/WASM parity | ◐ one file | ✔ 10 files incl. failures (printed output; see the `glon_load` finding) |
 
 ### Remaining priorities
 
 1. **K1** needs approval of the S1 data-stack limit described above.
-2. **K6/K7** should refuse invalid masm at parse:
-   - undefined or duplicate labels;
-   - unresolved operands and unknown mnemonics;
-   - an instruction without its operand;
-   - HOST ids outside the closed set;
-   - empty blocks, or give them a valid entry.
-
-   This is a small parser change, like K5.
-3. **Wrapped vs unwrapped `func` semantics**, and **`glon_load`'s return
+2. **Wrapped vs unwrapped `func` semantics**, and **`glon_load`'s return
    code**: each needs a proposal (language semantics; host ABI).
+
+K6 and K7 are repaired (`360e0a1`, `a9f3f8b`); no further priority is open
+for them.
 
 ## Scope
 
