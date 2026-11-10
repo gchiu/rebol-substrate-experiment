@@ -819,6 +819,31 @@ regression tests. Frozen S1, the memory map and the host ABI are unchanged.
 - **`glon_load`.** It reports a halted run's garbage top-of-stack as success
   or failure (a host-ABI question).
 
+[MEASURED] **Execution architecture (2026-11-10,
+`GLON-EXECUTION-ARCHITECTURE.md`).** Instrumented S1 instructions and
+emitter attribution, six workloads, native `-O1`; tools in
+`experiments/glon-execution-architecture/`.
+- **The evaluator dominates.** A naive Glon `fib 18` costs 3,697 instructions
+  per activation; the equivalent Forth-style masm word on the same S1 costs
+  40.0, a 92× gap.
+- **The primitive set is a bounded constant factor.** CALL/EXIT/BRANCH/RS
+  macros are 4,886 of the 12,861 runtime cells (38.0%) and 23.3–36.2% of
+  executed instructions. Replacing every macro site with a 1–2-cell primitive
+  would leave about 8,538 runtime cells; the overall instruction saving is
+  below the macro share, so at most about 1.3–1.6×, not 2×.
+- **GC is the other large component.** The collector is 27.5% of runtime
+  code; GC is 25.8–93.0% of execution in the GC-bearing workloads. The
+  conservative return-stack scan is 16.9–43.7%.
+- **State in memory.** Runtime-state `LIT addr @`/`!` traffic is 23.2–41.7%
+  of executed instructions across the workloads.
+- **Corrections.** The draft's code-size categories overlapped; the report
+  now partitions the 12,861 cells and reports the macro cells as a subset.
+  Isolated `s/at`/`mem/byte`/raw-fetch figures from the draft are not used;
+  they were not reproducible with the committed workload method.
+- **Candidates, not decisions:** see
+  `GLON-EXECUTION-ARCHITECTURE-PROPOSALS.md`. No implementation follows from
+  this finding.
+
 **[PROPOSAL]s (not authorised):**
 - **(a)** a compact call through a per-block stub, about 14 cells instead of
   38 [E];
@@ -848,9 +873,9 @@ experiment, not a correction** to the 64K design.
 
 ## 9. Proposals (not authorised, not implemented)
 
-All of these are **[PROPOSAL]**s from investigations on 2026-11-06. None has
-been approved or built, except the two GC worklist safeguards now recorded in
-§6.
+All of these are **[PROPOSAL]**s from investigations on 2026-11-06 and
+2026-11-10. None has been approved or built, except the two GC worklist
+safeguards now recorded in §6.
 
 | Proposal | Summary | Key conditions and risks |
 |---|---|---|
@@ -861,6 +886,11 @@ been approved or built, except the two GC worklist safeguards now recorded in
 | **`mem/` as the Glon/Core memory facility** | adopt the `experiments/glon-mem/` vocabulary as the optional standard memory library, the lower-level alternative to a `binary!`-style `bin/` library. Before adoption: masm bulk string bridges, and a decision on an unchecked fast path for trusted libraries | code space (1,098 cells) is shared with every masm library; checked single-byte access is about 3× slower than `s/at` |
 | **Glon/Binary (`bin/`)** | an optional binary-buffer library behind an implementation-neutral contract (`GLON-BINARY-FEASIBILITY.md`). Recommended first backing: heap-backed masm over M3 USER objects (packed bytes after `count`, untraced), which needs no ABI or frozen change | capacity bounded by the 7,232-cell heap: ≈ 12–16 KiB at 4 bytes per cell [E]. A 32 KiB DEFLATE window does not fit any in-heap representation on 64K. The routes that fit (the M1 arena region, the 256K profile, a synchronous host `HOST_CAP` op) are each a memory-map, frozen-S1 or [DECISION]-reversing change. Asynchronous host buffers via GLON_LIVE need no change but cannot offer synchronous reads |
 | **Smaller activations** | size contexts to their actual bindings instead of 16 slots (64 cells) | changes when `CONTEXT_FULL` fires; touches the context, hash and promotion code |
+| **Compile-once function bodies** (2026-11-10) | prepare a function body for execution instead of re-interpreting its source block with dynamic lookup on every call; keep the current language and binding/escape laws | evaluator and loader change; the largest measured gap is here (3,697 vs 40 instructions per fib activation). Details: `GLON-EXECUTION-ARCHITECTURE-PROPOSALS.md` |
+| **Exact activation roots** (2026-11-10) | stack maps, or a separate activation stack, so the collector does not scan the return stack conservatively | GC roots and context promotion must remain exact; removes the O(objects) object-start walk (16.9–43.7% of GC-heavy execution). Not authorised |
+| **Object-start bitmap** (2026-11-10) | a bitmap of allocated object starts, so the conservative scan tests a candidate in constant time | must stay consistent with allocation, free and coalescing; already named as a companion to the 256K profile |
+| **B-arm S1 primitives** (2026-11-10) | an experimental S1 with CALL/EXIT/BRANCH/`>R`/`R>`; the main build stays frozen | measured macros are 38.0% of runtime code and 23.3–36.2% of execution; the overall instruction saving is at most about 1.3–1.6×, so this needs a safety/code-size case, not speed alone. Not authorised |
+| **Stack-shuffle primitives** (2026-11-10) | SWAP/OVER/ROT or equivalent, to reduce runtime-state memory traffic (23.2–41.7% of executed instructions) | adds machine surface and needs a frozen change; measure against the memory-variable cost before proposing |
 | **S1 data-stack limit (K1)** (2026-11-10) | a memory-mapped limit register in S1 (e.g. `REG_SPLIM`); `push` fail-stops when `SP - 1 < M[REG_SPLIM]`, optionally `pop` against a top register. The only way to stop a masm word pushing into code between evaluation steps | a **frozen S1** change (`s1.c`, `s1.h`, the machine contract). Every masm stack switcher (the M1 scheduler library, the debugger fixture) must set the register when it switches SP. Could replace the runtime guard and its ~3% cost |
 | **Wrapped/unwrapped equivalence** (2026-11-10) | parse an unwrapped source exactly as `[ source ]`, so that top-level `func`s get their own site and lexical scope | language semantics for about 40 unwrapped files in the repository; needs a behaviour comparison across them |
 | **`glon_load` outcome** (2026-11-10) | return the session outcome status instead of a count derived from the top data-stack cell | host-ABI change for WASM hosts |

@@ -1,0 +1,105 @@
+GLON execution-architecture measurements
+2026-11-10, branch glon-shop-g1a, native -O1 driver
+Frozen S1 unchanged; the runtime is the current source tree.
+
+Build: make -C experiments/glon-execution-architecture
+Run from the repository root. See README.md for the exact workload commands.
+
+WORKLOAD TOTALS
+
+name       executed S1 instr   state-var instr   state-var %   macro exec %   GC exec %   scan %
+plus                  552              128          23.2          33.9          0.0       0.0
+fib18          30,914,744        9,173,476          29.7          28.1          0.0       0.0
+deflate        77,480,081       29,060,242          37.5          23.3         25.8      16.9
+latex          40,523,226       16,901,740          41.7          24.0         61.6      41.9
+mem         3,265,540,942    1,342,018,034          41.1          25.0         68.2      43.7
+binary        174,408,246       60,432,850          34.7          36.2         93.0      34.0
+
+- state-var: executed LIT addr @ / LIT addr ! pairs in [RV_BASE, GC_HEAP_BASE),
+  counted as two instructions each.
+- macro exec: CALL/EXIT/BRANCH/>R/R>/R@/SWAP cells as a share of executed
+  instructions. It is conservative for masm CALL label (emit_call_fwd), whose
+  internal >R is counted but whose whole expansion is not labelled CALL.
+- scan: mark_closure_inline plus scan_closures as a share of execution.
+
+RUNTIME CODE SIZE (12,861 cells, a partition)
+
+masm library code is separate (720 cells with prelude + strings) and is not
+part of the runtime total.
+
+evaluator: dispatch                    1,903   14.8%
+evaluator: name lookup                 1,065    8.3%
+evaluator: closure call/return         1,380   10.7%
+evaluator: closure construction           558    4.3%
+evaluator: set-word                       627    4.9%
+evaluator: masm call                      252    2.0%
+evaluator total                         5,785   45.0%
+natives                                 1,106    8.6%
+GC collector                            3,535   27.5%
+allocator                                 353    2.7%
+errors (SIN!)                           1,016    7.9%
+escape-law checks                         772    6.0%
+stack guards                              294    2.3%
+sum                                    12,861  100.0%
+
+Derived control/return-stack macros are a SUBSET of the partition, not a
+category to add:
+CALL   1,638 cells (78 expansions)
+EXIT   1,275 cells (75)
+BRANCH   575 cells (115)
+>R       994 cells (71)
+R>       392 cells (28)
+R@        12 cells (3)
+total  4,886 cells = 38.0% of the runtime.
+
+Primitive replacement [D]: 78*2 + 75 + 115*2 + 71 + 28 + 3 = 563 cells,
+so the runtime would fall from 12,861 to 8,538 cells (33.6% less).
+
++ 1 2 TRACE (552 instructions)
+
+call/return/branch/RS macros            187
+runtime-state memory-variable traffic    128
+name lookup                             120
+stack guards                             30
+the HOST ADD itself                       1
+remainder                               86
+
+FIBONACCI, NAIVE RECURSION, n = 18 (8,361 activations)
+
+Glon:
+  definition: fib: func [n] [ either < n 2 [ n ] [ + fib - n 1 fib - n 2 ] ]
+  total executed: 30,914,744
+  per activation: 3,697 (total / 8,361; one top-level invocation included)
+
+masm, same algorithm, untagged integers inside and tagged at the boundary:
+  fibm: masm 1 [ LIT 16 DIV CALL F LIT 16 MUL ARITY 1 EXIT
+    F: DUP LIT 2 LT ZBRANCH R EXIT
+    R: DUP LIT 1 SUB CALL F >R LIT 2 SUB CALL F R> ADD EXIT ]
+  total executed: 334,942 (trace) / 336,617 (dump; the dump has slightly more
+                  setup)
+  top-level Glon + fibm wrapper overhead: 527
+  per F activation: (334,942 - 527) / 8,361 = 40.0
+
+  Macros per F activation [D]: about 33 instructions (CALL expansions,
+  including their internal >R, EXIT, explicit >R, R>). Primitive dispatches
+  would be about 3 per activation (one CALL, one EXIT, one >R, one R> across
+  the tree; 8,362 CALL + 8,362 EXIT + 4,180 >R + 4,180 R> over 8,361
+  activations). A five-primitive extension therefore gives about
+  40 - 33 + 3 = 10 instructions per activation [D], not a direct measurement.
+
+GC AND THE CONSERVATIVE SCAN
+
+GC is 27.5% of runtime code and 25.8-93.0% of execution in the GC-bearing
+workloads. mark_closure_inline alone is 16.9% (deflate), 41.9% (latex),
+43.7% (mem) and 29.0% (binary) of executed instructions; adding the
+scan_closures walk gives 34.0% for binary. The scan walks object sizes from
+the heap base per candidate because the return stack holds data and integer
+tags are x16.
+
+NOTES
+
+- Instruction counts are deterministic. No wall-time claim is made.
+- The B/C counterfactual arms were NOT built. The primitive and compiled-masm
+  figures above are labelled [D] where derived.
+- The earlier repository census in the draft is retained as [R]; it was not
+  re-counted in this pass.

@@ -541,6 +541,11 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `R3-FIB-COMPARISON.md` — local Rebol3 vs Glon P5 Fibonacci benchmark.
 - `GLON-ARCHITECTURE-MEMORY.md` — architectural decisions, measurements and
   proposals (the memory map, capacities, vocabularies and experiments).
+- `GLON-EXECUTION-ARCHITECTURE.md` — 2026-11-10 investigation of where
+  execution complexity resides (evaluator, GC, primitive set, assembler and
+  host integration), with its measurement tools in
+  `experiments/glon-execution-architecture/`. Candidate changes are kept
+  separate in `GLON-EXECUTION-ARCHITECTURE-PROPOSALS.md`.
 - `experiments/glon-latex/` — the deployed LaTeX vocabulary and `/latex/` page.
 - `experiments/glon-pratt/GLON-PRATT-V004.md` — the Pratt parser experiment.
 - `experiments/glon-iter/GLON-ITER-V001.md` — the iterator vocabulary
