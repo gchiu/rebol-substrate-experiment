@@ -1,0 +1,2 @@
+diff: func [ a b ] [ either < a b [ - b a ] [ - a b ] ]
+diff 17 42

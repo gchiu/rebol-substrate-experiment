@@ -1,0 +1,327 @@
+GLON B4 — source representation experiment: recorded results
+2026-11-10, branch glon-shop-g1a
+Common target: B3 convention A, all six native operations, -O2 host code.
+B1-B3 unchanged; frozen S1 unchanged.
+
+REPRESENTATIONS
+
+A: textual Glon, compiled by the unchanged B3 compiler.
+B: semantically tagged 32-bit words, explicit roles; B4 decoder/emitter.
+C: direct machine-oriented 32-bit words with labels/relocation; B4 assembler.
+
+All three generate IDENTICAL code cells and instructions for every task.
+
+SOURCE SIZE AND TOKEN COUNT
+
+Token-count method:
+  A: lexical tokens (words, integers, '[' and ']'), comments removed.
+  B: 32-bit payload words, excluding the 4-byte magic.
+  C: 32-bit payload words, excluding the 4-byte magic; includes ENTRY/LABEL
+     metadata tokens.
+
+Aggregate over the seven tasks:
+  A: bytes total 507, median 67; tokens total 187, median 25.
+  B: bytes total 672, median 92; tokens total 161, median 22.
+  C: bytes total 1064, median 132; tokens total 259, median 32.
+
+A is smallest in bytes for these short, short-name programs. B has the fewest
+tokens, but fixed four-byte tokens make it larger in bytes than A. C is largest
+in both measures because it spells out the lowered operations.
+
+Per task:
+
+task     A bytes/tokens  B bytes/tokens  C bytes/tokens
+fib      72/27           104/25          120/29
+sum      77/27           100/24          160/39
+max3    107/41           152/37          312/77
+fact     67/24            92/22          132/32
+diff     67/25            92/22          168/41
+nested   66/22            68/16           88/21
+forward  51/21            64/15           84/20
+
+GENERATED CODE AND EXECUTION
+
+For every task and all three representations:
+  - generated code cells are identical;
+  - executed instructions are identical;
+  - results and final stack balances are identical.
+
+task     cells   instructions   result   data/return stack
+fib      39      129595         2584     11/36
+sum      53       12023         125250   3/1503
+max3    108          38         7        3/4
+fact     46         213         3628800  11/20
+diff     55          29         25       3/3
+nested   23          24         7        2/4
+forward  21          16         42       2/4
+
+SOURCE PROCESSING AND EXECUTION TIME (six unpinned rounds: two blocks of
+three; medians in microseconds; ranges in the raw logs)
+
+source processing:
+  A text parse+compile: median 68.79 us across tasks (task medians 52.89-88.60)
+  B tagged decode+emit: median  0.30 us across tasks (0.26-0.43)
+  C direct assembly:    median  0.28 us across tasks (0.23-0.46)
+
+execution (identical code, so representation differences are noise):
+  fib ~288 us, sum ~34 us, max3 ~0.10 us, fact ~0.50 us, diff ~0.07 us,
+  nested ~0.04 us, forward ~0.03 us.
+
+The B3 API exposes only combined parse+compile; A cannot be split into
+parse-only and codegen-only without changing B3. B and C are single-pass
+decode+emit / assemble. The numbers are comparable source-processing totals.
+The B/C fixtures were prepared by tools/gen_fixtures.py; artifact authoring and
+lowering cost is not included. C's assembler does no lowering; that work is in
+the artifact/generator, so its small size is not a whole-system simplicity win.
+
+IMPLEMENTATION SIZE (-O2 object text; source lines)
+
+A compiler: B3 compiler, 615 lines, 8553 bytes text.
+B decoder/emitter: 263 lines (.c+.h), 4559 bytes text.
+C assembler: 172 lines (.c+.h), 2505 bytes text.
+Common B3 machine fast: 276 lines, 5505 bytes text.
+Fixture generator (shared authoring tool): 267 lines.
+
+Compiler+machine text:
+  A: 14058 bytes
+  B: 10064 bytes
+  C:  8010 bytes
+
+ERROR DETECTION AND DIAGNOSTICS
+
+A: B3 parser rejects syntax, unknown names, arity/parameter errors, unsupported
+   forms.
+B: rejects bad magic/truncated words, unknown roles, duplicate function ids,
+   out-of-range parameters, undefined calls and call-arity mismatches.
+C: rejects bad magic/truncation, unknown operations, duplicate labels,
+   undefined/missing entry and undefined labels. It cannot detect stack
+   imbalance, function arity mismatches or language-level errors.
+
+TESTS
+
+B1 tests: 31 checks, 0 failures.
+B2 tests: 32 checks, 0 failures.
+B3 tests: 33 checks, 0 failures.
+B4 tests: 21 checks, 0 failures:
+  - all 7 tasks in A/B/C;
+  - identical results and stack balance;
+  - deterministic recompilation;
+  - A/B/C code identity;
+  - malformed B and C inputs, including call-arity mismatch and missing entry;
+  - one A parser rejection.
+ASan/UBSan passes for B1, B2, B3 and B4.
+Frozen-S1 check passes.
+
+LLM GENERATION AND REPAIR
+
+Not performed: no LLM was available. The harness is in generation/ with task
+specs and three format prompts, including a repair loop. No model-token or
+productivity claim is made.
+
+LIMITATIONS
+
+- Restricted integer subset; no closures, dynamic binding, escape laws,
+  managed values/GC, errors/judge, locals or loader integration.
+- A uses the full B3 compiler, which also contains convention-B support; its
+  size overstates a convention-A-only text compiler.
+- Wall-clock source processing for B/C is near timer resolution; the
+  order-of-magnitude gap from A is robust, individual sub-microsecond values
+  are not.
+- B/C source widths are fixed four bytes; no variable-length/compression
+  experiment.
+- C cannot validate arity or stack behavior.
+- No LLM trial was run; no ease-of-generation claim.
+- Execution code is identical; B4 measures representation front-ends.
+
+RAW COUNT RUN
+fib      A:text   bytes   72 tokens  27 cells  39 insns   129595 result 2584    ds/rs 11/36 ok
+fib      B:tagged bytes  104 tokens  25 cells  39 insns   129595 result 2584    ds/rs 11/36 ok
+fib      C:direct bytes  120 tokens  29 cells  39 insns   129595 result 2584    ds/rs 11/36 ok
+sum      A:text   bytes   77 tokens  27 cells  53 insns    12023 result 125250  ds/rs 3/1503 ok
+sum      B:tagged bytes  100 tokens  24 cells  53 insns    12023 result 125250  ds/rs 3/1503 ok
+sum      C:direct bytes  160 tokens  39 cells  53 insns    12023 result 125250  ds/rs 3/1503 ok
+max3     A:text   bytes  107 tokens  41 cells 108 insns       38 result 7       ds/rs 3/4 ok
+max3     B:tagged bytes  152 tokens  37 cells 108 insns       38 result 7       ds/rs 3/4 ok
+max3     C:direct bytes  312 tokens  77 cells 108 insns       38 result 7       ds/rs 3/4 ok
+fact     A:text   bytes   67 tokens  24 cells  46 insns      213 result 3628800 ds/rs 11/20 ok
+fact     B:tagged bytes   92 tokens  22 cells  46 insns      213 result 3628800 ds/rs 11/20 ok
+fact     C:direct bytes  132 tokens  32 cells  46 insns      213 result 3628800 ds/rs 11/20 ok
+diff     A:text   bytes   67 tokens  25 cells  55 insns       29 result 25      ds/rs 3/3 ok
+diff     B:tagged bytes   92 tokens  22 cells  55 insns       29 result 25      ds/rs 3/3 ok
+diff     C:direct bytes  168 tokens  41 cells  55 insns       29 result 25      ds/rs 3/3 ok
+nested   A:text   bytes   66 tokens  22 cells  23 insns       24 result 7       ds/rs 2/4 ok
+nested   B:tagged bytes   68 tokens  16 cells  23 insns       24 result 7       ds/rs 2/4 ok
+nested   C:direct bytes   88 tokens  21 cells  23 insns       24 result 7       ds/rs 2/4 ok
+forward  A:text   bytes   51 tokens  21 cells  21 insns       16 result 42      ds/rs 2/4 ok
+forward  B:tagged bytes   64 tokens  15 cells  21 insns       16 result 42      ds/rs 2/4 ok
+forward  C:direct bytes   84 tokens  20 cells  21 insns       16 result 42      ds/rs 2/4 ok
+
+RAW BENCH LOG, ROUNDS 1-3
+===== B4 ROUND 1 =====
+B4 source-processing and execution times (median us)
+fib      A:text   bytes   72 tokens  27 cells  39  source    57.47 us  exec   288.67 us  iters 237
+fib      B:tagged bytes  104 tokens  25 cells  39  source     0.31 us  exec   288.84 us  iters 258
+fib      C:direct bytes  120 tokens  29 cells  39  source     0.29 us  exec   284.84 us  iters 259
+sum      A:text   bytes   77 tokens  27 cells  53  source    87.71 us  exec    33.51 us  iters 2274
+sum      B:tagged bytes  100 tokens  24 cells  53  source     0.30 us  exec    33.93 us  iters 2228
+sum      C:direct bytes  160 tokens  39 cells  53  source     0.30 us  exec    33.84 us  iters 2176
+max3     A:text   bytes  107 tokens  41 cells 108  source    85.06 us  exec     0.10 us  iters 750527
+max3     B:tagged bytes  152 tokens  37 cells 108  source     0.42 us  exec     0.09 us  iters 794291
+max3     C:direct bytes  312 tokens  77 cells 108  source     0.45 us  exec     0.10 us  iters 747304
+fact     A:text   bytes   67 tokens  24 cells  46  source    86.36 us  exec     0.51 us  iters 149641
+fact     B:tagged bytes   92 tokens  22 cells  46  source     0.30 us  exec     0.51 us  iters 144184
+fact     C:direct bytes  132 tokens  32 cells  46  source     0.28 us  exec     0.50 us  iters 158913
+diff     A:text   bytes   67 tokens  25 cells  55  source    91.04 us  exec     0.07 us  iters 1117584
+diff     B:tagged bytes   92 tokens  22 cells  55  source     0.31 us  exec     0.07 us  iters 1053641
+diff     C:direct bytes  168 tokens  41 cells  55  source     0.30 us  exec     0.07 us  iters 1046598
+nested   A:text   bytes   66 tokens  22 cells  23  source    49.02 us  exec     0.05 us  iters 1712103
+nested   B:tagged bytes   68 tokens  16 cells  23  source     0.24 us  exec     0.05 us  iters 1792853
+nested   C:direct bytes   88 tokens  21 cells  23  source     0.23 us  exec     0.05 us  iters 1600359
+forward  A:text   bytes   51 tokens  21 cells  21  source    50.99 us  exec     0.03 us  iters 2097152
+forward  B:tagged bytes   64 tokens  15 cells  21  source     0.23 us  exec     0.03 us  iters 2097152
+forward  C:direct bytes   84 tokens  20 cells  21  source     0.23 us  exec     0.03 us  iters 2097152
+===== B4 ROUND 2 =====
+B4 source-processing and execution times (median us)
+fib      A:text   bytes   72 tokens  27 cells  39  source    44.71 us  exec   297.05 us  iters 255
+fib      B:tagged bytes  104 tokens  25 cells  39  source     0.29 us  exec   297.76 us  iters 266
+fib      C:direct bytes  120 tokens  29 cells  39  source     0.25 us  exec   293.52 us  iters 267
+sum      A:text   bytes   77 tokens  27 cells  53  source    52.52 us  exec    34.09 us  iters 2307
+sum      B:tagged bytes  100 tokens  24 cells  53  source     0.29 us  exec    34.19 us  iters 2111
+sum      C:direct bytes  160 tokens  39 cells  53  source     0.27 us  exec    34.21 us  iters 2245
+max3     A:text   bytes  107 tokens  41 cells 108  source    44.57 us  exec     0.10 us  iters 736086
+max3     B:tagged bytes  152 tokens  37 cells 108  source     0.39 us  exec     0.10 us  iters 763500
+max3     C:direct bytes  312 tokens  77 cells 108  source     0.40 us  exec     0.09 us  iters 773323
+fact     A:text   bytes   67 tokens  24 cells  46  source    44.35 us  exec     0.50 us  iters 149516
+fact     B:tagged bytes   92 tokens  22 cells  46  source     0.27 us  exec     0.52 us  iters 150733
+fact     C:direct bytes  132 tokens  32 cells  46  source     0.25 us  exec     0.50 us  iters 149643
+diff     A:text   bytes   67 tokens  25 cells  55  source    50.47 us  exec     0.06 us  iters 1009667
+diff     B:tagged bytes   92 tokens  22 cells  55  source     0.32 us  exec     0.07 us  iters 1076381
+diff     C:direct bytes  168 tokens  41 cells  55  source     0.31 us  exec     0.07 us  iters 1052752
+nested   A:text   bytes   66 tokens  22 cells  23  source    39.91 us  exec     0.05 us  iters 1542857
+nested   B:tagged bytes   68 tokens  16 cells  23  source     0.24 us  exec     0.05 us  iters 1607637
+nested   C:direct bytes   88 tokens  21 cells  23  source     0.21 us  exec     0.05 us  iters 1565583
+forward  A:text   bytes   51 tokens  21 cells  21  source    78.13 us  exec     0.03 us  iters 2097152
+forward  B:tagged bytes   64 tokens  15 cells  21  source     0.22 us  exec     0.03 us  iters 2097152
+forward  C:direct bytes   84 tokens  20 cells  21  source     0.21 us  exec     0.03 us  iters 2097152
+===== B4 ROUND 3 =====
+B4 source-processing and execution times (median us)
+fib      A:text   bytes   72 tokens  27 cells  39  source    48.32 us  exec   286.51 us  iters 264
+fib      B:tagged bytes  104 tokens  25 cells  39  source     0.28 us  exec   289.10 us  iters 263
+fib      C:direct bytes  120 tokens  29 cells  39  source     0.25 us  exec   289.62 us  iters 262
+sum      A:text   bytes   77 tokens  27 cells  53  source    42.12 us  exec    33.97 us  iters 2191
+sum      B:tagged bytes  100 tokens  24 cells  53  source     0.32 us  exec    34.04 us  iters 2123
+sum      C:direct bytes  160 tokens  39 cells  53  source     0.28 us  exec    35.37 us  iters 2258
+max3     A:text   bytes  107 tokens  41 cells 108  source    72.29 us  exec     0.11 us  iters 729918
+max3     B:tagged bytes  152 tokens  37 cells 108  source     0.40 us  exec     0.09 us  iters 745531
+max3     C:direct bytes  312 tokens  77 cells 108  source     0.41 us  exec     0.10 us  iters 802718
+fact     A:text   bytes   67 tokens  24 cells  46  source    74.21 us  exec     0.60 us  iters 106626
+fact     B:tagged bytes   92 tokens  22 cells  46  source     0.27 us  exec     0.53 us  iters 149091
+fact     C:direct bytes  132 tokens  32 cells  46  source     0.27 us  exec     0.52 us  iters 139108
+diff     A:text   bytes   67 tokens  25 cells  55  source    40.41 us  exec     0.07 us  iters 1073241
+diff     B:tagged bytes   92 tokens  22 cells  55  source     0.29 us  exec     0.07 us  iters 1019019
+diff     C:direct bytes  168 tokens  41 cells  55  source     0.28 us  exec     0.07 us  iters 1079170
+nested   A:text   bytes   66 tokens  22 cells  23  source    56.50 us  exec     0.05 us  iters 1571174
+nested   B:tagged bytes   68 tokens  16 cells  23  source     0.23 us  exec     0.05 us  iters 1644876
+nested   C:direct bytes   88 tokens  21 cells  23  source     0.23 us  exec     0.05 us  iters 1569293
+forward  A:text   bytes   51 tokens  21 cells  21  source   131.05 us  exec     0.05 us  iters 1586749
+forward  B:tagged bytes   64 tokens  15 cells  21  source     0.38 us  exec     0.03 us  iters 1081499
+forward  C:direct bytes   84 tokens  20 cells  21  source     0.27 us  exec     0.03 us  iters 2097152
+
+RAW BENCH LOG, ROUNDS 4-6
+===== B4 ROUND 1 =====
+B4 source-processing and execution times (median us)
+fib      A:text   bytes   72 tokens  27 cells  39  source   126.46 us  exec   259.01 us  iters 292
+fib      B:tagged bytes  104 tokens  25 cells  39  source     0.31 us  exec   236.34 us  iters 317
+fib      C:direct bytes  120 tokens  29 cells  39  source     0.32 us  exec   329.03 us  iters 161
+sum      A:text   bytes   77 tokens  27 cells  53  source   126.02 us  exec    34.61 us  iters 1957
+sum      B:tagged bytes  100 tokens  24 cells  53  source     0.32 us  exec    34.52 us  iters 2228
+sum      C:direct bytes  160 tokens  39 cells  53  source     0.36 us  exec    34.28 us  iters 2018
+max3     A:text   bytes  107 tokens  41 cells 108  source   106.29 us  exec     0.09 us  iters 844130
+max3     B:tagged bytes  152 tokens  37 cells 108  source     0.45 us  exec     0.09 us  iters 836680
+max3     C:direct bytes  312 tokens  77 cells 108  source     0.63 us  exec     0.10 us  iters 672159
+fact     A:text   bytes   67 tokens  24 cells  46  source   105.51 us  exec     0.48 us  iters 134602
+fact     B:tagged bytes   92 tokens  22 cells  46  source     0.31 us  exec     0.46 us  iters 148317
+fact     C:direct bytes  132 tokens  32 cells  46  source     0.37 us  exec     0.50 us  iters 148360
+diff     A:text   bytes   67 tokens  25 cells  55  source    48.45 us  exec     0.07 us  iters 1199963
+diff     B:tagged bytes   92 tokens  22 cells  55  source     0.31 us  exec     0.06 us  iters 1176572
+diff     C:direct bytes  168 tokens  41 cells  55  source     0.32 us  exec     0.06 us  iters 1276954
+nested   A:text   bytes   66 tokens  22 cells  23  source   107.20 us  exec     0.04 us  iters 1916146
+nested   B:tagged bytes   68 tokens  16 cells  23  source     0.29 us  exec     0.04 us  iters 1983019
+nested   C:direct bytes   88 tokens  21 cells  23  source     0.26 us  exec     0.04 us  iters 1977341
+forward  A:text   bytes   51 tokens  21 cells  21  source    99.08 us  exec     0.02 us  iters 2097152
+forward  B:tagged bytes   64 tokens  15 cells  21  source     0.42 us  exec     0.03 us  iters 2097152
+forward  C:direct bytes   84 tokens  20 cells  21  source     0.23 us  exec     0.03 us  iters 2097152
+===== B4 ROUND 2 =====
+B4 source-processing and execution times (median us)
+fib      A:text   bytes   72 tokens  27 cells  39  source    45.31 us  exec   243.67 us  iters 316
+fib      B:tagged bytes  104 tokens  25 cells  39  source     0.28 us  exec   242.33 us  iters 308
+fib      C:direct bytes  120 tokens  29 cells  39  source     0.26 us  exec   244.78 us  iters 305
+sum      A:text   bytes   77 tokens  27 cells  53  source    74.62 us  exec    37.08 us  iters 2025
+sum      B:tagged bytes  100 tokens  24 cells  53  source     0.34 us  exec    36.70 us  iters 2123
+sum      C:direct bytes  160 tokens  39 cells  53  source     0.30 us  exec    35.94 us  iters 2134
+max3     A:text   bytes  107 tokens  41 cells 108  source    59.49 us  exec     0.09 us  iters 852504
+max3     B:tagged bytes  152 tokens  37 cells 108  source     0.44 us  exec     0.08 us  iters 912634
+max3     C:direct bytes  312 tokens  77 cells 108  source     0.55 us  exec     0.10 us  iters 746901
+fact     A:text   bytes   67 tokens  24 cells  46  source    46.01 us  exec     0.51 us  iters 172084
+fact     B:tagged bytes   92 tokens  22 cells  46  source     0.32 us  exec     0.50 us  iters 157266
+fact     C:direct bytes  132 tokens  32 cells  46  source     0.28 us  exec     0.48 us  iters 148708
+diff     A:text   bytes   67 tokens  25 cells  55  source    63.82 us  exec     0.07 us  iters 1249556
+diff     B:tagged bytes   92 tokens  22 cells  55  source     0.33 us  exec     0.07 us  iters 1101236
+diff     C:direct bytes  168 tokens  41 cells  55  source     0.32 us  exec     0.07 us  iters 1128646
+nested   A:text   bytes   66 tokens  22 cells  23  source    94.90 us  exec     0.04 us  iters 1991403
+nested   B:tagged bytes   68 tokens  16 cells  23  source     0.29 us  exec     0.04 us  iters 2097152
+nested   C:direct bytes   88 tokens  21 cells  23  source     0.29 us  exec     0.04 us  iters 1866218
+forward  A:text   bytes   51 tokens  21 cells  21  source   127.16 us  exec     0.03 us  iters 2097152
+forward  B:tagged bytes   64 tokens  15 cells  21  source     0.35 us  exec     0.03 us  iters 1755602
+forward  C:direct bytes   84 tokens  20 cells  21  source     0.32 us  exec     0.03 us  iters 2097152
+===== B4 ROUND 3 =====
+B4 source-processing and execution times (median us)
+fib      A:text   bytes   72 tokens  27 cells  39  source    79.02 us  exec   289.40 us  iters 276
+fib      B:tagged bytes  104 tokens  25 cells  39  source     0.37 us  exec   284.45 us  iters 294
+fib      C:direct bytes  120 tokens  29 cells  39  source     0.35 us  exec   283.80 us  iters 218
+sum      A:text   bytes   77 tokens  27 cells  53  source    75.23 us  exec    36.94 us  iters 2139
+sum      B:tagged bytes  100 tokens  24 cells  53  source     0.36 us  exec    39.72 us  iters 2041
+sum      C:direct bytes  160 tokens  39 cells  53  source     0.61 us  exec    59.98 us  iters 1245
+max3     A:text   bytes  107 tokens  41 cells 108  source    65.29 us  exec     0.10 us  iters 860870
+max3     B:tagged bytes  152 tokens  37 cells 108  source     0.52 us  exec     0.08 us  iters 764391
+max3     C:direct bytes  312 tokens  77 cells 108  source     0.48 us  exec     0.09 us  iters 832142
+fact     A:text   bytes   67 tokens  24 cells  46  source    64.16 us  exec     0.51 us  iters 149910
+fact     B:tagged bytes   92 tokens  22 cells  46  source     0.32 us  exec     0.57 us  iters 166584
+fact     C:direct bytes  132 tokens  32 cells  46  source     0.38 us  exec     0.62 us  iters 141139
+diff     A:text   bytes   67 tokens  25 cells  55  source   175.06 us  exec     0.09 us  iters 931777
+diff     B:tagged bytes   92 tokens  22 cells  55  source     0.38 us  exec     0.07 us  iters 1090415
+diff     C:direct bytes  168 tokens  41 cells  55  source     0.49 us  exec     0.10 us  iters 1085195
+nested   A:text   bytes   66 tokens  22 cells  23  source    80.39 us  exec     0.04 us  iters 1854671
+nested   B:tagged bytes   68 tokens  16 cells  23  source     0.27 us  exec     0.04 us  iters 2097152
+nested   C:direct bytes   88 tokens  21 cells  23  source     0.24 us  exec     0.04 us  iters 2060385
+forward  A:text   bytes   51 tokens  21 cells  21  source    70.22 us  exec     0.03 us  iters 2097152
+forward  B:tagged bytes   64 tokens  15 cells  21  source     0.24 us  exec     0.03 us  iters 4194304
+forward  C:direct bytes   84 tokens  20 cells  21  source     0.22 us  exec     0.02 us  iters 2097152
+
+RAW SIZE RUN
+make: Entering directory '/mnt/d/repos/rebol-substrate-experiment/experiments/glon-source-b4'
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b3 -c -o build/b3_compiler_ref.o ../glon-direct-b3/b3_compiler.c
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b3 -c -o build/b4_tagged.o b4_tagged.c
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b3 -c -o build/b4_direct.o b4_direct.c
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b3 -c -o build/b3_machine_fast.o ../glon-direct-b3/b3_machine.c
+source lines:
+  233 b4_tagged.c
+   30 b4_tagged.h
+  140 b4_direct.c
+   32 b4_direct.h
+  333 b4_main.c
+   16 b4_common.h
+  784 total
+A: B3 compiler (used by A):
+   text	   data	    bss	    dec	    hex	filename
+   8553	      0	    256	   8809	   2269	build/b3_compiler_ref.o
+B: tagged decoder/emitter:
+   text	   data	    bss	    dec	    hex	filename
+   4559	      0	      0	   4559	   11cf	build/b4_tagged.o
+C: direct assembler:
+   text	   data	    bss	    dec	    hex	filename
+   2505	      0	      0	   2505	    9c9	build/b4_direct.o
+common B3 machine (fast):
+   text	   data	    bss	    dec	    hex	filename
+   5505	      0	 524328	 529833	  815a9	build/b3_machine_fast.o
+make: Leaving directory '/mnt/d/repos/rebol-substrate-experiment/experiments/glon-source-b4'

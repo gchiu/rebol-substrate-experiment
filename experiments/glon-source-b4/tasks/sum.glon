@@ -1,0 +1,2 @@
+sum: func [ n acc ] [ either = n 0 [ acc ] [ sum - n 1 + acc n ] ]
+sum 500 0

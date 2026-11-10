@@ -1,0 +1,3 @@
+a: func [ x ] [ b x ]
+b: func [ x ] [ + x 1 ]
+a 41
