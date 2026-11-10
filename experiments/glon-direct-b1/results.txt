@@ -1,0 +1,97 @@
+GLON Experiment B1 — recorded results
+2026-11-10, branch glon-shop-g1a
+native -O2; frozen S1 unchanged
+
+TEST RUN (build/b1-test, linked with frozen ../../s1.c)
+
+B1 direct-compiler tests
+  ok: identity
+  ok: two arguments
+  ok: subtraction
+  ok: multiplication with tags
+  ok: less-than true
+  ok: less-than false
+  ok: equality
+  ok: either then
+  ok: either else
+  ok: forward reference
+  ok: negative literal
+  ok: recursive fib 5
+  ok: recursive fib 10
+  ok: recursive fib 18
+  ok: two-parameter recursion
+  ok: greater-than
+  ok: less-or-equal
+  ok: equality false
+  ok: fib 0..18 match the reference
+  ok: unknown word
+  ok: missing argument
+  ok: nested func unsupported
+  ok: if without else unsupported
+  ok: division unsupported
+  ok: set-word local unsupported
+  ok: block value unsupported
+  ok: string unsupported
+  ok: empty body
+  ok: duplicate function
+  ok: unterminated body
+  ok: too many parameters
+
+B1 tests: 0 failure(s)
+
+An additional AddressSanitizer/UBSan build of the same tests also passes.
+
+MEASUREMENT (build/b1-measure --measure)
+
+B1 compiled direct execution
+  result: 2584
+  functions: 1
+  generated code cells: 153
+  executed S1 instructions: 497479
+  instructions per fib activation (total / 8361): 59.5
+  instructions per fib activation (body, top entry removed): 59.5
+  data-stack high-water: 13 cells
+  return-stack high-water: 36 cells
+  runtime-state cells used: 0 (no heap, loader, GC or RV cells)
+
+BASELINES (build/baseline ../.., production runtime + s1_count.c)
+
+runtime emitted code: 12861 cells
+Glon fib source/loader cells: 80
+Glon evaluator, fib 18 (definition loaded first)
+  result: 2584
+  executed S1 instructions: 30909921
+  data-stack high-water: 16 cells
+  return-stack high-water: 1736 cells
+masm fib 18
+  result: 2584
+  executed S1 instructions: 334942
+  data-stack high-water: 21 cells
+  return-stack high-water: 22 cells
+masm fib 1 (one base activation, definition loaded first)
+  result: 1
+  executed S1 instructions: 542
+masm fib, naive recursion, 8361 activations
+  per activation (subtracting top-level/wrapper, 15 base body): 40.00
+masm fib emitted code: 170 cells
+
+COMPILER SIZE (make size)
+
+compiler source lines:
+  503 b1_compiler.c
+   20 b1_compiler.h
+  523 total
+compiler object size:
+   text	   data	    bss	    dec	    hex	filename
+   7927	      0	    256	   8183	   1ff7	build/b1_compiler.o
+
+SUMMARY
+
+fib 18, 8,361 activations, result 2584:
+  Glon evaluator: 30,909,921 S1 instructions, 3,696.9 per activation
+  masm:             334,942 S1 instructions, 40.0 per activation, 170 cells
+  B1 compiled:      497,479 S1 instructions, 59.5 per activation, 153 cells
+
+Compiled vs Glon: 62.1x fewer instructions.
+Compiled vs masm: 1.49x more instructions, 17 fewer cells.
+Compiled extra runtime state: none outside code and the frozen stacks.
