@@ -1,0 +1,96 @@
+GLON Experiment B2 — recorded results
+2026-11-10, branch glon-shop-g1a
+native -O2; frozen S1 unchanged; B1 unchanged
+
+REFERENCE: B1 compiled Glon on frozen S1
+  fib 18 result: 2584
+  executed S1 instructions: 497479
+  per activation: 59.5
+  generated code cells: 153
+  data/return stack high-water: 13 / 36
+  extra runtime state: 0
+
+REFERENCE: production Glon evaluator and hand-written masm (B2 baseline)
+  runtime emitted code: 12861 cells
+  Glon fib source/loader cells: 80
+  Glon evaluator fib 18: 30909921 instructions, 3696.9 per activation, ds/rs 16/1736
+  masm fib 18: 334942 instructions, 40.0 per activation, 170 cells, ds/rs 21/22
+
+B2 COMPILED FIB 18 (8361 activations, result 2584)
+
+config                 total insns   per-call   code cells   ds   rs
+none (B1 lowering)          497479      59.50          153   13   36
+call                        397147      47.50           96   13   36
+ret                         413869      49.50          137   13   36
+>r                          430591      51.50          140   13   36
+r>                          430591      51.50          140   13   36
+>r+r>                       363703      43.50          127   13   36
+r@                          455675      54.50          141   13   36
+branch                      489117      58.50          150   13   36
+call+ret                    313537      37.50           80   13   36
+call+ret+branch             305175      36.50           77   13   36
+call+ret+>r+r>              179761      21.50           54   12   36
+call+ret+>r+r>+r@           137957      16.50           42   12   36
+all                         129595      15.50           39   11   36
+
+B2 COMPILED sum 200 0 (201 activations, two parameters, result 20100)
+
+config                 total insns   per-call   code cells   ds   rs
+none (B1 lowering)           16881      83.99          171    5  603
+call                         14469      71.99          133    4  603
+ret                          14871      73.99          155    5  603
+>r                           13665      67.99          145    5  603
+r>                           13665      67.99          145    5  603
+>r+r>                        10449      51.99          119    5  603
+r@                           15679      78.00          162    5  603
+branch                       16879      83.98          168    5  603
+call+ret                     12459      61.99          117    4  603
+call+ret+branch              12457      61.98          114    4  603
+call+ret+>r+r>                6027      29.99           65    3  603
+call+ret+>r+r>+r@             4825      24.00           56    3  603
+all                           4823      24.00           53    3  603
+
+INCREMENTAL CONTRIBUTIONS (fib 18, measured differences)
+  CALL    -12.00 instructions/activation, -57 code cells
+  RETURN  -10.00 instructions/activation, -16 code cells
+  >R       -8.00 instructions/activation, -13 code cells
+  R>       -8.00 instructions/activation, -13 code cells
+  >R+R>   -16.00 instructions/activation, -26 code cells
+  R@       -5.00 instructions/activation, -12 code cells
+  BRANCH   -1.00 instructions/activation,  -3 code cells
+  CALL+RETURN+>R+R> is additive: 59.50 - 12 - 10 - 16 = 21.50.
+
+INCREMENTAL CONTRIBUTIONS (sum 200 0, measured differences)
+  CALL    -12.00 instructions/activation, -38 code cells
+  RETURN  -10.00 instructions/activation, -16 code cells
+  >R      -16.00 instructions/activation, -26 code cells
+  R>      -16.00 instructions/activation, -26 code cells
+  >R+R>   -32.00 instructions/activation, -52 code cells
+  R@       -6.00 instructions/activation,  -9 code cells
+  BRANCH   -0.01 instructions/activation,  -3 code cells
+
+TESTS
+  B1 tests: 31 checks, 0 failures.
+  B2 tests: 32 checks, 0 failures; positive tests run in all 13 configurations.
+    - fib 0..18 in every configuration.
+    - 12 negative compiler cases in every configuration.
+    - invalid opcode stops the machine.
+  ASan/UBSan builds: both B1 and B2 pass.
+  Frozen S1 check: passes.
+
+IMPLEMENTATION SIZE
+  B1 compiler: 503 .c + 20 .h lines; object text 7927, data 0, bss 256.
+  B2 compiler: 518 .c + 36 .h lines; object text 8096, data 0, bss 256.
+  B1 machine counter copy: 210 .c + 10 .h lines; object text 4897, bss 524328.
+  B2 machine: 238 .c + 31 .h lines; object text 5569, bss 524328.
+  B2 adds 6 opcodes: CALL, RETURN, >R, R>, R@, BRANCH.
+  B1 compiler+machine source lines: 743; B2: 823 (+80, +10.8%).
+  B1 compiler+machine object text: 12824 bytes; B2: 13665 (+841, +6.6%).
+  Frozen s1.c/s1.h: 195 + 92 = 287 lines; unchanged.
+
+NOTES
+  - Instruction counts are measured; no wall-clock claim is made.
+  - The B2 machine preserves S1's unchecked stack semantics; the new opcodes do
+    not add bounds checks or close K1.
+  - B2's "none" configuration matches B1 exactly (497479 instructions, 153
+    cells), confirming the compiler/calling convention is unchanged.
