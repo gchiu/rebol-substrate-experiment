@@ -64,7 +64,9 @@ static cell masm_routine_addr[N_MASM_ROUTINES];
 
 static cell probe_routine(const char *name) {
     char p[96];
-    snprintf(p, sizeof p, "[ x: masm 0 [ CALL %s ] ]", name);
+    /* EXIT keeps the probe a well-formed block under K7: a CALL returns to
+     * the instruction after it, which would otherwise be the end of code. */
+    snprintf(p, sizeof p, "[ x: masm 0 [ CALL %s EXIT ] ]", name);
     r0_s1_init();
     cell a = asm_here();
     int err = 0;

@@ -1,0 +1,9 @@
+;; integrity/masm-empty.glon -- a source with an empty masm block `masm 0 [ ]`
+;; is refused at parse (K7), natively and in WASM, so nothing in it runs and it
+;; prints nothing. (Until 2026-11-10 the empty block emitted nothing and its
+;; callable's entry was the end of code: calling it ran whatever followed.)
+;; Run by integrity/parity.sh.
+[
+s/print "parity: masm-empty (must not print)"
+e: masm 0 [ ]
+]

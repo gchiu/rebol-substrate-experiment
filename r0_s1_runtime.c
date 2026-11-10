@@ -456,12 +456,16 @@ static void raw_counts(const masm_tok_t *tk, int n, int *labels, int *refs) {
     }
 }
 
-/* Validate a masm block before anything is emitted (K6; 2026-11-10).
+/* Validate a masm block before anything is emitted (K6, K7; 2026-11-10).
  * assemble_raw used to skip what it could not assemble, with only a warning:
  * an unknown mnemonic or a stray token, an instruction without its operand,
  * an unresolved operand, a HOST id outside S1's closed set, an undefined label
- * (patched as address 0) or a label defined twice. Each is now an error.
- * Answers 0, or -1 after printing the reason. */
+ * (patched as address 0) or a label defined twice. Each is now an error, and
+ * so is a block that can run past its own end: an empty block (its entry
+ * would be the end of code), or one whose last instruction is not EXIT,
+ * BRANCH or an indirect jump (LIT REG_IP !), or that defines a label after
+ * its last instruction (falling off the end runs whatever follows). Answers
+ * 0, or -1 after printing the reason. */
 static int raw_is_mnemonic(const masm_tok_t *t) {
     static const char *const ops[] = {
         "LIT", "INT", "ARITY", "HOST", "ZBRANCH", "BRANCH", "CALL",
@@ -530,7 +534,20 @@ static int raw_validate(const masm_tok_t *tk, int n) {
             return -1;
         }
     }
-    (void)last; (void)label_after_last;
+    if (last < 0) { fprintf(stderr, "r0_s1: invalid masm block: the block is empty (it would enter the end of code)\n"); return -1; }
+    /* the third unconditional transfer: an indirect jump, `LIT REG_IP !`
+     * (the M1 scheduler, stack-switching and tail-jump idiom) */
+    int ind_jump = mt_is(&tk[last], "!") && last >= 2 && mt_is(&tk[last - 2], "LIT")
+                && mt_is(&tk[last - 1], "REG_IP");
+    if (!mt_is(&tk[last], "EXIT") && !mt_is(&tk[last], "BRANCH") && !ind_jump) {
+        fprintf(stderr, "r0_s1: invalid masm block: the last instruction is not EXIT, BRANCH or an indirect jump (LIT REG_IP !): "
+                           "execution would run past the block\n");
+        return -1;
+    }
+    if (label_after_last) {
+        fprintf(stderr, "r0_s1: invalid masm block: a label is defined after the last instruction (it would enter the end of the block)\n");
+        return -1;
+    }
     return 0;
 }
 

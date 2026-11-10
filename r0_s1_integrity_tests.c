@@ -621,13 +621,13 @@ static void section_M(void) {
     CHECK(masm_parse(b, 0, &e) == R0S1_OUT_OK && e - 21 == sum, "M3: and all of them together in one block emit the sum");
 }
 
-/* ---- V: masm well-formedness (K6; repaired 2026-11-10) ----------------------
+/* ---- V: masm well-formedness (K6, K7; repaired 2026-11-10) ------------------
  * Until the repair, invalid masm was accepted with a warning on stderr:
  * undefined labels were patched as address 0, unresolved operands, unknown
  * mnemonics and operand-less instructions were dropped, duplicate labels and
- * out-of-range HOST ids accepted. Now each is refused as a syntax error
- * before anything is emitted, recorded, bound or kept. No refused block is
- * ever run here. */
+ * out-of-range HOST ids accepted (K6); an empty block's callable entered the
+ * end of code (K7). Now each is refused as a syntax error before anything is
+ * emitted, recorded, bound or kept. No refused block is ever run here. */
 static void section_V(const char *root) {
     printf("== V: masm well-formedness\n");
     struct { const char *body; const char *what; } bad[] = {
@@ -647,6 +647,12 @@ static void section_V(const char *root) {
         { "\"text\" INT 1 ARITY 1 EXIT",     "a string in instruction position" },
         { "[ x ] INT 1 ARITY 1 EXIT",          "a nested block in instruction position" },
         { "BRANCH L: INT 1 ARITY 1 EXIT",      "a branch whose operand is a label definition" },
+        { "",                                  "nothing at all (empty block)" },
+        { "L1: L2:",                           "only labels (empty code)" },
+        { "INT 1 ARITY 1",                     "no final transfer (falls off the end)" },
+        { "INT 0 ZBRANCH E INT 1 ARITY 1 EXIT E:", "a label after the last instruction (a branch to the end)" },
+        { "INT 1 ARITY 1 EXIT INT 2",          "code after the last EXIT that falls off the end" },
+        { "CALL collect",                      "a final CALL (its return falls off the end)" },
     };
     int nbad = (int)(sizeof bad / sizeof bad[0]);
     setup(root);
@@ -836,15 +842,6 @@ int main(int argc, char **argv) {
         int bad = clean_but_code_changed("ix/exc", &clean);
         XFAIL(!bad, "K1: a masm word that pushes the data stack 400 deep into loaded code is stopped or not reported clean (needs a frozen-S1 change)");
     }
-    /* K7: an empty masm block emits nothing, and its callable's entry is the
-     * end of code: calling it runs whatever follows. Checked without calling it. */
-    {
-        fresh();
-        cell e; int st = masm_parse("", 0, &e);
-        XFAIL(st == R0S1_OUT_PARSE_ERROR && e == 0,
-              "K7: an empty masm block is refused (today: its callable enters the end of code)");
-    }
-
     printf("\nmachine-integrity: %d failure(s), %d expected failure(s), %d unexpected pass(es)\n",
            failures, xfails, xpasses);
     return (failures || xpasses) ? 1 : 0;
