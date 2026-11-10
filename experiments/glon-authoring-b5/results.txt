@@ -1,0 +1,233 @@
+GLON B5 — LLM program generation and repair: recorded results
+2026-11-10, branch glon-shop-g1a
+B1-B4 unchanged; frozen S1 unchanged.
+
+STATUS
+
+No LLM was available in this development environment. No controlled generation
+or repair trials were performed. There are no model-token, cost, elapsed-time,
+first-attempt-success or productivity results. The harness and 12-task suite
+are committed for later trials.
+
+TASK SUITE
+
+12 tasks, all expressible in A textual Glon, B tagged words and C direct words:
+
+task       exercises                                      expected
+tri        recursion, arithmetic, n<=0 base                55
+pow2       recursion, multiplication                        1024
+min3       multiple arguments, nested branching            4
+clamp      multiple arguments, high-bound edge             10
+sign_neg   negative input, branching                      -1
+range_sum  two-argument recursion, accumulator            42
+choose     two-way recursion, binomial base cases         15
+is_even    recursion by subtraction, parity edge          1
+ack        deep recursion, multiple arguments             9
+quad       nested calls, forward reference                20
+median3    multiple arguments, nested comparisons         7
+max_neg    three negative inputs, comparisons             -4
+
+Each task has a specification (<task>.md), A/B/C artifacts, and an independent
+reference implementation in b5_main.c. Reference code is not included in the
+generation prompts. Negative constants are represented as subtraction from
+zero so all three representations lower to identical code.
+
+REFERENCE-ARTIFACT SOURCE SIZE AND TOKEN COUNT
+
+Token-count method:
+  A: lexical tokens (words, integers, '[' and ']'), comments removed.
+  B: 32-bit payload words, excluding magic.
+  C: 32-bit payload words, excluding magic; includes ENTRY/LABEL metadata.
+
+Aggregate over 12 tasks:
+  A: bytes total 1193, median 94.5; tokens total 425, median 32.
+  B: bytes total 1592, median 122;  tokens total 386, median 29.5.
+  C: bytes total 2604, median 192;  tokens total 639, median 47.
+
+B has fewer tokens; A has fewer bytes; C is largest in both. These are not
+model tokens.
+
+REFERENCE-ARTIFACT CODE AND EXECUTION
+
+All A/B/C artifacts generated identical code cells and instruction counts for
+every task:
+
+task       cells   instructions   result   data/return stack
+tri         34       175          55       12/22
+pow2        47       235          1024     12/22
+min3       108        45          4        3/4
+clamp       74        41          10       3/4
+sign_neg    49        19          -1       2/2
+range_sum   53       219          42       10/24
+choose      93      1011          15       7/18
+is_even     46       115          1        2/12
+ack         90      1253          9        10/30
+quad        22        24          20       2/4
+median3    162        55          7        3/4
+max_neg    120        51          -4       4/4
+
+REFERENCE SOURCE-PROCESSING AND EXECUTION TIMES (one benchmark round; median us;
+not LLM development effort)
+
+  A text:   source median 53.32 us (range 49.09-65.28); execution varies by task
+  B tagged: source median  0.38 us (0.26-0.56); execution same as A
+  C direct: source median  0.36 us (0.26-0.60); execution same as A
+
+Execution medians: tri 0.36, pow2 0.53, min3 0.10, clamp 0.09, sign_neg 0.04,
+range_sum 0.51, choose ~3.0-3.6, is_even 0.27, ack ~3.4-3.6, quad 0.04,
+median3 0.13, max_neg 0.11 us. A/B/C execute the same code; small differences
+are timing noise. These are reference artifacts, not generated solutions.
+
+IMPLEMENTATION SIZE (-O2 object text; source lines)
+
+B5 harness: 370 lines, 9159 bytes text, 224 data.
+Fixture generator: 354 lines.
+A front-end (B3 compiler): 8553 bytes.
+B front-end (B4 tagged): 4559 bytes.
+C front-end (B4 direct): 2505 bytes.
+Common B3 machine: 5505 bytes.
+
+TESTS
+
+B1: 31 checks, 0 failures.
+B2: 32 checks, 0 failures.
+B3: 33 checks, 0 failures.
+B4: 21 checks, 0 failures.
+B5: 26 checks, 0 failures (12 task results + front-end malformed/negative
+    regression cases; deterministic code and A/B/C identity).
+ASan/UBSan: B1-B5 pass.
+Frozen-S1 check: passes.
+
+LLM TRIALS
+
+Unperformed. The generation harness is in generation/ with:
+  - 12 task specifications;
+  - equivalent A/B/C prompts;
+  - run_trial.sh with one initial attempt and up to three repairs;
+  - run_suite.sh randomising task/representation order;
+  - trial-log-schema.md;
+  - results.md recording that no trial was run.
+
+The harness accepts B/C as whitespace-separated 32-bit hex words and converts
+them to the B4 binary word streams; this is an authoring interface, not a
+change to B4. No claim is made about first-attempt correctness, repair success,
+tokens, cost, elapsed development time or LLM ease for any representation.
+
+LIMITATIONS
+
+- No genuine LLM sessions were orchestrated; no productivity measurement.
+- The 12-task suite is small and uses a restricted integer subset.
+- B/C artifacts were prepared by the B5 fixture generator; authoring effort is
+  not included in source-processing timings.
+- Reference execution is identical because the fixtures lower to identical
+  code; no generated-program code-quality difference is measured.
+- Negative inputs are represented by subtraction from zero; edge coverage is
+  limited to the listed tasks.
+
+RAW COUNT RUN
+tri      A:text   bytes   65 tokens  24 cells  34 insns      175 result 55      ds/rs 12/22 ok
+tri      B:tagged bytes   92 tokens  22 cells  34 insns      175 result 55      ds/rs 12/22 ok
+tri      C:direct bytes  108 tokens  26 cells  34 insns      175 result 55      ds/rs 12/22 ok
+pow2     A:text   bytes   67 tokens  24 cells  47 insns      235 result 1024    ds/rs 12/22 ok
+pow2     B:tagged bytes   92 tokens  22 cells  47 insns      235 result 1024    ds/rs 12/22 ok
+pow2     C:direct bytes  132 tokens  32 cells  47 insns      235 result 1024    ds/rs 12/22 ok
+min3     A:text   bytes  107 tokens  41 cells 108 insns       45 result 4       ds/rs 3/4 ok
+min3     B:tagged bytes  152 tokens  37 cells 108 insns       45 result 4       ds/rs 3/4 ok
+min3     C:direct bytes  312 tokens  77 cells 108 insns       45 result 4       ds/rs 3/4 ok
+clamp    A:text   bytes   94 tokens  32 cells  74 insns       41 result 10      ds/rs 3/4 ok
+clamp    B:tagged bytes  116 tokens  28 cells  74 insns       41 result 10      ds/rs 3/4 ok
+clamp    C:direct bytes  224 tokens  55 cells  74 insns       41 result 10      ds/rs 3/4 ok
+sign_neg A:text   bytes   84 tokens  32 cells  49 insns       19 result -1      ds/rs 2/2 ok
+sign_neg B:tagged bytes  124 tokens  30 cells  49 insns       19 result -1      ds/rs 2/2 ok
+sign_neg C:direct bytes  144 tokens  35 cells  49 insns       19 result -1      ds/rs 2/2 ok
+range_sum A:text   bytes   94 tokens  27 cells  53 insns      219 result 42      ds/rs 10/24 ok
+range_sum B:tagged bytes  100 tokens  24 cells  53 insns      219 result 42      ds/rs 10/24 ok
+range_sum C:direct bytes  160 tokens  39 cells  53 insns      219 result 42      ds/rs 10/24 ok
+choose   A:text   bytes  118 tokens  42 cells  93 insns     1011 result 15      ds/rs 7/18 ok
+choose   B:tagged bytes  160 tokens  39 cells  93 insns     1011 result 15      ds/rs 7/18 ok
+choose   C:direct bytes  256 tokens  63 cells  93 insns     1011 result 15      ds/rs 7/18 ok
+is_even  A:text   bytes   95 tokens  31 cells  46 insns      115 result 1       ds/rs 2/12 ok
+is_even  B:tagged bytes  120 tokens  29 cells  46 insns      115 result 1       ds/rs 2/12 ok
+is_even  C:direct bytes  140 tokens  34 cells  46 insns      115 result 1       ds/rs 2/12 ok
+ack      A:text   bytes  112 tokens  44 cells  90 insns     1253 result 9       ds/rs 10/30 ok
+ack      B:tagged bytes  168 tokens  41 cells  90 insns     1253 result 9       ds/rs 10/30 ok
+ack      C:direct bytes  248 tokens  61 cells  90 insns     1253 result 9       ds/rs 10/30 ok
+quad     A:text   bytes   73 tokens  22 cells  22 insns       24 result 20      ds/rs 2/4 ok
+quad     B:tagged bytes   68 tokens  16 cells  22 insns       24 result 20      ds/rs 2/4 ok
+quad     C:direct bytes   88 tokens  21 cells  22 insns       24 result 20      ds/rs 2/4 ok
+median3  A:text   bytes  159 tokens  59 cells 162 insns       55 result 7       ds/rs 3/4 ok
+median3  B:tagged bytes  224 tokens  55 cells 162 insns       55 result 7       ds/rs 3/4 ok
+median3  C:direct bytes  456 tokens 113 cells 162 insns       55 result 7       ds/rs 3/4 ok
+max_neg  A:text   bytes  125 tokens  47 cells 120 insns       51 result -4      ds/rs 4/4 ok
+max_neg  B:tagged bytes  176 tokens  43 cells 120 insns       51 result -4      ds/rs 4/4 ok
+max_neg  C:direct bytes  336 tokens  83 cells 120 insns       51 result -4      ds/rs 4/4 ok
+
+RAW BENCH RUN
+make: Entering directory '/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5'
+./build/b5 --bench
+B5 source-processing and execution times (median us)
+tri      A:text   bytes   65 tokens  24 cells  34  source    52.35 us  exec     0.36 us  iters 223570
+tri      B:tagged bytes   92 tokens  22 cells  34  source     0.30 us  exec     0.38 us  iters 204392
+tri      C:direct bytes  108 tokens  26 cells  34  source     0.27 us  exec     0.36 us  iters 207469
+pow2     A:text   bytes   67 tokens  24 cells  47  source    64.49 us  exec     0.53 us  iters 134772
+pow2     B:tagged bytes   92 tokens  22 cells  47  source     0.33 us  exec     0.52 us  iters 145366
+pow2     C:direct bytes  132 tokens  32 cells  47  source     0.32 us  exec     0.53 us  iters 146297
+min3     A:text   bytes  107 tokens  41 cells 108  source    49.69 us  exec     0.10 us  iters 786020
+min3     B:tagged bytes  152 tokens  37 cells 108  source     0.45 us  exec     0.10 us  iters 756485
+min3     C:direct bytes  312 tokens  77 cells 108  source     0.44 us  exec     0.10 us  iters 734355
+clamp    A:text   bytes   94 tokens  32 cells  74  source    65.28 us  exec     0.09 us  iters 780406
+clamp    B:tagged bytes  116 tokens  28 cells  74  source     0.40 us  exec     0.09 us  iters 839792
+clamp    C:direct bytes  224 tokens  55 cells  74  source     0.38 us  exec     0.09 us  iters 828206
+sign_neg A:text   bytes   84 tokens  32 cells  49  source    53.60 us  exec     0.04 us  iters 1839741
+sign_neg B:tagged bytes  124 tokens  30 cells  49  source     0.36 us  exec     0.05 us  iters 1705221
+sign_neg C:direct bytes  144 tokens  35 cells  49  source     0.33 us  exec     0.04 us  iters 1872272
+range_sum A:text   bytes   94 tokens  27 cells  53  source    63.67 us  exec     0.51 us  iters 142679
+range_sum B:tagged bytes  100 tokens  24 cells  53  source     0.33 us  exec     0.53 us  iters 132475
+range_sum C:direct bytes  160 tokens  39 cells  53  source     0.31 us  exec     0.53 us  iters 148506
+choose   A:text   bytes  118 tokens  42 cells  93  source    53.03 us  exec     3.04 us  iters 26136
+choose   B:tagged bytes  160 tokens  39 cells  93  source     0.47 us  exec     3.58 us  iters 24826
+choose   C:direct bytes  256 tokens  63 cells  93  source     0.44 us  exec     2.93 us  iters 22354
+is_even  A:text   bytes   95 tokens  31 cells  46  source    51.19 us  exec     0.27 us  iters 262144
+is_even  B:tagged bytes  120 tokens  29 cells  46  source     0.34 us  exec     0.27 us  iters 262144
+is_even  C:direct bytes  140 tokens  34 cells  46  source     0.30 us  exec     0.26 us  iters 262144
+ack      A:text   bytes  112 tokens  44 cells  90  source    62.23 us  exec     3.44 us  iters 22142
+ack      B:tagged bytes  168 tokens  41 cells  90  source     0.45 us  exec     3.46 us  iters 22760
+ack      C:direct bytes  248 tokens  61 cells  90  source     0.38 us  exec     3.57 us  iters 24003
+quad     A:text   bytes   73 tokens  22 cells  22  source    50.27 us  exec     0.04 us  iters 1843167
+quad     B:tagged bytes   68 tokens  16 cells  22  source     0.26 us  exec     0.04 us  iters 1905434
+quad     C:direct bytes   88 tokens  21 cells  22  source     0.26 us  exec     0.04 us  iters 1975835
+median3  A:text   bytes  159 tokens  59 cells 162  source    53.65 us  exec     0.13 us  iters 582294
+median3  B:tagged bytes  224 tokens  55 cells 162  source     0.56 us  exec     0.13 us  iters 630076
+median3  C:direct bytes  456 tokens 113 cells 162  source     0.60 us  exec     0.13 us  iters 631821
+max_neg  A:text   bytes  125 tokens  47 cells 120  source    49.09 us  exec     0.11 us  iters 684889
+max_neg  B:tagged bytes  176 tokens  43 cells 120  source     0.46 us  exec     0.11 us  iters 680425
+max_neg  C:direct bytes  336 tokens  83 cells 120  source     0.49 us  exec     0.11 us  iters 615052
+make: Leaving directory '/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5'
+
+RAW SIZE RUN
+make: Entering directory '/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5'
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b3 -I../glon-source-b4 -c -o build/b5_main.o b5_main.c
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b3 -I../glon-source-b4 -c -o build/b4_tagged.o ../glon-source-b4/b4_tagged.c
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b3 -I../glon-source-b4 -c -o build/b4_direct.o ../glon-source-b4/b4_direct.c
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b3 -I../glon-source-b4 -c -o build/b3_compiler.o ../glon-direct-b3/b3_compiler.c
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b3 -I../glon-source-b4 -c -o build/b3_machine.o ../glon-direct-b3/b3_machine.c
+source lines:
+  370 b5_main.c
+  354 tools/gen_tasks.py
+  724 total
+B5 harness:
+   text	   data	    bss	    dec	    hex	filename
+   9159	    224	      4	   9387	   24ab	build/b5_main.o
+A front-end (B3 compiler):
+   text	   data	    bss	    dec	    hex	filename
+   8553	      0	    256	   8809	   2269	build/b3_compiler.o
+B front-end (B4 tagged):
+   text	   data	    bss	    dec	    hex	filename
+   4559	      0	      0	   4559	   11cf	build/b4_tagged.o
+C front-end (B4 direct):
+   text	   data	    bss	    dec	    hex	filename
+   2505	      0	      0	   2505	    9c9	build/b4_direct.o
+common machine:
+   text	   data	    bss	    dec	    hex	filename
+   5505	      0	 524328	 529833	  815a9	build/b3_machine.o
+make: Leaving directory '/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5'
