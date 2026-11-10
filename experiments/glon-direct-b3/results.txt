@@ -1,0 +1,248 @@
+GLON Experiment B3 — recorded results
+2026-11-10, branch glon-shop-g1a
+native -O2; frozen S1 unchanged; B1 and B2 unchanged
+
+This file records:
+  1. summary tables from three unpinned benchmark rounds;
+  2. the raw three-round wall-clock log;
+  3. the instruction/code/stack count run;
+  4. implementation sizes;
+  5. test/sanitizer status.
+
+Summary wall-clock medians (three process rounds, unpinned; micro seconds per run).
+Ranges and within-round spreads are in the raw log. CPU frequency/load varied;
+only the large differences are safe to interpret.
+
+                      fib 18 median (us)    sum 500 median (us)   compile median (us, fib/sum)
+B1 original S1               2103.10               175.80                54.22 / 57.25
+B3 A: none (B1 lowering)     1860.03               145.36                67.47 / 54.64
+B3 A: call+ret+>r+r>          476.89                49.11                50.82 / 42.11
+B3 A: call+ret+>r+r>+r@       313.37                33.52                57.48 / 42.59
+B3 A: all six                 296.90                33.65                61.73 / 79.77
+B3 B: none (B1 lowering)     1952.01               143.72                46.40 / 64.89
+B3 B: call+ret+>r+r>          612.06                63.43                46.22 / 44.18
+B3 B: call+ret+>r+r>+r@       574.82                64.64                54.22 / 50.04
+B3 B: all six                 560.16                65.71                53.81 / 53.45
+
+Wall-clock ratios (medians):
+  A none -> A core:          3.90x fib, 2.96x sum
+  A core -> A core+r@:       1.52x fib, 1.47x sum
+  A none -> A all:           6.26x fib, 4.32x sum
+  B none -> B all:           3.48x fib, 2.19x sum
+  A all vs B all:            1.89x fib, 1.95x sum (A faster)
+  B1 vs A all:               7.08x fib, 5.22x sum (machine implementation differs)
+
+Instruction counts, code cells and stack high-water (count build):
+  B1 fib 18:  497479 instructions, 59.50/activation, 153 cells, ds 13, rs 36
+  B1 sum 500:  42081 instructions, 83.99/activation, 171 cells, ds 5, rs 1503
+  A none:     identical to B1.
+  A core:     fib 179761, 21.50, 54 cells, ds 12, rs 36; sum 15027, 29.99, 65, ds 3, rs 1503
+  A core+r@:  fib 137957, 16.50, 42 cells, ds 12, rs 36; sum 12025, 24.00, 56, ds 3, rs 1503
+  A all:      fib 129595, 15.50, 39 cells, ds 11, rs 36; sum 12023, 24.00, 53, ds 3, rs 1503
+  B none:     fib 547644, 65.50, 166 cells, ds 22, rs 19; sum 38067, 75.98, 159, ds 1005, rs 502
+  B core:     fib 229926, 27.50, 67 cells, ds 22, rs 19; sum 19029, 37.98, 79, ds 1005, rs 502
+  B core+r@:  identical to B core (R@ is unused by convention B).
+  B all:      fib 221564, 26.50, 64 cells, ds 21, rs 19; sum 19027, 37.98, 76, ds 1004, rs 502
+
+Implementation sizes (-O2 object text; source lines):
+  Compiler B1: 523 lines, 7927 bytes text
+  Compiler B2: 554 lines, 8096 bytes text
+  Compiler B3: 615 lines, 8553 bytes text (+61 lines/+457 bytes vs B2)
+  Machine B1 frozen s1.c/s1.h: 195+92=287 lines, 4817 bytes text
+  Machine B2 (counters): 238+31=269 lines, 5569 bytes text
+  Machine B3 fast: 245+31=276 lines, 5505 bytes text
+  Machine B3 count: 245+31=276 lines, 5569 bytes text
+  B1 compiler+machine text: 12744 bytes
+  B2 compiler+machine text: 13665 bytes
+  B3 compiler+machine text: 14058 bytes (fast machine)
+  B3 adds convention support and depth tracking; no new runtime memory cells.
+
+Tests:
+  B1 tests: 31 checks, 0 failures.
+  B2 tests: 32 checks, 0 failures.
+  B3 tests: 33 checks, 0 failures; all positive tests run in 8 configurations,
+  fib 0..18 in all configurations, stack balance checked, 12 negative cases,
+  and invalid-opcode handling.
+  ASan/UBSan passes for B1, B2 and B3 builds.
+  Frozen-S1 check passes.
+
+Limitations:
+  - Wall-clock is noisy in this WSL environment; within-round spreads and
+    across-round ranges are reported. No whole-language speed claim.
+  - B1 original and B3 A:none execute the same instruction stream but use
+    different machine binaries; the measured difference is machine
+    implementation/code-layout, not instruction selection.
+  - Restricted integer subset; no closures, dynamic binding, escape laws,
+    GC/strings, errors/judge or loader integration.
+  - No stack bounds checks; K1 and unchecked stack boundaries remain.
+  - Compilation time is host C time and is reported separately.
+
+RAW WALL-CLOCK LOG (three unpinned rounds)
+
+===== ROUND 1 B1 =====
+B1 fib 18 (8,361 activations)
+  run   2561.79 us [min  2424.89 max  2881.72 spread  17.8%]  compile    58.88 us  iters 31
+B1 sum 500 0 (501 activations, two parameters)
+  run    202.31 us [min   183.62 max   210.53 spread  13.3%]  compile    57.25 us  iters 409
+
+B1 empty program (LIT 0; HALT), reset included: 0.01 us median
+===== ROUND 1 B3 =====
+
+fib 18 (8,361 activations)
+  A: none (B1 lowering)    run   1993.05 us [min  1884.47 max  2264.16 spread  19.1%]  compile    77.54 us  iters 40
+  A: call+ret+>r+r>        run    486.57 us [min   440.82 max   519.54 spread  16.2%]  compile    42.80 us  iters 151
+  A: call+ret+>r+r>+r@     run    292.02 us [min   285.63 max   300.66 spread   5.1%]  compile    43.02 us  iters 256
+  A: all six               run    296.90 us [min   278.56 max   352.19 spread  24.8%]  compile    55.73 us  iters 267
+  B: none (B1 lowering)    run   2046.42 us [min  1976.61 max  2108.47 spread   6.4%]  compile    46.40 us  iters 36
+  B: call+ret+>r+r>        run    637.74 us [min   616.62 max   675.86 spread   9.3%]  compile    46.22 us  iters 128
+  B: call+ret+>r+r>+r@     run    633.44 us [min   597.53 max   728.16 spread  20.6%]  compile    66.55 us  iters 128
+  B: all six               run    560.16 us [min   546.13 max   579.34 spread   5.9%]  compile    62.99 us  iters 128
+
+sum 500 0 (501 activations, two parameters)
+  A: none (B1 lowering)    run    145.36 us [min   142.60 max   150.12 spread   5.2%]  compile    52.95 us  iters 512
+  A: call+ret+>r+r>        run     49.11 us [min    47.69 max    51.66 spread   8.1%]  compile    42.11 us  iters 1551
+  A: call+ret+>r+r>+r@     run     31.98 us [min    31.69 max    33.00 spread   4.1%]  compile    40.19 us  iters 2321
+  A: all six               run     33.83 us [min    33.47 max    34.88 spread   4.1%]  compile    85.59 us  iters 2251
+  B: none (B1 lowering)    run    146.52 us [min   142.96 max   152.11 spread   6.2%]  compile    55.39 us  iters 512
+  B: call+ret+>r+r>        run     64.68 us [min    62.14 max    71.60 spread  14.6%]  compile    44.18 us  iters 1168
+  B: call+ret+>r+r>+r@     run     64.64 us [min    63.79 max    66.06 spread   3.5%]  compile    50.04 us  iters 1138
+  B: all six               run     65.71 us [min    60.00 max    67.36 spread  11.2%]  compile    53.45 us  iters 1163
+
+empty program (LIT 0; HALT), reset included: 0.00 us median
+===== ROUND 2 B1 =====
+B1 fib 18 (8,361 activations)
+  run   2066.55 us [min  1925.04 max  2278.08 spread  17.1%]  compile    41.15 us  iters 38
+B1 sum 500 0 (501 activations, two parameters)
+  run    164.53 us [min   158.91 max   176.26 spread  10.5%]  compile    52.68 us  iters 452
+
+B1 empty program (LIT 0; HALT), reset included: 0.00 us median
+===== ROUND 2 B3 =====
+
+fib 18 (8,361 activations)
+  A: none (B1 lowering)    run   1860.03 us [min  1782.85 max  1965.57 spread   9.8%]  compile    67.47 us  iters 41
+  A: call+ret+>r+r>        run    476.89 us [min   448.74 max   524.30 spread  15.8%]  compile    50.82 us  iters 159
+  A: call+ret+>r+r>+r@     run    343.37 us [min   311.87 max   374.22 spread  18.2%]  compile    57.48 us  iters 208
+  A: all six               run    302.49 us [min   290.94 max   345.13 spread  17.9%]  compile    61.73 us  iters 237
+  B: none (B1 lowering)    run   1928.61 us [min  1790.77 max  2363.35 spread  29.7%]  compile    39.95 us  iters 36
+  B: call+ret+>r+r>        run    565.27 us [min   549.18 max   577.63 spread   5.0%]  compile    39.07 us  iters 135
+  B: call+ret+>r+r>+r@     run    574.82 us [min   548.65 max   586.06 spread   6.5%]  compile    54.22 us  iters 134
+  B: all six               run    566.45 us [min   548.33 max   583.81 spread   6.3%]  compile    44.17 us  iters 139
+
+sum 500 0 (501 activations, two parameters)
+  A: none (B1 lowering)    run    154.63 us [min   152.61 max   159.22 spread   4.3%]  compile    54.64 us  iters 495
+  A: call+ret+>r+r>        run     52.57 us [min    51.22 max    55.64 spread   8.4%]  compile    43.80 us  iters 1411
+  A: call+ret+>r+r>+r@     run     34.70 us [min    33.69 max    36.77 spread   8.9%]  compile    42.59 us  iters 2185
+  A: all six               run     33.21 us [min    31.49 max    34.67 spread   9.6%]  compile    79.77 us  iters 2229
+  B: none (B1 lowering)    run    136.60 us [min   134.60 max   140.95 spread   4.6%]  compile    75.20 us  iters 512
+  B: call+ret+>r+r>        run     59.15 us [min    58.75 max    60.31 spread   2.6%]  compile    47.08 us  iters 1208
+  B: call+ret+>r+r>+r@     run     64.92 us [min    60.78 max    69.58 spread  13.6%]  compile    45.19 us  iters 1274
+  B: all six               run     71.89 us [min    67.25 max    81.45 spread  19.8%]  compile    73.55 us  iters 1024
+
+empty program (LIT 0; HALT), reset included: 0.00 us median
+===== ROUND 3 B1 =====
+B1 fib 18 (8,361 activations)
+  run   2103.10 us [min  2057.10 max  2209.56 spread   7.2%]  compile    54.22 us  iters 35
+B1 sum 500 0 (501 activations, two parameters)
+  run    175.80 us [min   173.59 max   182.35 spread   5.0%]  compile    69.47 us  iters 419
+
+B1 empty program (LIT 0; HALT), reset included: 0.00 us median
+===== ROUND 3 B3 =====
+
+fib 18 (8,361 activations)
+  A: none (B1 lowering)    run   1654.88 us [min  1622.05 max  1706.40 spread   5.1%]  compile    47.88 us  iters 45
+  A: call+ret+>r+r>        run    414.93 us [min   407.59 max   425.91 spread   4.4%]  compile    75.39 us  iters 175
+  A: call+ret+>r+r>+r@     run    313.37 us [min   284.75 max   318.69 spread  10.8%]  compile    81.97 us  iters 266
+  A: all six               run    287.87 us [min   280.57 max   292.54 spread   4.2%]  compile    88.06 us  iters 267
+  B: none (B1 lowering)    run   1952.01 us [min  1929.33 max  1993.53 spread   3.3%]  compile    52.12 us  iters 38
+  B: call+ret+>r+r>        run    612.06 us [min   593.11 max   655.88 spread  10.3%]  compile    48.76 us  iters 128
+  B: call+ret+>r+r>+r@     run    564.04 us [min   546.73 max   625.25 spread  13.9%]  compile    52.34 us  iters 128
+  B: all six               run    510.36 us [min   489.85 max   548.87 spread  11.6%]  compile    53.81 us  iters 145
+
+sum 500 0 (501 activations, two parameters)
+  A: none (B1 lowering)    run    141.60 us [min   138.93 max   143.78 spread   3.4%]  compile    57.72 us  iters 488
+  A: call+ret+>r+r>        run     47.95 us [min    47.49 max    49.93 spread   5.1%]  compile    40.82 us  iters 1544
+  A: call+ret+>r+r>+r@     run     33.52 us [min    31.68 max    34.40 spread   8.1%]  compile    44.06 us  iters 2335
+  A: all six               run     33.65 us [min    32.89 max    34.47 spread   4.7%]  compile    74.43 us  iters 2267
+  B: none (B1 lowering)    run    143.72 us [min   142.16 max   149.29 spread   5.0%]  compile    64.89 us  iters 499
+  B: call+ret+>r+r>        run     63.43 us [min    61.67 max    66.76 spread   8.0%]  compile    42.52 us  iters 1170
+  B: call+ret+>r+r>+r@     run     62.77 us [min    62.21 max    66.36 spread   6.6%]  compile    53.46 us  iters 1153
+  B: all six               run     63.80 us [min    62.96 max    65.82 spread   4.5%]  compile    41.89 us  iters 1140
+
+empty program (LIT 0; HALT), reset included: 0.00 us median
+
+
+COUNT RUN
+make: Entering directory '/mnt/d/repos/rebol-substrate-experiment/experiments/glon-direct-b3'
+make: Warning: File 'bench_util.h' has modification time 0.44 s in the future
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b1 -I../glon-direct-b2 -DWITH_COUNTS -o build/b1-ref-count b1_ref_main.c ../glon-direct-b1/b1_compiler.c ../glon-direct-b1/s1_count.c
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b1 -I../glon-direct-b2 -DB3_COUNT -o build/b3-count b3_main.c b3_compiler.c b3_machine.c
+./build/b1-ref-count --measure
+B1 fib 18 (8,361 activations)
+  result 2584, total 497479, per-call 59.50, cells 153, ds 13, rs 36
+B1 sum 500 0 (501 activations, two parameters)
+  result 125250, total 42081, per-call 83.99, cells 171, ds 5, rs 1503
+./build/b3-count --measure
+
+fib 18 (8,361 activations)
+  A: none (B1 lowering)    result 2584    total 497479     per-call 59.50    cells 153  ds 13   rs 36
+  A: call+ret+>r+r>        result 2584    total 179761     per-call 21.50    cells 54   ds 12   rs 36
+  A: call+ret+>r+r>+r@     result 2584    total 137957     per-call 16.50    cells 42   ds 12   rs 36
+  A: all six               result 2584    total 129595     per-call 15.50    cells 39   ds 11   rs 36
+  B: none (B1 lowering)    result 2584    total 547644     per-call 65.50    cells 166  ds 22   rs 19
+  B: call+ret+>r+r>        result 2584    total 229926     per-call 27.50    cells 67   ds 22   rs 19
+  B: call+ret+>r+r>+r@     result 2584    total 229926     per-call 27.50    cells 67   ds 22   rs 19
+  B: all six               result 2584    total 221564     per-call 26.50    cells 64   ds 21   rs 19
+
+sum 500 0 (501 activations, two parameters)
+  A: none (B1 lowering)    result 125250  total 42081      per-call 83.99    cells 171  ds 5    rs 1503
+  A: call+ret+>r+r>        result 125250  total 15027      per-call 29.99    cells 65   ds 3    rs 1503
+  A: call+ret+>r+r>+r@     result 125250  total 12025      per-call 24.00    cells 56   ds 3    rs 1503
+  A: all six               result 125250  total 12023      per-call 24.00    cells 53   ds 3    rs 1503
+  B: none (B1 lowering)    result 125250  total 38067      per-call 75.98    cells 159  ds 1005 rs 502
+  B: call+ret+>r+r>        result 125250  total 19029      per-call 37.98    cells 79   ds 1005 rs 502
+  B: call+ret+>r+r>+r@     result 125250  total 19029      per-call 37.98    cells 79   ds 1005 rs 502
+  B: all six               result 125250  total 19027      per-call 37.98    cells 76   ds 1004 rs 502
+make: warning:  Clock skew detected.  Your build may be incomplete.
+make: Leaving directory '/mnt/d/repos/rebol-substrate-experiment/experiments/glon-direct-b3'
+
+
+SIZE RUN
+make: Entering directory '/mnt/d/repos/rebol-substrate-experiment/experiments/glon-direct-b3'
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b1 -I../glon-direct-b2 -c -o build/b1_compiler.o ../glon-direct-b1/b1_compiler.c
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b1 -I../glon-direct-b2 -c -o build/b2_compiler.o ../glon-direct-b2/b2_compiler.c
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b1 -I../glon-direct-b2 -c -o build/b3_compiler.o b3_compiler.c
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b1 -I../glon-direct-b2 -c -o build/b1_machine.o ../../s1.c
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b1 -I../glon-direct-b2 -DB3_COUNT -c -o build/b2_machine.o ../glon-direct-b2/b2_machine.c
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b1 -I../glon-direct-b2 -c -o build/b3_machine_fast.o b3_machine.c
+cc -std=c17 -O2 -Wall -Wextra -I../.. -I../glon-direct-b1 -I../glon-direct-b2 -DB3_COUNT -c -o build/b3_machine_count.o b3_machine.c
+source lines:
+  573 b3_compiler.c
+   42 b3_compiler.h
+  245 b3_machine.c
+   31 b3_machine.h
+  268 b3_main.c
+  118 b1_ref_main.c
+   65 bench_util.h
+ 1342 total
+B1 compiler:
+   text	   data	    bss	    dec	    hex	filename
+   7927	      0	    256	   8183	   1ff7	build/b1_compiler.o
+B2 compiler:
+   text	   data	    bss	    dec	    hex	filename
+   8096	      0	    256	   8352	   20a0	build/b2_compiler.o
+B3 compiler:
+   text	   data	    bss	    dec	    hex	filename
+   8553	      0	    256	   8809	   2269	build/b3_compiler.o
+B1 machine (frozen s1.c, no counters):
+   text	   data	    bss	    dec	    hex	filename
+   4817	      0	 524296	 529113	  812d9	build/b1_machine.o
+B2 machine (counters, as committed):
+   text	   data	    bss	    dec	    hex	filename
+   5569	      0	 524328	 529897	  815e9	build/b2_machine.o
+B3 machine fast:
+   text	   data	    bss	    dec	    hex	filename
+   5505	      0	 524328	 529833	  815a9	build/b3_machine_fast.o
+B3 machine count:
+   text	   data	    bss	    dec	    hex	filename
+   5569	      0	 524328	 529897	  815e9	build/b3_machine_count.o
+make: Leaving directory '/mnt/d/repos/rebol-substrate-experiment/experiments/glon-direct-b3'
