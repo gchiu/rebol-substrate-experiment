@@ -1,0 +1,9 @@
+build binaries:
+   text	   data	    bss	    dec	    hex	filename
+  19085	    768	 524648	 544501	  84ef5	build/bench-count
+  20508	    784	 524648	 545940	  85494	build/bench-fast
+
+B3 compiler/machine objects:
+   text	   data	    bss	    dec	    hex	filename
+   8553	      0	    256	   8809	   2269	/tmp/b3comp.o
+   5505	      0	 524328	 529833	  815a9	/tmp/b3mach.o

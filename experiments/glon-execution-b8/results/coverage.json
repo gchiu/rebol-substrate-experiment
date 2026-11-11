@@ -1,0 +1,66 @@
+[
+  {
+    "file": "/mnt/d/repos/rebol-substrate-experiment/jupyter/prelude.glon",
+    "ok": false,
+    "error": "expected an expression, found '['",
+    "name": "prelude",
+    "path": "jupyter/prelude.glon",
+    "returncode": 1
+  },
+  {
+    "file": "/mnt/d/repos/rebol-substrate-experiment/demo/shop/strings.glon",
+    "ok": false,
+    "error": "expected an expression, found '['",
+    "name": "strings",
+    "path": "demo/shop/strings.glon",
+    "returncode": 1
+  },
+  {
+    "file": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-deflate/inflate.glon",
+    "ok": false,
+    "error": "expected 'name: func [params] [body]'",
+    "name": "deflate-inflate",
+    "path": "experiments/glon-deflate/inflate.glon",
+    "returncode": 1
+  },
+  {
+    "file": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-deflate/app.glon",
+    "ok": false,
+    "error": "expected 'name: func [params] [body]'",
+    "name": "deflate-app",
+    "path": "experiments/glon-deflate/app.glon",
+    "returncode": 1
+  },
+  {
+    "file": "/mnt/d/repos/rebol-substrate-experiment/demo/shop/demos/traffic.glon",
+    "ok": false,
+    "error": "expected an expression, found '['",
+    "name": "traffic",
+    "path": "demo/shop/demos/traffic.glon",
+    "returncode": 1
+  },
+  {
+    "file": "/mnt/d/repos/rebol-substrate-experiment/demos/kaka/kaka-lib.glon",
+    "ok": false,
+    "error": "expected an expression, found '['",
+    "name": "kaka-lib",
+    "path": "demos/kaka/kaka-lib.glon",
+    "returncode": 1
+  },
+  {
+    "file": "/mnt/d/repos/rebol-substrate-experiment/demos/kaka/kaka.glon",
+    "ok": false,
+    "error": "expected an expression, found '['",
+    "name": "kaka-main",
+    "path": "demos/kaka/kaka.glon",
+    "returncode": 1
+  },
+  {
+    "file": "/mnt/d/repos/rebol-substrate-experiment/demos/kaka/kaka-fighter.glon",
+    "ok": false,
+    "error": "expected 'name: func [params] [body]'",
+    "name": "kaka-fighter",
+    "path": "demos/kaka/kaka-fighter.glon",
+    "returncode": 1
+  }
+]

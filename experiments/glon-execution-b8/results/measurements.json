@@ -1,0 +1,3320 @@
+{
+  "configs": [
+    {
+      "name": "none",
+      "flags": 0
+    },
+    {
+      "name": "call",
+      "flags": 1
+    },
+    {
+      "name": "ret",
+      "flags": 2
+    },
+    {
+      "name": ">r",
+      "flags": 4
+    },
+    {
+      "name": "r>",
+      "flags": 8
+    },
+    {
+      "name": "r@",
+      "flags": 16
+    },
+    {
+      "name": "branch",
+      "flags": 32
+    },
+    {
+      "name": ">r+r>",
+      "flags": 12
+    },
+    {
+      "name": "call+ret",
+      "flags": 3
+    },
+    {
+      "name": "call+ret+branch",
+      "flags": 35
+    },
+    {
+      "name": "call+ret+>r+r>",
+      "flags": 15
+    },
+    {
+      "name": "call+ret+>r+r>+r@",
+      "flags": 31
+    },
+    {
+      "name": "all six",
+      "flags": 63
+    }
+  ],
+  "workloads": {
+    "fib_10": 55,
+    "fib_15": 610,
+    "fib_18": 2584,
+    "ack_22": 7,
+    "ack_23": 9,
+    "ack_33": 61,
+    "sum_200": 20100,
+    "sum_500": 125250,
+    "choose_6_2": 15,
+    "choose_10_5": 252
+  },
+  "results": [
+    {
+      "workload": "fib_10",
+      "config": "none",
+      "flags": 0,
+      "expected": 55,
+      "correct": true,
+      "vm": {
+        "cells": 153,
+        "instructions": 10531,
+        "result": 55,
+        "stack_ok": true,
+        "code_hash": "017db270ba64731a",
+        "ds": 9,
+        "rs": 20
+      },
+      "bench": {
+        "cells": 153,
+        "exec_median_us": 35.097,
+        "exec_min_us": 33.558,
+        "exec_max_us": 39.771,
+        "exec_spread_pct": 17.7,
+        "compile_median_us": 109.519,
+        "code_hash": "017db270ba64731a"
+      }
+    },
+    {
+      "workload": "fib_10",
+      "config": "call",
+      "flags": 1,
+      "expected": 55,
+      "correct": true,
+      "vm": {
+        "cells": 96,
+        "instructions": 8407,
+        "result": 55,
+        "stack_ok": true,
+        "code_hash": "c1555fba1fd344b2",
+        "ds": 9,
+        "rs": 20
+      },
+      "bench": {
+        "cells": 96,
+        "exec_median_us": 23.961,
+        "exec_min_us": 22.113,
+        "exec_max_us": 26.526,
+        "exec_spread_pct": 18.42,
+        "compile_median_us": 59.033,
+        "code_hash": "c1555fba1fd344b2"
+      }
+    },
+    {
+      "workload": "fib_10",
+      "config": "ret",
+      "flags": 2,
+      "expected": 55,
+      "correct": true,
+      "vm": {
+        "cells": 137,
+        "instructions": 8761,
+        "result": 55,
+        "stack_ok": true,
+        "code_hash": "2f52c53ad0719e05",
+        "ds": 9,
+        "rs": 20
+      },
+      "bench": {
+        "cells": 137,
+        "exec_median_us": 27.484,
+        "exec_min_us": 25.674,
+        "exec_max_us": 30.039,
+        "exec_spread_pct": 15.88,
+        "compile_median_us": 52.81,
+        "code_hash": "2f52c53ad0719e05"
+      }
+    },
+    {
+      "workload": "fib_10",
+      "config": ">r",
+      "flags": 4,
+      "expected": 55,
+      "correct": true,
+      "vm": {
+        "cells": 140,
+        "instructions": 9115,
+        "result": 55,
+        "stack_ok": true,
+        "code_hash": "56b3d908037fa751",
+        "ds": 9,
+        "rs": 20
+      },
+      "bench": {
+        "cells": 140,
+        "exec_median_us": 28.078,
+        "exec_min_us": 27.088,
+        "exec_max_us": 30.359,
+        "exec_spread_pct": 11.65,
+        "compile_median_us": 76.531,
+        "code_hash": "56b3d908037fa751"
+      }
+    },
+    {
+      "workload": "fib_10",
+      "config": "r>",
+      "flags": 8,
+      "expected": 55,
+      "correct": true,
+      "vm": {
+        "cells": 140,
+        "instructions": 9115,
+        "result": 55,
+        "stack_ok": true,
+        "code_hash": "953aa6d7ae89d188",
+        "ds": 9,
+        "rs": 20
+      },
+      "bench": {
+        "cells": 140,
+        "exec_median_us": 30.935,
+        "exec_min_us": 29.091,
+        "exec_max_us": 34.143,
+        "exec_spread_pct": 16.33,
+        "compile_median_us": 50.189,
+        "code_hash": "953aa6d7ae89d188"
+      }
+    },
+    {
+      "workload": "fib_10",
+      "config": "r@",
+      "flags": 16,
+      "expected": 55,
+      "correct": true,
+      "vm": {
+        "cells": 141,
+        "instructions": 9647,
+        "result": 55,
+        "stack_ok": true,
+        "code_hash": "9c98efe86bba771b",
+        "ds": 9,
+        "rs": 20
+      },
+      "bench": {
+        "cells": 141,
+        "exec_median_us": 29.911,
+        "exec_min_us": 28.135,
+        "exec_max_us": 31.321,
+        "exec_spread_pct": 10.65,
+        "compile_median_us": 98.842,
+        "code_hash": "9c98efe86bba771b"
+      }
+    },
+    {
+      "workload": "fib_10",
+      "config": "branch",
+      "flags": 32,
+      "expected": 55,
+      "correct": true,
+      "vm": {
+        "cells": 150,
+        "instructions": 10353,
+        "result": 55,
+        "stack_ok": true,
+        "code_hash": "af31f2576b7f8684",
+        "ds": 9,
+        "rs": 20
+      },
+      "bench": {
+        "cells": 150,
+        "exec_median_us": 31.682,
+        "exec_min_us": 31.282,
+        "exec_max_us": 40.905,
+        "exec_spread_pct": 30.37,
+        "compile_median_us": 62.919,
+        "code_hash": "af31f2576b7f8684"
+      }
+    },
+    {
+      "workload": "fib_10",
+      "config": ">r+r>",
+      "flags": 12,
+      "expected": 55,
+      "correct": true,
+      "vm": {
+        "cells": 127,
+        "instructions": 7699,
+        "result": 55,
+        "stack_ok": true,
+        "code_hash": "5283454229ffd8ad",
+        "ds": 9,
+        "rs": 20
+      },
+      "bench": {
+        "cells": 127,
+        "exec_median_us": 24.412,
+        "exec_min_us": 22.666,
+        "exec_max_us": 25.717,
+        "exec_spread_pct": 12.5,
+        "compile_median_us": 50.801,
+        "code_hash": "5283454229ffd8ad"
+      }
+    },
+    {
+      "workload": "fib_10",
+      "config": "call+ret",
+      "flags": 3,
+      "expected": 55,
+      "correct": true,
+      "vm": {
+        "cells": 80,
+        "instructions": 6637,
+        "result": 55,
+        "stack_ok": true,
+        "code_hash": "3c3644b97472ec9d",
+        "ds": 9,
+        "rs": 20
+      },
+      "bench": {
+        "cells": 80,
+        "exec_median_us": 18.445,
+        "exec_min_us": 17.671,
+        "exec_max_us": 19.119,
+        "exec_spread_pct": 7.85,
+        "compile_median_us": 82.609,
+        "code_hash": "3c3644b97472ec9d"
+      }
+    },
+    {
+      "workload": "fib_10",
+      "config": "call+ret+branch",
+      "flags": 35,
+      "expected": 55,
+      "correct": true,
+      "vm": {
+        "cells": 77,
+        "instructions": 6459,
+        "result": 55,
+        "stack_ok": true,
+        "code_hash": "f8d987280a69a900",
+        "ds": 9,
+        "rs": 20
+      },
+      "bench": {
+        "cells": 77,
+        "exec_median_us": 16.56,
+        "exec_min_us": 15.878,
+        "exec_max_us": 17.706,
+        "exec_spread_pct": 11.04,
+        "compile_median_us": 98.186,
+        "code_hash": "f8d987280a69a900"
+      }
+    },
+    {
+      "workload": "fib_10",
+      "config": "call+ret+>r+r>",
+      "flags": 15,
+      "expected": 55,
+      "correct": true,
+      "vm": {
+        "cells": 54,
+        "instructions": 3805,
+        "result": 55,
+        "stack_ok": true,
+        "code_hash": "a6e8b3f10b314246",
+        "ds": 8,
+        "rs": 20
+      },
+      "bench": {
+        "cells": 54,
+        "exec_median_us": 7.974,
+        "exec_min_us": 7.647,
+        "exec_max_us": 8.949,
+        "exec_spread_pct": 16.34,
+        "compile_median_us": 87.403,
+        "code_hash": "a6e8b3f10b314246"
+      }
+    },
+    {
+      "workload": "fib_10",
+      "config": "call+ret+>r+r>+r@",
+      "flags": 31,
+      "expected": 55,
+      "correct": true,
+      "vm": {
+        "cells": 42,
+        "instructions": 2921,
+        "result": 55,
+        "stack_ok": true,
+        "code_hash": "e7de43f6bca709bc",
+        "ds": 8,
+        "rs": 20
+      },
+      "bench": {
+        "cells": 42,
+        "exec_median_us": 5.543,
+        "exec_min_us": 5.378,
+        "exec_max_us": 5.869,
+        "exec_spread_pct": 8.86,
+        "compile_median_us": 85.679,
+        "code_hash": "e7de43f6bca709bc"
+      }
+    },
+    {
+      "workload": "fib_10",
+      "config": "all six",
+      "flags": 63,
+      "expected": 55,
+      "correct": true,
+      "vm": {
+        "cells": 39,
+        "instructions": 2743,
+        "result": 55,
+        "stack_ok": true,
+        "code_hash": "99770a4735277ed1",
+        "ds": 7,
+        "rs": 20
+      },
+      "bench": {
+        "cells": 39,
+        "exec_median_us": 4.976,
+        "exec_min_us": 4.777,
+        "exec_max_us": 5.377,
+        "exec_spread_pct": 12.07,
+        "compile_median_us": 85.815,
+        "code_hash": "99770a4735277ed1"
+      }
+    },
+    {
+      "workload": "fib_15",
+      "config": "none",
+      "flags": 0,
+      "expected": 610,
+      "correct": true,
+      "vm": {
+        "cells": 153,
+        "instructions": 117393,
+        "result": 610,
+        "stack_ok": true,
+        "code_hash": "6cf01e4dd1e815ca",
+        "ds": 11,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 153,
+        "exec_median_us": 405.763,
+        "exec_min_us": 381.456,
+        "exec_max_us": 419.585,
+        "exec_spread_pct": 9.4,
+        "compile_median_us": 49.156,
+        "code_hash": "6cf01e4dd1e815ca"
+      }
+    },
+    {
+      "workload": "fib_15",
+      "config": "call",
+      "flags": 1,
+      "expected": 610,
+      "correct": true,
+      "vm": {
+        "cells": 96,
+        "instructions": 93717,
+        "result": 610,
+        "stack_ok": true,
+        "code_hash": "159d77a732df1c62",
+        "ds": 11,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 96,
+        "exec_median_us": 270.338,
+        "exec_min_us": 263.483,
+        "exec_max_us": 284.549,
+        "exec_spread_pct": 7.79,
+        "compile_median_us": 51.574,
+        "code_hash": "159d77a732df1c62"
+      }
+    },
+    {
+      "workload": "fib_15",
+      "config": "ret",
+      "flags": 2,
+      "expected": 610,
+      "correct": true,
+      "vm": {
+        "cells": 137,
+        "instructions": 97663,
+        "result": 610,
+        "stack_ok": true,
+        "code_hash": "32dc23b55ab2a455",
+        "ds": 11,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 137,
+        "exec_median_us": 305.487,
+        "exec_min_us": 287.314,
+        "exec_max_us": 337.99,
+        "exec_spread_pct": 16.59,
+        "compile_median_us": 46.127,
+        "code_hash": "32dc23b55ab2a455"
+      }
+    },
+    {
+      "workload": "fib_15",
+      "config": ">r",
+      "flags": 4,
+      "expected": 610,
+      "correct": true,
+      "vm": {
+        "cells": 140,
+        "instructions": 101609,
+        "result": 610,
+        "stack_ok": true,
+        "code_hash": "fc083cb6001d4ea1",
+        "ds": 11,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 140,
+        "exec_median_us": 309.324,
+        "exec_min_us": 306.088,
+        "exec_max_us": 364.153,
+        "exec_spread_pct": 18.77,
+        "compile_median_us": 61.202,
+        "code_hash": "fc083cb6001d4ea1"
+      }
+    },
+    {
+      "workload": "fib_15",
+      "config": "r>",
+      "flags": 8,
+      "expected": 610,
+      "correct": true,
+      "vm": {
+        "cells": 140,
+        "instructions": 101609,
+        "result": 610,
+        "stack_ok": true,
+        "code_hash": "931b6e27c1fc6758",
+        "ds": 11,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 140,
+        "exec_median_us": 330.176,
+        "exec_min_us": 316.574,
+        "exec_max_us": 360.987,
+        "exec_spread_pct": 13.45,
+        "compile_median_us": 49.633,
+        "code_hash": "931b6e27c1fc6758"
+      }
+    },
+    {
+      "workload": "fib_15",
+      "config": "r@",
+      "flags": 16,
+      "expected": 610,
+      "correct": true,
+      "vm": {
+        "cells": 141,
+        "instructions": 107529,
+        "result": 610,
+        "stack_ok": true,
+        "code_hash": "990f916de17970cb",
+        "ds": 11,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 141,
+        "exec_median_us": 341.002,
+        "exec_min_us": 330.482,
+        "exec_max_us": 363.674,
+        "exec_spread_pct": 9.73,
+        "compile_median_us": 43.562,
+        "code_hash": "990f916de17970cb"
+      }
+    },
+    {
+      "workload": "fib_15",
+      "config": "branch",
+      "flags": 32,
+      "expected": 610,
+      "correct": true,
+      "vm": {
+        "cells": 150,
+        "instructions": 115419,
+        "result": 610,
+        "stack_ok": true,
+        "code_hash": "dfe1f4834f8a1454",
+        "ds": 11,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 150,
+        "exec_median_us": 371.246,
+        "exec_min_us": 352.959,
+        "exec_max_us": 384.316,
+        "exec_spread_pct": 8.45,
+        "compile_median_us": 46.581,
+        "code_hash": "dfe1f4834f8a1454"
+      }
+    },
+    {
+      "workload": "fib_15",
+      "config": ">r+r>",
+      "flags": 12,
+      "expected": 610,
+      "correct": true,
+      "vm": {
+        "cells": 127,
+        "instructions": 85825,
+        "result": 610,
+        "stack_ok": true,
+        "code_hash": "50edc07c8cc6fa5d",
+        "ds": 11,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 127,
+        "exec_median_us": 277.321,
+        "exec_min_us": 252.523,
+        "exec_max_us": 291.119,
+        "exec_spread_pct": 13.92,
+        "compile_median_us": 41.888,
+        "code_hash": "50edc07c8cc6fa5d"
+      }
+    },
+    {
+      "workload": "fib_15",
+      "config": "call+ret",
+      "flags": 3,
+      "expected": 610,
+      "correct": true,
+      "vm": {
+        "cells": 80,
+        "instructions": 73987,
+        "result": 610,
+        "stack_ok": true,
+        "code_hash": "907e5ca6877ec44d",
+        "ds": 11,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 80,
+        "exec_median_us": 199.431,
+        "exec_min_us": 183.189,
+        "exec_max_us": 233.379,
+        "exec_spread_pct": 25.17,
+        "compile_median_us": 47.816,
+        "code_hash": "907e5ca6877ec44d"
+      }
+    },
+    {
+      "workload": "fib_15",
+      "config": "call+ret+branch",
+      "flags": 35,
+      "expected": 610,
+      "correct": true,
+      "vm": {
+        "cells": 77,
+        "instructions": 72013,
+        "result": 610,
+        "stack_ok": true,
+        "code_hash": "a4916f3af75dd150",
+        "ds": 11,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 77,
+        "exec_median_us": 180.094,
+        "exec_min_us": 169.794,
+        "exec_max_us": 195.921,
+        "exec_spread_pct": 14.51,
+        "compile_median_us": 54.621,
+        "code_hash": "a4916f3af75dd150"
+      }
+    },
+    {
+      "workload": "fib_15",
+      "config": "call+ret+>r+r>",
+      "flags": 15,
+      "expected": 610,
+      "correct": true,
+      "vm": {
+        "cells": 54,
+        "instructions": 42419,
+        "result": 610,
+        "stack_ok": true,
+        "code_hash": "a64728b27d052a16",
+        "ds": 10,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 54,
+        "exec_median_us": 95.484,
+        "exec_min_us": 84.706,
+        "exec_max_us": 101.268,
+        "exec_spread_pct": 17.35,
+        "compile_median_us": 47.281,
+        "code_hash": "a64728b27d052a16"
+      }
+    },
+    {
+      "workload": "fib_15",
+      "config": "call+ret+>r+r>+r@",
+      "flags": 31,
+      "expected": 610,
+      "correct": true,
+      "vm": {
+        "cells": 42,
+        "instructions": 32555,
+        "result": 610,
+        "stack_ok": true,
+        "code_hash": "e73cb8b82e7af18c",
+        "ds": 10,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 42,
+        "exec_median_us": 65.336,
+        "exec_min_us": 61.004,
+        "exec_max_us": 68.949,
+        "exec_spread_pct": 12.16,
+        "compile_median_us": 55.119,
+        "code_hash": "e73cb8b82e7af18c"
+      }
+    },
+    {
+      "workload": "fib_15",
+      "config": "all six",
+      "flags": 63,
+      "expected": 610,
+      "correct": true,
+      "vm": {
+        "cells": 39,
+        "instructions": 30581,
+        "result": 610,
+        "stack_ok": true,
+        "code_hash": "9a189585c3539701",
+        "ds": 9,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 39,
+        "exec_median_us": 54.989,
+        "exec_min_us": 51.458,
+        "exec_max_us": 58.882,
+        "exec_spread_pct": 13.5,
+        "compile_median_us": 88.185,
+        "code_hash": "9a189585c3539701"
+      }
+    },
+    {
+      "workload": "fib_18",
+      "config": "none",
+      "flags": 0,
+      "expected": 2584,
+      "correct": true,
+      "vm": {
+        "cells": 153,
+        "instructions": 497479,
+        "result": 2584,
+        "stack_ok": true,
+        "code_hash": "969930a19f4308a5",
+        "ds": 13,
+        "rs": 36
+      },
+      "bench": {
+        "cells": 153,
+        "exec_median_us": 1640.609,
+        "exec_min_us": 1563.063,
+        "exec_max_us": 1684.976,
+        "exec_spread_pct": 7.43,
+        "compile_median_us": 45.256,
+        "code_hash": "969930a19f4308a5"
+      }
+    },
+    {
+      "workload": "fib_18",
+      "config": "call",
+      "flags": 1,
+      "expected": 2584,
+      "correct": true,
+      "vm": {
+        "cells": 96,
+        "instructions": 397147,
+        "result": 2584,
+        "stack_ok": true,
+        "code_hash": "d4caeac37b15356d",
+        "ds": 13,
+        "rs": 36
+      },
+      "bench": {
+        "cells": 96,
+        "exec_median_us": 1110.168,
+        "exec_min_us": 1082.935,
+        "exec_max_us": 1273.706,
+        "exec_spread_pct": 17.18,
+        "compile_median_us": 80.318,
+        "code_hash": "d4caeac37b15356d"
+      }
+    },
+    {
+      "workload": "fib_18",
+      "config": "ret",
+      "flags": 2,
+      "expected": 2584,
+      "correct": true,
+      "vm": {
+        "cells": 137,
+        "instructions": 413869,
+        "result": 2584,
+        "stack_ok": true,
+        "code_hash": "c432e1300aead35a",
+        "ds": 13,
+        "rs": 36
+      },
+      "bench": {
+        "cells": 137,
+        "exec_median_us": 1308.644,
+        "exec_min_us": 1170.175,
+        "exec_max_us": 1402.356,
+        "exec_spread_pct": 17.74,
+        "compile_median_us": 44.229,
+        "code_hash": "c432e1300aead35a"
+      }
+    },
+    {
+      "workload": "fib_18",
+      "config": ">r",
+      "flags": 4,
+      "expected": 2584,
+      "correct": true,
+      "vm": {
+        "cells": 140,
+        "instructions": 430591,
+        "result": 2584,
+        "stack_ok": true,
+        "code_hash": "9363ad93d9fd231e",
+        "ds": 13,
+        "rs": 36
+      },
+      "bench": {
+        "cells": 140,
+        "exec_median_us": 1326.023,
+        "exec_min_us": 1294.631,
+        "exec_max_us": 1391.337,
+        "exec_spread_pct": 7.29,
+        "compile_median_us": 93.759,
+        "code_hash": "9363ad93d9fd231e"
+      }
+    },
+    {
+      "workload": "fib_18",
+      "config": "r>",
+      "flags": 8,
+      "expected": 2584,
+      "correct": true,
+      "vm": {
+        "cells": 140,
+        "instructions": 430591,
+        "result": 2584,
+        "stack_ok": true,
+        "code_hash": "3429eb9e33ec0d93",
+        "ds": 13,
+        "rs": 36
+      },
+      "bench": {
+        "cells": 140,
+        "exec_median_us": 1417.394,
+        "exec_min_us": 1349.61,
+        "exec_max_us": 1468.212,
+        "exec_spread_pct": 8.37,
+        "compile_median_us": 75.783,
+        "code_hash": "3429eb9e33ec0d93"
+      }
+    },
+    {
+      "workload": "fib_18",
+      "config": "r@",
+      "flags": 16,
+      "expected": 2584,
+      "correct": true,
+      "vm": {
+        "cells": 141,
+        "instructions": 455675,
+        "result": 2584,
+        "stack_ok": true,
+        "code_hash": "09e0a6b01b7ce560",
+        "ds": 13,
+        "rs": 36
+      },
+      "bench": {
+        "cells": 141,
+        "exec_median_us": 1463.066,
+        "exec_min_us": 1401.114,
+        "exec_max_us": 1563.358,
+        "exec_spread_pct": 11.09,
+        "compile_median_us": 92.432,
+        "code_hash": "09e0a6b01b7ce560"
+      }
+    },
+    {
+      "workload": "fib_18",
+      "config": "branch",
+      "flags": 32,
+      "expected": 2584,
+      "correct": true,
+      "vm": {
+        "cells": 150,
+        "instructions": 489117,
+        "result": 2584,
+        "stack_ok": true,
+        "code_hash": "67dc98445a2b5923",
+        "ds": 13,
+        "rs": 36
+      },
+      "bench": {
+        "cells": 150,
+        "exec_median_us": 1517.902,
+        "exec_min_us": 1481.107,
+        "exec_max_us": 1601.678,
+        "exec_spread_pct": 7.94,
+        "compile_median_us": 86.593,
+        "code_hash": "67dc98445a2b5923"
+      }
+    },
+    {
+      "workload": "fib_18",
+      "config": ">r+r>",
+      "flags": 12,
+      "expected": 2584,
+      "correct": true,
+      "vm": {
+        "cells": 127,
+        "instructions": 363703,
+        "result": 2584,
+        "stack_ok": true,
+        "code_hash": "7eeb8c8f648d9516",
+        "ds": 13,
+        "rs": 36
+      },
+      "bench": {
+        "cells": 127,
+        "exec_median_us": 1128.271,
+        "exec_min_us": 1058.679,
+        "exec_max_us": 1184.001,
+        "exec_spread_pct": 11.11,
+        "compile_median_us": 91.849,
+        "code_hash": "7eeb8c8f648d9516"
+      }
+    },
+    {
+      "workload": "fib_18",
+      "config": "call+ret",
+      "flags": 3,
+      "expected": 2584,
+      "correct": true,
+      "vm": {
+        "cells": 80,
+        "instructions": 313537,
+        "result": 2584,
+        "stack_ok": true,
+        "code_hash": "d00dd30d22f07ae2",
+        "ds": 13,
+        "rs": 36
+      },
+      "bench": {
+        "cells": 80,
+        "exec_median_us": 850.564,
+        "exec_min_us": 788.327,
+        "exec_max_us": 884.998,
+        "exec_spread_pct": 11.37,
+        "compile_median_us": 48.626,
+        "code_hash": "d00dd30d22f07ae2"
+      }
+    },
+    {
+      "workload": "fib_18",
+      "config": "call+ret+branch",
+      "flags": 35,
+      "expected": 2584,
+      "correct": true,
+      "vm": {
+        "cells": 77,
+        "instructions": 305175,
+        "result": 2584,
+        "stack_ok": true,
+        "code_hash": "0c4f123165ab99bb",
+        "ds": 13,
+        "rs": 36
+      },
+      "bench": {
+        "cells": 77,
+        "exec_median_us": 743.168,
+        "exec_min_us": 697.78,
+        "exec_max_us": 873.377,
+        "exec_spread_pct": 23.63,
+        "compile_median_us": 55.222,
+        "code_hash": "0c4f123165ab99bb"
+      }
+    },
+    {
+      "workload": "fib_18",
+      "config": "call+ret+>r+r>",
+      "flags": 15,
+      "expected": 2584,
+      "correct": true,
+      "vm": {
+        "cells": 54,
+        "instructions": 179761,
+        "result": 2584,
+        "stack_ok": true,
+        "code_hash": "8ddf48c8845db801",
+        "ds": 12,
+        "rs": 36
+      },
+      "bench": {
+        "cells": 54,
+        "exec_median_us": 393.887,
+        "exec_min_us": 365.356,
+        "exec_max_us": 457.783,
+        "exec_spread_pct": 23.47,
+        "compile_median_us": 45.124,
+        "code_hash": "8ddf48c8845db801"
+      }
+    },
+    {
+      "workload": "fib_18",
+      "config": "call+ret+>r+r>+r@",
+      "flags": 31,
+      "expected": 2584,
+      "correct": true,
+      "vm": {
+        "cells": 42,
+        "instructions": 137957,
+        "result": 2584,
+        "stack_ok": true,
+        "code_hash": "28fbdd1abb66c797",
+        "ds": 12,
+        "rs": 36
+      },
+      "bench": {
+        "cells": 42,
+        "exec_median_us": 267.719,
+        "exec_min_us": 253.656,
+        "exec_max_us": 301.68,
+        "exec_spread_pct": 17.94,
+        "compile_median_us": 45.256,
+        "code_hash": "28fbdd1abb66c797"
+      }
+    },
+    {
+      "workload": "fib_18",
+      "config": "all six",
+      "flags": 63,
+      "expected": 2584,
+      "correct": true,
+      "vm": {
+        "cells": 39,
+        "instructions": 129595,
+        "result": 2584,
+        "stack_ok": true,
+        "code_hash": "0b335c12b23b8a16",
+        "ds": 11,
+        "rs": 36
+      },
+      "bench": {
+        "cells": 39,
+        "exec_median_us": 244.103,
+        "exec_min_us": 221.223,
+        "exec_max_us": 259.347,
+        "exec_spread_pct": 15.62,
+        "compile_median_us": 41.612,
+        "code_hash": "0b335c12b23b8a16"
+      }
+    },
+    {
+      "workload": "ack_22",
+      "config": "none",
+      "flags": 0,
+      "expected": 7,
+      "correct": true,
+      "vm": {
+        "cells": 252,
+        "instructions": 2364,
+        "result": 7,
+        "stack_ok": true,
+        "code_hash": "7fcf1c827748961a",
+        "ds": 10,
+        "rs": 24
+      },
+      "bench": {
+        "cells": 252,
+        "exec_median_us": 8.254,
+        "exec_min_us": 7.501,
+        "exec_max_us": 8.887,
+        "exec_spread_pct": 16.8,
+        "compile_median_us": 47.683,
+        "code_hash": "7fcf1c827748961a"
+      }
+    },
+    {
+      "workload": "ack_22",
+      "config": "call",
+      "flags": 1,
+      "expected": 7,
+      "correct": true,
+      "vm": {
+        "cells": 176,
+        "instructions": 2040,
+        "result": 7,
+        "stack_ok": true,
+        "code_hash": "0151174bcbf273d3",
+        "ds": 9,
+        "rs": 24
+      },
+      "bench": {
+        "cells": 176,
+        "exec_median_us": 6.683,
+        "exec_min_us": 6.304,
+        "exec_max_us": 7.488,
+        "exec_spread_pct": 17.72,
+        "compile_median_us": 66.424,
+        "code_hash": "0151174bcbf273d3"
+      }
+    },
+    {
+      "workload": "ack_22",
+      "config": "ret",
+      "flags": 2,
+      "expected": 7,
+      "correct": true,
+      "vm": {
+        "cells": 236,
+        "instructions": 2094,
+        "result": 7,
+        "stack_ok": true,
+        "code_hash": "72f630ffdf540005",
+        "ds": 10,
+        "rs": 24
+      },
+      "bench": {
+        "cells": 236,
+        "exec_median_us": 6.42,
+        "exec_min_us": 6.213,
+        "exec_max_us": 6.92,
+        "exec_spread_pct": 11.0,
+        "compile_median_us": 104.194,
+        "code_hash": "72f630ffdf540005"
+      }
+    },
+    {
+      "workload": "ack_22",
+      "config": ">r",
+      "flags": 4,
+      "expected": 7,
+      "correct": true,
+      "vm": {
+        "cells": 226,
+        "instructions": 1932,
+        "result": 7,
+        "stack_ok": true,
+        "code_hash": "14acc329ae586ed6",
+        "ds": 10,
+        "rs": 24
+      },
+      "bench": {
+        "cells": 226,
+        "exec_median_us": 6.049,
+        "exec_min_us": 5.855,
+        "exec_max_us": 6.541,
+        "exec_spread_pct": 11.34,
+        "compile_median_us": 99.244,
+        "code_hash": "14acc329ae586ed6"
+      }
+    },
+    {
+      "workload": "ack_22",
+      "config": "r>",
+      "flags": 8,
+      "expected": 7,
+      "correct": true,
+      "vm": {
+        "cells": 226,
+        "instructions": 1932,
+        "result": 7,
+        "stack_ok": true,
+        "code_hash": "e104caf75e553548",
+        "ds": 10,
+        "rs": 24
+      },
+      "bench": {
+        "cells": 226,
+        "exec_median_us": 6.496,
+        "exec_min_us": 6.439,
+        "exec_max_us": 7.008,
+        "exec_spread_pct": 8.75,
+        "compile_median_us": 53.184,
+        "code_hash": "e104caf75e553548"
+      }
+    },
+    {
+      "workload": "ack_22",
+      "config": "r@",
+      "flags": 16,
+      "expected": 7,
+      "correct": true,
+      "vm": {
+        "cells": 240,
+        "instructions": 2258,
+        "result": 7,
+        "stack_ok": true,
+        "code_hash": "4a5db4bac2a72d95",
+        "ds": 10,
+        "rs": 24
+      },
+      "bench": {
+        "cells": 240,
+        "exec_median_us": 7.487,
+        "exec_min_us": 7.055,
+        "exec_max_us": 7.991,
+        "exec_spread_pct": 12.49,
+        "compile_median_us": 47.208,
+        "code_hash": "4a5db4bac2a72d95"
+      }
+    },
+    {
+      "workload": "ack_22",
+      "config": "branch",
+      "flags": 32,
+      "expected": 7,
+      "correct": true,
+      "vm": {
+        "cells": 246,
+        "instructions": 2332,
+        "result": 7,
+        "stack_ok": true,
+        "code_hash": "2ec234260b9b83a4",
+        "ds": 10,
+        "rs": 24
+      },
+      "bench": {
+        "cells": 246,
+        "exec_median_us": 7.798,
+        "exec_min_us": 7.342,
+        "exec_max_us": 8.366,
+        "exec_spread_pct": 13.13,
+        "compile_median_us": 46.632,
+        "code_hash": "2ec234260b9b83a4"
+      }
+    },
+    {
+      "workload": "ack_22",
+      "config": ">r+r>",
+      "flags": 12,
+      "expected": 7,
+      "correct": true,
+      "vm": {
+        "cells": 200,
+        "instructions": 1500,
+        "result": 7,
+        "stack_ok": true,
+        "code_hash": "90e6f2c634b66e38",
+        "ds": 10,
+        "rs": 24
+      },
+      "bench": {
+        "cells": 200,
+        "exec_median_us": 4.944,
+        "exec_min_us": 4.599,
+        "exec_max_us": 5.46,
+        "exec_spread_pct": 17.41,
+        "compile_median_us": 49.926,
+        "code_hash": "90e6f2c634b66e38"
+      }
+    },
+    {
+      "workload": "ack_22",
+      "config": "call+ret",
+      "flags": 3,
+      "expected": 7,
+      "correct": true,
+      "vm": {
+        "cells": 160,
+        "instructions": 1770,
+        "result": 7,
+        "stack_ok": true,
+        "code_hash": "813183349dca3b5c",
+        "ds": 9,
+        "rs": 24
+      },
+      "bench": {
+        "cells": 160,
+        "exec_median_us": 5.401,
+        "exec_min_us": 5.169,
+        "exec_max_us": 6.058,
+        "exec_spread_pct": 16.46,
+        "compile_median_us": 61.756,
+        "code_hash": "813183349dca3b5c"
+      }
+    },
+    {
+      "workload": "ack_22",
+      "config": "call+ret+branch",
+      "flags": 35,
+      "expected": 7,
+      "correct": true,
+      "vm": {
+        "cells": 154,
+        "instructions": 1738,
+        "result": 7,
+        "stack_ok": true,
+        "code_hash": "77f7482ef3e247f9",
+        "ds": 9,
+        "rs": 24
+      },
+      "bench": {
+        "cells": 154,
+        "exec_median_us": 4.845,
+        "exec_min_us": 4.738,
+        "exec_max_us": 5.616,
+        "exec_spread_pct": 18.13,
+        "compile_median_us": 66.537,
+        "code_hash": "77f7482ef3e247f9"
+      }
+    },
+    {
+      "workload": "ack_22",
+      "config": "call+ret+>r+r>",
+      "flags": 15,
+      "expected": 7,
+      "correct": true,
+      "vm": {
+        "cells": 108,
+        "instructions": 906,
+        "result": 7,
+        "stack_ok": true,
+        "code_hash": "e1d15624fbafa218",
+        "ds": 8,
+        "rs": 24
+      },
+      "bench": {
+        "cells": 108,
+        "exec_median_us": 2.234,
+        "exec_min_us": 2.114,
+        "exec_max_us": 2.52,
+        "exec_spread_pct": 18.19,
+        "compile_median_us": 46.999,
+        "code_hash": "e1d15624fbafa218"
+      }
+    },
+    {
+      "workload": "ack_22",
+      "config": "call+ret+>r+r>+r@",
+      "flags": 31,
+      "expected": 7,
+      "correct": true,
+      "vm": {
+        "cells": 96,
+        "instructions": 800,
+        "result": 7,
+        "stack_ok": true,
+        "code_hash": "79769a6bd8a6d8c1",
+        "ds": 8,
+        "rs": 24
+      },
+      "bench": {
+        "cells": 96,
+        "exec_median_us": 1.888,
+        "exec_min_us": 1.741,
+        "exec_max_us": 1.987,
+        "exec_spread_pct": 12.99,
+        "compile_median_us": 47.146,
+        "code_hash": "79769a6bd8a6d8c1"
+      }
+    },
+    {
+      "workload": "ack_22",
+      "config": "all six",
+      "flags": 63,
+      "expected": 7,
+      "correct": true,
+      "vm": {
+        "cells": 90,
+        "instructions": 768,
+        "result": 7,
+        "stack_ok": true,
+        "code_hash": "e917de1cccf7086a",
+        "ds": 8,
+        "rs": 24
+      },
+      "bench": {
+        "cells": 90,
+        "exec_median_us": 1.753,
+        "exec_min_us": 1.712,
+        "exec_max_us": 1.83,
+        "exec_spread_pct": 6.74,
+        "compile_median_us": 83.75,
+        "code_hash": "e917de1cccf7086a"
+      }
+    },
+    {
+      "workload": "ack_23",
+      "config": "none",
+      "flags": 0,
+      "expected": 9,
+      "correct": true,
+      "vm": {
+        "cells": 252,
+        "instructions": 3853,
+        "result": 9,
+        "stack_ok": true,
+        "code_hash": "4c4acec157d6d00a",
+        "ds": 12,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 252,
+        "exec_median_us": 12.573,
+        "exec_min_us": 11.724,
+        "exec_max_us": 13.009,
+        "exec_spread_pct": 10.22,
+        "compile_median_us": 85.242,
+        "code_hash": "4c4acec157d6d00a"
+      }
+    },
+    {
+      "workload": "ack_23",
+      "config": "call",
+      "flags": 1,
+      "expected": 9,
+      "correct": true,
+      "vm": {
+        "cells": 176,
+        "instructions": 3325,
+        "result": 9,
+        "stack_ok": true,
+        "code_hash": "56dc45b5fb567be3",
+        "ds": 11,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 176,
+        "exec_median_us": 10.683,
+        "exec_min_us": 10.292,
+        "exec_max_us": 13.642,
+        "exec_spread_pct": 31.36,
+        "compile_median_us": 43.37,
+        "code_hash": "56dc45b5fb567be3"
+      }
+    },
+    {
+      "workload": "ack_23",
+      "config": "ret",
+      "flags": 2,
+      "expected": 9,
+      "correct": true,
+      "vm": {
+        "cells": 236,
+        "instructions": 3413,
+        "result": 9,
+        "stack_ok": true,
+        "code_hash": "73ab43e52e2dce15",
+        "ds": 12,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 236,
+        "exec_median_us": 11.168,
+        "exec_min_us": 10.304,
+        "exec_max_us": 11.952,
+        "exec_spread_pct": 14.76,
+        "compile_median_us": 50.927,
+        "code_hash": "73ab43e52e2dce15"
+      }
+    },
+    {
+      "workload": "ack_23",
+      "config": ">r",
+      "flags": 4,
+      "expected": 9,
+      "correct": true,
+      "vm": {
+        "cells": 226,
+        "instructions": 3149,
+        "result": 9,
+        "stack_ok": true,
+        "code_hash": "13f7b0445f7ea0c6",
+        "ds": 12,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 226,
+        "exec_median_us": 11.063,
+        "exec_min_us": 9.503,
+        "exec_max_us": 11.646,
+        "exec_spread_pct": 19.36,
+        "compile_median_us": 50.096,
+        "code_hash": "13f7b0445f7ea0c6"
+      }
+    },
+    {
+      "workload": "ack_23",
+      "config": "r>",
+      "flags": 8,
+      "expected": 9,
+      "correct": true,
+      "vm": {
+        "cells": 226,
+        "instructions": 3149,
+        "result": 9,
+        "stack_ok": true,
+        "code_hash": "e1b9dddcad2f0358",
+        "ds": 12,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 226,
+        "exec_median_us": 11.167,
+        "exec_min_us": 10.648,
+        "exec_max_us": 12.387,
+        "exec_spread_pct": 15.57,
+        "compile_median_us": 44.923,
+        "code_hash": "e1b9dddcad2f0358"
+      }
+    },
+    {
+      "workload": "ack_23",
+      "config": "r@",
+      "flags": 16,
+      "expected": 9,
+      "correct": true,
+      "vm": {
+        "cells": 240,
+        "instructions": 3679,
+        "result": 9,
+        "stack_ok": true,
+        "code_hash": "49a8a1d573cd5f85",
+        "ds": 12,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 240,
+        "exec_median_us": 12.654,
+        "exec_min_us": 11.371,
+        "exec_max_us": 13.836,
+        "exec_spread_pct": 19.48,
+        "compile_median_us": 50.872,
+        "code_hash": "49a8a1d573cd5f85"
+      }
+    },
+    {
+      "workload": "ack_23",
+      "config": "branch",
+      "flags": 32,
+      "expected": 9,
+      "correct": true,
+      "vm": {
+        "cells": 246,
+        "instructions": 3803,
+        "result": 9,
+        "stack_ok": true,
+        "code_hash": "624681e72b0d49b4",
+        "ds": 12,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 246,
+        "exec_median_us": 13.981,
+        "exec_min_us": 12.72,
+        "exec_max_us": 16.654,
+        "exec_spread_pct": 28.14,
+        "compile_median_us": 46.549,
+        "code_hash": "624681e72b0d49b4"
+      }
+    },
+    {
+      "workload": "ack_23",
+      "config": ">r+r>",
+      "flags": 12,
+      "expected": 9,
+      "correct": true,
+      "vm": {
+        "cells": 200,
+        "instructions": 2445,
+        "result": 9,
+        "stack_ok": true,
+        "code_hash": "9031dfe0e5dca028",
+        "ds": 12,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 200,
+        "exec_median_us": 7.965,
+        "exec_min_us": 7.482,
+        "exec_max_us": 9.324,
+        "exec_spread_pct": 23.13,
+        "compile_median_us": 40.124,
+        "code_hash": "9031dfe0e5dca028"
+      }
+    },
+    {
+      "workload": "ack_23",
+      "config": "call+ret",
+      "flags": 3,
+      "expected": 9,
+      "correct": true,
+      "vm": {
+        "cells": 160,
+        "instructions": 2885,
+        "result": 9,
+        "stack_ok": true,
+        "code_hash": "d6bcb19ecd2e436c",
+        "ds": 11,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 160,
+        "exec_median_us": 8.69,
+        "exec_min_us": 8.365,
+        "exec_max_us": 9.375,
+        "exec_spread_pct": 11.63,
+        "compile_median_us": 45.206,
+        "code_hash": "d6bcb19ecd2e436c"
+      }
+    },
+    {
+      "workload": "ack_23",
+      "config": "call+ret+branch",
+      "flags": 35,
+      "expected": 9,
+      "correct": true,
+      "vm": {
+        "cells": 154,
+        "instructions": 2835,
+        "result": 9,
+        "stack_ok": true,
+        "code_hash": "226c19c4c47e3fe9",
+        "ds": 11,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 154,
+        "exec_median_us": 8.354,
+        "exec_min_us": 7.603,
+        "exec_max_us": 8.997,
+        "exec_spread_pct": 16.68,
+        "compile_median_us": 94.407,
+        "code_hash": "226c19c4c47e3fe9"
+      }
+    },
+    {
+      "workload": "ack_23",
+      "config": "call+ret+>r+r>",
+      "flags": 15,
+      "expected": 9,
+      "correct": true,
+      "vm": {
+        "cells": 108,
+        "instructions": 1477,
+        "result": 9,
+        "stack_ok": true,
+        "code_hash": "375c848f2b13aa28",
+        "ds": 10,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 108,
+        "exec_median_us": 3.73,
+        "exec_min_us": 3.596,
+        "exec_max_us": 4.226,
+        "exec_spread_pct": 16.89,
+        "compile_median_us": 88.663,
+        "code_hash": "375c848f2b13aa28"
+      }
+    },
+    {
+      "workload": "ack_23",
+      "config": "call+ret+>r+r>+r@",
+      "flags": 31,
+      "expected": 9,
+      "correct": true,
+      "vm": {
+        "cells": 96,
+        "instructions": 1303,
+        "result": 9,
+        "stack_ok": true,
+        "code_hash": "cf01c8d6080ae0d1",
+        "ds": 10,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 96,
+        "exec_median_us": 2.988,
+        "exec_min_us": 2.89,
+        "exec_max_us": 3.392,
+        "exec_spread_pct": 16.79,
+        "compile_median_us": 60.592,
+        "code_hash": "cf01c8d6080ae0d1"
+      }
+    },
+    {
+      "workload": "ack_23",
+      "config": "all six",
+      "flags": 63,
+      "expected": 9,
+      "correct": true,
+      "vm": {
+        "cells": 90,
+        "instructions": 1253,
+        "result": 9,
+        "stack_ok": true,
+        "code_hash": "938cafb29d93005a",
+        "ds": 10,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 90,
+        "exec_median_us": 3.012,
+        "exec_min_us": 2.916,
+        "exec_max_us": 3.284,
+        "exec_spread_pct": 12.22,
+        "compile_median_us": 49.695,
+        "code_hash": "938cafb29d93005a"
+      }
+    },
+    {
+      "workload": "ack_33",
+      "config": "none",
+      "flags": 0,
+      "expected": 61,
+      "correct": true,
+      "vm": {
+        "cells": 252,
+        "instructions": 212881,
+        "result": 61,
+        "stack_ok": true,
+        "code_hash": "047343e3b05d9a1a",
+        "ds": 64,
+        "rs": 189
+      },
+      "bench": {
+        "cells": 252,
+        "exec_median_us": 732.394,
+        "exec_min_us": 685.612,
+        "exec_max_us": 750.871,
+        "exec_spread_pct": 8.91,
+        "compile_median_us": 53.093,
+        "code_hash": "047343e3b05d9a1a"
+      }
+    },
+    {
+      "workload": "ack_33",
+      "config": "call",
+      "flags": 1,
+      "expected": 61,
+      "correct": true,
+      "vm": {
+        "cells": 176,
+        "instructions": 183697,
+        "result": 61,
+        "stack_ok": true,
+        "code_hash": "3b609296df05f7d3",
+        "ds": 63,
+        "rs": 189
+      },
+      "bench": {
+        "cells": 176,
+        "exec_median_us": 571.716,
+        "exec_min_us": 554.358,
+        "exec_max_us": 660.885,
+        "exec_spread_pct": 18.63,
+        "compile_median_us": 42.381,
+        "code_hash": "3b609296df05f7d3"
+      }
+    },
+    {
+      "workload": "ack_33",
+      "config": "ret",
+      "flags": 2,
+      "expected": 61,
+      "correct": true,
+      "vm": {
+        "cells": 236,
+        "instructions": 188561,
+        "result": 61,
+        "stack_ok": true,
+        "code_hash": "f79a586118690405",
+        "ds": 64,
+        "rs": 189
+      },
+      "bench": {
+        "cells": 236,
+        "exec_median_us": 613.03,
+        "exec_min_us": 575.933,
+        "exec_max_us": 690.554,
+        "exec_spread_pct": 18.7,
+        "compile_median_us": 44.684,
+        "code_hash": "f79a586118690405"
+      }
+    },
+    {
+      "workload": "ack_33",
+      "config": ">r",
+      "flags": 4,
+      "expected": 61,
+      "correct": true,
+      "vm": {
+        "cells": 226,
+        "instructions": 173969,
+        "result": 61,
+        "stack_ok": true,
+        "code_hash": "90089bc875436ad6",
+        "ds": 64,
+        "rs": 189
+      },
+      "bench": {
+        "cells": 226,
+        "exec_median_us": 552.609,
+        "exec_min_us": 513.066,
+        "exec_max_us": 620.118,
+        "exec_spread_pct": 19.37,
+        "compile_median_us": 41.571,
+        "code_hash": "90089bc875436ad6"
+      }
+    },
+    {
+      "workload": "ack_33",
+      "config": "r>",
+      "flags": 8,
+      "expected": 61,
+      "correct": true,
+      "vm": {
+        "cells": 226,
+        "instructions": 173969,
+        "result": 61,
+        "stack_ok": true,
+        "code_hash": "65a8f258976a3948",
+        "ds": 64,
+        "rs": 189
+      },
+      "bench": {
+        "cells": 226,
+        "exec_median_us": 601.129,
+        "exec_min_us": 563.311,
+        "exec_max_us": 645.025,
+        "exec_spread_pct": 13.59,
+        "compile_median_us": 45.916,
+        "code_hash": "65a8f258976a3948"
+      }
+    },
+    {
+      "workload": "ack_33",
+      "config": "r@",
+      "flags": 16,
+      "expected": 61,
+      "correct": true,
+      "vm": {
+        "cells": 240,
+        "instructions": 203155,
+        "result": 61,
+        "stack_ok": true,
+        "code_hash": "c5b98d5989922995",
+        "ds": 64,
+        "rs": 189
+      },
+      "bench": {
+        "cells": 240,
+        "exec_median_us": 657.893,
+        "exec_min_us": 641.609,
+        "exec_max_us": 732.791,
+        "exec_spread_pct": 13.86,
+        "compile_median_us": 90.893,
+        "code_hash": "c5b98d5989922995"
+      }
+    },
+    {
+      "workload": "ack_33",
+      "config": "branch",
+      "flags": 32,
+      "expected": 61,
+      "correct": true,
+      "vm": {
+        "cells": 246,
+        "instructions": 210391,
+        "result": 61,
+        "stack_ok": true,
+        "code_hash": "aa1e0cc4d2867fa4",
+        "ds": 64,
+        "rs": 189
+      },
+      "bench": {
+        "cells": 246,
+        "exec_median_us": 666.56,
+        "exec_min_us": 637.405,
+        "exec_max_us": 757.244,
+        "exec_spread_pct": 17.98,
+        "compile_median_us": 44.112,
+        "code_hash": "aa1e0cc4d2867fa4"
+      }
+    },
+    {
+      "workload": "ack_33",
+      "config": ">r+r>",
+      "flags": 12,
+      "expected": 61,
+      "correct": true,
+      "vm": {
+        "cells": 200,
+        "instructions": 135057,
+        "result": 61,
+        "stack_ok": true,
+        "code_hash": "0c42cb64fba16a38",
+        "ds": 64,
+        "rs": 189
+      },
+      "bench": {
+        "cells": 200,
+        "exec_median_us": 439.842,
+        "exec_min_us": 419.769,
+        "exec_max_us": 506.746,
+        "exec_spread_pct": 19.77,
+        "compile_median_us": 46.392,
+        "code_hash": "0c42cb64fba16a38"
+      }
+    },
+    {
+      "workload": "ack_33",
+      "config": "call+ret",
+      "flags": 3,
+      "expected": 61,
+      "correct": true,
+      "vm": {
+        "cells": 160,
+        "instructions": 159377,
+        "result": 61,
+        "stack_ok": true,
+        "code_hash": "bb40fe7fb0ddbf5c",
+        "ds": 63,
+        "rs": 189
+      },
+      "bench": {
+        "cells": 160,
+        "exec_median_us": 495.273,
+        "exec_min_us": 482.27,
+        "exec_max_us": 580.476,
+        "exec_spread_pct": 19.83,
+        "compile_median_us": 53.069,
+        "code_hash": "bb40fe7fb0ddbf5c"
+      }
+    },
+    {
+      "workload": "ack_33",
+      "config": "call+ret+branch",
+      "flags": 35,
+      "expected": 61,
+      "correct": true,
+      "vm": {
+        "cells": 154,
+        "instructions": 156887,
+        "result": 61,
+        "stack_ok": true,
+        "code_hash": "3de7cce3e0cec3f9",
+        "ds": 63,
+        "rs": 189
+      },
+      "bench": {
+        "cells": 154,
+        "exec_median_us": 469.012,
+        "exec_min_us": 433.439,
+        "exec_max_us": 520.012,
+        "exec_spread_pct": 18.46,
+        "compile_median_us": 47.886,
+        "code_hash": "3de7cce3e0cec3f9"
+      }
+    },
+    {
+      "workload": "ack_33",
+      "config": "call+ret+>r+r>",
+      "flags": 15,
+      "expected": 61,
+      "correct": true,
+      "vm": {
+        "cells": 108,
+        "instructions": 81553,
+        "result": 61,
+        "stack_ok": true,
+        "code_hash": "1be0d1700ec32618",
+        "ds": 62,
+        "rs": 189
+      },
+      "bench": {
+        "cells": 108,
+        "exec_median_us": 246.695,
+        "exec_min_us": 224.303,
+        "exec_max_us": 278.422,
+        "exec_spread_pct": 21.94,
+        "compile_median_us": 46.615,
+        "code_hash": "1be0d1700ec32618"
+      }
+    },
+    {
+      "workload": "ack_33",
+      "config": "call+ret+>r+r>+r@",
+      "flags": 31,
+      "expected": 61,
+      "correct": true,
+      "vm": {
+        "cells": 96,
+        "instructions": 71827,
+        "result": 61,
+        "stack_ok": true,
+        "code_hash": "b38615b6ebba5cc1",
+        "ds": 62,
+        "rs": 189
+      },
+      "bench": {
+        "cells": 96,
+        "exec_median_us": 202.01,
+        "exec_min_us": 192.363,
+        "exec_max_us": 244.696,
+        "exec_spread_pct": 25.91,
+        "compile_median_us": 48.06,
+        "code_hash": "b38615b6ebba5cc1"
+      }
+    },
+    {
+      "workload": "ack_33",
+      "config": "all six",
+      "flags": 63,
+      "expected": 61,
+      "correct": true,
+      "vm": {
+        "cells": 90,
+        "instructions": 69337,
+        "result": 61,
+        "stack_ok": true,
+        "code_hash": "af0862d1b9e3846a",
+        "ds": 62,
+        "rs": 189
+      },
+      "bench": {
+        "cells": 90,
+        "exec_median_us": 188.537,
+        "exec_min_us": 174.398,
+        "exec_max_us": 205.574,
+        "exec_spread_pct": 16.54,
+        "compile_median_us": 41.957,
+        "code_hash": "af0862d1b9e3846a"
+      }
+    },
+    {
+      "workload": "sum_200",
+      "config": "none",
+      "flags": 0,
+      "expected": 20100,
+      "correct": true,
+      "vm": {
+        "cells": 171,
+        "instructions": 16881,
+        "result": 20100,
+        "stack_ok": true,
+        "code_hash": "b8f9e83c7a55d07d",
+        "ds": 5,
+        "rs": 603
+      },
+      "bench": {
+        "cells": 171,
+        "exec_median_us": 55.927,
+        "exec_min_us": 51.895,
+        "exec_max_us": 62.283,
+        "exec_spread_pct": 18.58,
+        "compile_median_us": 43.216,
+        "code_hash": "b8f9e83c7a55d07d"
+      }
+    },
+    {
+      "workload": "sum_200",
+      "config": "call",
+      "flags": 1,
+      "expected": 20100,
+      "correct": true,
+      "vm": {
+        "cells": 133,
+        "instructions": 14469,
+        "result": 20100,
+        "stack_ok": true,
+        "code_hash": "cdc0d0e3f4f6c7b8",
+        "ds": 4,
+        "rs": 603
+      },
+      "bench": {
+        "cells": 133,
+        "exec_median_us": 46.057,
+        "exec_min_us": 42.65,
+        "exec_max_us": 51.55,
+        "exec_spread_pct": 19.33,
+        "compile_median_us": 45.11,
+        "code_hash": "cdc0d0e3f4f6c7b8"
+      }
+    },
+    {
+      "workload": "sum_200",
+      "config": "ret",
+      "flags": 2,
+      "expected": 20100,
+      "correct": true,
+      "vm": {
+        "cells": 155,
+        "instructions": 14871,
+        "result": 20100,
+        "stack_ok": true,
+        "code_hash": "d502b2597a0504a2",
+        "ds": 5,
+        "rs": 603
+      },
+      "bench": {
+        "cells": 155,
+        "exec_median_us": 50.111,
+        "exec_min_us": 46.408,
+        "exec_max_us": 55.876,
+        "exec_spread_pct": 18.89,
+        "compile_median_us": 50.77,
+        "code_hash": "d502b2597a0504a2"
+      }
+    },
+    {
+      "workload": "sum_200",
+      "config": ">r",
+      "flags": 4,
+      "expected": 20100,
+      "correct": true,
+      "vm": {
+        "cells": 145,
+        "instructions": 13665,
+        "result": 20100,
+        "stack_ok": true,
+        "code_hash": "06b6cd002e575a89",
+        "ds": 5,
+        "rs": 603
+      },
+      "bench": {
+        "cells": 145,
+        "exec_median_us": 41.005,
+        "exec_min_us": 39.707,
+        "exec_max_us": 46.529,
+        "exec_spread_pct": 16.64,
+        "compile_median_us": 48.873,
+        "code_hash": "06b6cd002e575a89"
+      }
+    },
+    {
+      "workload": "sum_200",
+      "config": "r>",
+      "flags": 8,
+      "expected": 20100,
+      "correct": true,
+      "vm": {
+        "cells": 145,
+        "instructions": 13665,
+        "result": 20100,
+        "stack_ok": true,
+        "code_hash": "a364ab069e3723bf",
+        "ds": 5,
+        "rs": 603
+      },
+      "bench": {
+        "cells": 145,
+        "exec_median_us": 44.183,
+        "exec_min_us": 43.039,
+        "exec_max_us": 51.073,
+        "exec_spread_pct": 18.18,
+        "compile_median_us": 53.728,
+        "code_hash": "a364ab069e3723bf"
+      }
+    },
+    {
+      "workload": "sum_200",
+      "config": "r@",
+      "flags": 16,
+      "expected": 20100,
+      "correct": true,
+      "vm": {
+        "cells": 162,
+        "instructions": 15679,
+        "result": 20100,
+        "stack_ok": true,
+        "code_hash": "89b2262744b9bd73",
+        "ds": 5,
+        "rs": 603
+      },
+      "bench": {
+        "cells": 162,
+        "exec_median_us": 50.276,
+        "exec_min_us": 46.542,
+        "exec_max_us": 56.075,
+        "exec_spread_pct": 18.96,
+        "compile_median_us": 45.783,
+        "code_hash": "89b2262744b9bd73"
+      }
+    },
+    {
+      "workload": "sum_200",
+      "config": "branch",
+      "flags": 32,
+      "expected": 20100,
+      "correct": true,
+      "vm": {
+        "cells": 168,
+        "instructions": 16879,
+        "result": 20100,
+        "stack_ok": true,
+        "code_hash": "ba7ec6da7201452a",
+        "ds": 5,
+        "rs": 603
+      },
+      "bench": {
+        "cells": 168,
+        "exec_median_us": 54.011,
+        "exec_min_us": 49.986,
+        "exec_max_us": 61.991,
+        "exec_spread_pct": 22.23,
+        "compile_median_us": 44.717,
+        "code_hash": "ba7ec6da7201452a"
+      }
+    },
+    {
+      "workload": "sum_200",
+      "config": ">r+r>",
+      "flags": 12,
+      "expected": 20100,
+      "correct": true,
+      "vm": {
+        "cells": 119,
+        "instructions": 10449,
+        "result": 20100,
+        "stack_ok": true,
+        "code_hash": "21f3be1b781dea67",
+        "ds": 5,
+        "rs": 603
+      },
+      "bench": {
+        "cells": 119,
+        "exec_median_us": 33.558,
+        "exec_min_us": 31.824,
+        "exec_max_us": 38.476,
+        "exec_spread_pct": 19.82,
+        "compile_median_us": 43.445,
+        "code_hash": "21f3be1b781dea67"
+      }
+    },
+    {
+      "workload": "sum_200",
+      "config": "call+ret",
+      "flags": 3,
+      "expected": 20100,
+      "correct": true,
+      "vm": {
+        "cells": 117,
+        "instructions": 12459,
+        "result": 20100,
+        "stack_ok": true,
+        "code_hash": "47120743b52b0217",
+        "ds": 4,
+        "rs": 603
+      },
+      "bench": {
+        "cells": 117,
+        "exec_median_us": 39.223,
+        "exec_min_us": 37.954,
+        "exec_max_us": 45.036,
+        "exec_spread_pct": 18.06,
+        "compile_median_us": 54.926,
+        "code_hash": "47120743b52b0217"
+      }
+    },
+    {
+      "workload": "sum_200",
+      "config": "call+ret+branch",
+      "flags": 35,
+      "expected": 20100,
+      "correct": true,
+      "vm": {
+        "cells": 114,
+        "instructions": 12457,
+        "result": 20100,
+        "stack_ok": true,
+        "code_hash": "ee53b1c946caf7d2",
+        "ds": 4,
+        "rs": 603
+      },
+      "bench": {
+        "cells": 114,
+        "exec_median_us": 38.781,
+        "exec_min_us": 37.472,
+        "exec_max_us": 42.875,
+        "exec_spread_pct": 13.93,
+        "compile_median_us": 50.663,
+        "code_hash": "ee53b1c946caf7d2"
+      }
+    },
+    {
+      "workload": "sum_200",
+      "config": "call+ret+>r+r>",
+      "flags": 15,
+      "expected": 20100,
+      "correct": true,
+      "vm": {
+        "cells": 65,
+        "instructions": 6027,
+        "result": 20100,
+        "stack_ok": true,
+        "code_hash": "06657e6c89c87fc3",
+        "ds": 3,
+        "rs": 603
+      },
+      "bench": {
+        "cells": 65,
+        "exec_median_us": 17.609,
+        "exec_min_us": 17.045,
+        "exec_max_us": 20.536,
+        "exec_spread_pct": 19.83,
+        "compile_median_us": 53.32,
+        "code_hash": "06657e6c89c87fc3"
+      }
+    },
+    {
+      "workload": "sum_200",
+      "config": "call+ret+>r+r>+r@",
+      "flags": 31,
+      "expected": 20100,
+      "correct": true,
+      "vm": {
+        "cells": 56,
+        "instructions": 4825,
+        "result": 20100,
+        "stack_ok": true,
+        "code_hash": "f64da31a50f23ba7",
+        "ds": 3,
+        "rs": 603
+      },
+      "bench": {
+        "cells": 56,
+        "exec_median_us": 12.6,
+        "exec_min_us": 12.012,
+        "exec_max_us": 14.149,
+        "exec_spread_pct": 16.96,
+        "compile_median_us": 41.884,
+        "code_hash": "f64da31a50f23ba7"
+      }
+    },
+    {
+      "workload": "sum_200",
+      "config": "all six",
+      "flags": 63,
+      "expected": 20100,
+      "correct": true,
+      "vm": {
+        "cells": 53,
+        "instructions": 4823,
+        "result": 20100,
+        "stack_ok": true,
+        "code_hash": "97944a3488bc69ee",
+        "ds": 3,
+        "rs": 603
+      },
+      "bench": {
+        "cells": 53,
+        "exec_median_us": 12.389,
+        "exec_min_us": 11.826,
+        "exec_max_us": 14.384,
+        "exec_spread_pct": 20.65,
+        "compile_median_us": 45.817,
+        "code_hash": "97944a3488bc69ee"
+      }
+    },
+    {
+      "workload": "sum_500",
+      "config": "none",
+      "flags": 0,
+      "expected": 125250,
+      "correct": true,
+      "vm": {
+        "cells": 171,
+        "instructions": 42081,
+        "result": 125250,
+        "stack_ok": true,
+        "code_hash": "2bfdc3bad959b2e4",
+        "ds": 5,
+        "rs": 1503
+      },
+      "bench": {
+        "cells": 171,
+        "exec_median_us": 127.966,
+        "exec_min_us": 121.944,
+        "exec_max_us": 133.793,
+        "exec_spread_pct": 9.26,
+        "compile_median_us": 76.808,
+        "code_hash": "2bfdc3bad959b2e4"
+      }
+    },
+    {
+      "workload": "sum_500",
+      "config": "call",
+      "flags": 1,
+      "expected": 125250,
+      "correct": true,
+      "vm": {
+        "cells": 133,
+        "instructions": 36069,
+        "result": 125250,
+        "stack_ok": true,
+        "code_hash": "5d7cbf973a368dad",
+        "ds": 4,
+        "rs": 1503
+      },
+      "bench": {
+        "cells": 133,
+        "exec_median_us": 107.984,
+        "exec_min_us": 99.987,
+        "exec_max_us": 114.174,
+        "exec_spread_pct": 13.14,
+        "compile_median_us": 94.04,
+        "code_hash": "5d7cbf973a368dad"
+      }
+    },
+    {
+      "workload": "sum_500",
+      "config": "ret",
+      "flags": 2,
+      "expected": 125250,
+      "correct": true,
+      "vm": {
+        "cells": 155,
+        "instructions": 37071,
+        "result": 125250,
+        "stack_ok": true,
+        "code_hash": "de51139b060d668f",
+        "ds": 5,
+        "rs": 1503
+      },
+      "bench": {
+        "cells": 155,
+        "exec_median_us": 112.263,
+        "exec_min_us": 109.571,
+        "exec_max_us": 122.668,
+        "exec_spread_pct": 11.67,
+        "compile_median_us": 82.301,
+        "code_hash": "de51139b060d668f"
+      }
+    },
+    {
+      "workload": "sum_500",
+      "config": ">r",
+      "flags": 4,
+      "expected": 125250,
+      "correct": true,
+      "vm": {
+        "cells": 145,
+        "instructions": 34065,
+        "result": 125250,
+        "stack_ok": true,
+        "code_hash": "31f54b76a4e3607c",
+        "ds": 5,
+        "rs": 1503
+      },
+      "bench": {
+        "cells": 145,
+        "exec_median_us": 96.275,
+        "exec_min_us": 92.581,
+        "exec_max_us": 112.128,
+        "exec_spread_pct": 20.3,
+        "compile_median_us": 59.021,
+        "code_hash": "31f54b76a4e3607c"
+      }
+    },
+    {
+      "workload": "sum_500",
+      "config": "r>",
+      "flags": 8,
+      "expected": 125250,
+      "correct": true,
+      "vm": {
+        "cells": 145,
+        "instructions": 34065,
+        "result": 125250,
+        "stack_ok": true,
+        "code_hash": "476fa28d70137116",
+        "ds": 5,
+        "rs": 1503
+      },
+      "bench": {
+        "cells": 145,
+        "exec_median_us": 113.842,
+        "exec_min_us": 111.58,
+        "exec_max_us": 141.987,
+        "exec_spread_pct": 26.71,
+        "compile_median_us": 42.573,
+        "code_hash": "476fa28d70137116"
+      }
+    },
+    {
+      "workload": "sum_500",
+      "config": "r@",
+      "flags": 16,
+      "expected": 125250,
+      "correct": true,
+      "vm": {
+        "cells": 162,
+        "instructions": 39079,
+        "result": 125250,
+        "stack_ok": true,
+        "code_hash": "84d89b6243b27d5a",
+        "ds": 5,
+        "rs": 1503
+      },
+      "bench": {
+        "cells": 162,
+        "exec_median_us": 121.422,
+        "exec_min_us": 117.071,
+        "exec_max_us": 130.465,
+        "exec_spread_pct": 11.03,
+        "compile_median_us": 101.463,
+        "code_hash": "84d89b6243b27d5a"
+      }
+    },
+    {
+      "workload": "sum_500",
+      "config": "branch",
+      "flags": 32,
+      "expected": 125250,
+      "correct": true,
+      "vm": {
+        "cells": 168,
+        "instructions": 42079,
+        "result": 125250,
+        "stack_ok": true,
+        "code_hash": "b2c279776e936ef7",
+        "ds": 5,
+        "rs": 1503
+      },
+      "bench": {
+        "cells": 168,
+        "exec_median_us": 133.178,
+        "exec_min_us": 123.789,
+        "exec_max_us": 140.899,
+        "exec_spread_pct": 12.85,
+        "compile_median_us": 97.296,
+        "code_hash": "b2c279776e936ef7"
+      }
+    },
+    {
+      "workload": "sum_500",
+      "config": ">r+r>",
+      "flags": 12,
+      "expected": 125250,
+      "correct": true,
+      "vm": {
+        "cells": 119,
+        "instructions": 26049,
+        "result": 125250,
+        "stack_ok": true,
+        "code_hash": "1a7580ac0c99b762",
+        "ds": 5,
+        "rs": 1503
+      },
+      "bench": {
+        "cells": 119,
+        "exec_median_us": 84.634,
+        "exec_min_us": 79.088,
+        "exec_max_us": 97.91,
+        "exec_spread_pct": 22.24,
+        "compile_median_us": 50.047,
+        "code_hash": "1a7580ac0c99b762"
+      }
+    },
+    {
+      "workload": "sum_500",
+      "config": "call+ret",
+      "flags": 3,
+      "expected": 125250,
+      "correct": true,
+      "vm": {
+        "cells": 117,
+        "instructions": 31059,
+        "result": 125250,
+        "stack_ok": true,
+        "code_hash": "377aa7269b150f06",
+        "ds": 4,
+        "rs": 1503
+      },
+      "bench": {
+        "cells": 117,
+        "exec_median_us": 97.62,
+        "exec_min_us": 92.635,
+        "exec_max_us": 102.374,
+        "exec_spread_pct": 9.98,
+        "compile_median_us": 95.645,
+        "code_hash": "377aa7269b150f06"
+      }
+    },
+    {
+      "workload": "sum_500",
+      "config": "call+ret+branch",
+      "flags": 35,
+      "expected": 125250,
+      "correct": true,
+      "vm": {
+        "cells": 114,
+        "instructions": 31057,
+        "result": 125250,
+        "stack_ok": true,
+        "code_hash": "c428a3d29b0fce73",
+        "ds": 4,
+        "rs": 1503
+      },
+      "bench": {
+        "cells": 114,
+        "exec_median_us": 97.959,
+        "exec_min_us": 96.239,
+        "exec_max_us": 105.38,
+        "exec_spread_pct": 9.33,
+        "compile_median_us": 50.374,
+        "code_hash": "c428a3d29b0fce73"
+      }
+    },
+    {
+      "workload": "sum_500",
+      "config": "call+ret+>r+r>",
+      "flags": 15,
+      "expected": 125250,
+      "correct": true,
+      "vm": {
+        "cells": 65,
+        "instructions": 15027,
+        "result": 125250,
+        "stack_ok": true,
+        "code_hash": "eac8c90d0b1c1142",
+        "ds": 3,
+        "rs": 1503
+      },
+      "bench": {
+        "cells": 65,
+        "exec_median_us": 46.084,
+        "exec_min_us": 43.021,
+        "exec_max_us": 50.012,
+        "exec_spread_pct": 15.17,
+        "compile_median_us": 47.081,
+        "code_hash": "eac8c90d0b1c1142"
+      }
+    },
+    {
+      "workload": "sum_500",
+      "config": "call+ret+>r+r>+r@",
+      "flags": 31,
+      "expected": 125250,
+      "correct": true,
+      "vm": {
+        "cells": 56,
+        "instructions": 12025,
+        "result": 125250,
+        "stack_ok": true,
+        "code_hash": "3928cfab12525e76",
+        "ds": 3,
+        "rs": 1503
+      },
+      "bench": {
+        "cells": 56,
+        "exec_median_us": 33.823,
+        "exec_min_us": 31.04,
+        "exec_max_us": 36.111,
+        "exec_spread_pct": 14.99,
+        "compile_median_us": 44.01,
+        "code_hash": "3928cfab12525e76"
+      }
+    },
+    {
+      "workload": "sum_500",
+      "config": "all six",
+      "flags": 63,
+      "expected": 125250,
+      "correct": true,
+      "vm": {
+        "cells": 53,
+        "instructions": 12023,
+        "result": 125250,
+        "stack_ok": true,
+        "code_hash": "02eea88206629a7f",
+        "ds": 3,
+        "rs": 1503
+      },
+      "bench": {
+        "cells": 53,
+        "exec_median_us": 32.89,
+        "exec_min_us": 31.23,
+        "exec_max_us": 39.873,
+        "exec_spread_pct": 26.28,
+        "compile_median_us": 42.684,
+        "code_hash": "02eea88206629a7f"
+      }
+    },
+    {
+      "workload": "choose_6_2",
+      "config": "none",
+      "flags": 0,
+      "expected": 15,
+      "correct": true,
+      "vm": {
+        "cells": 260,
+        "instructions": 3049,
+        "result": 15,
+        "stack_ok": true,
+        "code_hash": "169555f288be9d68",
+        "ds": 9,
+        "rs": 18
+      },
+      "bench": {
+        "cells": 260,
+        "exec_median_us": 10.593,
+        "exec_min_us": 9.749,
+        "exec_max_us": 11.945,
+        "exec_spread_pct": 20.73,
+        "compile_median_us": 43.223,
+        "code_hash": "169555f288be9d68"
+      }
+    },
+    {
+      "workload": "choose_6_2",
+      "config": "call",
+      "flags": 1,
+      "expected": 15,
+      "correct": true,
+      "vm": {
+        "cells": 203,
+        "instructions": 2701,
+        "result": 15,
+        "stack_ok": true,
+        "code_hash": "6000f322f6c459ce",
+        "ds": 8,
+        "rs": 18
+      },
+      "bench": {
+        "cells": 203,
+        "exec_median_us": 9.394,
+        "exec_min_us": 8.306,
+        "exec_max_us": 10.817,
+        "exec_spread_pct": 26.74,
+        "compile_median_us": 47.911,
+        "code_hash": "6000f322f6c459ce"
+      }
+    },
+    {
+      "workload": "choose_6_2",
+      "config": "ret",
+      "flags": 2,
+      "expected": 15,
+      "correct": true,
+      "vm": {
+        "cells": 244,
+        "instructions": 2759,
+        "result": 15,
+        "stack_ok": true,
+        "code_hash": "7414de8d79f7f23a",
+        "ds": 9,
+        "rs": 18
+      },
+      "bench": {
+        "cells": 244,
+        "exec_median_us": 9.669,
+        "exec_min_us": 8.848,
+        "exec_max_us": 10.413,
+        "exec_spread_pct": 16.19,
+        "compile_median_us": 61.066,
+        "code_hash": "7414de8d79f7f23a"
+      }
+    },
+    {
+      "workload": "choose_6_2",
+      "config": ">r",
+      "flags": 4,
+      "expected": 15,
+      "correct": true,
+      "vm": {
+        "cells": 234,
+        "instructions": 2585,
+        "result": 15,
+        "stack_ok": true,
+        "code_hash": "d475cbb88f227fd7",
+        "ds": 9,
+        "rs": 18
+      },
+      "bench": {
+        "cells": 234,
+        "exec_median_us": 8.855,
+        "exec_min_us": 8.465,
+        "exec_max_us": 10.39,
+        "exec_spread_pct": 21.73,
+        "compile_median_us": 46.109,
+        "code_hash": "d475cbb88f227fd7"
+      }
+    },
+    {
+      "workload": "choose_6_2",
+      "config": "r>",
+      "flags": 8,
+      "expected": 15,
+      "correct": true,
+      "vm": {
+        "cells": 234,
+        "instructions": 2585,
+        "result": 15,
+        "stack_ok": true,
+        "code_hash": "8971b9f48470cda7",
+        "ds": 9,
+        "rs": 18
+      },
+      "bench": {
+        "cells": 234,
+        "exec_median_us": 9.083,
+        "exec_min_us": 8.526,
+        "exec_max_us": 10.246,
+        "exec_spread_pct": 18.94,
+        "compile_median_us": 57.866,
+        "code_hash": "8971b9f48470cda7"
+      }
+    },
+    {
+      "workload": "choose_6_2",
+      "config": "r@",
+      "flags": 16,
+      "expected": 15,
+      "correct": true,
+      "vm": {
+        "cells": 248,
+        "instructions": 2897,
+        "result": 15,
+        "stack_ok": true,
+        "code_hash": "6615553cd2f4a9b6",
+        "ds": 9,
+        "rs": 18
+      },
+      "bench": {
+        "cells": 248,
+        "exec_median_us": 9.821,
+        "exec_min_us": 9.539,
+        "exec_max_us": 11.392,
+        "exec_spread_pct": 18.87,
+        "compile_median_us": 52.303,
+        "code_hash": "6615553cd2f4a9b6"
+      }
+    },
+    {
+      "workload": "choose_6_2",
+      "config": "branch",
+      "flags": 32,
+      "expected": 15,
+      "correct": true,
+      "vm": {
+        "cells": 251,
+        "instructions": 3019,
+        "result": 15,
+        "stack_ok": true,
+        "code_hash": "b4efd86007ab3292",
+        "ds": 9,
+        "rs": 18
+      },
+      "bench": {
+        "cells": 251,
+        "exec_median_us": 11.55,
+        "exec_min_us": 9.955,
+        "exec_max_us": 15.145,
+        "exec_spread_pct": 44.93,
+        "compile_median_us": 46.663,
+        "code_hash": "b4efd86007ab3292"
+      }
+    },
+    {
+      "workload": "choose_6_2",
+      "config": ">r+r>",
+      "flags": 12,
+      "expected": 15,
+      "correct": true,
+      "vm": {
+        "cells": 208,
+        "instructions": 2121,
+        "result": 15,
+        "stack_ok": true,
+        "code_hash": "4ec485f70a91fbb9",
+        "ds": 9,
+        "rs": 18
+      },
+      "bench": {
+        "cells": 208,
+        "exec_median_us": 8.08,
+        "exec_min_us": 7.174,
+        "exec_max_us": 9.339,
+        "exec_spread_pct": 26.79,
+        "compile_median_us": 46.035,
+        "code_hash": "4ec485f70a91fbb9"
+      }
+    },
+    {
+      "workload": "choose_6_2",
+      "config": "call+ret",
+      "flags": 3,
+      "expected": 15,
+      "correct": true,
+      "vm": {
+        "cells": 187,
+        "instructions": 2411,
+        "result": 15,
+        "stack_ok": true,
+        "code_hash": "87087b31d4a5ce21",
+        "ds": 8,
+        "rs": 18
+      },
+      "bench": {
+        "cells": 187,
+        "exec_median_us": 8.087,
+        "exec_min_us": 7.365,
+        "exec_max_us": 8.846,
+        "exec_spread_pct": 18.31,
+        "compile_median_us": 55.229,
+        "code_hash": "87087b31d4a5ce21"
+      }
+    },
+    {
+      "workload": "choose_6_2",
+      "config": "call+ret+branch",
+      "flags": 35,
+      "expected": 15,
+      "correct": true,
+      "vm": {
+        "cells": 178,
+        "instructions": 2381,
+        "result": 15,
+        "stack_ok": true,
+        "code_hash": "d2ef0b9f333c1861",
+        "ds": 8,
+        "rs": 18
+      },
+      "bench": {
+        "cells": 178,
+        "exec_median_us": 7.512,
+        "exec_min_us": 7.392,
+        "exec_max_us": 8.55,
+        "exec_spread_pct": 15.41,
+        "compile_median_us": 58.347,
+        "code_hash": "d2ef0b9f333c1861"
+      }
+    },
+    {
+      "workload": "choose_6_2",
+      "config": "call+ret+>r+r>",
+      "flags": 15,
+      "expected": 15,
+      "correct": true,
+      "vm": {
+        "cells": 135,
+        "instructions": 1483,
+        "result": 15,
+        "stack_ok": true,
+        "code_hash": "cb514b8c24d466c5",
+        "ds": 7,
+        "rs": 18
+      },
+      "bench": {
+        "cells": 135,
+        "exec_median_us": 4.581,
+        "exec_min_us": 4.413,
+        "exec_max_us": 9.163,
+        "exec_spread_pct": 103.67,
+        "compile_median_us": 171.586,
+        "code_hash": "cb514b8c24d466c5"
+      }
+    },
+    {
+      "workload": "choose_6_2",
+      "config": "call+ret+>r+r>+r@",
+      "flags": 31,
+      "expected": 15,
+      "correct": true,
+      "vm": {
+        "cells": 123,
+        "instructions": 1331,
+        "result": 15,
+        "stack_ok": true,
+        "code_hash": "fbd781b4c9cfe96d",
+        "ds": 7,
+        "rs": 18
+      },
+      "bench": {
+        "cells": 123,
+        "exec_median_us": 4.18,
+        "exec_min_us": 3.708,
+        "exec_max_us": 4.731,
+        "exec_spread_pct": 24.47,
+        "compile_median_us": 76.061,
+        "code_hash": "fbd781b4c9cfe96d"
+      }
+    },
+    {
+      "workload": "choose_6_2",
+      "config": "all six",
+      "flags": 63,
+      "expected": 15,
+      "correct": true,
+      "vm": {
+        "cells": 114,
+        "instructions": 1301,
+        "result": 15,
+        "stack_ok": true,
+        "code_hash": "5bf965d89487d6cb",
+        "ds": 7,
+        "rs": 18
+      },
+      "bench": {
+        "cells": 114,
+        "exec_median_us": 3.963,
+        "exec_min_us": 3.451,
+        "exec_max_us": 4.379,
+        "exec_spread_pct": 23.41,
+        "compile_median_us": 49.57,
+        "code_hash": "5bf965d89487d6cb"
+      }
+    },
+    {
+      "workload": "choose_10_5",
+      "config": "none",
+      "flags": 0,
+      "expected": 252,
+      "correct": true,
+      "vm": {
+        "cells": 260,
+        "instructions": 53560,
+        "result": 252,
+        "stack_ok": true,
+        "code_hash": "58e349f0d47de058",
+        "ds": 10,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 260,
+        "exec_median_us": 197.265,
+        "exec_min_us": 183.076,
+        "exec_max_us": 225.519,
+        "exec_spread_pct": 21.52,
+        "compile_median_us": 47.123,
+        "code_hash": "58e349f0d47de058"
+      }
+    },
+    {
+      "workload": "choose_10_5",
+      "config": "call",
+      "flags": 1,
+      "expected": 252,
+      "correct": true,
+      "vm": {
+        "cells": 203,
+        "instructions": 47524,
+        "result": 252,
+        "stack_ok": true,
+        "code_hash": "9f0d25368ecea23e",
+        "ds": 9,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 203,
+        "exec_median_us": 163.406,
+        "exec_min_us": 156.498,
+        "exec_max_us": 166.428,
+        "exec_spread_pct": 6.08,
+        "compile_median_us": 102.489,
+        "code_hash": "9f0d25368ecea23e"
+      }
+    },
+    {
+      "workload": "choose_10_5",
+      "config": "ret",
+      "flags": 2,
+      "expected": 252,
+      "correct": true,
+      "vm": {
+        "cells": 244,
+        "instructions": 48530,
+        "result": 252,
+        "stack_ok": true,
+        "code_hash": "3df88ac46a34a08a",
+        "ds": 10,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 244,
+        "exec_median_us": 161.379,
+        "exec_min_us": 150.606,
+        "exec_max_us": 170.155,
+        "exec_spread_pct": 12.11,
+        "compile_median_us": 88.339,
+        "code_hash": "3df88ac46a34a08a"
+      }
+    },
+    {
+      "workload": "choose_10_5",
+      "config": ">r",
+      "flags": 4,
+      "expected": 252,
+      "correct": true,
+      "vm": {
+        "cells": 234,
+        "instructions": 45512,
+        "result": 252,
+        "stack_ok": true,
+        "code_hash": "29b5166d66cc14a7",
+        "ds": 10,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 234,
+        "exec_median_us": 156.245,
+        "exec_min_us": 147.981,
+        "exec_max_us": 170.684,
+        "exec_spread_pct": 14.53,
+        "compile_median_us": 95.403,
+        "code_hash": "29b5166d66cc14a7"
+      }
+    },
+    {
+      "workload": "choose_10_5",
+      "config": "r>",
+      "flags": 8,
+      "expected": 252,
+      "correct": true,
+      "vm": {
+        "cells": 234,
+        "instructions": 45512,
+        "result": 252,
+        "stack_ok": true,
+        "code_hash": "ae2c6178779516d7",
+        "ds": 10,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 234,
+        "exec_median_us": 162.434,
+        "exec_min_us": 147.633,
+        "exec_max_us": 173.061,
+        "exec_spread_pct": 15.65,
+        "compile_median_us": 96.646,
+        "code_hash": "ae2c6178779516d7"
+      }
+    },
+    {
+      "workload": "choose_10_5",
+      "config": "r@",
+      "flags": 16,
+      "expected": 252,
+      "correct": true,
+      "vm": {
+        "cells": 248,
+        "instructions": 50796,
+        "result": 252,
+        "stack_ok": true,
+        "code_hash": "2ff90173c3315806",
+        "ds": 10,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 248,
+        "exec_median_us": 173.074,
+        "exec_min_us": 166.185,
+        "exec_max_us": 191.494,
+        "exec_spread_pct": 14.62,
+        "compile_median_us": 46.221,
+        "code_hash": "2ff90173c3315806"
+      }
+    },
+    {
+      "workload": "choose_10_5",
+      "config": "branch",
+      "flags": 32,
+      "expected": 252,
+      "correct": true,
+      "vm": {
+        "cells": 251,
+        "instructions": 53056,
+        "result": 252,
+        "stack_ok": true,
+        "code_hash": "0c79babfcb6773c2",
+        "ds": 10,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 251,
+        "exec_median_us": 189.175,
+        "exec_min_us": 171.835,
+        "exec_max_us": 204.805,
+        "exec_spread_pct": 17.43,
+        "compile_median_us": 91.929,
+        "code_hash": "0c79babfcb6773c2"
+      }
+    },
+    {
+      "workload": "choose_10_5",
+      "config": ">r+r>",
+      "flags": 12,
+      "expected": 252,
+      "correct": true,
+      "vm": {
+        "cells": 208,
+        "instructions": 37464,
+        "result": 252,
+        "stack_ok": true,
+        "code_hash": "3ce8fb577517b9c9",
+        "ds": 10,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 208,
+        "exec_median_us": 125.388,
+        "exec_min_us": 121.152,
+        "exec_max_us": 137.723,
+        "exec_spread_pct": 13.22,
+        "compile_median_us": 94.222,
+        "code_hash": "3ce8fb577517b9c9"
+      }
+    },
+    {
+      "workload": "choose_10_5",
+      "config": "call+ret",
+      "flags": 3,
+      "expected": 252,
+      "correct": true,
+      "vm": {
+        "cells": 187,
+        "instructions": 42494,
+        "result": 252,
+        "stack_ok": true,
+        "code_hash": "6fe7f39caf1ff651",
+        "ds": 9,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 187,
+        "exec_median_us": 133.57,
+        "exec_min_us": 126.931,
+        "exec_max_us": 140.873,
+        "exec_spread_pct": 10.44,
+        "compile_median_us": 98.04,
+        "code_hash": "6fe7f39caf1ff651"
+      }
+    },
+    {
+      "workload": "choose_10_5",
+      "config": "call+ret+branch",
+      "flags": 35,
+      "expected": 252,
+      "correct": true,
+      "vm": {
+        "cells": 178,
+        "instructions": 41990,
+        "result": 252,
+        "stack_ok": true,
+        "code_hash": "eb52a9b1751a2091",
+        "ds": 9,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 178,
+        "exec_median_us": 125.075,
+        "exec_min_us": 120.714,
+        "exec_max_us": 135.761,
+        "exec_spread_pct": 12.03,
+        "compile_median_us": 83.201,
+        "code_hash": "eb52a9b1751a2091"
+      }
+    },
+    {
+      "workload": "choose_10_5",
+      "config": "call+ret+>r+r>",
+      "flags": 15,
+      "expected": 252,
+      "correct": true,
+      "vm": {
+        "cells": 135,
+        "instructions": 26398,
+        "result": 252,
+        "stack_ok": true,
+        "code_hash": "0f6fcbce790dbdd5",
+        "ds": 8,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 135,
+        "exec_median_us": 78.703,
+        "exec_min_us": 74.595,
+        "exec_max_us": 86.791,
+        "exec_spread_pct": 15.5,
+        "compile_median_us": 43.474,
+        "code_hash": "0f6fcbce790dbdd5"
+      }
+    },
+    {
+      "workload": "choose_10_5",
+      "config": "call+ret+>r+r>+r@",
+      "flags": 31,
+      "expected": 252,
+      "correct": true,
+      "vm": {
+        "cells": 123,
+        "instructions": 23634,
+        "result": 252,
+        "stack_ok": true,
+        "code_hash": "143b1fc70badf19d",
+        "ds": 8,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 123,
+        "exec_median_us": 66.838,
+        "exec_min_us": 62.934,
+        "exec_max_us": 77.016,
+        "exec_spread_pct": 21.07,
+        "compile_median_us": 44.169,
+        "code_hash": "143b1fc70badf19d"
+      }
+    },
+    {
+      "workload": "choose_10_5",
+      "config": "all six",
+      "flags": 63,
+      "expected": 252,
+      "correct": true,
+      "vm": {
+        "cells": 114,
+        "instructions": 23130,
+        "result": 252,
+        "stack_ok": true,
+        "code_hash": "f501894689f91dbb",
+        "ds": 8,
+        "rs": 30
+      },
+      "bench": {
+        "cells": 114,
+        "exec_median_us": 61.684,
+        "exec_min_us": 58.047,
+        "exec_max_us": 68.266,
+        "exec_spread_pct": 16.57,
+        "compile_median_us": 42.139,
+        "code_hash": "f501894689f91dbb"
+      }
+    }
+  ]
+}
