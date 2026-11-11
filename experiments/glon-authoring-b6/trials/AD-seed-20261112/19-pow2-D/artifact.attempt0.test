@@ -1,0 +1,6 @@
+D-VALIDATION ERROR
+category: missing_top_level
+location: line 1, column 51
+expected: top-level expression
+observed: end of file
+message: no top-level expression after function definitions

@@ -1,0 +1,2 @@
+{"task": "max_neg", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.014231, "returncode": 1}
+{"task": "max_neg", "rep": "A", "category": "pass", "validation_seconds": 0.0, "verify_seconds": 0.011674, "returncode": 0}

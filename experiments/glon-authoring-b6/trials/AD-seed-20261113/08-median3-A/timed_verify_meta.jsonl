@@ -1,0 +1,3 @@
+{"task": "median3", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.009485, "returncode": 1}
+{"task": "median3", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.009997, "returncode": 1}
+{"task": "median3", "rep": "A", "category": "pass", "validation_seconds": 0.0, "verify_seconds": 0.009484, "returncode": 0}

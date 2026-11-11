@@ -1,0 +1,4 @@
+{"task": "choose", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.009179, "returncode": 1}
+{"task": "choose", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.01133, "returncode": 1}
+{"task": "choose", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.009049, "returncode": 1}
+{"task": "choose", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.007858, "returncode": 1}

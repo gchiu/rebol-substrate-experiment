@@ -1,0 +1,15 @@
+attempt 0 failed:
+D-VALIDATION ERROR
+category: missing_top_level
+location: line 4, column 2
+expected: top-level expression
+observed: end of file
+message: no top-level expression after function definitions
+attempt 1 failed:
+D-VALIDATION ERROR
+category: expected_expression
+location: line 1, column 21
+expected: expression
+observed: ']'
+message: expected an expression before the closing delimiter
+PASS after 2 repair attempt(s): /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261113/21-range_sum-D/artifact

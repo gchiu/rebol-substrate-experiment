@@ -1,0 +1,2 @@
+{"task": "ack", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.015951, "returncode": 1}
+{"task": "ack", "rep": "A", "category": "pass", "validation_seconds": 0.0, "verify_seconds": 0.013793, "returncode": 0}

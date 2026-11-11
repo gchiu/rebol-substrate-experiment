@@ -1,0 +1,3 @@
+{"task": "quad", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.012971, "returncode": 1}
+{"task": "quad", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.011207, "returncode": 1}
+{"task": "quad", "rep": "A", "category": "pass", "validation_seconds": 0.0, "verify_seconds": 0.011568, "returncode": 0}

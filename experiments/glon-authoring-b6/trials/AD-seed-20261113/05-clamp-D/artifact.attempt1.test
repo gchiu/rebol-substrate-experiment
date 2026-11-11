@@ -1,0 +1,6 @@
+D-VALIDATION ERROR
+category: expected_expression
+location: line 1, column 22
+expected: expression
+observed: ']'
+message: expected an expression before the closing delimiter

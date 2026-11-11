@@ -1,0 +1,3 @@
+double: func [x] [x * 2]
+quad: func [x] [double double x]
+quad 5

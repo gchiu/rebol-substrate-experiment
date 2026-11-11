@@ -1,0 +1,5 @@
+clamp: func [x lo hi] [
+    either x < lo [lo] [either x > hi [hi] [x]]
+]
+
+clamp 15 3 10

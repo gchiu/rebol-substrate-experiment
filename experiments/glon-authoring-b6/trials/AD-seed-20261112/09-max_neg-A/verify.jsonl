@@ -1,0 +1,2 @@
+{"returncode": 1, "seconds": 0.09108, "stdout": "COMPILE FAIL: no top-level expression\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0"}
+{"returncode": 0, "seconds": 0.079125, "stdout": "result -4, expected -4, stack ok\n", "stderr": "", "attempt": 1, "artifact": "artifact.attempt1", "candidate": "artifact.attempt1"}

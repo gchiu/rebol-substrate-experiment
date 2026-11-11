@@ -1,0 +1,3 @@
+{"task": "choose", "rep": "D", "category": "missing_top_level", "validation_seconds": 0.00016, "verify_seconds": 0.0, "returncode": 1}
+{"task": "choose", "rep": "D", "category": "invalid_function_reference", "validation_seconds": 0.000108, "verify_seconds": 0.0, "returncode": 1}
+{"task": "choose", "rep": "D", "category": "pass", "validation_seconds": 0.000395, "verify_seconds": 0.008144, "returncode": 0}

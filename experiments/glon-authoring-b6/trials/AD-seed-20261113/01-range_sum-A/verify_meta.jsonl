@@ -1,0 +1,2 @@
+{"task": "range_sum", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.013483, "returncode": 1}
+{"task": "range_sum", "rep": "A", "category": "pass", "validation_seconds": 0.0, "verify_seconds": 0.014549, "returncode": 0}

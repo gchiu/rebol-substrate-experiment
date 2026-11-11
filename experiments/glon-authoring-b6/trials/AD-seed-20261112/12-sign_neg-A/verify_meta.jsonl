@@ -1,0 +1,2 @@
+{"task": "sign_neg", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.028734, "returncode": 1}
+{"task": "sign_neg", "rep": "A", "category": "pass", "validation_seconds": 0.0, "verify_seconds": 0.012463, "returncode": 0}

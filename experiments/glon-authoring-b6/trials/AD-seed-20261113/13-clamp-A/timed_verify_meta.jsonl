@@ -1,0 +1,2 @@
+{"task": "clamp", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.011246, "returncode": 1}
+{"task": "clamp", "rep": "A", "category": "pass", "validation_seconds": 0.0, "verify_seconds": 0.012238, "returncode": 0}

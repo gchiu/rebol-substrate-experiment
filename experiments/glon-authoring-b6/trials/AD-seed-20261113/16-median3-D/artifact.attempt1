@@ -1,0 +1,9 @@
+median3: func [a b c] [
+  either < a b [
+    either < b c [ b ] [ either < a c [ c ] [ a ] ]
+  ] [
+    either < a c [ a ] [ either < b c [ c ] [ b ] ]
+  ]
+]
+
+median3 9 2 7

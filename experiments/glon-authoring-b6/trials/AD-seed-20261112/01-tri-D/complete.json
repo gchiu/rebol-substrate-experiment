@@ -1,0 +1,165 @@
+{
+  "task": "tri",
+  "representation": "D",
+  "seed": 20261112,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 0,
+  "first_attempt_success": false,
+  "final_success": true,
+  "attempts": 3,
+  "repairs": 2,
+  "tokens": {
+    "input": 1175,
+    "output": 86,
+    "reasoning": 19036,
+    "total": 20297,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.01164945,
+  "model_step_seconds": 115.712,
+  "process_seconds": 125.877951,
+  "verify_seconds": 0.195876,
+  "validation_seconds": 0.000293,
+  "b5_verify_seconds": 0.008226,
+  "verification_meta": [
+    {
+      "task": "tri",
+      "rep": "D",
+      "category": "missing_top_level",
+      "validation_seconds": 9.5e-05,
+      "verify_seconds": 0.0,
+      "returncode": 1
+    },
+    {
+      "task": "tri",
+      "rep": "D",
+      "category": "invalid_control_flow",
+      "validation_seconds": 5.7e-05,
+      "verify_seconds": 0.0,
+      "returncode": 1
+    },
+    {
+      "task": "tri",
+      "rep": "D",
+      "category": "pass",
+      "validation_seconds": 0.000141,
+      "verify_seconds": 0.008226,
+      "returncode": 0
+    }
+  ],
+  "sessions": [
+    "ses_e372e44cfffeQRVd5U9gQN8Brn",
+    "ses_e372cc7eeffeJbfiM6k7lWbPc8",
+    "ses_e372ca279ffe3D52pjw7dkUk0M"
+  ],
+  "artifact_bytes": 62,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 1,
+      "seconds": 0.058786,
+      "stdout": "D-VALIDATION ERROR\ncategory: missing_top_level\nlocation: line 3, column 2\nexpected: top-level expression\nobserved: end of file\nmessage: no top-level expression after function definitions\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0"
+    },
+    {
+      "returncode": 1,
+      "seconds": 0.061084,
+      "stdout": "D-VALIDATION ERROR\ncategory: invalid_control_flow\nlocation: line 2, column 14\nexpected: '[' before the then block\nobserved: <=\nmessage: expected '[' before the then block, found <=\n",
+      "stderr": "",
+      "attempt": 1,
+      "artifact": "artifact.attempt1",
+      "candidate": "artifact.attempt1"
+    },
+    {
+      "returncode": 0,
+      "seconds": 0.076006,
+      "stdout": "result 55, expected 55, stack ok\n",
+      "stderr": "",
+      "attempt": 2,
+      "artifact": "artifact.attempt2",
+      "candidate": "artifact.attempt2"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "B6:20261112:1:tri:D",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e372e44cfffeQRVd5U9gQN8Brn"
+      ],
+      "tokens": {
+        "input": 302,
+        "output": 27,
+        "reasoning": 15286,
+        "total": 15615,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0092331,
+      "model_step_seconds": 93.009,
+      "process_seconds": 97.665861,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/01-tri-D/raw/raw-1794370548698745214.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/01-tri-D/raw/raw-1794370548698745214.err",
+      "errors": [],
+      "recorded_at": 1794370646.41212
+    },
+    {
+      "trial_id": "B6:20261112:1:tri:D",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e372cc7eeffeJbfiM6k7lWbPc8"
+      ],
+      "tokens": {
+        "input": 389,
+        "output": 30,
+        "reasoning": 830,
+        "total": 1249,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00057435,
+      "model_step_seconds": 4.989,
+      "process_seconds": 9.334894,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/01-tri-D/raw/raw-1794370646568437611.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/01-tri-D/raw/raw-1794370646568437611.err",
+      "errors": [],
+      "recorded_at": 1794370655.9365115
+    },
+    {
+      "trial_id": "B6:20261112:1:tri:D",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e372ca279ffe3D52pjw7dkUk0M"
+      ],
+      "tokens": {
+        "input": 484,
+        "output": 29,
+        "reasoning": 2920,
+        "total": 3433,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.001842,
+      "model_step_seconds": 17.714,
+      "process_seconds": 22.788733,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/01-tri-D/raw/raw-1794370656042345592.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/01-tri-D/raw/raw-1794370656042345592.err",
+      "errors": [],
+      "recorded_at": 1794370678.8654134
+    }
+  ]
+}

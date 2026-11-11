@@ -1,0 +1,3 @@
+attempt 0 failed:
+COMPILE FAIL: no top-level expression
+PASS after 1 repair attempt(s): /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261113/11-sign_neg-A/artifact

@@ -1,0 +1,3 @@
+{"returncode": 1, "seconds": 0.079232, "stdout": "COMPILE FAIL: expected an expression, found ']'\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0"}
+{"returncode": 1, "seconds": 0.078694, "stdout": "COMPILE FAIL: expected an expression, found ']'\n", "stderr": "", "attempt": 1, "artifact": "artifact.attempt1", "candidate": "artifact.attempt1"}
+{"returncode": 0, "seconds": 0.075745, "stdout": "result 20, expected 20, stack ok\n", "stderr": "", "attempt": 2, "artifact": "artifact.attempt2", "candidate": "artifact.attempt2"}

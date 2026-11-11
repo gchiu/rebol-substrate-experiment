@@ -1,0 +1,2 @@
+{"task": "sign_neg", "rep": "D", "category": "missing_top_level", "validation_seconds": 5.9e-05, "verify_seconds": 0.0, "returncode": 1}
+{"task": "sign_neg", "rep": "D", "category": "pass", "validation_seconds": 0.000131, "verify_seconds": 0.010164, "returncode": 0}

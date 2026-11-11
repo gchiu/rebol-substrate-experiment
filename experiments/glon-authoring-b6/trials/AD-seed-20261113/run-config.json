@@ -1,0 +1,126 @@
+{
+  "seed": 20261113,
+  "model": "deepseek/deepseek-flash",
+  "variant": "default",
+  "temperature": "provider default (not overridden)",
+  "tasks": [
+    "tri",
+    "pow2",
+    "min3",
+    "clamp",
+    "sign_neg",
+    "range_sum",
+    "choose",
+    "is_even",
+    "ack",
+    "quad",
+    "median3",
+    "max_neg"
+  ],
+  "representations": [
+    "A",
+    "D"
+  ],
+  "order": [
+    {
+      "task": "range_sum",
+      "representation": "A"
+    },
+    {
+      "task": "sign_neg",
+      "representation": "D"
+    },
+    {
+      "task": "max_neg",
+      "representation": "D"
+    },
+    {
+      "task": "choose",
+      "representation": "A"
+    },
+    {
+      "task": "clamp",
+      "representation": "D"
+    },
+    {
+      "task": "pow2",
+      "representation": "D"
+    },
+    {
+      "task": "ack",
+      "representation": "D"
+    },
+    {
+      "task": "median3",
+      "representation": "A"
+    },
+    {
+      "task": "is_even",
+      "representation": "D"
+    },
+    {
+      "task": "quad",
+      "representation": "A"
+    },
+    {
+      "task": "sign_neg",
+      "representation": "A"
+    },
+    {
+      "task": "choose",
+      "representation": "D"
+    },
+    {
+      "task": "clamp",
+      "representation": "A"
+    },
+    {
+      "task": "quad",
+      "representation": "D"
+    },
+    {
+      "task": "tri",
+      "representation": "D"
+    },
+    {
+      "task": "median3",
+      "representation": "D"
+    },
+    {
+      "task": "ack",
+      "representation": "A"
+    },
+    {
+      "task": "pow2",
+      "representation": "A"
+    },
+    {
+      "task": "is_even",
+      "representation": "A"
+    },
+    {
+      "task": "max_neg",
+      "representation": "A"
+    },
+    {
+      "task": "range_sum",
+      "representation": "D"
+    },
+    {
+      "task": "min3",
+      "representation": "A"
+    },
+    {
+      "task": "tri",
+      "representation": "A"
+    },
+    {
+      "task": "min3",
+      "representation": "D"
+    }
+  ],
+  "prompt_dir": "prompts",
+  "adapter_timeout_seconds": 900,
+  "experiment": "B6",
+  "generated_at": 1794371688.8867779
+}

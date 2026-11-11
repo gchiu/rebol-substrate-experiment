@@ -1,0 +1,147 @@
+GLON B6 — structured validation and repair: recorded results
+2026-11-10, branch glon-shop-g1a
+Model: deepseek/deepseek-flash; OpenCode 1.18.35
+Default model variant and provider temperature; tool-free fresh sessions
+Adapter timeout: 900 s
+Matched A/D seeds: 20261112 and 20261113
+B is the B5 historical tagged reference (not rerun).
+
+VARIANTS
+
+A: B5 textual Glon with the B5 compiler diagnostics.
+D: identical textual Glon and byte-identical initial prompt; after generation a
+   structured validator reports category, line/column, expected, observed and
+   message; if validation passes, the unchanged B5 compiler/runner checks the
+   program. No rewriting and no reference solutions.
+B: B5 corrected tagged representation, historical reference.
+
+TRIAL COUNTS
+
+  A: 24 fresh matched trials (12 tasks x 2 seeds)
+  D: 24 fresh matched trials (12 tasks x 2 seeds)
+  B: 12 historical corrected trials from B5 follow-up
+  Original B5 A/B/C evidence is preserved separately.
+  C was not rerun in B6.
+
+MATCHED A/D AGGREGATE (both seeds)
+
+Measure                         A              D
+trials                          24             24
+first-attempt success            6             5
+final success                   23             24
+attempts                        50             51
+repairs                         26             27
+input tokens                 17,881         19,221
+output tokens                 2,509          2,487
+reasoning tokens            166,950        121,181
+total model tokens          187,340        142,889
+provider cost             $0.104358      $0.077084
+model-step time            1,015.90 s      748.83 s
+process wall time          1,244.96 s      984.92 s
+verification time              4.62 s         4.52 s
+validation time                0.00 s         0.0078 s
+B5 verify time                 0.750 s        0.302 s
+cost per attempted task     $0.004348      $0.003212
+cost per successful task    $0.004537      $0.003212
+tokens per successful task   8,145          5,954
+
+A final failure: choose, seed 20261113, after 4 attempts.
+D final failures: none.
+
+FIRST-ATTEMPT DIAGNOSTICS
+
+A: 18 compiler/semantic failures, 6 successes. No structured validator.
+D: 15 missing_top_level, 2 invalid_control_flow, 1 invalid_function_reference,
+   1 expected_expression, 5 successes.
+   All 19 D first-attempt failures were caught before execution by the
+   validator; no D first attempt reached a B5 compiler/semantic failure.
+
+D all-attempt categories (51 attempts):
+  pass 24, missing_top_level 15, invalid_function_reference 5,
+  invalid_control_flow 4, expected_expression 3.
+  No compiler/semantic failures remained after validation.
+No validator false-rejection was observed: all 24 D final artifacts passed.
+
+PER-SEED FINAL/FIRST
+
+seed 20261112 A: first 3/12 final 12/12; D: first 3/12 final 12/12.
+seed 20261113 A: first 3/12 final 11/12 (choose failed after 4 attempts);
+                D: first 2/12 final 12/12 (choose repaired).
+
+B5 HISTORICAL COMPARISON
+
+A original (B5): first 3/12, final 12/12, 24 attempts, 12 repairs,
+  76,685 tokens, $0.042250, model 381.58 s, process 523.75 s.
+B original (B5): first 0/12, final 12/12, 27 attempts, 15 repairs,
+  234,217 tokens, $0.133951, model 1,243.01 s, process 1,601.24 s.
+B corrected (B5): first 11/12, final 12/12, 14 attempts, 2 repairs,
+  161,245 tokens, $0.092908, model 940.24 s, process 994.47 s.
+C follow-up (B5): final 0/12, no timeouts; not part of B6.
+
+Comparisons:
+- B original -> B corrected changed documentation only and moved first-attempt
+  success 0/12 -> 11/12, repairs 15 -> 2, tokens/cost -31%. The binary
+  representation/decoder did not change. This is strong evidence that the
+  documented identifier rules, not validation, explain much of B's original
+  first-attempt gap.
+- D did not improve raw first-attempt success: A 6/24 vs D 5/24. Post-
+  generation validation cannot retroactively change the initial artifact.
+- D improved total effort and final reliability: final 24/24 vs A 23/24;
+  tokens -24%, cost -26%, model-step -26%, process -21%; cost per successful
+  task $0.00321 vs $0.00454.
+- D's validation overhead was 0.0078 s total, negligible. It also avoided B5
+  compilation on invalid attempts (B5 verify time 0.302 s vs 0.750 s for A),
+  but the decisive saving was lower reasoning/repair token cost.
+- Per 12-task-equivalent, D cost $0.0385 and 71,444 tokens versus B corrected
+  $0.0929 and 161,245 tokens; D was cheaper but B retained much higher
+  historical first-attempt reliability.
+- A original historical cost per successful task $0.00352; D matched cost
+  $0.00321, a small pilot improvement, not statistical proof.
+
+DIAGNOSTIC EFFECTIVENESS
+
+D diagnostics identify location, category, expected structure and observed
+structure. Examples:
+  missing_top_level: expected top-level expression; observed end of file.
+  invalid_control_flow: expected '[' before else block; observed ']'.
+  invalid_function_reference: observed unknown word.
+  argument_count: call expects N arguments; observed fewer.
+For these tasks the validator caught every first-attempt structural failure
+before execution. A's B5 diagnostics also prevented execution, but were
+message-level rather than structured and did not expose location/category
+fields. D repairs used fewer reasoning tokens, not fewer attempts.
+
+NEW FAILURE MODES
+
+No new failure mode was observed. The validator did not reject a final
+successful D artifact. It can still reject valid Glon forms outside the
+documented subset; that risk is inherent in any pre-validator and was not
+exercised by these 12 tasks.
+
+INTERPRETATION
+
+The central hypothesis is partially supported:
+- Not supported for first-attempt reliability: D raw first attempts were the
+  same population as A, as expected from post-generation validation.
+- Supported for total LLM effort/repair: D produced 24/24 final correct
+  programs at lower token, cost and process effort than matched A, and much
+  lower cost than historical B.
+B's high first-attempt success is not reproduced by validation. B5's controlled
+documentation correction is the strongest available explanation: changing only
+the identifier documentation moved B from 0/12 to 11/12 first attempts. The
+remaining role of explicit semantic roles is not separated from documentation
+by B5/B6 and would require a separate prompt-level experiment, not another
+representation implementation.
+
+LIMITATIONS
+
+- 24 matched A and D trials across two seeds; B is historical across a different
+  seed/settings. This is a pilot, not statistical proof.
+- Same single model/variant; no model-family replication.
+- 12 small integer-subset tasks; no closures, dynamic binding, strings, GC,
+  errors/judge or loader integration.
+- Validation covers the documented subset; alternate valid Glon syntaxes could
+  be rejected.
+- B6 did not rerun B or C.
+- Process time includes OpenCode startup; model-step time is reported separately.
+- No reference solution was exposed; the tool-free isolation protocol was used.

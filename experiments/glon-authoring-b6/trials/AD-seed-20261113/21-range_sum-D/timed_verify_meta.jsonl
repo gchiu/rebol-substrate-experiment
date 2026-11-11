@@ -1,0 +1,3 @@
+{"task": "range_sum", "rep": "D", "category": "missing_top_level", "validation_seconds": 6.7e-05, "verify_seconds": 0.0, "returncode": 1}
+{"task": "range_sum", "rep": "D", "category": "expected_expression", "validation_seconds": 9.2e-05, "verify_seconds": 0.0, "returncode": 1}
+{"task": "range_sum", "rep": "D", "category": "pass", "validation_seconds": 0.000105, "verify_seconds": 0.010195, "returncode": 0}

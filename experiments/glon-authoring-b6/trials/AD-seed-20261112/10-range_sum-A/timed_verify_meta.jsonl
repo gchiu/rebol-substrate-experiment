@@ -1,0 +1,4 @@
+{"task": "range_sum", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.017448, "returncode": 1}
+{"task": "range_sum", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.011965, "returncode": 1}
+{"task": "range_sum", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.043698, "returncode": -11}
+{"task": "range_sum", "rep": "A", "category": "pass", "validation_seconds": 0.0, "verify_seconds": 0.012862, "returncode": 0}

@@ -1,0 +1,3 @@
+{"returncode": 1, "seconds": 0.076171, "stdout": "COMPILE FAIL: no top-level expression\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0"}
+{"returncode": 1, "seconds": 0.067498, "stdout": "COMPILE FAIL: unsupported word or unknown name '(<'\n", "stderr": "", "attempt": 1, "artifact": "artifact.attempt1", "candidate": "artifact.attempt1"}
+{"returncode": 0, "seconds": 0.067183, "stdout": "result 7, expected 7, stack ok\n", "stderr": "", "attempt": 2, "artifact": "artifact.attempt2", "candidate": "artifact.attempt2"}

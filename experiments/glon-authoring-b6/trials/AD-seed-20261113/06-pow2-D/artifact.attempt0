@@ -1,0 +1,4 @@
+pow2: func [n] [
+  either = n 0 [1] [* 2 pow2 - n 1]
+]
+pow2 10

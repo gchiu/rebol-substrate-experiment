@@ -1,0 +1,2 @@
+{"returncode": 1, "seconds": 0.080431, "stdout": "D-VALIDATION ERROR\ncategory: missing_top_level\nlocation: line 1, column 58\nexpected: top-level expression\nobserved: end of file\nmessage: no top-level expression after function definitions\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0"}
+{"returncode": 0, "seconds": 0.091553, "stdout": "result -1, expected -1, stack ok\n", "stderr": "", "attempt": 1, "artifact": "artifact.attempt1", "candidate": "artifact.attempt1"}

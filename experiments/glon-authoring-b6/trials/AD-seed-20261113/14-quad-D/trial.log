@@ -1,0 +1,8 @@
+attempt 0 failed:
+D-VALIDATION ERROR
+category: expected_expression
+location: line 2, column 26
+expected: expression
+observed: ']'
+message: expected an expression before the closing delimiter
+PASS after 1 repair attempt(s): /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261113/14-quad-D/artifact

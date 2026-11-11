@@ -1,0 +1,3 @@
+{"returncode": 1, "seconds": 0.106447, "stdout": "COMPILE FAIL: either: expected '[' before the then block\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0"}
+{"returncode": 1, "seconds": 0.101465, "stdout": "COMPILE FAIL: unsupported word or unknown name '(<'\n", "stderr": "", "attempt": 1, "artifact": "artifact.attempt1", "candidate": "artifact.attempt1"}
+{"returncode": 0, "seconds": 0.10288, "stdout": "result 10, expected 10, stack ok\n", "stderr": "", "attempt": 2, "artifact": "artifact.attempt2", "candidate": "artifact.attempt2"}

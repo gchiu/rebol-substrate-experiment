@@ -1,0 +1,5 @@
+inc: func [n] [n + 1]
+range_sum: func [lo hi] [
+    either lo > hi [0] [lo + range_sum inc lo hi]
+]
+range_sum 3 9

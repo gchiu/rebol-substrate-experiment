@@ -1,0 +1,122 @@
+{
+  "task": "choose",
+  "representation": "A",
+  "seed": 20261112,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 0,
+  "first_attempt_success": false,
+  "final_success": true,
+  "attempts": 2,
+  "repairs": 1,
+  "tokens": {
+    "input": 700,
+    "output": 142,
+    "reasoning": 10816,
+    "total": 11658,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.0066798,
+  "model_step_seconds": 65.604,
+  "process_seconds": 75.913673,
+  "verify_seconds": 0.265093,
+  "validation_seconds": 0.0,
+  "b5_verify_seconds": 0.027142,
+  "verification_meta": [
+    {
+      "task": "choose",
+      "rep": "A",
+      "category": "compiler_or_semantics",
+      "validation_seconds": 0.0,
+      "verify_seconds": 0.01317,
+      "returncode": 1
+    },
+    {
+      "task": "choose",
+      "rep": "A",
+      "category": "pass",
+      "validation_seconds": 0.0,
+      "verify_seconds": 0.013972,
+      "returncode": 0
+    }
+  ],
+  "sessions": [
+    "ses_e3721862effe5PbD3XRXpgeLVI",
+    "ses_e37213bdfffeoSOYS1f4D3hpss"
+  ],
+  "artifact_bytes": 164,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 1,
+      "seconds": 0.123061,
+      "stdout": "COMPILE FAIL: unsupported word or unknown name '(='\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0"
+    },
+    {
+      "returncode": 0,
+      "seconds": 0.142032,
+      "stdout": "result 15, expected 15, stack ok\n",
+      "stderr": "",
+      "attempt": 1,
+      "artifact": "artifact.attempt1",
+      "candidate": "artifact.attempt1"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "B6:20261112:21:choose:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e3721862effe5PbD3XRXpgeLVI"
+      ],
+      "tokens": {
+        "input": 298,
+        "output": 75,
+        "reasoning": 2298,
+        "total": 2671,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0014685,
+      "model_step_seconds": 12.878,
+      "process_seconds": 18.452466,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/21-choose-A/raw/raw-1794371383432080455.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/21-choose-A/raw/raw-1794371383432080455.err",
+      "errors": [],
+      "recorded_at": 1794371401.9372034
+    },
+    {
+      "trial_id": "B6:20261112:21:choose:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e37213bdfffeoSOYS1f4D3hpss"
+      ],
+      "tokens": {
+        "input": 402,
+        "output": 67,
+        "reasoning": 8518,
+        "total": 8987,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0052113,
+      "model_step_seconds": 52.726,
+      "process_seconds": 59.480791,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/21-choose-A/raw/raw-1794371402157087089.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/21-choose-A/raw/raw-1794371402157087089.err",
+      "errors": [],
+      "recorded_at": 1794371461.6967552
+    }
+  ]
+}

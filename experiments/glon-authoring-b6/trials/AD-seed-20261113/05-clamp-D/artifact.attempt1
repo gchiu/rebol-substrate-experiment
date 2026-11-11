@@ -1,0 +1,8 @@
+lt: func [a b] [a < b]
+gt: func [a b] [a > b]
+
+clamp: func [x lo hi] [
+  either lt x lo [lo] [either gt x hi [hi] [x]]
+]
+
+clamp 15 3 10

@@ -1,0 +1,122 @@
+{
+  "task": "is_even",
+  "representation": "A",
+  "seed": 20261112,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 0,
+  "first_attempt_success": false,
+  "final_success": true,
+  "attempts": 2,
+  "repairs": 1,
+  "tokens": {
+    "input": 701,
+    "output": 135,
+    "reasoning": 7961,
+    "total": 8797,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.00496275,
+  "model_step_seconds": 45.951,
+  "process_seconds": 55.313821,
+  "verify_seconds": 0.170206,
+  "validation_seconds": 0.0,
+  "b5_verify_seconds": 0.02106,
+  "verification_meta": [
+    {
+      "task": "is_even",
+      "rep": "A",
+      "category": "compiler_or_semantics",
+      "validation_seconds": 0.0,
+      "verify_seconds": 0.011141,
+      "returncode": 1
+    },
+    {
+      "task": "is_even",
+      "rep": "A",
+      "category": "pass",
+      "validation_seconds": 0.0,
+      "verify_seconds": 0.009919,
+      "returncode": 0
+    }
+  ],
+  "sessions": [
+    "ses_e372bcc4dffebV6MDHy0a5xW3e",
+    "ses_e372b09d1ffez0EtWip9emDj0T"
+  ],
+  "artifact_bytes": 157,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 1,
+      "seconds": 0.091188,
+      "stdout": "COMPILE FAIL: no top-level expression\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0"
+    },
+    {
+      "returncode": 0,
+      "seconds": 0.079018,
+      "stdout": "result 1, expected 1, stack ok\n",
+      "stderr": "",
+      "attempt": 1,
+      "artifact": "artifact.attempt1",
+      "candidate": "artifact.attempt1"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "B6:20261112:4:is_even:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e372bcc4dffebV6MDHy0a5xW3e"
+      ],
+      "tokens": {
+        "input": 306,
+        "output": 65,
+        "reasoning": 7589,
+        "total": 7960,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0046383,
+      "model_step_seconds": 43.667,
+      "process_seconds": 49.906375,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/04-is_even-A/raw/raw-1794370710316431513.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/04-is_even-A/raw/raw-1794370710316431513.err",
+      "errors": [],
+      "recorded_at": 1794370760.2766252
+    },
+    {
+      "trial_id": "B6:20261112:4:is_even:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e372b09d1ffez0EtWip9emDj0T"
+      ],
+      "tokens": {
+        "input": 395,
+        "output": 70,
+        "reasoning": 372,
+        "total": 837,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00032445,
+      "model_step_seconds": 2.284,
+      "process_seconds": 7.048982,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/04-is_even-A/raw/raw-1794370760448273898.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/04-is_even-A/raw/raw-1794370760448273898.err",
+      "errors": [],
+      "recorded_at": 1794370767.5404313
+    }
+  ]
+}

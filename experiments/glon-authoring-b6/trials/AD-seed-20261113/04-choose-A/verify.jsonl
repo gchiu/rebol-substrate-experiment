@@ -1,0 +1,4 @@
+{"returncode": 1, "seconds": 0.069737, "stdout": "COMPILE FAIL: no top-level expression\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0"}
+{"returncode": 1, "seconds": 0.07008, "stdout": "COMPILE FAIL: either: expected '[' before the then block\n", "stderr": "", "attempt": 1, "artifact": "artifact.attempt1", "candidate": "artifact.attempt1"}
+{"returncode": 1, "seconds": 0.083273, "stdout": "COMPILE FAIL: unsupported word or unknown name '(>'\n", "stderr": "", "attempt": 2, "artifact": "artifact.attempt2", "candidate": "artifact.attempt2"}
+{"returncode": 1, "seconds": 0.090987, "stdout": "COMPILE FAIL: either: expected '[' before the then block\n", "stderr": "", "attempt": 3, "artifact": "artifact.attempt3", "candidate": "artifact.attempt3"}

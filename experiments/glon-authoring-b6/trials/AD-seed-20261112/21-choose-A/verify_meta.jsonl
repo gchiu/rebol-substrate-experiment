@@ -1,0 +1,2 @@
+{"task": "choose", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.01317, "returncode": 1}
+{"task": "choose", "rep": "A", "category": "pass", "validation_seconds": 0.0, "verify_seconds": 0.013972, "returncode": 0}

@@ -1,0 +1,165 @@
+{
+  "task": "median3",
+  "representation": "A",
+  "seed": 20261113,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 0,
+  "first_attempt_success": false,
+  "final_success": true,
+  "attempts": 3,
+  "repairs": 2,
+  "tokens": {
+    "input": 1179,
+    "output": 209,
+    "reasoning": 1605,
+    "total": 2993,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.00126525,
+  "model_step_seconds": 9.929,
+  "process_seconds": 23.691072,
+  "verify_seconds": 0.210852,
+  "validation_seconds": 0.0,
+  "b5_verify_seconds": 0.029426,
+  "verification_meta": [
+    {
+      "task": "median3",
+      "rep": "A",
+      "category": "compiler_or_semantics",
+      "validation_seconds": 0.0,
+      "verify_seconds": 0.009085,
+      "returncode": 1
+    },
+    {
+      "task": "median3",
+      "rep": "A",
+      "category": "compiler_or_semantics",
+      "validation_seconds": 0.0,
+      "verify_seconds": 0.008963,
+      "returncode": 1
+    },
+    {
+      "task": "median3",
+      "rep": "A",
+      "category": "pass",
+      "validation_seconds": 0.0,
+      "verify_seconds": 0.011378,
+      "returncode": 0
+    }
+  ],
+  "sessions": [
+    "ses_e37171fd3ffeMzBAyNZszxcpvM",
+    "ses_e3716fea9ffePKV37pz4HDnLJ4",
+    "ses_e3716e7d1ffeP6E2pw1CR3MSrF"
+  ],
+  "artifact_bytes": 155,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 1,
+      "seconds": 0.076171,
+      "stdout": "COMPILE FAIL: no top-level expression\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0"
+    },
+    {
+      "returncode": 1,
+      "seconds": 0.067498,
+      "stdout": "COMPILE FAIL: unsupported word or unknown name '(<'\n",
+      "stderr": "",
+      "attempt": 1,
+      "artifact": "artifact.attempt1",
+      "candidate": "artifact.attempt1"
+    },
+    {
+      "returncode": 0,
+      "seconds": 0.067183,
+      "stdout": "result 7, expected 7, stack ok\n",
+      "stderr": "",
+      "attempt": 2,
+      "artifact": "artifact.attempt2",
+      "candidate": "artifact.attempt2"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "B6:20261113:8:median3:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e37171fd3ffeMzBAyNZszxcpvM"
+      ],
+      "tokens": {
+        "input": 299,
+        "output": 66,
+        "reasoning": 675,
+        "total": 1040,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00048945,
+      "model_step_seconds": 4.041,
+      "process_seconds": 8.350848,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261113/08-median3-A/raw/raw-1794372065691354901.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261113/08-median3-A/raw/raw-1794372065691354901.err",
+      "errors": [],
+      "recorded_at": 1794372074.0774462
+    },
+    {
+      "trial_id": "B6:20261113:8:median3:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e3716fea9ffePKV37pz4HDnLJ4"
+      ],
+      "tokens": {
+        "input": 390,
+        "output": 74,
+        "reasoning": 194,
+        "total": 658,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0002193,
+      "model_step_seconds": 1.415,
+      "process_seconds": 5.745755,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261113/08-median3-A/raw/raw-1794372074201646402.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261113/08-median3-A/raw/raw-1794372074201646402.err",
+      "errors": [],
+      "recorded_at": 1794372079.9836617
+    },
+    {
+      "trial_id": "B6:20261113:8:median3:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e3716e7d1ffeP6E2pw1CR3MSrF"
+      ],
+      "tokens": {
+        "input": 490,
+        "output": 69,
+        "reasoning": 736,
+        "total": 1295,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0005565,
+      "model_step_seconds": 4.473,
+      "process_seconds": 10.247324,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261113/08-median3-A/raw/raw-1794372080092401563.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261113/08-median3-A/raw/raw-1794372080092401563.err",
+      "errors": [],
+      "recorded_at": 1794372090.3883483
+    }
+  ]
+}

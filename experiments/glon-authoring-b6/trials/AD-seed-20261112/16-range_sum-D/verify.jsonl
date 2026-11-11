@@ -1,0 +1,2 @@
+{"returncode": 1, "seconds": 0.118899, "stdout": "D-VALIDATION ERROR\ncategory: invalid_function_reference\nlocation: line 5, column 10\nexpected: parameter, function or supported operator\nobserved: (range_sum\nmessage: unknown word or invalid function reference '(range_sum'\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0"}
+{"returncode": 0, "seconds": 0.130594, "stdout": "result 42, expected 42, stack ok\n", "stderr": "", "attempt": 1, "artifact": "artifact.attempt1", "candidate": "artifact.attempt1"}

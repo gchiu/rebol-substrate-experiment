@@ -1,0 +1,15 @@
+attempt 0 failed:
+D-VALIDATION ERROR
+category: missing_top_level
+location: line 3, column 2
+expected: top-level expression
+observed: end of file
+message: no top-level expression after function definitions
+attempt 1 failed:
+D-VALIDATION ERROR
+category: invalid_control_flow
+location: line 2, column 14
+expected: '[' before the then block
+observed: <=
+message: expected '[' before the then block, found <=
+PASS after 2 repair attempt(s): /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/01-tri-D/artifact

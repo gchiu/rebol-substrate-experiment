@@ -1,0 +1,6 @@
+attempt 0 failed:
+COMPILE FAIL: no top-level expression
+attempt 1 failed:
+COMPILE FAIL: unsupported word or unknown name '(>'
+attempt 2 failed:
+PASS after 3 repair attempt(s): /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261112/10-range_sum-A/artifact

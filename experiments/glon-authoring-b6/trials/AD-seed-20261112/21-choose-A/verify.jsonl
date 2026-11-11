@@ -1,0 +1,2 @@
+{"returncode": 1, "seconds": 0.123061, "stdout": "COMPILE FAIL: unsupported word or unknown name '(='\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0"}
+{"returncode": 0, "seconds": 0.142032, "stdout": "result 15, expected 15, stack ok\n", "stderr": "", "attempt": 1, "artifact": "artifact.attempt1", "candidate": "artifact.attempt1"}

@@ -1,0 +1,4 @@
+{"task": "clamp", "rep": "D", "category": "missing_top_level", "validation_seconds": 0.000297, "verify_seconds": 0.0, "returncode": 1}
+{"task": "clamp", "rep": "D", "category": "invalid_control_flow", "validation_seconds": 0.000203, "verify_seconds": 0.0, "returncode": 1}
+{"task": "clamp", "rep": "D", "category": "invalid_function_reference", "validation_seconds": 0.000164, "verify_seconds": 0.0, "returncode": 1}
+{"task": "clamp", "rep": "D", "category": "pass", "validation_seconds": 0.000215, "verify_seconds": 0.013153, "returncode": 0}

@@ -1,0 +1,3 @@
+{"task": "tri", "rep": "D", "category": "missing_top_level", "validation_seconds": 4.6e-05, "verify_seconds": 0.0, "returncode": 1}
+{"task": "tri", "rep": "D", "category": "invalid_control_flow", "validation_seconds": 0.000118, "verify_seconds": 0.0, "returncode": 1}
+{"task": "tri", "rep": "D", "category": "pass", "validation_seconds": 0.000144, "verify_seconds": 0.010745, "returncode": 0}

@@ -1,0 +1,4 @@
+tri: func [n] [
+    either <= n 0 [0] [+ n tri - n 1]
+]
+tri 10

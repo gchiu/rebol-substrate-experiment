@@ -1,0 +1,1 @@
+sign: func [x] [either < x 0 [-1] [either = x 0 [0] [1]]]

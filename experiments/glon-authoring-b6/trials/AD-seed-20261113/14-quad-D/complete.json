@@ -1,0 +1,122 @@
+{
+  "task": "quad",
+  "representation": "D",
+  "seed": 20261113,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 0,
+  "first_attempt_success": false,
+  "final_success": true,
+  "attempts": 2,
+  "repairs": 1,
+  "tokens": {
+    "input": 679,
+    "output": 53,
+    "reasoning": 8000,
+    "total": 8732,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.00493365,
+  "model_step_seconds": 48.252,
+  "process_seconds": 55.877646,
+  "verify_seconds": 0.124368,
+  "validation_seconds": 0.000231,
+  "b5_verify_seconds": 0.012898,
+  "verification_meta": [
+    {
+      "task": "quad",
+      "rep": "D",
+      "category": "expected_expression",
+      "validation_seconds": 0.000112,
+      "verify_seconds": 0.0,
+      "returncode": 1
+    },
+    {
+      "task": "quad",
+      "rep": "D",
+      "category": "pass",
+      "validation_seconds": 0.000119,
+      "verify_seconds": 0.012898,
+      "returncode": 0
+    }
+  ],
+  "sessions": [
+    "ses_e370fec7affegfH5ElpM6yIeo1",
+    "ses_e370f3efbffeoAmAa4VqguGsin"
+  ],
+  "artifact_bytes": 68,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 1,
+      "seconds": 0.057547,
+      "stdout": "D-VALIDATION ERROR\ncategory: expected_expression\nlocation: line 2, column 26\nexpected: expression\nobserved: ']'\nmessage: expected an expression before the closing delimiter\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0"
+    },
+    {
+      "returncode": 0,
+      "seconds": 0.066821,
+      "stdout": "result 20, expected 20, stack ok\n",
+      "stderr": "",
+      "attempt": 1,
+      "artifact": "artifact.attempt1",
+      "candidate": "artifact.attempt1"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "B6:20261113:14:quad:D",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e370fec7affegfH5ElpM6yIeo1"
+      ],
+      "tokens": {
+        "input": 297,
+        "output": 27,
+        "reasoning": 6596,
+        "total": 6920,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00401835,
+      "model_step_seconds": 39.628,
+      "process_seconds": 44.203067,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261113/14-quad-D/raw/raw-1794372537653244573.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261113/14-quad-D/raw/raw-1794372537653244573.err",
+      "errors": [],
+      "recorded_at": 1794372581.8943822
+    },
+    {
+      "trial_id": "B6:20261113:14:quad:D",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e370f3efbffeoAmAa4VqguGsin"
+      ],
+      "tokens": {
+        "input": 382,
+        "output": 26,
+        "reasoning": 1404,
+        "total": 1812,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0009153,
+      "model_step_seconds": 8.624,
+      "process_seconds": 12.39386,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261113/14-quad-D/raw/raw-1794372582055620737.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261113/14-quad-D/raw/raw-1794372582055620737.err",
+      "errors": [],
+      "recorded_at": 1794372594.5013645
+    }
+  ]
+}

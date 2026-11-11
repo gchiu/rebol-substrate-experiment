@@ -1,0 +1,2 @@
+{"task": "tri", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.032782, "returncode": 1}
+{"task": "tri", "rep": "A", "category": "pass", "validation_seconds": 0.0, "verify_seconds": 0.015041, "returncode": 0}

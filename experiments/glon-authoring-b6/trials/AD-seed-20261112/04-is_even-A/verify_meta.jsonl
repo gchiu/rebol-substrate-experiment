@@ -1,0 +1,2 @@
+{"task": "is_even", "rep": "A", "category": "compiler_or_semantics", "validation_seconds": 0.0, "verify_seconds": 0.011141, "returncode": 1}
+{"task": "is_even", "rep": "A", "category": "pass", "validation_seconds": 0.0, "verify_seconds": 0.009919, "returncode": 0}

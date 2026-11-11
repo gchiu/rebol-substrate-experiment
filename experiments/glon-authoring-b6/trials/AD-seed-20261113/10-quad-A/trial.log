@@ -1,0 +1,5 @@
+attempt 0 failed:
+COMPILE FAIL: expected an expression, found ']'
+attempt 1 failed:
+COMPILE FAIL: expected an expression, found ']'
+PASS after 2 repair attempt(s): /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b6/trials/AD-seed-20261113/10-quad-A/artifact

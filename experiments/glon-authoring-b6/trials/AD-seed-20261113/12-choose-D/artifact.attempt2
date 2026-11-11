@@ -1,0 +1,21 @@
+iszero: func [x] [ = x 0 ]
+isgreater: func [a b] [ > a b ]
+isequal: func [a b] [ = a b ]
+minus: func [a b] [ - a b ]
+plus: func [a b] [ + a b ]
+choose: func [n k] [
+    either iszero k [
+        1
+    ] [
+        either isgreater k n [
+            0
+        ] [
+            either isequal k n [
+                1
+            ] [
+                plus choose minus n 1 minus k 1 choose minus n 1 k
+            ]
+        ]
+    ]
+]
+choose 6 2
