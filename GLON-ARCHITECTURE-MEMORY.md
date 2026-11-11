@@ -473,19 +473,21 @@ The browser host still releases at the end of a walk.
 native, `experiments/glon-deflate/`).**
 
 What was shown:
-- **Plain Glon, no runtime change.** `inflate.glon` decodes raw DEFLATE: stored,
-  fixed and dynamic blocks, canonical Huffman codes, overlapping copies,
-  malformed and truncated input. It has no masm, no new native, and no
-  change to S1, the runtime or the ABI.
+- **Plain Glon decoder plus one experimental masm scratch helper.** F2 added
+  `f2buf.glon`, a small fixed-capacity scratch helper for dynamic-header code
+  lengths (commit `22c9c95`). The DEFLATE algorithm remains in
+  `inflate.glon`; there is no new native, and no change to S1, the runtime or
+  the ABI. Earlier F1 versions were pure Glon and had the fragmentation failure
+  described below.
 - **A resumable iterator.** `dz/feed`, `dz/read`, `dz/state` and `dz/finish`.
   Input arrives through the existing GLON_LIVE byte event, in any split down
   to 1 byte. Each unit runs under `judge`, and the bit reader rolls back to a
   checkpoint when input runs out mid-unit.
 - **Conformance.** Of 480 differential runs against C zlib (164 fixtures, 7
-  chunk/read schedules), 478 pass on the unchanged runtime and 479 with the
-  proposed collector fix. Every malformed (222) and truncated (24) case
-  matches zlib's class and its bytes before the error. No run produced a wrong
-  byte: the failures are fail-stops.
+  chunk/read schedules), **480 pass** after F2's bounded code-length buffer;
+  the earlier F1 run was 479/480. Every malformed (222) and truncated (24) case
+  matches zlib's class and its bytes before the error. F2 produced no wrong
+  byte and no host allocation fail-stop.
 
 [MEASURED] limits and costs:
 - **No 32 KB window fits.** At one cell per byte, the managed heap cannot hold
@@ -495,9 +497,11 @@ What was shown:
   returns ≤ 256 bytes.
 - **Memory.** Peak live is about 4,500–5,000 of 7,232 cells. The session's 64
   closures alone take 2,048 cells (32 per `func`).
-- **Fragmentation.** A dynamic header needs strings of about 300 contiguous
-  cells, so one run in 480 fail-stops on heap fragmentation (2,944 cells free
-  in 19 holes).
+- **Fragmentation (F1, corrected by F2).** The old dynamic-header path grew a
+  code-length string to about 300 contiguous cells; one run in 480 fail-stopped
+  with 2,944 cells free in 19 holes. F2 replaces that growth with a bounded
+  per-header buffer and the full corpus now passes. The general non-moving-heap
+  fragmentation limit remains; there is no GC or heap change.
 - **Speed.** About 2.4 KB/s for text against about 840 MB/s for C zlib (about
   340,000× slower). One suspend/resume round trip costs about 2.8 ms. A
   dynamic header costs 0.5–0.9 s.
