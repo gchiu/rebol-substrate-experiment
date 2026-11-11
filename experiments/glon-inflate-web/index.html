@@ -47,7 +47,17 @@
       <button id="clear" class="secondary">Clear</button>
       <span id="status" class="status" role="status"></span>
     </div>
-    <p class="note" id="input-note">The browser adapter accepts compressed bytes, validates the container, and generates a Glon driver containing those bytes. The source buffer is limited to 16 KiB, so very large inputs must be split for this demonstration.</p>
+    <p class="note" id="input-note">The browser adapter accepts compressed bytes, validates the container, and generates a Glon driver containing those bytes. This demonstration accepts at most 3,000 compressed bytes (the runtime source buffer is 16 KiB).</p>
+  </section>
+
+  <section class="panel limits" aria-labelledby="limits-title">
+    <h2 id="limits-title">Demonstration limits</h2>
+    <ul>
+      <li><strong>Maximum compressed input:</strong> 3,000 bytes.</li>
+      <li><strong>LZ77 history window:</strong> 768 bytes.</li>
+      <li><strong>Not all valid DEFLATE streams are supported</strong> by this demonstration; a stream needing a longer back-reference window reports a Glon <code>window</code> error.</li>
+    </ul>
+    <p class="note">These are limits of this browser demonstration and its 64K Glon runtime, not a JavaScript fallback. The seven-primitive S1 core and Glon decoder are unchanged.</p>
   </section>
 
   <section id="result" class="panel result" hidden>

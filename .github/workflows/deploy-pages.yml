@@ -64,6 +64,9 @@ jobs:
           python3 demo/shop/build.py
           make wasm-g1a-test
 
+      - name: Glon Inflate page test (seven-primitive WASM)
+        run: node experiments/glon-inflate-web/test-node.mjs experiments/glon-inflate-web/glon.wasm
+
       - name: WASM closure-origin binding + CASE regression
         run: make wasm-binding-test
 
@@ -111,6 +114,14 @@ jobs:
           cp demo/shop/primer.html demo/shop/primer-host.js /tmp/shop/
           cp demo/shop/live.html demo/shop/live-host.js demo/shop/qwen-client.js demo/shop/glon-live.wasm /tmp/shop/
           cp -r demo/shop/demos /tmp/shop/demos
+          # Glon Inflate (/inflate/): the verified page, its seven-primitive WASM,
+          # decoder sources and genuine fixtures.  The WASM is the page's
+          # committed current-source build; do not replace it with the older
+          # demo/shop runtime used by the other pages.
+          rm -rf /tmp/inflate && mkdir -p /tmp/inflate/samples
+          cp experiments/glon-inflate-web/index.html experiments/glon-inflate-web/app.js              experiments/glon-inflate-web/style.css experiments/glon-inflate-web/samples.json              experiments/glon-inflate-web/prelude.glon experiments/glon-inflate-web/strings.glon              experiments/glon-inflate-web/strings-ext.glon experiments/glon-inflate-web/f2buf.glon              experiments/glon-inflate-web/inflate.glon experiments/glon-inflate-web/inflate-driver.glon              /tmp/inflate/
+          cp experiments/glon-inflate-web/glon.wasm /tmp/inflate/glon.wasm
+          cp -r experiments/glon-inflate-web/samples/. /tmp/inflate/samples/
 
       - name: Checkout main (Pages source)
         uses: actions/checkout@v4
@@ -160,11 +171,15 @@ jobs:
           cp -r experiments/glon-latex/web/katex pages/docs/latex/katex
           cp demo/shop/glon.wasm pages/docs/latex/glon.wasm
           cp jupyter/prelude.glon demo/shop/strings.glon pages/docs/latex/
+          # Glon Inflate (/inflate/): page, libraries, fixtures and the verified
+          # standard seven-primitive WASM.
+          rm -rf pages/docs/inflate && mkdir -p pages/docs/inflate
+          cp -r /tmp/inflate/. pages/docs/inflate/
           python3 site/check-site.py pages/docs
           cd pages
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/shop docs/demos/patrol docs/demos/kaka docs/latex docs/index.html docs/r0-counter.html docs/demo.js docs/demo.wasm
+          git add docs/shop docs/demos/patrol docs/demos/kaka docs/latex docs/inflate docs/index.html docs/r0-counter.html docs/demo.js docs/demo.wasm
           if git diff --cached --quiet; then
             echo "docs/ unchanged; nothing to commit"
           else

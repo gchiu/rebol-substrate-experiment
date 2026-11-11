@@ -119,7 +119,7 @@ This compares every fixture with native `dzhost` (if built) and runs the same
 - native vs browser: **6/6 fixtures byte-identical**;
 - Node/WASM: **11/11 checks** (all samples, binary/NUL, empty, malformed,
   repeatability);
-- real Chrome (headless, CDP): **31/31 checks** (all samples, binary download
+- real Chrome (headless, CDP): **32/32 checks** (all samples, binary download
   enabled, empty output, malformed, invalid Base64 and hex, empty input,
   repeatability, same-origin resources, no console errors, no horizontal
   overflow).
