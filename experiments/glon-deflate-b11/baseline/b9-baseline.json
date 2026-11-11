@@ -1,0 +1,420 @@
+{
+  "source_commit": "efbfed41007a9ab07a863a254c434cdcccba0fd3",
+  "date_utc": "2026-11-11T18:34:59Z",
+  "environment": {
+    "host": "native x86_64 WSL2",
+    "compiler": "cc -O2",
+    "normal_binary": "experiments/glon-deflate/build/dzhost",
+    "counting_binary": "experiments/glon-deflate-b9/build/dzhost-b9",
+    "repetitions": 5
+  },
+  "fixtures": [
+    {
+      "name": "fixed",
+      "file": "fixtures/fixed.deflate",
+      "compressed_bytes": 537,
+      "decompressed_bytes": 2000,
+      "sha256": "956c70ffa470e1b64ab0552d20fd7b054bca7e2062baf6f4e72e5f8ad391680d",
+      "chunks": [
+        537
+      ],
+      "read": [
+        65536
+      ]
+    },
+    {
+      "name": "dynamic",
+      "file": "fixtures/dynamic.deflate",
+      "compressed_bytes": 1684,
+      "decompressed_bytes": 9000,
+      "sha256": "fef5aff05afcb27b79fd383f79da73165544cb7493d0a119a38e1ef10c903e64",
+      "chunks": [
+        128
+      ],
+      "read": [
+        100
+      ]
+    },
+    {
+      "name": "streaming",
+      "file": "fixtures/streaming.deflate",
+      "compressed_bytes": 1818,
+      "decompressed_bytes": 9000,
+      "sha256": "fef5aff05afcb27b79fd383f79da73165544cb7493d0a119a38e1ef10c903e64",
+      "chunks": [
+        128
+      ],
+      "read": [
+        100
+      ]
+    }
+  ],
+  "workloads": [
+    {
+      "name": "fixed",
+      "compressed_bytes": 537,
+      "decompressed_bytes": 2000,
+      "sha256": "956c70ffa470e1b64ab0552d20fd7b054bca7e2062baf6f4e72e5f8ad391680d",
+      "chunks": [
+        537
+      ],
+      "read": [
+        65536
+      ],
+      "normal_runs": [
+        {
+          "run_ms": 1389.1,
+          "read_ms": 1386.2,
+          "feed_ms": 1.0,
+          "open_ms": 1.64,
+          "libs_ms": 113.7,
+          "gcs": 13,
+          "max_live": 4288,
+          "max_rs": 2865,
+          "dispatches": 13
+        },
+        {
+          "run_ms": 1406.9,
+          "read_ms": 1403.8,
+          "feed_ms": 1.0,
+          "open_ms": 1.76,
+          "libs_ms": 31.8,
+          "gcs": 13,
+          "max_live": 4288,
+          "max_rs": 2865,
+          "dispatches": 13
+        },
+        {
+          "run_ms": 1372.1,
+          "read_ms": 1368.9,
+          "feed_ms": 1.0,
+          "open_ms": 1.9,
+          "libs_ms": 26.9,
+          "gcs": 13,
+          "max_live": 4288,
+          "max_rs": 2865,
+          "dispatches": 13
+        },
+        {
+          "run_ms": 1373.5,
+          "read_ms": 1369.9,
+          "feed_ms": 1.1,
+          "open_ms": 2.27,
+          "libs_ms": 33.0,
+          "gcs": 13,
+          "max_live": 4288,
+          "max_rs": 2865,
+          "dispatches": 13
+        },
+        {
+          "run_ms": 1335.9,
+          "read_ms": 1333.2,
+          "feed_ms": 0.8,
+          "open_ms": 1.65,
+          "libs_ms": 26.1,
+          "gcs": 13,
+          "max_live": 4288,
+          "max_rs": 2865,
+          "dispatches": 13
+        }
+      ],
+      "run_ms_median": 1373.5,
+      "run_ms_min": 1335.9,
+      "run_ms_max": 1406.9,
+      "run_ms_spread_pct": 5.169275573352748,
+      "decode_ms_median": 1371.0,
+      "output_kb_per_s_median": 1.4220058245358573,
+      "instructions": 284665507,
+      "host_calls": 48283945,
+      "instructions_per_output_byte": 142332.7535,
+      "count_run": {
+        "ops": "284665507",
+        "hostcalls": "48283945",
+        "cycles": "4139082826"
+      },
+      "count_stats": {
+        "in": "537",
+        "fed": "537",
+        "out": "2000",
+        "window": "768",
+        "feeds": "1",
+        "reads": "9",
+        "dispatches": "13",
+        "libs_ms": "26.0",
+        "open_ms": "1.93",
+        "first_out_ms": "330.3",
+        "read_ms": "1429.3",
+        "feed_ms": "0.9",
+        "run_ms": "1432.3",
+        "us_per_read": "158806.8",
+        "out_kb_s": "1.36",
+        "in_kb_s": "0.37",
+        "gcs": "13",
+        "max_live": "4288",
+        "heap": "7232",
+        "max_rs": "2865",
+        "loader_delta": "0",
+        "lib_loader": "10977",
+        "bindings": "110",
+        "code_end": "14549",
+        "allocs_total": "0",
+        "allocs_lib": "0",
+        "allocs_open": "0",
+        "allocs_decode": "0",
+        "alloc_cells_total": "0",
+        "alloc_cells_lib": "0",
+        "alloc_cells_open": "0",
+        "alloc_cells_decode": "0",
+        "allocs_ctx_decode": "0",
+        "allocs_raw_decode": "0",
+        "live_objs": "81",
+        "reclaimed": "3104"
+      },
+      "log_tail": "STATS in=537 fed=537 out=2000 window=768 feeds=1 reads=9 dispatches=13 libs_ms=26.1 open_ms=1.65 first_out_ms=303.7 read_ms=1333.2 feed_ms=0.8 run_ms=1335.9 us_per_read=148138.1 out_kb_s=1.46 in_kb_s=0.39 gcs=13 max_live=4288 heap=7232 max_rs=2865 loader_delta=0 lib_loader=10977 bindings=110 code_end=14549 allocs_total=0 allocs_lib=0 allocs_open=0 allocs_decode=0 alloc_cells_total=0 alloc_cells_lib=0 alloc_cells_open=0 alloc_cells_decode=0 allocs_ctx_decode=0 allocs_raw_decode=0 live_objs=81 reclaimed=3104\n"
+    },
+    {
+      "name": "dynamic",
+      "compressed_bytes": 1684,
+      "decompressed_bytes": 9000,
+      "sha256": "fef5aff05afcb27b79fd383f79da73165544cb7493d0a119a38e1ef10c903e64",
+      "chunks": [
+        128
+      ],
+      "read": [
+        100
+      ],
+      "normal_runs": [
+        {
+          "run_ms": 5874.2,
+          "read_ms": 5849.4,
+          "feed_ms": 20.9,
+          "open_ms": 1.93,
+          "libs_ms": 23.5,
+          "gcs": 79,
+          "max_live": 4464,
+          "max_rs": 3617,
+          "dispatches": 115
+        },
+        {
+          "run_ms": 6642.9,
+          "read_ms": 6609.0,
+          "feed_ms": 25.3,
+          "open_ms": 2.29,
+          "libs_ms": 35.9,
+          "gcs": 79,
+          "max_live": 4464,
+          "max_rs": 3617,
+          "dispatches": 115
+        },
+        {
+          "run_ms": 6630.4,
+          "read_ms": 6601.5,
+          "feed_ms": 24.7,
+          "open_ms": 2.05,
+          "libs_ms": 24.9,
+          "gcs": 79,
+          "max_live": 4464,
+          "max_rs": 3617,
+          "dispatches": 115
+        },
+        {
+          "run_ms": 6528.3,
+          "read_ms": 6495.0,
+          "feed_ms": 23.3,
+          "open_ms": 3.53,
+          "libs_ms": 38.0,
+          "gcs": 79,
+          "max_live": 4464,
+          "max_rs": 3617,
+          "dispatches": 115
+        },
+        {
+          "run_ms": 6498.7,
+          "read_ms": 6472.0,
+          "feed_ms": 22.5,
+          "open_ms": 2.21,
+          "libs_ms": 32.5,
+          "gcs": 79,
+          "max_live": 4464,
+          "max_rs": 3617,
+          "dispatches": 115
+        }
+      ],
+      "run_ms_median": 6528.3,
+      "run_ms_min": 5874.2,
+      "run_ms_max": 6642.9,
+      "run_ms_spread_pct": 11.774887796210344,
+      "decode_ms_median": 6518.3,
+      "output_kb_per_s_median": 1.3463018703184597,
+      "instructions": 1237258721,
+      "host_calls": 204257987,
+      "instructions_per_output_byte": 137473.19122222223,
+      "count_run": {
+        "ops": "1237258721",
+        "hostcalls": "204257987",
+        "cycles": "21998834297"
+      },
+      "count_stats": {
+        "in": "1684",
+        "fed": "1684",
+        "out": "9000",
+        "window": "768",
+        "feeds": "14",
+        "reads": "98",
+        "dispatches": "115",
+        "libs_ms": "26.5",
+        "open_ms": "2.18",
+        "first_out_ms": "821.9",
+        "read_ms": "7575.7",
+        "feed_ms": "26.3",
+        "run_ms": "7606.6",
+        "us_per_read": "77303.4",
+        "out_kb_s": "1.16",
+        "in_kb_s": "0.22",
+        "gcs": "79",
+        "max_live": "4464",
+        "heap": "7232",
+        "max_rs": "3617",
+        "loader_delta": "0",
+        "lib_loader": "10977",
+        "bindings": "110",
+        "code_end": "14549",
+        "allocs_total": "0",
+        "allocs_lib": "0",
+        "allocs_open": "0",
+        "allocs_decode": "0",
+        "alloc_cells_total": "0",
+        "alloc_cells_lib": "0",
+        "alloc_cells_open": "0",
+        "alloc_cells_decode": "0",
+        "allocs_ctx_decode": "0",
+        "allocs_raw_decode": "0",
+        "live_objs": "87",
+        "reclaimed": "3024"
+      },
+      "log_tail": "STATS in=1684 fed=1684 out=9000 window=768 feeds=14 reads=98 dispatches=115 libs_ms=32.5 open_ms=2.21 first_out_ms=738.2 read_ms=6472.0 feed_ms=22.5 run_ms=6498.7 us_per_read=66040.6 out_kb_s=1.35 in_kb_s=0.25 gcs=79 max_live=4464 heap=7232 max_rs=3617 loader_delta=0 lib_loader=10977 bindings=110 code_end=14549 allocs_total=0 allocs_lib=0 allocs_open=0 allocs_decode=0 alloc_cells_total=0 alloc_cells_lib=0 alloc_cells_open=0 alloc_cells_decode=0 allocs_ctx_decode=0 allocs_raw_decode=0 live_objs=87 reclaimed=3024\n"
+    },
+    {
+      "name": "streaming",
+      "compressed_bytes": 1818,
+      "decompressed_bytes": 9000,
+      "sha256": "fef5aff05afcb27b79fd383f79da73165544cb7493d0a119a38e1ef10c903e64",
+      "chunks": [
+        128
+      ],
+      "read": [
+        100
+      ],
+      "normal_runs": [
+        {
+          "run_ms": 9403.1,
+          "read_ms": 9375.6,
+          "feed_ms": 22.4,
+          "open_ms": 2.71,
+          "libs_ms": 34.7,
+          "gcs": 185,
+          "max_live": 4832,
+          "max_rs": 3548,
+          "dispatches": 119
+        },
+        {
+          "run_ms": 10630.8,
+          "read_ms": 10593.0,
+          "feed_ms": 27.6,
+          "open_ms": 2.46,
+          "libs_ms": 41.9,
+          "gcs": 185,
+          "max_live": 4832,
+          "max_rs": 3548,
+          "dispatches": 119
+        },
+        {
+          "run_ms": 10322.6,
+          "read_ms": 10283.4,
+          "feed_ms": 26.9,
+          "open_ms": 2.48,
+          "libs_ms": 32.6,
+          "gcs": 185,
+          "max_live": 4832,
+          "max_rs": 3548,
+          "dispatches": 119
+        },
+        {
+          "run_ms": 9608.6,
+          "read_ms": 9577.8,
+          "feed_ms": 22.2,
+          "open_ms": 1.84,
+          "libs_ms": 26.7,
+          "gcs": 185,
+          "max_live": 4832,
+          "max_rs": 3548,
+          "dispatches": 119
+        },
+        {
+          "run_ms": 9103.0,
+          "read_ms": 9073.6,
+          "feed_ms": 20.2,
+          "open_ms": 2.31,
+          "libs_ms": 28.7,
+          "gcs": 185,
+          "max_live": 4832,
+          "max_rs": 3548,
+          "dispatches": 119
+        }
+      ],
+      "run_ms_median": 9608.6,
+      "run_ms_min": 9103.0,
+      "run_ms_max": 10630.8,
+      "run_ms_spread_pct": 15.900339279395535,
+      "decode_ms_median": 9600.0,
+      "output_kb_per_s_median": 0.914707917906875,
+      "instructions": 2098178800,
+      "host_calls": 331915025,
+      "instructions_per_output_byte": 233130.97777777776,
+      "count_run": {
+        "ops": "2098178800",
+        "hostcalls": "331915025",
+        "cycles": "27047827185"
+      },
+      "count_stats": {
+        "in": "1818",
+        "fed": "1818",
+        "out": "9000",
+        "window": "768",
+        "feeds": "15",
+        "reads": "101",
+        "dispatches": "119",
+        "libs_ms": "24.2",
+        "open_ms": "1.98",
+        "first_out_ms": "613.5",
+        "read_ms": "9294.1",
+        "feed_ms": "23.6",
+        "run_ms": "9325.9",
+        "us_per_read": "92020.6",
+        "out_kb_s": "0.94",
+        "in_kb_s": "0.19",
+        "gcs": "185",
+        "max_live": "4832",
+        "heap": "7232",
+        "max_rs": "3548",
+        "loader_delta": "0",
+        "lib_loader": "10977",
+        "bindings": "110",
+        "code_end": "14549",
+        "allocs_total": "0",
+        "allocs_lib": "0",
+        "allocs_open": "0",
+        "allocs_decode": "0",
+        "alloc_cells_total": "0",
+        "alloc_cells_lib": "0",
+        "alloc_cells_open": "0",
+        "alloc_cells_decode": "0",
+        "allocs_ctx_decode": "0",
+        "allocs_raw_decode": "0",
+        "live_objs": "89",
+        "reclaimed": "3008"
+      },
+      "log_tail": "STATS in=1818 fed=1818 out=9000 window=768 feeds=15 reads=101 dispatches=119 libs_ms=28.7 open_ms=2.31 first_out_ms=759.0 read_ms=9073.6 feed_ms=20.2 run_ms=9103.0 us_per_read=89837.3 out_kb_s=0.97 in_kb_s=0.20 gcs=185 max_live=4832 heap=7232 max_rs=3548 loader_delta=0 lib_loader=10977 bindings=110 code_end=14549 allocs_total=0 allocs_lib=0 allocs_open=0 allocs_decode=0 alloc_cells_total=0 alloc_cells_lib=0 alloc_cells_open=0 alloc_cells_decode=0 allocs_ctx_decode=0 allocs_raw_decode=0 live_objs=89 reclaimed=3008\n"
+    }
+  ]
+}

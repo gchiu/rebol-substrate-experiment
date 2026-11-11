@@ -1,0 +1,121 @@
+{
+  "date_utc": "2026-11-11T22:28:32Z",
+  "environment": {
+    "host": "native x86_64 WSL2",
+    "compiler": "cc -O2",
+    "repetitions": 5
+  },
+  "workloads": [
+    {
+      "name": "fixed",
+      "compressed_bytes": 537,
+      "decompressed_bytes": 2000,
+      "measurements": {
+        "seven": {
+          "run_ms_median": 933.8,
+          "run_ms_min": 928.6,
+          "run_ms_max": 942.7,
+          "spread_pct": 1.5099593060612575,
+          "decode_ms_median": 932.5,
+          "code_end": 14549,
+          "max_live": 4288,
+          "max_rs": 2865,
+          "gcs": 13
+        },
+        "b11": {
+          "run_ms_median": 820.1,
+          "run_ms_min": 814.9,
+          "run_ms_max": 826.9,
+          "spread_pct": 1.4632361907084501,
+          "decode_ms_median": 818.9,
+          "code_end": 9933,
+          "max_live": 4288,
+          "max_rs": 2865,
+          "gcs": 13
+        },
+        "count": {
+          "total": 239378089,
+          "calls": 1497200,
+          "rets": 1517392,
+          "toR": 764165,
+          "fromR": 743939,
+          "fetchR": 41133
+        }
+      }
+    },
+    {
+      "name": "dynamic",
+      "compressed_bytes": 1684,
+      "decompressed_bytes": 9000,
+      "measurements": {
+        "seven": {
+          "run_ms_median": 3933.1,
+          "run_ms_min": 3892.3,
+          "run_ms_max": 3982.0,
+          "spread_pct": 2.2806437670031228,
+          "decode_ms_median": 3930.0,
+          "code_end": 14549,
+          "max_live": 4464,
+          "max_rs": 3617,
+          "gcs": 79
+        },
+        "b11": {
+          "run_ms_median": 3431.7,
+          "run_ms_min": 3396.5,
+          "run_ms_max": 3512.7,
+          "spread_pct": 3.3860768715213982,
+          "decode_ms_median": 3428.3,
+          "code_end": 9933,
+          "max_live": 4464,
+          "max_rs": 3617,
+          "gcs": 79
+        },
+        "count": {
+          "total": 1038022077,
+          "calls": 6286399,
+          "rets": 6386724,
+          "toR": 3776579,
+          "fromR": 3675688,
+          "fetchR": 157240
+        }
+      }
+    },
+    {
+      "name": "streaming",
+      "compressed_bytes": 1818,
+      "decompressed_bytes": 9000,
+      "measurements": {
+        "seven": {
+          "run_ms_median": 6406.2,
+          "run_ms_min": 6328.2,
+          "run_ms_max": 6525.1,
+          "spread_pct": 3.0735849645655855,
+          "decode_ms_median": 6393.599999999999,
+          "code_end": 14549,
+          "max_live": 4832,
+          "max_rs": 3548,
+          "gcs": 185
+        },
+        "b11": {
+          "run_ms_median": 5322.5,
+          "run_ms_min": 5197.8,
+          "run_ms_max": 5426.6,
+          "spread_pct": 4.298731798966655,
+          "decode_ms_median": 5319.200000000001,
+          "code_end": 9933,
+          "max_live": 4832,
+          "max_rs": 3548,
+          "gcs": 185
+        },
+        "count": {
+          "total": 1765902992,
+          "calls": 9589466,
+          "rets": 9733785,
+          "toR": 7538275,
+          "fromR": 7393086,
+          "fetchR": 206739
+        }
+      }
+    }
+  ]
+}
