@@ -1,0 +1,125 @@
+{
+  "seed": 20261111,
+  "model": "deepseek/deepseek-flash",
+  "variant": "default",
+  "temperature": "provider default (not overridden)",
+  "tasks": [
+    "tri",
+    "pow2",
+    "min3",
+    "clamp",
+    "sign_neg",
+    "range_sum",
+    "choose",
+    "is_even",
+    "ack",
+    "quad",
+    "median3",
+    "max_neg"
+  ],
+  "representations": [
+    "B",
+    "C"
+  ],
+  "order": [
+    {
+      "task": "ack",
+      "representation": "C"
+    },
+    {
+      "task": "clamp",
+      "representation": "B"
+    },
+    {
+      "task": "quad",
+      "representation": "C"
+    },
+    {
+      "task": "choose",
+      "representation": "B"
+    },
+    {
+      "task": "quad",
+      "representation": "B"
+    },
+    {
+      "task": "sign_neg",
+      "representation": "C"
+    },
+    {
+      "task": "max_neg",
+      "representation": "B"
+    },
+    {
+      "task": "tri",
+      "representation": "C"
+    },
+    {
+      "task": "ack",
+      "representation": "B"
+    },
+    {
+      "task": "median3",
+      "representation": "C"
+    },
+    {
+      "task": "is_even",
+      "representation": "C"
+    },
+    {
+      "task": "min3",
+      "representation": "B"
+    },
+    {
+      "task": "choose",
+      "representation": "C"
+    },
+    {
+      "task": "clamp",
+      "representation": "C"
+    },
+    {
+      "task": "tri",
+      "representation": "B"
+    },
+    {
+      "task": "pow2",
+      "representation": "B"
+    },
+    {
+      "task": "median3",
+      "representation": "B"
+    },
+    {
+      "task": "pow2",
+      "representation": "C"
+    },
+    {
+      "task": "range_sum",
+      "representation": "B"
+    },
+    {
+      "task": "max_neg",
+      "representation": "C"
+    },
+    {
+      "task": "min3",
+      "representation": "C"
+    },
+    {
+      "task": "range_sum",
+      "representation": "C"
+    },
+    {
+      "task": "sign_neg",
+      "representation": "B"
+    },
+    {
+      "task": "is_even",
+      "representation": "B"
+    }
+  ],
+  "prompt_dir": "prompts/followup",
+  "adapter_timeout_seconds": 900,
+  "generated_at": 1794361064.9667
+}

@@ -1,0 +1,4 @@
+{"returncode": 1, "seconds": 0.00882, "stdout": "COMPILE FAIL: direct token 52: undefined entry label\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0.bin"}
+{"returncode": 1, "seconds": 0.010438, "stdout": "result 0, expected 9, stack ok\n", "stderr": "", "attempt": 1, "artifact": "artifact.attempt1", "candidate": "artifact.attempt1.bin"}
+{"returncode": 1, "seconds": 0.009121, "stdout": "result 0, expected 9, stack ok\n", "stderr": "", "attempt": 2, "artifact": "artifact.attempt2", "candidate": "artifact.attempt2.bin"}
+{"returncode": 1, "seconds": 0.011997, "stdout": "result 0, expected 9, stack ok\n", "stderr": "", "attempt": 3, "artifact": "artifact.attempt3", "candidate": "artifact.attempt3.bin"}

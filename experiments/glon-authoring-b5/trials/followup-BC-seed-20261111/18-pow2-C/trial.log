@@ -1,0 +1,10 @@
+attempt 0 failed:
+COMPILE FAIL: direct token 22: undefined entry label
+attempt 1 failed:
+COMPILE FAIL: direct token 5: duplicate entry directive
+attempt 2 failed:
+result 64, expected 1024, stack ok
+attempt 3 failed:
+conversion failed
+empty hex artifact
+FAIL after three repair attempts; last artifact: /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/18-pow2-C/artifact.attempt3

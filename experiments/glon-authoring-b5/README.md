@@ -2,10 +2,12 @@
 
 **Status:** isolated experiment, 2026-11-10, branch `glon-shop-g1a`.
 
-**Trials executed.** A/B completed all 12 tasks; C is not evaluable because
-11/12 C trials were interrupted by a 180 s adapter timeout. The adapter now
-defaults to 900 s, and C must be rerun before comparison. Raw logs, artifacts,
-sessions, tokens, costs and diagnostics are in `trials/`.
+**Trials executed, including a follow-up.** The original A run and B run
+completed all 12 tasks. The original C run was invalidated by 180 s adapter
+timeouts. The follow-up corrected B's identifier documentation and reran B and
+C with a 900 s timeout; follow-up C had zero timeouts but remained at 0/12 final
+successes. Original and follow-up evidence is preserved separately under
+`trials/`.
 
 B1–B4, frozen S1, production Glon, memory layout, host ABI and applications are
 unchanged.
@@ -203,14 +205,58 @@ succeeded; B has 11 fully clean trials and one timeout-affected success.
 Among the valid A/B data, A used about one-third of B's tokens and cost, and B
 required more repairs. B's all-first-attempt failures are confounded by the
 function-id documentation ambiguity. The sample is 12 tasks per representation;
-this is a pilot, not proof of general superiority. C must be rerun with the
-900 s adapter before comparison.
+this is a pilot, not proof of general superiority. C was rerun with the
+900 s adapter in the follow-up; see the next section.
 
 Final artifact sizes: A 1367 bytes total (median 103.5); B 3093 raw hex bytes /
 345 binary words (median 24 words); C has no valid final artifacts.
 Verification (compile+run) time was about 0.35/0.33/0.44 s total per
 representation. Model-step time is reported separately from total process
 time and is not total development time.
+
+## Follow-up trials (seed 20261111)
+
+The follow-up used the same model (`deepseek/deepseek-flash`), default variant
+and provider temperature. B used corrected identifier documentation; C used
+the 900 s adapter timeout. A was not rerun and remains the original reference.
+
+| Measure | A original | B original | B corrected | C follow-up |
+|---|---:|---:|---:|---:|
+| First-attempt success | 3/12 | 0/12 | 11/12 | 0/12 |
+| Final success | 12/12 | 12/12 | 12/12 | 0/12 |
+| Attempts / repairs | 24 / 12 | 27 / 15 | 14 / 2 | 48 / 36 |
+| Tokens | 76,685 | 234,217 | 161,245 | 1,036,806 |
+| Provider cost | $0.042250 | $0.133951 | $0.092908 | $0.606714 |
+| Cost/successful task | $0.003521 | $0.011163 | $0.007742 | no success |
+| Model-step time | 381.58 s | 1,243.01 s | 940.24 s | 6,222.26 s |
+| Process time | 523.75 s | 1,601.24 s | 994.47 s | 6,366.90 s |
+| Verification time | 0.35 s | 0.33 s | 0.13 s | 0.42 s |
+| Final artifact bytes | 1,367 | 3,093 | 3,102 | 2,540* |
+| Timeout-affected trials | 0/12 | 1/12 | 0/12 | 0/12 |
+
+\*C's 2,540 bytes are last-attempt artifacts, not valid final programs. B
+corrected's 3,102 raw hex bytes are 346 binary words.
+
+B original → B corrected, with only the identifier documentation changed:
+first-attempt success **0/12 → 11/12**, repairs **15 → 2**, tokens **−31%**,
+cost **−31%**, process time **−38%**, final success unchanged at 12/12. The
+only corrected first-attempt failure was `max_neg` (incorrect semantics); all
+corrected attempts contained no encoding failures. This is a documentation
+effect, not a binary/encoding/decoder change.
+
+A original vs B corrected: B's first-attempt reliability was much higher
+(11/12 vs 3/12), but A still used less total effort: 76,685 vs 161,245 tokens,
+$0.042250 vs $0.092908, and 523.75 vs 994.47 s.
+
+A original vs C follow-up: C completed without timeouts (12/12 evaluable) but
+had **0/12 final successes**, consuming 1,036,806 tokens and $0.606714 —
+about 13.5× A's tokens and 14.4× A's cost. C failures were 33 invalid
+representation/encoding and 15 incorrect-semantics failures over 48 attempts.
+A C smoke test on `tri` succeeded after three repairs, but the full `tri` run
+failed; model variability is material.
+
+A and B are completed comparisons; C is a completed but unsuccessful
+representation result. The 12-task sample is a pilot, not statistical proof.
 
 ## Implementation size
 
@@ -221,11 +267,15 @@ time and is not total development time.
 
 ## Limitations
 
-- C is incomplete because of the adapter timeout; no C conclusion is valid.
-- B has one timeout-affected successful trial; B cost/time is slightly
-  undercounted for that one call.
-- B's first-attempt rate is confounded by the function-id prompt ambiguity.
+- Original C is incomplete because of the 180 s adapter timeout; use the
+  follow-up C run for C evidence. Follow-up C had zero timeouts but 0/12 final
+  successes.
+- B original has one timeout-affected successful trial; B corrected has none.
+- B original's first-attempt rate is confounded by the function-id prompt
+  ambiguity; B corrected removes that confounder.
 - The suite is a 12-task pilot, not a general productivity proof.
+- B corrected remains about 2.2× A's cost despite its much better first-attempt
+  rate; token/reasoning cost is not the same as first-attempt reliability.
 - The suite is small and restricted to the integer subset; no closures,
   dynamic binding, escape laws, managed values/GC, errors/`judge` or loader
   integration.

@@ -1,0 +1,10 @@
+attempt 0 failed:
+COMPILE FAIL: direct token 2: label id 0
+attempt 1 failed:
+result 2, expected 42, stack ok
+attempt 2 failed:
+conversion failed
+empty hex artifact
+attempt 3 failed:
+result 2, expected 42, stack ok
+FAIL after three repair attempts; last artifact: /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/22-range_sum-C/artifact.attempt3

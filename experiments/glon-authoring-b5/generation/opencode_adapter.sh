@@ -45,6 +45,10 @@ timeout "$TIMEOUT" opencode run \
   "$(cat "$PROMPT")" > "$RAW" 2> "$ERR"
 RC=$?
 END=$(date +%s.%N)
+if [ "$RC" -eq 124 ]; then
+  echo "ADAPTER_TIMEOUT timeout=${TIMEOUT}s" >> "$ERR"
+fi
+export B5_OPENCODE_TIMEOUT="$TIMEOUT"
 
 # Always return 0 so B5's repair loop can consume empty/failed artifacts and
 # feed verification diagnostics back to the next fresh session.

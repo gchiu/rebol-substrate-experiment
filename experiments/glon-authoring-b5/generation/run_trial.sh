@@ -15,7 +15,8 @@ fi
 case "$rep" in A|B|C) ;; *) echo "representation must be A, B or C" >&2; exit 2;; esac
 prompt=$(mktemp)
 trap 'rm -f "$prompt"' EXIT
-cat "../tasks/$task.md" "prompts/$rep.md" > "$prompt"
+PROMPT_DIR=${B5_PROMPT_DIR:-prompts}
+cat "../tasks/$task.md" "$PROMPT_DIR/$rep.md" > "$prompt"
 
 attempt=0
 while [ "$attempt" -le 3 ]; do

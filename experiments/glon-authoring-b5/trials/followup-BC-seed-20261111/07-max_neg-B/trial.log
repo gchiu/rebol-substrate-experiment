@@ -1,0 +1,5 @@
+attempt 0 failed:
+result 4294967292, expected -4, stack ok
+attempt 1 failed:
+result 4294967292, expected -4, stack ok
+PASS after 2 repair attempt(s): /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/07-max_neg-B/artifact

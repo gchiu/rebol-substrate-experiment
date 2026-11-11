@@ -1,0 +1,11 @@
+attempt 0 failed:
+result 0, expected -1, stack ok
+attempt 1 failed:
+result 0, expected -1, stack ok
+attempt 2 failed:
+conversion failed
+empty hex artifact
+attempt 3 failed:
+conversion failed
+empty hex artifact
+FAIL after three repair attempts; last artifact: /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/06-sign_neg-C/artifact.attempt3

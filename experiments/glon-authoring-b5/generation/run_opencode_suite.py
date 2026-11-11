@@ -59,6 +59,8 @@ def main():
     ap.add_argument("--reps", default="A,B,C")
     ap.add_argument("--model", default="deepseek/deepseek-flash")
     ap.add_argument("--limit", type=int, default=0, help="run at most N remaining trials")
+    ap.add_argument("--prompt-dir", default="prompts", help="prompt directory relative to generation/")
+    ap.add_argument("--timeout", type=int, default=900, help="per-invocation adapter timeout seconds")
     args = ap.parse_args()
 
     if not B5BIN.exists():
@@ -78,7 +80,10 @@ def main():
             print(f"resume model mismatch: {args.model} vs {config.get('model')}", file=sys.stderr)
             return 2
         pairs = [(o["task"], o["representation"]) for o in config["order"]]
-        print(f"resuming {outdir} with seed {config.get('seed')} model {config.get('model')}", flush=True)
+        args.prompt_dir = config.get("prompt_dir", args.prompt_dir)
+        args.timeout = int(config.get("adapter_timeout_seconds", args.timeout))
+        print(f"resuming {outdir} with seed {config.get('seed')} model {config.get('model')} "
+              f"prompt_dir {args.prompt_dir} timeout {args.timeout}", flush=True)
     else:
         outdir.mkdir(parents=True, exist_ok=False)
         tasks = TASKS if args.tasks == "all" else [x.strip() for x in args.tasks.split(",") if x.strip()]
@@ -95,6 +100,8 @@ def main():
             "tasks": tasks,
             "representations": reps,
             "order": order,
+            "prompt_dir": args.prompt_dir,
+            "adapter_timeout_seconds": args.timeout,
             "generated_at": time.time(),
         }
         (outdir / "run-config.json").write_text(json.dumps(config, indent=2) + "\n")
@@ -121,6 +128,8 @@ def main():
             "B5_TRIAL_ID": trial_id,
             "B5_RAW_DIR": str(raw_dir),
             "B5_META_LOG": str(meta_log),
+            "B5_PROMPT_DIR": args.prompt_dir,
+            "B5_OPENCODE_TIMEOUT": str(args.timeout),
         })
         trial_log = trial_dir / "trial.log"
         t0 = time.perf_counter()

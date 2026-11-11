@@ -86,9 +86,10 @@ def main():
         first_success = bool(verifies and verifies[0].get("returncode") == 0)
         final_success = bool(complete.get("run_trial_returncode") == 0)
         timeout_attempts = sum(1 for m in metas
-                               if int(m.get("tokens", {}).get("total", 0) or 0) == 0
-                               and int(m.get("text_parts", 0) or 0) == 0
-                               and float(m.get("process_seconds", 0) or 0) >= 170)
+                               if bool(m.get("adapter_timeout", False)) or
+                               (int(m.get("tokens", {}).get("total", 0) or 0) == 0
+                                and int(m.get("text_parts", 0) or 0) == 0
+                                and float(m.get("process_seconds", 0) or 0) >= 170))
         trials.append({
             "task": task, "representation": rep,
             "first_attempt_success": first_success,
@@ -159,8 +160,9 @@ def main():
         Path(args.json).write_text(json.dumps(result, indent=2) + "\n")
     if args.markdown:
         lines = ["# B5 OpenCode trial analysis", ""]
+        ntask = len({o['task'] for o in config['order']})
         lines.append(f"Model: `{config.get('model')}`; seed: {config.get('seed')}; "
-                     f"tasks: {len(config['order'])//3}; trials: {len(trials)}.")
+                     f"tasks: {ntask}; trials: {len(trials)}.")
         lines += ["", "| Rep | First success | Final success | Evaluable | Timeout-affected | Attempts | Repairs | Tokens | Cost | Model s | Process s | Cost/attempt | Cost/success |",
                   "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
         for rep in "ABC":
@@ -168,7 +170,8 @@ def main():
             lines.append(f"| {rep} | {x['first_success']}/{x['trials']} | {x['final_success']}/{x['trials']} | "
                          f"{x['evaluable_trials']}/{x['trials']} | {x['timeout_affected_trials']} | {x['attempts']} | {x['repairs']} | {x['tokens']['total']} | ${x['cost']:.6f} | "
                          f"{x['model_step_seconds']:.2f} | {x['process_seconds']:.2f} | "
-                         f"${x['cost_per_attempted_task']:.6f} | {('$%.6f' % x['cost_per_success']) if x['cost_per_success'] is not None else 'no success'} |")
+                         f"{('$%.6f' % x['cost_per_attempted_task']) if x['cost_per_attempted_task'] is not None else 'n/a'} | "
+                         f"{('$%.6f' % x['cost_per_success']) if x['cost_per_success'] is not None else 'no success'} |")
         lines += ["", "## Per task", "", "| Task | Rep | First | Final | Timeouts | Attempts | Tokens | Cost |",
                   "|---|---|---:|---:|---:|---:|---:|---:|"]
         for t in sorted(trials, key=lambda x: (x["representation"], x["task"])):

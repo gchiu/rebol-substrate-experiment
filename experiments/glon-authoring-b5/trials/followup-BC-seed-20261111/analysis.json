@@ -1,0 +1,2541 @@
+{
+  "config": {
+    "seed": 20261111,
+    "model": "deepseek/deepseek-flash",
+    "variant": "default",
+    "temperature": "provider default (not overridden)",
+    "tasks": [
+      "tri",
+      "pow2",
+      "min3",
+      "clamp",
+      "sign_neg",
+      "range_sum",
+      "choose",
+      "is_even",
+      "ack",
+      "quad",
+      "median3",
+      "max_neg"
+    ],
+    "representations": [
+      "B",
+      "C"
+    ],
+    "order": [
+      {
+        "task": "ack",
+        "representation": "C"
+      },
+      {
+        "task": "clamp",
+        "representation": "B"
+      },
+      {
+        "task": "quad",
+        "representation": "C"
+      },
+      {
+        "task": "choose",
+        "representation": "B"
+      },
+      {
+        "task": "quad",
+        "representation": "B"
+      },
+      {
+        "task": "sign_neg",
+        "representation": "C"
+      },
+      {
+        "task": "max_neg",
+        "representation": "B"
+      },
+      {
+        "task": "tri",
+        "representation": "C"
+      },
+      {
+        "task": "ack",
+        "representation": "B"
+      },
+      {
+        "task": "median3",
+        "representation": "C"
+      },
+      {
+        "task": "is_even",
+        "representation": "C"
+      },
+      {
+        "task": "min3",
+        "representation": "B"
+      },
+      {
+        "task": "choose",
+        "representation": "C"
+      },
+      {
+        "task": "clamp",
+        "representation": "C"
+      },
+      {
+        "task": "tri",
+        "representation": "B"
+      },
+      {
+        "task": "pow2",
+        "representation": "B"
+      },
+      {
+        "task": "median3",
+        "representation": "B"
+      },
+      {
+        "task": "pow2",
+        "representation": "C"
+      },
+      {
+        "task": "range_sum",
+        "representation": "B"
+      },
+      {
+        "task": "max_neg",
+        "representation": "C"
+      },
+      {
+        "task": "min3",
+        "representation": "C"
+      },
+      {
+        "task": "range_sum",
+        "representation": "C"
+      },
+      {
+        "task": "sign_neg",
+        "representation": "B"
+      },
+      {
+        "task": "is_even",
+        "representation": "B"
+      }
+    ],
+    "prompt_dir": "prompts/followup",
+    "adapter_timeout_seconds": 900,
+    "generated_at": 1794361064.9667
+  },
+  "by_representation": {
+    "A": {
+      "trials": 0,
+      "first_success": 0,
+      "final_success": 0,
+      "timeout_affected_trials": 0,
+      "evaluable_trials": 0,
+      "attempts": 0,
+      "repairs": 0,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0,
+      "model_step_seconds": 0,
+      "process_seconds": 0,
+      "verify_seconds": 0,
+      "cost_per_attempted_task": null,
+      "cost_per_success": null,
+      "tokens_per_attempted_task": null,
+      "tokens_per_success": null,
+      "first_failure_categories": {},
+      "final_failure_categories": {},
+      "all_failure_categories": {},
+      "tasks": []
+    },
+    "B": {
+      "trials": 12,
+      "first_success": 11,
+      "final_success": 12,
+      "timeout_affected_trials": 0,
+      "evaluable_trials": 12,
+      "attempts": 14,
+      "repairs": 2,
+      "tokens": {
+        "input": 8531,
+        "output": 1804,
+        "reasoning": 150910,
+        "total": 161245,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.09290805,
+      "model_step_seconds": 940.236,
+      "process_seconds": 994.474545,
+      "verify_seconds": 0.129349,
+      "cost_per_attempted_task": 0.007742338,
+      "cost_per_success": 0.007742338,
+      "tokens_per_attempted_task": 13437.08,
+      "tokens_per_success": 13437.08,
+      "first_failure_categories": {
+        "incorrect program semantics": 1
+      },
+      "final_failure_categories": {},
+      "all_failure_categories": {
+        "incorrect program semantics": 2
+      },
+      "tasks": [
+        {
+          "task": "ack",
+          "representation": "B",
+          "first_attempt_success": true,
+          "final_success": true,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 1,
+          "repairs": 0,
+          "tokens": {
+            "input": 565,
+            "output": 16,
+            "reasoning": 1281,
+            "total": 1862,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.00086295,
+          "model_step_seconds": 8.061,
+          "process_seconds": 13.465884,
+          "verify_seconds": 0.010004,
+          "artifact_bytes": 35,
+          "binary_bytes": 16,
+          "binary_words": 4,
+          "sessions": [
+            "ses_e3795f165ffey76mxktUKsNmSJ"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "pass",
+              "returncode": 0,
+              "stdout": "result 9, expected 9, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "choose",
+          "representation": "B",
+          "first_attempt_success": true,
+          "final_success": true,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 1,
+          "repairs": 0,
+          "tokens": {
+            "input": 565,
+            "output": 170,
+            "reasoning": 8906,
+            "total": 9641,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.00553035,
+          "model_step_seconds": 49.992,
+          "process_seconds": 54.824075,
+          "verify_seconds": 0.011209,
+          "artifact_bytes": 359,
+          "binary_bytes": 160,
+          "binary_words": 40,
+          "sessions": [
+            "ses_e37af87e9ffe7MzNvU1iNxyD91"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "pass",
+              "returncode": 0,
+              "stdout": "result 15, expected 15, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "clamp",
+          "representation": "B",
+          "first_attempt_success": true,
+          "final_success": true,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 1,
+          "repairs": 0,
+          "tokens": {
+            "input": 574,
+            "output": 128,
+            "reasoning": 6837,
+            "total": 7539,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.0042651,
+          "model_step_seconds": 38.927,
+          "process_seconds": 44.881631,
+          "verify_seconds": 0.008886,
+          "artifact_bytes": 260,
+          "binary_bytes": 116,
+          "binary_words": 29,
+          "sessions": [
+            "ses_e37b872b4ffero28oZwu8v7yNe"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "pass",
+              "returncode": 0,
+              "stdout": "result 10, expected 10, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "is_even",
+          "representation": "B",
+          "first_attempt_success": true,
+          "final_success": true,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 1,
+          "repairs": 0,
+          "tokens": {
+            "input": 572,
+            "output": 131,
+            "reasoning": 7438,
+            "total": 8141,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.0046272,
+          "model_step_seconds": 43.199,
+          "process_seconds": 47.667631,
+          "verify_seconds": 0.010044,
+          "artifact_bytes": 269,
+          "binary_bytes": 120,
+          "binary_words": 30,
+          "sessions": [
+            "ses_e374c5561ffek0qrGDLmJxCfYn"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "pass",
+              "returncode": 0,
+              "stdout": "result 1, expected 1, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "max_neg",
+          "representation": "B",
+          "first_attempt_success": false,
+          "final_success": true,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 3,
+          "repairs": 2,
+          "tokens": {
+            "input": 2301,
+            "output": 506,
+            "reasoning": 44834,
+            "total": 47641,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.02754915,
+          "model_step_seconds": 281.357,
+          "process_seconds": 290.695912,
+          "verify_seconds": 0.027951,
+          "artifact_bytes": 395,
+          "binary_bytes": 176,
+          "binary_words": 44,
+          "sessions": [
+            "ses_e37a23763ffec7useIJNcRpFlW",
+            "ses_e37a10867ffe1G23eGUDIc06F2",
+            "ses_e379f98dbffeHHDaAcENUEoCUl"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 4294967292, expected -4, stack ok\n"
+            },
+            {
+              "attempt": 1,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 4294967292, expected -4, stack ok\n"
+            },
+            {
+              "attempt": 2,
+              "category": "pass",
+              "returncode": 0,
+              "stdout": "result -4, expected -4, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "median3",
+          "representation": "B",
+          "first_attempt_success": true,
+          "final_success": true,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 1,
+          "repairs": 0,
+          "tokens": {
+            "input": 562,
+            "output": 249,
+            "reasoning": 9931,
+            "total": 10742,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.0061923,
+          "model_step_seconds": 59.968,
+          "process_seconds": 63.152338,
+          "verify_seconds": 0.007938,
+          "artifact_bytes": 503,
+          "binary_bytes": 224,
+          "binary_words": 56,
+          "sessions": [
+            "ses_e376fb748ffe9zMKf0fzz9APJU"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "pass",
+              "returncode": 0,
+              "stdout": "result 7, expected 7, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "min3",
+          "representation": "B",
+          "first_attempt_success": true,
+          "final_success": true,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 1,
+          "repairs": 0,
+          "tokens": {
+            "input": 563,
+            "output": 167,
+            "reasoning": 8417,
+            "total": 9147,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.00523485,
+          "model_step_seconds": 51.514,
+          "process_seconds": 54.983058,
+          "verify_seconds": 0.006288,
+          "artifact_bytes": 341,
+          "binary_bytes": 152,
+          "binary_words": 38,
+          "sessions": [
+            "ses_e3783ef92ffeQ23FeRmFuDG9LF"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "pass",
+              "returncode": 0,
+              "stdout": "result 4, expected 4, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "pow2",
+          "representation": "B",
+          "first_attempt_success": true,
+          "final_success": true,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 1,
+          "repairs": 0,
+          "tokens": {
+            "input": 562,
+            "output": 98,
+            "reasoning": 20516,
+            "total": 21176,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.0124527,
+          "model_step_seconds": 138.122,
+          "process_seconds": 140.242902,
+          "verify_seconds": 0.0096,
+          "artifact_bytes": 206,
+          "binary_bytes": 92,
+          "binary_words": 23,
+          "sessions": [
+            "ses_e37721ad9ffetaErHyC1nYcSfh"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "pass",
+              "returncode": 0,
+              "stdout": "result 1024, expected 1024, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "quad",
+          "representation": "B",
+          "first_attempt_success": true,
+          "final_success": true,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 1,
+          "repairs": 0,
+          "tokens": {
+            "input": 563,
+            "output": 68,
+            "reasoning": 10343,
+            "total": 10974,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.00633105,
+          "model_step_seconds": 62.821,
+          "process_seconds": 68.465062,
+          "verify_seconds": 0.007441,
+          "artifact_bytes": 152,
+          "binary_bytes": 68,
+          "binary_words": 17,
+          "sessions": [
+            "ses_e37ae72efffeHyszcSmxDz7kYN"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "pass",
+              "returncode": 0,
+              "stdout": "result 20, expected 20, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "range_sum",
+          "representation": "B",
+          "first_attempt_success": true,
+          "final_success": true,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 1,
+          "repairs": 0,
+          "tokens": {
+            "input": 569,
+            "output": 105,
+            "reasoning": 8532,
+            "total": 9206,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.00526755,
+          "model_step_seconds": 51.152,
+          "process_seconds": 55.026324,
+          "verify_seconds": 0.008937,
+          "artifact_bytes": 224,
+          "binary_bytes": 100,
+          "binary_words": 25,
+          "sessions": [
+            "ses_e3766d169ffeayahuVgr8FO3N4"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "pass",
+              "returncode": 0,
+              "stdout": "result 42, expected 42, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "sign_neg",
+          "representation": "B",
+          "first_attempt_success": true,
+          "final_success": true,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 1,
+          "repairs": 0,
+          "tokens": {
+            "input": 569,
+            "output": 68,
+            "reasoning": 12346,
+            "total": 12983,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.00753375,
+          "model_step_seconds": 77.286,
+          "process_seconds": 79.765403,
+          "verify_seconds": 0.010171,
+          "artifact_bytes": 152,
+          "binary_bytes": 68,
+          "binary_words": 17,
+          "sessions": [
+            "ses_e374d98afffeorFymreWXWu8Ny"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "pass",
+              "returncode": 0,
+              "stdout": "result -1, expected -1, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "tri",
+          "representation": "B",
+          "first_attempt_success": true,
+          "final_success": true,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 1,
+          "repairs": 0,
+          "tokens": {
+            "input": 566,
+            "output": 98,
+            "reasoning": 11529,
+            "total": 12193,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.0070611,
+          "model_step_seconds": 77.837,
+          "process_seconds": 81.304325,
+          "verify_seconds": 0.01088,
+          "artifact_bytes": 206,
+          "binary_bytes": 92,
+          "binary_words": 23,
+          "sessions": [
+            "ses_e37735eddffe6Rei4IAy7q9cLr"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "pass",
+              "returncode": 0,
+              "stdout": "result 55, expected 55, stack ok\n"
+            }
+          ]
+        }
+      ]
+    },
+    "C": {
+      "trials": 12,
+      "first_success": 0,
+      "final_success": 0,
+      "timeout_affected_trials": 0,
+      "evaluable_trials": 12,
+      "attempts": 48,
+      "repairs": 36,
+      "tokens": {
+        "input": 34154,
+        "output": 5253,
+        "reasoning": 997399,
+        "total": 1036806,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.6067143,
+      "model_step_seconds": 6222.264,
+      "process_seconds": 6366.899658,
+      "verify_seconds": 0.416965,
+      "cost_per_attempted_task": 0.050559525,
+      "cost_per_success": null,
+      "tokens_per_attempted_task": 86400.5,
+      "tokens_per_success": null,
+      "first_failure_categories": {
+        "invalid representation/encoding": 11,
+        "incorrect program semantics": 1
+      },
+      "final_failure_categories": {
+        "incorrect program semantics": 5,
+        "invalid representation/encoding": 7
+      },
+      "all_failure_categories": {
+        "invalid representation/encoding": 33,
+        "incorrect program semantics": 15
+      },
+      "tasks": [
+        {
+          "task": "ack",
+          "representation": "C",
+          "first_attempt_success": false,
+          "final_success": false,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 4,
+          "repairs": 3,
+          "tokens": {
+            "input": 3557,
+            "output": 924,
+            "reasoning": 69875,
+            "total": 74356,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.04301295,
+          "model_step_seconds": 402.984,
+          "process_seconds": 427.684038,
+          "verify_seconds": 0.040376,
+          "artifact_bytes": 485,
+          "binary_bytes": 216,
+          "binary_words": 54,
+          "sessions": [
+            "ses_e37bef754ffencaMDEF1p2G9lX",
+            "ses_e37bc211dffes8XtRsk1ypThBT",
+            "ses_e37bb34aeffeRTzw71yO2Fbauu",
+            "ses_e37b9909fffezBpOrtayF3YqXM"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 52: undefined entry label\n"
+            },
+            {
+              "attempt": 1,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 0, expected 9, stack ok\n"
+            },
+            {
+              "attempt": 2,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 0, expected 9, stack ok\n"
+            },
+            {
+              "attempt": 3,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 0, expected 9, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "choose",
+          "representation": "C",
+          "first_attempt_success": false,
+          "final_success": false,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 4,
+          "repairs": 3,
+          "tokens": {
+            "input": 3499,
+            "output": 662,
+            "reasoning": 84575,
+            "total": 88736,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.05166705,
+          "model_step_seconds": 514.325,
+          "process_seconds": 523.203387,
+          "verify_seconds": 0.041158,
+          "artifact_bytes": 0,
+          "binary_bytes": 0,
+          "binary_words": 0,
+          "sessions": [
+            "ses_e3782e233ffeTe2Pe90MG5l3oG",
+            "ses_e377fca40ffe72H0IY8kW1mb5m",
+            "ses_e377eec9affeAWLGFRlxCYuWTD",
+            "ses_e377dca4fffeHvbAb2zk2ubD48"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 50: undefined entry label\n"
+            },
+            {
+              "attempt": 1,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+            },
+            {
+              "attempt": 2,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 0, expected 15, stack ok\n"
+            },
+            {
+              "attempt": 3,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+            }
+          ]
+        },
+        {
+          "task": "clamp",
+          "representation": "C",
+          "first_attempt_success": false,
+          "final_success": false,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 4,
+          "repairs": 3,
+          "tokens": {
+            "input": 2427,
+            "output": 140,
+            "reasoning": 69479,
+            "total": 72046,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.04213545,
+          "model_step_seconds": 461.557,
+          "process_seconds": 470.438445,
+          "verify_seconds": 0.029275,
+          "artifact_bytes": 44,
+          "binary_bytes": 20,
+          "binary_words": 5,
+          "sessions": [
+            "ses_e377abb7effeEjnZGO7Ve6U1rC",
+            "ses_e37776224ffe2jM9Kz53QGKmaD",
+            "ses_e3775110cffeuwZ4IQq71iaPA8",
+            "ses_e3773f892ffeDtDg57GGfibaIX"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+            },
+            {
+              "attempt": 1,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 22: undefined entry label\n"
+            },
+            {
+              "attempt": 2,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 3: undefined entry label\n"
+            },
+            {
+              "attempt": 3,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 0, expected 10, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "is_even",
+          "representation": "C",
+          "first_attempt_success": false,
+          "final_success": false,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 4,
+          "repairs": 3,
+          "tokens": {
+            "input": 2598,
+            "output": 419,
+            "reasoning": 87866,
+            "total": 90883,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.0533607,
+          "model_step_seconds": 580.09,
+          "process_seconds": 588.621805,
+          "verify_seconds": 0.03134,
+          "artifact_bytes": 305,
+          "binary_bytes": 136,
+          "binary_words": 34,
+          "sessions": [
+            "ses_e378d1969ffeOvkpcfaM4iZrUy",
+            "ses_e3789be82ffedzOUPx60FZIC6k",
+            "ses_e3787b1d5ffeWe9nbIMl24Fv47",
+            "ses_e3786cef4ffeKDgu0pgbmI2UWv"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+            },
+            {
+              "attempt": 1,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 29: undefined entry label\n"
+            },
+            {
+              "attempt": 2,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+            },
+            {
+              "attempt": 3,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 0, expected 1, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "max_neg",
+          "representation": "C",
+          "first_attempt_success": false,
+          "final_success": false,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 4,
+          "repairs": 3,
+          "tokens": {
+            "input": 2378,
+            "output": 80,
+            "reasoning": 68053,
+            "total": 70511,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.0412365,
+          "model_step_seconds": 428.535,
+          "process_seconds": 436.436406,
+          "verify_seconds": 0.027909,
+          "artifact_bytes": 0,
+          "binary_bytes": 0,
+          "binary_words": 0,
+          "sessions": [
+            "ses_e3765f751ffeJ7pDqZIThSVD7H",
+            "ses_e3764fa92ffexLyv9gT3w5BBfG",
+            "ses_e3763c95bffeG5d1atKOQ7Sn7m",
+            "ses_e37625048ffe5n3eHIpFu7jQfH"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 5: undefined entry label\n"
+            },
+            {
+              "attempt": 1,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+            },
+            {
+              "attempt": 2,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 0, expected -4, stack ok\n"
+            },
+            {
+              "attempt": 3,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+            }
+          ]
+        },
+        {
+          "task": "median3",
+          "representation": "C",
+          "first_attempt_success": false,
+          "final_success": false,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 4,
+          "repairs": 3,
+          "tokens": {
+            "input": 2484,
+            "output": 212,
+            "reasoning": 83961,
+            "total": 86657,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.0508764,
+          "model_step_seconds": 546.395,
+          "process_seconds": 555.703089,
+          "verify_seconds": 0.029765,
+          "artifact_bytes": 44,
+          "binary_bytes": 20,
+          "binary_words": 5,
+          "sessions": [
+            "ses_e3795bb38ffe0ttz3r2DDCfydF",
+            "ses_e3792ee6affenRo5synR5D5HJp",
+            "ses_e379081f4ffewy1L2YbG4LCNNF",
+            "ses_e378f7cdcffe2Nz5HnLTH1oiMn"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 3: undefined entry label\n"
+            },
+            {
+              "attempt": 1,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+            },
+            {
+              "attempt": 2,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 0, expected 7, stack ok\n"
+            },
+            {
+              "attempt": 3,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 0, expected 7, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "min3",
+          "representation": "C",
+          "first_attempt_success": false,
+          "final_success": false,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 4,
+          "repairs": 3,
+          "tokens": {
+            "input": 3743,
+            "output": 1162,
+            "reasoning": 100044,
+            "total": 104949,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.06128505,
+          "model_step_seconds": 559.344,
+          "process_seconds": 565.130495,
+          "verify_seconds": 0.051026,
+          "artifact_bytes": 782,
+          "binary_bytes": 348,
+          "binary_words": 87,
+          "sessions": [
+            "ses_e375ee9b6ffePdHScDo30yyjHg",
+            "ses_e375c7937ffeBSMv7Y8kJZ1R2t",
+            "ses_e3759e47bffetq4IoRxwE6WC2K",
+            "ses_e37582878ffezsH8i6mf452uwY"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 91: undefined entry label\n"
+            },
+            {
+              "attempt": 1,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+            },
+            {
+              "attempt": 2,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 7: duplicate entry directive\n"
+            },
+            {
+              "attempt": 3,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+            }
+          ]
+        },
+        {
+          "task": "pow2",
+          "representation": "C",
+          "first_attempt_success": false,
+          "final_success": false,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 4,
+          "repairs": 3,
+          "tokens": {
+            "input": 2785,
+            "output": 311,
+            "reasoning": 79359,
+            "total": 82455,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.04821975,
+          "model_step_seconds": 500.116,
+          "process_seconds": 505.326363,
+          "verify_seconds": 0.029336,
+          "artifact_bytes": 0,
+          "binary_bytes": 0,
+          "binary_words": 0,
+          "sessions": [
+            "ses_e376eba19ffeX4mEa1iLhbv2gt",
+            "ses_e376c18f5ffeDrMCoogAekPlrC",
+            "ses_e376b459dffe24dTTkpYve2unG",
+            "ses_e376a0bd3ffexq4gtbaZKNUquw"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 22: undefined entry label\n"
+            },
+            {
+              "attempt": 1,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 5: duplicate entry directive\n"
+            },
+            {
+              "attempt": 2,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 64, expected 1024, stack ok\n"
+            },
+            {
+              "attempt": 3,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+            }
+          ]
+        },
+        {
+          "task": "quad",
+          "representation": "C",
+          "first_attempt_success": false,
+          "final_success": false,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 4,
+          "repairs": 3,
+          "tokens": {
+            "input": 2443,
+            "output": 292,
+            "reasoning": 81689,
+            "total": 84424,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.04955505,
+          "model_step_seconds": 518.511,
+          "process_seconds": 539.114751,
+          "verify_seconds": 0.036604,
+          "artifact_bytes": 197,
+          "binary_bytes": 88,
+          "binary_words": 22,
+          "sessions": [
+            "ses_e37b7c344ffeILGf8PVBV4DpCz",
+            "ses_e37b467ebffe99ajR2GJc80vWx",
+            "ses_e37b18a2affeeVO1saze6b5uil",
+            "ses_e37b0f52fffeSYJ4jfmQMaXVfN"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+            },
+            {
+              "attempt": 1,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 5: duplicate entry directive\n"
+            },
+            {
+              "attempt": 2,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 20: undefined entry label\n"
+            },
+            {
+              "attempt": 3,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+            }
+          ]
+        },
+        {
+          "task": "range_sum",
+          "representation": "C",
+          "first_attempt_success": false,
+          "final_success": false,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 4,
+          "repairs": 3,
+          "tokens": {
+            "input": 3010,
+            "output": 653,
+            "reasoning": 86064,
+            "total": 89727,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.0524817,
+          "model_step_seconds": 522.023,
+          "process_seconds": 537.748793,
+          "verify_seconds": 0.038161,
+          "artifact_bytes": 683,
+          "binary_bytes": 304,
+          "binary_words": 76,
+          "sessions": [
+            "ses_e37560a98ffeC0psgFW3Q334Ew",
+            "ses_e3753a241ffe1MX3j2wR6oQPo1",
+            "ses_e3752f5edffeWrQuux0vi2MJxE",
+            "ses_e374fd6ecffe7iU26AnXZdXjw8"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+            },
+            {
+              "attempt": 1,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 2, expected 42, stack ok\n"
+            },
+            {
+              "attempt": 2,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+            },
+            {
+              "attempt": 3,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 2, expected 42, stack ok\n"
+            }
+          ]
+        },
+        {
+          "task": "sign_neg",
+          "representation": "C",
+          "first_attempt_success": false,
+          "final_success": false,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 4,
+          "repairs": 3,
+          "tokens": {
+            "input": 2442,
+            "output": 96,
+            "reasoning": 111621,
+            "total": 114159,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.0673965,
+          "model_step_seconds": 713.041,
+          "process_seconds": 729.444596,
+          "verify_seconds": 0.032244,
+          "artifact_bytes": 0,
+          "binary_bytes": 0,
+          "binary_words": 0,
+          "sessions": [
+            "ses_e37ad681dffeZu64sBYLyq713m",
+            "ses_e37ab245cffeuKHpcVobraJbSH",
+            "ses_e37a8abd7ffe5jx1dhQa9xpWhC",
+            "ses_e37a5858effeF6A3Fek8SBYPY3"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 0, expected -1, stack ok\n"
+            },
+            {
+              "attempt": 1,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 0, expected -1, stack ok\n"
+            },
+            {
+              "attempt": 2,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+            },
+            {
+              "attempt": 3,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+            }
+          ]
+        },
+        {
+          "task": "tri",
+          "representation": "C",
+          "first_attempt_success": false,
+          "final_success": false,
+          "timeout_attempts": 0,
+          "timeout_affected": false,
+          "evaluable": true,
+          "attempts": 4,
+          "repairs": 3,
+          "tokens": {
+            "input": 2788,
+            "output": 302,
+            "reasoning": 74813,
+            "total": 77903,
+            "cache_read": 0,
+            "cache_write": 0
+          },
+          "cost": 0.0454872,
+          "model_step_seconds": 475.343,
+          "process_seconds": 488.04749,
+          "verify_seconds": 0.029771,
+          "artifact_bytes": 0,
+          "binary_bytes": 0,
+          "binary_words": 0,
+          "sessions": [
+            "ses_e379db630ffexXPWJiotryisJp",
+            "ses_e379b100cffeurvTypGiv3lm4J",
+            "ses_e3799feb3ffeBRMUa0lMoke3qL",
+            "ses_e379970f6ffeGSGWUE3I8kcbaW"
+          ],
+          "attempts_detail": [
+            {
+              "attempt": 0,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 21: undefined entry label\n"
+            },
+            {
+              "attempt": 1,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+            },
+            {
+              "attempt": 2,
+              "category": "incorrect program semantics",
+              "returncode": 1,
+              "stdout": "result 3, expected 55, stack ok\n"
+            },
+            {
+              "attempt": 3,
+              "category": "invalid representation/encoding",
+              "returncode": 1,
+              "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "trials": [
+    {
+      "task": "ack",
+      "representation": "C",
+      "first_attempt_success": false,
+      "final_success": false,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 4,
+      "repairs": 3,
+      "tokens": {
+        "input": 3557,
+        "output": 924,
+        "reasoning": 69875,
+        "total": 74356,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.04301295,
+      "model_step_seconds": 402.984,
+      "process_seconds": 427.684038,
+      "verify_seconds": 0.040376,
+      "artifact_bytes": 485,
+      "binary_bytes": 216,
+      "binary_words": 54,
+      "sessions": [
+        "ses_e37bef754ffencaMDEF1p2G9lX",
+        "ses_e37bc211dffes8XtRsk1ypThBT",
+        "ses_e37bb34aeffeRTzw71yO2Fbauu",
+        "ses_e37b9909fffezBpOrtayF3YqXM"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 52: undefined entry label\n"
+        },
+        {
+          "attempt": 1,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 0, expected 9, stack ok\n"
+        },
+        {
+          "attempt": 2,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 0, expected 9, stack ok\n"
+        },
+        {
+          "attempt": 3,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 0, expected 9, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "clamp",
+      "representation": "B",
+      "first_attempt_success": true,
+      "final_success": true,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 574,
+        "output": 128,
+        "reasoning": 6837,
+        "total": 7539,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0042651,
+      "model_step_seconds": 38.927,
+      "process_seconds": 44.881631,
+      "verify_seconds": 0.008886,
+      "artifact_bytes": 260,
+      "binary_bytes": 116,
+      "binary_words": 29,
+      "sessions": [
+        "ses_e37b872b4ffero28oZwu8v7yNe"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "pass",
+          "returncode": 0,
+          "stdout": "result 10, expected 10, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "quad",
+      "representation": "C",
+      "first_attempt_success": false,
+      "final_success": false,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 4,
+      "repairs": 3,
+      "tokens": {
+        "input": 2443,
+        "output": 292,
+        "reasoning": 81689,
+        "total": 84424,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.04955505,
+      "model_step_seconds": 518.511,
+      "process_seconds": 539.114751,
+      "verify_seconds": 0.036604,
+      "artifact_bytes": 197,
+      "binary_bytes": 88,
+      "binary_words": 22,
+      "sessions": [
+        "ses_e37b7c344ffeILGf8PVBV4DpCz",
+        "ses_e37b467ebffe99ajR2GJc80vWx",
+        "ses_e37b18a2affeeVO1saze6b5uil",
+        "ses_e37b0f52fffeSYJ4jfmQMaXVfN"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+        },
+        {
+          "attempt": 1,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 5: duplicate entry directive\n"
+        },
+        {
+          "attempt": 2,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 20: undefined entry label\n"
+        },
+        {
+          "attempt": 3,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+        }
+      ]
+    },
+    {
+      "task": "choose",
+      "representation": "B",
+      "first_attempt_success": true,
+      "final_success": true,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 565,
+        "output": 170,
+        "reasoning": 8906,
+        "total": 9641,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00553035,
+      "model_step_seconds": 49.992,
+      "process_seconds": 54.824075,
+      "verify_seconds": 0.011209,
+      "artifact_bytes": 359,
+      "binary_bytes": 160,
+      "binary_words": 40,
+      "sessions": [
+        "ses_e37af87e9ffe7MzNvU1iNxyD91"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "pass",
+          "returncode": 0,
+          "stdout": "result 15, expected 15, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "quad",
+      "representation": "B",
+      "first_attempt_success": true,
+      "final_success": true,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 563,
+        "output": 68,
+        "reasoning": 10343,
+        "total": 10974,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00633105,
+      "model_step_seconds": 62.821,
+      "process_seconds": 68.465062,
+      "verify_seconds": 0.007441,
+      "artifact_bytes": 152,
+      "binary_bytes": 68,
+      "binary_words": 17,
+      "sessions": [
+        "ses_e37ae72efffeHyszcSmxDz7kYN"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "pass",
+          "returncode": 0,
+          "stdout": "result 20, expected 20, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "sign_neg",
+      "representation": "C",
+      "first_attempt_success": false,
+      "final_success": false,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 4,
+      "repairs": 3,
+      "tokens": {
+        "input": 2442,
+        "output": 96,
+        "reasoning": 111621,
+        "total": 114159,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0673965,
+      "model_step_seconds": 713.041,
+      "process_seconds": 729.444596,
+      "verify_seconds": 0.032244,
+      "artifact_bytes": 0,
+      "binary_bytes": 0,
+      "binary_words": 0,
+      "sessions": [
+        "ses_e37ad681dffeZu64sBYLyq713m",
+        "ses_e37ab245cffeuKHpcVobraJbSH",
+        "ses_e37a8abd7ffe5jx1dhQa9xpWhC",
+        "ses_e37a5858effeF6A3Fek8SBYPY3"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 0, expected -1, stack ok\n"
+        },
+        {
+          "attempt": 1,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 0, expected -1, stack ok\n"
+        },
+        {
+          "attempt": 2,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+        },
+        {
+          "attempt": 3,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+        }
+      ]
+    },
+    {
+      "task": "max_neg",
+      "representation": "B",
+      "first_attempt_success": false,
+      "final_success": true,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 3,
+      "repairs": 2,
+      "tokens": {
+        "input": 2301,
+        "output": 506,
+        "reasoning": 44834,
+        "total": 47641,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.02754915,
+      "model_step_seconds": 281.357,
+      "process_seconds": 290.695912,
+      "verify_seconds": 0.027951,
+      "artifact_bytes": 395,
+      "binary_bytes": 176,
+      "binary_words": 44,
+      "sessions": [
+        "ses_e37a23763ffec7useIJNcRpFlW",
+        "ses_e37a10867ffe1G23eGUDIc06F2",
+        "ses_e379f98dbffeHHDaAcENUEoCUl"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 4294967292, expected -4, stack ok\n"
+        },
+        {
+          "attempt": 1,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 4294967292, expected -4, stack ok\n"
+        },
+        {
+          "attempt": 2,
+          "category": "pass",
+          "returncode": 0,
+          "stdout": "result -4, expected -4, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "tri",
+      "representation": "C",
+      "first_attempt_success": false,
+      "final_success": false,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 4,
+      "repairs": 3,
+      "tokens": {
+        "input": 2788,
+        "output": 302,
+        "reasoning": 74813,
+        "total": 77903,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0454872,
+      "model_step_seconds": 475.343,
+      "process_seconds": 488.04749,
+      "verify_seconds": 0.029771,
+      "artifact_bytes": 0,
+      "binary_bytes": 0,
+      "binary_words": 0,
+      "sessions": [
+        "ses_e379db630ffexXPWJiotryisJp",
+        "ses_e379b100cffeurvTypGiv3lm4J",
+        "ses_e3799feb3ffeBRMUa0lMoke3qL",
+        "ses_e379970f6ffeGSGWUE3I8kcbaW"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 21: undefined entry label\n"
+        },
+        {
+          "attempt": 1,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+        },
+        {
+          "attempt": 2,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 3, expected 55, stack ok\n"
+        },
+        {
+          "attempt": 3,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+        }
+      ]
+    },
+    {
+      "task": "ack",
+      "representation": "B",
+      "first_attempt_success": true,
+      "final_success": true,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 565,
+        "output": 16,
+        "reasoning": 1281,
+        "total": 1862,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00086295,
+      "model_step_seconds": 8.061,
+      "process_seconds": 13.465884,
+      "verify_seconds": 0.010004,
+      "artifact_bytes": 35,
+      "binary_bytes": 16,
+      "binary_words": 4,
+      "sessions": [
+        "ses_e3795f165ffey76mxktUKsNmSJ"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "pass",
+          "returncode": 0,
+          "stdout": "result 9, expected 9, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "median3",
+      "representation": "C",
+      "first_attempt_success": false,
+      "final_success": false,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 4,
+      "repairs": 3,
+      "tokens": {
+        "input": 2484,
+        "output": 212,
+        "reasoning": 83961,
+        "total": 86657,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0508764,
+      "model_step_seconds": 546.395,
+      "process_seconds": 555.703089,
+      "verify_seconds": 0.029765,
+      "artifact_bytes": 44,
+      "binary_bytes": 20,
+      "binary_words": 5,
+      "sessions": [
+        "ses_e3795bb38ffe0ttz3r2DDCfydF",
+        "ses_e3792ee6affenRo5synR5D5HJp",
+        "ses_e379081f4ffewy1L2YbG4LCNNF",
+        "ses_e378f7cdcffe2Nz5HnLTH1oiMn"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 3: undefined entry label\n"
+        },
+        {
+          "attempt": 1,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+        },
+        {
+          "attempt": 2,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 0, expected 7, stack ok\n"
+        },
+        {
+          "attempt": 3,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 0, expected 7, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "is_even",
+      "representation": "C",
+      "first_attempt_success": false,
+      "final_success": false,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 4,
+      "repairs": 3,
+      "tokens": {
+        "input": 2598,
+        "output": 419,
+        "reasoning": 87866,
+        "total": 90883,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0533607,
+      "model_step_seconds": 580.09,
+      "process_seconds": 588.621805,
+      "verify_seconds": 0.03134,
+      "artifact_bytes": 305,
+      "binary_bytes": 136,
+      "binary_words": 34,
+      "sessions": [
+        "ses_e378d1969ffeOvkpcfaM4iZrUy",
+        "ses_e3789be82ffedzOUPx60FZIC6k",
+        "ses_e3787b1d5ffeWe9nbIMl24Fv47",
+        "ses_e3786cef4ffeKDgu0pgbmI2UWv"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+        },
+        {
+          "attempt": 1,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 29: undefined entry label\n"
+        },
+        {
+          "attempt": 2,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+        },
+        {
+          "attempt": 3,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 0, expected 1, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "min3",
+      "representation": "B",
+      "first_attempt_success": true,
+      "final_success": true,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 563,
+        "output": 167,
+        "reasoning": 8417,
+        "total": 9147,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00523485,
+      "model_step_seconds": 51.514,
+      "process_seconds": 54.983058,
+      "verify_seconds": 0.006288,
+      "artifact_bytes": 341,
+      "binary_bytes": 152,
+      "binary_words": 38,
+      "sessions": [
+        "ses_e3783ef92ffeQ23FeRmFuDG9LF"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "pass",
+          "returncode": 0,
+          "stdout": "result 4, expected 4, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "choose",
+      "representation": "C",
+      "first_attempt_success": false,
+      "final_success": false,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 4,
+      "repairs": 3,
+      "tokens": {
+        "input": 3499,
+        "output": 662,
+        "reasoning": 84575,
+        "total": 88736,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.05166705,
+      "model_step_seconds": 514.325,
+      "process_seconds": 523.203387,
+      "verify_seconds": 0.041158,
+      "artifact_bytes": 0,
+      "binary_bytes": 0,
+      "binary_words": 0,
+      "sessions": [
+        "ses_e3782e233ffeTe2Pe90MG5l3oG",
+        "ses_e377fca40ffe72H0IY8kW1mb5m",
+        "ses_e377eec9affeAWLGFRlxCYuWTD",
+        "ses_e377dca4fffeHvbAb2zk2ubD48"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 50: undefined entry label\n"
+        },
+        {
+          "attempt": 1,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+        },
+        {
+          "attempt": 2,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 0, expected 15, stack ok\n"
+        },
+        {
+          "attempt": 3,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+        }
+      ]
+    },
+    {
+      "task": "clamp",
+      "representation": "C",
+      "first_attempt_success": false,
+      "final_success": false,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 4,
+      "repairs": 3,
+      "tokens": {
+        "input": 2427,
+        "output": 140,
+        "reasoning": 69479,
+        "total": 72046,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.04213545,
+      "model_step_seconds": 461.557,
+      "process_seconds": 470.438445,
+      "verify_seconds": 0.029275,
+      "artifact_bytes": 44,
+      "binary_bytes": 20,
+      "binary_words": 5,
+      "sessions": [
+        "ses_e377abb7effeEjnZGO7Ve6U1rC",
+        "ses_e37776224ffe2jM9Kz53QGKmaD",
+        "ses_e3775110cffeuwZ4IQq71iaPA8",
+        "ses_e3773f892ffeDtDg57GGfibaIX"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+        },
+        {
+          "attempt": 1,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 22: undefined entry label\n"
+        },
+        {
+          "attempt": 2,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 3: undefined entry label\n"
+        },
+        {
+          "attempt": 3,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 0, expected 10, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "tri",
+      "representation": "B",
+      "first_attempt_success": true,
+      "final_success": true,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 566,
+        "output": 98,
+        "reasoning": 11529,
+        "total": 12193,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0070611,
+      "model_step_seconds": 77.837,
+      "process_seconds": 81.304325,
+      "verify_seconds": 0.01088,
+      "artifact_bytes": 206,
+      "binary_bytes": 92,
+      "binary_words": 23,
+      "sessions": [
+        "ses_e37735eddffe6Rei4IAy7q9cLr"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "pass",
+          "returncode": 0,
+          "stdout": "result 55, expected 55, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "pow2",
+      "representation": "B",
+      "first_attempt_success": true,
+      "final_success": true,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 562,
+        "output": 98,
+        "reasoning": 20516,
+        "total": 21176,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0124527,
+      "model_step_seconds": 138.122,
+      "process_seconds": 140.242902,
+      "verify_seconds": 0.0096,
+      "artifact_bytes": 206,
+      "binary_bytes": 92,
+      "binary_words": 23,
+      "sessions": [
+        "ses_e37721ad9ffetaErHyC1nYcSfh"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "pass",
+          "returncode": 0,
+          "stdout": "result 1024, expected 1024, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "median3",
+      "representation": "B",
+      "first_attempt_success": true,
+      "final_success": true,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 562,
+        "output": 249,
+        "reasoning": 9931,
+        "total": 10742,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0061923,
+      "model_step_seconds": 59.968,
+      "process_seconds": 63.152338,
+      "verify_seconds": 0.007938,
+      "artifact_bytes": 503,
+      "binary_bytes": 224,
+      "binary_words": 56,
+      "sessions": [
+        "ses_e376fb748ffe9zMKf0fzz9APJU"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "pass",
+          "returncode": 0,
+          "stdout": "result 7, expected 7, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "pow2",
+      "representation": "C",
+      "first_attempt_success": false,
+      "final_success": false,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 4,
+      "repairs": 3,
+      "tokens": {
+        "input": 2785,
+        "output": 311,
+        "reasoning": 79359,
+        "total": 82455,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.04821975,
+      "model_step_seconds": 500.116,
+      "process_seconds": 505.326363,
+      "verify_seconds": 0.029336,
+      "artifact_bytes": 0,
+      "binary_bytes": 0,
+      "binary_words": 0,
+      "sessions": [
+        "ses_e376eba19ffeX4mEa1iLhbv2gt",
+        "ses_e376c18f5ffeDrMCoogAekPlrC",
+        "ses_e376b459dffe24dTTkpYve2unG",
+        "ses_e376a0bd3ffexq4gtbaZKNUquw"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 22: undefined entry label\n"
+        },
+        {
+          "attempt": 1,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 5: duplicate entry directive\n"
+        },
+        {
+          "attempt": 2,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 64, expected 1024, stack ok\n"
+        },
+        {
+          "attempt": 3,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+        }
+      ]
+    },
+    {
+      "task": "range_sum",
+      "representation": "B",
+      "first_attempt_success": true,
+      "final_success": true,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 569,
+        "output": 105,
+        "reasoning": 8532,
+        "total": 9206,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00526755,
+      "model_step_seconds": 51.152,
+      "process_seconds": 55.026324,
+      "verify_seconds": 0.008937,
+      "artifact_bytes": 224,
+      "binary_bytes": 100,
+      "binary_words": 25,
+      "sessions": [
+        "ses_e3766d169ffeayahuVgr8FO3N4"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "pass",
+          "returncode": 0,
+          "stdout": "result 42, expected 42, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "max_neg",
+      "representation": "C",
+      "first_attempt_success": false,
+      "final_success": false,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 4,
+      "repairs": 3,
+      "tokens": {
+        "input": 2378,
+        "output": 80,
+        "reasoning": 68053,
+        "total": 70511,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0412365,
+      "model_step_seconds": 428.535,
+      "process_seconds": 436.436406,
+      "verify_seconds": 0.027909,
+      "artifact_bytes": 0,
+      "binary_bytes": 0,
+      "binary_words": 0,
+      "sessions": [
+        "ses_e3765f751ffeJ7pDqZIThSVD7H",
+        "ses_e3764fa92ffexLyv9gT3w5BBfG",
+        "ses_e3763c95bffeG5d1atKOQ7Sn7m",
+        "ses_e37625048ffe5n3eHIpFu7jQfH"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 5: undefined entry label\n"
+        },
+        {
+          "attempt": 1,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+        },
+        {
+          "attempt": 2,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 0, expected -4, stack ok\n"
+        },
+        {
+          "attempt": 3,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+        }
+      ]
+    },
+    {
+      "task": "min3",
+      "representation": "C",
+      "first_attempt_success": false,
+      "final_success": false,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 4,
+      "repairs": 3,
+      "tokens": {
+        "input": 3743,
+        "output": 1162,
+        "reasoning": 100044,
+        "total": 104949,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.06128505,
+      "model_step_seconds": 559.344,
+      "process_seconds": 565.130495,
+      "verify_seconds": 0.051026,
+      "artifact_bytes": 782,
+      "binary_bytes": 348,
+      "binary_words": 87,
+      "sessions": [
+        "ses_e375ee9b6ffePdHScDo30yyjHg",
+        "ses_e375c7937ffeBSMv7Y8kJZ1R2t",
+        "ses_e3759e47bffetq4IoRxwE6WC2K",
+        "ses_e37582878ffezsH8i6mf452uwY"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 91: undefined entry label\n"
+        },
+        {
+          "attempt": 1,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+        },
+        {
+          "attempt": 2,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 7: duplicate entry directive\n"
+        },
+        {
+          "attempt": 3,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+        }
+      ]
+    },
+    {
+      "task": "range_sum",
+      "representation": "C",
+      "first_attempt_success": false,
+      "final_success": false,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 4,
+      "repairs": 3,
+      "tokens": {
+        "input": 3010,
+        "output": 653,
+        "reasoning": 86064,
+        "total": 89727,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0524817,
+      "model_step_seconds": 522.023,
+      "process_seconds": 537.748793,
+      "verify_seconds": 0.038161,
+      "artifact_bytes": 683,
+      "binary_bytes": 304,
+      "binary_words": 76,
+      "sessions": [
+        "ses_e37560a98ffeC0psgFW3Q334Ew",
+        "ses_e3753a241ffe1MX3j2wR6oQPo1",
+        "ses_e3752f5edffeWrQuux0vi2MJxE",
+        "ses_e374fd6ecffe7iU26AnXZdXjw8"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct token 2: label id 0\n"
+        },
+        {
+          "attempt": 1,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 2, expected 42, stack ok\n"
+        },
+        {
+          "attempt": 2,
+          "category": "invalid representation/encoding",
+          "returncode": 1,
+          "stdout": "COMPILE FAIL: direct: bad file size or header\n"
+        },
+        {
+          "attempt": 3,
+          "category": "incorrect program semantics",
+          "returncode": 1,
+          "stdout": "result 2, expected 42, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "sign_neg",
+      "representation": "B",
+      "first_attempt_success": true,
+      "final_success": true,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 569,
+        "output": 68,
+        "reasoning": 12346,
+        "total": 12983,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00753375,
+      "model_step_seconds": 77.286,
+      "process_seconds": 79.765403,
+      "verify_seconds": 0.010171,
+      "artifact_bytes": 152,
+      "binary_bytes": 68,
+      "binary_words": 17,
+      "sessions": [
+        "ses_e374d98afffeorFymreWXWu8Ny"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "pass",
+          "returncode": 0,
+          "stdout": "result -1, expected -1, stack ok\n"
+        }
+      ]
+    },
+    {
+      "task": "is_even",
+      "representation": "B",
+      "first_attempt_success": true,
+      "final_success": true,
+      "timeout_attempts": 0,
+      "timeout_affected": false,
+      "evaluable": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 572,
+        "output": 131,
+        "reasoning": 7438,
+        "total": 8141,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0046272,
+      "model_step_seconds": 43.199,
+      "process_seconds": 47.667631,
+      "verify_seconds": 0.010044,
+      "artifact_bytes": 269,
+      "binary_bytes": 120,
+      "binary_words": 30,
+      "sessions": [
+        "ses_e374c5561ffek0qrGDLmJxCfYn"
+      ],
+      "attempts_detail": [
+        {
+          "attempt": 0,
+          "category": "pass",
+          "returncode": 0,
+          "stdout": "result 1, expected 1, stack ok\n"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+attempt 0 failed:
+result 3, expected 55, stack ok
+attempt 1 failed:
+conversion failed
+empty hex artifact
+attempt 2 failed:
+result 10, expected 55, stack ok
+PASS after 3 repair attempt(s): /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-smoke-C-seed-20261111/01-tri-C/artifact

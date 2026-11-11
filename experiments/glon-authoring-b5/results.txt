@@ -124,3 +124,93 @@ No reference implementation was exposed: prompts contained only task specs and
 representation docs, the agent had all tools disabled, and each invocation used
 a fresh temporary project. Raw JSON events, artifacts, diagnostics, sessions,
 tokens and provider costs are preserved under trials/.
+
+FOLLOW-UP RUN (separate data, seed 20261111)
+
+Model: deepseek/deepseek-flash; default variant and provider temperature.
+Adapter timeout: 900 s (the original run used 180 s). B used the corrected
+follow-up prompt; C prompt unchanged. A original run retained as reference.
+The original prompts, logs and data remain under trials/opencode-seed-20261110
+and were not overwritten.
+
+SMOKE TEST (C, tri, seed 20261111)
+
+  final success True after 3 repairs; attempts 4; no adapter timeouts
+  tokens 109781; cost $0.064713; model-step 687.50 s; process 714.66 s;
+  verification 0.12 s. Raw JSON/artifact: trials/followup-smoke-C-seed-20261111.
+
+FOLLOW-UP B (corrected documentation, 12 tasks)
+
+  first-attempt success 11/12; final success 12/12
+  attempts 14; repairs 2
+  tokens input 8531, output 1804, reasoning 150910, total 161245
+  cost $0.092908; model-step 940.24 s; process 994.47 s; verify 0.13 s
+  cost per attempted task $0.007742; cost per successful task $0.007742
+  only first-attempt failure: max_neg (incorrect semantics); all attempts:
+  2 incorrect-semantics failures, 0 encoding failures.
+
+FOLLOW-UP C (900 s, 12 tasks)
+
+  first-attempt success 0/12; final success 0/12
+  attempts 48; repairs 36
+  tokens input 34154, output 5253, reasoning 997399, total 1036806
+  cost $0.606714; model-step 6222.26 s; process 6366.90 s; verify 0.42 s
+  cost per attempted task $0.050560; no successful task
+  adapter timeouts 0/12 trials; evaluable 12/12
+  failure categories (all 48 attempts): 33 invalid representation/encoding,
+  15 incorrect program semantics.
+  Final diagnostics include direct bad file size/header, label id 0,
+  and wrong results such as result 0 / expected 9. This is a genuine
+  model/representation outcome, not a timeout artefact.
+
+COMPARISONS
+
+B original -> B corrected (documentation only):
+  first success 0/12 -> 11/12; attempts 27 -> 14; repairs 15 -> 2;
+  tokens 234217 -> 161245 (-31%); cost $0.133951 -> $0.092908 (-31%);
+  model-step 1243.01 -> 940.24 s; process 1601.24 -> 994.47 s.
+  Final success remained 12/12.
+
+A original vs B corrected:
+  A tokens 76685, cost $0.042250, process 523.75 s, first success 3/12.
+  B tokens 161245 (2.10x), cost $0.092908 (2.20x), process 994.47 s
+  (1.90x), first success 11/12. B's documentation fix greatly improved
+  first-attempt reliability, but its reasoning/token cost remained higher.
+
+A vs C follow-up:
+  A tokens 76685, cost $0.042250, process 523.75 s, final 12/12.
+  C tokens 1036806 (13.5x), cost $0.606714 (14.4x), process 6366.90 s
+  (12.2x), final 0/12; no timeouts. C's one smoke success (tri) shows the
+  representation is not impossible, but the full 12-task result was 0/12.
+
+TIMEOUT STATISTICS
+
+  original C: 11/12 trials timeout-affected (180 s cap)
+  original B: 1/12 trial (ack) had one timeout-affected call but succeeded
+  follow-up smoke C: 0 timeouts
+  follow-up B: 0 timeouts
+  follow-up C: 0 timeouts
+  All follow-up trials terminated below 900 s; no silent extension was used.
+
+SETTINGS THAT DIFFER FROM ORIGINAL
+
+  - adapter timeout 180 -> 900 s (C explicitly; B unaffected in practice)
+  - B prompt corrected with identifier rules; B encoding/compiler unchanged
+  - seed 20261110 -> 20261111
+  - original A was not rerun; it remains the A reference.
+  Model, default variant and provider temperature were unchanged.
+
+INTERPRETATION
+
+Among completed representations, A original used the least total model effort
+(tokens, cost and process time). B corrected is much cheaper than B original
+and much more reliable on first attempt; the improvement is attributable to the
+documented identifier rules, not a binary/decoder change. C remains unable to
+produce a final correct program in the full 12-task follow-up even with the
+900 s timeout, despite one smoke success; its effort was about 14x A's cost
+with zero final successes.
+
+These are 12-task pilot data, not statistically established superiority. C's
+smoke/full difference and the one B max_neg repair show model variability.
+No new reference implementation was exposed; the follow-up used the same
+tool-free, fresh-session isolation protocol.

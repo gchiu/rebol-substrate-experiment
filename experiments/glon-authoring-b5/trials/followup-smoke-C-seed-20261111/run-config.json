@@ -1,0 +1,21 @@
+{
+  "seed": 20261111,
+  "model": "deepseek/deepseek-flash",
+  "variant": "default",
+  "temperature": "provider default (not overridden)",
+  "tasks": [
+    "tri"
+  ],
+  "representations": [
+    "C"
+  ],
+  "order": [
+    {
+      "task": "tri",
+      "representation": "C"
+    }
+  ],
+  "prompt_dir": "prompts/followup",
+  "adapter_timeout_seconds": 900,
+  "generated_at": 1794360316.2763574
+}

@@ -46,3 +46,25 @@ C: 0/12 final success under the 180 s cap; 11/12 trials were timeout-affected,
 
 No reference implementation or fixture generator was exposed to the model.
 Prompts were only the task specification and representation documentation.
+
+## Follow-up evidence
+
+- `followup-smoke-C-seed-20261111/` — C `tri` smoke test at 900 s. Final pass
+  after 3 repairs; no adapter timeout; 109,781 tokens / $0.064713.
+- `followup-BC-seed-20261111/` — 12 tasks × B/C, seed 20261111, 900 s:
+  - B corrected: first 11/12, final 12/12, 14 attempts, 161,245 tokens,
+    $0.092908, 0 timeouts.
+  - C: first 0/12, final 0/12, 48 attempts, 1,036,806 tokens, $0.606714,
+    0 timeouts, 12/12 evaluable.
+  - `analysis.md`/`analysis.json` have aggregate and per-task evidence.
+
+## Comparison with original
+
+Original B (seed 20261110, 180 s) had all 12 first attempts fail at function-id
+0. B corrected at 900 s had 11/12 first successes and 2 repairs total. The B
+documentation correction, not the binary format, caused the improvement.
+Original C was timeout-invalid; follow-up C completed without timeouts but had
+no final successes.
+
+A original remains the independently completed reference. No original trial
+data was overwritten or deleted.

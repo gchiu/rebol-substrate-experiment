@@ -1,0 +1,172 @@
+{
+  "task": "min3",
+  "representation": "C",
+  "seed": 20261111,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 1,
+  "first_attempt_success": false,
+  "final_success": false,
+  "attempts": 4,
+  "repairs": 3,
+  "tokens": {
+    "input": 3743,
+    "output": 1162,
+    "reasoning": 100044,
+    "total": 104949,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.06128505,
+  "model_step_seconds": 559.344,
+  "process_seconds": 565.130495,
+  "verify_seconds": 0.051026,
+  "sessions": [
+    "ses_e375ee9b6ffePdHScDo30yyjHg",
+    "ses_e375c7937ffeBSMv7Y8kJZ1R2t",
+    "ses_e3759e47bffetq4IoRxwE6WC2K",
+    "ses_e37582878ffezsH8i6mf452uwY"
+  ],
+  "artifact_bytes": 0,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 1,
+      "seconds": 0.012102,
+      "stdout": "COMPILE FAIL: direct token 91: undefined entry label\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0.bin"
+    },
+    {
+      "returncode": 1,
+      "seconds": 0.012631,
+      "stdout": "COMPILE FAIL: direct: bad file size or header\n",
+      "stderr": "",
+      "attempt": 1,
+      "artifact": "artifact.attempt1",
+      "candidate": "artifact.attempt1"
+    },
+    {
+      "returncode": 1,
+      "seconds": 0.01347,
+      "stdout": "COMPILE FAIL: direct token 7: duplicate entry directive\n",
+      "stderr": "",
+      "attempt": 2,
+      "artifact": "artifact.attempt2",
+      "candidate": "artifact.attempt2.bin"
+    },
+    {
+      "returncode": 1,
+      "seconds": 0.012823,
+      "stdout": "COMPILE FAIL: direct token 2: label id 0\n",
+      "stderr": "",
+      "attempt": 3,
+      "artifact": "artifact.attempt3",
+      "candidate": "artifact.attempt3.bin"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "20261111:21:min3:C",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e375ee9b6ffePdHScDo30yyjHg"
+      ],
+      "tokens": {
+        "input": 499,
+        "output": 395,
+        "reasoning": 25864,
+        "total": 26758,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.01583025,
+      "model_step_seconds": 154.806,
+      "process_seconds": 159.857656,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/21-min3-C/raw/raw-1794367360722388299.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/21-min3-C/raw/raw-1794367360722388299.err",
+      "errors": [],
+      "recorded_at": 1794367520.6155682
+    },
+    {
+      "trial_id": "20261111:21:min3:C",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e375c7937ffeBSMv7Y8kJZ1R2t"
+      ],
+      "tokens": {
+        "input": 924,
+        "output": 0,
+        "reasoning": 32000,
+        "total": 32924,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0193386,
+      "model_step_seconds": 164.135,
+      "process_seconds": 168.801811,
+      "text_parts": 0,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/21-min3-C/raw/raw-1794367520729646981.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/21-min3-C/raw/raw-1794367520729646981.err",
+      "errors": [],
+      "recorded_at": 1794367689.572785
+    },
+    {
+      "trial_id": "20261111:21:min3:C",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e3759e47bffetq4IoRxwE6WC2K"
+      ],
+      "tokens": {
+        "input": 948,
+        "output": 395,
+        "reasoning": 18456,
+        "total": 19799,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0114528,
+      "model_step_seconds": 107.938,
+      "process_seconds": 112.782317,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/21-min3-C/raw/raw-1794367689696085456.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/21-min3-C/raw/raw-1794367689696085456.err",
+      "errors": [],
+      "recorded_at": 1794367802.527767
+    },
+    {
+      "trial_id": "20261111:21:min3:C",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e37582878ffezsH8i6mf452uwY"
+      ],
+      "tokens": {
+        "input": 1372,
+        "output": 372,
+        "reasoning": 23724,
+        "total": 25468,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0146634,
+      "model_step_seconds": 132.465,
+      "process_seconds": 139.007821,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/21-min3-C/raw/raw-1794367802651898233.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/21-min3-C/raw/raw-1794367802651898233.err",
+      "errors": [],
+      "recorded_at": 1794367941.7032478
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+{
+  "task": "max_neg",
+  "representation": "B",
+  "seed": 20261111,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 0,
+  "first_attempt_success": false,
+  "final_success": true,
+  "attempts": 3,
+  "repairs": 2,
+  "tokens": {
+    "input": 2301,
+    "output": 506,
+    "reasoning": 44834,
+    "total": 47641,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.02754915,
+  "model_step_seconds": 281.357,
+  "process_seconds": 290.695912,
+  "verify_seconds": 0.027951,
+  "sessions": [
+    "ses_e37a23763ffec7useIJNcRpFlW",
+    "ses_e37a10867ffe1G23eGUDIc06F2",
+    "ses_e379f98dbffeHHDaAcENUEoCUl"
+  ],
+  "artifact_bytes": 395,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 1,
+      "seconds": 0.009448,
+      "stdout": "result 4294967292, expected -4, stack ok\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0.bin"
+    },
+    {
+      "returncode": 1,
+      "seconds": 0.008737,
+      "stdout": "result 4294967292, expected -4, stack ok\n",
+      "stderr": "",
+      "attempt": 1,
+      "artifact": "artifact.attempt1",
+      "candidate": "artifact.attempt1.bin"
+    },
+    {
+      "returncode": 0,
+      "seconds": 0.009766,
+      "stdout": "result -4, expected -4, stack ok\n",
+      "stderr": "",
+      "attempt": 2,
+      "artifact": "artifact.attempt2",
+      "candidate": "artifact.attempt2.bin"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "20261111:7:max_neg:B",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e37a23763ffec7useIJNcRpFlW"
+      ],
+      "tokens": {
+        "input": 575,
+        "output": 169,
+        "reasoning": 11635,
+        "total": 12379,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00716865,
+      "model_step_seconds": 72.855,
+      "process_seconds": 77.529227,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/07-max_neg-B/raw/raw-1794362949950749449.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/07-max_neg-B/raw/raw-1794362949950749449.err",
+      "errors": [],
+      "recorded_at": 1794363027.5243435
+    },
+    {
+      "trial_id": "20261111:7:max_neg:B",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e37a10867ffe1G23eGUDIc06F2"
+      ],
+      "tokens": {
+        "input": 775,
+        "output": 146,
+        "reasoning": 14646,
+        "total": 15567,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00899145,
+      "model_step_seconds": 89.748,
+      "process_seconds": 93.927083,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/07-max_neg-B/raw/raw-1794363027650250491.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/07-max_neg-B/raw/raw-1794363027650250491.err",
+      "errors": [],
+      "recorded_at": 1794363121.614269
+    },
+    {
+      "trial_id": "20261111:7:max_neg:B",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e379f98dbffeHHDaAcENUEoCUl"
+      ],
+      "tokens": {
+        "input": 951,
+        "output": 191,
+        "reasoning": 18553,
+        "total": 19695,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.01138905,
+      "model_step_seconds": 118.754,
+      "process_seconds": 123.319501,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/07-max_neg-B/raw/raw-1794363121734154637.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/07-max_neg-B/raw/raw-1794363121734154637.err",
+      "errors": [],
+      "recorded_at": 1794363245.092905
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+{"returncode": 0, "seconds": 0.011209, "stdout": "result 15, expected 15, stack ok\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0.bin"}

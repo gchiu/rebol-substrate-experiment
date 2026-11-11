@@ -1,0 +1,9 @@
+attempt 0 failed:
+COMPILE FAIL: direct token 52: undefined entry label
+attempt 1 failed:
+result 0, expected 9, stack ok
+attempt 2 failed:
+result 0, expected 9, stack ok
+attempt 3 failed:
+result 0, expected 9, stack ok
+FAIL after three repair attempts; last artifact: /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/01-ack-C/artifact.attempt3

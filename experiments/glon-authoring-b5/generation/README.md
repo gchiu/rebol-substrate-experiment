@@ -1,8 +1,9 @@
 # B5 generation-and-repair harness
 
-**Status: run with an adapter timeout interruption.** A/B completed all 12
-tasks. C is not evaluable because 11/12 C trials had at least one zero-token
-call at the original 180 s adapter cap. The adapter now defaults to 900 s.
+**Status: completed, including follow-up.** A original and B original are the
+reference runs. The original C run was interrupted by the 180 s adapter cap.
+The follow-up corrected B's identifier documentation and reran B/C at 900 s:
+B corrected 11/12 first, 12/12 final; C 0/12 final with zero timeouts.
 See `results.md` and `../trials/`.
 
 ## Tasks and representations

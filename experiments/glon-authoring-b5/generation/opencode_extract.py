@@ -5,6 +5,7 @@ Usage: opencode_extract.py RAW_JSON META_JSONL MODEL START END TRIAL_ID RAW_PATH
 Writes the artifact text to stdout. Metadata is a JSON line appended to META_JSONL.
 """
 import json
+import os
 import sys
 import time
 
@@ -58,6 +59,12 @@ except FileNotFoundError:
     err_text = ""
 if err_text.strip():
     errors.append(err_text.strip())
+adapter_timeout = "ADAPTER_TIMEOUT" in err_text or any("ADAPTER_TIMEOUT" in e for e in errors)
+timeout_s = os.environ.get("B5_OPENCODE_TIMEOUT", "")
+try:
+    timeout_s = int(timeout_s) if timeout_s else None
+except ValueError:
+    timeout_s = None
 
 record = {
     "trial_id": trial_id,
@@ -68,6 +75,8 @@ record = {
     "model_step_seconds": round(model_step_s, 6),
     "process_seconds": round(end - start, 6),
     "text_parts": len(texts),
+    "adapter_timeout": adapter_timeout,
+    "adapter_timeout_seconds": timeout_s,
     "raw_json": raw_path,
     "error_log": err_path,
     "errors": errors,
