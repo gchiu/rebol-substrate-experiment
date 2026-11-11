@@ -52,6 +52,12 @@ REQUIRED = [
     "latex/glon.wasm", "latex/prelude.glon", "latex/strings.glon",
     "latex/katex/katex.min.js", "latex/katex/katex.min.css", "latex/katex/LICENSE",
     "latex/katex/fonts/KaTeX_Main-Regular.woff2",
+    "inflate/index.html", "inflate/app.js", "inflate/style.css", "inflate/glon.wasm",
+    "inflate/prelude.glon", "inflate/strings.glon", "inflate/strings-ext.glon",
+    "inflate/f2buf.glon", "inflate/inflate.glon", "inflate/inflate-driver.glon",
+    "inflate/samples.json", "inflate/samples/hello.bin", "inflate/samples/longer.bin",
+    "inflate/samples/streaming.bin", "inflate/samples/binary.bin",
+    "inflate/samples/empty.bin", "inflate/samples/gzip.bin",
 ]
 
 

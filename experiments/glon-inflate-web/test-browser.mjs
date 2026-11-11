@@ -91,6 +91,10 @@ ok(rep1.status === rep2.status && rep1.outBytes === rep2.outBytes, "consecutive 
 const tech = await evalJS('document.body.innerText');
 ok(/seven primitives/.test(tech.result.value) && /480\/480/.test(tech.result.value) && /44\/44/.test(tech.result.value),
    "page states the seven-primitive core and repository baselines");
+ok(/Maximum compressed input:\s*3,000 bytes/.test(tech.result.value) &&
+   /LZ77 history window:\s*768 bytes/.test(tech.result.value) &&
+   /Not all valid DEFLATE streams are supported/.test(tech.result.value),
+   "page states its public limits accurately");
 const resources = await evalJS('performance.getEntriesByType("resource").map(e=>e.name).filter(n=>!n.startsWith(location.origin))');
 ok(resources.result.value.length === 0, "all resources are same-origin", JSON.stringify(resources.result.value));
 const overflow = await evalJS('document.documentElement.scrollWidth <= window.innerWidth + 1');
