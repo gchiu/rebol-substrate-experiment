@@ -1,0 +1,11 @@
+source_commit=efbfed41007a9ab07a863a254c434cdcccba0fd3
+date=2026-11-11T18:34:59Z
+
+fixed run_ms_median=1373.500 ops=284665507 hostcalls=48283945
+STATS in=537 fed=537 out=2000 window=768 feeds=1 reads=9 dispatches=13 libs_ms=26.1 open_ms=1.65 first_out_ms=303.7 read_ms=1333.2 feed_ms=0.8 run_ms=1335.9 us_per_read=148138.1 out_kb_s=1.46 in_kb_s=0.39 gcs=13 max_live=4288 heap=7232 max_rs=2865 loader_delta=0 lib_loader=10977 bindings=110 code_end=14549 allocs_total=0 allocs_lib=0 allocs_open=0 allocs_decode=0 alloc_cells_total=0 alloc_cells_lib=0 alloc_cells_open=0 alloc_cells_decode=0 allocs_ctx_decode=0 allocs_raw_decode=0 live_objs=81 reclaimed=3104
+
+dynamic run_ms_median=6528.300 ops=1237258721 hostcalls=204257987
+STATS in=1684 fed=1684 out=9000 window=768 feeds=14 reads=98 dispatches=115 libs_ms=32.5 open_ms=2.21 first_out_ms=738.2 read_ms=6472.0 feed_ms=22.5 run_ms=6498.7 us_per_read=66040.6 out_kb_s=1.35 in_kb_s=0.25 gcs=79 max_live=4464 heap=7232 max_rs=3617 loader_delta=0 lib_loader=10977 bindings=110 code_end=14549 allocs_total=0 allocs_lib=0 allocs_open=0 allocs_decode=0 alloc_cells_total=0 alloc_cells_lib=0 alloc_cells_open=0 alloc_cells_decode=0 allocs_ctx_decode=0 allocs_raw_decode=0 live_objs=87 reclaimed=3024
+
+streaming run_ms_median=9608.600 ops=2098178800 hostcalls=331915025
+STATS in=1818 fed=1818 out=9000 window=768 feeds=15 reads=101 dispatches=119 libs_ms=28.7 open_ms=2.31 first_out_ms=759.0 read_ms=9073.6 feed_ms=20.2 run_ms=9103.0 us_per_read=89837.3 out_kb_s=0.97 in_kb_s=0.20 gcs=185 max_live=4832 heap=7232 max_rs=3548 loader_delta=0 lib_loader=10977 bindings=110 code_end=14549 allocs_total=0 allocs_lib=0 allocs_open=0 allocs_decode=0 alloc_cells_total=0 alloc_cells_lib=0 alloc_cells_open=0 alloc_cells_decode=0 allocs_ctx_decode=0 allocs_raw_decode=0 live_objs=89 reclaimed=3008

@@ -1,0 +1,1 @@
+../../experiments/glon-deflate/app.glon: UNSUPPORTED: expected 'name: func [params] [body]'
