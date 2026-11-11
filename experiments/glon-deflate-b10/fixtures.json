@@ -1,0 +1,43 @@
+{
+  "fixtures": [
+    {
+      "name": "fixed",
+      "file": "fixtures/fixed.deflate",
+      "compressed_bytes": 537,
+      "decompressed_bytes": 2000,
+      "sha256": "956c70ffa470e1b64ab0552d20fd7b054bca7e2062baf6f4e72e5f8ad391680d",
+      "chunks": [
+        537
+      ],
+      "read": [
+        65536
+      ]
+    },
+    {
+      "name": "dynamic",
+      "file": "fixtures/dynamic.deflate",
+      "compressed_bytes": 1684,
+      "decompressed_bytes": 9000,
+      "sha256": "fef5aff05afcb27b79fd383f79da73165544cb7493d0a119a38e1ef10c903e64",
+      "chunks": [
+        128
+      ],
+      "read": [
+        100
+      ]
+    },
+    {
+      "name": "streaming",
+      "file": "fixtures/streaming.deflate",
+      "compressed_bytes": 1818,
+      "decompressed_bytes": 9000,
+      "sha256": "fef5aff05afcb27b79fd383f79da73165544cb7493d0a119a38e1ef10c903e64",
+      "chunks": [
+        128
+      ],
+      "read": [
+        100
+      ]
+    }
+  ]
+}
