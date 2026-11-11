@@ -60,7 +60,44 @@ static int load_file(const char *path) {
 /* ---- measurements (read from the runtime's existing counters) ---------- */
 static long max_live = 0, base_live = -1, max_rs = 0, gc_seen = 0, last_free = 0, last_blocks = 0;
 
+/* Profiling counters are reset by every r0_s1 run/dispatch.  Accumulate their
+ * per-run deltas so one STATS line covers the whole session. */
+static long pf_allocs_total, pf_cells_total, pf_ctx_total, pf_raw_total;
+static r0_s1_pf_stats pf_prev;
+static int pf_seen;
+static void pf_step(void) {
+    r0_s1_pf_stats now; r0_s1_pf_read(&now);
+    long da, dc, dx, dr;
+    if (!pf_seen || now.allocs < pf_prev.allocs) da = now.allocs; else da = now.allocs - pf_prev.allocs;
+    if (!pf_seen || now.alloc_cells < pf_prev.alloc_cells) dc = now.alloc_cells; else dc = now.alloc_cells - pf_prev.alloc_cells;
+    if (!pf_seen || now.alloc_ctx < pf_prev.alloc_ctx) dx = now.alloc_ctx; else dx = now.alloc_ctx - pf_prev.alloc_ctx;
+    if (!pf_seen || now.raw < pf_prev.raw) dr = now.raw; else dr = now.raw - pf_prev.raw;
+    pf_allocs_total += da; pf_cells_total += dc; pf_ctx_total += dx; pf_raw_total += dr;
+    pf_prev = now; pf_seen = 1;
+}
+
 /* F1 diagnostic: inspect the non-moving heap at a host/machine failure. */
+static void dump_one_string(const char *name, long tagged) {
+    long payload = tagged - T_STRING;
+    if (payload < GC_HEAP_BASE || payload + 16 >= GC_HEAP_LIMIT) {
+        fprintf(stderr, "HEAPDUMP %s=invalid tagged=%ld\n", name, tagged);
+        return;
+    }
+    long len = (long)M[payload];
+    if (len < 0 || payload + 1 + len >= GC_HEAP_LIMIT) {
+        fprintf(stderr, "HEAPDUMP %s=invalidpayload tagged=%ld len=%ld\n", name, tagged, len);
+        return;
+    }
+    fprintf(stderr, "HEAPDUMP %s tagged=%ld payload=%ld len=%ld bytes=", name, tagged, payload, len);
+    long shown = len < 24 ? len : 24;
+    for (long i = 0; i < shown; i++) fprintf(stderr, "%02lx", (long)M[payload + 1 + i] & 255);
+    if (len > shown) fprintf(stderr, "..");
+    fprintf(stderr, " tail=");
+    long from = len > 8 ? len - 8 : 0;
+    for (long i = from; i < len; i++) fprintf(stderr, "%02lx", (long)M[payload + 1 + i] & 255);
+    fprintf(stderr, "\n");
+}
+
 static void dump_heap_state(void) {
     long addr = GC_HEAP_BASE, hp = (long)M[REG_HP];
     long free_cells = 0, free_blocks = 0, largest = 0;
@@ -88,11 +125,15 @@ static void dump_heap_state(void) {
         }
         addr += size;
     }
-    fprintf(stderr, "HEAPDUMP free_cells=%ld free_blocks=%ld largest_free=%ld live_counter=%ld free_counter=%ld request_extent=%ld request_kind=%ld alloc_return=%ld\n",
+    fprintf(stderr, "HEAPDUMP free_cells=%ld free_blocks=%ld largest_free=%ld live_counter=%ld free_counter=%ld request_extent=%ld request_kind=%ld alloc_return=%ld scratchA=%ld scratchB=%ld scratchC=%ld scratchF=%ld\n",
             free_cells, free_blocks, largest,
             r0_s1_gc_live_cells(), r0_s1_gc_free_cells(),
-            (long)M[GC_A1], (long)M[GC_A2], (long)M[(long)M[REG_RP]]);
+            (long)M[GC_A1], (long)M[GC_A2], (long)M[(long)M[REG_RP]],
+            (long)M[RV_SCRATCH_A], (long)M[RV_SCRATCH_B], (long)M[RV_SCRATCH_C], (long)M[RV_SCRATCH_F]);
+    dump_one_string("scratchA_string", (long)M[RV_SCRATCH_A]);
+    dump_one_string("scratchB_string", (long)M[RV_SCRATCH_B]);
 }
+
 static void sample(void) {
     long g = r0_s1_gc_count();
     if (g != gc_seen) {
@@ -111,6 +152,7 @@ static int dispatch(const char *tok, const unsigned char *data, int n, double *a
     double t0 = now();
     int rc = r0_s1_g1a_live_event_bytes(tok, data, (unsigned)n, outbuf, (int)sizeof outbuf, &out_len);
     if (acc) *acc += now() - t0;
+    pf_step();
     n_disp++;
     sample();
     if (rc != 0 || out_len < 1) return 0;
@@ -209,6 +251,7 @@ int main(int argc, char **argv) {
     cell me = r0_s1_init(); M[M1_MAIN_ENTRY_CELL] = me; M[M1_CURSOR] = 0; M[M1_STRESS_CNT] = 0;
     for (int i = 0; i < M1_MAX_TASKS; i++) M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
     static const char *libs[] = { "jupyter/prelude.glon", "demo/shop/strings.glon", "demo/shop/strings-ext.glon",
+                                  "experiments/glon-deflate/f2buf.glon",
                                   "experiments/glon-deflate/inflate.glon", "experiments/glon-deflate/progress.glon",
                                   "experiments/glon-deflate/app.glon", NULL };
     char root[4096];
@@ -221,8 +264,10 @@ int main(int argc, char **argv) {
     for (int i = 0; libs[i]; i++) {
         char path[8192]; snprintf(path, sizeof path, "%s/%s", root, libs[i]);
         if (load_file(path) != 0) { fprintf(stderr, "dzhost: library did not load: %s\n", path); return 1; }
+        pf_step();
     }
     cell used, capb; r0_s1_global_usage(&used, &capb);
+    long allocs_lib = pf_allocs_total, cells_lib = pf_cells_total;
     long lib_loader = (long)(M[GC_LOADER_HP] - lhp_libs0);
     double t_libs = now() - t_init0;
     r0_s1_g1a_live_set_host_call(NULL, NULL);
@@ -238,6 +283,8 @@ int main(int argc, char **argv) {
     dispatch_int("show", progress, &t_open);
     dispatch_int("total", unknown ? 0 : insz, &t_open);
     int st = dispatch_int("open", win, &t_open);
+    long allocs_open = pf_allocs_total, cells_open = pf_cells_total;
+    long ctx_open = pf_ctx_total, raw_open = pf_raw_total;
     long fed = 0, nfeeds = 0, nreads_done = 0; int ci = 0, ri = 0, finished = 0, rc = 1;
     if (eager) {
         while (fed < insz) {
@@ -276,17 +323,26 @@ int main(int argc, char **argv) {
     if (out_f) fclose(out_f);
     if (stats) {
         cell lhp1 = M[GC_LOADER_HP];
+        pf_step();
         fprintf(stderr, "STATS in=%ld fed=%ld out=%ld window=%ld feeds=%ld reads=%ld dispatches=%ld "
                 "libs_ms=%.1f open_ms=%.2f first_out_ms=%.1f read_ms=%.1f feed_ms=%.1f run_ms=%.1f "
                 "us_per_read=%.1f out_kb_s=%.2f in_kb_s=%.2f gcs=%ld max_live=%ld heap=%ld max_rs=%ld "
-                "loader_delta=%ld lib_loader=%ld bindings=%ld code_end=%ld\n",
+                "loader_delta=%ld lib_loader=%ld bindings=%ld code_end=%ld "
+                "allocs_total=%ld allocs_lib=%ld allocs_open=%ld allocs_decode=%ld "
+                "alloc_cells_total=%ld alloc_cells_lib=%ld alloc_cells_open=%ld "
+                "alloc_cells_decode=%ld allocs_ctx_decode=%ld allocs_raw_decode=%ld "
+                "live_objs=%ld reclaimed=%ld\n",
                 insz, fed, out_bytes, win, nfeeds, nreads_done, n_disp,
                 t_libs * 1e3, t_open * 1e3, t_first * 1e3, t_read * 1e3, t_feed * 1e3, t_run * 1e3,
                 nreads_done ? t_read * 1e6 / (double)nreads_done : 0.0,
                 t_run > 0 ? (double)out_bytes / 1024.0 / t_run : 0.0,
                 t_run > 0 ? (double)fed / 1024.0 / t_run : 0.0,
                 gc_seen, max_live, (long)(GC_HEAP_LIMIT - GC_HEAP_BASE), max_rs,
-                (long)(lhp1 - lhp0), lib_loader, (long)used, (long)asm_here());
+                (long)(lhp1 - lhp0), lib_loader, (long)used, (long)asm_here(),
+                pf_allocs_total, allocs_lib, allocs_open, pf_allocs_total - allocs_open,
+                pf_cells_total, cells_lib, cells_open, pf_cells_total - cells_open,
+                pf_ctx_total - ctx_open, pf_raw_total - raw_open,
+                r0_s1_gc_live_objs(), r0_s1_gc_reclaimed());
     }
     (void)base_live;
     return rc;

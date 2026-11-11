@@ -39,7 +39,7 @@ build/dzhost: dzhost.c $(LIVESRC) $(HDRS)
 	$(CC) $(CFLAGS) -D_POSIX_C_SOURCE=200809L -DGLON_LIVE -I$(ROOT) -o $@ dzhost.c $(LIVESRC)
 
 unit: all
-	build/glon $(EXT) inflate.glon tests/unit-tests.glon
+	build/glon $(EXT) f2buf.glon inflate.glon tests/unit-tests.glon
 
 test: all unit
 	$(PY) -I tests/run_tests.py

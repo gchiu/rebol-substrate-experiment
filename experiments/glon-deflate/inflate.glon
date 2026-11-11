@@ -146,42 +146,43 @@ hf/rep: func [s n] [
 ;; the symbols in [a, b) whose length byte in ls is the one byte not in set:
 ;; with c = 0 as a string, a byte each (symbol mod 256) in symbol order; with
 ;; c = 1 only their number, building no string. Balanced on the range.
-hf/syms: func [ls a b set c] [
+hf/syms: func [ls a b set c base] [
     hf-i: s/scan-set ls a set
     either >= hf-i b [ either = c 1 [ 0 ] [ hf/empty ] ] [
         either = b + hf-i 1 [
-            either = c 1 [ 1 ] [ mk-string reduce [ - hf-i * / hf-i 256 256 ] ]
+            either = c 1 [ 1 ] [ hf-r: - hf-i base  mk-string reduce [ - hf-r * / hf-r 256 256 ] ]
         ] [
             hf-m: / + hf-i b 2
-            either = c 1 [ + hf/syms ls hf-i hf-m set 1 hf/syms ls hf-m b set 1 ] [
-                s/+ hf/syms ls hf-i hf-m set 0 hf/syms ls hf-m b set 0
+            either = c 1 [ + hf/syms ls hf-i hf-m set 1 base hf/syms ls hf-m b set 1 base ] [
+                s/+ hf/syms ls hf-i hf-m set 0 base hf/syms ls hf-m b set 0 base
             ]
         ]
     ]
 ]
 ;; counts per length 0..15 of the symbols in [a, b), as a block of 16
-hf/counts: func [ls a b] [
+hf/counts: func [ls a b base] [
     either >= a b [ [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ] ] [
         reduce [ 0
-            hf/syms ls a b hf/not 1 1   hf/syms ls a b hf/not 2 1   hf/syms ls a b hf/not 3 1
-            hf/syms ls a b hf/not 4 1   hf/syms ls a b hf/not 5 1   hf/syms ls a b hf/not 6 1
-            hf/syms ls a b hf/not 7 1   hf/syms ls a b hf/not 8 1   hf/syms ls a b hf/not 9 1
-            hf/syms ls a b hf/not 10 1  hf/syms ls a b hf/not 11 1  hf/syms ls a b hf/not 12 1
-            hf/syms ls a b hf/not 13 1  hf/syms ls a b hf/not 14 1  hf/syms ls a b hf/not 15 1 ]
+            hf/syms ls a b hf/not 1 1 base   hf/syms ls a b hf/not 2 1 base   hf/syms ls a b hf/not 3 1 base
+            hf/syms ls a b hf/not 4 1 base   hf/syms ls a b hf/not 5 1 base   hf/syms ls a b hf/not 6 1 base
+            hf/syms ls a b hf/not 7 1 base   hf/syms ls a b hf/not 8 1 base   hf/syms ls a b hf/not 9 1 base
+            hf/syms ls a b hf/not 10 1 base  hf/syms ls a b hf/not 11 1 base  hf/syms ls a b hf/not 12 1 base
+            hf/syms ls a b hf/not 13 1 base  hf/syms ls a b hf/not 14 1 base  hf/syms ls a b hf/not 15 1 base ]
     ]
 ]
 ;; the symbol string for lengths [a, b): each length's symbols are found at
 ;; the leaf and the halves joined (balanced). Live at once: about two copies of
 ;; the result. (An accumulator passed down a chain of calls would keep every
 ;; earlier accumulator alive in the pending frames: Glon has no tail calls.)
-hf/cat: func [ls a b] [
+hf/cat: func [ls s0 s1 a b base] [
     either = b + a 1 [
-        hf-n: s/length ls
-        either > hf-n 256 [
-            s/+ hf/syms ls 0 256 hf/not a 0  hf/syms ls 256 hf-n hf/not a 0
-        ] [ hf/syms ls 0 hf-n hf/not a 0 ]
+        either > - s1 s0 256 [
+            s/+ hf/syms ls s0 + s0 256 hf/not a 0 base
+                hf/syms ls + s0 256 s1 hf/not a 0 base
+        ] [ hf/syms ls s0 s1 hf/not a 0 base ]
     ] [
-        s/+ hf/cat ls a / + a b 2 hf/cat ls / + a b 2 b
+        s/+ hf/cat ls s0 s1 a / + a b 2 base
+            hf/cat ls s0 s1 / + a b 2 b base
     ]
 ]
 ;; codes left unused after lengths l..15, starting from left: < 0 is
@@ -191,24 +192,23 @@ hf/left: func [c l left] [
         either < - * 2 left block-at c l 0 [ -1 ] [ hf/left c + l 1 - * 2 left block-at c l ]
     ]
 ]
-;; hf/build ls kind: the table for the code lengths in STRING! ls (one byte per
-;; symbol: its length, 0 to 15, PLUS 16; see LENGTH BYTES). kind 'codes (the code-length code) must be complete or
-;; empty; kind 'lens (literal/length, distance) may also be a single code of
-;; length 1, as zlib allows.
-hf/build: func [ls kind] [
-    hf-c: hf/counts ls 0 s/length ls
+;; hf/build ls s0 s1 base kind: the table for the code lengths in [s0,s1) of
+;; STRING! ls (one byte per symbol: its length, 0 to 15, PLUS 16; see LENGTH
+;; BYTES). base is the symbol number of s0 in the table's own numbering. kind
+;; 'codes (the code-length code) must be complete or empty; kind 'lens
+;; (literal/length, distance) may also be a single code of length 1, as zlib
+;; allows.
+hf/build: func [ls s0 s1 base kind] [
+    hf-c: hf/counts ls s0 s1 base
     hf-l: hf/left hf-c 1 1
     either < hf-l 0 [ raise create-sin 'inflate 'code-lengths kind ] [
-        ;; incomplete (hf-l > 0) is allowed when empty (2^15 left), or for
-        ;; 'lens when it is one code of length 1 (2^14 left)
         either either = hf-l 0 [ 1 ] [
             either = hf-l 32768 [ 1 ] [
                 either = kind 'lens [ either = hf-l 16384 [ = 1 block-at hf-c 1 ] [ 0 ] ] [ 0 ]
             ]
         ] [
-            either > s/length ls 256 [
-                reduce [ hf-c hf/counts ls 0 256 hf/cat ls 1 16 ]
-            ] [ reduce [ hf-c hf-c hf/cat ls 1 16 ] ]
+            hf-low: either > - s1 s0 256 [ hf/counts ls s0 + s0 256 base ] [ hf-c ]
+            reduce [ hf-c hf-low hf/cat ls s0 s1 1 16 base ]
         ] [ raise create-sin 'inflate 'code-lengths kind ]
     ]
 ]
@@ -307,6 +307,13 @@ dz/readn: func [r k width] [
         ]
     ]
 ]
+;; append n code-length bytes to the fixed buffer, rejecting an overshoot
+;; before it can write past the buffer (the malformed-input 'repeat case).
+dz/ls-add: func [ls n b tot] [
+    either > + s/length ls n tot [ raise create-sin 'inflate 'repeat tot ] [
+        fb/append-fill ls n b
+    ]
+]
 ;; the description of a dynamic block (after its 3 header bits): [ lit dist ]
 dz/dynamic: func [r] [
     dz-nl: + 257 invoke block-at r 0 0 5
@@ -320,9 +327,10 @@ dz/dynamic: func [r] [
         s/at dz-o 3  s/at dz-o 17 s/at dz-o 15 s/at dz-o 13 s/at dz-o 11 s/at dz-o 9  s/at dz-o 7
         s/at dz-o 5  s/at dz-o 4  s/at dz-o 6  s/at dz-o 8  s/at dz-o 10 s/at dz-o 12 s/at dz-o 14
         s/at dz-o 16 s/at dz-o 18 s/at dz-o 0  s/at dz-o 1  s/at dz-o 2
-    ] 'codes
+    ] 0 19 0 'codes
     dz-tot: + dz-nl dz-nd
-    dz-ls: hf/empty
+    dz-ls: fb/make 320
+    fb/set-length dz-ls 0
     dz-pv: none
     ;; one code length (or one run) per step, at most 316 steps (2^9 = 512).
     ;; The step closure updates dz-ls in place. (Passing the lengths down as an
@@ -332,17 +340,17 @@ dz/dynamic: func [r] [
         either >= s/length dz-ls dz-tot [ 0 ] [
             dz-sy: invoke block-at r 0 1 dz-ct
             either < dz-sy 16 [
-                dz-ls: s/+ dz-ls mk-string reduce [ + 16 dz-sy ]
+                dz/ls-add dz-ls 1 + 16 dz-sy dz-tot
                 dz-pv: dz-sy
             ] [
                 either = dz-sy 16 [
                     either = dz-pv none [ raise create-sin 'inflate 'repeat 16 ] [ none ]
-                    dz-ls: s/+ dz-ls hf/rep mk-string reduce [ + 16 dz-pv ] + 3 invoke block-at r 0 0 2
+                    dz/ls-add dz-ls + 3 invoke block-at r 0 0 2 + 16 dz-pv dz-tot
                 ] [
                     either = dz-sy 17 [
-                        dz-ls: s/+ dz-ls hf/rep hf/zero + 3 invoke block-at r 0 0 3
+                        dz/ls-add dz-ls + 3 invoke block-at r 0 0 3 16 dz-tot
                     ] [
-                        dz-ls: s/+ dz-ls hf/rep hf/zero + 11 invoke block-at r 0 0 7
+                        dz/ls-add dz-ls + 11 invoke block-at r 0 0 7 16 dz-tot
                     ]
                     dz-pv: 0
                 ]
@@ -354,8 +362,8 @@ dz/dynamic: func [r] [
     either > s/length dz-ls dz-tot [ raise create-sin 'inflate 'repeat dz-tot ] [ none ]
     either = 16 s/at dz-ls 256 [ raise create-sin 'inflate 'no-end-code none ] [ none ]
     reduce [
-        hf/build s/slice dz-ls 0 dz-nl 'lens
-        hf/build s/span dz-ls dz-nl dz-tot 'lens
+        hf/build dz-ls 0 dz-nl 0 'lens
+        hf/build dz-ls dz-nl dz-tot dz-nl 'lens
     ]
 ]
 

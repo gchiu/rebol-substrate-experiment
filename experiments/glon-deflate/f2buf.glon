@@ -1,0 +1,53 @@
+;; experiments/glon-deflate/f2buf.glon -- F2 bounded mutable byte scratch.
+;;
+;; A STRING! remains the managed object and the one-byte-per-cell storage is
+;; unchanged.  For each dynamic Huffman header the decoder allocates one
+;; fixed-capacity code-length string, then fills it in place with these
+;; unchecked masm helpers.  No growing string is built by s/+ during the
+;; header, and the buffer is garbage as soon as the tables are built.
+;;
+;; This is an experiment-local helper, not a new VM primitive and not a
+;; replacement for the immutable s/ vocabulary.
+[
+;; fb/make* ( raw cells -> string! ): a fixed-capacity string, length 0.
+fb/make*: masm 1 [
+    LIT 16 DIV LIT GC_KIND_STRING CALL alloc
+    LIT SCRATCH_A !
+    LIT 0 LIT SCRATCH_A @ !
+    LIT SCRATCH_A @ LIT T_STRING ADD
+    ARITY 1 EXIT
+]
+;; fb/make n: capacity n bytes (n is a positive integer).
+fb/make: func [n] [
+    either either s/raw-int? n [ >= n 1 ] [ 0 ] [
+        either > n 512 [ raise create-sin 'range 'fb/make n ] [ fb/make* n ]
+    ] [ raise create-sin 'type 'fb/make n ]
+]
+;; fb/set-length s n: set the stored byte count (unchecked; internal).
+fb/set-length: masm 2 [
+    LIT SCRATCH_A !
+    LIT T_STRING SUB LIT SCRATCH_B !
+    LIT SCRATCH_A @ LIT 16 DIV
+    LIT SCRATCH_B @
+    !
+    ARITY 0 EXIT
+]
+;; fb/append-fill s n b: append n copies of byte b, then set the new length.
+fb/append-fill: masm 3 [
+    LIT SCRATCH_C ! LIT SCRATCH_C @ LIT 16 DIV LIT SCRATCH_C !
+    LIT 16 DIV LIT SCRATCH_B !
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_F !
+  fb-af-loop:
+    LIT SCRATCH_B @ ZBRANCH fb-af-done
+    LIT SCRATCH_C @
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_F @ ADD
+    !
+    LIT SCRATCH_F @ LIT 1 ADD LIT SCRATCH_F !
+    LIT SCRATCH_B @ LIT 1 SUB LIT SCRATCH_B !
+    BRANCH fb-af-loop
+  fb-af-done:
+    LIT SCRATCH_F @ LIT SCRATCH_A @ !
+    ARITY 0 EXIT
+]
+]
