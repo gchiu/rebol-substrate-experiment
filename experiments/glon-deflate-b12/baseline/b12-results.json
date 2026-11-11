@@ -1,0 +1,178 @@
+{
+  "date_utc": "2026-11-11T23:48:11Z",
+  "environment": {
+    "host": "native x86_64 WSL2",
+    "compiler": "cc -O2",
+    "repetitions": 5
+  },
+  "workloads": [
+    {
+      "name": "fixed",
+      "compressed_bytes": 537,
+      "decompressed_bytes": 2000,
+      "profiles": {
+        "seven": {
+          "run_ms_median": 978.0,
+          "run_ms_min": 939.1,
+          "run_ms_max": 1032.0,
+          "spread_pct": 9.498977505112473,
+          "decode_ms_median": 976.6,
+          "code_end": 14549,
+          "max_live": 4288,
+          "max_rs": 2865,
+          "gcs": 13
+        },
+        "nine": {
+          "run_ms_median": 900.6,
+          "run_ms_min": 835.3,
+          "run_ms_max": 923.1,
+          "spread_pct": 9.74905618476572,
+          "decode_ms_median": 898.9,
+          "code_end": 10683,
+          "max_live": 4288,
+          "max_rs": 2865,
+          "gcs": 13,
+          "count": {
+            "total": 251525187,
+            "calls": 1497200,
+            "rets": 1517392,
+            "toR": 0,
+            "fromR": 0,
+            "fetchR": 0
+          }
+        },
+        "twelve": {
+          "run_ms_median": 825.8,
+          "run_ms_min": 802.4,
+          "run_ms_max": 851.1,
+          "spread_pct": 5.897311697747645,
+          "decode_ms_median": 824.7,
+          "code_end": 9933,
+          "max_live": 4288,
+          "max_rs": 2865,
+          "gcs": 13,
+          "count": {
+            "total": 239378089,
+            "calls": 1497200,
+            "rets": 1517392,
+            "toR": 764165,
+            "fromR": 743939,
+            "fetchR": 41133
+          }
+        }
+      }
+    },
+    {
+      "name": "dynamic",
+      "compressed_bytes": 1684,
+      "decompressed_bytes": 9000,
+      "profiles": {
+        "seven": {
+          "run_ms_median": 4226.8,
+          "run_ms_min": 3997.1,
+          "run_ms_max": 4395.4,
+          "spread_pct": 9.423204315321277,
+          "decode_ms_median": 4219.0,
+          "code_end": 14549,
+          "max_live": 4464,
+          "max_rs": 3617,
+          "gcs": 79
+        },
+        "nine": {
+          "run_ms_median": 3961.0,
+          "run_ms_min": 3866.4,
+          "run_ms_max": 4002.3,
+          "spread_pct": 3.4309517798535745,
+          "decode_ms_median": 3953.6,
+          "code_end": 10683,
+          "max_live": 4464,
+          "max_rs": 3617,
+          "gcs": 79,
+          "count": {
+            "total": 1097954693,
+            "calls": 6286399,
+            "rets": 6386724,
+            "toR": 0,
+            "fromR": 0,
+            "fetchR": 0
+          }
+        },
+        "twelve": {
+          "run_ms_median": 3910.1,
+          "run_ms_min": 3636.2,
+          "run_ms_max": 4104.9,
+          "spread_pct": 11.986905705736422,
+          "decode_ms_median": 3906.7999999999997,
+          "code_end": 9933,
+          "max_live": 4464,
+          "max_rs": 3617,
+          "gcs": 79,
+          "count": {
+            "total": 1038022077,
+            "calls": 6286399,
+            "rets": 6386724,
+            "toR": 3776579,
+            "fromR": 3675688,
+            "fetchR": 157240
+          }
+        }
+      }
+    },
+    {
+      "name": "streaming",
+      "compressed_bytes": 1818,
+      "decompressed_bytes": 9000,
+      "profiles": {
+        "seven": {
+          "run_ms_median": 6308.5,
+          "run_ms_min": 6173.1,
+          "run_ms_max": 6622.6,
+          "spread_pct": 7.125307125307125,
+          "decode_ms_median": 6300.9,
+          "code_end": 14549,
+          "max_live": 4832,
+          "max_rs": 3548,
+          "gcs": 185
+        },
+        "nine": {
+          "run_ms_median": 5850.6,
+          "run_ms_min": 5426.0,
+          "run_ms_max": 6066.0,
+          "spread_pct": 10.939048986428741,
+          "decode_ms_median": 5846.8,
+          "code_end": 10683,
+          "max_live": 4832,
+          "max_rs": 3548,
+          "gcs": 185,
+          "count": {
+            "total": 1885767358,
+            "calls": 9589466,
+            "rets": 9733785,
+            "toR": 0,
+            "fromR": 0,
+            "fetchR": 0
+          }
+        },
+        "twelve": {
+          "run_ms_median": 5589.8,
+          "run_ms_min": 5511.7,
+          "run_ms_max": 5712.1,
+          "spread_pct": 3.5851014347561727,
+          "decode_ms_median": 5582.4,
+          "code_end": 9933,
+          "max_live": 4832,
+          "max_rs": 3548,
+          "gcs": 185,
+          "count": {
+            "total": 1765902992,
+            "calls": 9589466,
+            "rets": 9733785,
+            "toR": 7538275,
+            "fromR": 7393086,
+            "fetchR": 206739
+          }
+        }
+      }
+    }
+  ]
+}
