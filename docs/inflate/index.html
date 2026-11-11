@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glon Inflate</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="masthead">
+  <p class="eyebrow">Glon experiment</p>
+  <h1>Glon Inflate</h1>
+  <p class="subtitle">DEFLATE decompression using Glon's original seven-primitive execution core.</p>
+</header>
+
+<main>
+  <section class="panel intro">
+    <p>Glon is an experimental compact execution language designed for AI-generated software. This demonstration runs a DEFLATE decompressor using the original seven-primitive S1 execution core.</p>
+    <p>DEFLATE is the compression algorithm inside ZIP and gzip. Raw DEFLATE is the codec itself; zlib and gzip add container headers and checksums around it. This page strips zlib/gzip container framing in JavaScript, then sends the DEFLATE payload to the actual Glon decoder. No JavaScript decompressor is used.</p>
+  </section>
+
+  <section class="panel controls">
+    <div class="row">
+      <label for="sample">Built-in sample</label>
+      <select id="sample"><option value="">Choose a sample…</option></select>
+      <span id="sample-note" class="note"></span>
+    </div>
+    <div class="row">
+      <label for="format">Container</label>
+      <select id="format">
+        <option value="raw">Raw DEFLATE</option>
+        <option value="zlib">zlib-wrapped DEFLATE</option>
+        <option value="gzip">gzip-wrapped DEFLATE</option>
+      </select>
+      <label for="encoding">Input encoding</label>
+      <select id="encoding">
+        <option value="base64">Base64</option>
+        <option value="hex">Hexadecimal</option>
+      </select>
+      <label class="file-label">Load file<input id="file" type="file"></label>
+    </div>
+    <label for="input">Compressed input</label>
+    <textarea id="input" spellcheck="false" placeholder="Paste Base64 or hexadecimal compressed bytes here, or load a file…"></textarea>
+    <div class="actions">
+      <button id="decode" class="primary" disabled>Decompress with Glon</button>
+      <button id="clear" class="secondary">Clear</button>
+      <span id="status" class="status" role="status"></span>
+    </div>
+    <p class="note" id="input-note">The browser adapter accepts compressed bytes, validates the container, and generates a Glon driver containing those bytes. This demonstration accepts at most 3,000 compressed bytes (the runtime source buffer is 16 KiB).</p>
+  </section>
+
+  <section class="panel limits" aria-labelledby="limits-title">
+    <h2 id="limits-title">Demonstration limits</h2>
+    <ul>
+      <li><strong>Maximum compressed input:</strong> 3,000 bytes.</li>
+      <li><strong>LZ77 history window:</strong> 768 bytes.</li>
+      <li><strong>Not all valid DEFLATE streams are supported</strong> by this demonstration; a stream needing a longer back-reference window reports a Glon <code>window</code> error.</li>
+    </ul>
+    <p class="note">These are limits of this browser demonstration and its 64K Glon runtime, not a JavaScript fallback. The seven-primitive S1 core and Glon decoder are unchanged.</p>
+  </section>
+
+  <section id="result" class="panel result" hidden>
+    <div class="result-head">
+      <h2>Result</h2>
+      <button id="download" class="secondary">Download decompressed bytes</button>
+    </div>
+    <div class="stats">
+      <span><strong id="in-bytes">0</strong> input bytes</span>
+      <span><strong id="out-bytes">0</strong> output bytes</span>
+      <span id="format-used"></span>
+      <span id="decode-time"></span>
+    </div>
+    <p id="verify" class="note"></p>
+    <pre id="text-out" class="output"></pre>
+    <details class="hex-details" open>
+      <summary>Output hex preview</summary>
+      <pre id="hex-out" class="hex"></pre>
+    </details>
+    <p id="result-error" class="error" hidden></p>
+  </section>
+
+  <section class="panel tech">
+    <h2>Execution path</h2>
+    <dl>
+      <div><dt>Execution core</dt><dd>Original S1: seven primitives, <code>LIT DUP DROP @ ! 0BRANCH HOST</code>. No experimental native acceleration primitives.</dd></div>
+      <div><dt>Decoder</dt><dd><code>inflate.glon</code>, the existing streaming RFC 1951 implementation, with F2's bounded Huffman code-length buffer.</dd></div>
+      <div><dt>Browser runtime</dt><dd><code>glon.wasm</code>: the standard seven-primitive shop runtime. DEFLATE runs in WebAssembly, not JavaScript.</dd></div>
+      <div><dt>Conformance baseline</dt><dd>Repository verification: <strong>480/480</strong> differential runs and <strong>44/44</strong> unit tests. These are repository results, not tests executed by each browser interaction.</dd></div>
+      <div><dt>Input handling</dt><dd>Base64, hexadecimal, local files and samples. zlib/gzip wrapping is removed by the host; the DEFLATE codec is always Glon.</dd></div>
+    </dl>
+    <p class="note">This is a local demonstration, not a deployed service. Source: <a href="https://github.com/gchiu/rebol-substrate-experiment/tree/glon-shop-g1a/experiments/glon-deflate">experiments/glon-deflate</a>.</p>
+  </section>
+</main>
+
+<footer>
+  <p>Glon Inflate · seven-primitive S1 · raw DEFLATE by Glon</p>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
