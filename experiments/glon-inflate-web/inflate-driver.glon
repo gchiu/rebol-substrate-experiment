@@ -1,0 +1,29 @@
+;; experiments/glon-inflate-web/inflate-driver.glon -- browser host driver.
+;; The decoder is unchanged inflate.glon.  One Glon run creates a decoder in a
+;; global; later runs feed or read it, so the browser host drives real
+;; suspension/resumption across calls instead of one recursive drain.
+demo/browser-d: none
+
+demo/emit: func [r] [
+    s/print s/+ "O " s/from-int s/length r
+    s/print r
+]
+demo/browser-new: func [] [
+    demo/browser-d: dz/new 768
+]
+demo/browser-feed: func [s] [
+    demo/r: judge [ dz/feed demo/browser-d s ]
+    either sin? demo/r [ s/print "E" ] [ none ]
+]
+demo/browser-finish: func [] [
+    demo/r: judge [ dz/finish demo/browser-d ]
+    either sin? demo/r [ s/print "E" ] [ none ]
+]
+demo/browser-read: func [n] [
+    demo/r: judge [ dz/read demo/browser-d n ]
+    either sin? demo/r [ s/print "E" ] [
+        either > s/length demo/r 0 [ demo/emit demo/r ] [
+            either = dz/state demo/browser-d 'done [ s/print "D" ] [ s/print "N" ]
+        ]
+    ]
+]
