@@ -1,8 +1,9 @@
 # B5 generation-and-repair harness
 
-**Status: not run.** No LLM was available through this development environment.
-No model-token, elapsed-time, cost or productivity measurement was performed.
-The harness and fixtures are provided so the experiment can be run later.
+**Status: run with an adapter timeout interruption.** A/B completed all 12
+tasks. C is not evaluable because 11/12 C trials had at least one zero-token
+call at the original 180 s adapter cap. The adapter now defaults to 900 s.
+See `results.md` and `../trials/`.
 
 ## Tasks and representations
 
@@ -40,7 +41,8 @@ For each task and representation:
    - input/output tokens if the API reports them;
    - model generation time separately from compile/execution time;
    - number of repair attempts and final pass/fail;
-   - final program bytes/tokens, code cells, instructions and execution time.
+   - final artifact bytes/words and compile+verify time (code-cell counts were
+     not captured by the adapter; the task-level execution result is captured).
 6. Use comparable budgets and the same repair allowance for A, B and C.
 7. Randomise task and representation order. `run_suite.sh` shuffles the
    task×representation list and invokes a fresh `LLM_CMD` process per trial.
@@ -55,6 +57,11 @@ Failure categories to record:
 
 ## Harness
 
+`opencode_adapter.sh` implements the LLM_CMD contract with OpenCode 1.18.35:
+it creates a fresh temporary project per invocation with a tool-free agent,
+runs `opencode run --format json --pure` with the selected model, preserves raw
+JSON events, and records session/token/cost/model-step/process metadata.
+
 `run_trial.sh` performs one task/representation trial, including the repair
 loop with `b5 --verify`:
 
@@ -62,19 +69,22 @@ loop with `b5 --verify`:
 LLM_CMD='model-cli --stdin' ./run_trial.sh tri A /tmp/tri.glon
 ```
 
-`run_suite.sh` shuffles all task/representation pairs and writes artifacts and
-logs under an output directory:
+`run_suite.sh` is the simple shell scheduler; `run_opencode_suite.py` is the
+recording scheduler used for the reported suite (resumable, timed verification,
+random seed and retained raw logs):
 
 ```
-LLM_CMD='model-cli --stdin' ./run_suite.sh /tmp/b5-trials
+python3 run_opencode_suite.py --seed 20261110 --out ../trials/opencode-seed-20261110
 ```
 
-`LLM_CMD` is responsible for model configuration and fresh-session behaviour;
-the harness invokes it as a new process for each artifact. Token counts are
-only available if that command reports them; record them separately.
+The adapter invokes a new OpenCode process for every artifact; no
+`--continue` or `--session` is used, so each initial generation and repair is a
+fresh session. Token and cost data come from OpenCode `step_finish` events.
+Model-step time is computed from event timestamps and is reported separately
+from process wall time and verification time.
 
-## What remains unperformed
+## Remaining work
 
-No generation, repair, token accounting, cost measurement or model-session
-comparison has been run. `results.md` records this limitation. No claim is
-made that any representation is easier for an LLM.
+C must be rerun with the corrected 900 s adapter timeout before it is compared
+with A/B. A/B results are complete but come from one 12-task pilot. No broad
+superiority claim is made.

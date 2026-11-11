@@ -2,11 +2,10 @@
 
 **Status:** isolated experiment, 2026-11-10, branch `glon-shop-g1a`.
 
-**No LLM trials were run.** No LLM was available through this development
-environment, and B5 does not simulate trials with fixture generators. The
-committed work is the task suite, independent tests, prompts and generation/
-repair harness. No first-attempt success, repair rate, token, cost, elapsed
-development-time or LLM-productivity claim is made.
+**Trials executed.** A/B completed all 12 tasks; C is not evaluable because
+11/12 C trials were interrupted by a 180 s adapter timeout. The adapter now
+defaults to 900 s, and C must be rerun before comparison. Raw logs, artifacts,
+sessions, tokens, costs and diagnostics are in `trials/`.
 
 B1–B4, frozen S1, production Glon, memory layout, host ABI and applications are
 unchanged.
@@ -18,11 +17,10 @@ the three B4 representations: A textual Glon, B semantically tagged words, and
 C direct machine words, minimising development effort and cost while preserving
 correctness.
 
-The objective cannot be answered without genuine model sessions. B5 therefore
-separates:
-
-- **compiler/benchmark measurements**, which are reported here;
-- **LLM authoring measurements**, which remain unperformed.
+B5 separates compiler/benchmark measurements from genuine model-session
+measurements. The latter were run with OpenCode 1.18.35 and
+`deepseek/deepseek-flash`; C was interrupted by an adapter timeout, so its
+results are not interpreted as model failure or success.
 
 ## Task suite
 
@@ -126,10 +124,14 @@ fixtures, not LLM-generated programs.
 |---|---|
 | `README.md` | controlled trial protocol |
 | `prompts/A.md`, `B.md`, `C.md` | equivalent representation documentation |
+| `opencode_adapter.sh` | OpenCode LLM_CMD adapter; fresh tool-free session per call |
+| `opencode_extract.py` | extracts artifacts and token/cost/session metadata |
 | `run_trial.sh` | one trial: initial artifact plus up to three repairs |
-| `run_suite.sh` | randomises task × representation order and logs trials |
+| `run_suite.sh` | simple shuffled shell scheduler |
+| `run_opencode_suite.py` | resumable recording scheduler used for results |
+| `analyze_opencode_trials.py` | aggregates trials and failure categories |
 | `trial-log-schema.md` | required fields for tokens, cost, time, failures |
-| `results.md` | records that no trial was run |
+| `results.md` | recorded trial results and interruption |
 
 The prompt is the task specification plus one representation's format. It
 contains no reference code, no other representation's artifact and no other
@@ -142,43 +144,73 @@ For B/C, the model writes whitespace-separated 32-bit hex words and
 consumed by the unchanged B4 front-ends. `run_trial.sh` then calls
 `b5 --verify TASK A|B|C FILE`, returns compile/runtime diagnostics for repair,
 and records the final result. The conceptual B/C representations remain the B4
-word streams; the hex interface is only the text-only authoring surface. The schema separates
-model tokens, prompt/documentation input cost, generation time, compile time and
-execution time. Failure categories are: invalid encoding, incorrect semantics,
+word streams; the hex interface is only the text-only authoring surface. The adapter uses a fresh temporary project for every call, with all tools
+disabled and wildcard-deny permissions. No repository path, reference
+implementation or other representation artifact is exposed. It records session
+IDs, input/output/reasoning/cache tokens, provider cost and model-step time;
+process wall time and `b5 --verify` time are recorded separately. Failure
+categories are: invalid encoding, incorrect semantics,
 calling-convention/stack error, compiler/assembler limitation, other.
 
-Example use, if a model command exists:
+Reported suite command:
 
 ```
-LLM_CMD='model-cli --stdin' generation/run_suite.sh /tmp/b5-trials
+python3 generation/run_opencode_suite.py --seed 20261110 \
+  --out trials/opencode-seed-20261110
 ```
 
 ## Error analysis
 
-**Not performed.** No failures from LLM artifacts exist to classify. The
-harness records the categories above so a later trial can answer whether a
-representation makes errors easier to identify and repair.
+A first-attempt failures were textual/syntax or incomplete programs:
+`no top-level expression`, malformed `either` blocks, unexpected `]`. All were
+repaired. Three of 12 tasks passed first; nine needed one repair; `quad` needed
+three.
+
+B first attempts all failed at token 1 with `bad function id`. The B prompt
+encodes `FUNC` as `id<<8|arity` but did not say function ids start at 1; the
+model repeatedly used id 0. This is a representation-documentation ambiguity,
+not purely semantic difficulty. Repairs fixed it in every task. Across all B
+attempts there was one incorrect-semantics and one stack-category failure.
+
+C attempts were dominated by invalid encoding/assembly and wrong results:
+38 encoding failures and 10 semantic failures over 48 attempts. However
+11/12 C trials were timeout-affected, so these counts are not a fair model
+comparison. The one C trial without timeouts (`quad`) produced a wrong result.
+C diagnostics are mechanical (label id, unknown operation, bad file size) and
+did not consistently guide repair to the ABI/stack cause.
 
 ## LLM result assessment
 
-**No representation is selected or favoured by B5.** Sample size is zero, and
-no model tokens, costs or repair times were measured. Compiler size and
-reference-artifact speed are not evidence of LLM productivity. The B4 finding
-that B has the smallest front-end remains a compiler result, not an authoring
-result.
+Full suite, 12 tasks per representation, model `deepseek/deepseek-flash`,
+seed `20261110`:
 
-If trials are run, report per representation:
+| Measure | A text | B tagged | C direct |
+|---|---:|---:|---:|
+| First-attempt success | 3/12 | 0/12 | 0/12* |
+| Final success | 12/12 | 12/12 | 0/12* |
+| Attempts / repairs | 24 / 12 | 27 / 15 | 48 / 36* |
+| Model tokens | 76,685 | 234,217 | 508,700* |
+| Provider cost | $0.042250 | $0.133951 | $0.296129* |
+| Cost/successful task | $0.003521 | $0.011163 | no valid success* |
+| Model-step time | 381.58 s | 1243.01 s | 2867.38 s* |
+| Process time | 523.75 s | 1601.24 s | 6332.99 s* |
 
-- correct programs per model token and per unit cost;
-- first-attempt and post-repair correctness;
-- repair attempts and success after each attempt;
-- input/output tokens and documentation cost;
-- generation time separate from compile/execution time;
-- error categories and severity;
-- final artifact size and execution performance;
-- uncertainty and sample size.
+\*C is **not evaluable**: 11/12 C trials had at least one zero-token adapter
+timeout at the 180 s cap. Its 0/12 is an infrastructure-interrupted result, not
+a model verdict. One B trial (`ack`) also had one timeout call but still
+succeeded; B has 11 fully clean trials and one timeout-affected success.
 
-Do not infer a winner from a small trial.
+Among the valid A/B data, A used about one-third of B's tokens and cost, and B
+required more repairs. B's all-first-attempt failures are confounded by the
+function-id documentation ambiguity. The sample is 12 tasks per representation;
+this is a pilot, not proof of general superiority. C must be rerun with the
+900 s adapter before comparison.
+
+Final artifact sizes: A 1367 bytes total (median 103.5); B 3093 raw hex bytes /
+345 binary words (median 24 words); C has no valid final artifacts.
+Verification (compile+run) time was about 0.35/0.33/0.44 s total per
+representation. Model-step time is reported separately from total process
+time and is not total development time.
 
 ## Implementation size
 
@@ -189,7 +221,11 @@ Do not infer a winner from a small trial.
 
 ## Limitations
 
-- No LLM sessions were orchestrated; no productivity measurement exists.
+- C is incomplete because of the adapter timeout; no C conclusion is valid.
+- B has one timeout-affected successful trial; B cost/time is slightly
+  undercounted for that one call.
+- B's first-attempt rate is confounded by the function-id prompt ambiguity.
+- The suite is a 12-task pilot, not a general productivity proof.
 - The suite is small and restricted to the integer subset; no closures,
   dynamic binding, escape laws, managed values/GC, errors/`judge` or loader
   integration.
@@ -215,7 +251,9 @@ make -C experiments/glon-authoring-b5 size
 make -C experiments/glon-authoring-b5 sanitize
 ```
 
-Raw reference measurements are in [`results.txt`](results.txt).
+Trial evidence and analysis are in [`trials/`](trials/), with the aggregate at
+[`trials/opencode-seed-20261110/analysis.md`](trials/opencode-seed-20261110/analysis.md).
+Summary results are in [`results.txt`](results.txt).
 
 ## Files
 
@@ -224,5 +262,6 @@ Raw reference measurements are in [`results.txt`](results.txt).
 | `b5_main.c` | task tests, references, counts, `--verify` |
 | `tools/gen_tasks.py` | deterministic A/B/C task generator |
 | `tasks/` | 12 task specs and artifacts |
-| `generation/` | unperformed LLM trial harness |
-| `results.txt` | reference measurements and test status |
+| `generation/` | OpenCode adapter, trial harness and analysis tools |
+| `trials/` | raw JSON, artifacts, diagnostics, sessions, tokens and costs |
+| `results.txt` | trial summary, failure patterns and interruption |

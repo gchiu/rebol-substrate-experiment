@@ -1,0 +1,2 @@
+{"returncode": 1, "seconds": 0.016036, "stdout": "COMPILE FAIL: tagged token 1: bad function id\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0.bin"}
+{"returncode": 0, "seconds": 0.013678, "stdout": "result 7, expected 7, stack ok\n", "stderr": "", "attempt": 1, "artifact": "artifact.attempt1", "candidate": "artifact.attempt1.bin"}

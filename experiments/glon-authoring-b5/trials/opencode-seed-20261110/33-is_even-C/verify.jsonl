@@ -1,0 +1,4 @@
+{"returncode": 1, "seconds": 0.00822, "stdout": "COMPILE FAIL: direct: bad file size or header\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0"}
+{"returncode": 1, "seconds": 0.00817, "stdout": "COMPILE FAIL: direct: bad file size or header\n", "stderr": "", "attempt": 1, "artifact": "artifact.attempt1", "candidate": "artifact.attempt1"}
+{"returncode": 1, "seconds": 0.008354, "stdout": "result 0, expected 1, stack ok\n", "stderr": "", "attempt": 2, "artifact": "artifact.attempt2", "candidate": "artifact.attempt2.bin"}
+{"returncode": 1, "seconds": 0.008994, "stdout": "COMPILE FAIL: direct: bad file size or header\n", "stderr": "", "attempt": 3, "artifact": "artifact.attempt3", "candidate": "artifact.attempt3"}

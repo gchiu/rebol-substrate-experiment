@@ -1,0 +1,98 @@
+{
+  "task": "sign_neg",
+  "representation": "B",
+  "seed": 20261110,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 0,
+  "first_attempt_success": false,
+  "final_success": true,
+  "attempts": 2,
+  "repairs": 1,
+  "tokens": {
+    "input": 1010,
+    "output": 136,
+    "reasoning": 12469,
+    "total": 13615,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.0077145,
+  "model_step_seconds": 72.943,
+  "process_seconds": 89.712255,
+  "verify_seconds": 0.067896,
+  "sessions": [
+    "ses_e38663da8ffesB02wVDeqte4ZJ",
+    "ses_e386541f8ffeVcaKFWbvZSUhjY"
+  ],
+  "artifact_bytes": 152,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 1,
+      "seconds": 0.046058,
+      "stdout": "COMPILE FAIL: tagged token 1: bad function id\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0.bin"
+    },
+    {
+      "returncode": 0,
+      "seconds": 0.021838,
+      "stdout": "result -1, expected -1, stack ok\n",
+      "stderr": "",
+      "attempt": 1,
+      "artifact": "artifact.attempt1",
+      "candidate": "artifact.attempt1.bin"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "20261110:1:sign_neg:B",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e38663da8ffesB02wVDeqte4ZJ"
+      ],
+      "tokens": {
+        "input": 456,
+        "output": 68,
+        "reasoning": 9740,
+        "total": 10264,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0059532,
+      "model_step_seconds": 58.491,
+      "process_seconds": 64.644086,
+      "text_parts": 1,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/01-sign_neg-B/raw/raw-1794350102480529653.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/01-sign_neg-B/raw/raw-1794350102480529653.err",
+      "errors": [],
+      "recorded_at": 1794350167.1767235
+    },
+    {
+      "trial_id": "20261110:1:sign_neg:B",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e386541f8ffeVcaKFWbvZSUhjY"
+      ],
+      "tokens": {
+        "input": 554,
+        "output": 68,
+        "reasoning": 2729,
+        "total": 3351,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0017613,
+      "model_step_seconds": 14.452,
+      "process_seconds": 21.078663,
+      "text_parts": 1,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/01-sign_neg-B/raw/raw-1794350167344087959.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/01-sign_neg-B/raw/raw-1794350167344087959.err",
+      "errors": [],
+      "recorded_at": 1794350188.483451
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "task": "min3",
+  "representation": "A",
+  "seed": 20261110,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 0,
+  "first_attempt_success": false,
+  "final_success": true,
+  "attempts": 2,
+  "repairs": 1,
+  "tokens": {
+    "input": 681,
+    "output": 106,
+    "reasoning": 1609,
+    "total": 2396,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.00113115,
+  "model_step_seconds": 9.503,
+  "process_seconds": 23.203129,
+  "verify_seconds": 0.028583,
+  "sessions": [
+    "ses_e38647d79ffe4oFdZ1qPHy5Uck",
+    "ses_e38645b05ffeq4ptQQIQTesFbL"
+  ],
+  "artifact_bytes": 128,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 1,
+      "seconds": 0.014569,
+      "stdout": "COMPILE FAIL: either: expected '[' before the then block\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0"
+    },
+    {
+      "returncode": 0,
+      "seconds": 0.014014,
+      "stdout": "result 4, expected 4, stack ok\n",
+      "stderr": "",
+      "attempt": 1,
+      "artifact": "artifact.attempt1",
+      "candidate": "artifact.attempt1"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "20261110:3:min3:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e38647d79ffe4oFdZ1qPHy5Uck"
+      ],
+      "tokens": {
+        "input": 300,
+        "output": 53,
+        "reasoning": 400,
+        "total": 753,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0003168,
+      "model_step_seconds": 2.649,
+      "process_seconds": 8.661303,
+      "text_parts": 1,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/03-min3-A/raw/raw-1794350217782524729.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/03-min3-A/raw/raw-1794350217782524729.err",
+      "errors": [],
+      "recorded_at": 1794350226.4965377
+    },
+    {
+      "trial_id": "20261110:3:min3:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e38645b05ffeq4ptQQIQTesFbL"
+      ],
+      "tokens": {
+        "input": 381,
+        "output": 53,
+        "reasoning": 1209,
+        "total": 1643,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00081435,
+      "model_step_seconds": 6.854,
+      "process_seconds": 13.00095,
+      "text_parts": 1,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/03-min3-A/raw/raw-1794350226578821465.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/03-min3-A/raw/raw-1794350226578821465.err",
+      "errors": [],
+      "recorded_at": 1794350239.632786
+    }
+  ]
+}

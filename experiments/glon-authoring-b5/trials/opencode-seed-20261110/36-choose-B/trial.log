@@ -1,0 +1,3 @@
+attempt 0 failed:
+COMPILE FAIL: tagged token 1: bad function id
+PASS after 1 repair attempt(s): /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/36-choose-B/artifact

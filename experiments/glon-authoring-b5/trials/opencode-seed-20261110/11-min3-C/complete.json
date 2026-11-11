@@ -1,0 +1,164 @@
+{
+  "task": "min3",
+  "representation": "C",
+  "seed": 20261110,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 1,
+  "first_attempt_success": false,
+  "final_success": false,
+  "attempts": 4,
+  "repairs": 3,
+  "tokens": {
+    "input": 3015,
+    "output": 974,
+    "reasoning": 42096,
+    "total": 46085,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.02629425,
+  "model_step_seconds": 234.797,
+  "process_seconds": 440.786641,
+  "verify_seconds": 0.033641,
+  "sessions": [
+    "ses_e38588a5affeYidnA0CQUClGea",
+    "ses_e385683e1ffe19dLU8xh7fCxpU",
+    "ses_e3855bc51ffeh4iSG0ky2Iri1O",
+    "ses_e3854b5b9ffe1wn7ylExjiKGOp"
+  ],
+  "artifact_bytes": 0,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 1,
+      "seconds": 0.007918,
+      "stdout": "COMPILE FAIL: direct token 108: undefined entry label\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0.bin"
+    },
+    {
+      "returncode": 1,
+      "seconds": 0.008697,
+      "stdout": "COMPILE FAIL: direct token 2: label id 0\n",
+      "stderr": "",
+      "attempt": 1,
+      "artifact": "artifact.attempt1",
+      "candidate": "artifact.attempt1.bin"
+    },
+    {
+      "returncode": 1,
+      "seconds": 0.008228,
+      "stdout": "result 0, expected 4, stack ok\n",
+      "stderr": "",
+      "attempt": 2,
+      "artifact": "artifact.attempt2",
+      "candidate": "artifact.attempt2.bin"
+    },
+    {
+      "returncode": 1,
+      "seconds": 0.008798,
+      "stdout": "COMPILE FAIL: direct: bad file size or header\n",
+      "stderr": "",
+      "attempt": 3,
+      "artifact": "artifact.attempt3",
+      "candidate": "artifact.attempt3"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "20261110:11:min3:C",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e38588a5affeYidnA0CQUClGea"
+      ],
+      "tokens": {
+        "input": 499,
+        "output": 475,
+        "reasoning": 22479,
+        "total": 23453,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.01384725,
+      "model_step_seconds": 127.319,
+      "process_seconds": 132.797864,
+      "text_parts": 1,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/11-min3-C/raw/raw-1794351000831370044.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/11-min3-C/raw/raw-1794351000831370044.err",
+      "errors": [],
+      "recorded_at": 1794351133.6719406
+    },
+    {
+      "trial_id": "20261110:11:min3:C",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e385683e1ffe19dLU8xh7fCxpU"
+      ],
+      "tokens": {
+        "input": 1003,
+        "output": 479,
+        "reasoning": 9081,
+        "total": 10563,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00588645,
+      "model_step_seconds": 45.478,
+      "process_seconds": 50.564022,
+      "text_parts": 1,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/11-min3-C/raw/raw-1794351133811098350.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/11-min3-C/raw/raw-1794351133811098350.err",
+      "errors": [],
+      "recorded_at": 1794351184.4365568
+    },
+    {
+      "trial_id": "20261110:11:min3:C",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e3855bc51ffeh4iSG0ky2Iri1O"
+      ],
+      "tokens": {
+        "input": 1513,
+        "output": 20,
+        "reasoning": 10536,
+        "total": 12069,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00656055,
+      "model_step_seconds": 62.0,
+      "process_seconds": 66.937267,
+      "text_parts": 1,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/11-min3-C/raw/raw-1794351184647956768.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/11-min3-C/raw/raw-1794351184647956768.err",
+      "errors": [],
+      "recorded_at": 1794351251.6495283
+    },
+    {
+      "trial_id": "20261110:11:min3:C",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e3854b5b9ffe1wn7ylExjiKGOp"
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0,
+      "model_step_seconds": 0.0,
+      "process_seconds": 174.543288,
+      "text_parts": 0,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/11-min3-C/raw/raw-1794351251841655514.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/11-min3-C/raw/raw-1794351251841655514.err",
+      "errors": [],
+      "recorded_at": 1794351426.4428499
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+attempt 0 failed:
+COMPILE FAIL: tagged token 1: bad function id
+attempt 1 failed:
+COMPILE FAIL: tagged token 10: expected an expression
+attempt 2 failed:
+result 4294967295, expected -1, stack ok
+attempt 3 failed:
+COMPILE FAIL: tagged token 5: expected an expression
+FAIL after three repair attempts; last artifact: /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/verification-sign_neg-20261110/03-sign_neg-B/artifact.attempt3

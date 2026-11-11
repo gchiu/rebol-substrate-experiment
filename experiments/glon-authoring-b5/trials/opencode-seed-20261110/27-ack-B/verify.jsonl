@@ -1,0 +1,4 @@
+{"returncode": 1, "seconds": 0.008903, "stdout": "COMPILE FAIL: tagged token 1: bad function id\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0.bin"}
+{"returncode": 1, "seconds": 0.008606, "stdout": "result 17115444670575, expected 9, stack IMBALANCE\n", "stderr": "b2: bad opcode 332 at 330\n", "attempt": 1, "artifact": "artifact.attempt1", "candidate": "artifact.attempt1.bin"}
+{"returncode": 1, "seconds": 0.008863, "stdout": "COMPILE FAIL: tagged: bad file size or header\n", "stderr": "", "attempt": 2, "artifact": "artifact.attempt2", "candidate": "artifact.attempt2"}
+{"returncode": 0, "seconds": 0.006896, "stdout": "result 9, expected 9, stack ok\n", "stderr": "", "attempt": 3, "artifact": "artifact.attempt3", "candidate": "artifact.attempt3.bin"}

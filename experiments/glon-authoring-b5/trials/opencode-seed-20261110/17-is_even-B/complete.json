@@ -1,0 +1,98 @@
+{
+  "task": "is_even",
+  "representation": "B",
+  "seed": 20261110,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 0,
+  "first_attempt_success": false,
+  "final_success": true,
+  "attempts": 2,
+  "repairs": 1,
+  "tokens": {
+    "input": 1046,
+    "output": 196,
+    "reasoning": 21277,
+    "total": 22519,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.0130407,
+  "model_step_seconds": 121.834,
+  "process_seconds": 135.675791,
+  "verify_seconds": 0.0287,
+  "sessions": [
+    "ses_e383dd9a9ffe7uFUwigfCDwx4s",
+    "ses_e383bfc21ffep807rVJ2q4jWzV"
+  ],
+  "artifact_bytes": 206,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 1,
+      "seconds": 0.014927,
+      "stdout": "COMPILE FAIL: tagged token 1: bad function id\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0.bin"
+    },
+    {
+      "returncode": 0,
+      "seconds": 0.013773,
+      "stdout": "result 1, expected 1, stack ok\n",
+      "stderr": "",
+      "attempt": 1,
+      "artifact": "artifact.attempt1",
+      "candidate": "artifact.attempt1.bin"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "20261110:17:is_even:B",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e383dd9a9ffe7uFUwigfCDwx4s"
+      ],
+      "tokens": {
+        "input": 459,
+        "output": 98,
+        "reasoning": 20337,
+        "total": 20894,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.01232985,
+      "model_step_seconds": 117.088,
+      "process_seconds": 120.884788,
+      "text_parts": 1,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/17-is_even-B/raw/raw-1794352751409130435.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/17-is_even-B/raw/raw-1794352751409130435.err",
+      "errors": [],
+      "recorded_at": 1794352872.3533266
+    },
+    {
+      "trial_id": "20261110:17:is_even:B",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e383bfc21ffep807rVJ2q4jWzV"
+      ],
+      "tokens": {
+        "input": 587,
+        "output": 98,
+        "reasoning": 940,
+        "total": 1625,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00071085,
+      "model_step_seconds": 4.746,
+      "process_seconds": 10.308317,
+      "text_parts": 1,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/17-is_even-B/raw/raw-1794352872491633198.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/17-is_even-B/raw/raw-1794352872491633198.err",
+      "errors": [],
+      "recorded_at": 1794352882.8513079
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+attempt 0 failed:
+COMPILE FAIL: no top-level expression
+attempt 1 failed:
+COMPILE FAIL: unsupported word or unknown name '(>'
+PASS after 2 repair attempt(s): /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/02-max_neg-A/artifact

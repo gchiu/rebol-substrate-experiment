@@ -1,0 +1,98 @@
+{
+  "task": "ack",
+  "representation": "A",
+  "seed": 20261110,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 0,
+  "first_attempt_success": false,
+  "final_success": true,
+  "attempts": 2,
+  "repairs": 1,
+  "tokens": {
+    "input": 690,
+    "output": 135,
+    "reasoning": 2216,
+    "total": 3041,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.0015141,
+  "model_step_seconds": 12.694,
+  "process_seconds": 22.52729,
+  "verify_seconds": 0.022622,
+  "sessions": [
+    "ses_e382809d9ffe1EQTXhmD0699BF",
+    "ses_e3827d473ffe8t6pqMnBt1NAsK"
+  ],
+  "artifact_bytes": 144,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 1,
+      "seconds": 0.011289,
+      "stdout": "COMPILE FAIL: no top-level expression\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0"
+    },
+    {
+      "returncode": 0,
+      "seconds": 0.011333,
+      "stdout": "result 9, expected 9, stack ok\n",
+      "stderr": "",
+      "attempt": 1,
+      "artifact": "artifact.attempt1",
+      "candidate": "artifact.attempt1"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "20261110:24:ack:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e382809d9ffe1EQTXhmD0699BF"
+      ],
+      "tokens": {
+        "input": 301,
+        "output": 65,
+        "reasoning": 1666,
+        "total": 2032,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00108375,
+      "model_step_seconds": 9.1,
+      "process_seconds": 13.546316,
+      "text_parts": 1,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/24-ack-A/raw/raw-1794354179903546102.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/24-ack-A/raw/raw-1794354179903546102.err",
+      "errors": [],
+      "recorded_at": 1794354193.4902256
+    },
+    {
+      "trial_id": "20261110:24:ack:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e3827d473ffe8t6pqMnBt1NAsK"
+      ],
+      "tokens": {
+        "input": 389,
+        "output": 70,
+        "reasoning": 550,
+        "total": 1009,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00043035,
+      "model_step_seconds": 3.594,
+      "process_seconds": 7.853703,
+      "text_parts": 1,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/24-ack-A/raw/raw-1794354193553575553.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/24-ack-A/raw/raw-1794354193553575553.err",
+      "errors": [],
+      "recorded_at": 1794354201.447681
+    }
+  ]
+}

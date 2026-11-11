@@ -1,0 +1,172 @@
+{
+  "seed": 20261110,
+  "model": "deepseek/deepseek-flash",
+  "variant": "default",
+  "temperature": "provider default (not overridden)",
+  "tasks": [
+    "tri",
+    "pow2",
+    "min3",
+    "clamp",
+    "sign_neg",
+    "range_sum",
+    "choose",
+    "is_even",
+    "ack",
+    "quad",
+    "median3",
+    "max_neg"
+  ],
+  "representations": [
+    "A",
+    "B",
+    "C"
+  ],
+  "order": [
+    {
+      "task": "sign_neg",
+      "representation": "B"
+    },
+    {
+      "task": "max_neg",
+      "representation": "A"
+    },
+    {
+      "task": "min3",
+      "representation": "A"
+    },
+    {
+      "task": "median3",
+      "representation": "B"
+    },
+    {
+      "task": "tri",
+      "representation": "A"
+    },
+    {
+      "task": "max_neg",
+      "representation": "C"
+    },
+    {
+      "task": "tri",
+      "representation": "B"
+    },
+    {
+      "task": "range_sum",
+      "representation": "B"
+    },
+    {
+      "task": "is_even",
+      "representation": "A"
+    },
+    {
+      "task": "pow2",
+      "representation": "A"
+    },
+    {
+      "task": "min3",
+      "representation": "C"
+    },
+    {
+      "task": "range_sum",
+      "representation": "A"
+    },
+    {
+      "task": "ack",
+      "representation": "C"
+    },
+    {
+      "task": "clamp",
+      "representation": "A"
+    },
+    {
+      "task": "tri",
+      "representation": "C"
+    },
+    {
+      "task": "quad",
+      "representation": "A"
+    },
+    {
+      "task": "is_even",
+      "representation": "B"
+    },
+    {
+      "task": "sign_neg",
+      "representation": "C"
+    },
+    {
+      "task": "choose",
+      "representation": "A"
+    },
+    {
+      "task": "max_neg",
+      "representation": "B"
+    },
+    {
+      "task": "pow2",
+      "representation": "B"
+    },
+    {
+      "task": "median3",
+      "representation": "C"
+    },
+    {
+      "task": "sign_neg",
+      "representation": "A"
+    },
+    {
+      "task": "ack",
+      "representation": "A"
+    },
+    {
+      "task": "quad",
+      "representation": "C"
+    },
+    {
+      "task": "quad",
+      "representation": "B"
+    },
+    {
+      "task": "ack",
+      "representation": "B"
+    },
+    {
+      "task": "min3",
+      "representation": "B"
+    },
+    {
+      "task": "clamp",
+      "representation": "B"
+    },
+    {
+      "task": "range_sum",
+      "representation": "C"
+    },
+    {
+      "task": "pow2",
+      "representation": "C"
+    },
+    {
+      "task": "choose",
+      "representation": "C"
+    },
+    {
+      "task": "is_even",
+      "representation": "C"
+    },
+    {
+      "task": "median3",
+      "representation": "A"
+    },
+    {
+      "task": "clamp",
+      "representation": "C"
+    },
+    {
+      "task": "choose",
+      "representation": "B"
+    }
+  ],
+  "generated_at": 1794350102.4122086
+}

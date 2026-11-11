@@ -1,0 +1,7 @@
+max_neg: func [a b c] [
+  either (> a b) [
+    either (> a c) [a] [c]
+  ] [
+    either (> b c) [b] [c]
+  ]
+]

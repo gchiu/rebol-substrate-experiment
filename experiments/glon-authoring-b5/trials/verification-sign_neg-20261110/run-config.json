@@ -1,0 +1,29 @@
+{
+  "seed": 20261110,
+  "model": "deepseek/deepseek-flash",
+  "variant": "default",
+  "temperature": "provider default (not overridden)",
+  "tasks": [
+    "sign_neg"
+  ],
+  "representations": [
+    "A",
+    "B",
+    "C"
+  ],
+  "order": [
+    {
+      "task": "sign_neg",
+      "representation": "C"
+    },
+    {
+      "task": "sign_neg",
+      "representation": "A"
+    },
+    {
+      "task": "sign_neg",
+      "representation": "B"
+    }
+  ],
+  "generated_at": 1794349164.030936
+}

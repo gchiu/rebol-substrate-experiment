@@ -1,0 +1,9 @@
+min3: func [a b c] [
+    either a <= b [
+        either a <= c [a] [c]
+    ] [
+        either b <= c [b] [c]
+    ]
+]
+
+min3 9 4 7

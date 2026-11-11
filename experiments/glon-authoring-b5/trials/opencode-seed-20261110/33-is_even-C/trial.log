@@ -1,0 +1,12 @@
+attempt 0 failed:
+conversion failed
+empty hex artifact
+attempt 1 failed:
+conversion failed
+empty hex artifact
+attempt 2 failed:
+result 0, expected 1, stack ok
+attempt 3 failed:
+conversion failed
+empty hex artifact
+FAIL after three repair attempts; last artifact: /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/33-is_even-C/artifact.attempt3

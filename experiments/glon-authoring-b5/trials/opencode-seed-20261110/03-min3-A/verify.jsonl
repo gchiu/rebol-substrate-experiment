@@ -1,0 +1,2 @@
+{"returncode": 1, "seconds": 0.014569, "stdout": "COMPILE FAIL: either: expected '[' before the then block\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0"}
+{"returncode": 0, "seconds": 0.014014, "stdout": "result 4, expected 4, stack ok\n", "stderr": "", "attempt": 1, "artifact": "artifact.attempt1", "candidate": "artifact.attempt1"}

@@ -1,0 +1,10 @@
+attempt 0 failed:
+conversion failed
+empty hex artifact
+attempt 1 failed:
+COMPILE FAIL: direct token 5: undefined entry label
+attempt 2 failed:
+COMPILE FAIL: direct token 2: label id 0
+attempt 3 failed:
+result 0, expected -1, stack ok
+FAIL after three repair attempts; last artifact: /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b5/trials/opencode-seed-20261110/18-sign_neg-C/artifact.attempt3
