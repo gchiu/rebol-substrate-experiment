@@ -1,0 +1,68 @@
+:root {
+  --paper: #f5f1e8;
+  --ink: #25231f;
+  --muted: #6c665b;
+  --line: #d8d0c0;
+  --card: #fffdf8;
+  --accent: #9b3d2e;
+  --accent-dark: #762b20;
+  --ok: #23633c;
+  --bad: #9b2c2c;
+  --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --sans: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html { color-scheme: light; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font: 16px/1.55 var(--sans);
+}
+.masthead { max-width: 980px; margin: 0 auto; padding: 48px 22px 18px; }
+.eyebrow { margin: 0 0 8px; color: var(--accent); text-transform: uppercase; letter-spacing: .14em; font-size: 12px; font-weight: 700; }
+h1 { margin: 0; font-size: clamp(40px, 8vw, 72px); letter-spacing: -.045em; line-height: .95; }
+.subtitle { margin: 12px 0 0; color: var(--muted); font-size: 18px; max-width: 700px; }
+main { max-width: 980px; margin: 0 auto; padding: 0 22px 40px; }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin: 18px 0; box-shadow: 0 6px 20px rgba(52, 43, 28, .05); }
+.intro p:first-child { margin-top: 0; }
+.intro p:last-child { margin-bottom: 0; color: var(--muted); }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; }
+label { font-size: 13px; font-weight: 700; color: var(--muted); }
+select, textarea, input[type=file] { font: inherit; }
+select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink); }
+select:focus, textarea:focus, button:focus, input:focus { outline: 2px solid rgba(155, 61, 46, .3); outline-offset: 2px; }
+.file-label { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; color: var(--accent); cursor: pointer; }
+.file-label input { max-width: 170px; font-size: 12px; }
+textarea { width: 100%; min-height: 150px; resize: vertical; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fffefb; color: var(--ink); font-family: var(--mono); font-size: 13px; line-height: 1.45; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+button { border: 1px solid transparent; border-radius: 7px; padding: 10px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.primary { background: var(--accent); color: #fff; }
+.primary:hover:not(:disabled) { background: var(--accent-dark); }
+.secondary { background: transparent; border-color: var(--line); color: var(--ink); }
+.secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.status { color: var(--muted); font-size: 14px; }
+.status.busy { color: var(--accent); }
+.status.ok { color: var(--ok); font-weight: 700; }
+.status.bad { color: var(--bad); font-weight: 700; }
+.note { color: var(--muted); font-size: 13px; margin: 4px 0; }
+.result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h2 { margin: 0 0 10px; font-size: 22px; letter-spacing: -.02em; }
+.stats { display: flex; flex-wrap: wrap; gap: 16px; margin: 10px 0 6px; color: var(--muted); font-size: 14px; }
+.stats strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.output { min-height: 3em; max-height: 340px; overflow: auto; margin: 10px 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fffefb; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.5 var(--mono); }
+.hex { max-height: 300px; overflow: auto; margin: 8px 0 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fbf7ef; color: #4e493f; white-space: pre; font: 12px/1.5 var(--mono); }
+.hex-details { margin-top: 12px; }
+summary { cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 700; }
+.error { color: var(--bad); font-family: var(--mono); font-size: 13px; white-space: pre-wrap; }
+.tech dt { font-weight: 700; margin-top: 12px; }
+.tech dt:first-child { margin-top: 0; }
+.tech dd { margin: 2px 0 0; color: var(--muted); }
+code { font-family: var(--mono); font-size: .92em; }
+a { color: var(--accent); }
+footer { max-width: 980px; margin: 0 auto; padding: 0 22px 32px; color: var(--muted); font-size: 13px; }
+@media (max-width: 680px) {
+  .masthead { padding-top: 32px; }
+  .row { align-items: stretch; }
+  .file-label { margin-left: 0; }
+  .panel { padding: 16px; }
+}
