@@ -1,0 +1,503 @@
+{
+  "selected": {},
+  "tasks": {
+    "choose": {
+      "A": {
+        "trial_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/04-choose-A",
+        "artifact_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/04-choose-A/artifact",
+        "artifact_sha256": "666b0275e6c350c2aa2bf37a13edafbde8c1183c7a669300255c351cd539c14c",
+        "seed": "20261115",
+        "first_attempt_success": true,
+        "final_success": true,
+        "attempts": 1,
+        "repairs": 0,
+        "tokens": {
+          "input": 300,
+          "output": 67,
+          "reasoning": 2905,
+          "total": 3272,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0.0018282,
+        "model_step_seconds": 18.977,
+        "process_seconds": 22.588536,
+        "vm": {
+          "mode": "text",
+          "cells": 114,
+          "instructions": 1301,
+          "result": 15,
+          "stack_ok": true,
+          "code_hash": "5bf965d89487d6cb",
+          "ds": 7,
+          "rs": 18
+        },
+        "bench": {
+          "mode": "text",
+          "cells": 114,
+          "exec_median_us": 3.447,
+          "exec_min_us": 3.219,
+          "exec_max_us": 3.816,
+          "exec_spread_pct": 17.33,
+          "compile_median_us": 48.226,
+          "code_hash": "5bf965d89487d6cb"
+        }
+      },
+      "D": {
+        "trial_path": "experiments/glon-authoring-b6/trials/AD-seed-20261113/12-choose-D",
+        "artifact_path": "experiments/glon-authoring-b6/trials/AD-seed-20261113/12-choose-D/artifact",
+        "artifact_sha256": "35b4b803a59ac5c99b35efe74685eac89eb568939bf0d599c503e4a0d42f2d8c",
+        "seed": "20261113",
+        "first_attempt_success": false,
+        "final_success": true,
+        "attempts": 3,
+        "repairs": 2,
+        "tokens": {
+          "input": 1323,
+          "output": 303,
+          "reasoning": 21446,
+          "total": 23072,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0.01324785,
+        "model_step_seconds": 135.504,
+        "process_seconds": 145.45278,
+        "vm": {
+          "mode": "text",
+          "cells": 193,
+          "instructions": 2691,
+          "result": 15,
+          "stack_ok": true,
+          "code_hash": "827e5ee2727e4e42",
+          "ds": 7,
+          "rs": 21
+        },
+        "bench": {
+          "mode": "text",
+          "cells": 193,
+          "exec_median_us": 9.604,
+          "exec_min_us": 8.643,
+          "exec_max_us": 16.558,
+          "exec_spread_pct": 82.41,
+          "compile_median_us": 113.186,
+          "code_hash": "827e5ee2727e4e42"
+        }
+      },
+      "E": {
+        "trial_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/07-choose-E",
+        "artifact_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/07-choose-E/artifact",
+        "artifact_sha256": "4f72d0b1974e4f353deecec4ac72eeac7bccc93f265445715bb516625e1e6b4d",
+        "seed": "20261115",
+        "first_attempt_success": false,
+        "final_success": true,
+        "attempts": 4,
+        "repairs": 3,
+        "tokens": {
+          "input": 2239,
+          "output": 298,
+          "reasoning": 45923,
+          "total": 48460,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0.02806845,
+        "model_step_seconds": 277.868,
+        "process_seconds": 285.124409,
+        "vm": {
+          "mode": "text",
+          "cells": 114,
+          "instructions": 1201,
+          "result": 15,
+          "stack_ok": true,
+          "code_hash": "48b486b680b8f104",
+          "ds": 7,
+          "rs": 18
+        },
+        "bench": {
+          "mode": "text",
+          "cells": 114,
+          "exec_median_us": 3.327,
+          "exec_min_us": 3.08,
+          "exec_max_us": 3.658,
+          "exec_spread_pct": 17.36,
+          "compile_median_us": 43.855,
+          "code_hash": "48b486b680b8f104"
+        }
+      },
+      "B": {
+        "trial_path": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/04-choose-B",
+        "artifact_path": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/04-choose-B/artifact",
+        "artifact_sha256": "71aae0233ed0c8daeb7380c2e9b2db3ecca7e9db2a1639923aa85f2c46674f82",
+        "seed": "20261111",
+        "first_attempt_success": true,
+        "final_success": true,
+        "attempts": 1,
+        "repairs": 0,
+        "tokens": {
+          "input": 565,
+          "output": 170,
+          "reasoning": 8906,
+          "total": 9641,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0.00553035,
+        "model_step_seconds": 49.992,
+        "process_seconds": 54.824075,
+        "vm": {
+          "mode": "tagged",
+          "cells": 87,
+          "instructions": 1388,
+          "result": 15,
+          "stack_ok": true,
+          "code_hash": "3b6c22d6abe07f89",
+          "ds": 9,
+          "rs": 21
+        },
+        "bench": {
+          "mode": "tagged",
+          "cells": 87,
+          "exec_median_us": 3.66,
+          "exec_min_us": 3.278,
+          "exec_max_us": 3.878,
+          "exec_spread_pct": 16.39,
+          "compile_median_us": 0.41,
+          "code_hash": "3b6c22d6abe07f89"
+        }
+      }
+    },
+    "max_neg": {
+      "A": {
+        "trial_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/12-max_neg-A",
+        "artifact_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/12-max_neg-A/artifact",
+        "artifact_sha256": "4ec1d031d74cd8649f92abc2b9b81541384e2a2477f75db27cfc1d22195cfb0a",
+        "seed": "20261115",
+        "first_attempt_success": true,
+        "final_success": true,
+        "attempts": 1,
+        "repairs": 0,
+        "tokens": {
+          "input": 312,
+          "output": 64,
+          "reasoning": 2821,
+          "total": 3197,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0.0017778,
+        "model_step_seconds": 15.375,
+        "process_seconds": 19.879165,
+        "vm": {
+          "mode": "text",
+          "cells": 120,
+          "instructions": 51,
+          "result": -4,
+          "stack_ok": true,
+          "code_hash": "ea1a1960e430448a",
+          "ds": 4,
+          "rs": 4
+        },
+        "bench": {
+          "mode": "text",
+          "cells": 120,
+          "exec_median_us": 0.113,
+          "exec_min_us": 0.098,
+          "exec_max_us": 0.121,
+          "exec_spread_pct": 20.53,
+          "compile_median_us": 48.476,
+          "code_hash": "ea1a1960e430448a"
+        }
+      },
+      "D": {
+        "trial_path": "experiments/glon-authoring-b6/trials/AD-seed-20261113/03-max_neg-D",
+        "artifact_path": "experiments/glon-authoring-b6/trials/AD-seed-20261113/03-max_neg-D/artifact",
+        "artifact_sha256": "6a2caf518bc1e754ecc77a6797e12088d7b002cf56c95eb8f889a842fbd51683",
+        "seed": "20261113",
+        "first_attempt_success": false,
+        "final_success": true,
+        "attempts": 2,
+        "repairs": 1,
+        "tokens": {
+          "input": 728,
+          "output": 110,
+          "reasoning": 2609,
+          "total": 3447,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0.0017406,
+        "model_step_seconds": 15.29,
+        "process_seconds": 27.217214,
+        "vm": {
+          "mode": "text",
+          "cells": 120,
+          "instructions": 51,
+          "result": -4,
+          "stack_ok": true,
+          "code_hash": "9565a774182e8bca",
+          "ds": 4,
+          "rs": 4
+        },
+        "bench": {
+          "mode": "text",
+          "cells": 120,
+          "exec_median_us": 0.1,
+          "exec_min_us": 0.095,
+          "exec_max_us": 0.112,
+          "exec_spread_pct": 17.0,
+          "compile_median_us": 55.177,
+          "code_hash": "9565a774182e8bca"
+        }
+      },
+      "E": {
+        "trial_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/08-max_neg-E",
+        "artifact_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/08-max_neg-E/artifact",
+        "artifact_sha256": "4ec1d031d74cd8649f92abc2b9b81541384e2a2477f75db27cfc1d22195cfb0a",
+        "seed": "20261115",
+        "first_attempt_success": true,
+        "final_success": true,
+        "attempts": 1,
+        "repairs": 0,
+        "tokens": {
+          "input": 360,
+          "output": 64,
+          "reasoning": 1452,
+          "total": 1876,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0.0009636,
+        "model_step_seconds": 7.872,
+        "process_seconds": 12.710872,
+        "vm": {
+          "mode": "text",
+          "cells": 120,
+          "instructions": 51,
+          "result": -4,
+          "stack_ok": true,
+          "code_hash": "ea1a1960e430448a",
+          "ds": 4,
+          "rs": 4
+        },
+        "bench": {
+          "mode": "text",
+          "cells": 120,
+          "exec_median_us": 0.116,
+          "exec_min_us": 0.108,
+          "exec_max_us": 0.138,
+          "exec_spread_pct": 25.75,
+          "compile_median_us": 60.601,
+          "code_hash": "ea1a1960e430448a"
+        }
+      },
+      "B": {
+        "trial_path": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/07-max_neg-B",
+        "artifact_path": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/07-max_neg-B/artifact",
+        "artifact_sha256": "f1028f1099b48b1157a2d8370fb297fcdb21d28ef3f00e0d5e109e1c2a947466",
+        "seed": "20261111",
+        "first_attempt_success": false,
+        "final_success": true,
+        "attempts": 3,
+        "repairs": 2,
+        "tokens": {
+          "input": 2301,
+          "output": 506,
+          "reasoning": 44834,
+          "total": 47641,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0.02754915,
+        "model_step_seconds": 281.357,
+        "process_seconds": 290.695912,
+        "vm": {
+          "mode": "tagged",
+          "cells": 120,
+          "instructions": 51,
+          "result": -4,
+          "stack_ok": true,
+          "code_hash": "ea1a1960e430448a",
+          "ds": 4,
+          "rs": 4
+        },
+        "bench": {
+          "mode": "tagged",
+          "cells": 120,
+          "exec_median_us": 0.107,
+          "exec_min_us": 0.096,
+          "exec_max_us": 0.312,
+          "exec_spread_pct": 201.35,
+          "compile_median_us": 1.322,
+          "code_hash": "ea1a1960e430448a"
+        }
+      }
+    },
+    "ack": {
+      "A": {
+        "trial_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/15-ack-A",
+        "artifact_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/15-ack-A/artifact",
+        "artifact_sha256": "83c4460b829a8b2898373736c15a7eff3355694bd421ad93e0b5241be0035ba5",
+        "seed": "20261115",
+        "first_attempt_success": false,
+        "final_success": true,
+        "attempts": 2,
+        "repairs": 1,
+        "tokens": {
+          "input": 739,
+          "output": 144,
+          "reasoning": 4107,
+          "total": 4990,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0.00266145,
+        "model_step_seconds": 26.661,
+        "process_seconds": 34.117912,
+        "vm": {
+          "mode": "text",
+          "cells": 90,
+          "instructions": 1253,
+          "result": 9,
+          "stack_ok": true,
+          "code_hash": "938cafb29d93005a",
+          "ds": 10,
+          "rs": 30
+        },
+        "bench": {
+          "mode": "text",
+          "cells": 90,
+          "exec_median_us": 4.364,
+          "exec_min_us": 3.69,
+          "exec_max_us": 8.452,
+          "exec_spread_pct": 109.13,
+          "compile_median_us": 139.847,
+          "code_hash": "938cafb29d93005a"
+        }
+      },
+      "D": {
+        "trial_path": "experiments/glon-authoring-b6/trials/AD-seed-20261113/07-ack-D",
+        "artifact_path": "experiments/glon-authoring-b6/trials/AD-seed-20261113/07-ack-D/artifact",
+        "artifact_sha256": "4e0bd7207234e95dbcfb34f147eeb2fb3492b20f300c88906e4a79ce652622cf",
+        "seed": "20261113",
+        "first_attempt_success": false,
+        "final_success": true,
+        "attempts": 2,
+        "repairs": 1,
+        "tokens": {
+          "input": 725,
+          "output": 135,
+          "reasoning": 3803,
+          "total": 4663,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0.00247155,
+        "model_step_seconds": 24.714,
+        "process_seconds": 31.711049,
+        "vm": {
+          "mode": "text",
+          "cells": 90,
+          "instructions": 1253,
+          "result": 9,
+          "stack_ok": true,
+          "code_hash": "938cafb29d93005a",
+          "ds": 10,
+          "rs": 30
+        },
+        "bench": {
+          "mode": "text",
+          "cells": 90,
+          "exec_median_us": 4.615,
+          "exec_min_us": 3.735,
+          "exec_max_us": 9.437,
+          "exec_spread_pct": 123.55,
+          "compile_median_us": 120.468,
+          "code_hash": "938cafb29d93005a"
+        }
+      },
+      "E": {
+        "trial_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/02-ack-E",
+        "artifact_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/02-ack-E/artifact",
+        "artifact_sha256": "83c4460b829a8b2898373736c15a7eff3355694bd421ad93e0b5241be0035ba5",
+        "seed": "20261115",
+        "first_attempt_success": false,
+        "final_success": true,
+        "attempts": 2,
+        "repairs": 1,
+        "tokens": {
+          "input": 833,
+          "output": 140,
+          "reasoning": 3016,
+          "total": 3989,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0.00201855,
+        "model_step_seconds": 18.282,
+        "process_seconds": 26.648938,
+        "vm": {
+          "mode": "text",
+          "cells": 90,
+          "instructions": 1253,
+          "result": 9,
+          "stack_ok": true,
+          "code_hash": "938cafb29d93005a",
+          "ds": 10,
+          "rs": 30
+        },
+        "bench": {
+          "mode": "text",
+          "cells": 90,
+          "exec_median_us": 2.975,
+          "exec_min_us": 2.736,
+          "exec_max_us": 3.223,
+          "exec_spread_pct": 16.37,
+          "compile_median_us": 80.995,
+          "code_hash": "938cafb29d93005a"
+        }
+      },
+      "B": {
+        "trial_path": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/09-ack-B",
+        "artifact_path": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/09-ack-B/artifact",
+        "artifact_sha256": "72d86112918d252750127410aa06c8f7de3afdd8b3785ce9377516c2cec95def",
+        "seed": "20261111",
+        "first_attempt_success": true,
+        "final_success": true,
+        "attempts": 1,
+        "repairs": 0,
+        "tokens": {
+          "input": 565,
+          "output": 16,
+          "reasoning": 1281,
+          "total": 1862,
+          "cache_read": 0,
+          "cache_write": 0
+        },
+        "cost": 0.00086295,
+        "model_step_seconds": 8.061,
+        "process_seconds": 13.465884,
+        "vm": {
+          "mode": "tagged",
+          "cells": 3,
+          "instructions": 2,
+          "result": 9,
+          "stack_ok": true,
+          "code_hash": "68241c392d23c054",
+          "ds": 1,
+          "rs": 0
+        },
+        "bench": {
+          "mode": "tagged",
+          "cells": 3,
+          "exec_median_us": 0.004,
+          "exec_min_us": 0.004,
+          "exec_max_us": 0.005,
+          "exec_spread_pct": 25.23,
+          "compile_median_us": 0.133,
+          "code_hash": "68241c392d23c054"
+        }
+      }
+    }
+  }
+}

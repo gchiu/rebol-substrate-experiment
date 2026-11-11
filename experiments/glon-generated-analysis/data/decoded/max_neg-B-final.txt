@@ -1,0 +1,43 @@
+FUNC id=1 arity=3
+SEQ_BEGIN
+  EITHER
+    BIN <
+    PARAM 0
+    PARAM 1
+    THEN_BEGIN
+      EITHER
+        BIN <
+        PARAM 1
+        PARAM 2
+        THEN_BEGIN
+          PARAM 2
+        THEN_END
+        ELSE_BEGIN
+          PARAM 1
+        ELSE_END
+    THEN_END
+    ELSE_BEGIN
+      EITHER
+        BIN <
+        PARAM 0
+        PARAM 2
+        THEN_BEGIN
+          PARAM 2
+        THEN_END
+        ELSE_BEGIN
+          PARAM 0
+        ELSE_END
+    ELSE_END
+SEQ_END
+TOP_BEGIN
+  CALL id=1 arity=3
+  BIN -
+  INT 0 (operand 0x000000)
+  INT 9 (operand 0x000009)
+  BIN -
+  INT 0 (operand 0x000000)
+  INT 4 (operand 0x000004)
+  BIN -
+  INT 0 (operand 0x000000)
+  INT 7 (operand 0x000007)
+TOP_END

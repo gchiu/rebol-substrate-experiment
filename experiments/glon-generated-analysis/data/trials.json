@@ -1,0 +1,399 @@
+{
+  "choose": {
+    "A": {
+      "trial_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/04-choose-A",
+      "seed": "20261115",
+      "first_attempt_success": true,
+      "final_success": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 300,
+        "output": 67,
+        "reasoning": 2905,
+        "total": 3272,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0018282,
+      "model_step_seconds": 18.977,
+      "process_seconds": 22.588536,
+      "final_artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/04-choose-A/artifact",
+      "final_sha256": "666b0275e6c350c2aa2bf37a13edafbde8c1183c7a669300255c351cd539c14c",
+      "attempts_detail": [
+        {
+          "artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/04-choose-A/artifact.attempt0",
+          "sha256": "666b0275e6c350c2aa2bf37a13edafbde8c1183c7a669300255c351cd539c14c",
+          "test": "result 15, expected 15, stack ok\n"
+        }
+      ]
+    },
+    "D": {
+      "trial_path": "experiments/glon-authoring-b6/trials/AD-seed-20261113/12-choose-D",
+      "seed": "20261113",
+      "first_attempt_success": false,
+      "final_success": true,
+      "attempts": 3,
+      "repairs": 2,
+      "tokens": {
+        "input": 1323,
+        "output": 303,
+        "reasoning": 21446,
+        "total": 23072,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.01324785,
+      "model_step_seconds": 135.504,
+      "process_seconds": 145.45278,
+      "final_artifact": "experiments/glon-authoring-b6/trials/AD-seed-20261113/12-choose-D/artifact",
+      "final_sha256": "35b4b803a59ac5c99b35efe74685eac89eb568939bf0d599c503e4a0d42f2d8c",
+      "attempts_detail": [
+        {
+          "artifact": "experiments/glon-authoring-b6/trials/AD-seed-20261113/12-choose-D/artifact.attempt0",
+          "sha256": "ebe61c74fd16a79cf690c7ea8212be9f71b26275e3365d123a949989a7a277f7",
+          "test": "D-VALIDATION ERROR\ncategory: missing_top_level\nlocation: line 15, column 2\nexpected: top-level expression\nobserved: end of file\nmessage: no top-level expression after function definitions\n"
+        },
+        {
+          "artifact": "experiments/glon-authoring-b6/trials/AD-seed-20261113/12-choose-D/artifact.attempt1",
+          "sha256": "90335e4d4ab8cdd48c2d47d6f52952abfb3573fcb703e22169bf2732f250dfe4",
+          "test": "D-VALIDATION ERROR\ncategory: invalid_function_reference\nlocation: line 2, column 12\nexpected: parameter, function or supported operator\nobserved: (=\nmessage: unknown word or invalid function reference '(='\n"
+        },
+        {
+          "artifact": "experiments/glon-authoring-b6/trials/AD-seed-20261113/12-choose-D/artifact.attempt2",
+          "sha256": "35b4b803a59ac5c99b35efe74685eac89eb568939bf0d599c503e4a0d42f2d8c",
+          "test": "result 15, expected 15, stack ok\n"
+        }
+      ]
+    },
+    "E": {
+      "trial_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/07-choose-E",
+      "seed": "20261115",
+      "first_attempt_success": false,
+      "final_success": true,
+      "attempts": 4,
+      "repairs": 3,
+      "tokens": {
+        "input": 2239,
+        "output": 298,
+        "reasoning": 45923,
+        "total": 48460,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.02806845,
+      "model_step_seconds": 277.868,
+      "process_seconds": 285.124409,
+      "final_artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/07-choose-E/artifact",
+      "final_sha256": "4f72d0b1974e4f353deecec4ac72eeac7bccc93f265445715bb516625e1e6b4d",
+      "attempts_detail": [
+        {
+          "artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/07-choose-E/artifact.attempt0",
+          "sha256": "224e3a1b202ba1813efa599c21693b58f061ebb49ae34d1e43d025e1cc3b50c0",
+          "test": "B7-VALIDATION ERROR\ncategory: invalid_control_flow\nlocation: line 2, column 12\nexpected: '[' before the then block\nobserved: =\nmessage: expected '[' before the then block, found =\n"
+        },
+        {
+          "artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/07-choose-E/artifact.attempt1",
+          "sha256": "46d4fabf8cee482ac0adcef3f278d02c6724c0cd4f1cf5dcdd7b14835c2136f0",
+          "test": "B7-VALIDATION ERROR\ncategory: invalid_function_reference\nlocation: line 2, column 10\nexpected: parameter, function or supported operator\nobserved: (=\nmessage: unknown word or invalid function reference '(='\n"
+        },
+        {
+          "artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/07-choose-E/artifact.attempt2",
+          "sha256": "f4caaa93256105797bb3c7d01a4bbb545b08cc7d704392cf8c67748325882d77",
+          "test": "B7-VALIDATION ERROR\ncategory: invalid_function_reference\nlocation: line 2, column 10\nexpected: parameter, function or supported operator\nobserved: (k\nmessage: unknown word or invalid function reference '(k'\n"
+        },
+        {
+          "artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/07-choose-E/artifact.attempt3",
+          "sha256": "4f72d0b1974e4f353deecec4ac72eeac7bccc93f265445715bb516625e1e6b4d",
+          "test": "result 15, expected 15, stack ok\n"
+        }
+      ]
+    },
+    "B": {
+      "trial_path": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/04-choose-B",
+      "seed": "20261111",
+      "first_attempt_success": true,
+      "final_success": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 565,
+        "output": 170,
+        "reasoning": 8906,
+        "total": 9641,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00553035,
+      "model_step_seconds": 49.992,
+      "process_seconds": 54.824075,
+      "final_artifact": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/04-choose-B/artifact",
+      "final_sha256": "71aae0233ed0c8daeb7380c2e9b2db3ecca7e9db2a1639923aa85f2c46674f82",
+      "attempts_detail": [
+        {
+          "artifact": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/04-choose-B/artifact.attempt0",
+          "sha256": "71aae0233ed0c8daeb7380c2e9b2db3ecca7e9db2a1639923aa85f2c46674f82",
+          "test": "result 15, expected 15, stack ok\n"
+        }
+      ]
+    }
+  },
+  "max_neg": {
+    "A": {
+      "trial_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/12-max_neg-A",
+      "seed": "20261115",
+      "first_attempt_success": true,
+      "final_success": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 312,
+        "output": 64,
+        "reasoning": 2821,
+        "total": 3197,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0017778,
+      "model_step_seconds": 15.375,
+      "process_seconds": 19.879165,
+      "final_artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/12-max_neg-A/artifact",
+      "final_sha256": "4ec1d031d74cd8649f92abc2b9b81541384e2a2477f75db27cfc1d22195cfb0a",
+      "attempts_detail": [
+        {
+          "artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/12-max_neg-A/artifact.attempt0",
+          "sha256": "4ec1d031d74cd8649f92abc2b9b81541384e2a2477f75db27cfc1d22195cfb0a",
+          "test": "result -4, expected -4, stack ok\n"
+        }
+      ]
+    },
+    "D": {
+      "trial_path": "experiments/glon-authoring-b6/trials/AD-seed-20261113/03-max_neg-D",
+      "seed": "20261113",
+      "first_attempt_success": false,
+      "final_success": true,
+      "attempts": 2,
+      "repairs": 1,
+      "tokens": {
+        "input": 728,
+        "output": 110,
+        "reasoning": 2609,
+        "total": 3447,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0017406,
+      "model_step_seconds": 15.29,
+      "process_seconds": 27.217214,
+      "final_artifact": "experiments/glon-authoring-b6/trials/AD-seed-20261113/03-max_neg-D/artifact",
+      "final_sha256": "6a2caf518bc1e754ecc77a6797e12088d7b002cf56c95eb8f889a842fbd51683",
+      "attempts_detail": [
+        {
+          "artifact": "experiments/glon-authoring-b6/trials/AD-seed-20261113/03-max_neg-D/artifact.attempt0",
+          "sha256": "86cd1ed0dd9558a7d0022f77b92abde405764c58f175ec5326e24a5e1d676da7",
+          "test": "D-VALIDATION ERROR\ncategory: missing_top_level\nlocation: line 7, column 2\nexpected: top-level expression\nobserved: end of file\nmessage: no top-level expression after function definitions\n"
+        },
+        {
+          "artifact": "experiments/glon-authoring-b6/trials/AD-seed-20261113/03-max_neg-D/artifact.attempt1",
+          "sha256": "6a2caf518bc1e754ecc77a6797e12088d7b002cf56c95eb8f889a842fbd51683",
+          "test": "result -4, expected -4, stack ok\n"
+        }
+      ]
+    },
+    "E": {
+      "trial_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/08-max_neg-E",
+      "seed": "20261115",
+      "first_attempt_success": true,
+      "final_success": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 360,
+        "output": 64,
+        "reasoning": 1452,
+        "total": 1876,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0009636,
+      "model_step_seconds": 7.872,
+      "process_seconds": 12.710872,
+      "final_artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/08-max_neg-E/artifact",
+      "final_sha256": "4ec1d031d74cd8649f92abc2b9b81541384e2a2477f75db27cfc1d22195cfb0a",
+      "attempts_detail": [
+        {
+          "artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/08-max_neg-E/artifact.attempt0",
+          "sha256": "4ec1d031d74cd8649f92abc2b9b81541384e2a2477f75db27cfc1d22195cfb0a",
+          "test": "result -4, expected -4, stack ok\n"
+        }
+      ]
+    },
+    "B": {
+      "trial_path": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/07-max_neg-B",
+      "seed": "20261111",
+      "first_attempt_success": false,
+      "final_success": true,
+      "attempts": 3,
+      "repairs": 2,
+      "tokens": {
+        "input": 2301,
+        "output": 506,
+        "reasoning": 44834,
+        "total": 47641,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.02754915,
+      "model_step_seconds": 281.357,
+      "process_seconds": 290.695912,
+      "final_artifact": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/07-max_neg-B/artifact",
+      "final_sha256": "f1028f1099b48b1157a2d8370fb297fcdb21d28ef3f00e0d5e109e1c2a947466",
+      "attempts_detail": [
+        {
+          "artifact": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/07-max_neg-B/artifact.attempt0",
+          "sha256": "7c5143d72f70d79c6ad129bbb72a299b9eaa619f89fe2b014311f5d17dfc5336",
+          "test": "result 4294967292, expected -4, stack ok\n"
+        },
+        {
+          "artifact": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/07-max_neg-B/artifact.attempt1",
+          "sha256": "ee416b845596103812cc13da91174790ea204bbe2e2a92ed06accb764d0d110a",
+          "test": "result 4294967292, expected -4, stack ok\n"
+        },
+        {
+          "artifact": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/07-max_neg-B/artifact.attempt2",
+          "sha256": "f1028f1099b48b1157a2d8370fb297fcdb21d28ef3f00e0d5e109e1c2a947466",
+          "test": "result -4, expected -4, stack ok\n"
+        }
+      ]
+    }
+  },
+  "ack": {
+    "A": {
+      "trial_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/15-ack-A",
+      "seed": "20261115",
+      "first_attempt_success": false,
+      "final_success": true,
+      "attempts": 2,
+      "repairs": 1,
+      "tokens": {
+        "input": 739,
+        "output": 144,
+        "reasoning": 4107,
+        "total": 4990,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00266145,
+      "model_step_seconds": 26.661,
+      "process_seconds": 34.117912,
+      "final_artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/15-ack-A/artifact",
+      "final_sha256": "83c4460b829a8b2898373736c15a7eff3355694bd421ad93e0b5241be0035ba5",
+      "attempts_detail": [
+        {
+          "artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/15-ack-A/artifact.attempt0",
+          "sha256": "6c738bed7a4c5312ef659dff2f80b1c8f9984a6a9482739e9ce568f652db91f8",
+          "test": "B7-VALIDATION ERROR\ncategory: invalid_function_reference\nlocation: line 2, column 10\nexpected: parameter, function or supported operator\nobserved: (=\nmessage: unknown word or invalid function reference '(='\n"
+        },
+        {
+          "artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/15-ack-A/artifact.attempt1",
+          "sha256": "83c4460b829a8b2898373736c15a7eff3355694bd421ad93e0b5241be0035ba5",
+          "test": "result 9, expected 9, stack ok\n"
+        }
+      ]
+    },
+    "D": {
+      "trial_path": "experiments/glon-authoring-b6/trials/AD-seed-20261113/07-ack-D",
+      "seed": "20261113",
+      "first_attempt_success": false,
+      "final_success": true,
+      "attempts": 2,
+      "repairs": 1,
+      "tokens": {
+        "input": 725,
+        "output": 135,
+        "reasoning": 3803,
+        "total": 4663,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00247155,
+      "model_step_seconds": 24.714,
+      "process_seconds": 31.711049,
+      "final_artifact": "experiments/glon-authoring-b6/trials/AD-seed-20261113/07-ack-D/artifact",
+      "final_sha256": "4e0bd7207234e95dbcfb34f147eeb2fb3492b20f300c88906e4a79ce652622cf",
+      "attempts_detail": [
+        {
+          "artifact": "experiments/glon-authoring-b6/trials/AD-seed-20261113/07-ack-D/artifact.attempt0",
+          "sha256": "d5153ec453dc38094b1dc37f9ad7b40f2f06322a47ec629311de56cc2a1ee9d2",
+          "test": "D-VALIDATION ERROR\ncategory: missing_top_level\nlocation: line 11, column 2\nexpected: top-level expression\nobserved: end of file\nmessage: no top-level expression after function definitions\n"
+        },
+        {
+          "artifact": "experiments/glon-authoring-b6/trials/AD-seed-20261113/07-ack-D/artifact.attempt1",
+          "sha256": "4e0bd7207234e95dbcfb34f147eeb2fb3492b20f300c88906e4a79ce652622cf",
+          "test": "result 9, expected 9, stack ok\n"
+        }
+      ]
+    },
+    "E": {
+      "trial_path": "experiments/glon-authoring-b7/trials/AE-seed-20261115/02-ack-E",
+      "seed": "20261115",
+      "first_attempt_success": false,
+      "final_success": true,
+      "attempts": 2,
+      "repairs": 1,
+      "tokens": {
+        "input": 833,
+        "output": 140,
+        "reasoning": 3016,
+        "total": 3989,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00201855,
+      "model_step_seconds": 18.282,
+      "process_seconds": 26.648938,
+      "final_artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/02-ack-E/artifact",
+      "final_sha256": "83c4460b829a8b2898373736c15a7eff3355694bd421ad93e0b5241be0035ba5",
+      "attempts_detail": [
+        {
+          "artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/02-ack-E/artifact.attempt0",
+          "sha256": "f00e6faa325c20ee49221890bd231035ac7422abc5318113a0f2598bc0d10a8b",
+          "test": "B7-VALIDATION ERROR\ncategory: invalid_control_flow\nlocation: line 2, column 12\nexpected: '[' before the then block\nobserved: =\nmessage: expected '[' before the then block, found =\n"
+        },
+        {
+          "artifact": "experiments/glon-authoring-b7/trials/AE-seed-20261115/02-ack-E/artifact.attempt1",
+          "sha256": "83c4460b829a8b2898373736c15a7eff3355694bd421ad93e0b5241be0035ba5",
+          "test": "result 9, expected 9, stack ok\n"
+        }
+      ]
+    },
+    "B": {
+      "trial_path": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/09-ack-B",
+      "seed": "20261111",
+      "first_attempt_success": true,
+      "final_success": true,
+      "attempts": 1,
+      "repairs": 0,
+      "tokens": {
+        "input": 565,
+        "output": 16,
+        "reasoning": 1281,
+        "total": 1862,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00086295,
+      "model_step_seconds": 8.061,
+      "process_seconds": 13.465884,
+      "final_artifact": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/09-ack-B/artifact",
+      "final_sha256": "72d86112918d252750127410aa06c8f7de3afdd8b3785ce9377516c2cec95def",
+      "attempts_detail": [
+        {
+          "artifact": "experiments/glon-authoring-b5/trials/followup-BC-seed-20261111/09-ack-B/artifact.attempt0",
+          "sha256": "72d86112918d252750127410aa06c8f7de3afdd8b3785ce9377516c2cec95def",
+          "test": "result 9, expected 9, stack ok\n"
+        }
+      ]
+    }
+  }
+}

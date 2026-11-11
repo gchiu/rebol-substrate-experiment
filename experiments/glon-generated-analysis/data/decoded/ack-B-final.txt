@@ -1,0 +1,3 @@
+TOP_BEGIN
+  INT 9 (operand 0x000009)
+TOP_END
