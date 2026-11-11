@@ -59,6 +59,40 @@ static int load_file(const char *path) {
 
 /* ---- measurements (read from the runtime's existing counters) ---------- */
 static long max_live = 0, base_live = -1, max_rs = 0, gc_seen = 0, last_free = 0, last_blocks = 0;
+
+/* F1 diagnostic: inspect the non-moving heap at a host/machine failure. */
+static void dump_heap_state(void) {
+    long addr = GC_HEAP_BASE, hp = (long)M[REG_HP];
+    long free_cells = 0, free_blocks = 0, largest = 0;
+    fprintf(stderr, "HEAPDUMP base=%ld hp=%ld span=%ld\n",
+            (long)GC_HEAP_BASE, hp, hp - (long)GC_HEAP_BASE);
+    while (addr < hp) {
+        long size = (long)M[addr];
+        long flags = (long)M[addr + GC_HDR_FLAGS];
+        if (size <= 0 || addr + size > hp) {
+            fprintf(stderr, "HEAPDUMP corrupt header at %ld size=%ld flags=%ld\n", addr, size, flags);
+            break;
+        }
+        long alloc = flags & GC_FLAG_ALLOC;
+        long kind = (flags >> 2) & 7;
+        if (!alloc) {
+            free_cells += size; free_blocks++;
+            if (size > largest) largest = size;
+            fprintf(stderr, "HEAPDUMP free addr=%ld size=%ld\n", addr, size);
+        } else if (kind == GC_KIND_STRING) {
+            long len = (long)M[addr + GC_HDR_STRIDE];
+            fprintf(stderr, "HEAPDUMP live addr=%ld size=%ld kind=%ld strlen=%ld waste=%ld\n",
+                    addr, size, kind, len, size - GC_HDR_STRIDE - len);
+        } else {
+            fprintf(stderr, "HEAPDUMP live addr=%ld size=%ld kind=%ld\n", addr, size, kind);
+        }
+        addr += size;
+    }
+    fprintf(stderr, "HEAPDUMP free_cells=%ld free_blocks=%ld largest_free=%ld live_counter=%ld free_counter=%ld request_extent=%ld request_kind=%ld alloc_return=%ld\n",
+            free_cells, free_blocks, largest,
+            r0_s1_gc_live_cells(), r0_s1_gc_free_cells(),
+            (long)M[GC_A1], (long)M[GC_A2], (long)M[(long)M[REG_RP]]);
+}
 static void sample(void) {
     long g = r0_s1_gc_count();
     if (g != gc_seen) {
@@ -230,7 +264,12 @@ int main(int argc, char **argv) {
             if (!progress) drain();
             fprintf(stderr, "ERROR %s\n", err_id[0] ? err_id : "?");
             rc = 3; break;
-        } else { fprintf(stderr, "dzhost: dispatch failed (machine halt %d; last collection: %ld live, %ld free in %ld blocks)\n", r0_s1_halt_reason(), r0_s1_gc_live_cells(), last_free, last_blocks); rc = 1; break; }
+        } else {
+            fprintf(stderr, "dzhost: dispatch failed (machine halt %d; last collection: %ld live, %ld free in %ld blocks)\n",
+                    r0_s1_halt_reason(), r0_s1_gc_live_cells(), last_free, last_blocks);
+            if (getenv("GLON_F1_DIAG")) dump_heap_state();
+            rc = 1; break;
+        }
     }
     double t_run = now() - t_run0;
     if (!progress) { drain(); fflush(stdout); }

@@ -1,0 +1,110 @@
+[dump] IP=4046 SP=16366 RP=21506 HP=40000 top=34668
+dzhost: dispatch failed (machine halt 0; last collection: 4288 live, 2944 free in 19 blocks)
+HEAPDUMP base=32768 hp=40000 span=7232
+HEAPDUMP live addr=32768 size=32 kind=2
+HEAPDUMP live addr=32800 size=32 kind=2
+HEAPDUMP live addr=32832 size=32 kind=2
+HEAPDUMP live addr=32864 size=32 kind=2
+HEAPDUMP live addr=32896 size=32 kind=2
+HEAPDUMP live addr=32928 size=32 kind=2
+HEAPDUMP live addr=32960 size=32 kind=2
+HEAPDUMP live addr=32992 size=32 kind=2
+HEAPDUMP live addr=33024 size=32 kind=2
+HEAPDUMP live addr=33056 size=32 kind=2
+HEAPDUMP live addr=33088 size=32 kind=2
+HEAPDUMP live addr=33120 size=32 kind=2
+HEAPDUMP live addr=33152 size=32 kind=2
+HEAPDUMP live addr=33184 size=32 kind=2
+HEAPDUMP live addr=33216 size=32 kind=2
+HEAPDUMP live addr=33248 size=32 kind=2
+HEAPDUMP live addr=33280 size=32 kind=2
+HEAPDUMP live addr=33312 size=32 kind=2
+HEAPDUMP live addr=33344 size=32 kind=6 strlen=0 waste=16
+HEAPDUMP live addr=33376 size=32 kind=6 strlen=1 waste=15
+HEAPDUMP live addr=33408 size=48 kind=6 strlen=16 waste=16
+HEAPDUMP live addr=33456 size=32 kind=2
+HEAPDUMP live addr=33488 size=32 kind=2
+HEAPDUMP live addr=33520 size=32 kind=2
+HEAPDUMP live addr=33552 size=32 kind=2
+HEAPDUMP live addr=33584 size=32 kind=2
+HEAPDUMP live addr=33616 size=32 kind=2
+HEAPDUMP live addr=33648 size=32 kind=2
+HEAPDUMP live addr=33680 size=32 kind=2
+HEAPDUMP live addr=33712 size=32 kind=2
+HEAPDUMP live addr=33744 size=32 kind=2
+HEAPDUMP live addr=33776 size=32 kind=2
+HEAPDUMP live addr=33808 size=32 kind=2
+HEAPDUMP live addr=33840 size=32 kind=2
+HEAPDUMP live addr=33872 size=32 kind=2
+HEAPDUMP live addr=33904 size=32 kind=2
+HEAPDUMP live addr=33936 size=32 kind=2
+HEAPDUMP live addr=33968 size=32 kind=2
+HEAPDUMP live addr=34000 size=32 kind=2
+HEAPDUMP live addr=34032 size=32 kind=2
+HEAPDUMP live addr=34064 size=32 kind=2
+HEAPDUMP live addr=34096 size=32 kind=2
+HEAPDUMP live addr=34128 size=32 kind=2
+HEAPDUMP live addr=34160 size=32 kind=2
+HEAPDUMP live addr=34192 size=32 kind=2
+HEAPDUMP live addr=34224 size=32 kind=2
+HEAPDUMP live addr=34256 size=32 kind=2
+HEAPDUMP live addr=34288 size=32 kind=2
+HEAPDUMP live addr=34320 size=32 kind=2
+HEAPDUMP live addr=34352 size=32 kind=2
+HEAPDUMP live addr=34384 size=32 kind=2
+HEAPDUMP live addr=34416 size=32 kind=2
+HEAPDUMP live addr=34448 size=32 kind=2
+HEAPDUMP live addr=34480 size=32 kind=2
+HEAPDUMP live addr=34512 size=32 kind=2
+HEAPDUMP free addr=34544 size=96
+HEAPDUMP live addr=34640 size=32 kind=6 strlen=1 waste=15
+HEAPDUMP free addr=34672 size=32
+HEAPDUMP live addr=34704 size=80 kind=1
+HEAPDUMP live addr=34784 size=32 kind=2
+HEAPDUMP live addr=34816 size=32 kind=2
+HEAPDUMP live addr=34848 size=32 kind=7
+HEAPDUMP live addr=34880 size=32 kind=2
+HEAPDUMP free addr=34912 size=32
+HEAPDUMP live addr=34944 size=80 kind=1
+HEAPDUMP live addr=35024 size=32 kind=2
+HEAPDUMP live addr=35056 size=32 kind=7
+HEAPDUMP live addr=35088 size=32 kind=2
+HEAPDUMP live addr=35120 size=32 kind=2
+HEAPDUMP free addr=35152 size=32
+HEAPDUMP live addr=35184 size=128 kind=6 strlen=96 waste=16
+HEAPDUMP free addr=35312 size=96
+HEAPDUMP live addr=35408 size=32 kind=6 strlen=3 waste=13
+HEAPDUMP free addr=35440 size=160
+HEAPDUMP live addr=35600 size=48 kind=6 strlen=17 waste=15
+HEAPDUMP free addr=35648 size=32
+HEAPDUMP live addr=35680 size=128 kind=6 strlen=96 waste=16
+HEAPDUMP free addr=35808 size=288
+HEAPDUMP live addr=36096 size=128 kind=6 strlen=96 waste=16
+HEAPDUMP free addr=36224 size=304
+HEAPDUMP live addr=36528 size=304 kind=6 strlen=287 waste=1
+HEAPDUMP free addr=36832 size=192
+HEAPDUMP live addr=37024 size=128 kind=6 strlen=96 waste=16
+HEAPDUMP free addr=37152 size=288
+HEAPDUMP live addr=37440 size=32 kind=7
+HEAPDUMP free addr=37472 size=224
+HEAPDUMP live addr=37696 size=128 kind=6 strlen=96 waste=16
+HEAPDUMP live addr=37824 size=48 kind=6 strlen=19 waste=13
+HEAPDUMP free addr=37872 size=128
+HEAPDUMP live addr=38000 size=128 kind=7
+HEAPDUMP free addr=38128 size=288
+HEAPDUMP live addr=38416 size=144 kind=6 strlen=96 waste=32
+HEAPDUMP live addr=38560 size=48 kind=7
+HEAPDUMP live addr=38608 size=32 kind=6 strlen=7 waste=9
+HEAPDUMP live addr=38640 size=32 kind=7
+HEAPDUMP live addr=38672 size=96 kind=1
+HEAPDUMP free addr=38768 size=32
+HEAPDUMP live addr=38800 size=32 kind=2
+HEAPDUMP free addr=38832 size=128
+HEAPDUMP live addr=38960 size=128 kind=6 strlen=96 waste=16
+HEAPDUMP live addr=39088 size=32 kind=6 strlen=15 waste=1
+HEAPDUMP free addr=39120 size=96
+HEAPDUMP live addr=39216 size=160 kind=6 strlen=128 waste=16
+HEAPDUMP free addr=39376 size=304
+HEAPDUMP live addr=39680 size=128 kind=6 strlen=96 waste=16
+HEAPDUMP free addr=39808 size=192
+HEAPDUMP free_cells=2944 free_blocks=19 largest_free=304 live_counter=4288 free_counter=2944 request_extent=320 request_kind=6 alloc_return=13604
