@@ -1,0 +1,2 @@
+{"returncode": 1, "seconds": 0.057406, "stdout": "B7-VALIDATION ERROR\ncategory: invalid_function_reference\nlocation: line 2, column 10\nexpected: parameter, function or supported operator\nobserved: (=\nmessage: unknown word or invalid function reference '(='\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0"}
+{"returncode": 0, "seconds": 0.08774, "stdout": "result 9, expected 9, stack ok\n", "stderr": "", "attempt": 1, "artifact": "artifact.attempt1", "candidate": "artifact.attempt1"}

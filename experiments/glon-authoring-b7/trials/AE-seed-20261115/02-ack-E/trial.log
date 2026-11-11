@@ -1,0 +1,8 @@
+attempt 0 failed:
+B7-VALIDATION ERROR
+category: invalid_control_flow
+location: line 2, column 12
+expected: '[' before the then block
+observed: =
+message: expected '[' before the then block, found =
+PASS after 1 repair attempt(s): /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261115/02-ack-E/artifact

@@ -1,0 +1,6 @@
+B7-VALIDATION ERROR
+category: missing_top_level
+location: line 9, column 2
+expected: top-level expression
+observed: end of file
+message: no top-level expression after function definitions

@@ -1,0 +1,2 @@
+{"task": "clamp", "rep": "A", "category": "invalid_control_flow", "validation_seconds": 0.000106, "verify_seconds": 0.0, "returncode": 1}
+{"task": "clamp", "rep": "A", "category": "pass", "validation_seconds": 0.000156, "verify_seconds": 0.010571, "returncode": 0}

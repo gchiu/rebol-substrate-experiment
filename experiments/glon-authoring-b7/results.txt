@@ -1,0 +1,134 @@
+GLON B7 — program completion contract: recorded results
+2026-11-10, branch glon-shop-g1a
+Model: deepseek/deepseek-flash; OpenCode 1.18.35
+Default variant and provider temperature; tool-free fresh sessions
+Adapter timeout: 900 s; seeded A/E conditions
+Seeds: 20261114 and 20261115
+Tasks: the 12 B5/B6 tasks
+
+SEMANTICS FINDING
+
+Definitions-only Glon is a valid loaded module in production Glon:
+`f: func [x] [ x ]` loaded by ./glon exits 0 and returns #[func].
+The B5/B6 benchmark compiler (`b3_compile`) is a standalone-entry compiler: it
+requires a top-level expression, emits it as the entry and HALTs. It has no
+module mode. The benchmark tasks need that invocation to obtain a result.
+`missing_top_level` in B6 was therefore a benchmark submission-contract issue,
+not a Glon language requirement.
+
+PROMPT DIFF A -> E
+
+A is the B6 textual prompt unchanged. E adds exactly one paragraph:
+
+  The benchmark submission must include the specified top-level invocation
+  after the function definitions. Definitions alone are a valid Glon module,
+  but this benchmark executes the final top-level expression to obtain its
+  result; a definitions-only artifact does not produce a test result.
+
+No syntax, semantic role, example or reference code was added. Exact diff is in
+generation/prompts/DIFF.md.
+
+TRIAL COUNTS
+
+  A: 24 fresh matched trials (12 tasks x 2 seeds)
+  E: 24 fresh matched trials (12 tasks x 2 seeds)
+  All 48 terminated below 900 s; zero adapter timeouts.
+  B is historical B5 reference only; B/C were not rerun.
+
+AGGREGATE (both seeds)
+
+Measure                         A              E
+trials                          24             24
+first-attempt success           10             17
+final success                   24             24
+attempts                        41             36
+repairs                         17             12
+input tokens                 14,636         14,913
+output tokens                 1,948          1,908
+reasoning tokens             64,609        103,428
+total model tokens           81,193        120,249
+provider cost             $0.042130      $0.065439
+model-step time              416.48 s       649.83 s
+process wall time            597.20 s       792.88 s
+verification time              3.02 s         2.80 s
+validation time                0.0050 s       0.0049 s
+B5 verify time                 0.244 s        0.235 s
+cost per attempted task    $0.001755      $0.002727
+cost per successful task   $0.001755      $0.002727
+tokens per successful task   3,383          5,010
+
+PER SEED
+
+20261114 A: first 4/12 final 12/12 attempts 20 tokens 37,471 cost $0.019369
+20261114 E: first 10/12 final 12/12 attempts 16 tokens 38,781 cost $0.020400
+20261115 A: first 6/12 final 12/12 attempts 21 tokens 43,722 cost $0.022760
+20261115 E: first 7/12 final 12/12 attempts 20 tokens 81,468 cost $0.045039
+
+The seed-2 E total is dominated by one `choose` trial: 4 attempts, 48,460
+tokens, $0.028068. Seed 1 E and A total effort were nearly equal.
+
+FIRST-ATTEMPT FAILURE CATEGORIES
+
+A: missing_top_level 8, invalid_control_flow 4, expected_expression 1,
+   invalid_function_reference 1, pass 10.
+E: invalid_control_flow 6, invalid_function_reference 1, pass 17,
+   missing_top_level 0.
+
+E eliminates missing_top_level entirely. Its first-attempt gain is therefore
+primarily attributable to the completion-contract clarification, with some
+control-flow failures remaining. E introduced no timeout, no missing-entry
+failure and no final failure; its remaining first-attempt errors are control
+flow and one unknown reference.
+
+HISTORICAL REFERENCES (not controlled by B7)
+
+B5 A original: first 3/12, final 12/12, 76,685 tokens, $0.042250.
+B5 B original: first 0/12, final 12/12, 234,217 tokens, $0.133951.
+B5 B corrected: first 11/12, final 12/12, 161,245 tokens, $0.092908.
+B6 D (structured text): first 5/24, final 24/24, 142,889 tokens, $0.077084.
+B7 E is the completion-clarified text; B5/B6 are historical across different
+seeds and settings and are not controlled comparisons.
+
+ANALYSIS ANSWERS
+
+1. Does clarification reduce missing_top_level? Yes: 8 -> 0 first-attempt
+   missing-entry failures.
+2. Does it improve first-attempt correctness? Yes in this pilot: 10/24 -> 17/24
+   (seed 1 4->10, seed 2 6->7).
+3. Does it reduce total LLM tokens/cost? No overall: E used 120,249 tokens /
+   $0.065439 vs A 81,193 / $0.042130. Seed 1 was roughly neutral
+   (38,781/$0.020400 vs 37,471/$0.019369); seed 2 was worse because of the
+   choose outlier (81,468/$0.045039 vs 43,722/$0.022760).
+4. Any new failure modes? No new final or timeout failure. E shifted first
+   failures from missing entry to control-flow (6 vs 4) and one unknown
+   reference; no missing-entry failures.
+5. Effects consistent across tasks/seeds? First-attempt improvement appears in
+   both seeds (4->10, 6->7), but magnitude and cost are not consistent; one
+   seed-2 task dominates total cost. Mixed overall.
+6. Is the rule language or benchmark? Benchmark submission/execution contract,
+   not a Glon language rule. Definitions-only is a valid module.
+
+HYPOTHESIS
+
+Partially supported:
+- Strongly supported for the specific failure: the clarification removes
+  missing_top_level and raises first-attempt success.
+- Not supported as a general cost reduction: total tokens/cost rose in the
+  two-seed aggregate, driven by increased model reasoning and one outlier.
+- Final correctness remained 24/24 in both conditions; E needed fewer attempts
+  (36 vs 41) and repairs (12 vs 17), but at higher aggregate token cost.
+
+B's historical high first-attempt rate remains above E, but B5's controlled
+documentation fix showed that documentation can move B from 0/12 to 11/12;
+representation versus documentation is still not fully separated, and B was
+not rerun in B7.
+
+LIMITATIONS
+
+- Two seeds, 24 trials per condition, one model/variant, 12 small tasks.
+- B and C are historical/not rerun; no controlled A/B claim.
+- Results are mixed and not statistically established.
+- The completion rule is benchmark-specific; changing language semantics was
+  neither needed nor done.
+- Validator feedback is shared by A/E; the prompt is the only difference.
+- No reference implementation was exposed; isolation protocol was preserved.

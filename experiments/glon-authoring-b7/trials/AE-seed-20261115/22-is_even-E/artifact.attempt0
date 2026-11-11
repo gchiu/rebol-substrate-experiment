@@ -1,0 +1,9 @@
+is_even: func [n] [
+  either < n 2 [
+    either = n 0 [1] [0]
+  ] [
+    is_even - n 2
+  ]
+]
+
+is_even 10

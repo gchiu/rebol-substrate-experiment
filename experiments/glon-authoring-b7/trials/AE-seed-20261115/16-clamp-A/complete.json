@@ -1,0 +1,165 @@
+{
+  "task": "clamp",
+  "representation": "A",
+  "seed": 20261115,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 0,
+  "first_attempt_success": false,
+  "final_success": true,
+  "attempts": 3,
+  "repairs": 2,
+  "tokens": {
+    "input": 1252,
+    "output": 118,
+    "reasoning": 5449,
+    "total": 6819,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.003528,
+  "model_step_seconds": 34.737,
+  "process_seconds": 46.255284,
+  "verify_seconds": 0.17994,
+  "validation_seconds": 0.000326,
+  "b5_verify_seconds": 0.009552,
+  "verification_meta": [
+    {
+      "task": "clamp",
+      "rep": "A",
+      "category": "invalid_control_flow",
+      "validation_seconds": 0.000127,
+      "verify_seconds": 0.0,
+      "returncode": 1
+    },
+    {
+      "task": "clamp",
+      "rep": "A",
+      "category": "invalid_function_reference",
+      "validation_seconds": 6.8e-05,
+      "verify_seconds": 0.0,
+      "returncode": 1
+    },
+    {
+      "task": "clamp",
+      "rep": "A",
+      "category": "pass",
+      "validation_seconds": 0.000131,
+      "verify_seconds": 0.009552,
+      "returncode": 0
+    }
+  ],
+  "sessions": [
+    "ses_e36eb2b90ffeOwiwaj6gwCfp0T",
+    "ses_e36eac71affe9xguAhym6DE5Yu",
+    "ses_e36ea8daeffeIrnc8lktkUG970"
+  ],
+  "artifact_bytes": 81,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 1,
+      "seconds": 0.059888,
+      "stdout": "B7-VALIDATION ERROR\ncategory: invalid_control_flow\nlocation: line 1, column 33\nexpected: '[' before the then block\nobserved: <\nmessage: expected '[' before the then block, found <\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0"
+    },
+    {
+      "returncode": 1,
+      "seconds": 0.054759,
+      "stdout": "B7-VALIDATION ERROR\ncategory: invalid_function_reference\nlocation: line 1, column 31\nexpected: parameter, function or supported operator\nobserved: (x\nmessage: unknown word or invalid function reference '(x'\n",
+      "stderr": "",
+      "attempt": 1,
+      "artifact": "artifact.attempt1",
+      "candidate": "artifact.attempt1"
+    },
+    {
+      "returncode": 0,
+      "seconds": 0.065293,
+      "stdout": "result 10, expected 10, stack ok\n",
+      "stderr": "",
+      "attempt": 2,
+      "artifact": "artifact.attempt2",
+      "candidate": "artifact.attempt2"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "B7:20261115:16:clamp:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e36eb2b90ffeOwiwaj6gwCfp0T"
+      ],
+      "tokens": {
+        "input": 311,
+        "output": 38,
+        "reasoning": 3367,
+        "total": 3716,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00208965,
+      "model_step_seconds": 21.991,
+      "process_seconds": 25.439946,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261115/16-clamp-A/raw/raw-1794374946508206652.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261115/16-clamp-A/raw/raw-1794374946508206652.err",
+      "errors": [],
+      "recorded_at": 1794374971.9938097
+    },
+    {
+      "trial_id": "B7:20261115:16:clamp:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e36eac71affe9xguAhym6DE5Yu"
+      ],
+      "tokens": {
+        "input": 417,
+        "output": 42,
+        "reasoning": 1623,
+        "total": 2082,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00106155,
+      "model_step_seconds": 10.14,
+      "process_seconds": 14.521955,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261115/16-clamp-A/raw/raw-1794374972132169629.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261115/16-clamp-A/raw/raw-1794374972132169629.err",
+      "errors": [],
+      "recorded_at": 1794374986.686825
+    },
+    {
+      "trial_id": "B7:20261115:16:clamp:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e36ea8daeffeIrnc8lktkUG970"
+      ],
+      "tokens": {
+        "input": 524,
+        "output": 38,
+        "reasoning": 459,
+        "total": 1021,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0003768,
+      "model_step_seconds": 2.606,
+      "process_seconds": 7.203005,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261115/16-clamp-A/raw/raw-1794374986795158367.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261115/16-clamp-A/raw/raw-1794374986795158367.err",
+      "errors": [],
+      "recorded_at": 1794374994.0341587
+    }
+  ]
+}

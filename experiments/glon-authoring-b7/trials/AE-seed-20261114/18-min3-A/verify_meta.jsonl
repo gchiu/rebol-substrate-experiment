@@ -1,0 +1,2 @@
+{"task": "min3", "rep": "A", "category": "missing_top_level", "validation_seconds": 8e-05, "verify_seconds": 0.0, "returncode": 1}
+{"task": "min3", "rep": "A", "category": "pass", "validation_seconds": 0.000113, "verify_seconds": 0.008478, "returncode": 0}

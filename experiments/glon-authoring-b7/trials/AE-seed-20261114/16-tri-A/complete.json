@@ -1,0 +1,79 @@
+{
+  "task": "tri",
+  "representation": "A",
+  "seed": 20261114,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 0,
+  "first_attempt_success": true,
+  "final_success": true,
+  "attempts": 1,
+  "repairs": 0,
+  "tokens": {
+    "input": 301,
+    "output": 29,
+    "reasoning": 1372,
+    "total": 1702,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.00088575,
+  "model_step_seconds": 9.842,
+  "process_seconds": 13.962348,
+  "verify_seconds": 0.078997,
+  "validation_seconds": 0.000108,
+  "b5_verify_seconds": 0.009741,
+  "verification_meta": [
+    {
+      "task": "tri",
+      "rep": "A",
+      "category": "pass",
+      "validation_seconds": 0.000108,
+      "verify_seconds": 0.009741,
+      "returncode": 0
+    }
+  ],
+  "sessions": [
+    "ses_e36f7de78ffestwfSAUcBSGeFs"
+  ],
+  "artifact_bytes": 60,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 0,
+      "seconds": 0.078997,
+      "stdout": "result 55, expected 55, stack ok\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "B7:20261114:16:tri:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e36f7de78ffestwfSAUcBSGeFs"
+      ],
+      "tokens": {
+        "input": 301,
+        "output": 29,
+        "reasoning": 1372,
+        "total": 1702,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00088575,
+      "model_step_seconds": 9.842,
+      "process_seconds": 14.716728,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261114/16-tri-A/raw/raw-1794374113942374430.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261114/16-tri-A/raw/raw-1794374113942374430.err",
+      "errors": [],
+      "recorded_at": 1794374128.7129242
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+{"task": "tri", "rep": "A", "category": "missing_top_level", "validation_seconds": 6.6e-05, "verify_seconds": 0.0, "returncode": 1}
+{"task": "tri", "rep": "A", "category": "pass", "validation_seconds": 0.000106, "verify_seconds": 0.009074, "returncode": 0}

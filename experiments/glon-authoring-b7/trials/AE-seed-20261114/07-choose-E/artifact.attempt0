@@ -1,0 +1,16 @@
+choose: func [n k] [
+  either k > n [
+    0
+  ] [
+    either k = 0 [
+      1
+    ] [
+      either k = n [
+        1
+      ] [
+        (choose (n - 1) (k - 1)) + (choose (n - 1) k)
+      ]
+    ]
+  ]
+]
+choose 6 2

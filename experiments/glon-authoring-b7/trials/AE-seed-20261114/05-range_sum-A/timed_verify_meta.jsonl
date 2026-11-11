@@ -1,0 +1,2 @@
+{"task": "range_sum", "rep": "A", "category": "invalid_control_flow", "validation_seconds": 0.000114, "verify_seconds": 0.0, "returncode": 1}
+{"task": "range_sum", "rep": "A", "category": "pass", "validation_seconds": 0.000127, "verify_seconds": 0.011167, "returncode": 0}

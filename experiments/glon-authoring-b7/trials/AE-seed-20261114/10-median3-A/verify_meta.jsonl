@@ -1,0 +1,2 @@
+{"task": "median3", "rep": "A", "category": "missing_top_level", "validation_seconds": 8.9e-05, "verify_seconds": 0.0, "returncode": 1}
+{"task": "median3", "rep": "A", "category": "pass", "validation_seconds": 0.000151, "verify_seconds": 0.00931, "returncode": 0}

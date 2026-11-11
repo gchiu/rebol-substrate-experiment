@@ -1,0 +1,4 @@
+{"task": "choose", "rep": "E", "category": "invalid_control_flow", "validation_seconds": 0.000111, "verify_seconds": 0.0, "returncode": 1}
+{"task": "choose", "rep": "E", "category": "invalid_function_reference", "validation_seconds": 9.1e-05, "verify_seconds": 0.0, "returncode": 1}
+{"task": "choose", "rep": "E", "category": "invalid_function_reference", "validation_seconds": 0.000208, "verify_seconds": 0.0, "returncode": 1}
+{"task": "choose", "rep": "E", "category": "pass", "validation_seconds": 0.000127, "verify_seconds": 0.007217, "returncode": 0}

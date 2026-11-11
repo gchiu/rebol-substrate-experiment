@@ -1,0 +1,122 @@
+{
+  "task": "range_sum",
+  "representation": "A",
+  "seed": 20261114,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 0,
+  "first_attempt_success": false,
+  "final_success": true,
+  "attempts": 2,
+  "repairs": 1,
+  "tokens": {
+    "input": 711,
+    "output": 71,
+    "reasoning": 3707,
+    "total": 4489,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.00237345,
+  "model_step_seconds": 23.645,
+  "process_seconds": 33.472122,
+  "verify_seconds": 0.147608,
+  "validation_seconds": 0.000252,
+  "b5_verify_seconds": 0.012197,
+  "verification_meta": [
+    {
+      "task": "range_sum",
+      "rep": "A",
+      "category": "invalid_control_flow",
+      "validation_seconds": 0.000105,
+      "verify_seconds": 0.0,
+      "returncode": 1
+    },
+    {
+      "task": "range_sum",
+      "rep": "A",
+      "category": "pass",
+      "validation_seconds": 0.000147,
+      "verify_seconds": 0.012197,
+      "returncode": 0
+    }
+  ],
+  "sessions": [
+    "ses_e36fc9fd5ffevnuUF88wVavgdV",
+    "ses_e36fc5d74ffeb3mnCbxCjCuPd6"
+  ],
+  "artifact_bytes": 91,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 1,
+      "seconds": 0.070116,
+      "stdout": "B7-VALIDATION ERROR\ncategory: invalid_control_flow\nlocation: line 2, column 15\nexpected: '[' before the then block\nobserved: >\nmessage: expected '[' before the then block, found >\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0"
+    },
+    {
+      "returncode": 0,
+      "seconds": 0.077492,
+      "stdout": "result 42, expected 42, stack ok\n",
+      "stderr": "",
+      "attempt": 1,
+      "artifact": "artifact.attempt1",
+      "candidate": "artifact.attempt1"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "B7:20261114:5:range_sum:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e36fc9fd5ffevnuUF88wVavgdV"
+      ],
+      "tokens": {
+        "input": 305,
+        "output": 36,
+        "reasoning": 1833,
+        "total": 2174,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00116715,
+      "model_step_seconds": 11.79,
+      "process_seconds": 16.868085,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261114/05-range_sum-A/raw/raw-1794373802312321683.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261114/05-range_sum-A/raw/raw-1794373802312321683.err",
+      "errors": [],
+      "recorded_at": 1794373819.2151794
+    },
+    {
+      "trial_id": "B7:20261114:5:range_sum:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e36fc5d74ffeb3mnCbxCjCuPd6"
+      ],
+      "tokens": {
+        "input": 406,
+        "output": 35,
+        "reasoning": 1874,
+        "total": 2315,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0012063,
+      "model_step_seconds": 11.855,
+      "process_seconds": 17.080321,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261114/05-range_sum-A/raw/raw-1794373819352576267.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261114/05-range_sum-A/raw/raw-1794373819352576267.err",
+      "errors": [],
+      "recorded_at": 1794373836.4989762
+    }
+  ]
+}

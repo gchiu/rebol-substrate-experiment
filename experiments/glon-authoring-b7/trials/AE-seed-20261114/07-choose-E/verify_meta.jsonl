@@ -1,0 +1,3 @@
+{"task": "choose", "rep": "E", "category": "invalid_control_flow", "validation_seconds": 0.000165, "verify_seconds": 0.0, "returncode": 1}
+{"task": "choose", "rep": "E", "category": "invalid_function_reference", "validation_seconds": 0.0002, "verify_seconds": 0.0, "returncode": 1}
+{"task": "choose", "rep": "E", "category": "pass", "validation_seconds": 0.000238, "verify_seconds": 0.009745, "returncode": 0}

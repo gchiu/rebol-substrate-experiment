@@ -1,0 +1,2 @@
+{"task": "tri", "rep": "E", "category": "invalid_function_reference", "validation_seconds": 0.000123, "verify_seconds": 0.0, "returncode": 1}
+{"task": "tri", "rep": "E", "category": "pass", "validation_seconds": 9.8e-05, "verify_seconds": 0.009769, "returncode": 0}

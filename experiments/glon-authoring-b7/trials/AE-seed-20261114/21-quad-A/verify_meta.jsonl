@@ -1,0 +1,2 @@
+{"task": "quad", "rep": "A", "category": "expected_expression", "validation_seconds": 9e-05, "verify_seconds": 0.0, "returncode": 1}
+{"task": "quad", "rep": "A", "category": "pass", "validation_seconds": 6.9e-05, "verify_seconds": 0.010564, "returncode": 0}

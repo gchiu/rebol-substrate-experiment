@@ -1,0 +1,8 @@
+attempt 0 failed:
+B7-VALIDATION ERROR
+category: invalid_function_reference
+location: line 2, column 10
+expected: parameter, function or supported operator
+observed: (=
+message: unknown word or invalid function reference '(='
+PASS after 1 repair attempt(s): /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261115/15-ack-A/artifact

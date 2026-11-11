@@ -1,0 +1,4 @@
+range_sum: func [lo hi] [
+  either > lo hi [0] [+ lo range_sum + lo 1 hi]
+]
+range_sum 3 9

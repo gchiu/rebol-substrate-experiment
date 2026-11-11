@@ -1,0 +1,2 @@
+{"task": "ack", "rep": "E", "category": "invalid_control_flow", "validation_seconds": 0.000167, "verify_seconds": 0.0, "returncode": 1}
+{"task": "ack", "rep": "E", "category": "pass", "validation_seconds": 0.000182, "verify_seconds": 0.014796, "returncode": 0}

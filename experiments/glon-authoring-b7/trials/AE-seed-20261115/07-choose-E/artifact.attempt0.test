@@ -1,0 +1,6 @@
+B7-VALIDATION ERROR
+category: invalid_control_flow
+location: line 2, column 12
+expected: '[' before the then block
+observed: =
+message: expected '[' before the then block, found =

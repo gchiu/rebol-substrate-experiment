@@ -1,0 +1,79 @@
+{
+  "task": "max_neg",
+  "representation": "E",
+  "seed": 20261115,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 0,
+  "first_attempt_success": true,
+  "final_success": true,
+  "attempts": 1,
+  "repairs": 0,
+  "tokens": {
+    "input": 360,
+    "output": 64,
+    "reasoning": 1452,
+    "total": 1876,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.0009636,
+  "model_step_seconds": 7.872,
+  "process_seconds": 12.710872,
+  "verify_seconds": 0.095501,
+  "validation_seconds": 0.0001,
+  "b5_verify_seconds": 0.008034,
+  "verification_meta": [
+    {
+      "task": "max_neg",
+      "rep": "E",
+      "category": "pass",
+      "validation_seconds": 0.0001,
+      "verify_seconds": 0.008034,
+      "returncode": 0
+    }
+  ],
+  "sessions": [
+    "ses_e36edf1edfferEE5TR0e98J8J4"
+  ],
+  "artifact_bytes": 129,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 0,
+      "seconds": 0.095501,
+      "stdout": "result -4, expected -4, stack ok\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "B7:20261115:8:max_neg:E",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e36edf1edfferEE5TR0e98J8J4"
+      ],
+      "tokens": {
+        "input": 360,
+        "output": 64,
+        "reasoning": 1452,
+        "total": 1876,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.0009636,
+      "model_step_seconds": 7.872,
+      "process_seconds": 12.492414,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261115/08-max_neg-E/raw/raw-1794374764468727466.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261115/08-max_neg-E/raw/raw-1794374764468727466.err",
+      "errors": [],
+      "recorded_at": 1794374776.9953258
+    }
+  ]
+}

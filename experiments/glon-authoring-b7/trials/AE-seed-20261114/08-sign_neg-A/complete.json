@@ -1,0 +1,79 @@
+{
+  "task": "sign_neg",
+  "representation": "A",
+  "seed": 20261114,
+  "model": "deepseek/deepseek-flash",
+  "run_trial_returncode": 0,
+  "first_attempt_success": true,
+  "final_success": true,
+  "attempts": 1,
+  "repairs": 0,
+  "tokens": {
+    "input": 305,
+    "output": 49,
+    "reasoning": 1214,
+    "total": 1568,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "cost": 0.00080355,
+  "model_step_seconds": 6.766,
+  "process_seconds": 11.411294,
+  "verify_seconds": 0.066439,
+  "validation_seconds": 0.000124,
+  "b5_verify_seconds": 0.010484,
+  "verification_meta": [
+    {
+      "task": "sign_neg",
+      "rep": "A",
+      "category": "pass",
+      "validation_seconds": 0.000124,
+      "verify_seconds": 0.010484,
+      "returncode": 0
+    }
+  ],
+  "sessions": [
+    "ses_e36faeab4ffeiRB1RGSNNg1PoR"
+  ],
+  "artifact_bytes": 147,
+  "binary_bytes": 0,
+  "binary_words": 0,
+  "verify": [
+    {
+      "returncode": 0,
+      "seconds": 0.066439,
+      "stdout": "result -1, expected -1, stack ok\n",
+      "stderr": "",
+      "attempt": 0,
+      "artifact": "artifact.attempt0",
+      "candidate": "artifact.attempt0"
+    }
+  ],
+  "meta": [
+    {
+      "trial_id": "B7:20261114:8:sign_neg:A",
+      "model": "deepseek/deepseek-flash",
+      "sessions": [
+        "ses_e36faeab4ffeiRB1RGSNNg1PoR"
+      ],
+      "tokens": {
+        "input": 305,
+        "output": 49,
+        "reasoning": 1214,
+        "total": 1568,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "cost": 0.00080355,
+      "model_step_seconds": 6.766,
+      "process_seconds": 11.157367,
+      "text_parts": 1,
+      "adapter_timeout": false,
+      "adapter_timeout_seconds": 900,
+      "raw_json": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261114/08-sign_neg-A/raw/raw-1794373914219199720.json",
+      "error_log": "/mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261114/08-sign_neg-A/raw/raw-1794373914219199720.err",
+      "errors": [],
+      "recorded_at": 1794373925.4200423
+    }
+  ]
+}

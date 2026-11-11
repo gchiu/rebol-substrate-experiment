@@ -1,0 +1,8 @@
+attempt 0 failed:
+B7-VALIDATION ERROR
+category: expected_expression
+location: line 2, column 24
+expected: expression
+observed: ']'
+message: expected an expression before the closing delimiter
+PASS after 1 repair attempt(s): /mnt/d/repos/rebol-substrate-experiment/experiments/glon-authoring-b7/trials/AE-seed-20261114/21-quad-A/artifact

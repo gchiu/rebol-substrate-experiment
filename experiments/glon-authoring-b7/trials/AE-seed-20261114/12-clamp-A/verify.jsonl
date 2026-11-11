@@ -1,0 +1,2 @@
+{"returncode": 1, "seconds": 0.071333, "stdout": "B7-VALIDATION ERROR\ncategory: invalid_control_flow\nlocation: line 1, column 33\nexpected: '[' before the then block\nobserved: <\nmessage: expected '[' before the then block, found <\n", "stderr": "", "attempt": 0, "artifact": "artifact.attempt0", "candidate": "artifact.attempt0"}
+{"returncode": 0, "seconds": 0.081476, "stdout": "result 10, expected 10, stack ok\n", "stderr": "", "attempt": 1, "artifact": "artifact.attempt1", "candidate": "artifact.attempt1"}

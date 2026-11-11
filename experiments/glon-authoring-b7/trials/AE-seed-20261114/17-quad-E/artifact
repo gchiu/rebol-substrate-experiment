@@ -1,0 +1,9 @@
+quad: func [x] [
+    double double x
+]
+
+double: func [x] [
+    + x x
+]
+
+quad 5

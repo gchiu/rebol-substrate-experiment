@@ -1,0 +1,2 @@
+{"task": "min3", "rep": "E", "category": "invalid_control_flow", "validation_seconds": 0.000107, "verify_seconds": 0.0, "returncode": 1}
+{"task": "min3", "rep": "E", "category": "pass", "validation_seconds": 0.000114, "verify_seconds": 0.010817, "returncode": 0}
