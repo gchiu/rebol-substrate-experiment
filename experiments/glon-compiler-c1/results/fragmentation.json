@@ -1,0 +1,18 @@
+{
+  "source": "experiments/glon-deflate/tests/run_tests.py",
+  "test_command": "make -C experiments/glon-deflate test",
+  "fixtures": 164,
+  "runs": 480,
+  "pass": 479,
+  "fail": 1,
+  "unit_tests": {"pass": 44, "fail": 0},
+  "failure": {
+    "fixture": "multi-memlevel1",
+    "schedule": "c128/r100",
+    "class": "host-failure",
+    "output_bytes_before_failure": 4047,
+    "reference_bytes": 9000,
+    "diagnostic": "[dump] IP=4046 SP=16366 RP=21506 HP=40000 top=34668 dzhost: dispatch failed (machine halt 0; last collection: 4288 live, 2944 free in 19 blocks)"
+  },
+  "assessment": "The one failure remains a heap-fragmentation/host fail-stop, not a wrong-byte decode. The C1 hf/left kernel does not exercise input buffering, decoder continuation, bit-buffer preservation, Huffman table construction, or LZ77 copying; its compiled and original paths produce identical results. No fix was attempted."
+}

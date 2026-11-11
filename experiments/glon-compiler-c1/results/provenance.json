@@ -1,0 +1,12 @@
+{
+  "source_repository_commit": "66f39081837f2f124782f321a36b4a3a216077e4",
+  "source_file": "experiments/glon-deflate/inflate.glon",
+  "source_file_commit": "2fb4cbbcd9d98c56690060d4b2363471b4cd8f27",
+  "function": "hf/left",
+  "function_source": "lines beginning at hf/left: func [c l left] in the authoritative source",
+  "extracted_file": "experiments/glon-compiler-c1/reference/hf_left.glon",
+  "extraction_exact": true,
+  "extracted_sha256": "cc9986942244cac9403961e850ca4a481b20207b70749398e6ea2aa9b3682c91",
+  "authoritative_slice_sha256": "cc9986942244cac9403961e850ca4a481b20207b70749398e6ea2aa9b3682c91",
+  "notes": "Only the function block was copied. No whitespace, token, operator or output semantics were changed."
+}

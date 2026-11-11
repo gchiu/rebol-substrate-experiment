@@ -1,0 +1,92 @@
+[
+  {
+    "name": "all_zero",
+    "expected": 32768,
+    "got": 32768,
+    "returncode": 0,
+    "path": "experiments/glon-compiler-c1/reference/production/all_zero.glon",
+    "stdout": "#[func]\n32768\n",
+    "stderr": ""
+  },
+  {
+    "name": "complete_len1_2",
+    "expected": 0,
+    "got": 0,
+    "returncode": 0,
+    "path": "experiments/glon-compiler-c1/reference/production/complete_len1_2.glon",
+    "stdout": "#[func]\n0\n",
+    "stderr": ""
+  },
+  {
+    "name": "incomplete_len1_1",
+    "expected": 16384,
+    "got": 16384,
+    "returncode": 0,
+    "path": "experiments/glon-compiler-c1/reference/production/incomplete_len1_1.glon",
+    "stdout": "#[func]\n16384\n",
+    "stderr": ""
+  },
+  {
+    "name": "over_len1_3",
+    "expected": -1,
+    "got": -1,
+    "returncode": 0,
+    "path": "experiments/glon-compiler-c1/reference/production/over_len1_3.glon",
+    "stdout": "#[func]\n-1\n",
+    "stderr": ""
+  },
+  {
+    "name": "len2_4",
+    "expected": 0,
+    "got": 0,
+    "returncode": 0,
+    "path": "experiments/glon-compiler-c1/reference/production/len2_4.glon",
+    "stdout": "#[func]\n0\n",
+    "stderr": ""
+  },
+  {
+    "name": "len3_8",
+    "expected": 0,
+    "got": 0,
+    "returncode": 0,
+    "path": "experiments/glon-compiler-c1/reference/production/len3_8.glon",
+    "stdout": "#[func]\n0\n",
+    "stderr": ""
+  },
+  {
+    "name": "two_codes_len2",
+    "expected": -1,
+    "got": -1,
+    "returncode": 0,
+    "path": "experiments/glon-compiler-c1/reference/production/two_codes_len2.glon",
+    "stdout": "#[func]\n-1\n",
+    "stderr": ""
+  },
+  {
+    "name": "boundary_l16",
+    "expected": 123,
+    "got": 123,
+    "returncode": 0,
+    "path": "experiments/glon-compiler-c1/reference/production/boundary_l16.glon",
+    "stdout": "#[func]\n123\n",
+    "stderr": ""
+  },
+  {
+    "name": "zero_left",
+    "expected": 0,
+    "got": 0,
+    "returncode": 0,
+    "path": "experiments/glon-compiler-c1/reference/production/zero_left.glon",
+    "stdout": "#[func]\n0\n",
+    "stderr": ""
+  },
+  {
+    "name": "partial",
+    "expected": 0,
+    "got": 0,
+    "returncode": 0,
+    "path": "experiments/glon-compiler-c1/reference/production/partial.glon",
+    "stdout": "#[func]\n0\n",
+    "stderr": ""
+  }
+]

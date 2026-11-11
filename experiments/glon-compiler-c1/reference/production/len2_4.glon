@@ -1,0 +1,6 @@
+hf/left: func [c l left] [
+    either > l 15 [ left ] [
+        either < - * 2 left block-at c l 0 [ -1 ] [ hf/left c + l 1 - * 2 left block-at c l ]
+    ]
+]
+hf/left [ 0 0 4 0 0 0 0 0 0 0 0 0 0 0 0 0 ] 1 1

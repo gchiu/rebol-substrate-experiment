@@ -1,0 +1,373 @@
+{
+  "configs": {
+    "candidate": {
+      "measure": {
+        "config": "candidate",
+        "function_cells": 157,
+        "total_cells": 160,
+        "vectors": [
+          {
+            "name": "all_zero",
+            "got": 32768,
+            "want": 32768,
+            "pass": true,
+            "instructions": 1260,
+            "ds": 6,
+            "rs": 64
+          },
+          {
+            "name": "complete_len1_2",
+            "got": 0,
+            "want": 0,
+            "pass": true,
+            "instructions": 1260,
+            "ds": 6,
+            "rs": 64
+          },
+          {
+            "name": "incomplete_len1_1",
+            "got": 16384,
+            "want": 16384,
+            "pass": true,
+            "instructions": 1260,
+            "ds": 6,
+            "rs": 64
+          },
+          {
+            "name": "over_len1_3",
+            "got": -1,
+            "want": -1,
+            "pass": true,
+            "instructions": 55,
+            "ds": 4,
+            "rs": 4
+          },
+          {
+            "name": "len2_4",
+            "got": 0,
+            "want": 0,
+            "pass": true,
+            "instructions": 1260,
+            "ds": 6,
+            "rs": 64
+          },
+          {
+            "name": "len3_8",
+            "got": 0,
+            "want": 0,
+            "pass": true,
+            "instructions": 1260,
+            "ds": 6,
+            "rs": 64
+          },
+          {
+            "name": "two_codes_len2",
+            "got": -1,
+            "want": -1,
+            "pass": true,
+            "instructions": 55,
+            "ds": 4,
+            "rs": 4
+          },
+          {
+            "name": "boundary_l16",
+            "got": 123,
+            "want": 123,
+            "pass": true,
+            "instructions": 30,
+            "ds": 3,
+            "rs": 4
+          },
+          {
+            "name": "zero_left",
+            "got": 0,
+            "want": 0,
+            "pass": true,
+            "instructions": 1260,
+            "ds": 6,
+            "rs": 64
+          },
+          {
+            "name": "partial",
+            "got": 0,
+            "want": 0,
+            "pass": true,
+            "instructions": 1260,
+            "ds": 6,
+            "rs": 64
+          }
+        ]
+      },
+      "bench": {
+        "config": "candidate",
+        "function_cells": 157,
+        "total_cells": 160,
+        "compile_median_us": 63.157,
+        "vectors": [
+          {
+            "name": "all_zero",
+            "exec_median_us": 5.437,
+            "exec_min_us": 5.35,
+            "exec_max_us": 5.567,
+            "exec_spread_pct": 4.0
+          },
+          {
+            "name": "complete_len1_2",
+            "exec_median_us": 5.532,
+            "exec_min_us": 5.481,
+            "exec_max_us": 5.634,
+            "exec_spread_pct": 2.77
+          },
+          {
+            "name": "incomplete_len1_1",
+            "exec_median_us": 5.416,
+            "exec_min_us": 5.308,
+            "exec_max_us": 5.491,
+            "exec_spread_pct": 3.38
+          },
+          {
+            "name": "over_len1_3",
+            "exec_median_us": 0.137,
+            "exec_min_us": 0.125,
+            "exec_max_us": 0.156,
+            "exec_spread_pct": 22.92
+          },
+          {
+            "name": "len2_4",
+            "exec_median_us": 5.472,
+            "exec_min_us": 5.372,
+            "exec_max_us": 5.785,
+            "exec_spread_pct": 7.56
+          },
+          {
+            "name": "len3_8",
+            "exec_median_us": 5.484,
+            "exec_min_us": 5.332,
+            "exec_max_us": 5.529,
+            "exec_spread_pct": 3.59
+          },
+          {
+            "name": "two_codes_len2",
+            "exec_median_us": 0.14,
+            "exec_min_us": 0.133,
+            "exec_max_us": 0.156,
+            "exec_spread_pct": 16.43
+          },
+          {
+            "name": "boundary_l16",
+            "exec_median_us": 0.075,
+            "exec_min_us": 0.069,
+            "exec_max_us": 0.08,
+            "exec_spread_pct": 14.75
+          },
+          {
+            "name": "zero_left",
+            "exec_median_us": 5.46,
+            "exec_min_us": 5.357,
+            "exec_max_us": 5.565,
+            "exec_spread_pct": 3.8
+          },
+          {
+            "name": "partial",
+            "exec_median_us": 5.508,
+            "exec_min_us": 5.461,
+            "exec_max_us": 5.71,
+            "exec_spread_pct": 4.51
+          }
+        ]
+      },
+      "sum_instructions": 8960,
+      "sum_exec_us": 38.661,
+      "max_ds": 6,
+      "max_rs": 64,
+      "all_pass": true
+    },
+    "none": {
+      "measure": {
+        "config": "none",
+        "function_cells": 279,
+        "total_cells": 301,
+        "vectors": [
+          {
+            "name": "all_zero",
+            "got": 32768,
+            "want": 32768,
+            "pass": true,
+            "instructions": 2470,
+            "ds": 6,
+            "rs": 64
+          },
+          {
+            "name": "complete_len1_2",
+            "got": 0,
+            "want": 0,
+            "pass": true,
+            "instructions": 2470,
+            "ds": 6,
+            "rs": 64
+          },
+          {
+            "name": "incomplete_len1_1",
+            "got": 16384,
+            "want": 16384,
+            "pass": true,
+            "instructions": 2470,
+            "ds": 6,
+            "rs": 64
+          },
+          {
+            "name": "over_len1_3",
+            "got": -1,
+            "want": -1,
+            "pass": true,
+            "instructions": 127,
+            "ds": 6,
+            "rs": 4
+          },
+          {
+            "name": "len2_4",
+            "got": 0,
+            "want": 0,
+            "pass": true,
+            "instructions": 2470,
+            "ds": 6,
+            "rs": 64
+          },
+          {
+            "name": "len3_8",
+            "got": 0,
+            "want": 0,
+            "pass": true,
+            "instructions": 2470,
+            "ds": 6,
+            "rs": 64
+          },
+          {
+            "name": "two_codes_len2",
+            "got": -1,
+            "want": -1,
+            "pass": true,
+            "instructions": 127,
+            "ds": 6,
+            "rs": 4
+          },
+          {
+            "name": "boundary_l16",
+            "got": 123,
+            "want": 123,
+            "pass": true,
+            "instructions": 100,
+            "ds": 6,
+            "rs": 4
+          },
+          {
+            "name": "zero_left",
+            "got": 0,
+            "want": 0,
+            "pass": true,
+            "instructions": 2470,
+            "ds": 6,
+            "rs": 64
+          },
+          {
+            "name": "partial",
+            "got": 0,
+            "want": 0,
+            "pass": true,
+            "instructions": 2470,
+            "ds": 6,
+            "rs": 64
+          }
+        ]
+      },
+      "bench": {
+        "config": "none",
+        "function_cells": 279,
+        "total_cells": 301,
+        "compile_median_us": 37.931,
+        "vectors": [
+          {
+            "name": "all_zero",
+            "exec_median_us": 8.95,
+            "exec_min_us": 8.767,
+            "exec_max_us": 9.18,
+            "exec_spread_pct": 4.62
+          },
+          {
+            "name": "complete_len1_2",
+            "exec_median_us": 9.193,
+            "exec_min_us": 8.734,
+            "exec_max_us": 9.356,
+            "exec_spread_pct": 6.77
+          },
+          {
+            "name": "incomplete_len1_1",
+            "exec_median_us": 8.859,
+            "exec_min_us": 8.744,
+            "exec_max_us": 8.943,
+            "exec_spread_pct": 2.24
+          },
+          {
+            "name": "over_len1_3",
+            "exec_median_us": 0.359,
+            "exec_min_us": 0.344,
+            "exec_max_us": 0.371,
+            "exec_spread_pct": 7.43
+          },
+          {
+            "name": "len2_4",
+            "exec_median_us": 8.901,
+            "exec_min_us": 8.797,
+            "exec_max_us": 9.038,
+            "exec_spread_pct": 2.71
+          },
+          {
+            "name": "len3_8",
+            "exec_median_us": 8.998,
+            "exec_min_us": 8.726,
+            "exec_max_us": 9.088,
+            "exec_spread_pct": 4.03
+          },
+          {
+            "name": "two_codes_len2",
+            "exec_median_us": 0.364,
+            "exec_min_us": 0.351,
+            "exec_max_us": 0.371,
+            "exec_spread_pct": 5.61
+          },
+          {
+            "name": "boundary_l16",
+            "exec_median_us": 0.254,
+            "exec_min_us": 0.249,
+            "exec_max_us": 0.267,
+            "exec_spread_pct": 6.9
+          },
+          {
+            "name": "zero_left",
+            "exec_median_us": 8.867,
+            "exec_min_us": 8.811,
+            "exec_max_us": 9.143,
+            "exec_spread_pct": 3.75
+          },
+          {
+            "name": "partial",
+            "exec_median_us": 8.859,
+            "exec_min_us": 8.736,
+            "exec_max_us": 9.033,
+            "exec_spread_pct": 3.35
+          }
+        ]
+      },
+      "sum_instructions": 17644,
+      "sum_exec_us": 63.604,
+      "max_ds": 6,
+      "max_rs": 64,
+      "all_pass": true
+    }
+  },
+  "ratios": {
+    "instructions_none_over_candidate": 1.9692,
+    "exec_none_over_candidate": 1.6452,
+    "function_cells_none_over_candidate": 1.7771
+  }
+}

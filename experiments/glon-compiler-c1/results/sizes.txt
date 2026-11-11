@@ -1,0 +1,4 @@
+   text	   data	    bss	    dec	    hex	filename
+   9227	      0	    256	   9483	   250b	/tmp/c1comp-final2.o
+  20627	   2376	 524648	 547651	  85b43	build/c1-count
+  21874	   2392	 524648	 548914	  86032	build/c1-bench
