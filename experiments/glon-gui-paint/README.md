@@ -1,65 +1,112 @@
-# Glon Paint (G1 native host)
+# Glon Paint G2
 
-Glon owns the paint decisions: colour, size, brush/eraser mode, whether an
-event draws, clear, save and quit. `paint-host.c` only creates SDL2 resources,
-translates SDL input into calls, and executes the command strings Glon returns.
+A Photoshop-inspired desktop paint pad. SDL2 owns the window, events,
+renderer and PNG export; Nuklear supplies the immediate-mode interface; Glon
+owns the painting state and drawing decisions.
 
-## Build
+## Layout
+
+- Menu bar: File, Edit, View, Help.
+- Left toolbar: Brush, Eraser, and a visibly disabled Rectangle.
+- Centre workspace: the fixed 800x600 image, aspect-fit and centred with
+  margins; it scales with the window.
+- Right inspector: four colour swatches, brush-size slider, and tool
+  properties.
+- Layers panel: one read-only working canvas layer.
+- Status bar: image size and current tool.
+
+Unavailable operations (Open, Export, Undo, Redo, grid, additional layers and
+Rectangle) are visibly disabled rather than fake live controls.
+
+## Build and launch
 
 On Debian/Ubuntu:
 
 ```sh
 sudo apt install build-essential libsdl2-dev libpng-dev
-make
 ```
 
-Run from this directory (the default library root is `../..`):
+Nuklear is vendored in `third_party/`; no system Nuklear package is needed.
+From the repository root:
 
 ```sh
+cd experiments/glon-gui-paint
+make
 ./build/glon-paint
 ```
 
-`PAINT_ROOT=/path/to/checkout` can point at the repository root. The native
-`glon` CLI must be available there for the headless tests.
+The default library root is `../..` when launched from this directory. Set
+`PAINT_ROOT=/path/to/checkout` to launch from elsewhere.
 
 ## Controls
 
 | Input | Action |
 | --- | --- |
-| Left-drag | draw with the current brush |
-| `1`–`4` | red, blue, green, yellow |
-| `+` / `-` | increase/decrease brush size |
-| `B` | brush |
-| `E` | eraser |
+| Left-drag on image | draw with the current tool |
+| Toolbar | select Brush or Eraser |
+| Colour swatches | select Red, Blue, Green or Yellow |
+| Brush size slider | set 1-64 px |
+| `1`-`4` | colour shortcuts |
+| `+` / `-` | brush-size shortcuts |
+| `B` / `E` | Brush / Eraser shortcuts |
 | `C` | clear canvas |
 | `S` | save `glon-paint.png` |
 | `Esc` | quit |
-| Close window | quit |
-| Resize window | scale the 800×600 canvas to the window; mouse coordinates follow the scale |
+| Menu File | New / Clear, Save PNG, Quit |
+| Menu Edit / View / Help | Clear, reset window size, About |
+
+The image is always 800x600 internally. Window resizing preserves its aspect
+ratio, centres it, and maps mouse coordinates through its current destination
+rectangle. Clicks on the menu, toolbar, inspector, layers and status panels
+never reach the canvas.
+
+## Glon command interface
+
+Glon returns one newline-terminated command per event. The host only executes
+these commands:
+
+```text
+L x1 y1 x2 y2 size r g b   draw a line on the 800x600 canvas
+C                          clear the canvas
+T title                    set the window title
+I color size tool drawing  update the UI mirror/status
+S path.png                 export the 800x600 canvas
+Q                          quit
+```
+
+Mouse down/move/up invoke `paint/down`, `paint/move` and `paint/up`; those Glon
+words emit `L` through the same `paint/line` path. Inspector controls invoke
+`paint/set-color`, `paint/set-size` and `paint/set-tool`. Future Glon scripts
+must use those same words and command interface; there is no C drawing language
+and no script editor or replay engine yet.
 
 ## Checks
 
-Headless Glon logic tests:
-
 ```sh
+# 31 Glon paint-logic tests
 ./glon jupyter/prelude.glon demo/shop/strings.glon \
   demo/shop/strings-ext.glon experiments/glon-gui-paint/paint.glon \
   experiments/glon-gui-paint/tests/paint-tests.glon
-```
 
-SDL event/PNG smoke test, resize/coordinate-mapping regression, and a
-deterministic 10,000-move event-bridge stress test:
-
-```sh
+# SDL/Nuklear UI, resize/mapping, PNG and 10,000-move loader tests
 make test
-# or directly:
-./build/glon-paint --resize-test
-./build/glon-paint --move-stress 10000
 ```
 
-The stress mode checks that transient per-event parse blocks do not grow the
-permanent loader heap and then saves a PNG. The resize test checks mapping and
-black-pixel-free redraw at several window sizes, including repeated resizes.
+`make test` also runs a coalescing check that feeds 1,000 motion events in one
+event batch and reports the raw motion count versus the number of Glon move
+calls and frame renders. This is a synthetic input-to-present measurement, not
+a claim about a specific display's refresh rate.
 
-The host has no SDL HOST primitives in frozen S1; this session-call bridge is the
-host limitation documented by the experiment.
+The 10,000-move result reports loader usage and bridge elapsed time. Mouse
+motion in the interactive loop is coalesced to one `paint/move` per event
+batch so the final position still draws a continuous line; the frame is
+presented once per batch, not once per raw motion event.
+
+## Limitations
+
+- Single working canvas layer only; no layer creation or compositing.
+- Rectangle is disabled.
+- Open, custom export, undo/redo and grid are disabled.
+- No script editor, recorder or replay engine.
+- Nuklear is vendored in `third_party/` (public-domain Nuklear v4.13.4 and its
+  SDL2 renderer backend).

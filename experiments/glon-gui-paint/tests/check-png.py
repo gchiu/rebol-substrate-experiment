@@ -11,7 +11,7 @@ while pos < len(b):
 assert w == 800 and h == 600 and idat, (w,h)
 raw = zlib.decompress(idat)
 assert len(raw) == (w*4+1)*h
-# The smoke test draws a blue stroke; reject a blank canvas.
+# Smoke tests draw at least one stroke; reject a blank canvas.
 stride = w * 4
 prev = bytearray(stride)
 off = 0

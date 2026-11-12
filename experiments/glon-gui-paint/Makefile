@@ -11,13 +11,18 @@ TARGET := $(BUILD)/glon-paint
 all: $(TARGET)
 $(BUILD):
 	@mkdir -p $@
-$(TARGET): paint-host.c $(ROOT)/r0_s1_runtime.c $(ROOT)/r0_s1_session.c $(ROOT)/s1.c | $(BUILD)
+$(TARGET): paint-host.c third_party/nuklear.h third_party/nuklear_sdl_renderer.h \
+	$(ROOT)/r0_s1_runtime.c $(ROOT)/r0_s1_session.c $(ROOT)/s1.c | $(BUILD)
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) $(PNG_CFLAGS) -o $@ paint-host.c \
 	  $(ROOT)/r0_s1_runtime.c $(ROOT)/r0_s1_session.c $(ROOT)/s1.c \
 	  $(SDL_LIBS) $(PNG_LIBS) -lm -lpthread
 
 test: all
 	$(TARGET) --self-test
+	$(TARGET) --ui-test
+	python3 tests/check-png.py glon-paint.png
+	$(TARGET) --coalesce-test
+	python3 tests/check-png.py glon-paint.png
 	$(TARGET) --resize-test
 	python3 tests/check-png.py glon-paint.png
 	$(TARGET) --move-stress 10000

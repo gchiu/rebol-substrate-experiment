@@ -22,7 +22,19 @@ paint/title: func [] [
     paint/t: s/+ paint/t s/from-int paint/size
     paint/t: s/+ paint/t " tool="
     paint/t: s/+ paint/t either = paint/tool 1 [ "brush" ] [ "eraser" ]
-    s/+ paint/t mk-string [ 10 ]
+    paint/t: s/+ paint/t mk-string [ 10 ]
+    s/+ paint/t paint/status
+]
+paint/status: func [] [
+    paint/s: "I "
+    paint/s: s/+ paint/s s/from-int paint/color
+    paint/s: s/+ paint/s " "
+    paint/s: s/+ paint/s s/from-int paint/size
+    paint/s: s/+ paint/s " "
+    paint/s: s/+ paint/s s/from-int paint/tool
+    paint/s: s/+ paint/s " "
+    paint/s: s/+ paint/s s/from-int paint/drawing
+    s/+ paint/s mk-string [ 10 ]
 ]
 paint/line: func [x1 y1 x2 y2] [
     paint/c: either = paint/tool 2 [ 0 ] [ paint/color ]
@@ -46,6 +58,18 @@ paint/line: func [x1 y1 x2 y2] [
     s/+ paint/cmd mk-string [ 10 ]
 ]
 
+paint/set-color: func [n] [
+    paint/color: either = n 2 [ 2 ] [ either = n 3 [ 3 ] [ either = n 4 [ 4 ] [ 1 ] ] ]
+    paint/title
+]
+paint/set-size: func [n] [
+    paint/size: either < n 1 [ 1 ] [ either > n 64 [ 64 ] [ n ] ]
+    paint/title
+]
+paint/set-tool: func [n] [
+    paint/tool: either = n 2 [ 2 ] [ 1 ]
+    paint/title
+]
 paint/init: func [] [
     paint/color: 1
     paint/size: 4

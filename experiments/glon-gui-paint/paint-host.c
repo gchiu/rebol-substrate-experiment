@@ -10,10 +10,12 @@
  *   L x1 y1 x2 y2 size r g b
  *   C
  *   T title text
+ *   I color size tool drawing
  *   S path.png
  *   Q
  *
- * There are no matching or paint-policy decisions in this file.
+ * Paint state and paint-policy decisions stay in Glon. This file only chooses
+ * desktop/UI placement and transports events and command strings.
  */
 #include "r0_s1.h"
 #include "s1.h"
@@ -24,15 +26,49 @@
 #include <string.h>
 #include <stdint.h>
 
+#define NK_INCLUDE_FIXED_TYPES
+#define NK_INCLUDE_STANDARD_IO
+#define NK_INCLUDE_STANDARD_VARARGS
+#define NK_INCLUDE_DEFAULT_ALLOCATOR
+#define NK_INCLUDE_VERTEX_BUFFER_OUTPUT
+#define NK_INCLUDE_FONT_BAKING
+#define NK_INCLUDE_DEFAULT_FONT
+#define NK_IMPLEMENTATION
+#define NK_SDL_RENDERER_IMPLEMENTATION
+#include "third_party/nuklear.h"
+#include "third_party/nuklear_sdl_renderer.h"
+
 #define PAINT_W 800
 #define PAINT_H 600
 #define PAINT_ROOT_DEFAULT "../.."
 
+#define UI_MENU_H   36
+#define UI_STATUS_H 32
+#define UI_TOOL_W   62
+#define UI_RIGHT_W  252
+#define UI_GAP      8
+#define UI_MARGIN   24
+
 static SDL_Window *win;
 static SDL_Renderer *ren;
 static SDL_Texture *canvas;
+static struct nk_context *nk;
 static int dirty = 1;
 static int quit_flag = 0;
+static int ui_color = 1;
+static int ui_size = 4;
+static int ui_tool = 1;
+static int ui_drawing = 0;
+static int show_about = 0;
+static long perf_raw_motions = 0, perf_app_moves = 0, perf_renders = 0;
+static SDL_Rect ui_brush_bounds, ui_eraser_bounds;
+static SDL_Rect ui_color_bounds[4];
+static SDL_Rect ui_size_bounds;
+
+typedef struct {
+    SDL_Rect menu, toolbar, workspace, right, layers, status, image;
+} Layout;
+static Layout layout;
 
 static int read_file(const char *path, char **out) {
     FILE *f = fopen(path, "rb");
@@ -116,22 +152,86 @@ static void set_color(int r, int g, int b) {
 }
 static void begin_canvas(void) { SDL_SetRenderTarget(ren, canvas); }
 
-/* The 800x600 canvas is stretched to fill the current window. SDL mouse
- * coordinates are window coordinates, so invert that same scale before the
- * event reaches Glon. Window size (not renderer pixels) is the correct input
- * because SDL mouse events use window units, including on HiDPI displays. */
-static int map_window_to_canvas(int ww, int wh, int wx, int wy, int *cx, int *cy) {
-    if (ww <= 0 || wh <= 0) return 0;
-    if (wx < 0) wx = 0;
-    if (wy < 0) wy = 0;
-    if (wx >= ww) wx = ww - 1;
-    if (wy >= wh) wy = wh - 1;
-    int x = (int)(((int64_t)wx * PAINT_W) / ww);
-    int y = (int)(((int64_t)wy * PAINT_H) / wh);
+/* ---- G2 layout and image/canvas geometry -------------------------------- */
+static int point_in_rect(const SDL_Rect *r, int x, int y) {
+    return x >= r->x && y >= r->y && x < r->x + r->w && y < r->y + r->h;
+}
+static void fit_image(int ww, int wh, SDL_Rect *image) {
+    int ws_x = UI_TOOL_W;
+    int ws_y = UI_MENU_H;
+    int ws_w = ww - UI_TOOL_W - UI_RIGHT_W;
+    int ws_h = wh - UI_MENU_H - UI_STATUS_H;
+    if (ws_w < 2 * UI_MARGIN) ws_w = 2 * UI_MARGIN;
+    if (ws_h < 2 * UI_MARGIN) ws_h = 2 * UI_MARGIN;
+    int max_w = ws_w - 2 * UI_MARGIN;
+    int max_h = ws_h - 2 * UI_MARGIN;
+    double sx = (double)max_w / PAINT_W;
+    double sy = (double)max_h / PAINT_H;
+    double scale = sx < sy ? sx : sy;
+    if (scale < 0) scale = 0;
+    image->w = (int)(PAINT_W * scale);
+    image->h = (int)(PAINT_H * scale);
+    if (image->w < 1) image->w = 1;
+    if (image->h < 1) image->h = 1;
+    image->x = ws_x + (ws_w - image->w) / 2;
+    image->y = ws_y + (ws_h - image->h) / 2;
+}
+static void update_layout(void) {
+    int ww = 0, wh = 0;
+    SDL_GetWindowSize(win, &ww, &wh);
+    if (ww < 1) ww = 1;
+    if (wh < 1) wh = 1;
+    int avail_h = wh - UI_MENU_H - UI_STATUS_H;
+    if (avail_h < 1) avail_h = 1;
+    layout.menu = (SDL_Rect){ 0, 0, ww, UI_MENU_H };
+    layout.status = (SDL_Rect){ 0, wh - UI_STATUS_H, ww, UI_STATUS_H };
+    layout.toolbar = (SDL_Rect){ 0, UI_MENU_H, UI_TOOL_W, avail_h };
+    int right_h = (avail_h * 3) / 5;
+    if (right_h < 1) right_h = 1;
+    if (right_h > avail_h - UI_GAP) right_h = avail_h - UI_GAP;
+    if (right_h < 1) right_h = 1;
+    layout.right = (SDL_Rect){ ww - UI_RIGHT_W, UI_MENU_H, UI_RIGHT_W, right_h };
+    int layer_y = UI_MENU_H + right_h + UI_GAP;
+    int layer_h = wh - UI_STATUS_H - layer_y;
+    if (layer_h < 1) layer_h = 1;
+    layout.layers = (SDL_Rect){ ww - UI_RIGHT_W, layer_y, UI_RIGHT_W, layer_h };
+    int ws_w = ww - UI_TOOL_W - UI_RIGHT_W;
+    if (ws_w < 1) ws_w = 1;
+    layout.workspace = (SDL_Rect){ UI_TOOL_W, UI_MENU_H, ws_w, avail_h };
+    fit_image(ww, wh, &layout.image);
+}
+static int map_window_to_canvas_for(int ww, int wh, int wx, int wy, int *cx, int *cy) {
+    SDL_Rect image;
+    fit_image(ww, wh, &image);
+    if (!point_in_rect(&image, wx, wy)) return 0;
+    int x = (int)(((int64_t)(wx - image.x) * PAINT_W) / image.w);
+    int y = (int)(((int64_t)(wy - image.y) * PAINT_H) / image.h);
+    if (x < 0) x = 0;
     if (x >= PAINT_W) x = PAINT_W - 1;
+    if (y < 0) y = 0;
     if (y >= PAINT_H) y = PAINT_H - 1;
     *cx = x; *cy = y;
     return 1;
+}
+static int map_window_to_canvas(int ww, int wh, int wx, int wy, int *cx, int *cy) {
+    return map_window_to_canvas_for(ww, wh, wx, wy, cx, cy);
+}
+static int canvas_to_window(int cx, int cy, int *wx, int *wy) {
+    if (layout.image.w <= 0 || layout.image.h <= 0) return 0;
+    *wx = layout.image.x + (int)((int64_t)cx * layout.image.w / PAINT_W);
+    *wy = layout.image.y + (int)((int64_t)cy * layout.image.h / PAINT_H);
+    return 1;
+}
+static int point_in_ui(int x, int y) {
+    if (show_about) return 1;
+    return point_in_rect(&layout.menu, x, y) ||
+           point_in_rect(&layout.toolbar, x, y) ||
+           point_in_rect(&layout.right, x, y) ||
+           point_in_rect(&layout.layers, x, y) ||
+           point_in_rect(&layout.status, x, y) ||
+           (nk && (int)nk->input.mouse.pos.x == x &&
+                  (int)nk->input.mouse.pos.y == y &&
+                  nk_window_is_any_hovered(nk));
 }
 static void clear_canvas(void) {
     begin_canvas();
@@ -153,16 +253,35 @@ static void draw_line(int x1, int y1, int x2, int y2, int size,
     dirty = 1;
 }
 static void render_frame(void) {
+    update_layout();
     SDL_SetRenderTarget(ren, NULL);
     SDL_RenderSetViewport(ren, NULL);
     SDL_RenderSetClipRect(ren, NULL);
-    SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
-    SDL_RenderClear(ren);                 /* fill newly exposed window area */
-    SDL_RenderCopy(ren, canvas, NULL, NULL); /* stretch full 800x600 canvas */
+    SDL_SetRenderDrawColor(ren, 22, 23, 27, 255);
+    SDL_RenderClear(ren);
+    SDL_SetRenderDrawColor(ren, 43, 45, 51, 255);
+    SDL_RenderFillRect(ren, &layout.workspace);
+    if (layout.image.w > 0 && layout.image.h > 0) {
+        SDL_Rect shadow = { layout.image.x - 3, layout.image.y - 3,
+                            layout.image.w + 6, layout.image.h + 6 };
+        SDL_SetRenderDrawColor(ren, 8, 9, 11, 255);
+        SDL_RenderFillRect(ren, &shadow);
+        SDL_RenderCopy(ren, canvas, NULL, &layout.image);
+        SDL_SetRenderDrawColor(ren, 92, 96, 106, 255);
+        SDL_RenderDrawRect(ren, &layout.image);
+    }
     dirty = 0;
 }
 static void present_frame(void) {
     render_frame();
+    SDL_RenderPresent(ren);
+}
+static void render_ui(void) {
+    render_frame();
+    if (nk) nk_sdl_render(NK_ANTI_ALIASING_ON);
+}
+static void present_ui(void) {
+    render_ui();
     SDL_RenderPresent(ren);
 }
 
@@ -219,6 +338,11 @@ static void command(const char *line, int *saved) {
         SDL_SetWindowTitle(win, line + 2);
     } else if (line[0] == 'S' && line[1] == ' ') {
         if (save_png(line + 2) == 0) *saved = 1;
+    } else if (line[0] == 'I' && line[1] == ' ') {
+        int c, z, t, d;
+        if (sscanf(line + 2, "%d %d %d %d", &c, &z, &t, &d) == 4) {
+            ui_color = c; ui_size = z; ui_tool = t; ui_drawing = d;
+        }
     } else if (line[0] == 'Q' && line[1] == 0) {
         quit_flag = 1;
     }
@@ -280,6 +404,38 @@ static int app_init(void) {
     process_commands(cmdbuf, &saved);
     return 0;
 }
+static int app_call(const char *src) {
+    char cmdbuf[2048];
+    int saved = 0;
+    if (glon_call(src, cmdbuf, sizeof cmdbuf) != 0) return -1;
+    process_commands(cmdbuf, &saved);
+    return 0;
+}
+static int app_key_code(int code) {
+    char src[64];
+    snprintf(src, sizeof src, "paint/key %d", code);
+    return app_call(src);
+}
+static int app_set_color(int c) {
+    char src[64];
+    snprintf(src, sizeof src, "paint/set-color %d", c);
+    return app_call(src);
+}
+static int app_set_size(int n) {
+    char src[64];
+    snprintf(src, sizeof src, "paint/set-size %d", n);
+    return app_call(src);
+}
+static int app_set_tool(int t) {
+    char src[64];
+    snprintf(src, sizeof src, "paint/set-tool %d", t);
+    return app_call(src);
+}
+static int dispatch_canvas_pointer(int type, int wx, int wy, int button, int *saved) {
+    if (point_in_ui(wx, wy)) return 0;
+    if (!point_in_rect(&layout.image, wx, wy)) return 0;
+    return event_mouse(type, wx, wy, button, saved);
+}
 
 static int sdl_init(int hidden) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
@@ -288,7 +444,7 @@ static int sdl_init(int hidden) {
     }
     Uint32 flags = hidden ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN;
     win = SDL_CreateWindow("Glon Paint", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                           PAINT_W, PAINT_H, flags | SDL_WINDOW_RESIZABLE);
+                           1200, 800, flags | SDL_WINDOW_RESIZABLE);
     if (!win) { fprintf(stderr, "glon-paint: window: %s\n", SDL_GetError()); SDL_Quit(); return -1; }
     ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
@@ -297,9 +453,241 @@ static int sdl_init(int hidden) {
                                SDL_TEXTUREACCESS_TARGET, PAINT_W, PAINT_H);
     if (!canvas) { fprintf(stderr, "glon-paint: canvas: %s\n", SDL_GetError()); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit(); return -1; }
     clear_canvas();
+    update_layout();
     return 0;
 }
 
+static void ui_style_dark(void) {
+    struct nk_color table[NK_COLOR_COUNT];
+    memcpy(table, nk_default_color_style, sizeof table);
+    table[NK_COLOR_TEXT] = nk_rgba(226, 228, 232, 255);
+    table[NK_COLOR_WINDOW] = nk_rgba(33, 35, 40, 255);
+    table[NK_COLOR_HEADER] = nk_rgba(43, 46, 52, 255);
+    table[NK_COLOR_BORDER] = nk_rgba(66, 70, 78, 255);
+    table[NK_COLOR_BUTTON] = nk_rgba(52, 56, 64, 255);
+    table[NK_COLOR_BUTTON_HOVER] = nk_rgba(67, 73, 84, 255);
+    table[NK_COLOR_BUTTON_ACTIVE] = nk_rgba(78, 116, 165, 255);
+    table[NK_COLOR_TOGGLE] = nk_rgba(52, 56, 64, 255);
+    table[NK_COLOR_TOGGLE_HOVER] = nk_rgba(70, 78, 92, 255);
+    table[NK_COLOR_TOGGLE_CURSOR] = nk_rgba(75, 132, 196, 255);
+    table[NK_COLOR_SELECT] = nk_rgba(48, 52, 60, 255);
+    table[NK_COLOR_SELECT_ACTIVE] = nk_rgba(61, 103, 153, 255);
+    table[NK_COLOR_SLIDER] = nk_rgba(47, 51, 58, 255);
+    table[NK_COLOR_SLIDER_CURSOR] = nk_rgba(75, 132, 196, 255);
+    table[NK_COLOR_SLIDER_CURSOR_HOVER] = nk_rgba(92, 152, 220, 255);
+    table[NK_COLOR_SLIDER_CURSOR_ACTIVE] = nk_rgba(110, 172, 238, 255);
+    table[NK_COLOR_PROPERTY] = nk_rgba(45, 49, 56, 255);
+    table[NK_COLOR_EDIT] = nk_rgba(28, 30, 35, 255);
+    table[NK_COLOR_EDIT_CURSOR] = nk_rgba(220, 225, 232, 255);
+    table[NK_COLOR_COMBO] = nk_rgba(40, 43, 49, 255);
+    table[NK_COLOR_CHART] = nk_rgba(45, 49, 56, 255);
+    table[NK_COLOR_CHART_COLOR] = nk_rgba(75, 132, 196, 255);
+    table[NK_COLOR_CHART_COLOR_HIGHLIGHT] = nk_rgba(120, 180, 245, 255);
+    table[NK_COLOR_SCROLLBAR] = nk_rgba(35, 38, 43, 255);
+    table[NK_COLOR_SCROLLBAR_CURSOR] = nk_rgba(80, 86, 96, 255);
+    table[NK_COLOR_SCROLLBAR_CURSOR_HOVER] = nk_rgba(100, 108, 120, 255);
+    table[NK_COLOR_SCROLLBAR_CURSOR_ACTIVE] = nk_rgba(120, 130, 145, 255);
+    table[NK_COLOR_TAB_HEADER] = nk_rgba(48, 52, 60, 255);
+    table[NK_COLOR_KNOB] = nk_rgba(47, 51, 58, 255);
+    table[NK_COLOR_KNOB_CURSOR] = nk_rgba(75, 132, 196, 255);
+    table[NK_COLOR_KNOB_CURSOR_HOVER] = nk_rgba(92, 152, 220, 255);
+    table[NK_COLOR_KNOB_CURSOR_ACTIVE] = nk_rgba(110, 172, 238, 255);
+    nk_style_from_table(nk, table);
+    nk->style.window.padding = nk_vec2(6, 6);
+    nk->style.window.group_padding = nk_vec2(4, 4);
+    nk->style.window.spacing = nk_vec2(4, 4);
+    nk->style.menu_button.padding = nk_vec2(8, 4);
+}
+static int ui_init(void) {
+    nk = nk_sdl_init(win, ren);
+    if (!nk) return -1;
+    struct nk_font_atlas *atlas = NULL;
+    nk_sdl_font_stash_begin(&atlas);
+    struct nk_font_config config = nk_font_config(0);
+    struct nk_font *font = nk_font_atlas_add_default(atlas, 13, &config);
+    nk_sdl_font_stash_end();
+    if (font) nk_style_set_font(nk, &font->handle);
+    ui_style_dark();
+    return 0;
+}
+static void ui_shutdown(void) {
+    if (nk) { nk_sdl_shutdown(); nk = NULL; }
+}
+static struct nk_rect ui_rect(int x, int y, int w, int h) {
+    return nk_rect((float)x, (float)y, (float)w, (float)h);
+}
+static void ui_menus(void) {
+    if (nk_begin(nk, "##menubar", ui_rect(layout.menu.x, layout.menu.y,
+                                          layout.menu.w, layout.menu.h),
+                 NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BORDER)) {
+        nk_menubar_begin(nk);
+        nk_layout_row_static(nk, 22, 64, 4);
+        if (nk_menu_begin_label(nk, "File", NK_TEXT_LEFT, nk_vec2(150, 190))) {
+            nk_layout_row_dynamic(nk, 24, 1);
+            if (nk_menu_item_label(nk, "New / Clear", NK_TEXT_LEFT)) app_key_code(99);
+            if (nk_menu_item_label(nk, "Save PNG", NK_TEXT_LEFT)) app_key_code(115);
+            nk_widget_disable_begin(nk);
+            nk_menu_item_label(nk, "Open...", NK_TEXT_LEFT);
+            nk_menu_item_label(nk, "Export...", NK_TEXT_LEFT);
+            nk_widget_disable_end(nk);
+            if (nk_menu_item_label(nk, "Quit", NK_TEXT_LEFT)) app_key_code(27);
+            nk_menu_end(nk);
+        }
+        if (nk_menu_begin_label(nk, "Edit", NK_TEXT_LEFT, nk_vec2(150, 170))) {
+            nk_layout_row_dynamic(nk, 24, 1);
+            if (nk_menu_item_label(nk, "Clear Canvas", NK_TEXT_LEFT)) app_key_code(99);
+            nk_widget_disable_begin(nk);
+            nk_menu_item_label(nk, "Undo", NK_TEXT_LEFT);
+            nk_menu_item_label(nk, "Redo", NK_TEXT_LEFT);
+            nk_widget_disable_end(nk);
+            nk_menu_end(nk);
+        }
+        if (nk_menu_begin_label(nk, "View", NK_TEXT_LEFT, nk_vec2(160, 140))) {
+            nk_layout_row_dynamic(nk, 24, 1);
+            if (nk_menu_item_label(nk, "Reset Window Size", NK_TEXT_LEFT)) {
+                SDL_SetWindowSize(win, 1200, 800);
+                dirty = 1;
+            }
+            nk_widget_disable_begin(nk);
+            nk_menu_item_label(nk, "Toggle Grid", NK_TEXT_LEFT);
+            nk_widget_disable_end(nk);
+            nk_menu_end(nk);
+        }
+        if (nk_menu_begin_label(nk, "Help", NK_TEXT_LEFT, nk_vec2(150, 110))) {
+            nk_layout_row_dynamic(nk, 24, 1);
+            if (nk_menu_item_label(nk, "About Glon Paint", NK_TEXT_LEFT)) show_about = 1;
+            nk_menu_end(nk);
+        }
+        nk_menubar_end(nk);
+    }
+    nk_end(nk);
+}
+static void ui_toolbar(void) {
+    if (nk_begin(nk, "##toolbar", ui_rect(layout.toolbar.x, layout.toolbar.y,
+                                         layout.toolbar.w, layout.toolbar.h),
+                 NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BORDER)) {
+        nk_layout_row_dynamic(nk, 22, 1);
+        nk_label(nk, "TOOLS", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 34, 1);
+        struct nk_rect bb = nk_widget_bounds(nk);
+        ui_brush_bounds = (SDL_Rect){ (int)bb.x, (int)bb.y, (int)bb.w, (int)bb.h };
+        if (nk_option_label(nk, "Brush", ui_tool == 1)) app_set_tool(1);
+        nk_layout_row_dynamic(nk, 34, 1);
+        struct nk_rect eb = nk_widget_bounds(nk);
+        ui_eraser_bounds = (SDL_Rect){ (int)eb.x, (int)eb.y, (int)eb.w, (int)eb.h };
+        if (nk_option_label(nk, "Eraser", ui_tool == 2)) app_set_tool(2);
+        nk_layout_row_dynamic(nk, 34, 1);
+        nk_widget_disable_begin(nk);
+        nk_button_label(nk, "Rectangle");
+        nk_widget_disable_end(nk);
+        nk_layout_row_dynamic(nk, 18, 1);
+        nk_label(nk, "size", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 24, 1);
+        nk_label(nk, ui_tool == 2 ? "eraser" : "brush", NK_TEXT_LEFT);
+    }
+    nk_end(nk);
+}
+static void ui_right_panel(void) {
+    if (nk_begin(nk, "##inspector", ui_rect(layout.right.x, layout.right.y,
+                                            layout.right.w, layout.right.h),
+                 NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BORDER)) {
+        nk_layout_row_dynamic(nk, 22, 1);
+        nk_label(nk, "COLOUR", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 34, 4);
+        struct nk_rect cb = nk_widget_bounds(nk);
+        ui_color_bounds[0] = (SDL_Rect){ (int)cb.x, (int)cb.y, (int)cb.w, (int)cb.h };
+        if (nk_button_color(nk, nk_rgb(220, 60, 60))) app_set_color(1);
+        cb = nk_widget_bounds(nk);
+        ui_color_bounds[1] = (SDL_Rect){ (int)cb.x, (int)cb.y, (int)cb.w, (int)cb.h };
+        if (nk_button_color(nk, nk_rgb(40, 120, 220))) app_set_color(2);
+        cb = nk_widget_bounds(nk);
+        ui_color_bounds[2] = (SDL_Rect){ (int)cb.x, (int)cb.y, (int)cb.w, (int)cb.h };
+        if (nk_button_color(nk, nk_rgb(40, 160, 80))) app_set_color(3);
+        cb = nk_widget_bounds(nk);
+        ui_color_bounds[3] = (SDL_Rect){ (int)cb.x, (int)cb.y, (int)cb.w, (int)cb.h };
+        if (nk_button_color(nk, nk_rgb(230, 170, 40))) app_set_color(4);
+        nk_layout_row_dynamic(nk, 20, 1);
+        nk_label(nk, ui_color == 1 ? "Red" : ui_color == 2 ? "Blue" :
+                     ui_color == 3 ? "Green" : "Yellow", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 20, 1);
+        nk_label(nk, "BRUSH SIZE", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 28, 1);
+        struct nk_rect sb = nk_widget_bounds(nk);
+        ui_size_bounds = (SDL_Rect){ (int)sb.x, (int)sb.y, (int)sb.w, (int)sb.h };
+        int new_size = ui_size;
+        if (nk_slider_int(nk, 1, &new_size, 64, 1)) {
+            if (new_size != ui_size) app_set_size(new_size);
+        }
+        char bsz[32]; snprintf(bsz, sizeof bsz, "%d px", ui_size);
+        nk_layout_row_dynamic(nk, 20, 1);
+        nk_label(nk, bsz, NK_TEXT_RIGHT);
+        nk_layout_row_dynamic(nk, 20, 1);
+        nk_label(nk, "TOOL PROPERTIES", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 20, 1);
+        nk_label(nk, ui_tool == 2 ? "Eraser" : "Brush", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 20, 1);
+        nk_label(nk, "Opacity 100% (fixed)", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 20, 1);
+        nk_label(nk, "Hardness 100% (fixed)", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 20, 1);
+        nk_label(nk, "Rectangle: unavailable", NK_TEXT_LEFT);
+    }
+    nk_end(nk);
+}
+static void ui_layers(void) {
+    if (nk_begin(nk, "##layers", ui_rect(layout.layers.x, layout.layers.y,
+                                         layout.layers.w, layout.layers.h),
+                 NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BORDER)) {
+        nk_layout_row_dynamic(nk, 22, 1);
+        nk_label(nk, "LAYERS", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 28, 1);
+        nk_label(nk, "[x] Canvas (working layer)", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 18, 1);
+        nk_label(nk, "1 layer", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 24, 2);
+        nk_widget_disable_begin(nk);
+        nk_button_label(nk, "+");
+        nk_button_label(nk, "-");
+        nk_widget_disable_end(nk);
+    }
+    nk_end(nk);
+}
+static void ui_status(void) {
+    if (nk_begin(nk, "##status", ui_rect(layout.status.x, layout.status.y,
+                                         layout.status.w, layout.status.h),
+                 NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BORDER)) {
+        nk_layout_row_dynamic(nk, 18, 1);
+        char s[160];
+        snprintf(s, sizeof s, "Canvas 800 x 600   |   Tool: %s   |   Colour: %d   |   Size: %d px",
+                 ui_tool == 2 ? "Eraser" : "Brush", ui_color, ui_size);
+        nk_label(nk, s, NK_TEXT_LEFT);
+    }
+    nk_end(nk);
+}
+static void ui_build(void) {
+    update_layout();
+    ui_menus();
+    ui_toolbar();
+    ui_right_panel();
+    ui_layers();
+    ui_status();
+    if (show_about) {
+        int w = 360, h = 160;
+        int ww = 0, wh = 0; SDL_GetWindowSize(win, &ww, &wh);
+        struct nk_rect r = ui_rect((ww - w) / 2, (wh - h) / 2, w, h);
+        if (nk_begin(nk, "About Glon Paint", r,
+                     NK_WINDOW_TITLE | NK_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR)) {
+            nk_layout_row_dynamic(nk, 24, 1);
+            nk_label(nk, "Glon Paint G2", NK_TEXT_LEFT);
+            nk_layout_row_dynamic(nk, 22, 1);
+            nk_label_wrap(nk, "A small Glon-owned painting surface. "
+                              "The Glon VM, allocator and loader are unchanged.");
+            nk_layout_row_dynamic(nk, 30, 1);
+            if (nk_button_label(nk, "Close")) show_about = 0;
+        }
+        nk_end(nk);
+    }
+}
 static void push_mouse(Uint32 type, int x, int y) {
     SDL_Event e; memset(&e, 0, sizeof e); e.type = type;
     if (type == SDL_MOUSEMOTION) { e.motion.x = x; e.motion.y = y; e.motion.state = SDL_BUTTON_LMASK; }
@@ -312,6 +700,18 @@ static void push_key(SDL_Keycode k) {
 static long loader_used(void) { return (long)(M[GC_LOADER_HP] - R0S1_HEAP_BASE); }
 static long loader_free_cells(void) { return (long)(R0S1_HEAP_LIMIT - M[GC_LOADER_HP]); }
 
+static int read_output_pixel(int x, int y, Uint8 *rr, Uint8 *gg, Uint8 *bb) {
+    SDL_SetRenderTarget(ren, NULL);
+    SDL_Rect r = { x, y, 1, 1 };
+    Uint32 px = 0;
+    if (SDL_RenderReadPixels(ren, &r, SDL_PIXELFORMAT_ARGB8888, &px, 4) != 0) return -1;
+    SDL_PixelFormat *fmt = SDL_AllocFormat(SDL_PIXELFORMAT_ARGB8888);
+    if (!fmt) return -1;
+    Uint8 a;
+    SDL_GetRGBA(px, fmt, rr, gg, bb, &a);
+    SDL_FreeFormat(fmt);
+    return 0;
+}
 static int read_canvas_pixel(int x, int y, Uint8 *rr, Uint8 *gg, Uint8 *bb) {
     begin_canvas();
     SDL_Rect r = { x, y, 1, 1 };
@@ -323,29 +723,6 @@ static int read_canvas_pixel(int x, int y, Uint8 *rr, Uint8 *gg, Uint8 *bb) {
     SDL_GetRGBA(px, fmt, rr, gg, bb, &a);
     SDL_FreeFormat(fmt);
     return 0;
-}
-static int output_black_pixels(void) {
-    int w = 0, h = 0;
-    if (SDL_GetRendererOutputSize(ren, &w, &h) != 0 || w <= 0 || h <= 0) return -1;
-    Uint32 *pix = malloc((size_t)w * h * sizeof(Uint32));
-    if (!pix) return -1;
-    SDL_SetRenderTarget(ren, NULL);
-    if (SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888, pix,
-                             w * (int)sizeof(Uint32)) != 0) {
-        free(pix);
-        return -1;
-    }
-    SDL_PixelFormat *fmt = SDL_AllocFormat(SDL_PIXELFORMAT_ARGB8888);
-    if (!fmt) { free(pix); return -1; }
-    int black = 0;
-    for (int i = 0; i < w * h; i++) {
-        Uint8 r, g, b, a;
-        SDL_GetRGBA(pix[i], fmt, &r, &g, &b, &a);
-        if (r == 0 && g == 0 && b == 0) black++;
-    }
-    SDL_FreeFormat(fmt);
-    free(pix);
-    return black;
 }
 static int resize_to(int w, int h) {
     SDL_SetWindowSize(win, w, h);
@@ -367,78 +744,88 @@ static int resize_to(int w, int h) {
     return 0;
 }
 static int resize_test(void) {
-    static const struct { int ww, wh, wx, wy, cx, cy; } maps[] = {
-        { 800, 600, 0, 0, 0, 0 },
-        { 800, 600, 799, 599, 799, 599 },
-        { 1600, 1200, 800, 600, 400, 300 },
-        { 600, 900, 450, 225, 600, 150 },
-        { 1000, 500, 250, 400, 200, 480 },
-    };
-    for (unsigned i = 0; i < sizeof maps / sizeof maps[0]; i++) {
-        int x = -1, y = -1;
-        if (!map_window_to_canvas(maps[i].ww, maps[i].wh, maps[i].wx, maps[i].wy, &x, &y) ||
-            x != maps[i].cx || y != maps[i].cy) {
-            fprintf(stderr, "resize-test: map case %u failed (%d,%d -> %d,%d, want %d,%d)\n",
-                    i, maps[i].wx, maps[i].wy, x, y, maps[i].cx, maps[i].cy);
-            return 2;
-        }
-    }
     int saved = 0;
-    if (app_init() != 0) return 3;
-    if (event_key(SDLK_1, 0, &saved) != 0) return 4;
-    if (event_key(SDLK_c, 0, &saved) != 0) return 5;
-    struct { int w, h, wx, wy, cx, cy; } cases[] = {
-        { 800, 600, 100, 100, 100, 100 },
-        { 1600, 1200, 800, 600, 400, 300 },
-        { 600, 900, 450, 225, 600, 150 },
-        { 1000, 500, 250, 400, 200, 480 },
-        { 800, 600, 700, 500, 700, 500 },
-        { 1200, 800, 120, 80, 80, 60 },
-        { 800, 600, 100, 100, 100, 100 },
+    if (app_init() != 0) return 2;
+    if (event_key(SDLK_1, 0, &saved) != 0) return 3;
+    if (app_set_size(8) != 0) return 3;
+    if (event_key(SDLK_c, 0, &saved) != 0) return 4;
+
+    int x = -1, y = -1;
+    if (map_window_to_canvas_for(1200, 800, 0, 0, &x, &y)) {
+        fprintf(stderr, "resize-test: menu point mapped into canvas\n");
+        return 5;
+    }
+    if (map_window_to_canvas_for(1200, 800, 1199, 799, &x, &y)) {
+        fprintf(stderr, "resize-test: status point mapped into canvas\n");
+        return 5;
+    }
+
+    struct { int w, h, cx, cy; } cases[] = {
+        { 1200, 800, 100, 100 },
+        { 1600, 1200, 400, 300 },
+        { 600, 900, 600, 150 },
+        { 1000, 500, 200, 480 },
+        { 1200, 800, 700, 500 },
+        { 900, 1200, 80, 60 },
+        { 1200, 800, 100, 100 },
     };
-    int total_black = 0;
     for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; i++) {
         if (resize_to(cases[i].w, cases[i].h) != 0) {
             fprintf(stderr, "resize-test: resize to %dx%d failed\n", cases[i].w, cases[i].h);
             return 6;
         }
-        int black = output_black_pixels();
-        if (black < 0) {
-            fprintf(stderr, "resize-test: output readback failed at %dx%d\n", cases[i].w, cases[i].h);
+        int64_t lhs = (int64_t)layout.image.w * PAINT_H;
+        int64_t rhs = (int64_t)layout.image.h * PAINT_W;
+        if (lhs < 0 || rhs < 0 || (lhs > rhs ? lhs - rhs : rhs - lhs) > PAINT_W) {
+            fprintf(stderr, "resize-test: image aspect wrong at %dx%d: %dx%d\n",
+                    cases[i].w, cases[i].h, layout.image.w, layout.image.h);
             return 7;
         }
-        total_black += black;
-        SDL_RenderPresent(ren);
-        if (event_mouse(SDL_MOUSEBUTTONDOWN, cases[i].wx, cases[i].wy,
-                        SDL_BUTTON_LEFT, &saved) != 0 ||
-            event_mouse(SDL_MOUSEBUTTONUP, cases[i].wx, cases[i].wy,
-                        SDL_BUTTON_LEFT, &saved) != 0)
-            return 8;
+        if (layout.image.x < layout.workspace.x ||
+            layout.image.y < layout.workspace.y ||
+            layout.image.x + layout.image.w > layout.workspace.x + layout.workspace.w ||
+            layout.image.y + layout.image.h > layout.workspace.y + layout.workspace.h ||
+            abs((layout.image.x + layout.image.w / 2) -
+                (layout.workspace.x + layout.workspace.w / 2)) > 1 ||
+            abs((layout.image.y + layout.image.h / 2) -
+                (layout.workspace.y + layout.workspace.h / 2)) > 1) {
+            fprintf(stderr, "resize-test: image not centred/margined at %dx%d\n",
+                    cases[i].w, cases[i].h);
+            return 7;
+        }
+        int wx = 0, wy = 0;
+        if (!canvas_to_window(cases[i].cx, cases[i].cy, &wx, &wy)) return 8;
+        int mapped = map_window_to_canvas_for(cases[i].w, cases[i].h, wx, wy, &x, &y);
+        if (!mapped || abs(x - cases[i].cx) > 2 || abs(y - cases[i].cy) > 2) {
+            fprintf(stderr, "resize-test: map %dx%d canvas(%d,%d) -> win(%d,%d) -> "
+                    "canvas(%d,%d) mapped=%d image=%d,%d,%d,%d\n",
+                    cases[i].w, cases[i].h, cases[i].cx, cases[i].cy, wx, wy,
+                    x, y, mapped, layout.image.x, layout.image.y,
+                    layout.image.w, layout.image.h);
+            return 9;
+        }
+        if (event_mouse(SDL_MOUSEBUTTONDOWN, wx, wy, SDL_BUTTON_LEFT, &saved) != 0 ||
+            event_mouse(SDL_MOUSEBUTTONUP, wx, wy, SDL_BUTTON_LEFT, &saved) != 0)
+            return 10;
         Uint8 r = 0, g = 0, b = 0;
         if (read_canvas_pixel(cases[i].cx, cases[i].cy, &r, &g, &b) != 0 ||
             r != 220 || g != 60 || b != 60) {
-            fprintf(stderr, "resize-test: draw at window (%d,%d) did not map to canvas "
-                    "(%d,%d): got %u,%u,%u\n", cases[i].wx, cases[i].wy,
-                    cases[i].cx, cases[i].cy, r, g, b);
-            return 9;
+            fprintf(stderr, "resize-test: canvas (%d,%d) not painted at %dx%d\n",
+                    cases[i].cx, cases[i].cy, cases[i].w, cases[i].h);
+            return 11;
         }
     }
-    /* Every earlier stroke must survive the whole resize sequence. */
     Uint8 r, g, b;
     if (read_canvas_pixel(100, 100, &r, &g, &b) != 0 || r != 220 || g != 60 || b != 60)
-        return 10;
-    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || r != 220 || g != 60 || b != 60)
-        return 10;
-    if (read_canvas_pixel(80, 60, &r, &g, &b) != 0 || r != 220 || g != 60 || b != 60)
-        return 10;
-    if (event_key(SDLK_s, 0, &saved) != 0 || !saved) return 11;
-    if (total_black != 0) {
-        fprintf(stderr, "resize-test: %d black output pixels after resize\n", total_black);
         return 12;
-    }
-    printf("resize-test: maps=%u resizes=%u black_pixels=%d canvas=%dx%d result=ok\n",
-           (unsigned)(sizeof maps / sizeof maps[0]),
-           (unsigned)(sizeof cases / sizeof cases[0]), total_black, PAINT_W, PAINT_H);
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || r != 220 || g != 60 || b != 60)
+        return 12;
+    if (read_canvas_pixel(80, 60, &r, &g, &b) != 0 || r != 220 || g != 60 || b != 60)
+        return 12;
+    if (event_key(SDLK_s, 0, &saved) != 0 || !saved) return 13;
+    printf("resize-test: resizes=%u canvas=%dx%d image=%dx%d result=ok\n",
+           (unsigned)(sizeof cases / sizeof cases[0]), PAINT_W, PAINT_H,
+           layout.image.w, layout.image.h);
     present_frame();
     return 0;
 }
@@ -447,44 +834,58 @@ static int move_stress(int moves) {
     if (app_init() != 0) return 2;
     long loader0 = loader_used(), loader_max = loader0;
     int symbols0 = 0; while (r0_s1_sym_name(symbols0)) symbols0++;
-    if (event_mouse(SDL_MOUSEBUTTONDOWN, 10, 10, SDL_BUTTON_LEFT, &saved) != 0) return 3;
+    int wx = 0, wy = 0;
+    if (!canvas_to_window(10, 10, &wx, &wy) ||
+        event_mouse(SDL_MOUSEBUTTONDOWN, wx, wy, SDL_BUTTON_LEFT, &saved) != 0) return 3;
+    Uint64 t0 = SDL_GetPerformanceCounter();
     int failed_at = -1;
     for (int i = 0; i < moves; i++) {
-        int x = 10 + (i % 760), y = 10 + ((i / 760) % 560);
-        if (event_mouse(SDL_MOUSEMOTION, x, y, 0, &saved) != 0) { failed_at = i; break; }
+        int cx = 10 + (i % 760), cy = 10 + ((i / 760) % 560);
+        if (!canvas_to_window(cx, cy, &wx, &wy)) return 4;
+        if (event_mouse(SDL_MOUSEMOTION, wx, wy, 0, &saved) != 0) { failed_at = i; break; }
         long used = loader_used();
         if (used > loader_max) loader_max = used;
     }
+    Uint64 t1 = SDL_GetPerformanceCounter();
+    double elapsed_ms = (double)(t1 - t0) * 1000.0 / (double)SDL_GetPerformanceFrequency();
     if (failed_at < 0) {
-        if (event_mouse(SDL_MOUSEBUTTONUP, 770, 570, SDL_BUTTON_LEFT, &saved) != 0) return 4;
-        if (event_key(SDLK_s, 0, &saved) != 0) return 5;
+        if (!canvas_to_window(760, 560, &wx, &wy) ||
+            event_mouse(SDL_MOUSEBUTTONUP, wx, wy, SDL_BUTTON_LEFT, &saved) != 0) return 5;
+        if (event_key(SDLK_s, 0, &saved) != 0) return 6;
     }
     printf("move-stress: moves=%d result=%s failed_at=%d loader_used_start=%ld "
            "loader_used_end=%ld loader_used_max=%ld loader_free=%ld "
-           "managed_high=%ld gc_collects=%ld gc_live_cells=%ld\n",
+           "managed_high=%ld gc_collects=%ld gc_live_cells=%ld elapsed_ms=%.2f\n",
            moves, failed_at < 0 ? "ok" : "FAILED", failed_at,
            loader0, loader_used(), loader_max, loader_free_cells(),
-           r0_s1_heap_high(), r0_s1_gc_count(), r0_s1_gc_live_cells());
+           r0_s1_heap_high(), r0_s1_gc_count(), r0_s1_gc_live_cells(), elapsed_ms);
     int symbols1 = 0; while (r0_s1_sym_name(symbols1)) symbols1++;
     printf("move-stress: symbols_start=%d symbols_end=%d\n", symbols0, symbols1);
-    if (failed_at >= 0) return 6;
+    if (failed_at >= 0) return 7;
     long growth = loader_used() - loader0;
     if (growth > 16) {
         fprintf(stderr, "move-stress: loader grew by %ld cells (expected bounded)\n", growth);
-        return 7;
+        return 8;
     }
-    return saved ? 0 : 8;
+    return saved ? 0 : 9;
 }
 static int self_test(void) {
     int saved = 0;
     if (app_init() != 0) return 2;
+    int x1, y1, x2, y2, x3, y3, x4, y4, x5, y5, x6, y6;
+    if (!canvas_to_window(20, 20, &x1, &y1) ||
+        !canvas_to_window(100, 100, &x2, &y2) ||
+        !canvas_to_window(160, 60, &x3, &y3) ||
+        !canvas_to_window(200, 100, &x4, &y4) ||
+        !canvas_to_window(260, 100, &x5, &y5)) return 3;
+    (void)x6; (void)y6;
     /* SDL queue path: clear, colour, size, stroke, eraser stroke, save, quit. */
     push_key(SDLK_c); push_key(SDLK_2); push_key(SDLK_PLUS);
-    push_mouse(SDL_MOUSEBUTTONDOWN, 20, 20); push_mouse(SDL_MOUSEMOTION, 100, 100);
-    push_mouse(SDL_MOUSEMOTION, 160, 60); push_mouse(SDL_MOUSEBUTTONUP, 160, 60);
+    push_mouse(SDL_MOUSEBUTTONDOWN, x1, y1); push_mouse(SDL_MOUSEMOTION, x2, y2);
+    push_mouse(SDL_MOUSEMOTION, x3, y3); push_mouse(SDL_MOUSEBUTTONUP, x3, y3);
     push_key(SDLK_e);
-    push_mouse(SDL_MOUSEBUTTONDOWN, 200, 100); push_mouse(SDL_MOUSEMOTION, 260, 100);
-    push_mouse(SDL_MOUSEBUTTONUP, 260, 100);
+    push_mouse(SDL_MOUSEBUTTONDOWN, x4, y4); push_mouse(SDL_MOUSEMOTION, x5, y5);
+    push_mouse(SDL_MOUSEBUTTONUP, x5, y5);
     push_key(SDLK_s); push_key(SDLK_ESCAPE);
     while (!quit_flag) {
         SDL_Event e;
@@ -506,6 +907,218 @@ static int self_test(void) {
     return saved ? 0 : 3;
 }
 
+static void ui_handle(SDL_Event *e) {
+    nk_sdl_handle_event(e);
+}
+static void ui_click_at(SDL_Rect r) {
+    SDL_Event e;
+    int x = r.x + r.w / 2, y = r.y + r.h / 2;
+    memset(&e, 0, sizeof e);
+    e.type = SDL_MOUSEMOTION; e.motion.x = x; e.motion.y = y;
+    nk_input_begin(nk); ui_handle(&e); nk_input_end(nk); ui_build(); nk_clear(nk);
+
+    memset(&e, 0, sizeof e);
+    e.type = SDL_MOUSEBUTTONDOWN; e.button.x = x; e.button.y = y;
+    e.button.button = SDL_BUTTON_LEFT; e.button.clicks = 1;
+    nk_input_begin(nk); ui_handle(&e); nk_input_end(nk); ui_build(); nk_clear(nk);
+
+    memset(&e, 0, sizeof e);
+    e.type = SDL_MOUSEBUTTONUP; e.button.x = x; e.button.y = y;
+    e.button.button = SDL_BUTTON_LEFT; e.button.clicks = 1;
+    nk_input_begin(nk); ui_handle(&e); nk_input_end(nk); ui_build(); nk_clear(nk);
+    update_layout();
+}
+
+static int ui_test(void) {
+    int saved = 0;
+    if (app_init() != 0) return 2;
+    if (event_key(SDLK_1, 0, &saved) != 0) return 3;
+    if (app_set_size(8) != 0) return 4;
+    if (event_key(SDLK_c, 0, &saved) != 0) return 5;
+    update_layout();
+    nk_input_begin(nk);
+    nk_input_end(nk);
+    ui_build();
+    render_ui();
+    Uint8 pr = 0, pg = 0, pb = 0;
+    if (read_output_pixel(layout.image.x + layout.image.w / 2,
+                          layout.image.y + layout.image.h / 2,
+                          &pr, &pg, &pb) != 0 ||
+        pr != 255 || pg != 255 || pb != 255) return 6;
+    if (read_output_pixel(layout.right.x + 6, layout.right.y + 6,
+                          &pr, &pg, &pb) != 0 ||
+        (pr == 22 && pg == 23 && pb == 27)) return 6;
+    SDL_RenderPresent(ren);
+
+    int64_t lhs = (int64_t)layout.image.w * PAINT_H;
+    int64_t rhs = (int64_t)layout.image.h * PAINT_W;
+    if (lhs < 0 || rhs < 0 || (lhs > rhs ? lhs - rhs : rhs - lhs) > PAINT_W)
+        return 6;
+    if (layout.image.x < layout.workspace.x ||
+        layout.image.y < layout.workspace.y ||
+        layout.image.x + layout.image.w > layout.workspace.x + layout.workspace.w ||
+        layout.image.y + layout.image.h > layout.workspace.y + layout.workspace.h)
+        return 7;
+
+    if (ui_eraser_bounds.w <= 0 || ui_brush_bounds.w <= 0 ||
+        ui_color_bounds[1].w <= 0 || ui_size_bounds.w <= 0) return 8;
+    if (ui_tool != 1) return 9;
+    ui_click_at(ui_eraser_bounds);
+    if (ui_tool != 2) return 9;
+    ui_click_at(ui_brush_bounds);
+    if (ui_tool != 1) return 9;
+    if (ui_color != 1) return 9;
+    ui_click_at(ui_color_bounds[1]);
+    if (ui_color != 2) return 9;
+    ui_click_at(ui_color_bounds[0]);
+    if (ui_color != 1) return 9;
+    Uint8 r = 0, g = 0, b = 0;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        r != 255 || g != 255 || b != 255) return 10;
+    /* A click on each fixed UI region must not reach the canvas. */
+    int ux = layout.toolbar.x + layout.toolbar.w / 2;
+    int uy = layout.toolbar.y + 40;
+    if (dispatch_canvas_pointer(SDL_MOUSEBUTTONDOWN, ux, uy, SDL_BUTTON_LEFT, &saved) != 0)
+        return 9;
+    ux = layout.right.x + 20; uy = layout.right.y + 40;
+    if (dispatch_canvas_pointer(SDL_MOUSEBUTTONDOWN, ux, uy, SDL_BUTTON_LEFT, &saved) != 0)
+        return 9;
+    ux = layout.status.x + layout.status.w / 2; uy = layout.status.y + 10;
+    if (dispatch_canvas_pointer(SDL_MOUSEBUTTONDOWN, ux, uy, SDL_BUTTON_LEFT, &saved) != 0)
+        return 9;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        r != 255 || g != 255 || b != 255) return 10;
+
+    /* The same setters used by the inspector controls must reach Glon. */
+    if (app_set_color(2) != 0 || ui_color != 2) return 11;
+    if (app_set_tool(2) != 0 || ui_tool != 2) return 12;
+    if (app_set_size(17) != 0 || ui_size != 17) return 13;
+    if (app_set_tool(1) != 0 || app_set_color(1) != 0 || app_set_size(8) != 0) return 14;
+    int wx = 0, wy = 0;
+    if (!canvas_to_window(400, 300, &wx, &wy) ||
+        dispatch_canvas_pointer(SDL_MOUSEBUTTONDOWN, wx, wy, SDL_BUTTON_LEFT, &saved) != 0 ||
+        dispatch_canvas_pointer(SDL_MOUSEBUTTONUP, wx, wy, SDL_BUTTON_LEFT, &saved) != 0)
+        return 15;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        r != 220 || g != 60 || b != 60) return 16;
+    if (event_key(SDLK_s, 0, &saved) != 0 || !saved) return 17;
+    ui_build();
+    present_ui();
+    printf("ui-test: toolbar_no_stroke=1 inspector_no_stroke=1 status_no_stroke=1 "
+           "controls=ok canvas=%dx%d image=%dx%d result=ok\n",
+           PAINT_W, PAINT_H, layout.image.w, layout.image.h);
+    return 0;
+}
+
+static void run_app_ui(void) {
+    update_layout();
+    nk_input_begin(nk);
+    nk_input_end(nk);
+    ui_build();
+    present_ui();
+
+    int saved = 0;
+    int dragging = 0, last_wx = 0, last_wy = 0;
+    while (!quit_flag) {
+        SDL_Event e;
+        if (!SDL_WaitEventTimeout(&e, 12)) continue;
+        update_layout();
+        nk_input_begin(nk);
+
+        int pending_down = 0, pending_up = 0, pending_motion = 0;
+        int dx = 0, dy = 0, mx = 0, my = 0;
+        SDL_KeyboardEvent keys[16];
+        int nkeys = 0;
+        do {
+            if (e.type == SDL_QUIT) quit_flag = 1;
+            else if (e.type == SDL_WINDOWEVENT &&
+                     (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
+                      e.window.event == SDL_WINDOWEVENT_RESIZED ||
+                      e.window.event == SDL_WINDOWEVENT_EXPOSED)) dirty = 1;
+            else if (e.type == SDL_KEYDOWN) {
+                if (nkeys < (int)(sizeof keys / sizeof keys[0])) keys[nkeys++] = e.key;
+            } else if (e.type == SDL_MOUSEBUTTONDOWN) {
+                if (e.button.button == SDL_BUTTON_LEFT) {
+                    pending_down = 1; dx = e.button.x; dy = e.button.y;
+                }
+            } else if (e.type == SDL_MOUSEBUTTONUP) {
+                if (e.button.button == SDL_BUTTON_LEFT) pending_up = 1;
+            } else if (e.type == SDL_MOUSEMOTION) {
+                pending_motion = 1; mx = e.motion.x; my = e.motion.y;
+                perf_raw_motions++;
+            }
+            nk_sdl_handle_event(&e);
+        } while (SDL_PollEvent(&e));
+        nk_sdl_handle_grab();
+        nk_input_end(nk);
+
+        update_layout();
+        ui_build();
+
+        if (pending_down) {
+            int down_inside = !point_in_ui(dx, dy) && point_in_rect(&layout.image, dx, dy);
+            if (down_inside && dispatch_canvas_pointer(SDL_MOUSEBUTTONDOWN, dx, dy,
+                                                       SDL_BUTTON_LEFT, &saved) == 0) {
+                dragging = 1; last_wx = dx; last_wy = dy;
+            }
+        }
+        if (pending_motion && dragging) {
+            int motion_inside = !point_in_ui(mx, my) && point_in_rect(&layout.image, mx, my);
+            if (motion_inside && dispatch_canvas_pointer(SDL_MOUSEMOTION, mx, my, 0, &saved) == 0) {
+                last_wx = mx; last_wy = my;
+                perf_app_moves++;
+            } else {
+                event_mouse(SDL_MOUSEBUTTONUP, last_wx, last_wy, SDL_BUTTON_LEFT, &saved);
+                dragging = 0;
+            }
+        }
+        if (pending_up && dragging) {
+            event_mouse(SDL_MOUSEBUTTONUP, last_wx, last_wy, SDL_BUTTON_LEFT, &saved);
+            dragging = 0;
+        }
+        /* Key actions happen after pending painting, so a save key in the
+         * same batch exports the stroke, not the previous frame. */
+        for (int k = 0; k < nkeys; k++)
+            event_key(keys[k].keysym.sym, keys[k].keysym.mod, &saved);
+        present_ui();
+        perf_renders++;
+    }
+}
+
+static int coalesce_test(void) {
+    int saved = 0;
+    if (app_init() != 0) return 2;
+    if (event_key(SDLK_1, 0, &saved) != 0) return 3;
+    if (app_set_size(8) != 0) return 4;
+    if (event_key(SDLK_c, 0, &saved) != 0) return 5;
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    if (!canvas_to_window(100, 100, &x0, &y0) ||
+        !canvas_to_window(700, 500, &x1, &y1)) return 6;
+    push_mouse(SDL_MOUSEBUTTONDOWN, x0, y0);
+    for (int i = 1; i <= 1000; i++) {
+        int cx = 100 + (i * 600) / 1000;
+        int cy = 100 + (i * 400) / 1000;
+        int wx = 0, wy = 0;
+        if (!canvas_to_window(cx, cy, &wx, &wy)) return 7;
+        push_mouse(SDL_MOUSEMOTION, wx, wy);
+    }
+    push_mouse(SDL_MOUSEBUTTONUP, x1, y1);
+    push_key(SDLK_s);
+    push_key(SDLK_ESCAPE);
+    perf_raw_motions = perf_app_moves = perf_renders = 0;
+    Uint64 t0 = SDL_GetPerformanceCounter();
+    run_app_ui();
+    Uint64 t1 = SDL_GetPerformanceCounter();
+    double ms = (double)(t1 - t0) * 1000.0 / (double)SDL_GetPerformanceFrequency();
+    printf("coalesce-test: raw_motions=%ld app_moves=%ld renders=%ld elapsed_ms=%.2f\n",
+           perf_raw_motions, perf_app_moves, perf_renders, ms);
+    if (perf_raw_motions < 1000) return 8;
+    if (perf_app_moves >= perf_raw_motions) return 9;
+    if (perf_app_moves < 1) return 10;
+    if (perf_renders >= perf_raw_motions) return 11;
+    return 0;
+}
+
 int main(int argc, char **argv) {
     const char *root = getenv("PAINT_ROOT");
     if (!root) root = PAINT_ROOT_DEFAULT;
@@ -517,6 +1130,24 @@ int main(int argc, char **argv) {
                            "demo/shop/strings-ext.glon",
                            "experiments/glon-gui-paint/paint.glon", NULL };
     for (int i = 0; libs[i]; i++) if (load_source(root, libs[i]) != 0) return 2;
+    if (argc > 1 && strcmp(argv[1], "--ui-test") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        if (ui_init() != 0) return 2;
+        int rc = ui_test();
+        ui_shutdown();
+        SDL_DestroyTexture(canvas); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
+        fprintf(stderr, "glon-paint: ui-test %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--coalesce-test") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        if (ui_init() != 0) return 2;
+        int rc = coalesce_test();
+        ui_shutdown();
+        SDL_DestroyTexture(canvas); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
+        fprintf(stderr, "glon-paint: coalesce-test %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
     if (argc > 1 && strcmp(argv[1], "--resize-test") == 0) {
         if (sdl_init(1) != 0) return 2;
         int rc = resize_test();
@@ -541,26 +1172,13 @@ int main(int argc, char **argv) {
         return rc;
     }
     if (sdl_init(0) != 0) return 2;
-    int saved = 0;
-    if (app_init() != 0) { SDL_DestroyTexture(canvas); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit(); return 2; }
-    present_frame();
-    while (!quit_flag) {
-        SDL_Event e;
-        if (!SDL_WaitEventTimeout(&e, 20)) { if (dirty) present_frame(); continue; }
-        do {
-            if (e.type == SDL_QUIT) quit_flag = 1;
-            else if (e.type == SDL_WINDOWEVENT &&
-                     (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
-                      e.window.event == SDL_WINDOWEVENT_RESIZED ||
-                      e.window.event == SDL_WINDOWEVENT_EXPOSED)) dirty = 1;
-            else if (e.type == SDL_KEYDOWN) event_key(e.key.keysym.sym, e.key.keysym.mod, &saved);
-            else if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP)
-                event_mouse(e.type, e.button.x, e.button.y, e.button.button, &saved);
-            else if (e.type == SDL_MOUSEMOTION)
-                event_mouse(e.type, e.motion.x, e.motion.y, 0, &saved);
-            if (dirty) present_frame();
-        } while (SDL_PollEvent(&e));
+    if (ui_init() != 0) return 2;
+    if (app_init() != 0) {
+        ui_shutdown(); SDL_DestroyTexture(canvas); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
+        return 2;
     }
+    run_app_ui();
+    ui_shutdown();
     SDL_DestroyTexture(canvas); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
     return 0;
 }
