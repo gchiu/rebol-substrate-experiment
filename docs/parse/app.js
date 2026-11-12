@@ -253,7 +253,7 @@
         return Promise.all([modulePromise, libsPromise]);
       }).then(function () {
         runEl.disabled = false;
-        status("Ready. Edit the input or encoded rule data and press Run.", "");
+        status("Ready. Edit the input or textual rules and press Run.", "");
       }).catch(function (e) {
         status("Could not initialise: " + (e && e.message || e), "bad");
         showError(e && e.message || String(e));
