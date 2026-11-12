@@ -24,6 +24,7 @@ NFD_DEFINE :=
 NFD_CXXFLAGS :=
 NFD_LIBS :=
 NFD_OBJ :=
+$(warning Native file dialogs are disabled: install libgtk-3-dev and rebuild for the graphical requester. Using the Nuklear path-entry fallback.)
 endif
 
 all: $(TARGET)

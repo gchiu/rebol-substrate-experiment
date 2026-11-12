@@ -610,6 +610,8 @@ static void show_image_chooser(void) {
         return;
     }
 #endif
+    snprintf(open_error, sizeof open_error,
+             "Native file dialog unavailable; enter a path below.");
     open_dialog = 1;
 }
 static void show_script_chooser(void) {
@@ -640,6 +642,8 @@ static void show_script_chooser(void) {
         return;
     }
 #endif
+    snprintf(script_error, sizeof script_error,
+             "Native file dialog unavailable; enter a path below.");
     script_dialog = 1;
 }
 static void request_open(void) {
@@ -1206,9 +1210,14 @@ static void ui_status(void) {
                                          layout.status.w, layout.status.h),
                  NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BORDER)) {
         nk_layout_row_dynamic(nk, 18, 1);
-        char s[160];
-        snprintf(s, sizeof s, "Canvas 800 x 600   |   Tool: %s   |   Colour: %d   |   Size: %d px",
-                 ui_tool == 2 ? "Eraser" : "Brush", ui_color, ui_size);
+        char s[200];
+#ifdef HAVE_NFD
+        const char *chooser = (nfd_state == -1) ? "path fallback" : "native";
+#else
+        const char *chooser = "path fallback";
+#endif
+        snprintf(s, sizeof s, "Canvas 800 x 600   |   Tool: %s   |   Colour: %d   |   Size: %d px   |   Chooser: %s",
+                 ui_tool == 2 ? "Eraser" : "Brush", ui_color, ui_size, chooser);
         nk_label(nk, s, NK_TEXT_LEFT);
     }
     nk_end(nk);

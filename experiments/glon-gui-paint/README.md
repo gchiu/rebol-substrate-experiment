@@ -46,6 +46,17 @@ remains available by explicitly setting `SDL_VIDEODRIVER=x11`.
 `./build/glon-paint --cursor-test` checks SDL cursor state and backend
 matching.
 
+Check whether the built binary has native dialogs:
+
+```sh
+./build/glon-paint --nfd-probe
+```
+
+`nfd-probe: ready` means the native GTK requester is compiled in. If it says
+`built without GTK/NFD`, install `libgtk-3-dev`, run `make clean`, and rebuild;
+otherwise Paint intentionally uses the Nuklear path fallback. The Makefile also
+prints a warning when NFD is being omitted.
+
 From the repository root:
 
 ```sh
