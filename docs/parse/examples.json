@@ -1,0 +1,124 @@
+{
+  "examples": [
+    {
+      "id": "literal",
+      "name": "Literal",
+      "input": "hello",
+      "rules": "[]",
+      "rule": "\"hello\"",
+      "all": false,
+      "case": false,
+      "note": "A string rule matches a literal; default matching is case-insensitive."
+    },
+    {
+      "id": "failure",
+      "name": "Failure",
+      "input": "x",
+      "rules": "[]",
+      "rule": "\"hello\"",
+      "all": false,
+      "case": false,
+      "note": "A literal that does not match returns false; the input and position are unchanged."
+    },
+    {
+      "id": "sequence-alternative",
+      "name": "Sequence and alternatives",
+      "input": "a b",
+      "rules": "[]",
+      "rule": "reduce [ \"a\" \"b\" ]",
+      "all": false,
+      "case": false,
+      "note": "Default parsing skips intervening whitespace. Use [/all] to require exact spacing."
+    },
+    {
+      "id": "alternatives",
+      "name": "Alternatives",
+      "input": "b",
+      "rules": "[]",
+      "rule": "reduce [ \"a\" 0 \"b\" ]",
+      "all": false,
+      "case": false,
+      "note": "0 separates ordered alternatives. The first successful branch wins."
+    },
+    {
+      "id": "repetition",
+      "name": "Repetition",
+      "input": "aaa",
+      "rules": "[]",
+      "rule": "reduce [ 1 \"a\" ]",
+      "all": false,
+      "case": false,
+      "note": "Encoded [ 1 rule ] means one or more; [ 2 rule ] means zero or more; [ 3 rule ] means optional."
+    },
+    {
+      "id": "recursive",
+      "name": "Recursive named rules",
+      "input": "(x)",
+      "rules": "reduce [ 'parens reduce [ \"(\" 'parens \")\" 0 \"x\" ] ]",
+      "rule": "'parens",
+      "all": false,
+      "case": false,
+      "note": "Named rules live in a flat data registry. This rule is recursive."
+    },
+    {
+      "id": "navigation",
+      "name": "skip / to / thru / end",
+      "input": "abc",
+      "rules": "[]",
+      "rule": "reduce [ reduce [ 6 \"b\" ] \"c\" ]",
+      "all": false,
+      "case": false,
+      "note": "[ 4 ] skips one byte, [ 5 target ] seeks without consuming, [ 6 target ] seeks and consumes, [ 7 ] matches end."
+    },
+    {
+      "id": "to",
+      "name": "to target",
+      "input": "abc",
+      "rules": "[]",
+      "rule": "reduce [ reduce [ 5 \"b\" ] \"b\" \"c\" ]",
+      "all": false,
+      "case": false,
+      "note": "to seeks to the target and leaves it unconsumed; the following literal consumes it."
+    },
+    {
+      "id": "skip",
+      "name": "skip",
+      "input": "a",
+      "rules": "[]",
+      "rule": "reduce [ 4 ]",
+      "all": false,
+      "case": false,
+      "note": "skip consumes one byte."
+    },
+    {
+      "id": "charset",
+      "name": "Character set",
+      "input": "12345",
+      "rules": "[]",
+      "rule": "reduce [ 1 reduce [ 8 mk-string reduce [ 48 57 ] ] ]",
+      "all": false,
+      "case": false,
+      "note": "A charset is [ 8 descriptor ]; descriptor is a byte string of lo,hi ranges. Sets are case-sensitive."
+    },
+    {
+      "id": "copy",
+      "name": "copy capture",
+      "input": "abc",
+      "rules": "[]",
+      "rule": "reduce [ reduce [ 9 \"word\" \"a\" ] \"bc\" ]",
+      "all": false,
+      "case": false,
+      "note": "copy records the source slice; capture names in this playground are strings so the host can display them."
+    },
+    {
+      "id": "none-end",
+      "name": "none and end",
+      "input": "",
+      "rules": "[]",
+      "rule": "reduce [ 'none reduce [ 7 ] ]",
+      "all": false,
+      "case": false,
+      "note": "'none succeeds without consuming input. [ 7 ] matches end-of-input."
+    }
+  ]
+}
