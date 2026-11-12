@@ -16,8 +16,9 @@
 
 <main>
   <section class="panel intro">
-    <p>Glon is an experimental compact execution language for AI-generated software. This page runs the existing Glon PARSE engine—the same rule interpreter tested against a genuine REBOL/Core 2.7.8 oracle—in WebAssembly on the frozen S1-7 runtime.</p>
-    <p>The parser, search, repetition, character-set matching and capture logic run in Glon. JavaScript only loads the runtime, sends the source/rule text, and displays the Glon output.</p>
+    <p><strong>Glon PARSE executes parsing rules in Glon on a seven-primitive WebAssembly runtime.</strong> JavaScript provides the browser interface but does not implement the parsing algorithms.</p>
+    <p>This page runs the existing Glon PARSE engine—the same rule interpreter tested against a genuine REBOL/Core 2.7.8 oracle—in WebAssembly on the frozen S1-7 runtime. The parser, search, repetition, character-set matching and capture logic run in Glon.</p>
+    <p>Rules below use the existing <strong>encoded Glon data representation</strong>, not textual Rebol syntax. This is a tested subset, not a claim of full Rebol 2 PARSE compatibility.</p>
   </section>
 
   <section class="panel controls">
@@ -83,7 +84,7 @@
       <div><dt>Parser</dt><dd>The existing <code>parse.glon</code> from <code>experiments/glon-parse-r2/</code>; captures are displayed after the parse. No host parser or precomputed results.</dd></div>
       <div><dt>Verification</dt><dd>Repository baseline: 151/151 Glon checks and 127 Rebol 2 oracle probes. Those are repository results, not tests performed by each click.</dd></div>
     </dl>
-    <p class="note">Local demonstration only; not deployed. <a href="https://github.com/gchiu/rebol-substrate-experiment/tree/glon-shop-g1a/experiments/glon-parse-r2">Source and compatibility notes</a>.</p>
+    <p class="note">Public demonstration. <a href="https://github.com/gchiu/rebol-substrate-experiment/tree/glon-shop-g1a/experiments/glon-parse-web">Playground source and tests</a> · <a href="https://github.com/gchiu/rebol-substrate-experiment/tree/glon-shop-g1a/experiments/glon-parse-r2">Parser source and compatibility notes</a>.</p>
   </section>
 </main>
 <footer><p>Glon Parse · seven-primitive S1 · actual Glon parsing in WebAssembly</p></footer>

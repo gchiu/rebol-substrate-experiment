@@ -58,6 +58,9 @@ REQUIRED = [
     "inflate/samples.json", "inflate/samples/hello.bin", "inflate/samples/longer.bin",
     "inflate/samples/streaming.bin", "inflate/samples/binary.bin",
     "inflate/samples/empty.bin", "inflate/samples/gzip.bin",
+    "parse/index.html", "parse/app.js", "parse/style.css", "parse/glon.wasm",
+    "parse/prelude.glon", "parse/strings.glon", "parse/strings-ext.glon",
+    "parse/parse.glon", "parse/parse-driver.glon", "parse/examples.json",
 ]
 
 
