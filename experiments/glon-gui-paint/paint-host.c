@@ -51,6 +51,8 @@
 #define UI_GAP      8
 #define UI_MARGIN   24
 #define HISTORY_LIMIT 16
+#define SCRIPT_MAX_BYTES 262144
+#define SCRIPT_CMD_BYTES (1024 * 1024)
 
 static SDL_Window *win;
 static SDL_Renderer *ren;
@@ -75,6 +77,14 @@ static int open_dialog = 0;
 static int confirm_open = 0;
 static char open_path[1024] = "";
 static char open_error[256] = "";
+static int script_dialog = 0;
+static int script_loaded = 0;
+static char script_path[1024] = "";
+static char script_error[256] = "";
+static char script_message[256] = "";
+static char *script_source = NULL;
+static size_t script_source_len = 0;
+static int history_replaying = 0;
 static SDL_Rect ui_brush_bounds, ui_eraser_bounds;
 static SDL_Rect ui_color_bounds[4];
 static SDL_Rect ui_size_bounds;
@@ -243,7 +253,7 @@ static int canvas_to_window(int cx, int cy, int *wx, int *wy) {
     return 1;
 }
 static int point_in_ui(int x, int y) {
-    if (show_about || open_dialog || confirm_open) return 1;
+    if (show_about || open_dialog || confirm_open || script_dialog) return 1;
     return point_in_rect(&layout.menu, x, y) ||
            point_in_rect(&layout.toolbar, x, y) ||
            point_in_rect(&layout.right, x, y) ||
@@ -546,6 +556,62 @@ static void request_open(void) {
         open_dialog = 1;
     }
 }
+static void request_open_script(void) {
+    script_dialog = 1;
+    script_error[0] = 0;
+}
+static int read_script_file(const char *path, char **out, size_t *out_len) {
+    FILE *f = fopen(path, "rb");
+    if (!f) { snprintf(script_error, sizeof script_error, "Cannot open script: %.180s", path); return -1; }
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return -1; }
+    long n = ftell(f);
+    if (n < 0 || (unsigned long)n > SCRIPT_MAX_BYTES) {
+        snprintf(script_error, sizeof script_error, "Script exceeds %d bytes.", SCRIPT_MAX_BYTES);
+        fclose(f); return -1;
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) { fclose(f); return -1; }
+    char *src = malloc((size_t)n + 1);
+    if (!src) { fclose(f); snprintf(script_error, sizeof script_error, "Out of memory loading script."); return -1; }
+    if (fread(src, 1, (size_t)n, f) != (size_t)n) {
+        free(src); fclose(f); snprintf(script_error, sizeof script_error, "Cannot read script."); return -1;
+    }
+    src[n] = 0; fclose(f);
+    char *r = src, *w = src;
+    while (*r) {
+        if (r[0] == ';' && r[1] == ';') { while (*r && *r != '\n') r++; continue; }
+        *w++ = *r++;
+    }
+    *w = 0;
+    *out = src; *out_len = (size_t)(w - src);
+    return 0;
+}
+static int load_script_file(const char *path) {
+    if (!path || !*path) { snprintf(script_error, sizeof script_error, "Enter a .glon path."); return -1; }
+    char *src = NULL; size_t len = 0;
+    if (read_script_file(path, &src, &len) != 0) return -1;
+    cell save_lhp = M[GC_LOADER_HP];
+    int perr = 0;
+    r0_s1_parse(src, &perr);
+    if (perr) {
+        r0_s1_outcome oc;
+        r0_s1_session_parse_error(&oc);
+        snprintf(script_error, sizeof script_error, "Invalid script: %s/%s",
+                 r0_s1_outcome_status_name(oc.status),
+                 r0_s1_outcome_detail_name(oc.detail));
+        M[GC_LOADER_HP] = save_lhp;
+        free(src);
+        return -1;
+    }
+    M[GC_LOADER_HP] = save_lhp;
+    free(script_source);
+    script_source = src;
+    script_source_len = len;
+    script_loaded = 1;
+    snprintf(script_path, sizeof script_path, "%s", path);
+    script_error[0] = 0;
+    snprintf(script_message, sizeof script_message, "Loaded script.");
+    return 0;
+}
 
 /* Execute one Glon command. C does not decide brush/tool state. */
 static void command(const char *line, int *saved) {
@@ -557,7 +623,7 @@ static void command(const char *line, int *saved) {
             unsaved = 1;
         }
     } else if (line[0] == 'C' && line[1] == 0) {
-        history_record_clear();
+        if (!history_replaying) history_record_clear();
         clear_canvas();
         unsaved = 1;
     } else if (line[0] == 'T' && line[1] == ' ') {
@@ -583,6 +649,113 @@ static void process_commands(char *buf, int *saved) {
         if (!nl) break;
         p = nl + 1;
     }
+}
+
+static int app_call(const char *src);
+static int process_script_commands(char *buf, int *saved) {
+    char *p = buf;
+    while (p && *p) {
+        char *nl = strchr(p, '\n');
+        if (nl) *nl = 0;
+        if (*p) {
+            if (!((p[0] == 'L' || p[0] == 'E' || p[0] == 'C') &&
+                  (p[1] == ' ' || p[1] == 0)))
+                return -1;
+            command(p, saved);
+        }
+        if (!nl) break;
+        p = nl + 1;
+    }
+    return 0;
+}
+static int run_script(void) {
+    if (!script_loaded || !script_source) {
+        snprintf(script_error, sizeof script_error, "No script loaded.");
+        return -1;
+    }
+    int unsaved_before = unsaved;
+    Uint32 *pre = snapshot_canvas();
+    if (!pre) {
+        snprintf(script_error, sizeof script_error, "Cannot snapshot drawing layer.");
+        return -1;
+    }
+    cell save_lhp = M[GC_LOADER_HP];
+    char *cmds = malloc(SCRIPT_CMD_BYTES);
+    char status[32] = "";
+    int failed = 0;
+    script_error[0] = 0;
+    script_message[0] = 0;
+
+    if (!cmds) {
+        snprintf(script_error, sizeof script_error, "Out of memory for script commands.");
+        failed = 1;
+    }
+    if (!failed && app_call("paint/script-reset") != 0) {
+        snprintf(script_error, sizeof script_error, "Cannot reset script sink.");
+        failed = 1;
+    }
+    if (!failed) {
+        int perr = 0;
+        cell prog = r0_s1_parse(script_source, &perr);
+        if (perr) {
+            r0_s1_outcome oc;
+            r0_s1_session_parse_error(&oc);
+            snprintf(script_error, sizeof script_error, "Script parse failed: %s/%s",
+                     r0_s1_outcome_status_name(oc.status),
+                     r0_s1_outcome_detail_name(oc.detail));
+            failed = 1;
+        } else {
+            r0_s1_outcome oc;
+            r0_s1_session_run_block(prog, &oc);
+            if (oc.status != R0S1_OUT_OK) {
+                snprintf(script_error, sizeof script_error, "Script failed: %s/%s",
+                         r0_s1_outcome_status_name(oc.status),
+                         r0_s1_outcome_detail_name(oc.detail));
+                failed = 1;
+            }
+        }
+    }
+    if (!failed && (glon_call("paint/script-status", status, sizeof status) != 0 ||
+                    strcmp(status, "OK") != 0)) {
+        snprintf(script_error, sizeof script_error,
+                 "Script exceeded the drawing-operation limit.");
+        failed = 1;
+    }
+    if (!failed && glon_call("paint/script-result", cmds, SCRIPT_CMD_BYTES) != 0) {
+        snprintf(script_error, sizeof script_error, "Cannot read script drawing commands.");
+        failed = 1;
+    }
+    if (!failed && strlen(cmds) >= SCRIPT_CMD_BYTES - 1) {
+        snprintf(script_error, sizeof script_error, "Script command buffer is too large.");
+        failed = 1;
+    }
+    if (!failed) {
+        int saved = 0;
+        history_replaying = 1;
+        int arc = process_script_commands(cmds, &saved);
+        history_replaying = 0;
+        if (arc != 0) {
+            snprintf(script_error, sizeof script_error, "Script emitted an unsupported command.");
+            failed = 1;
+        }
+    } else {
+        history_replaying = 0;
+    }
+    if (failed) {
+        if (pre) restore_canvas(pre);
+        unsaved = unsaved_before;
+    } else {
+        history_stack_clear(&redo_stack);
+        history_push(&undo_stack, pre);
+        pre = NULL;
+        unsaved = 1;
+        snprintf(script_message, sizeof script_message, "Script applied.");
+        dirty = 1;
+    }
+    if (pre) free(pre);
+    free(cmds);
+    M[GC_LOADER_HP] = save_lhp;
+    return failed ? -1 : 0;
 }
 
 static int map_key(SDL_Keycode k, Uint16 mod) {
@@ -766,11 +939,19 @@ static void ui_menus(void) {
                  NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BORDER)) {
         nk_menubar_begin(nk);
         nk_layout_row_static(nk, 22, 64, 4);
-        if (nk_menu_begin_label(nk, "File", NK_TEXT_LEFT, nk_vec2(150, 190))) {
+        if (nk_menu_begin_label(nk, "File", NK_TEXT_LEFT, nk_vec2(190, 240))) {
             nk_layout_row_dynamic(nk, 24, 1);
             if (nk_menu_item_label(nk, "New / Clear", NK_TEXT_LEFT)) app_key_code(99);
             if (nk_menu_item_label(nk, "Open PNG / JPEG...", NK_TEXT_LEFT)) request_open();
+            if (nk_menu_item_label(nk, "Open Script...", NK_TEXT_LEFT)) request_open_script();
             if (nk_menu_item_label(nk, "Save PNG", NK_TEXT_LEFT)) app_key_code(115);
+            if (script_loaded) {
+                if (nk_menu_item_label(nk, "Run Script", NK_TEXT_LEFT)) run_script();
+            } else {
+                nk_widget_disable_begin(nk);
+                nk_menu_item_label(nk, "Run Script", NK_TEXT_LEFT);
+                nk_widget_disable_end(nk);
+            }
             nk_widget_disable_begin(nk);
             nk_menu_item_label(nk, "Export...", NK_TEXT_LEFT);
             nk_widget_disable_end(nk);
@@ -885,6 +1066,20 @@ static void ui_right_panel(void) {
         nk_label(nk, "Hardness 100% (fixed)", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 20, 1);
         nk_label(nk, "Rectangle: unavailable", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 20, 1);
+        nk_label(nk, "SCRIPT", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 28, 1);
+        if (script_loaded) {
+            if (nk_button_label(nk, "Run Script")) run_script();
+        } else {
+            nk_widget_disable_begin(nk);
+            nk_button_label(nk, "Run Script");
+            nk_widget_disable_end(nk);
+        }
+        nk_layout_row_dynamic(nk, 18, 1);
+        if (script_error[0]) nk_label_wrap(nk, script_error);
+        else if (script_message[0]) nk_label_wrap(nk, script_message);
+        else nk_label(nk, "Open Script from File", NK_TEXT_LEFT);
     }
     nk_end(nk);
 }
@@ -958,6 +1153,30 @@ static void ui_file_dialogs(void) {
         nk_end(nk);
     }
 }
+static void ui_script_dialog(void) {
+    if (!script_dialog) return;
+    int ww = 0, wh = 0;
+    SDL_GetWindowSize(win, &ww, &wh);
+    int w = 600, h = 220;
+    struct nk_rect r = ui_rect((ww - w) / 2, (wh - h) / 2, w, h);
+    if (nk_begin(nk, "Open Glon Script", r,
+                 NK_WINDOW_TITLE | NK_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR)) {
+        nk_layout_row_dynamic(nk, 22, 1);
+        nk_label(nk, "Glon source path:", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 30, 1);
+        nk_edit_string_zero_terminated(nk, NK_EDIT_FIELD, script_path,
+                                       (int)sizeof script_path, nk_filter_default);
+        nk_layout_row_dynamic(nk, 20, 1);
+        if (script_error[0]) nk_label_wrap(nk, script_error);
+        else nk_label(nk, "The script is validated now; Run Script executes it.", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 30, 2);
+        if (nk_button_label(nk, "Load Script")) {
+            if (load_script_file(script_path) == 0) script_dialog = 0;
+        }
+        if (nk_button_label(nk, "Cancel")) script_dialog = 0;
+    }
+    nk_end(nk);
+}
 static void ui_build(void) {
     update_layout();
     ui_menus();
@@ -966,6 +1185,7 @@ static void ui_build(void) {
     ui_layers();
     ui_status();
     ui_file_dialogs();
+    ui_script_dialog();
     if (show_about) {
         int w = 360, h = 160;
         int ww = 0, wh = 0; SDL_GetWindowSize(win, &ww, &wh);
@@ -1343,7 +1563,7 @@ static void run_app_ui(void) {
             } else if (e.type == SDL_MOUSEBUTTONDOWN) {
                 if (e.button.button == SDL_BUTTON_LEFT) {
                     pending_down = 1; dx = e.button.x; dy = e.button.y;
-                    down_ui = open_dialog || confirm_open || show_about ||
+                    down_ui = open_dialog || confirm_open || script_dialog || show_about ||
                               point_in_ui(dx, dy);
                 }
             } else if (e.type == SDL_MOUSEBUTTONUP) {
@@ -1394,7 +1614,7 @@ static void run_app_ui(void) {
         /* Key actions happen after pending painting, so a save key in the
          * same batch exports the stroke, not the previous frame. */
         for (int k = 0; k < nkeys; k++) {
-            if (open_dialog || confirm_open) continue;  /* Nuklear owns text keys */
+            if (open_dialog || confirm_open || script_dialog) continue;  /* Nuklear owns text keys */
             if ((keys[k].keysym.mod & KMOD_CTRL) &&
                 (keys[k].keysym.sym == SDLK_z || keys[k].keysym.sym == SDLK_y)) {
                 if (dragging) {
@@ -1519,6 +1739,103 @@ static int image_test(void) {
     if (event_key(SDLK_s, 0, &saved) != 0 || !saved) return 39;
     printf("image-test: png=ok jpeg=ok alpha=ok scale_center=ok immutable=ok "
            "eraser=ok clear=ok undo=ok invalid=ok history_reset=ok result=ok\n");
+    history_free();
+    return 0;
+}
+
+static int script_test(void) {
+    int saved = 0;
+    if (app_init() != 0) return 2;
+    clear_canvas();
+    history_free();
+    unsaved = 0;
+
+    /* Loading validates but does not execute. */
+    if (load_script_file("examples/rectangle.glon") != 0) return 3;
+    Uint8 r = 0, g = 0, b = 0;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,255,255,255)) return 4;
+    if (undo_stack.count != 0) return 5;
+
+    /* Rectangle is one undoable script operation. */
+    if (run_script() != 0) return 6;
+    if (undo_stack.count != 1) return 7;
+    if (read_canvas_pixel(100, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,220,60,60)) return 8;
+    if (read_canvas_pixel(400, 100, &r, &g, &b) != 0 || !pixel_is(r,g,b,220,60,60)) return 8;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,255,255,255)) return 9;
+    if (history_undo() != 1 ||
+        read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,255,255,255)) return 10;
+    if (history_redo() != 1 ||
+        read_canvas_pixel(100, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,220,60,60)) return 11;
+
+    /* Running the same script again is deterministic and remains bounded. */
+    long loader0 = loader_used();
+    if (run_script() != 0) return 12;
+    if (read_canvas_pixel(100, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,220,60,60)) return 13;
+    if (loader_used() != loader0) return 14;
+    if (undo_stack.count != 2) return 15;
+
+    /* Drawing order: the second blue stroke must be on top. */
+    if (load_script_file("tests/fixtures/order.glon") != 0) return 16;
+    if (run_script() != 0) return 17;
+    if (read_canvas_pixel(400, 200, &r, &g, &b) != 0 || !pixel_is(r,g,b,40,120,220)) return 18;
+
+    /* Landscape uses the same vocabulary, not an embedded image. */
+    if (load_script_file("examples/landscape.glon") != 0) return 19;
+    if (run_script() != 0) return 20;
+    if (read_canvas_pixel(400, 20, &r, &g, &b) != 0 || !pixel_is(r,g,b,40,120,220)) return 21;
+    if (read_canvas_pixel(100, 350, &r, &g, &b) != 0 || !pixel_is(r,g,b,40,160,80)) return 22;
+    if (read_canvas_pixel(500, 400, &r, &g, &b) != 0 || !pixel_is(r,g,b,220,60,60)) return 23;
+    if (read_canvas_pixel(200, 400, &r, &g, &b) != 0 || !pixel_is(r,g,b,220,60,60)) return 24;
+    if (read_canvas_pixel(700, 80, &r, &g, &b) != 0 || !pixel_is(r,g,b,230,170,40)) return 25;
+
+    /* Manual painting still works after a script. */
+    if (app_set_color(2) != 0 || app_set_tool(1) != 0 || app_set_size(8) != 0) return 26;
+    if (test_stroke(300, 300, 500, 300, 5) != 0) return 27;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,40,120,220)) return 28;
+
+    /* Script over an imported background; composite export remains 800x600. */
+    if (load_image_file("tests/fixtures/tall.jpg") != 0) return 29;
+    if (load_script_file("examples/rectangle.glon") != 0) return 30;
+    if (run_script() != 0) return 31;
+    if (read_canvas_pixel(400, 100, &r, &g, &b) != 0 || !pixel_is(r,g,b,220,60,60)) return 32;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !(g > 150 && r < 80 && b < 100)) return 33;
+    if (event_key(SDLK_s, 0, &saved) != 0 || !saved) return 34;
+
+    /* Invalid and runtime-failing scripts leave the current canvas untouched. */
+    int before = undo_stack.count;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0) return 35;
+    Uint8 oldr = r, oldg = g, oldb = b;
+    if (load_script_file("/tmp/no-such-glon-script.glon") == 0 || !script_error[0]) return 36;
+    if (undo_stack.count != before) return 37;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        r != oldr || g != oldg || b != oldb) return 38;
+    if (load_script_file("tests/fixtures/invalid-script.glon") == 0) return 36;
+    if (undo_stack.count != before) return 37;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        r != oldr || g != oldg || b != oldb) return 38;
+    if (load_script_file("tests/fixtures/runtime-error.glon") != 0) return 39;
+    if (run_script() == 0) return 40;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        r != oldr || g != oldg || b != oldb) return 41;
+    if (undo_stack.count != before) return 42;
+
+    /* Operation limit fails the run before any command is applied. */
+    FILE *f = fopen("/tmp/glon-script-limit.glon", "wb");
+    if (!f) return 43;
+    for (int i = 0; i < 4097; i++) fprintf(f, "paint/draw-line 0 0 1 1\n");
+    fclose(f);
+    if (load_script_file("/tmp/glon-script-limit.glon") == 0) {
+        if (run_script() == 0) return 44;
+    } else if (!script_error[0]) {
+        return 44;
+    }
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        r != oldr || g != oldg || b != oldb) return 45;
+    remove("/tmp/glon-script-limit.glon");
+
+    printf("script-test: load=ok rectangle=ok order=ok landscape=ok repeat=ok "
+           "undo=ok image=ok invalid=ok limit=ok loader_used=%ld result=ok\n",
+           loader_used());
     history_free();
     return 0;
 }
@@ -1688,6 +2005,16 @@ int main(int argc, char **argv) {
         SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
         SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
         fprintf(stderr, "glon-paint: image-test %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--script-test") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = script_test();
+        history_free();
+        free(script_source);
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        fprintf(stderr, "glon-paint: script-test %s\n", rc == 0 ? "passed" : "failed");
         return rc;
     }
     if (argc > 1 && strcmp(argv[1], "--coalesce-test") == 0) {

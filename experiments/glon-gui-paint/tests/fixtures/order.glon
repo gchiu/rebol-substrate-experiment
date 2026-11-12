@@ -1,0 +1,6 @@
+paint/draw-clear
+paint/set-color 1
+paint/set-size 8
+paint/draw-line 100 200 700 200
+paint/set-color 2
+paint/draw-line 100 200 700 200

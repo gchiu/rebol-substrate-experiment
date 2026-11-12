@@ -1,0 +1,5 @@
+;; Red rectangle outline at the known 100,100 -> 700,500 box.
+paint/draw-clear
+paint/set-color 1
+paint/set-size 4
+paint/draw-rect 100 100 600 400

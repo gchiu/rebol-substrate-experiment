@@ -26,6 +26,8 @@ test: all
 	$(TARGET) --undo-test
 	$(TARGET) --image-test
 	python3 tests/check-png.py glon-paint.png
+	$(TARGET) --script-test
+	python3 tests/check-png.py glon-paint.png
 	$(TARGET) --coalesce-test
 	python3 tests/check-png.py glon-paint.png
 	$(TARGET) --resize-test

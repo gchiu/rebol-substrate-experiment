@@ -1,4 +1,4 @@
-# Glon Paint G2.2
+# Glon Paint G3a
 
 A Photoshop-inspired desktop paint pad. SDL2 owns the window, events,
 renderer and PNG export; Nuklear supplies the immediate-mode interface; Glon
@@ -58,7 +58,7 @@ The default library root is `../..` when launched from this directory. Set
 | `Esc` | quit |
 | `Ctrl+Z` | undo the last complete stroke or clear |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | redo |
-| Menu File | New / Clear, Open PNG/JPEG, Save PNG, Quit |
+| Menu File | New / Clear, Open PNG/JPEG, Open Script, Run Script, Save PNG, Quit |
 | Menu Edit / View / Help | Clear, Undo, Redo, reset window size, About |
 
 The document is always 800x600 internally. Window resizing preserves its aspect
@@ -78,6 +78,48 @@ current drawing is unsaved, a confirmation is shown first. An invalid image
 shows an error and leaves the current document untouched. The eraser writes
 transparency into the drawing layer, revealing the background; Clear Canvas
 clears only the drawing layer. Save PNG exports the visible composite.
+
+## Scripts
+
+File → Open Script uses a Nuklear path field. Loading reads and parses the
+source with the existing Glon parser; it does not execute it or change the
+canvas. File → Run Script (or the Run Script button in the inspector) executes
+the loaded source in the persistent Glon session.
+
+A script starts with the current drawing layer; the bundled examples explicitly
+call `paint/draw-clear` first. Running the same script twice repeats its
+drawing. A successful script is one undoable operation. Parse/runtime/limit
+failures show an error, apply no drawing commands, and leave the current canvas
+and undo/redo history unchanged. Loading a script never touches the canvas.
+
+The exact script vocabulary is:
+
+```text
+paint/set-color n                  select colour 1-4
+paint/set-size n                   set brush size 1-64
+paint/draw-line x1 y1 x2 y2        opaque line using current colour/size
+paint/draw-rect x y w h           rectangle outline
+paint/draw-clear                   clear the drawing layer
+paint/erase-line x1 y1 x2 y2      erase to transparency using current size
+```
+
+Coordinates are always in the fixed 800x600 canvas system. Scripts do not see
+SDL or Nuklear. Scripts are validated against the existing parser, but arity and
+undefined-word errors are runtime errors. The source limit is 256 KiB and the
+drawing-command limit is 4,096 operations per run. The loader frontier is saved
+and restored around validation and execution; no permanent loader growth is
+expected for repeated runs of the same script.
+
+Examples:
+
+```text
+examples/rectangle.glon
+examples/landscape.glon
+```
+
+To try the acceptance path: File → Open Script, enter
+`examples/landscape.glon`, Load Script, then Run Script. Paint over the result
+and use File → Save PNG to export the composite.
 
 ## Glon command interface
 
@@ -108,7 +150,7 @@ language and no script editor or replay engine yet.
   demo/shop/strings-ext.glon experiments/glon-gui-paint/paint.glon \
   experiments/glon-gui-paint/tests/paint-tests.glon
 
-# SDL/Nuklear UI, image, undo, resize, PNG and 10,000-move loader tests
+# SDL/Nuklear UI, image, script, undo, resize, PNG and 10,000-move loader tests
 make test
 ```
 
@@ -133,10 +175,11 @@ these snapshots must not be described as a Glon command log.
 
 ## Limitations
 
-- File Open uses a Nuklear path field, not a native file chooser.
+- File Open/Open Script use Nuklear path fields, not native file choosers.
 - Imported images are immutable backgrounds, not editable layers.
 - Single drawing layer only; no layer creation or compositing.
 - Rectangle, custom Export and grid are disabled.
-- No PDF decoding, script editor, recorder or replay engine.
+- No PDF decoding, script editor, recording, replay or animation.
+- Scripts are ordinary Glon source, not a drawing DSL; there is no step execution.
 - Nuklear is vendored in `third_party/` (public-domain Nuklear v4.13.4 and its
   SDL2 renderer backend).

@@ -1,0 +1,45 @@
+;; A small rural landscape built only from the documented drawing vocabulary.
+paint/draw-clear
+
+;; Blue sky, filled with broad horizontal brush strokes.
+paint/set-color 2
+paint/set-size 64
+paint/draw-line 0 32 800 32
+paint/draw-line 0 96 800 96
+paint/draw-line 0 160 800 160
+paint/draw-line 0 224 800 224
+paint/draw-line 0 288 800 288
+
+;; Green hills.
+paint/set-color 3
+paint/set-size 64
+paint/draw-line 0 352 800 352
+paint/draw-line 0 416 800 416
+paint/draw-line 0 480 800 480
+paint/draw-line 0 544 800 544
+paint/draw-line 0 590 800 590
+
+;; House: red walls, roof and door.
+paint/set-color 1
+paint/set-size 3
+paint/draw-rect 500 380 120 110
+paint/draw-line 500 380 560 320
+paint/draw-line 560 320 620 380
+paint/draw-line 540 490 540 450
+paint/draw-line 540 450 570 450
+paint/draw-line 570 450 570 490
+
+;; Tree: red trunk with a green crown.
+paint/set-color 1
+paint/set-size 12
+paint/draw-line 200 320 200 490
+paint/set-color 3
+paint/set-size 48
+paint/draw-line 160 300 240 300
+paint/draw-line 150 330 250 330
+paint/draw-line 170 275 230 275
+
+;; Yellow sun.
+paint/set-color 4
+paint/set-size 32
+paint/draw-line 680 80 720 80
