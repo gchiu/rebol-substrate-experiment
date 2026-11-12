@@ -1,0 +1,52 @@
+{
+  "apps": [
+    {
+      "name": "fizzbuzz s1-7",
+      "median_ms": 31.66772800614126,
+      "min_ms": 30.233491997933015,
+      "max_ms": 33.55556800670456,
+      "runs": 5,
+      "stdout_bytes": 413
+    },
+    {
+      "name": "latex-tests s1-7",
+      "median_ms": 150.85738600464538,
+      "min_ms": 144.32459299860056,
+      "max_ms": 163.50882001279388,
+      "runs": 5,
+      "stdout_bytes": 55
+    },
+    {
+      "name": "latex-v002-tests s1-7",
+      "median_ms": 291.5954390045954,
+      "min_ms": 284.62538799794856,
+      "max_ms": 310.5205739993835,
+      "runs": 5,
+      "stdout_bytes": 709
+    },
+    {
+      "name": "fizzbuzz s1-12",
+      "median_ms": 24.028105006436817,
+      "min_ms": 22.89935499720741,
+      "max_ms": 24.96618000441231,
+      "runs": 5,
+      "stdout_bytes": 413
+    },
+    {
+      "name": "latex-tests s1-12",
+      "median_ms": 132.21332400280517,
+      "min_ms": 123.84593700699043,
+      "max_ms": 144.10230399516877,
+      "runs": 5,
+      "stdout_bytes": 55
+    },
+    {
+      "name": "latex-v002-tests s1-12",
+      "median_ms": 233.34429200622253,
+      "min_ms": 232.0711240026867,
+      "max_ms": 252.4166100047296,
+      "runs": 5,
+      "stdout_bytes": 709
+    }
+  ]
+}
