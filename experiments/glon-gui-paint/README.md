@@ -1,4 +1,4 @@
-# Glon Paint G3b.1
+# Glon Paint G3b.2
 
 A Photoshop-inspired desktop paint pad. SDL2 owns the window, events,
 renderer and PNG export; Nuklear supplies the immediate-mode interface; Glon
@@ -87,6 +87,7 @@ The default library root is `../..` when launched from this directory. Set
 | `Ctrl+Y` / `Ctrl+Shift+Z` | redo |
 | Menu File | New / Clear, Open Image, Open Script, Run Script, Save PNG, Quit |
 | Menu Edit / View / Help | Clear, Undo, Redo, reset window size, About |
+| Inspector Replay | Play, Pause, Step, Stop; 1/5/20/60 ops/s |
 
 The document is always 800x600 internally. Window resizing preserves its aspect
 ratio, centres it, and maps mouse coordinates through its current destination
@@ -149,6 +150,8 @@ Examples:
 ```text
 examples/rectangle.glon
 examples/landscape.glon
+examples/calligraphy.glon
+examples/replay-demo.glon
 ```
 
 To try the acceptance path: File → Open Script, choose
@@ -205,6 +208,47 @@ is suitable for the later recording/replay milestones; recording, playback,
 stylus hardware, bristles, texture, diffusion and character recognition are not
 implemented here.
 
+## Replay
+
+The REPLAY section prepares the loaded Glon script without touching the visible
+drawing layer. Preparation executes the ordinary Glon pipeline, reads its
+bounded command sink, validates every command, and stores the ordered stream in
+a 4,096-command / 1 MiB playback buffer. Playback dispatches those stored
+commands through the normal host drawing dispatcher; Glon is not rerun per
+frame and there is no image animation or reveal mask.
+
+Controls:
+
+- **Play** prepares if needed, then advances at the selected speed.
+- **Pause** stops dispatch while preserving the current canvas and pending
+  commands.
+- **Step** executes exactly one pending command and pauses.
+- **Stop** restores the drawing layer captured before playback.
+- **Speed**: 1, 5, 20 or 60 operations/second; default 5.
+
+The inspector displays Ready / Playing / Paused / Complete / Error, current and
+total command counts, and the current speed. The inspector scrolls when the
+window is too short; the canvas remains an 800x600 aspect-correct document.
+
+Preparation and playback are atomic with respect to failure and Stop. Completion
+commits the whole replay as one snapshot Undo action. A second Play after
+completion restarts from the same pre-playback state rather than accumulating
+pixels. While Playing/Paused, painting, script execution, image replacement,
+Clear and Undo/Redo are disabled; Save remains available. Window resizing does
+not affect playback or canvas coordinates.
+
+Timing uses monotonic `SDL_GetTicks64` and only decides when commands are
+dispatched. A bounded catch-up policy applies at most two commands per pump;
+geometry and final pixels depend only on the stored command order. The existing
+calligraphy renderer reads/updates a full 800x600 texture per pressure segment;
+this costs roughly 35 ms per command in the measured WSLg test, so 60/s is a
+nominal scheduling rate and may be limited by rendering throughput.
+
+`examples/replay-demo.glon` is a short replay demonstration containing a clear,
+an ordinary line, an eraser command and a pressure calligraphy taper. The
+calligraphy example and replay demo both execute through the ordinary Glon
+script pipeline.
+
 ## Glon command interface
 
 Glon returns one newline-terminated command per event. The host only executes
@@ -237,13 +281,14 @@ language and no script editor or replay engine yet.
   demo/shop/strings-ext.glon experiments/glon-gui-paint/paint.glon \
   experiments/glon-gui-paint/tests/paint-tests.glon
 
-# SDL/Nuklear UI, image, script, calligraphy, undo, resize, PNG and
+# SDL/Nuklear UI, image, script, calligraphy, replay, undo, resize, PNG and
 # 10,000-move loader tests
 make test
 ```
 
-The calligraphy test compares complete 800x600 drawing-layer snapshots with
-`memcmp` for repeated command sequences. The image test uses committed PNG/JPEG/alpha/invalid fixtures under
+The calligraphy and replay tests compare complete 800x600 drawing-layer
+snapshots with `memcmp` for repeated and immediate-vs-replay command sequences.
+The image test uses committed PNG/JPEG/alpha/invalid fixtures under
 `tests/fixtures/`. `make test` also runs a coalescing check that feeds 1,000
 motion events in one batch and reports raw motions versus Glon move calls and
 frame renders. This is a synthetic input-to-present measurement, not a claim

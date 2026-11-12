@@ -1,0 +1,12 @@
+;; Short replay demonstration: clear, ordinary line, eraser, pressure stroke.
+paint/draw-clear
+paint/set-color 2
+paint/set-size 20
+paint/draw-line 100 100 300 100
+paint/set-tool 2
+paint/draw-line 150 50 150 150
+paint/set-tool 1
+paint/set-color 1
+paint/set-calligraphy-diameter 40
+paint/set-ink-opacity 180
+paint/draw-pressure-line 350 100 255 450 100 0
