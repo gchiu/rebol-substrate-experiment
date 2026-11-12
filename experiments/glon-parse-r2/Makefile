@@ -5,6 +5,7 @@ SRCS := $(ROOT)/glon.c $(ROOT)/r0_s1_session.c $(ROOT)/r0_s1_show.c $(ROOT)/r0_s
 GLON := build/glon
 LIBS := build/glon-lib/prelude.glon build/glon-lib/strings.glon
 EXT := $(ROOT)/demo/shop/strings-ext.glon
+REBOL ?= $(ROOT)/rebol-core/rebol
 
 all: $(GLON) $(LIBS)
 
@@ -19,12 +20,16 @@ build/glon-lib/strings.glon: $(ROOT)/demo/shop/strings.glon
 	@mkdir -p build/glon-lib
 	cp $< $@
 
+oracle:
+	$(REBOL) -q r2-oracle.r
+
 test: all
 	$(GLON) $(EXT) parse.glon parse-test-common.glon parse-tests-a.glon
 	$(GLON) $(EXT) parse.glon parse-test-common.glon parse-tests-b.glon
 	$(GLON) $(EXT) parse.glon parse-test-common.glon parse-tests-c.glon
 	$(GLON) $(EXT) parse.glon parse-test-common.glon parse-tests-d1.glon
 	$(GLON) $(EXT) parse.glon parse-test-common.glon parse-tests-d2.glon
+	$(GLON) $(EXT) parse.glon parse-test-common.glon parse-tests-e.glon
 
 clean:
 	rm -rf build

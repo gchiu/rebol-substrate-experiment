@@ -47,12 +47,13 @@ bash test.sh
 ```
 
 The suite runs in separate native processes because the test data/code must fit
-the 64K machine. It consists of 40 checks across five groups (literals, sequence,
-alternatives, nesting, repetition, named records, guards).
+the 64K machine. It consists of **46 checks across six groups** (A/B/C/D1/D2/E:
+literals, sequence/alternatives, nesting, repetition, named records, guards and
+R2 oracle-driven boundary cases).
 
 ## Compatibility status
 
-Stage 1 passes 40/40 local checks and all 5 test processes complete. One
+Stage 1 passes **46/46 local checks** and all six test processes complete. One
 A-group native process measured about 0.07 s and 1.9 MB maximum RSS including
 Glon CLI/library startup (`/usr/bin/time -v`); this is a smoke measurement, not
 a parse benchmark. It covers:
@@ -66,21 +67,24 @@ a parse benchmark. It covers:
 - zero-length repetition guards.
 
 Rebol 2 reference: the REBOL/Core Users Guide, chapter 15 “Parsing”
-(<https://www.rebol.com/docs/core23/rebolcore-15.html>). No Rebol 2 executable
-was available in this environment; the installed Rebol 3 binary is not
-semantically authoritative for R2 and was not used as an oracle.
+(<https://www.rebol.com/docs/core23/rebolcore-15.html>), plus the genuine
+REBOL/Core **2.7.8.4.10** Linux x86-64 binary (`rebol-core/rebol`) under WSL.
+`make oracle` runs `r2-oracle.r` (42 probes). All comparable boolean outcomes
+match; B3 position and D2 unknown-rule are non-boolean exceptions, documented
+in `COMPATIBILITY.md`. Rebol 3 was not used as an R2 oracle.
 
 Not implemented in Stage 1: textual Rebol rule syntax, `|` as a word, `end`,
 `none`, charsets/bitsets, `skip`, `to`, `thru`, `copy`, `set`, numeric
 repetition, block parsing, parse expressions/actions, and full `/all`/`/case`
 surface syntax. `p/parse` is the Glon API, not a native `parse` primitive.
 
-Compatibility choice: alternatives are ordered; after a branch succeeds the
-engine does not re-enter that choice if a later outer rule fails. This is
-documented pending a controlled Rebol 2 oracle comparison. `some` of a
-zero-length rule raises a catchable `parse zero-length` SIN; `any` stops at the
-first non-progress step. These guards avoid an infinite loop and are explicit
-deviations/guards rather than silent PEG semantics.
+R2-verified semantics: alternatives are ordered with no re-entry after a
+successful branch (`E6` matches R2). Leading whitespace is accepted; trailing
+whitespace after a literal is rejected. `some` can consume trailing whitespace
+when it ends at input end. `some ""` is false; `any ""` is false on nonempty
+input and true at end. These outcomes match the R2 binary and avoid infinite
+repetition. The textual rule dialect and the unimplemented operators remain
+Stage 2 work, not claimed compatibility.
 
 ## Proof of execution
 
@@ -90,7 +94,8 @@ there is no host parser, regex, PEG library, or precomputed result. The only
 masm helper is the safe value-tag read used to distinguish strings/blocks from
 rule words.
 
-The full matrix and deviation notes are in `COMPATIBILITY.md`.
+The full matrix, oracle translation note, and corrected deviations are in
+`COMPATIBILITY.md`.
 
 ## Limits / next obstacle
 

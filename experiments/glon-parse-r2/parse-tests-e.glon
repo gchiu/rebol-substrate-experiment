@@ -1,0 +1,12 @@
+;; R2 oracle-driven cases: leading whitespace, repetition spacing/termination,
+;; zero-length any, and ordered-choice no-backtracking.
+t/cases: reduce [
+    reduce [ 'p "E1 leading whitespace" " a" "a" 1 ]
+    reduce [ 'p "E2 some with inter-pattern whitespace" "a a" reduce [ 1 "a" ] 1 ]
+    reduce [ 'p "E3 some consumes trailing whitespace to end" "a " reduce [ 1 "a" ] 1 ]
+    reduce [ 'p "E4 any zero-length on nonempty input" "x" reduce [ 2 "" ] 0 ]
+    reduce [ 'p "E5 any zero-length on empty input" "" reduce [ 2 "" ] 1 ]
+    reduce [ 'p "E6 no re-entry after successful branch" "abc" reduce [ reduce [ "a" 0 "ab" ] "c" ] 0 ]
+]
+t/run 0
+t/done "E tests"

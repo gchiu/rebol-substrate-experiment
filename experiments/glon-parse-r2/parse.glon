@@ -74,7 +74,7 @@ p/rule: func [rules src rule pos all case depth] [
     either > depth p/depth-limit [
         raise create-sin 'parse 'too-deep pos
     ] [
-        p-p: p/skip-ws src pos all
+        p-p: pos
         either s/raw-string? rule [
             p/literal src p-p rule all case
         ] [
@@ -108,10 +108,11 @@ p/alt: func [rules src blk pos i end all case depth] [
 ]
 p/seq: func [rules src blk pos i end all case depth] [
     either >= i end [ reduce [ 1 pos ] ] [
+        p-pos: either = i 0 [ pos ] [ p/skip-ws src pos all ]
         p-e: block-at blk i
         either = p-e p/op-some [
             either >= + i 1 end [ raise create-sin 'parse 'bad-rule p-e ] [
-                p-r: p/repeat rules src block-at blk + i 1 pos all case depth p/op-some
+                p-r: p/repeat rules src block-at blk + i 1 p-pos all case depth p/op-some
                 either = block-at p-r 0 0 [ p-r ] [
                     p/seq rules src blk block-at p-r 1 + i 2 end all case depth
                 ]
@@ -119,7 +120,7 @@ p/seq: func [rules src blk pos i end all case depth] [
         ] [
             either = p-e p/op-any [
                 either >= + i 1 end [ raise create-sin 'parse 'bad-rule p-e ] [
-                    p-r: p/repeat rules src block-at blk + i 1 pos all case depth p/op-any
+                    p-r: p/repeat rules src block-at blk + i 1 p-pos all case depth p/op-any
                     either = block-at p-r 0 0 [ p-r ] [
                         p/seq rules src blk block-at p-r 1 + i 2 end all case depth
                     ]
@@ -127,12 +128,12 @@ p/seq: func [rules src blk pos i end all case depth] [
             ] [
                 either = p-e p/op-opt [
                     either >= + i 1 end [ raise create-sin 'parse 'bad-rule p-e ] [
-                        p-r: p/rule rules src block-at blk + i 1 pos all case + depth 1
-                        p-r: either = block-at p-r 0 0 [ reduce [ 1 pos ] ] [ p-r ]
+                        p-r: p/rule rules src block-at blk + i 1 p-pos all case + depth 1
+                        p-r: either = block-at p-r 0 0 [ reduce [ 1 p-pos ] ] [ p-r ]
                         p/seq rules src blk block-at p-r 1 + i 2 end all case depth
                     ]
                 ] [
-                    p-r: p/rule rules src p-e pos all case + depth 1
+                    p-r: p/rule rules src p-e p-pos all case + depth 1
                     either = block-at p-r 0 0 [ p-r ] [
                         p/seq rules src blk block-at p-r 1 + i 1 end all case depth
                     ]
@@ -149,20 +150,25 @@ p/repeat: func [rules src rule pos all case depth kind] [
     ] [
         p-p: block-at p-r 1
         either = p-p pos [
-            either = kind p/op-some [
-                raise create-sin 'parse 'zero-length pos
-            ] [ reduce [ 1 pos ] ]
+            either = kind p/op-some [ reduce [ 0 pos ] ] [
+                either = pos s/length src [ reduce [ 1 pos ] ] [ reduce [ 0 pos ] ]
+            ]
         ] [
             p/repeat-loop rules src rule p-p all case depth kind
         ]
     ]
 ]
 p/repeat-loop: func [rules src rule pos all case depth kind] [
-    p-r: p/rule rules src rule pos all case + depth 1
-    either = block-at p-r 0 0 [ reduce [ 1 pos ] ] [
+    p-pos: p/skip-ws src pos all
+    p-r: p/rule rules src rule p-pos all case + depth 1
+    either = block-at p-r 0 0 [
+        either = p-pos s/length src [ reduce [ 1 p-pos ] ] [ reduce [ 1 pos ] ]
+    ] [
         p-p: block-at p-r 1
-        either = p-p pos [
-            raise create-sin 'parse 'zero-length pos
+        either = p-p p-pos [
+            either = kind p/op-some [ reduce [ 0 pos ] ] [
+                either = p-pos s/length src [ reduce [ 1 p-pos ] ] [ reduce [ 0 pos ] ]
+            ]
         ] [ p/repeat-loop rules src rule p-p all case depth kind ]
     ]
 ]
@@ -176,7 +182,7 @@ p/match-case: func [rules src rule] [ p/match-mode rules src rule 0 1 ]
 p/parse-mode: func [rules src rule all case] [
     p-r: p/match-mode rules src rule all case
     either = block-at p-r 0 0 [ 0 ] [
-        p-p: p/skip-ws src block-at p-r 1 all
+        p-p: block-at p-r 1
         either = p-p s/length src [ 1 ] [ 0 ]
     ]
 ]
