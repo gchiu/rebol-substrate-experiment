@@ -1,0 +1,17 @@
+t/cases: reduce [
+    reduce [ 'p "H1 digit charset" "7" reduce [ 8 mk-string reduce [ 48 57 ] ] 1 ]
+    reduce [ 'p "H2 non-digit" "a" reduce [ 8 mk-string reduce [ 48 57 ] ] 0 ]
+    reduce [ 'p "H3 alpha range" "z" reduce [ 8 mk-string reduce [ 97 122 ] ] 1 ]
+    reduce [ 'p "H4 charset is case-sensitive" "A" reduce [ 8 mk-string reduce [ 97 122 ] ] 0 ]
+    reduce [ 'p "H5 single char set" "a" reduce [ 8 mk-string reduce [ 97 97 ] ] 1 ]
+    reduce [ 'p "H6 single char case" "A" reduce [ 8 mk-string reduce [ 97 97 ] ] 0 ]
+    reduce [ 'p "H7 empty set" "a" reduce [ 8 "" ] 0 ]
+    reduce [ 'p "H8 some digit set" "123" reduce [ 1 reduce [ 8 mk-string reduce [ 48 57 ] ] ] 1 ]
+    reduce [ 'p "H9 some digit set stops" "12x" reduce [ 1 reduce [ 8 mk-string reduce [ 48 57 ] ] ] 0 ]
+    reduce [ 'p "H10 exact digit set" "111" reduce [ 20 3 reduce [ 8 mk-string reduce [ 48 57 ] ] ] 1 ]
+    reduce [ 'p "H11 exact digit set trailing" "1111" reduce [ 20 3 reduce [ 8 mk-string reduce [ 48 57 ] ] ] 0 ]
+    reduce [ 'p "H12 range and case mode" "A" reduce [ 8 mk-string reduce [ 65 90 ] ] 1 ]
+    reduce [ 'p "H13 case mode set" "A" reduce [ 8 mk-string reduce [ 65 90 ] ] 1 ]
+]
+t/run 0
+t/done "H (Stage 2C) tests"

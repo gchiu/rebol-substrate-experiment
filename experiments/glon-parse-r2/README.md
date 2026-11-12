@@ -1,4 +1,4 @@
-# Glon PARSE R2 — Stage 1
+# Glon PARSE R2 — Stage 2A–2C
 
 A bounded Rebol 2 `parse` rule engine written entirely in Glon and running on
 the frozen seven-primitive S1-7 CLI. The host only compiles/loads Glon sources
@@ -20,6 +20,24 @@ with `reduce` (literal Glon blocks are code, so strings must be produced by
 | `[ 3 rule ]` | `opt` (zero or one) |
 | `word` | named rule in the flat registry |
 | `end` / `none` | not implemented in Stage 1 |
+
+Stage 2 adds encoded operator blocks (used inside sequences; a sequence
+needs a nested block for each operator):
+
+| Glon data | Meaning |
+|---|---|
+| `[ 4 ]` | `skip` one byte |
+| `[ 5 "target" ]` | `to` literal target; leaves it unconsumed |
+| `[ 6 "target" ]` | `thru` literal target; consumes it |
+| `[ 7 ]` | `end` |
+| `[ 8 descriptor ]` | charset; descriptor is a byte string of `[lo hi]` pairs |
+| `[ 20 n rule ]` | exact numeric repetition |
+| `[ 21 min max rule ]` | bounded numeric repetition |
+
+Stage 2 charset matching is case-sensitive, matching the R2 oracle. `to`/`thru`
+currently require a literal string target, not an arbitrary rule. Numeric
+repetition skips intervening whitespace; zero-length rules cannot satisfy a
+positive count.
 
 The registry is a flat data block `[ name rule name rule ... ]`. Example:
 
@@ -47,16 +65,16 @@ bash test.sh
 ```
 
 The suite runs in separate native processes because the test data/code must fit
-the 64K machine. It consists of **46 checks across six groups** (A/B/C/D1/D2/E:
-literals, sequence/alternatives, nesting, repetition, named records, guards and
-R2 oracle-driven boundary cases).
+the 64K machine. It consists of **102 checks across nine groups** (`A`/`B`/`C`/
+`D1`/`D2`/`E` Stage 1, plus `F` Stage 2A, `G` Stage 2B and `H` Stage 2C).
 
 ## Compatibility status
 
-Stage 1 passes **46/46 local checks** and all six test processes complete. One
-A-group native process measured about 0.07 s and 1.9 MB maximum RSS including
-Glon CLI/library startup (`/usr/bin/time -v`); this is a smoke measurement, not
-a parse benchmark. It covers:
+Stage 2A–2C are implemented and all **102/102 local checks** pass. Representative
+native process measurements including CLI/library startup (`/usr/bin/time -v`):
+Stage 2A F group **2.33 s / 2.18 MB**, Stage 2B G group **0.16 s / 2.05 MB**,
+Stage 2C H group **0.07 s / 2.05 MB**. These are smoke measurements, not parse
+benchmarks.
 
 - literal matching, default ASCII case-insensitivity and `/case`;
 - sequences, ordered alternatives, nested blocks;
@@ -64,18 +82,24 @@ a parse benchmark. It covers:
 - named rule references and recursive named rules;
 - complete success, partial/trailing input, failure positions;
 - default whitespace skipping and `/all`;
-- zero-length repetition guards.
+- zero-length repetition guards;
+- `skip`, `to`, `thru`, `end`;
+- exact/bounded numeric repetition and charset ranges;
+- charset case sensitivity and charset repetition.
 
 Rebol 2 reference: the REBOL/Core Users Guide, chapter 15 “Parsing”
 (<https://www.rebol.com/docs/core23/rebolcore-15.html>), plus the genuine
 REBOL/Core **2.7.8.4.10** Linux x86-64 binary (`rebol-core/rebol`) under WSL.
-`make oracle` runs `r2-oracle.r` (42 probes). All comparable boolean outcomes
-match; B3 position and D2 unknown-rule are non-boolean exceptions, documented
-in `COMPATIBILITY.md`. Rebol 3 was not used as an R2 oracle.
+`make oracle` runs `r2-oracle.r` (42 Stage 1 probes) and
+`r2-stage2-oracle.r` (54 Stage 2A–2C probes). All comparable boolean outcomes
+match; the only non-boolean cases are B3 position and D2 unknown-rule,
+documented in `COMPATIBILITY.md`. Rebol 3 was not used as an R2 oracle.
 
-Not implemented in Stage 1: textual Rebol rule syntax, `|` as a word, `end`,
-`none`, charsets/bitsets, `skip`, `to`, `thru`, `copy`, `set`, numeric
-repetition, block parsing, parse expressions/actions, and full `/all`/`/case`
+Stage 2A–2C implement `skip`, `to`, `thru`, `end`, exact/bounded numeric
+repetition, and minimal range/member charsets. Stage 2D captures (`copy`,
+`set`) and arbitrary R2 actions are **not implemented**. Still not implemented:
+textual Rebol rule syntax, `|` as a word, `none`, block parsing, general
+charsets/bitsets beyond the minimal pair descriptor, and full `/all`/`/case`
 surface syntax. `p/parse` is the Glon API, not a native `parse` primitive.
 
 R2-verified semantics: alternatives are ordered with no re-entry after a
@@ -99,8 +123,8 @@ The full matrix, oracle translation note, and corrected deviations are in
 
 ## Limits / next obstacle
 
-Stage 1 is an encoded, bounded subset, not full Rebol 2. The next compatibility
-obstacle is the **textual rule dialect/parser** and then the full set of parse
-operators (charsets, `skip`/`to`/`thru`, `copy`/`set`, numeric repetition and
-actions). Those should be introduced incrementally with the same data format
-and R2 oracle comparisons; do not add VM features for them.
+Stage 2A–2C are an encoded, bounded subset, not full Rebol 2. The next
+compatibility obstacle is captures (`copy`/`set`) and then the textual rule
+dialect/parser and general actions. Those should be introduced incrementally
+with the same data format and R2 oracle comparisons; do not add VM features for
+them. Stage 2D was not attempted, so this milestone stops at 2A–2C.

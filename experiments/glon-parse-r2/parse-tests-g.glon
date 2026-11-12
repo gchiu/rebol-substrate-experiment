@@ -1,0 +1,22 @@
+t/cases: reduce [
+    reduce [ 'p "G1 exact 3" "aaa" reduce [ 20 3 "a" ] 1 ]
+    reduce [ 'p "G2 exact 2 leaves input" "aaa" reduce [ 20 2 "a" ] 0 ]
+    reduce [ 'p "G3 exact 4 short" "aaa" reduce [ 20 4 "a" ] 0 ]
+    reduce [ 'p "G4 exact 0 empty" "" reduce [ 20 0 "a" ] 1 ]
+    reduce [ 'p "G5 bounded 1..3" "aaa" reduce [ 21 1 3 "a" ] 1 ]
+    reduce [ 'p "G6 bounded 0..3" "aaa" reduce [ 21 0 3 "a" ] 1 ]
+    reduce [ 'p "G7 bounded too many" "aaaa" reduce [ 21 1 3 "a" ] 0 ]
+    reduce [ 'p "G8 exact nested" "aaaa" reduce [ 20 2 reduce [ 20 2 "a" ] ] 1 ]
+    reduce [ 'p "G9 exact block alternatives" "ab" reduce [ 20 2 reduce [ "a" 0 "b" ] ] 1 ]
+    reduce [ 'p "G10 exact block alternatives trailing" "abab" reduce [ 20 2 reduce [ "a" 0 "b" ] ] 0 ]
+    reduce [ 'p "G11 exact inter-pattern space" "a a" reduce [ 20 2 "a" ] 1 ]
+    reduce [ 'p "G12 exact zero-length fails" "aaa" reduce [ 20 3 "" ] 0 ]
+    reduce [ 'p "G13 exact zero at empty" "" reduce [ 20 0 "" ] 1 ]
+    reduce [ 'p "G14 bounded zero at empty" "" reduce [ 21 0 2 "" ] 1 ]
+    reduce [ 'p "G15 bounded zero nonempty" "a" reduce [ 21 0 2 "" ] 0 ]
+    reduce [ 'p "G16 exact one zero at end" "" reduce [ 20 1 "" ] 0 ]
+    reduce [ 'p "G17 exact two over space" "a a" reduce [ 20 2 "a" ] 1 ]
+    reduce [ 'p "G18 bounded 2..3 two" "aa" reduce [ 21 2 3 "a" ] 1 ]
+]
+t/run 0
+t/done "G (Stage 2B) tests"

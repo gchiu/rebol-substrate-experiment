@@ -1,4 +1,4 @@
-# Rebol 2 PARSE — Stage 1 compatibility matrix
+# Rebol 2 PARSE — Stage 1–2C compatibility matrix
 
 ## Oracle
 
@@ -48,37 +48,61 @@ in a block. This is an encoding/API difference, not a hidden host parser.
 | `any` zero-length on empty input | **PASS** | R2 D1c true; Glon E5 true |
 | `some` zero-length on empty input | **PASS** | R2 X2 false; not a separate Glon assertion |
 | Unknown named rule | **ERROR CLASS** | R2 raises a script/word error; Glon raises catchable SIN `unknown-rule` |
-| `end` rule value | **NOT IMPLEMENTED** | Outside Stage 1 |
+| `skip` | **PASS** | R2 F1-F6; Glon F1-F6 |
+| `to` target | **PASS (literal target)** | R2 F9-F20; target left unconsumed; Glon |
+| `thru` target | **PASS (literal target)** | R2 F8/F12/F14/F16/F19; target consumed |
+| `end` | **PASS** | R2 F21-F23; Glon F21-F23 |
+| Exact numeric repetition | **PASS** | R2 G1-G4/G8-G10/G16; Glon |
+| Bounded numeric repetition | **PASS** | R2 G5-G7/G14-G15/G18; Glon |
+| Charset member/range | **PASS (minimal pair descriptor)** | R2 H1-H13; Glon; matching is case-sensitive |
+| Captures (`copy`/`set`) | **NOT IMPLEMENTED** | Stage 2D optional; not attempted |
 | `none` rule value | **NOT IMPLEMENTED** | Outside Stage 1 |
+| General `charset!`/`bitset!` datatype | **NOT IMPLEMENTED** | Stage 2C supports only the encoded pair descriptor |
 | Textual Rebol rule syntax | **NOT IMPLEMENTED** | Rules are encoded Glon data; no host parser |
 | `|` as a word token | **NOT IMPLEMENTED** | Encoded integer separator `0` |
-| Charsets/bitsets, `skip`, `to`, `thru` | **NOT IMPLEMENTED** | Stage 2 |
-| `copy`, `set`, mark/restore | **NOT IMPLEMENTED** | Stage 2 |
-| Numeric repetition, actions, block parsing | **NOT IMPLEMENTED** | Stage 2/outside |
+| General `copy`/`set`, mark/restore | **NOT IMPLEMENTED** | Stage 2D optional; not attempted |
+| Actions, block parsing, general R2 datatypes | **NOT IMPLEMENTED** | Outside Stage 2A–2C |
 | Unicode/non-ASCII case | **NOT IMPLEMENTED** | Glon strings are byte strings |
 
 ## Test evidence
 
 R2 was run locally under WSL (`rebol-core/rebol`, version `2.7.8.4.10`,
-ELF x86-64). `make oracle` produced 42 probes; the results are summarized
-above. The full sequence includes true/false for literals, case, `/all`,
-whitespace, alternatives, nested rules, repetition, named/recursive rules and
-zero-length boundaries.
+ELF x86-64). `make oracle` runs 96 probes: 42 Stage 1 and 54 Stage 2A–2C. The
+full sequence includes true/false for literals, case, `/all`, whitespace,
+alternatives, nested rules, repetition, named/recursive rules, navigation,
+numeric repetition, charsets and zero-length boundaries.
 
-`make test` runs six fresh native S1-7 processes (A, B, C, D1, D2, E) and
-reports **46 passing checks, 0 failures**. This is 39 encoded rule cases; some
-include position or error assertions. The groups are separate because the test
-data/code must fit the fixed 64K machine—not because a host parses.
+`make test` runs nine fresh native S1-7 processes (A, B, C, D1, D2, E, F, G, H)
+and reports **102 passing checks, 0 failures**. This is 93 encoded rule cases
+(39 Stage 1 + 54 Stage 2A–2C); some include position or error assertions. The
+groups are separate because the test data/code must fit the fixed 64K
+machine—not because a host parses.
 
-`make oracle` runs 42 R2 probes. All comparable boolean outcomes match; the
-exceptions are inherently non-boolean:
+All comparable boolean outcomes match; the exceptions are inherently
+non-boolean:
 - B3 partial position: R2 has no position return; `B3prefix` checks the prefix.
 - D2 unknown rule: R2 error; Glon catchable SIN.
+- F7/F8/F11/F12 etc. are matched as complete parses or alternatives because R2
+  does not expose consumed positions.
 - X1/X2 add zero-length boundary probes beyond the Glon suite.
 
-One A-group native process measured about **0.07 s** and **1.9 MB maximum RSS**
-(`/usr/bin/time -v`), including CLI/library startup. This is a smoke
-measurement, not a parse benchmark.
+Stage 2 representative processes: F (2A) **2.33 s / 2.18 MB**, G (2B)
+**0.16 s / 2.05 MB**, H (2C) **0.07 s / 2.05 MB** including CLI/library startup
+(`/usr/bin/time -v`). These are smoke measurements, not parse benchmarks.
+
+## Stage 2A–2C oracle notes
+
+- `to` leaves the target unconsumed; `thru` consumes it. R2 `to "b" "b" "c"`
+  succeeds; `to "z"` failure allows the next alternative to retry at the
+  starting position.
+- Numeric repetition skips intervening whitespace. Positive exact/bounded
+  counts on zero-length rules fail; zero exact/bounded counts can succeed.
+  Bounded repetition accepts fewer than max if the remaining input is consumed
+  after the minimum is met.
+- R2 charsets are **case-sensitive even without `/case`**; ranges are encoded
+  here as `lo,hi` byte pairs. `charset!`/bitsets are not general R2 datatypes.
+- Failures/positions are reported by the Glon `p/match` API; R2 has no position
+  result, so prefix cases use an extended rule.
 
 ## Corrections made after R2 oracle
 
