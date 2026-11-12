@@ -754,6 +754,7 @@ static int run_script(void) {
     }
     if (pre) free(pre);
     free(cmds);
+    app_call("paint/title");  /* refresh the C UI mirror after script state changes */
     M[GC_LOADER_HP] = save_lhp;
     return failed ? -1 : 0;
 }
