@@ -61,6 +61,7 @@ REQUIRED = [
     "parse/index.html", "parse/app.js", "parse/style.css", "parse/glon.wasm",
     "parse/prelude.glon", "parse/strings.glon", "parse/strings-ext.glon",
     "parse/parse.glon", "parse/parse-driver.glon", "parse/examples.json",
+    "parse/rules.js",
 ]
 
 

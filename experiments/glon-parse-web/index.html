@@ -18,7 +18,7 @@
   <section class="panel intro">
     <p><strong>Glon PARSE executes parsing rules in Glon on a seven-primitive WebAssembly runtime.</strong> JavaScript provides the browser interface but does not implement the parsing algorithms.</p>
     <p>This page runs the existing Glon PARSE engine—the same rule interpreter tested against a genuine REBOL/Core 2.7.8 oracle—in WebAssembly on the frozen S1-7 runtime. The parser, search, repetition, character-set matching and capture logic run in Glon.</p>
-    <p>Rules below use the existing <strong>encoded Glon data representation</strong>, not textual Rebol syntax. This is a tested subset, not a claim of full Rebol 2 PARSE compatibility.</p>
+    <p>Rules below use a small <strong>textual PARSE syntax</strong> that the browser lowers into encoded Glon data before execution. It is a tested subset, not a claim of full Rebol 2 PARSE compatibility.</p>
   </section>
 
   <section class="panel controls">

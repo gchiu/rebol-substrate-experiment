@@ -125,14 +125,14 @@ jobs:
           cp experiments/glon-inflate-web/index.html experiments/glon-inflate-web/app.js              experiments/glon-inflate-web/style.css experiments/glon-inflate-web/samples.json              experiments/glon-inflate-web/prelude.glon experiments/glon-inflate-web/strings.glon              experiments/glon-inflate-web/strings-ext.glon experiments/glon-inflate-web/f2buf.glon              experiments/glon-inflate-web/inflate.glon experiments/glon-inflate-web/inflate-driver.glon              /tmp/inflate/
           cp experiments/glon-inflate-web/glon.wasm /tmp/inflate/glon.wasm
           cp -r experiments/glon-inflate-web/samples/. /tmp/inflate/samples/
-          # Glon PARSE (/parse/): the existing encoded-rule playground, its
-          # seven-primitive WASM and the PARSE engine sources.
+          # Glon PARSE (/parse/): the textual-rule playground, its
+          # seven-primitive WASM, rule reader and PARSE engine sources.
           rm -rf /tmp/parse && mkdir -p /tmp/parse
           cp experiments/glon-parse-web/index.html experiments/glon-parse-web/app.js \
              experiments/glon-parse-web/style.css experiments/glon-parse-web/examples.json \
              experiments/glon-parse-web/parse.glon experiments/glon-parse-web/parse-driver.glon \
              experiments/glon-parse-web/prelude.glon experiments/glon-parse-web/strings.glon \
-             experiments/glon-parse-web/strings-ext.glon /tmp/parse/
+             experiments/glon-parse-web/strings-ext.glon experiments/glon-parse-web/rules.js /tmp/parse/
           cp experiments/glon-parse-web/glon.wasm /tmp/parse/glon.wasm
 
       - name: Checkout main (Pages source)
@@ -187,8 +187,8 @@ jobs:
           # standard seven-primitive WASM.
           rm -rf pages/docs/inflate && mkdir -p pages/docs/inflate
           cp -r /tmp/inflate/. pages/docs/inflate/
-          # Glon PARSE (/parse/): page, encoded-rule engine and seven-primitive
-          # WASM. No test files are published.
+          # Glon PARSE (/parse/): page, textual rule reader, Glon engine and
+          # seven-primitive WASM. No test files are published.
           rm -rf pages/docs/parse && mkdir -p pages/docs/parse
           cp -r /tmp/parse/. pages/docs/parse/
           python3 site/check-site.py pages/docs
