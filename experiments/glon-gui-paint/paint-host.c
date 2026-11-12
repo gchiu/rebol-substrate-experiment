@@ -932,6 +932,11 @@ static int dispatch_canvas_pointer(int type, int wx, int wy, int button, int *sa
 }
 
 static int sdl_init(int hidden) {
+    /* WSLg's X11/Xwayland path leaves the Windows pointer hidden over SDL X11
+     * windows even when SDL says the cursor is visible. Prefer Wayland there;
+     * an explicit SDL_VIDEODRIVER still wins. */
+    if (!getenv("SDL_VIDEODRIVER") && getenv("WSL_DISTRO_NAME") && getenv("WAYLAND_DISPLAY"))
+        setenv("SDL_VIDEODRIVER", "wayland", 1);
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
         fprintf(stderr, "glon-paint: SDL_Init: %s\n", SDL_GetError());
         return -1;
@@ -2155,9 +2160,10 @@ int main(int argc, char **argv) {
         const char *gdk = getenv("GDK_BACKEND");
         printf("cursor-test: nfd=%d gdk=%s cursor_after=%d\n",
                ready, gdk ? gdk : "(unset)", SDL_ShowCursor(SDL_QUERY));
-        if (ready && driver && strcmp(driver, "x11") == 0 &&
-            (!gdk || strcmp(gdk, "x11") != 0)) {
-            fprintf(stderr, "cursor-test: NFD/GTK backend does not match SDL X11\n");
+        if (ready && driver && gdk &&
+            (strcmp(driver, "x11") == 0 || strcmp(driver, "wayland") == 0) &&
+            strcmp(gdk, driver) != 0) {
+            fprintf(stderr, "cursor-test: NFD/GTK backend does not match SDL\n");
             return 3;
         }
 #endif
