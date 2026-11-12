@@ -200,6 +200,22 @@ brackets.
 | emitted code / data-stack headroom | 12,861 cells / ~3,267 cells, after the data-stack guard and the masm result check added 191 cells [2026-11-10]; 12,670 / ~3,458 after the GC object-start check added 216 cells [2026-11-09] (12,454 / ~3,674 after the GC worklist guard added 117, from 12,337 / ~3,791 [2026-11-06]) | each native costs far more than it looks (a CALL ≈ 21 cells, an EXIT ≈ 17 [handoff]) |
 | masm library code | masm workers are assembled into the same code area, which grows towards the data stack: `prelude` 416 cells, `strings` 304, `strings-ext` 504. With `prelude` + `strings` loaded, code ends at 13,473, leaving 2,911 cells below the data-stack top (16,384); the data stack used ≤ 91 cells at maximum recursion depth [2026-11-07, `experiments/glon-iter`] | a third budget beside bindings and the loader heap, shared by every masm library in a session |
 
+[MEASURED 2026-11-12, `experiments/glon-gui-paint`, native 64K build]
+**Per-event `r0_s1_session_run` loads a permanent parse block.** A successful
+call does not reclaim the block it parses for the cell, so a host that creates
+a fresh event call per mouse move grows the loader heap by roughly 16 cells
+each time (`paint/move` measured). Before the paint host restored the loader
+frontier, the 10,000-move regression failed at move 648 with
+`RESOURCE_ERROR/loader_exhausted`: loader used 4,403 → 14,789 cells (11 free);
+managed high-water 39,984, 800 live cells after GC. Managed allocation was not
+the cause: the parse-time `lalloc` recorded `R0S1_PARSE_LOADER_EXHAUSTED`, not
+an allocator/GC halt. The host now saves `GC_LOADER_HP` before a throw-away
+event cell and restores it after copying the managed result (the same
+scratch-dispatch contract as `r0_s1_g1a_live.c`). After the fix the 10,000-move
+test finishes with loader usage 4,398 → 4,398 (10,402 free), managed
+high-water 39,984, 800 live cells and 3,789 GCs; symbols stayed 99. No VM, GC,
+allocator or capacity change was made.
+
 **[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
 worklist has a fixed 256 entries (`GC_WORKLIST_CAP`, the cells before `GC_A1`).
 - **It cannot overflow in the 64K configuration.** Each object is pushed at

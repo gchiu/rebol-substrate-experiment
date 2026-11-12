@@ -79,26 +79,36 @@ static int load_source(const char *root, const char *rel) {
 
 /* Call a Glon word, copying its returned STRING! before the next invocation. */
 static int glon_call(const char *src, char *out, size_t cap) {
+    /* Each SDL event is a throw-away source cell. Its parsed block lives in
+     * the permanent loader heap, so save the frontier and restore it after
+     * copying the result. This is the same scratch-dispatch contract used by
+     * r0_s1_g1a_live.c. The loaded app words and managed result are not
+     * loader objects, so this reclaims only the transient parse. */
+    cell save_lhp = M[GC_LOADER_HP];
     r0_s1_outcome oc;
     int rc = r0_s1_session_run(src, (unsigned)strlen(src), &oc);
     out[0] = 0;
+    int failed = 0;
     if (rc != R0S1_OUT_OK || oc.count < 1) {
         fprintf(stderr, "glon-paint: %s: %s/%s\n", src,
                 r0_s1_outcome_status_name(oc.status),
                 r0_s1_outcome_detail_name(oc.detail));
-        return -1;
+        failed = 1;
+    } else {
+        cell v = r0_s1_result(0, oc.count);
+        if ((v & 15) != T_STRING) {
+            fprintf(stderr, "glon-paint: %s did not return a string\n", src);
+            failed = 1;
+        } else {
+            cell p = v & ~(cell)15;
+            long n = (long)M[p];
+            if (n < 0 || (size_t)n >= cap) n = (long)cap - 1;
+            for (long i = 0; i < n; i++) out[i] = (char)(M[p + 1 + i] & 255);
+            out[n] = 0;
+        }
     }
-    cell v = r0_s1_result(0, oc.count);
-    if ((v & 15) != T_STRING) {
-        fprintf(stderr, "glon-paint: %s did not return a string\n", src);
-        return -1;
-    }
-    cell p = v & ~(cell)15;
-    long n = (long)M[p];
-    if (n < 0 || (size_t)n >= cap) n = (long)cap - 1;
-    for (long i = 0; i < n; i++) out[i] = (char)(M[p + 1 + i] & 255);
-    out[n] = 0;
-    return 0;
+    M[GC_LOADER_HP] = save_lhp;
+    return failed ? -1 : 0;
 }
 
 static void set_color(int r, int g, int b) {
@@ -217,12 +227,14 @@ static int map_key(SDL_Keycode k, Uint16 mod) {
     }
 }
 
-static void event_key(SDL_Keycode sym, Uint16 mod, int *saved) {
+static int event_key(SDL_Keycode sym, Uint16 mod, int *saved) {
     char src[128], cmdbuf[2048];
     snprintf(src, sizeof src, "paint/key %d", map_key(sym, mod));
-    if (glon_call(src, cmdbuf, sizeof cmdbuf) == 0) process_commands(cmdbuf, saved);
+    if (glon_call(src, cmdbuf, sizeof cmdbuf) != 0) return -1;
+    process_commands(cmdbuf, saved);
+    return 0;
 }
-static void event_mouse(int type, int x, int y, int button, int *saved) {
+static int event_mouse(int type, int x, int y, int button, int *saved) {
     char src[128], cmdbuf[4096];
     if (type == SDL_MOUSEBUTTONDOWN)
         snprintf(src, sizeof src, "paint/down %d %d %d", x, y, button);
@@ -230,7 +242,9 @@ static void event_mouse(int type, int x, int y, int button, int *saved) {
         snprintf(src, sizeof src, "paint/up %d %d %d", x, y, button);
     else
         snprintf(src, sizeof src, "paint/move %d %d", x, y);
-    if (glon_call(src, cmdbuf, sizeof cmdbuf) == 0) process_commands(cmdbuf, saved);
+    if (glon_call(src, cmdbuf, sizeof cmdbuf) != 0) return -1;
+    process_commands(cmdbuf, saved);
+    return 0;
 }
 
 static int app_init(void) {
@@ -268,6 +282,41 @@ static void push_mouse(Uint32 type, int x, int y) {
 }
 static void push_key(SDL_Keycode k) {
     SDL_Event e; memset(&e, 0, sizeof e); e.type = SDL_KEYDOWN; e.key.keysym.sym = k; SDL_PushEvent(&e);
+}
+static long loader_used(void) { return (long)(M[GC_LOADER_HP] - R0S1_HEAP_BASE); }
+static long loader_free_cells(void) { return (long)(R0S1_HEAP_LIMIT - M[GC_LOADER_HP]); }
+static int move_stress(int moves) {
+    int saved = 0;
+    if (app_init() != 0) return 2;
+    long loader0 = loader_used(), loader_max = loader0;
+    int symbols0 = 0; while (r0_s1_sym_name(symbols0)) symbols0++;
+    if (event_mouse(SDL_MOUSEBUTTONDOWN, 10, 10, SDL_BUTTON_LEFT, &saved) != 0) return 3;
+    int failed_at = -1;
+    for (int i = 0; i < moves; i++) {
+        int x = 10 + (i % 760), y = 10 + ((i / 760) % 560);
+        if (event_mouse(SDL_MOUSEMOTION, x, y, 0, &saved) != 0) { failed_at = i; break; }
+        long used = loader_used();
+        if (used > loader_max) loader_max = used;
+    }
+    if (failed_at < 0) {
+        if (event_mouse(SDL_MOUSEBUTTONUP, 770, 570, SDL_BUTTON_LEFT, &saved) != 0) return 4;
+        if (event_key(SDLK_s, 0, &saved) != 0) return 5;
+    }
+    printf("move-stress: moves=%d result=%s failed_at=%d loader_used_start=%ld "
+           "loader_used_end=%ld loader_used_max=%ld loader_free=%ld "
+           "managed_high=%ld gc_collects=%ld gc_live_cells=%ld\n",
+           moves, failed_at < 0 ? "ok" : "FAILED", failed_at,
+           loader0, loader_used(), loader_max, loader_free_cells(),
+           r0_s1_heap_high(), r0_s1_gc_count(), r0_s1_gc_live_cells());
+    int symbols1 = 0; while (r0_s1_sym_name(symbols1)) symbols1++;
+    printf("move-stress: symbols_start=%d symbols_end=%d\n", symbols0, symbols1);
+    if (failed_at >= 0) return 6;
+    long growth = loader_used() - loader0;
+    if (growth > 16) {
+        fprintf(stderr, "move-stress: loader grew by %ld cells (expected bounded)\n", growth);
+        return 7;
+    }
+    return saved ? 0 : 8;
 }
 static int self_test(void) {
     int saved = 0;
@@ -307,6 +356,15 @@ int main(int argc, char **argv) {
                            "demo/shop/strings-ext.glon",
                            "experiments/glon-gui-paint/paint.glon", NULL };
     for (int i = 0; libs[i]; i++) if (load_source(root, libs[i]) != 0) return 2;
+    if (argc > 2 && strcmp(argv[1], "--move-stress") == 0) {
+        int n = atoi(argv[2]);
+        if (n < 1) n = 10000;
+        if (sdl_init(1) != 0) return 2;
+        int rc = move_stress(n);
+        SDL_DestroyTexture(canvas); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
+        fprintf(stderr, "glon-paint: move-stress %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
     if (argc > 1 && strcmp(argv[1], "--self-test") == 0) {
         if (sdl_init(1) != 0) return 2;
         int rc = self_test();
