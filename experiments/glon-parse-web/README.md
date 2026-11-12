@@ -3,6 +3,11 @@
 Interactive browser demonstration of the existing Glon Rebol 2-style PARSE
 engine, running in WebAssembly on the frozen seven-primitive S1-7 core.
 
+The page accepts a small, explicit **textual** PARSE rule syntax and lowers it
+to Glon's existing encoded rule data in the browser. The lowering layer only
+tokenises/translates; the actual parser, matching, repetition, searching,
+charset matching and captures all execute in Glon.
+
 ## Run locally
 
 ```
@@ -11,86 +16,88 @@ python3 -m http.server 8766 --bind 0.0.0.0
 # open http://localhost:8766/index.html
 ```
 
-The page must be served over HTTP (not `file://`) so that `glon.wasm` and the
-Glon libraries can be fetched.
+Use HTTP, not `file://`, so the WASM and Glon libraries can be fetched.
 
 ## Execution path
 
 ```
-index.html + app.js
+index.html + app.js + rules.js
   fetch glon.wasm, prelude.glon, strings.glon, strings-ext.glon,
         parse.glon, parse-driver.glon
   instantiate the standard seven-primitive shop WASM runtime
   glon_init + glon_load each library
-  per Run: fresh instance, generated driver:
-      web/reset
-      b: mk-string [input bytes]
-      web-r: judge [
-        web-rules: <registry expression>
-        web-rule:  <top-rule expression>
-        p/parse-mode web-rules b web-rule <all> <case>
-      ]
-      web/report web-r
+  per Run:
+    lower textual definitions/top rule -> encoded Glon data expressions
+    fresh runtime -> web/reset
+    b: mk-string [input bytes]
+    web-r: judge [
+      web-rules: <lowered registry>
+      web-rule:  <lowered top rule>
+      p/parse-mode web-rules b web-rule <all> <case>
+    ]
+    web/report web-r
 ```
 
-`parse.glon` and `parse-driver.glon` are the actual Glon parser/driver; the
-driver only calls `p/parse-mode` and prints length-prefixed result/capture
-frames. JavaScript only loads files, builds the source text, and displays
-frames. It does not match, search, repeat, test character membership or
-implement captures.
+`parse.glon` is the actual Glon parser, and `parse-driver.glon` only calls
+`p/parse-mode` and prints length-prefixed result/capture frames. JavaScript does
+not implement matching, searching, repetition, character-set membership or
+capture semantics.
 
-The `glon.wasm` asset is the current-source seven-primitive runtime used by the
-existing `/inflate/` page. S1-12 is not used.
+`glon.wasm` is the current-source seven-primitive runtime used by `/inflate/`.
+S1-12 is not used.
 
-## Rule representation
+## Textual rule grammar
 
-The editor accepts the existing encoded Glon data representation, not textual
-Rebol syntax. Rules are built with `reduce` (literal Glon blocks are code).
+Supported forms:
 
-| Data | Meaning |
+| Syntax | Meaning |
 |---|---|
-| `"literal"` | literal string (case-insensitive by default) |
-| `[ rule … ]` | sequence; integer `0` separates alternatives |
-| `[ 1 rule ]`, `[ 2 rule ]`, `[ 3 rule ]` | `some`, `any`, `opt` |
-| `[ 4 ]`, `[ 5 "target" ]`, `[ 6 "target" ]`, `[ 7 ]` | `skip`, `to`, `thru`, `end` |
-| `[ 8 descriptor ]` | charset; descriptor is a byte string of `lo,hi` pairs |
-| `[ 20 n rule ]`, `[ 21 min max rule ]` | exact / bounded repetition |
-| `[ 9 "name" rule ]` | `copy` capture; use string names in this page |
-| `'none` | zero-length success, no consumption |
-| `'name` | named rule from the flat registry |
+| `"literal"` | literal string; case-insensitive by default |
+| `[ rule … ]` | sequence; `\|` separates ordered alternatives |
+| `some rule`, `any rule`, `opt rule` | repetition |
+| `n rule`, `min max rule` | exact / bounded numeric repetition |
+| `skip` | consume one byte |
+| `to "target"` | seek without consuming target |
+| `thru "target"` | seek and consume target |
+| `end` | match end of input |
+| `none` | zero-length success, no consumption |
+| `charset "a-z0-9_"` | case-sensitive member/range set |
+| `copy name rule` | capture the matched source slice |
+| `name` | named rule |
 
-The **named rules registry** textarea is a Glon expression producing the flat
-registry `[ name rule … ]`; the **top rule** textarea produces the rule value.
-For example, the recursive example uses:
+String escapes: `\n`, `\r`, `\t`, `\0`, `\xHH`, `\"`, `\\`. Other escapes and
+unexpected characters are syntax errors.
+
+Named rules are defined one per line in the definitions box:
 
 ```
-rules: reduce [ 'parens reduce [ "(" 'parens ")" 0 "x" ] ]
-rule:  'parens
+parens: [ "(" parens ")" | "x" ]
 ```
 
-Capture names should be strings in this UI so the host can display them. The
-parser's native tests also support symbol names, but Glon has no dynamic
-symbol-to-string operation; the browser driver deliberately prints string names.
+The top rule can be a block, string or named rule, e.g. `[ parens end ]`.
 
-`set`, `ahead` and `not` are not R2 string-parse capabilities and are not
-offered. There is no textual Rebol rule reader, block parsing or arbitrary
-action execution.
+### Lowered representation examples
 
-## Examples
+The browser keeps this internal representation available in the page's
+**Diagnostic: lowered Glon data** panel:
 
-The page includes literal, failure, sequence, alternatives, repetition,
-recursive named rules, `skip`, `to`, `thru`, charset, `copy`, and `none`/`end`
-examples. Every run is fresh, resetting captures and parser state.
+| Textual | Lowered Glon data |
+|---|---|
+| `[none end]` | `reduce [ 'none reduce [ 7 ] ]` |
+| `["hello" end]` | `reduce [ mk-string [...] reduce [ 7 ] ]` |
+| `[some "a" "b" end]` | `reduce [ 1 mk-string [...] mk-string [...] reduce [ 7 ] ]` |
+| `[copy captured some "a" "b" end]` | `reduce [ reduce [ 9 mk-string [...] 1 mk-string [...] ] mk-string [...] reduce [ 7 ] ]` |
+
+The numeric code table is not part of the user-facing syntax; it is retained
+only for diagnostics and regression tests.
 
 ## Tests
 
-Headless WASM test (Node 22+):
+Headless WASM/textual-lowering test (Node 22+):
 
 ```
 node test-node.mjs
 ```
-
-It checks all examples, the `copy` value, malformed rules and empty input.
 
 Real-browser test (Chrome/Edge + CDP):
 
@@ -100,20 +107,38 @@ python3 -m http.server 8766 --bind 0.0.0.0
 node test-browser.mjs --url http://localhost:8766/index.html --port 9222
 ```
 
-Recorded results: **16/16 Node/WASM checks** and **17/17 Chrome checks**
-(all examples, captures, malformed rule, fresh state). Native `make -C
-experiments/glon-parse-r2 test` remains **151/151**; native example outputs match
-the WASM outputs.
+Recorded local results:
+
+- Native PARSE suite: **151/151**
+- Rebol 2 oracle: **127 probes**
+- Node/WASM + textual lowering/errors: **27/27**
+- Chrome: **19/19**
+- Frozen-S1: passes
+
+The textual reader tests nested rules, alternatives, escapes, numeric
+repetition, named recursive rules, charsets, captures, empty input, malformed
+syntax and unsupported operators. Browser tests also verify fresh capture state
+across consecutive runs.
+
+## Examples
+
+The page includes literal/failure, sequence, alternatives, nested rules,
+repetition, numeric repetition, recursive named rules, `skip`, `to`, `thru`,
+charset, `copy`, and `none`/`end` examples. Input and rules remain editable.
 
 ## Limits
 
-- Input: **2,000 UTF-8 bytes**; generated source: **16 KiB** runtime limit.
-- Rules use the encoded Glon representation; no textual R2 rule reader.
-- `set`, `ahead`, `not`, block parsing, arbitrary actions and general R2
-  datatypes are outside this demo.
-- `copy` names are shown as strings; captures are source slices.
+- Input: **2,000 UTF-8 bytes**.
+- Generated Glon source: **16 KiB** runtime limit.
+- No textual Rebol evaluator, block parsing or arbitrary actions.
+- No `set`, `ahead` or `not`; these are not R2 string-parse capabilities in the
+  oracle.
 - `to`/`thru` targets are literal strings.
-- This is a local page, not deployed.
+- Capture names are strings so the browser can display them.
+- This is a tested subset, not full Rebol 2 PARSE compatibility.
+- This local version has not yet been deployed; the public `/parse/` page still
+  serves the previous encoded-rule version until a separately approved
+  deployment.
 
 ## Assets
 
@@ -123,15 +148,12 @@ the WASM outputs.
 | `parse.glon` | 14,347 |
 | `parse-driver.glon` | 856 |
 | `prelude.glon` + `strings.glon` + `strings-ext.glon` | 16,552 |
-| `app.js` | ~10.6 KB |
-| `examples.json` | ~3.6 KB |
-
-Runtime startup is roughly 3–15 ms and representative parses 2–8 ms in the
-recorded Chrome runs; these are local smoke measurements, not benchmarks.
+| `rules.js` | ~9.0 KB |
+| `app.js` | ~11.0 KB |
+| `examples.json` | ~3.2 KB |
 
 ## Deployment (not performed)
 
-When separately authorised, follow the existing Pages conventions: add
-`experiments/glon-parse-web/` to the site staging step, stage it as
-`docs/parse/`, include its required assets in `site/check-site.py`, and add a
-landing-page link. Do not deploy from this task.
+When authorised, follow the existing Pages integration: stage these assets as
+`docs/parse/`, add the required files to `site/check-site.py`, and update the
+landing page. No push or deployment was done in this task.

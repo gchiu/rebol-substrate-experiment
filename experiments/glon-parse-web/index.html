@@ -33,12 +33,12 @@
         <textarea id="input" spellcheck="false" rows="5">hello</textarea>
       </div>
       <div>
-        <label for="registry">Named rules registry (Glon data)</label>
-        <textarea id="registry" spellcheck="false" rows="5">[]</textarea>
+        <label for="definitions">Named rules (textual definitions)</label>
+        <textarea id="definitions" spellcheck="false" rows="5">parens: [ "(" parens ")" | "x" ]</textarea>
       </div>
     </div>
-    <label for="rule">Top rule (encoded Glon data expression)</label>
-    <textarea id="rule" spellcheck="false" rows="4">"hello"</textarea>
+    <label for="rule">Top rule (textual PARSE-style rule)</label>
+    <textarea id="rule" spellcheck="false" rows="4">[ parens end ]</textarea>
     <div class="row options">
       <label class="check"><input id="all" type="checkbox"> <code>/all</code> (do not skip whitespace)</label>
       <label class="check"><input id="case" type="checkbox"> <code>/case</code> (case-sensitive literals)</label>
@@ -48,7 +48,7 @@
       <button id="clear" class="secondary">Clear output</button>
       <span id="status" class="status" role="status"></span>
     </div>
-    <p class="note" id="input-note">Editable rules use the existing encoded Glon representation. The generated driver is limited to 16 KiB by the runtime source buffer; inputs are limited to 2,000 UTF-8 bytes.</p>
+    <p class="note" id="input-note">Rules are tokenised and lowered into the existing encoded Glon data, then executed by the Glon parser. The generated driver is limited to 16 KiB by the runtime source buffer; inputs are limited to 2,000 UTF-8 bytes.</p>
   </section>
 
   <section id="result" class="panel result" hidden>
@@ -59,23 +59,24 @@
   </section>
 
   <section class="panel reference">
-    <h2>Encoded rule representation</h2>
-    <p>This is the Stage 1–2E Glon rule data, not text Rebol syntax. Rules are ordinary Glon data built with <code>reduce</code>; a literal Glon block is code, so string-containing rules use nested <code>reduce</code>.</p>
+    <h2>Textual rule syntax</h2>
+    <p>Rules are read by a small front end and lowered into the existing encoded Glon data; matching always runs in Glon. The supported subset is:</p>
     <table>
-      <tr><th>Data</th><th>Meaning</th></tr>
-      <tr><td><code>"literal"</code></td><td>literal string; case-insensitive by default</td></tr>
-      <tr><td><code>[ rule … ]</code></td><td>sequence; <code>0</code> separates ordered alternatives</td></tr>
-      <tr><td><code>[ 1 rule ]</code>, <code>[ 2 rule ]</code>, <code>[ 3 rule ]</code></td><td><code>some</code>, <code>any</code>, <code>opt</code></td></tr>
-      <tr><td><code>[ 4 ]</code>, <code>[ 5 "target" ]</code>, <code>[ 6 "target" ]</code>, <code>[ 7 ]</code></td><td><code>skip</code>, <code>to</code>, <code>thru</code>, <code>end</code></td></tr>
-      <tr><td><code>[ 8 descriptor ]</code></td><td>charset; descriptor = byte pairs <code>lo,hi</code></td></tr>
-      <tr><td><code>[ 20 n rule ]</code>, <code>[ 21 min max rule ]</code></td><td>exact / bounded repetition</td></tr>
-      <tr><td><code>[ 9 "name" rule ]</code></td><td><code>copy</code> capture; names are strings in this page</td></tr>
-      <tr><td><code>'none</code></td><td>zero-length success, no consumption</td></tr>
-      <tr><td><code>'name</code></td><td>named rule from the flat registry</td></tr>
+      <tr><th>Syntax</th><th>Meaning</th></tr>
+      <tr><td><code>"literal"</code></td><td>literal string; backslash escapes <code>\n</code>, <code>\r</code>, <code>\t</code>, <code>\xHH</code>, <code>\"</code>, <code>\\</code>; case-insensitive by default</td></tr>
+      <tr><td><code>[ rule … ]</code></td><td>sequence; <code>|</code> separates ordered alternatives</td></tr>
+      <tr><td><code>some rule</code>, <code>any rule</code>, <code>opt rule</code></td><td>repetition</td></tr>
+      <tr><td><code>n rule</code>, <code>min max rule</code></td><td>exact or bounded repetition</td></tr>
+      <tr><td><code>skip</code>, <code>to "target"</code>, <code>thru "target"</code>, <code>end</code></td><td>navigation and non-consuming end test</td></tr>
+      <tr><td><code>charset "a-z0-9_"</code></td><td>character set; ranges use <code>lo-hi</code>; matching is case-sensitive</td></tr>
+      <tr><td><code>copy name rule</code></td><td>capture the source slice</td></tr>
+      <tr><td><code>none</code></td><td>zero-length success, no consumption</td></tr>
+      <tr><td><code>name</code></td><td>named rule from the definitions area</td></tr>
     </table>
-    <p class="note"><code>set</code>, <code>ahead</code> and <code>not</code> are not R2 string-parse capabilities and are not offered here. There is no textual Rebol rule reader, block parsing or arbitrary action execution.</p>
+    <p class="note">Named definitions use one line per rule, e.g. <code>digits: [ some digit ]</code>, with the top rule in the field above. Strings may contain <code>[</code>, <code>]</code>, <code>|</code> and comments. Unsupported operators are rejected with an error.</p>
+    <details class="diagnostic"><summary>Diagnostic: lowered Glon data</summary><pre id="lowered"></pre></details>
+    <p class="note">This is a tested subset, not full Rebol 2 PARSE compatibility. <code>set</code>, <code>ahead</code> and <code>not</code> are not offered. There is no textual Rebol evaluator, block parsing or arbitrary action execution.</p>
   </section>
-
   <section class="panel tech">
     <h2>Execution path</h2>
     <dl>
@@ -88,6 +89,7 @@
   </section>
 </main>
 <footer><p>Glon Parse · seven-primitive S1 · actual Glon parsing in WebAssembly</p></footer>
+<script src="rules.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
