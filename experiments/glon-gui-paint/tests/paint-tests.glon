@@ -1,0 +1,70 @@
+;; Headless tests of the actual Glon paint application logic.
+t/pass: 0
+t/fail: 0
+t/ok: func [n] [ t/pass: + t/pass 1 ]
+t/bad: func [n] [ t/fail: + t/fail 1 s/print s/+ "FAIL " n ]
+t/num: func [n got want] [ either = got want [ t/ok n ] [ t/bad n ] ]
+t/str: func [n got want] [ either s/= got want [ t/ok n ] [ t/bad n ] ]
+t/zero: func [n got] [ either s/= got "" [ t/ok n ] [ t/bad n ] ]
+
+paint/init
+t/num "default colour" paint/color 1
+t/num "default size" paint/size 4
+t/num "default tool" paint/tool 1
+t/num "default not drawing" paint/drawing 0
+
+paint/key 50
+t/num "colour 2" paint/color 2
+paint/key 51
+t/num "colour 3" paint/color 3
+paint/key 52
+t/num "colour 4" paint/color 4
+
+paint/key 43
+t/num "size up" paint/size 5
+paint/key 45
+t/num "size down" paint/size 4
+paint/size: 64
+paint/key 43
+t/num "size max" paint/size 64
+paint/size: 1
+paint/key 45
+t/num "size min" paint/size 1
+
+paint/key 101
+t/num "eraser" paint/tool 2
+paint/key 98
+t/num "brush" paint/tool 1
+
+t/zero "move before down" paint/move 20 20
+paint/down 10 10 1
+t/num "down starts drawing" paint/drawing 1
+t/str "down emits point line" paint/line 10 10 10 10 s/+ "L 10 10 10 10 1 230 170 40" mk-string [ 10 ]
+t/str "move after down emits line" paint/move 10 10 s/+ "L 10 10 10 10 1 230 170 40" mk-string [ 10 ]
+t/num "move keeps drawing" paint/drawing 1
+t/zero "right down ignored" paint/down 20 20 3
+t/num "right down does not draw" paint/drawing 1
+paint/up 20 20 3
+t/num "right up ignored" paint/drawing 1
+paint/up 20 20 1
+t/num "left up stops" paint/drawing 0
+t/zero "move after up" paint/move 30 30
+
+paint/down 30 30 1
+t/num "down again" paint/drawing 1
+t/str "move while drawing" paint/move 40 40 s/+ "L 30 30 40 40 1 230 170 40" mk-string [ 10 ]
+t/num "still drawing" paint/drawing 1
+paint/up 40 40 1
+t/num "stop" paint/drawing 0
+
+paint/key 99
+t/str "clear command" paint/key 99 s/+ "C" mk-string [ 10 ]
+paint/key 115
+t/str "save command" paint/key 115 s/+ "S glon-paint.png" mk-string [ 10 ]
+paint/key 27
+t/str "quit command" paint/key 27 s/+ "Q" mk-string [ 10 ]
+t/zero "unknown key" paint/key 120
+
+print t/pass
+print t/fail
+either = t/fail 0 [ s/print "glon-gui-paint: all headless tests passed" ] [ raise create-sin 'test 'failed t/fail ]
