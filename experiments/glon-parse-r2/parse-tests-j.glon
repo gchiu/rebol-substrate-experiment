@@ -1,0 +1,18 @@
+t/cases: reduce [
+    reduce [ 'p "J1 none empty" "" 'none 1 ]
+    reduce [ 'p "J2 none nonempty leaves input" "a" 'none 0 ]
+    reduce [ 'p "J3 none then end" "" reduce [ 'none reduce [ 7 ] ] 1 ]
+    reduce [ 'p "J4 none then literal" "a" reduce [ 'none "a" ] 1 ]
+    reduce [ 'p "J5 none alternative empty" "" reduce [ "a" 0 'none ] 1 ]
+    reduce [ 'p "J6 none alternative a" "a" reduce [ "a" 0 'none ] 1 ]
+    reduce [ 'p "J7 none alternative b" "b" reduce [ "a" 0 'none ] 0 ]
+    reduce [ 'c "J8 copy none empty" "" reduce [ 9 'x 'none ] 1 'x none ]
+    reduce [ 'c "J9 copy none nonempty" "a" reduce [ 9 'x 'none ] 0 'x none ]
+    reduce [ 'c "J10 copy none alternative" "" reduce [ 9 'x reduce [ "a" 0 'none ] ] 1 'x none ]
+    reduce [ 'c "J11 copy none alternative a" "a" reduce [ 9 'x reduce [ "a" 0 'none ] ] 1 'x "a" ]
+    reduce [ 'p "J12 some none fails safely" "a" reduce [ 1 'none ] 0 ]
+    reduce [ 'p "J13 any none nonempty fails safely" "a" reduce [ 2 'none ] 0 ]
+    reduce [ 'p "J14 any none empty succeeds" "" reduce [ 2 'none ] 1 ]
+]
+t/run 0
+t/done "J (Stage 2E none) tests"

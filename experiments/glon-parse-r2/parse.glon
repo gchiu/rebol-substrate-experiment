@@ -243,10 +243,14 @@ p/rule: func [rules src rule pos all case depth] [
                     ]
                 ]
             ] [
-                ;; Stage 1: every non-string, non-block value is a named rule.
-                p-r: p/lookup rules rule 0 block-len rules
-                either = p-r none [ raise create-sin 'parse 'unknown-rule rule ] [
-                    p/rule rules src p-r p-p all case + depth 1
+                ;; R2 also supports the literal rule word `none`: zero-length
+                ;; success with no consumption. `ahead`/`not` are not present
+                ;; in R2 string parsing and remain unknown-rule errors.
+                either = rule 'none [ reduce [ 1 p-p ] ] [
+                    p-r: p/lookup rules rule 0 block-len rules
+                    either = p-r none [ raise create-sin 'parse 'unknown-rule rule ] [
+                        p/rule rules src p-r p-p all case + depth 1
+                    ]
                 ]
             ]
         ]

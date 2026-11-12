@@ -1,4 +1,4 @@
-# Rebol 2 PARSE — Stage 1–2D compatibility matrix
+# Rebol 2 PARSE — Stage 1–2E compatibility matrix
 
 ## Oracle
 
@@ -64,21 +64,27 @@ in a block. This is an encoding/API difference, not a hidden host parser.
 | `set word rule` in string parse | **UNSUPPORTED (R2 ERROR)** | R2 I16 errors `Invalid argument: set`; Glon raises `parse unsupported-set`; set is a block-parse operation |
 | Capture zero-length | **PASS** | R2 I8/I9: `copy` of `any`/`opt` zero match sets `none`; I10 empty literal fails |
 | Capture side effects | **NO ROLLBACK** | Captures persist after later sequence failure and failed alternative (I3/I4/I5) |
+| `none` | **PASS** | R2 J1–J14; zero-length success/no consumption; capture of none is `none` |
+| `ahead` | **NOT AVAILABLE IN R2** | R2 AHEAD probe raises a script error; not implemented |
+| `not` | **NOT AVAILABLE IN R2** | R2 NOT probe raises a script error; not implemented |
+| `some none` | **PASS** | R2 J12 false; Glon guard false |
+| `any none` on empty input | **PASS** | R2 J14 true; Glon J14 true |
+| `any none` on nonempty input | **SAFETY DEVIATION** | R2 hangs indefinitely; Glon returns false rather than loop |
 | General `copy`/`set`, mark/restore | **PARTIAL: copy only** | `set` string form deliberately unsupported; no mark/restore |
-| Actions, block parsing, general R2 datatypes | **NOT IMPLEMENTED** | Outside Stage 2A–2D |
+| Actions, block parsing, general R2 datatypes | **NOT IMPLEMENTED** | Outside Stage 2A–2E |
 | Unicode/non-ASCII case | **NOT IMPLEMENTED** | Glon strings are byte strings |
 
 ## Test evidence
 
 R2 was run locally under WSL (`rebol-core/rebol`, version `2.7.8.4.10`,
-ELF x86-64). `make oracle` runs **112 probes**: 42 Stage 1, 54 Stage 2A–2C and
-16 Stage 2D capture probes. The capture probes check both the parse result and
-the assigned value (using a sentinel where needed).
+ELF x86-64). `make oracle` runs **127 probes**: 42 Stage 1, 54 Stage 2A–2C, 16 Stage 2D
+capture probes and 15 Stage 2E probes. The capture probes check both the parse
+result and the assigned value (using a sentinel where needed).
 
-`make test` runs twelve fresh native S1-7 processes (A, B, C, D1, D2, E, F1,
-F2, G, H, I1, I2) and reports **133 passing checks, 0 failures**. This is
-109 encoded rule cases (39 Stage 1 + 54 Stage 2A–2C + 16 Stage 2D). Some include
-position, capture or error assertions. The
+`make test` runs thirteen fresh native S1-7 processes (A, B, C, D1, D2, E, F1,
+F2, G, H, I1, I2, J) and reports **151 passing checks, 0 failures**. This is
+124 encoded rule cases (39 Stage 1 + 54 Stage 2A–2C + 16 Stage 2D + 15 Stage
+2E). Some include position, capture or error assertions. The
 groups are separate because the test data/code must fit the fixed 64K
 machine—not because a host parses.
 
@@ -93,7 +99,8 @@ non-boolean:
 Representative processes including CLI/library startup (`/usr/bin/time -v`):
 Stage 2A F groups **2.33 s / 2.18 MB**, Stage 2B G **0.16 s / 2.05 MB**, Stage
 2C H **0.07 s / 2.05 MB**, Stage 2D I1 **0.13 s / 2.18 MB**, I2 **0.08 s /
-2.05 MB**. These are smoke measurements, not parse benchmarks.
+2.05 MB**, Stage 2E J **0.16 s / 2.18 MB**. These are smoke measurements, not
+parse benchmarks.
 
 ## Stage 2A–2C oracle notes
 
@@ -108,6 +115,18 @@ Stage 2A F groups **2.33 s / 2.18 MB**, Stage 2B G **0.16 s / 2.05 MB**, Stage
   here as `lo,hi` byte pairs. `charset!`/bitsets are not general R2 datatypes.
 - Failures/positions are reported by the Glon `p/match` API; R2 has no position
   result, so prefix cases use an extended rule.
+
+## Stage 2E non-consuming notes
+
+- R2 `none` is a zero-length success rule with no consumption. It composes with
+  `end`, sequences, alternatives and `copy`; `copy x none` captures `none`.
+- R2 `some none` returns false; `any none` on empty input is true. R2 `any none`
+  on nonempty input enters an infinite loop; Glon returns false as a safety
+  guard. This is a deliberate deviation, not a compatibility success.
+- `ahead` and `not` are **not** R2 string-parse operators in this interpreter;
+  both raise script errors. They are not implemented.
+- `none`/`end` are non-consuming tests; capture side effects still follow the
+  no-rollback rule established in Stage 2D.
 
 ## Stage 2D capture notes
 

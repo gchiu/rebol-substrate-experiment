@@ -24,6 +24,7 @@ oracle:
 	$(REBOL) -q r2-oracle.r
 	$(REBOL) -q r2-stage2-oracle.r
 	$(REBOL) -q r2-capture-oracle.r
+	$(REBOL) -q r2-stage2e-oracle.r
 
 test: all
 	$(GLON) $(EXT) parse.glon parse-test-common.glon parse-tests-a.glon
@@ -38,6 +39,7 @@ test: all
 	$(GLON) $(EXT) parse.glon parse-test-common.glon parse-tests-h.glon
 	$(GLON) $(EXT) parse.glon parse-test-common.glon parse-tests-i1.glon
 	$(GLON) $(EXT) parse.glon parse-test-common.glon parse-tests-i2.glon
+	$(GLON) $(EXT) parse.glon parse-test-common.glon parse-tests-j.glon
 
 clean:
 	rm -rf build
