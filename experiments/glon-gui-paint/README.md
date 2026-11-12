@@ -37,6 +37,11 @@ with its GTK3 Linux backend when `pkg-config gtk+-3.0` is available. Install
 absent, or GTK initialisation fails at runtime, the application keeps the
 Nuklear path-entry fallback.
 
+Before initialising NFD, Paint sets GTK's backend to match SDL's active video
+driver (`x11` or `wayland`). Mixing a Wayland GTK dialog with an X11 SDL window
+under WSLg leaves the X11 pointer state inconsistent after dialog interaction.
+`./build/glon-paint --cursor-test` checks SDL cursor state and backend matching.
+
 From the repository root:
 
 ```sh

@@ -43,6 +43,7 @@ $(TARGET): paint-host.c third_party/nuklear.h third_party/nuklear_sdl_renderer.h
 	  $(LDFLAGS) $(SDL_LIBS) $(SDL_IMAGE_LIBS) $(NFD_LIBS) $(PNG_LIBS) -lstdc++ -lm -lpthread
 
 test: all
+	$(TARGET) --cursor-test
 	$(TARGET) --self-test
 	$(TARGET) --ui-test
 	python3 tests/check-png.py glon-paint.png

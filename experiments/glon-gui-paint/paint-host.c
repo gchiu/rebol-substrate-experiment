@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 /* Glon Paint native host (SDL2 + libpng).
  *
  * Glon owns all application state and decisions. This host only:
@@ -567,9 +568,17 @@ static void remember_directory(char *dst, size_t cap, const char *path) {
     memcpy(dst, path, n);
     dst[n] = 0;
 }
+static void nfd_match_backend(void) {
+    const char *driver = SDL_GetCurrentVideoDriver();
+    if (!driver) return;
+    if (strcmp(driver, "x11") == 0) setenv("GDK_BACKEND", "x11", 1);
+    else if (strcmp(driver, "wayland") == 0) setenv("GDK_BACKEND", "wayland", 1);
+}
 static int nfd_ready(void) {
-    if (nfd_state == 0)
+    if (nfd_state == 0) {
+        nfd_match_backend();
         nfd_state = (NFD_Init() == NFD_OKAY) ? 1 : -1;
+    }
     return nfd_state == 1;
 }
 #endif
@@ -2135,6 +2144,31 @@ int main(int argc, char **argv) {
         SDL_DestroyTexture(canvas); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
         fprintf(stderr, "glon-paint: coalesce-test %s\n", rc == 0 ? "passed" : "failed");
         return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--cursor-test") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int cursor_before = SDL_ShowCursor(SDL_QUERY);
+        const char *driver = SDL_GetCurrentVideoDriver();
+        printf("cursor-test: video=%s cursor=%d\n", driver ? driver : "(none)", cursor_before);
+#ifdef HAVE_NFD
+        int ready = nfd_ready();
+        const char *gdk = getenv("GDK_BACKEND");
+        printf("cursor-test: nfd=%d gdk=%s cursor_after=%d\n",
+               ready, gdk ? gdk : "(unset)", SDL_ShowCursor(SDL_QUERY));
+        if (ready && driver && strcmp(driver, "x11") == 0 &&
+            (!gdk || strcmp(gdk, "x11") != 0)) {
+            fprintf(stderr, "cursor-test: NFD/GTK backend does not match SDL X11\n");
+            return 3;
+        }
+#endif
+        if (SDL_ShowCursor(SDL_QUERY) != cursor_before) return 4;
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win);
+#ifdef HAVE_NFD
+        if (nfd_state == 1) NFD_Quit();
+#endif
+        IMG_Quit(); SDL_Quit();
+        return 0;
     }
     if (argc > 1 && strcmp(argv[1], "--nfd-probe") == 0) {
 #ifdef HAVE_NFD
