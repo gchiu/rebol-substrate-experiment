@@ -115,6 +115,24 @@ static void set_color(int r, int g, int b) {
     SDL_SetRenderDrawColor(ren, (Uint8)r, (Uint8)g, (Uint8)b, 255);
 }
 static void begin_canvas(void) { SDL_SetRenderTarget(ren, canvas); }
+
+/* The 800x600 canvas is stretched to fill the current window. SDL mouse
+ * coordinates are window coordinates, so invert that same scale before the
+ * event reaches Glon. Window size (not renderer pixels) is the correct input
+ * because SDL mouse events use window units, including on HiDPI displays. */
+static int map_window_to_canvas(int ww, int wh, int wx, int wy, int *cx, int *cy) {
+    if (ww <= 0 || wh <= 0) return 0;
+    if (wx < 0) wx = 0;
+    if (wy < 0) wy = 0;
+    if (wx >= ww) wx = ww - 1;
+    if (wy >= wh) wy = wh - 1;
+    int x = (int)(((int64_t)wx * PAINT_W) / ww);
+    int y = (int)(((int64_t)wy * PAINT_H) / wh);
+    if (x >= PAINT_W) x = PAINT_W - 1;
+    if (y >= PAINT_H) y = PAINT_H - 1;
+    *cx = x; *cy = y;
+    return 1;
+}
 static void clear_canvas(void) {
     begin_canvas();
     SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
@@ -134,13 +152,18 @@ static void draw_line(int x1, int y1, int x2, int y2, int size,
     }
     dirty = 1;
 }
-static void present_frame(void) {
+static void render_frame(void) {
     SDL_SetRenderTarget(ren, NULL);
+    SDL_RenderSetViewport(ren, NULL);
+    SDL_RenderSetClipRect(ren, NULL);
     SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
-    SDL_RenderClear(ren);
-    SDL_RenderCopy(ren, canvas, NULL, NULL);
-    SDL_RenderPresent(ren);
+    SDL_RenderClear(ren);                 /* fill newly exposed window area */
+    SDL_RenderCopy(ren, canvas, NULL, NULL); /* stretch full 800x600 canvas */
     dirty = 0;
+}
+static void present_frame(void) {
+    render_frame();
+    SDL_RenderPresent(ren);
 }
 
 static int save_png(const char *path) {
@@ -234,7 +257,10 @@ static int event_key(SDL_Keycode sym, Uint16 mod, int *saved) {
     process_commands(cmdbuf, saved);
     return 0;
 }
-static int event_mouse(int type, int x, int y, int button, int *saved) {
+static int event_mouse(int type, int wx, int wy, int button, int *saved) {
+    int ww, wh, x, y;
+    SDL_GetWindowSize(win, &ww, &wh);
+    if (!map_window_to_canvas(ww, wh, wx, wy, &x, &y)) return -1;
     char src[128], cmdbuf[4096];
     if (type == SDL_MOUSEBUTTONDOWN)
         snprintf(src, sizeof src, "paint/down %d %d %d", x, y, button);
@@ -262,7 +288,7 @@ static int sdl_init(int hidden) {
     }
     Uint32 flags = hidden ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN;
     win = SDL_CreateWindow("Glon Paint", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                           PAINT_W, PAINT_H, flags);
+                           PAINT_W, PAINT_H, flags | SDL_WINDOW_RESIZABLE);
     if (!win) { fprintf(stderr, "glon-paint: window: %s\n", SDL_GetError()); SDL_Quit(); return -1; }
     ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
@@ -285,6 +311,137 @@ static void push_key(SDL_Keycode k) {
 }
 static long loader_used(void) { return (long)(M[GC_LOADER_HP] - R0S1_HEAP_BASE); }
 static long loader_free_cells(void) { return (long)(R0S1_HEAP_LIMIT - M[GC_LOADER_HP]); }
+
+static int read_canvas_pixel(int x, int y, Uint8 *rr, Uint8 *gg, Uint8 *bb) {
+    begin_canvas();
+    SDL_Rect r = { x, y, 1, 1 };
+    Uint32 px = 0;
+    if (SDL_RenderReadPixels(ren, &r, SDL_PIXELFORMAT_ARGB8888, &px, 4) != 0) return -1;
+    SDL_PixelFormat *fmt = SDL_AllocFormat(SDL_PIXELFORMAT_ARGB8888);
+    if (!fmt) return -1;
+    Uint8 a;
+    SDL_GetRGBA(px, fmt, rr, gg, bb, &a);
+    SDL_FreeFormat(fmt);
+    return 0;
+}
+static int output_black_pixels(void) {
+    int w = 0, h = 0;
+    if (SDL_GetRendererOutputSize(ren, &w, &h) != 0 || w <= 0 || h <= 0) return -1;
+    Uint32 *pix = malloc((size_t)w * h * sizeof(Uint32));
+    if (!pix) return -1;
+    SDL_SetRenderTarget(ren, NULL);
+    if (SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888, pix,
+                             w * (int)sizeof(Uint32)) != 0) {
+        free(pix);
+        return -1;
+    }
+    SDL_PixelFormat *fmt = SDL_AllocFormat(SDL_PIXELFORMAT_ARGB8888);
+    if (!fmt) { free(pix); return -1; }
+    int black = 0;
+    for (int i = 0; i < w * h; i++) {
+        Uint8 r, g, b, a;
+        SDL_GetRGBA(pix[i], fmt, &r, &g, &b, &a);
+        if (r == 0 && g == 0 && b == 0) black++;
+    }
+    SDL_FreeFormat(fmt);
+    free(pix);
+    return black;
+}
+static int resize_to(int w, int h) {
+    SDL_SetWindowSize(win, w, h);
+    SDL_PumpEvents();
+    SDL_Event e;
+    while (SDL_PollEvent(&e)) {
+        if (e.type == SDL_WINDOWEVENT &&
+            (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
+             e.window.event == SDL_WINDOWEVENT_RESIZED ||
+             e.window.event == SDL_WINDOWEVENT_EXPOSED)) dirty = 1;
+    }
+    dirty = 1;
+    render_frame();
+    int ww = 0, wh = 0, tw = 0, th = 0;
+    SDL_GetWindowSize(win, &ww, &wh);
+    if (ww != w || wh != h) return -1;
+    if (SDL_QueryTexture(canvas, NULL, NULL, &tw, &th) != 0 ||
+        tw != PAINT_W || th != PAINT_H) return -1;
+    return 0;
+}
+static int resize_test(void) {
+    static const struct { int ww, wh, wx, wy, cx, cy; } maps[] = {
+        { 800, 600, 0, 0, 0, 0 },
+        { 800, 600, 799, 599, 799, 599 },
+        { 1600, 1200, 800, 600, 400, 300 },
+        { 600, 900, 450, 225, 600, 150 },
+        { 1000, 500, 250, 400, 200, 480 },
+    };
+    for (unsigned i = 0; i < sizeof maps / sizeof maps[0]; i++) {
+        int x = -1, y = -1;
+        if (!map_window_to_canvas(maps[i].ww, maps[i].wh, maps[i].wx, maps[i].wy, &x, &y) ||
+            x != maps[i].cx || y != maps[i].cy) {
+            fprintf(stderr, "resize-test: map case %u failed (%d,%d -> %d,%d, want %d,%d)\n",
+                    i, maps[i].wx, maps[i].wy, x, y, maps[i].cx, maps[i].cy);
+            return 2;
+        }
+    }
+    int saved = 0;
+    if (app_init() != 0) return 3;
+    if (event_key(SDLK_1, 0, &saved) != 0) return 4;
+    if (event_key(SDLK_c, 0, &saved) != 0) return 5;
+    struct { int w, h, wx, wy, cx, cy; } cases[] = {
+        { 800, 600, 100, 100, 100, 100 },
+        { 1600, 1200, 800, 600, 400, 300 },
+        { 600, 900, 450, 225, 600, 150 },
+        { 1000, 500, 250, 400, 200, 480 },
+        { 800, 600, 700, 500, 700, 500 },
+        { 1200, 800, 120, 80, 80, 60 },
+        { 800, 600, 100, 100, 100, 100 },
+    };
+    int total_black = 0;
+    for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        if (resize_to(cases[i].w, cases[i].h) != 0) {
+            fprintf(stderr, "resize-test: resize to %dx%d failed\n", cases[i].w, cases[i].h);
+            return 6;
+        }
+        int black = output_black_pixels();
+        if (black < 0) {
+            fprintf(stderr, "resize-test: output readback failed at %dx%d\n", cases[i].w, cases[i].h);
+            return 7;
+        }
+        total_black += black;
+        SDL_RenderPresent(ren);
+        if (event_mouse(SDL_MOUSEBUTTONDOWN, cases[i].wx, cases[i].wy,
+                        SDL_BUTTON_LEFT, &saved) != 0 ||
+            event_mouse(SDL_MOUSEBUTTONUP, cases[i].wx, cases[i].wy,
+                        SDL_BUTTON_LEFT, &saved) != 0)
+            return 8;
+        Uint8 r = 0, g = 0, b = 0;
+        if (read_canvas_pixel(cases[i].cx, cases[i].cy, &r, &g, &b) != 0 ||
+            r != 220 || g != 60 || b != 60) {
+            fprintf(stderr, "resize-test: draw at window (%d,%d) did not map to canvas "
+                    "(%d,%d): got %u,%u,%u\n", cases[i].wx, cases[i].wy,
+                    cases[i].cx, cases[i].cy, r, g, b);
+            return 9;
+        }
+    }
+    /* Every earlier stroke must survive the whole resize sequence. */
+    Uint8 r, g, b;
+    if (read_canvas_pixel(100, 100, &r, &g, &b) != 0 || r != 220 || g != 60 || b != 60)
+        return 10;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || r != 220 || g != 60 || b != 60)
+        return 10;
+    if (read_canvas_pixel(80, 60, &r, &g, &b) != 0 || r != 220 || g != 60 || b != 60)
+        return 10;
+    if (event_key(SDLK_s, 0, &saved) != 0 || !saved) return 11;
+    if (total_black != 0) {
+        fprintf(stderr, "resize-test: %d black output pixels after resize\n", total_black);
+        return 12;
+    }
+    printf("resize-test: maps=%u resizes=%u black_pixels=%d canvas=%dx%d result=ok\n",
+           (unsigned)(sizeof maps / sizeof maps[0]),
+           (unsigned)(sizeof cases / sizeof cases[0]), total_black, PAINT_W, PAINT_H);
+    present_frame();
+    return 0;
+}
 static int move_stress(int moves) {
     int saved = 0;
     if (app_init() != 0) return 2;
@@ -334,6 +491,10 @@ static int self_test(void) {
         if (!SDL_WaitEventTimeout(&e, 20)) { if (dirty) present_frame(); continue; }
         do {
             if (e.type == SDL_QUIT) quit_flag = 1;
+            else if (e.type == SDL_WINDOWEVENT &&
+                     (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
+                      e.window.event == SDL_WINDOWEVENT_RESIZED ||
+                      e.window.event == SDL_WINDOWEVENT_EXPOSED)) dirty = 1;
             else if (e.type == SDL_KEYDOWN) event_key(e.key.keysym.sym, e.key.keysym.mod, &saved);
             else if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP)
                 event_mouse(e.type, e.button.x, e.button.y, e.button.button, &saved);
@@ -356,6 +517,13 @@ int main(int argc, char **argv) {
                            "demo/shop/strings-ext.glon",
                            "experiments/glon-gui-paint/paint.glon", NULL };
     for (int i = 0; libs[i]; i++) if (load_source(root, libs[i]) != 0) return 2;
+    if (argc > 1 && strcmp(argv[1], "--resize-test") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = resize_test();
+        SDL_DestroyTexture(canvas); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
+        fprintf(stderr, "glon-paint: resize-test %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
     if (argc > 2 && strcmp(argv[1], "--move-stress") == 0) {
         int n = atoi(argv[2]);
         if (n < 1) n = 10000;
@@ -381,6 +549,10 @@ int main(int argc, char **argv) {
         if (!SDL_WaitEventTimeout(&e, 20)) { if (dirty) present_frame(); continue; }
         do {
             if (e.type == SDL_QUIT) quit_flag = 1;
+            else if (e.type == SDL_WINDOWEVENT &&
+                     (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
+                      e.window.event == SDL_WINDOWEVENT_RESIZED ||
+                      e.window.event == SDL_WINDOWEVENT_EXPOSED)) dirty = 1;
             else if (e.type == SDL_KEYDOWN) event_key(e.key.keysym.sym, e.key.keysym.mod, &saved);
             else if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP)
                 event_mouse(e.type, e.button.x, e.button.y, e.button.button, &saved);

@@ -18,6 +18,8 @@ $(TARGET): paint-host.c $(ROOT)/r0_s1_runtime.c $(ROOT)/r0_s1_session.c $(ROOT)/
 
 test: all
 	$(TARGET) --self-test
+	$(TARGET) --resize-test
+	python3 tests/check-png.py glon-paint.png
 	$(TARGET) --move-stress 10000
 	python3 tests/check-png.py glon-paint.png
 

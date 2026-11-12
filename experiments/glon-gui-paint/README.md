@@ -35,6 +35,7 @@ Run from this directory (the default library root is `../..`):
 | `S` | save `glon-paint.png` |
 | `Esc` | quit |
 | Close window | quit |
+| Resize window | scale the 800×600 canvas to the window; mouse coordinates follow the scale |
 
 ## Checks
 
@@ -46,17 +47,19 @@ Headless Glon logic tests:
   experiments/glon-gui-paint/tests/paint-tests.glon
 ```
 
-SDL event/PNG smoke test plus a deterministic 10,000-move event-bridge stress
-test:
+SDL event/PNG smoke test, resize/coordinate-mapping regression, and a
+deterministic 10,000-move event-bridge stress test:
 
 ```sh
 make test
 # or directly:
+./build/glon-paint --resize-test
 ./build/glon-paint --move-stress 10000
 ```
 
 The stress mode checks that transient per-event parse blocks do not grow the
-permanent loader heap and then saves a PNG.
+permanent loader heap and then saves a PNG. The resize test checks mapping and
+black-pixel-free redraw at several window sizes, including repeated resizes.
 
 The host has no SDL HOST primitives in frozen S1; this session-call bridge is the
 host limitation documented by the experiment.
