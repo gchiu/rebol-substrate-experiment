@@ -1,4 +1,4 @@
-# Glon Paint G3a
+# Glon Paint G3b.1
 
 A Photoshop-inspired desktop paint pad. SDL2 owns the window, events,
 renderer and PNG export; Nuklear supplies the immediate-mode interface; Glon
@@ -8,11 +8,11 @@ PNG/JPEG files.
 ## Layout
 
 - Menu bar: File, Edit, View, Help.
-- Left toolbar: Brush, Eraser, and a visibly disabled Rectangle.
+- Left toolbar: Brush, Eraser, Calligraphy, and a visibly disabled Rectangle.
 - Centre workspace: the fixed 800x600 document, aspect-fit and centred with
   margins; it scales with the window.
-- Right inspector: four colour swatches, brush-size slider, and tool
-  properties.
+- Right inspector: four colour swatches, brush-size slider, calligraphy
+  diameter/pressure/opacity sliders, and tool properties.
 - Layers panel: one read-only drawing layer above the immutable image
   background.
 - Status bar: image size and current tool.
@@ -73,9 +73,10 @@ The default library root is `../..` when launched from this directory. Set
 | Input | Action |
 | --- | --- |
 | Left-drag on image | draw with the current tool |
-| Toolbar | select Brush or Eraser |
+| Toolbar | select Brush, Eraser or Calligraphy |
 | Colour swatches | select Red, Blue, Green or Yellow |
-| Brush size slider | set 1-64 px |
+| Brush size slider | set ordinary Brush/Eraser size 1-64 px |
+| Calligraphy sliders | max diameter 1-64, pressure 0-255, ink opacity 0-255 |
 | `1`-`4` | colour shortcuts |
 | `+` / `-` | brush-size shortcuts |
 | `B` / `E` | Brush / Eraser shortcuts |
@@ -155,6 +156,55 @@ To try the acceptance path: File → Open Script, choose
 fallback), then Run Script. Paint over the result and use File → Save PNG to
 export the composite.
 
+## Calligraphy
+
+The Calligraphy tool uses a circular pressure tip. Its defaults are maximum
+diameter 24 px, pressure 180 and ink opacity 255. Pressure 0 deposits no ink;
+pressure 255 uses the full maximum diameter. The brush diameter is:
+
+```text
+diameter = (maximum_diameter * pressure + 127) / 255
+```
+
+Integer arithmetic is used throughout. Segment endpoints are projected onto a
+pixel-centre grid in doubled integer coordinates; the nearest-point diameter is
+interpolated linearly and rounded to nearest, and pixel coverage is a hard
+circular test. Coverage composites at the requested opacity using **max-alpha**
+rather than repeated source-over, so a joined segment does not darken an
+existing join. The drawing layer remains transparent outside the ink, and
+imported backgrounds are never modified.
+
+The mouse supplies position only. The Pressure slider supplies pressure for new
+segments; changing it between mouse moves changes subsequent segment widths.
+A click without movement emits a zero-length pressure segment (a round dot).
+Existing Brush and Eraser output and the window-to-canvas mapping are unchanged.
+One complete calligraphy mouse stroke is one Undo entry (snapshot history is
+retained).
+
+Script vocabulary:
+
+```text
+paint/set-calligraphy-diameter n   set maximum diameter 1-64
+paint/set-pressure p               set pressure 0-255
+paint/set-ink-opacity a            set ink opacity 0-255
+paint/set-tool 3                   select Calligraphy
+paint/draw-pressure-line x1 y1 p1 x2 y2 p2
+                                     draw a pressure-interpolated segment
+```
+
+`paint/draw-pressure-line` emits the host command:
+
+```text
+P x1 y1 p1 x2 y2 p2 max_diameter opacity r g b
+```
+
+See `examples/calligraphy.glon` for thin-to-thick, thick-to-thin, connected
+curves, a dot and a taper to zero pressure. Rendering is CPU/integer based and
+does not depend on SDL frame timing. The command sequence is deterministic and
+is suitable for the later recording/replay milestones; recording, playback,
+stylus hardware, bristles, texture, diffusion and character recognition are not
+implemented here.
+
 ## Glon command interface
 
 Glon returns one newline-terminated command per event. The host only executes
@@ -163,9 +213,12 @@ these commands:
 ```text
 L x1 y1 x2 y2 size r g b   draw an opaque line on the drawing layer
 E x1 y1 x2 y2 size r g b   erase to transparency on the drawing layer
+P x1 y1 p1 x2 y2 p2 max opacity r g b
+                           pressure-aware calligraphy segment
 C                          clear the drawing layer (background remains)
 T title                    set the window title
-I color size tool drawing  update the UI mirror/status
+I color size tool drawing calldia pressure opacity
+                           update the UI mirror/status
 S path.png                 export the 800x600 composite
 Q                          quit
 ```
@@ -184,11 +237,13 @@ language and no script editor or replay engine yet.
   demo/shop/strings-ext.glon experiments/glon-gui-paint/paint.glon \
   experiments/glon-gui-paint/tests/paint-tests.glon
 
-# SDL/Nuklear UI, image, script, undo, resize, PNG and 10,000-move loader tests
+# SDL/Nuklear UI, image, script, calligraphy, undo, resize, PNG and
+# 10,000-move loader tests
 make test
 ```
 
-The image test uses committed PNG/JPEG/alpha/invalid fixtures under
+The calligraphy test compares complete 800x600 drawing-layer snapshots with
+`memcmp` for repeated command sequences. The image test uses committed PNG/JPEG/alpha/invalid fixtures under
 `tests/fixtures/`. `make test` also runs a coalescing check that feeds 1,000
 motion events in one batch and reports raw motions versus Glon move calls and
 frame renders. This is a synthetic input-to-present measurement, not a claim

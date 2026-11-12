@@ -50,7 +50,7 @@
 
 #define UI_MENU_H   36
 #define UI_STATUS_H 32
-#define UI_TOOL_W   62
+#define UI_TOOL_W   108
 #define UI_RIGHT_W  252
 #define UI_GAP      8
 #define UI_MARGIN   24
@@ -70,6 +70,9 @@ static int ui_color = 1;
 static int ui_size = 4;
 static int ui_tool = 1;
 static int ui_drawing = 0;
+static int ui_call_diameter = 24;
+static int ui_pressure = 180;
+static int ui_opacity = 255;
 static int show_about = 0;
 static long perf_raw_motions = 0, perf_app_moves = 0, perf_renders = 0;
 typedef struct { Uint32 *pixels; } HistoryEntry;
@@ -94,7 +97,7 @@ static int nfd_state = 0;  /* 0 unknown, 1 ready, -1 unavailable */
 static char last_image_dir[1024] = "";
 static char last_script_dir[1024] = "";
 #endif
-static SDL_Rect ui_brush_bounds, ui_eraser_bounds;
+static SDL_Rect ui_brush_bounds, ui_eraser_bounds, ui_calligraphy_bounds;
 static SDL_Rect ui_color_bounds[4];
 static SDL_Rect ui_size_bounds;
 
@@ -225,7 +228,7 @@ static void update_layout(void) {
     layout.menu = (SDL_Rect){ 0, 0, ww, UI_MENU_H };
     layout.status = (SDL_Rect){ 0, wh - UI_STATUS_H, ww, UI_STATUS_H };
     layout.toolbar = (SDL_Rect){ 0, UI_MENU_H, UI_TOOL_W, avail_h };
-    int right_h = (avail_h * 3) / 5;
+    int right_h = (avail_h * 3) / 4;
     if (right_h < 1) right_h = 1;
     if (right_h > avail_h - UI_GAP) right_h = avail_h - UI_GAP;
     if (right_h < 1) right_h = 1;
@@ -404,6 +407,73 @@ static int restore_canvas(const Uint32 *px) {
     dirty = 1;
     return 0;
 }
+static int pressure_diameter(int max_diameter, int pressure) {
+    if (max_diameter < 1) max_diameter = 1;
+    if (pressure < 0) pressure = 0;
+    if (pressure > 255) pressure = 255;
+    return (max_diameter * pressure + 127) / 255;
+}
+/* Deterministic integer calligraphy segment. Coordinates are pixel centres
+ * (2*x+1, 2*y+1 in doubled units); the diameter at a projected point is
+ * interpolated linearly and rounded to nearest. Coverage is hard-edged; the
+ * resulting alpha is `opacity`, and overlapping coverage uses max-alpha rather
+ * than repeated source-over so joins do not darken. */
+static void draw_pressure_line(int x1, int y1, int p1, int x2, int y2, int p2,
+                               int max_diameter, int opacity,
+                               int r, int g, int b) {
+    if (opacity <= 0 || max_diameter <= 0) return;
+    int d1 = pressure_diameter(max_diameter, p1);
+    int d2 = pressure_diameter(max_diameter, p2);
+    if (d1 <= 0 && d2 <= 0) return;
+    Uint32 *pixels = snapshot_canvas();
+    if (!pixels) return;
+    int maxd = d1 > d2 ? d1 : d2;
+    int pad = (maxd + 2) / 2 + 1;
+    int minx = (x1 < x2 ? x1 : x2) - pad;
+    int maxx = (x1 > x2 ? x1 : x2) + pad;
+    int miny = (y1 < y2 ? y1 : y2) - pad;
+    int maxy = (y1 > y2 ? y1 : y2) + pad;
+    if (minx < 0) minx = 0;
+    if (miny < 0) miny = 0;
+    if (maxx >= PAINT_W) maxx = PAINT_W - 1;
+    if (maxy >= PAINT_H) maxy = PAINT_H - 1;
+    int64_t ax = (int64_t)x1 * 2, ay = (int64_t)y1 * 2;
+    int64_t bx = (int64_t)x2 * 2, by = (int64_t)y2 * 2;
+    int64_t dx = bx - ax, dy = by - ay;
+    int64_t len2 = dx * dx + dy * dy;
+    for (int y = miny; y <= maxy; y++) {
+        for (int x = minx; x <= maxx; x++) {
+            int64_t sx = (int64_t)x * 2 + 1, sy = (int64_t)y * 2 + 1;
+            int64_t t = 0;
+            if (len2 > 0) {
+                t = (sx - ax) * dx + (sy - ay) * dy;
+                if (t < 0) t = 0;
+                if (t > len2) t = len2;
+            }
+            int64_t nx = ax, ny = ay;
+            if (len2 > 0) {
+                nx += dx * t / len2;
+                ny += dy * t / len2;
+            }
+            int diam = len2 > 0
+                ? (int)(((int64_t)d1 * (len2 - t) + (int64_t)d2 * t + len2 / 2) / len2)
+                : d1;
+            if (diam <= 0) continue;
+            int64_t ddx = sx - nx, ddy = sy - ny;
+            if (ddx * ddx + ddy * ddy <= (int64_t)diam * diam) {
+                Uint32 *q = &pixels[(size_t)y * PAINT_W + x];
+                int olda = (int)((*q >> 24) & 255);
+                if (opacity > olda || (opacity == olda && opacity > 0))
+                    *q = ((Uint32)opacity << 24) | ((Uint32)r << 16) |
+                         ((Uint32)g << 8) | (Uint32)b;
+            }
+        }
+    }
+    SDL_UpdateTexture(canvas, NULL, pixels, PAINT_W * sizeof(Uint32));
+    free(pixels);
+    dirty = 1;
+}
+
 static void history_stack_clear(HistoryStack *h) {
     for (int i = 0; i < h->count; i++) free(h->items[i].pixels);
     h->count = 0;
@@ -720,6 +790,13 @@ static void command(const char *line, int *saved) {
             draw_line(x1, y1, x2, y2, size, r, g, b, line[0] == 'E' ? 0 : 255);
             unsaved = 1;
         }
+    } else if (line[0] == 'P' && line[1] == ' ') {
+        int x1, y1, p1, x2, y2, p2, dia, op, r, g, b;
+        if (sscanf(line + 2, "%d %d %d %d %d %d %d %d %d %d %d",
+                   &x1, &y1, &p1, &x2, &y2, &p2, &dia, &op, &r, &g, &b) == 11) {
+            draw_pressure_line(x1, y1, p1, x2, y2, p2, dia, op, r, g, b);
+            unsaved = 1;
+        }
     } else if (line[0] == 'C' && line[1] == 0) {
         if (!history_replaying) history_record_clear();
         clear_canvas();
@@ -729,9 +806,11 @@ static void command(const char *line, int *saved) {
     } else if (line[0] == 'S' && line[1] == ' ') {
         if (save_png(line + 2) == 0) { *saved = 1; unsaved = 0; }
     } else if (line[0] == 'I' && line[1] == ' ') {
-        int c, z, t, d;
-        if (sscanf(line + 2, "%d %d %d %d", &c, &z, &t, &d) == 4) {
+        int c, z, t, d, cd, pr, op;
+        if (sscanf(line + 2, "%d %d %d %d %d %d %d", &c, &z, &t, &d,
+                   &cd, &pr, &op) == 7) {
             ui_color = c; ui_size = z; ui_tool = t; ui_drawing = d;
+            ui_call_diameter = cd; ui_pressure = pr; ui_opacity = op;
         }
     } else if (line[0] == 'Q' && line[1] == 0) {
         quit_flag = 1;
@@ -756,7 +835,7 @@ static int process_script_commands(char *buf, int *saved) {
         char *nl = strchr(p, '\n');
         if (nl) *nl = 0;
         if (*p) {
-            if (!((p[0] == 'L' || p[0] == 'E' || p[0] == 'C') &&
+            if (!((p[0] == 'L' || p[0] == 'E' || p[0] == 'P' || p[0] == 'C') &&
                   (p[1] == ' ' || p[1] == 0)))
                 return -1;
             command(p, saved);
@@ -928,6 +1007,24 @@ static int app_set_tool(int t) {
     char src[64];
     snprintf(src, sizeof src, "paint/set-tool %d", t);
     return app_call(src);
+}
+static int app_set_calligraphy_diameter(int n) {
+    char src[64];
+    snprintf(src, sizeof src, "paint/set-calligraphy-diameter %d", n);
+    return app_call(src);
+}
+static int app_set_pressure(int n) {
+    char src[64];
+    snprintf(src, sizeof src, "paint/set-pressure %d", n);
+    return app_call(src);
+}
+static int app_set_ink_opacity(int n) {
+    char src[64];
+    snprintf(src, sizeof src, "paint/set-ink-opacity %d", n);
+    return app_call(src);
+}
+static const char *tool_name(int t) {
+    return t == 2 ? "Eraser" : t == 3 ? "Calligraphy" : "Brush";
 }
 static int dispatch_canvas_pointer(int type, int wx, int wy, int button, int *saved) {
     if (point_in_ui(wx, wy)) return 0;
@@ -1116,20 +1213,24 @@ static void ui_toolbar(void) {
         ui_eraser_bounds = (SDL_Rect){ (int)eb.x, (int)eb.y, (int)eb.w, (int)eb.h };
         if (nk_option_label(nk, "Eraser", ui_tool == 2)) app_set_tool(2);
         nk_layout_row_dynamic(nk, 34, 1);
+        struct nk_rect cb2 = nk_widget_bounds(nk);
+        ui_calligraphy_bounds = (SDL_Rect){ (int)cb2.x, (int)cb2.y, (int)cb2.w, (int)cb2.h };
+        if (nk_option_label(nk, "Calligraphy", ui_tool == 3)) app_set_tool(3);
+        nk_layout_row_dynamic(nk, 34, 1);
         nk_widget_disable_begin(nk);
         nk_button_label(nk, "Rectangle");
         nk_widget_disable_end(nk);
         nk_layout_row_dynamic(nk, 18, 1);
         nk_label(nk, "size", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 24, 1);
-        nk_label(nk, ui_tool == 2 ? "eraser" : "brush", NK_TEXT_LEFT);
+        nk_label(nk, tool_name(ui_tool), NK_TEXT_LEFT);
     }
     nk_end(nk);
 }
 static void ui_right_panel(void) {
     if (nk_begin(nk, "##inspector", ui_rect(layout.right.x, layout.right.y,
                                             layout.right.w, layout.right.h),
-                 NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BORDER)) {
+                 NK_WINDOW_BORDER)) {
         nk_layout_row_dynamic(nk, 22, 1);
         nk_label(nk, "COLOUR", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 34, 4);
@@ -1161,11 +1262,34 @@ static void ui_right_panel(void) {
         nk_layout_row_dynamic(nk, 20, 1);
         nk_label(nk, bsz, NK_TEXT_RIGHT);
         nk_layout_row_dynamic(nk, 20, 1);
+        nk_label(nk, "CALLIGRAPHY", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 20, 1);
+        char cds[32]; snprintf(cds, sizeof cds, "Max diameter %d px", ui_call_diameter);
+        nk_label(nk, cds, NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 26, 1);
+        int new_dia = ui_call_diameter;
+        if (nk_slider_int(nk, 1, &new_dia, 64, 1) && new_dia != ui_call_diameter)
+            app_set_calligraphy_diameter(new_dia);
+        nk_layout_row_dynamic(nk, 20, 1);
+        char prs[32]; snprintf(prs, sizeof prs, "Pressure %d", ui_pressure);
+        nk_label(nk, prs, NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 26, 1);
+        int new_pressure = ui_pressure;
+        if (nk_slider_int(nk, 0, &new_pressure, 255, 1) && new_pressure != ui_pressure)
+            app_set_pressure(new_pressure);
+        nk_layout_row_dynamic(nk, 20, 1);
+        char ops[32]; snprintf(ops, sizeof ops, "Ink opacity %d", ui_opacity);
+        nk_label(nk, ops, NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 26, 1);
+        int new_opacity = ui_opacity;
+        if (nk_slider_int(nk, 0, &new_opacity, 255, 1) && new_opacity != ui_opacity)
+            app_set_ink_opacity(new_opacity);
+        nk_layout_row_dynamic(nk, 20, 1);
         nk_label(nk, "TOOL PROPERTIES", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 20, 1);
-        nk_label(nk, ui_tool == 2 ? "Eraser" : "Brush", NK_TEXT_LEFT);
+        nk_label(nk, tool_name(ui_tool), NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 20, 1);
-        nk_label(nk, "Opacity 100% (fixed)", NK_TEXT_LEFT);
+        nk_label(nk, ui_tool == 3 ? "Circular pressure tip" : "Opacity 100% (fixed)", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 20, 1);
         nk_label(nk, "Hardness 100% (fixed)", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 20, 1);
@@ -1216,8 +1340,9 @@ static void ui_status(void) {
 #else
         const char *chooser = "path fallback";
 #endif
-        snprintf(s, sizeof s, "Canvas 800 x 600   |   Tool: %s   |   Colour: %d   |   Size: %d px   |   Chooser: %s",
-                 ui_tool == 2 ? "Eraser" : "Brush", ui_color, ui_size, chooser);
+        snprintf(s, sizeof s, "Canvas 800 x 600   |   Tool: %s   |   Colour: %d   |   Size: %d px   |   Calligraphy: %d/%d/%d   |   Chooser: %s",
+                 tool_name(ui_tool), ui_color, ui_size, ui_call_diameter,
+                 ui_pressure, ui_opacity, chooser);
         nk_label(nk, s, NK_TEXT_LEFT);
     }
     nk_end(nk);
@@ -1614,6 +1739,15 @@ static int ui_test(void) {
     if (ui_color != 2) return 9;
     ui_click_at(ui_color_bounds[0]);
     if (ui_color != 1) return 9;
+    if (ui_calligraphy_bounds.w <= 0) return 90;
+    ui_click_at(ui_calligraphy_bounds);
+    if (ui_tool != 3) return 91;
+    if (app_set_tool(1) != 0) return 92;
+    if (app_set_calligraphy_diameter(40) != 0 || ui_call_diameter != 40) return 93;
+    if (app_set_pressure(99) != 0 || ui_pressure != 99) return 94;
+    if (app_set_ink_opacity(128) != 0 || ui_opacity != 128) return 95;
+    if (app_set_calligraphy_diameter(24) != 0 || app_set_pressure(180) != 0 ||
+        app_set_ink_opacity(255) != 0) return 96;
     Uint8 r = 0, g = 0, b = 0;
     if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
         r != 255 || g != 255 || b != 255) return 10;
@@ -1866,6 +2000,164 @@ static int image_test(void) {
     if (event_key(SDLK_s, 0, &saved) != 0 || !saved) return 39;
     printf("image-test: png=ok jpeg=ok alpha=ok scale_center=ok immutable=ok "
            "eraser=ok clear=ok undo=ok invalid=ok history_reset=ok result=ok\n");
+    history_free();
+    return 0;
+}
+
+static int drawing_alpha_at(int x, int y) {
+    Uint32 *px = snapshot_canvas();
+    if (!px) return -1;
+    int a = (int)((px[(size_t)y * PAINT_W + x] >> 24) & 255);
+    free(px);
+    return a;
+}
+static int drawing_any_ink(void) {
+    Uint32 *px = snapshot_canvas();
+    if (!px) return -1;
+    int any = 0;
+    for (int i = 0; i < PAINT_W * PAINT_H; i++)
+        if ((px[i] >> 24) & 255) { any = 1; break; }
+    free(px);
+    return any;
+}
+static void calligraphy_cmd(int x1, int y1, int p1, int x2, int y2, int p2,
+                            int dia, int op) {
+    char buf[256];
+    int saved = 0;
+    snprintf(buf, sizeof buf, "P %d %d %d %d %d %d %d %d 220 60 60",
+             x1, y1, p1, x2, y2, p2, dia, op);
+    command(buf, &saved);
+}
+static int calligraphy_test(void) {
+    int saved = 0;
+    if (app_init() != 0) return 2;
+    if (pressure_diameter(24, 0) != 0 || pressure_diameter(24, 128) != 12 ||
+        pressure_diameter(24, 255) != 24) return 3;
+
+    clear_canvas(); history_free();
+    calligraphy_cmd(100, 100, 0, 100, 100, 0, 24, 255);
+    if (drawing_any_ink() != 0) return 4;
+
+    clear_canvas();
+    calligraphy_cmd(100, 100, 128, 100, 100, 128, 24, 255);
+    if (drawing_alpha_at(100, 100) != 255 || drawing_alpha_at(107, 100) != 0) return 5;
+
+    clear_canvas();
+    calligraphy_cmd(100, 100, 255, 100, 100, 255, 24, 255);
+    if (drawing_alpha_at(100, 111) != 255 || drawing_alpha_at(100, 113) != 0) return 6;
+
+    /* Pressure interpolates along a connected segment. */
+    clear_canvas();
+    if (pressure_diameter(24, 0) != 0) return 7;
+    calligraphy_cmd(100, 100, 0, 200, 100, 255, 24, 255);
+    if (drawing_alpha_at(100, 100) != 0 || drawing_alpha_at(150, 100) != 255 ||
+        drawing_alpha_at(200, 100) != 255) return 8;
+
+    /* A click and a very short segment produce marks. */
+    clear_canvas(); calligraphy_cmd(120, 120, 200, 120, 120, 200, 24, 255);
+    if (drawing_alpha_at(120, 120) != 255) return 9;
+    clear_canvas(); calligraphy_cmd(120, 120, 255, 121, 120, 255, 24, 255);
+    if (drawing_alpha_at(120, 120) != 255 || drawing_alpha_at(121, 120) != 255) return 10;
+
+    /* Connected segments do not leave a gap or darken the join. */
+    clear_canvas();
+    calligraphy_cmd(100, 140, 255, 200, 140, 255, 24, 128);
+    calligraphy_cmd(200, 140, 255, 300, 140, 255, 24, 128);
+    if (drawing_alpha_at(200, 140) != 128) return 11;
+
+    /* Clipping at both canvas edges. */
+    clear_canvas(); calligraphy_cmd(-100, 300, 255, -40, 300, 255, 24, 255);
+    if (drawing_any_ink() != 0) return 12;
+    calligraphy_cmd(790, 300, 255, 850, 300, 255, 24, 255);
+    if (drawing_alpha_at(799, 300) != 255) return 13;
+
+    /* Opacity is constant per coverage, and alpha stays bounded at a join. */
+    clear_canvas(); calligraphy_cmd(150, 200, 255, 150, 200, 255, 24, 128);
+    if (drawing_alpha_at(150, 200) != 128) return 14;
+    Uint8 ar = 0, ag = 0, ab = 0;
+    if (read_canvas_pixel(150, 200, &ar, &ag, &ab) != 0 ||
+        (ar == 255 && ag == 255 && ab == 255)) return 14;
+
+    /* Repeated command sequences produce byte-identical drawing layers. */
+    clear_canvas();
+    calligraphy_cmd(80, 250, 40, 220, 250, 220, 40, 200);
+    calligraphy_cmd(220, 250, 220, 360, 280, 60, 40, 200);
+    Uint32 *first = snapshot_canvas();
+    if (!first) return 15;
+    clear_canvas();
+    calligraphy_cmd(80, 250, 40, 220, 250, 220, 40, 200);
+    calligraphy_cmd(220, 250, 220, 360, 280, 60, 40, 200);
+    Uint32 *second = snapshot_canvas();
+    if (!second) { free(first); return 15; }
+    int same = memcmp(first, second, (size_t)PAINT_W * PAINT_H * sizeof(Uint32)) == 0;
+    free(first); free(second);
+    if (!same) return 16;
+
+    /* One complete calligraphy mouse stroke is one undo operation. */
+    clear_canvas(); history_free();
+    if (app_set_tool(3) != 0 || app_set_pressure(255) != 0 ||
+        app_set_calligraphy_diameter(24) != 0 || app_set_ink_opacity(255) != 0) return 17;
+    Uint32 *blank = snapshot_canvas();
+    if (!blank) return 18;
+    if (test_stroke(100, 300, 300, 300, 8) != 0 || undo_stack.count != 1) return 19;
+    Uint32 *stroke = snapshot_canvas();
+    if (!stroke) { free(blank); return 20; }
+    if (memcmp(blank, stroke, (size_t)PAINT_W * PAINT_H * sizeof(Uint32)) == 0) return 21;
+    if (history_undo() != 1) return 22;
+    Uint32 *undone = snapshot_canvas();
+    if (!undone || memcmp(blank, undone, (size_t)PAINT_W * PAINT_H * sizeof(Uint32)) != 0) return 23;
+    free(undone);
+    if (history_redo() != 1) return 24;
+    Uint32 *redone = snapshot_canvas();
+    if (!redone || memcmp(stroke, redone, (size_t)PAINT_W * PAINT_H * sizeof(Uint32)) != 0) return 25;
+    free(blank); free(stroke); free(redone);
+
+    /* Pressure changes during a mouse stroke affect subsequent segments. */
+    clear_canvas(); history_free();
+    if (app_set_tool(3) != 0 || app_set_pressure(0) != 0 ||
+        app_set_calligraphy_diameter(24) != 0 || app_set_ink_opacity(255) != 0) return 26;
+    int mx = 0, my = 0;
+    if (!canvas_to_window(100, 400, &mx, &my)) return 26;
+    history_begin_stroke();
+    if (event_mouse(SDL_MOUSEBUTTONDOWN, mx, my, SDL_BUTTON_LEFT, &saved) != 0) return 26;
+    if (app_set_pressure(255) != 0 || !canvas_to_window(300, 400, &mx, &my) ||
+        event_mouse(SDL_MOUSEMOTION, mx, my, 0, &saved) != 0) return 26;
+    if (event_mouse(SDL_MOUSEBUTTONUP, mx, my, SDL_BUTTON_LEFT, &saved) != 0) return 26;
+    history_commit_stroke();
+    if (drawing_alpha_at(100, 400) != 0 || drawing_alpha_at(300, 400) != 255 ||
+        undo_stack.count != 1) return 26;
+
+    /* Script execution, repeated determinism, loader bound and PNG export. */
+    clear_canvas(); history_free();
+    if (load_script_file("examples/calligraphy.glon") != 0) return 26;
+    long loader0 = loader_used();
+    if (run_script() != 0) return 27;
+    if (drawing_alpha_at(80, 100) == 0 || drawing_alpha_at(300, 100) == 0 ||
+        drawing_alpha_at(650, 300) == 0) return 28;
+    if (drawing_alpha_at(430, 560) != 0) return 29;
+    Uint32 *script1 = snapshot_canvas();
+    if (!script1) return 30;
+    if (run_script() != 0) return 31;
+    Uint32 *script2 = snapshot_canvas();
+    if (!script2) { free(script1); return 32; }
+    int script_same = memcmp(script1, script2, (size_t)PAINT_W * PAINT_H * sizeof(Uint32)) == 0;
+    free(script1); free(script2);
+    if (!script_same) return 33;
+    if (loader_used() != loader0) return 34;
+    if (event_key(SDLK_s, 0, &saved) != 0 || !saved) return 35;
+
+    /* Calligraphy over an imported background. */
+    if (load_image_file("tests/fixtures/tall.jpg") != 0) return 36;
+    if (load_script_file("examples/calligraphy.glon") != 0) return 37;
+    if (run_script() != 0) return 38;
+    Uint8 r = 0, g = 0, b = 0;
+    if (read_canvas_pixel(775, 300, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 39;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || (r == 255 && g == 255 && b == 255)) return 40;
+
+    printf("calligraphy-test: pressure=ok interpolation=ok zero=ok short=ok "
+           "joins=ok clipping=ok opacity=ok repeat=ok undo=ok script=ok "
+           "background=ok loader_used=%ld result=ok\n", loader_used());
     history_free();
     return 0;
 }
@@ -2148,6 +2440,16 @@ int main(int argc, char **argv) {
         SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
         SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
         fprintf(stderr, "glon-paint: script-test %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--calligraphy-test") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = calligraphy_test();
+        history_free();
+        free(script_source);
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        fprintf(stderr, "glon-paint: calligraphy-test %s\n", rc == 0 ? "passed" : "failed");
         return rc;
     }
     if (argc > 1 && strcmp(argv[1], "--coalesce-test") == 0) {

@@ -7,6 +7,10 @@ paint/tool: 1
 paint/drawing: 0
 paint/px: 0
 paint/py: 0
+paint/pressure-prev: 180
+paint/calligraphy-diameter: 24
+paint/pressure: 180
+paint/ink-opacity: 255
 paint/script-buf: ""
 paint/script-ops: 0
 paint/script-error: 0
@@ -38,6 +42,12 @@ paint/status: func [] [
     paint/s: s/+ paint/s s/from-int paint/tool
     paint/s: s/+ paint/s " "
     paint/s: s/+ paint/s s/from-int paint/drawing
+    paint/s: s/+ paint/s " "
+    paint/s: s/+ paint/s s/from-int paint/calligraphy-diameter
+    paint/s: s/+ paint/s " "
+    paint/s: s/+ paint/s s/from-int paint/pressure
+    paint/s: s/+ paint/s " "
+    paint/s: s/+ paint/s s/from-int paint/ink-opacity
     s/+ paint/s mk-string [ 10 ]
 ]
 paint/line: func [x1 y1 x2 y2] [
@@ -71,8 +81,50 @@ paint/set-size: func [n] [
     paint/title
 ]
 paint/set-tool: func [n] [
-    paint/tool: either = n 2 [ 2 ] [ 1 ]
+    paint/tool: either = n 2 [ 2 ] [ either = n 3 [ 3 ] [ 1 ] ]
     paint/title
+]
+paint/set-calligraphy-diameter: func [n] [
+    paint/calligraphy-diameter: either < n 1 [ 1 ] [ either > n 64 [ 64 ] [ n ] ]
+    paint/title
+]
+paint/set-pressure: func [n] [
+    paint/pressure: either < n 0 [ 0 ] [ either > n 255 [ 255 ] [ n ] ]
+    paint/title
+]
+paint/set-ink-opacity: func [n] [
+    paint/ink-opacity: either < n 0 [ 0 ] [ either > n 255 [ 255 ] [ n ] ]
+    paint/title
+]
+paint/pressure-command: func [x1 y1 p1 x2 y2 p2] [
+    paint/rgb: paint/color-rgb paint/color
+    paint/cmd: "P "
+    paint/cmd: s/+ paint/cmd s/from-int x1
+    paint/cmd: s/+ paint/cmd " "
+    paint/cmd: s/+ paint/cmd s/from-int y1
+    paint/cmd: s/+ paint/cmd " "
+    paint/cmd: s/+ paint/cmd s/from-int p1
+    paint/cmd: s/+ paint/cmd " "
+    paint/cmd: s/+ paint/cmd s/from-int x2
+    paint/cmd: s/+ paint/cmd " "
+    paint/cmd: s/+ paint/cmd s/from-int y2
+    paint/cmd: s/+ paint/cmd " "
+    paint/cmd: s/+ paint/cmd s/from-int p2
+    paint/cmd: s/+ paint/cmd " "
+    paint/cmd: s/+ paint/cmd s/from-int paint/calligraphy-diameter
+    paint/cmd: s/+ paint/cmd " "
+    paint/cmd: s/+ paint/cmd s/from-int paint/ink-opacity
+    paint/cmd: s/+ paint/cmd " "
+    paint/cmd: s/+ paint/cmd s/from-int block-at paint/rgb 0
+    paint/cmd: s/+ paint/cmd " "
+    paint/cmd: s/+ paint/cmd s/from-int block-at paint/rgb 1
+    paint/cmd: s/+ paint/cmd " "
+    paint/cmd: s/+ paint/cmd s/from-int block-at paint/rgb 2
+    s/+ paint/cmd mk-string [ 10 ]
+]
+paint/draw-pressure-line: func [x1 y1 p1 x2 y2 p2] [
+    paint/cmd: paint/pressure-command x1 y1 p1 x2 y2 p2
+    paint/script-add paint/cmd
 ]
 paint/script-reset: func [] [
     paint/script-buf: ""
@@ -127,6 +179,10 @@ paint/init: func [] [
     paint/drawing: 0
     paint/px: 0
     paint/py: 0
+    paint/pressure-prev: 180
+    paint/calligraphy-diameter: 24
+    paint/pressure: 180
+    paint/ink-opacity: 255
     paint/title
 ]
 paint/down: func [x y button] [
@@ -134,14 +190,20 @@ paint/down: func [x y button] [
         paint/drawing: 1
         paint/px: x
         paint/py: y
-        paint/line x y x y
+        paint/pressure-prev: paint/pressure
+        either = paint/tool 3 [
+            paint/pressure-command x y paint/pressure x y paint/pressure
+        ] [ paint/line x y x y ]
     ] [ "" ]
 ]
 paint/move: func [x y] [
     either = paint/drawing 1 [
-        paint/cmd: paint/line paint/px paint/py x y
+        paint/cmd: either = paint/tool 3 [
+            paint/pressure-command paint/px paint/py paint/pressure-prev x y paint/pressure
+        ] [ paint/line paint/px paint/py x y ]
         paint/px: x
         paint/py: y
+        paint/pressure-prev: paint/pressure
         paint/cmd
     ] [ "" ]
 ]

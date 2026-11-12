@@ -1,0 +1,22 @@
+;; Deterministic pressure-aware calligraphy demonstration.
+paint/draw-clear
+paint/set-color 1
+paint/set-calligraphy-diameter 48
+paint/set-ink-opacity 230
+
+;; Thin to thick.
+paint/draw-pressure-line 80 100 20 300 100 240
+;; Thick to thin.
+paint/draw-pressure-line 340 100 255 560 100 25
+
+;; Curved stroke assembled from connected pressure segments.
+paint/draw-pressure-line 150 250 35 250 210 130
+paint/draw-pressure-line 250 210 130 360 300 200
+paint/draw-pressure-line 360 300 200 470 300 90
+paint/draw-pressure-line 470 300 90 540 390 230
+
+;; Short downward dot/stroke.
+paint/draw-pressure-line 650 220 170 650 330 255
+
+;; A stroke tapering to zero pressure.
+paint/draw-pressure-line 200 470 220 430 560 0
