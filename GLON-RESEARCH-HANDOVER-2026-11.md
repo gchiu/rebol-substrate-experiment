@@ -15,6 +15,15 @@ human-friendly syntax. The reference execution core is frozen S1-7:
 the seven-primitive default; experimental profiles and compilers must be
 separately selected and tested.
 
+The longer-term objective is a **universal distributed compute substrate** of
+small, constrained, reprogrammable execution nodes. The current evidence is
+local single-node execution, native/WASM applications and bounded memory
+characterisation; distributed scheduling, fault recovery, state migration and
+heterogeneous deployment remain research objectives, not demonstrated
+capabilities. An image-based or otherwise lossy semantic-state transfer is a
+**parked research idea**, not an adopted architecture, and no experiment is
+started here.
+
 The project has demonstrated useful applications and bounded evaluator
 improvements. It has **not** demonstrated general AI authoring reliability, a
 full compiler, browser support for the native profile, or a need to change the
@@ -40,6 +49,7 @@ a measured improvement is not automatic system simplification.
 | LaTeX generator | **D (native CLI)** | Existing v001/v002 suites pass under both profiles; outputs identical. Browser LaTeX page remains S1-7 and deployed. |
 | Iterator, lexer, DOM, links | **P** | ITER v001: 77/77 + 28/28 tests, 1,200 differential token walks; DOM: 67/67 + 8/8 + 7/7 + 5/5; native host-backed links extract 449 Wikipedia links with no peak growth by document size. Not parser-integrated, native-only, slower than v004's lexer, loader/code expensive. |
 | Native/browser deployment | **D/P** | Public `/latex/` and `/inflate/` pages run S1-7 browser/WASM; `/inflate/` verified in Chrome for samples, errors, binary download and limitations. S1-12 has no browser/WASM support; native-only. |
+| Constrained memory | **D/P** | Non-moving exact mark/sweep retained; no handles/pinning/compaction. Bounded measurements pass; F1 and DOM show specific external-fragmentation failures. Raw `RV_*`/MASM/interior/host relocation paths remain unresolved. See `GLON-MEMORY-AUDIT-2026-11.md` (`2d34bc0`) and the plan (`8764f4e`). |
 
 ### Important distinctions
 
@@ -54,6 +64,9 @@ a measured improvement is not automatic system simplification.
   pages. They are not interchangeable evidence.
 - **Iterator architecture:** a library/protocol result, not a language or VM
   requirement.
+- **Memory architecture:** non-moving collector adequacy is demonstrated only
+  for the tested workloads; specific fragmentation is not a general proof that
+  handles/compaction are required. Native and WASM memory remain separate.
 
 ## 3. Architectural invariants
 
@@ -75,6 +88,34 @@ These decisions are settled for the current phase:
    S1-12 has no WASM port; `/latex/` and `/inflate/` are S1-7.
 7. **Known discrepancies stay visible.** The root `s1` traffic test 8 fail-stop
    is unresolved; do not claim the full root suite is green.
+8. **Memory management remains non-moving for now.** The collector,
+   first-fit/coalescing and 64K map are retained; no handles, pinning API or
+   compaction are authorised. Handles/compaction require a separate decision
+   after the raw-reference audit and a reproducing application failure.
+
+### Memory investigation (November 2026)
+
+Sources: `GLON-CONSTRAINED-MEMORY-PLAN.md` (`8764f4e`) and
+`GLON-MEMORY-AUDIT-2026-11.md` (`2d34bc0`), with the reusable helper under
+`experiments/glon-memory-audit/`.
+
+Summary: the runtime is a non-moving exact mark/sweep heap with first-fit
+allocation, implicit free blocks and sweep-time coalescing. There are no
+handles, pinning API or compaction. The audit found tagged values/contexts/
+closures/blocks traceable, but raw managed pointers in evaluator/scratch,
+MASM/library code, interior references and host/direct-memory paths are not
+fully enumerated. F1's 320-cell request failed with a 304-cell largest block
+and 2,944 total free cells; DOM v001 found about 600 free cells in 32-cell holes
+while an 80-cell allocation failed. F2 removed the known DEFLATE trigger with a
+bounded buffer. Bounded DEFLATE measurements had peak live 4,288–4,832 cells,
+heap high-water 7,216 cells, and 384–432-cell largest free blocks with no
+failure. GC pause and per-allocation latency are unmeasured.
+
+Next action: complete the raw-reference/pinning audit and add bounded
+fragmentation measurements. Stop there if tested applications remain correct;
+authorise handles/compaction only after a reproducible failure and a complete
+pinning/relocation design. A lossy image-based state transfer is parked, not
+implemented.
 
 ## 4. Bounded development backlog
 
@@ -85,6 +126,8 @@ These decisions are settled for the current phase:
 | Root `s1` traffic test 8 fail-stop | Blocks trusting the full native suite | Earlier rebuild: dump at `IP=8438`, suite timed out; exact layer unknown | Reproduce test 8 alone with current build; isolate harness/runtime/app | `./s1` completes all tests green | No |
 | B12/S1-12 runtime-copy maintenance | Profile can drift from production runtime | B12/B13 copy runtime and machine; full tests pass today | Add a diff/check test between copies and production runtime | Automated parity check passes for every intended divergence | No |
 | F2 per-header buffer risk | Future fragmentation may break another shape | F2 passes 480/480; one fixed allocation per dynamic header | Add adversarial fragmentation workload; document capacity | New workload passes or documented limitation is explicit | No |
+| Complete raw-reference/pinning audit | Safe relocation is blocked by unresolved raw pointers | Audit inventory: `RV_*`, MASM, interior and host paths not fully enumerated | Audit each path; classify root/pin/redesign | Every live managed pointer is rooted/pinned or explicitly excluded; no unsafe relocation claim | **Yes** |
+| Constrained-memory fragmentation regression | Specific F1/DOM cases are not yet automated in one lane | F1 320/304/2944; DOM ~600 free/32-cell holes/80-cell failure; helper exists | Add bounded regression cases using existing fixtures/instrumentation | Cases reproduce and distinguish live exhaustion from fragmentation | No |
 | Iterator/lexer WASM parity | Native-only results do not establish browser behavior | ITER docs: `P`; WASM parity not verified | Run existing iter/lexer/differential suites against CI-built WASM | Same token/output results in WASM | No |
 | Shop/browser regression visibility | Existing shop tests are separate from native profile | B13 records host boundary; shop tests are Node/WASM | Keep shop/WASM tests in their own lane; do not claim native | CI lanes documented and green separately | No |
 
@@ -139,6 +182,8 @@ Without reopening architecture questions, an agent can safely:
   tests as a gate;
 - work on the documented correctness and test gaps above;
 - use iterator/DOM libraries in native experiments, not as a language change;
+- use `experiments/glon-memory-audit/measure_memory.py` for read-only bounded
+  memory measurements; do not implement handles, pinning or compaction;
 - keep browser/WASM work on the production S1-7 path.
 
 Do not start B14, promote S1-12, freeze new primitives, expand the compiler,
@@ -153,4 +198,6 @@ Authoritative repository references: `GLON-ARCHITECTURE-DECISION-2026-11.md`,
 `experiments/glon-iter/GLON-ITER-V001.md`, `experiments/glon-dom/GLON-DOM-V001.md`,
 `experiments/glon-links-native/README.md`, `experiments/glon-links-multi/README.md`,
 `experiments/glon-latex`, the FizzBuzz worktree, and the deployed `/latex/` and
-`/inflate/` verification records.
+`/inflate/` verification records. Memory sources: `GLON-CONSTRAINED-MEMORY-PLAN.md`
+(`8764f4e`), `GLON-MEMORY-AUDIT-2026-11.md` (`2d34bc0`), and
+`experiments/glon-memory-audit/`.

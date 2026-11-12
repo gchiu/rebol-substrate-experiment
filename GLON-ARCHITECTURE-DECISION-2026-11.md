@@ -5,7 +5,8 @@ implementation, promotion, freeze or authorisation to change production.
 
 ## 1. Verified current state
 
-Repository HEAD is `7b0dd1c` (B13 profile selection). Frozen S1 is unchanged at
+Repository state includes `2d34bc0` (memory audit); the B13 profile commit is
+`7b0dd1c`. Frozen S1 is unchanged at
 `f90496c26dc45c7a387d8fc8639cd2781507d3d2`; `./check-frozen-s1.sh` passes.
 DEFLATE remains **480/480** conformance and **44/44** unit tests, with
 byte-identical output to zlib/the seven-primitive reference.
@@ -21,6 +22,7 @@ byte-identical output to zlib/the seven-primitive reference.
 | B12 | `a202645` | S1-7 vs S1-9 vs S1-12; full decoder correctness and performance |
 | B13 | `7b0dd1c` | selectable native profiles; FizzBuzz and LaTeX validation |
 | ITER/DOM | `ff2d02c`, `369a3f0`, `9ee6ed7`, `fb2b951` | pure-Glon iterator, DOM and host-backed traversal experiments |
+| MEM | `8764f4e`, `2d34bc0` | constrained-memory plan and reference-safety/bounded-memory audit |
 
 The root native `s1` suite still has an unresolved traffic-test discrepancy from
 the earlier review (test 8 fail-stop in this environment). B13 does not rerun
@@ -129,7 +131,56 @@ for iterator/traversal protocols. The experiments do not justify an ITERATOR!
 datatype, a `foreach` primitive or a new loop form. Their costs are loader/code/
 heap and native-only validation, not a primitive deficiency.
 
-## 5. Recommendation
+## 5. Memory architecture and constrained operation
+
+Memory management is a runtime implementation concern, **not part of the frozen
+seven-primitive S1 interface**. The reference interface is unchanged; changing
+object representation would nevertheless have runtime, host and application-wide
+consequences and therefore requires a separate decision.
+
+Verified current implementation (`r0_s1_runtime.c`, `r0_s1.h`; plan
+`GLON-CONSTRAINED-MEMORY-PLAN.md`, commit `8764f4e`; audit
+`GLON-MEMORY-AUDIT-2026-11.md`, commit `2d34bc0`):
+
+- the managed heap is 7,232 cells inside the fixed 65,536-cell map;
+- collection is **non-moving, stop-the-world exact mark/sweep**;
+- allocation is first-fit over implicit free blocks, with a frontier bump,
+  one collection retry and fail-stop on real out-of-memory;
+- sweep coalesces adjacent free runs; there is no explicit free list;
+- there are **no stable handles, pinning API or compaction**. Tagged Glon values
+  contain raw payload pointers; `RV_*`/scratch/MASM/interior/host paths can also
+  hold raw managed pointers.
+
+Reference safety is therefore not yet relocation-safe. Tagged values, contexts,
+closures, blocks and explicit roots are traceable, but the audit identifies
+unresolved raw managed-pointer paths in evaluator/scratch cells, MASM/library
+scratch and interior references. Compaction cannot be considered safe until
+every such pointer is rooted, pinned or redesigned. Handle indirection alone
+does not provide tracing or solve fragmentation.
+
+Demonstrated fragmentation is specific, not general:
+
+- F1: a 320-cell dynamic-header request failed with 2,944 free cells and a
+  304-cell largest block; coalescing had run. F2 removed that trigger with a
+  bounded per-header buffer and the full DEFLATE suite passes.
+- DOM iterator v001: at its depth limit, about 600 free cells were present in
+  32-cell holes while an 80-cell allocation failed.
+
+Bounded measurements on the existing fixed/dynamic/streaming DEFLATE workloads
+(`experiments/glon-memory-audit/`) found peak live cells 4,288/4,464/4,832,
+heap high-water 7,216/7,232, end-free cells 592/1,456/1,760, largest free blocks
+432/416/384 and GC counts 13/79/185. All completed without allocation failure.
+GC pause and per-allocation latency remain unmeasured without runtime timestamp
+instrumentation.
+
+**Decision:** retain the existing non-moving collector for the tested workloads.
+No handles, compaction, pinning API or replacement GC is authorised. Reconsider
+only if a reproducible application still fails after bounded buffers and
+non-moving allocation-policy improvements, and only after a complete raw-
+pointer/root/pinning audit with native and WASM validation. A moving design is
+not required merely because fragmentation has been observed.
+
+## 6. Recommendation
 
 **Keep S1-7 as the universal frozen reference. Retain S1-12 as an optional,
 experimental native evaluator profile. Do not promote it to the production
@@ -146,7 +197,7 @@ reference machine. S1-12 remains a build-time native profile, with S1-7 as the
 control; production `glon`, browser `/inflate/`, and the WASM applications are
 unchanged.
 
-## 6. Remaining blockers and limits
+## 7. Remaining blockers and limits
 
 **Correctness/integration blockers**
 
@@ -178,7 +229,7 @@ Performance opportunities such as zero-allocation streaming, packed memory,
 compiler coverage or a WASM profile are not correctness blockers and require a
 defined application requirement.
 
-## 7. Decision rule
+## 8. Decision rule
 
 1. Define observable behaviour and an independent oracle.
 2. State intrinsic resource needs (bytes, stack, heap, window).
@@ -192,16 +243,19 @@ defined application requirement.
 Every experiment must name the decision it will settle. An experiment that
 cannot change a retain/defer/stop decision should not run.
 
-## 8. Retain, defer, stop
+## 9. Retain, defer, stop
 
 **Retain:** frozen S1-7; production Glon/runtime/host; F2's bounded buffer;
-B11/B12's S1-12 experimental evaluator; B13's build-time native selection;
-iterator/DOM v001 as optional libraries/experiments; the complete B9–B13
-evidence.
+the non-moving mark/sweep collector for tested workloads; the memory audit and
+bounded measurements; B11/B12's S1-12 experimental evaluator; B13's build-time
+native selection; iterator/DOM v001 as optional libraries/experiments; the
+complete B9–B13 evidence.
 
 **Defer:** S1-12 production promotion; a WASM/browser S1-12 profile; full-language
 compiler coverage; iterator parser integration and WASM parity; 32K memory
-profile; zero-allocation decoding; checked stacks/K1.
+profile; zero-allocation decoding; checked stacks/K1; any handle/compaction
+prototype until the raw-reference/pinning audit and a reproducing application
+failure justify a separate architecture decision.
 
 **Stop:** adding primitive variants without a failing application requirement;
 compiler expansion merely to make an experiment pass; duplicating the B12
@@ -209,13 +263,15 @@ runtime or building another profiling framework; treating integer/kernel or
 native-only results as general production evidence; promoting S1-12 before the
 browser/WASM and host boundaries are addressed.
 
-## 9. Limits of the evidence
+## 10. Limits of the evidence
 
 Strongest: frozen S1; DEFLATE 480/480 and 44/44; B10 operation attribution;
 B11/B12 whole-decoder native results; B13 native FizzBuzz/LaTeX equality and
-selection mechanism; iterator/DOM tests. Weakest: no full compiler, no S1-12
-WASM, no shop native compatibility, unresolved root traffic test, noisy wall
-timings, native-only iterator validation, and a B12 runtime copy with its own
+selection mechanism; iterator/DOM tests; the memory audit's source inventory
+and bounded measurements. Weakest: no full compiler, no S1-12 WASM, no shop
+native compatibility, unresolved root traffic test, noisy wall timings,
+native-only iterator validation, unmeasured GC pause/allocation latency,
+incomplete raw-pointer relocation audit, and a B12 runtime copy with its own
 maintenance burden.
 
 **Bottom line:** the smallest justified architecture is still the frozen
