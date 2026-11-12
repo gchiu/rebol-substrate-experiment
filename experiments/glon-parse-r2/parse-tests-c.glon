@@ -1,0 +1,10 @@
+t/cases: reduce [
+    reduce [ 'p "C1 nested block" "ad" reduce [ reduce [ "a" 0 "b" ] reduce [ "c" 0 "d" ] ] 1 ]
+    reduce [ 'p "C2 some one" "a" reduce [ 1 "a" ] 1 ]
+    reduce [ 'p "C3 some many" "aaa" reduce [ 1 "a" ] 1 ]
+    reduce [ 'p "C4 some zero fails" "" reduce [ 1 "a" ] 0 ]
+    reduce [ 'p "C5 any zero succeeds" "" reduce [ 2 "a" ] 1 ]
+    reduce [ 'p "C6 any many succeeds" "aaa" reduce [ 2 "a" ] 1 ]
+]
+t/run 0
+t/done "C tests"

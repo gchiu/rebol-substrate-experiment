@@ -1,0 +1,64 @@
+;; Shared helpers and encoded registry for the Stage 1 parse tests.
+t/pass: 0
+t/fail: 0
+t/ok: func [n] [ t/pass: + t/pass 1 ]
+t/bad: func [n] [ t/fail: + t/fail 1 s/print s/+ "FAIL " n ]
+t/num: func [n got want] [ either = got want [ t/ok n ] [ t/bad n  print got  print want ] ]
+t/str: func [n got want] [ either s/= got want [ t/ok n ] [ t/bad n  s/print s/+ "  got:  " got  s/print s/+ "  want: " want ] ]
+t/match: func [n rules src rule want-ok want-pos] [
+    p-r: p/match rules src rule
+    t/num n block-at p-r 0 want-ok
+    t/num s/+ n " position" block-at p-r 1 want-pos
+]
+t/sin: func [n e type id] [
+    either sin? e [ either either = sin-type e type [ = sin-id e id ] [ 0 ] [ t/ok n ] [ t/bad n ] ] [ t/bad n ]
+]
+;; Rule values are DATA. Glon source blocks are code, so a rule that contains
+;; strings is built with reduce; a literal nested block would execute.
+r: reduce [
+    'digit reduce [ "0" 0 "1" 0 "2" 0 "3" 0 "4" 0 "5" 0 "6" 0 "7" 0 "8" 0 "9" ]
+    'digits reduce [ 1 'digit ]
+    'ab reduce [ "a" 0 "b" ]
+    'parens reduce [ "(" 'parens ")" 0 "x" ]
+]
+t/run: func [i] [
+    either >= i block-len t/cases [ none ] [
+        t/c: block-at t/cases i
+        t/k: block-at t/c 0
+        t/src: block-at t/c 2
+        t/rule: block-at t/c 3
+        t/want: block-at t/c 4
+        either = t/k 'p [
+            t/x: p/parse r t/src t/rule
+            t/num block-at t/c 1 t/x t/want
+        ] [
+            either = t/k 'pa [
+                t/x: p/parse-all r t/src t/rule
+                t/num block-at t/c 1 t/x t/want
+            ] [
+                either = t/k 'pc [
+                    t/x: p/parse-case r t/src t/rule
+                    t/num block-at t/c 1 t/x t/want
+                ] [
+                    either = t/k 'm [
+                        t/x: p/match r t/src t/rule
+                        t/num block-at t/c 1 block-at t/x 0 t/want
+                        t/num s/+ block-at t/c 1 " position" block-at t/x 1 block-at t/c 5
+                    ] [
+                        t/e: judge [ p/parse r t/src t/rule ]
+                        t/sin block-at t/c 1 t/e t/want block-at t/c 5
+                    ]
+                ]
+            ]
+        ]
+        t/run + i 1
+    ]
+]
+
+t/done: func [label] [
+    print t/pass
+    print t/fail
+    either = t/fail 0 [ s/print s/+ "glon-parse-r2: " s/+ label " passed" ] [
+        raise create-sin 'test 'failed t/fail
+    ]
+]

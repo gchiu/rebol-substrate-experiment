@@ -1,0 +1,13 @@
+t/cases: reduce [
+    reduce [ 'p "A9 empty input opt" "" reduce [ 3 "a" ] 1 ]
+    reduce [ 'p "A10 trailing whitespace" "a " "a" 1 ]
+    reduce [ 'p "B1 failed sequence" "ac" reduce [ "a" "b" ] 0 ]
+    reduce [ 'p "B2 trailing input fails complete parse" "abX" reduce [ "a" "b" ] 0 ]
+    reduce [ 'm "B3 partial match reports position" "abX" reduce [ "a" "b" ] 1 2 ]
+    reduce [ 'm "B4 alternative first branch" "ab" reduce [ "ab" 0 "a" ] 1 2 ]
+    reduce [ 'm "B5 alternative second branch" "ac" reduce [ "ab" 0 "ac" ] 1 2 ]
+    reduce [ 'm "B6 ordered alternatives" "a" reduce [ "a" 0 "ab" ] 1 1 ]
+    reduce [ 'm "B7 failed alternative reports start" "z" reduce [ "a" 0 "b" ] 0 0 ]
+]
+t/run 0
+t/done "B tests"

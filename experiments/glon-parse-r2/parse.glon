@@ -1,0 +1,186 @@
+;; experiments/glon-parse-r2/parse.glon -- Stage 1 Rebol 2 PARSE subset.
+;;
+;; The rule dialect is ENCODED as ordinary Glon values (no textual rule parser
+;; and no host-side parsing):
+;;
+;;   "literal"                 literal string (case-insensitive by default)
+;;   [ rule ... ]              sequence; integer 0 separates alternatives
+;;   [ a 0 b ]                 ordered alternatives
+;;   [ 1 rule ]                some (one or more)
+;;   [ 2 rule ]                any (zero or more)
+;;   [ 3 rule ]                opt (zero or one)
+;;   word                      named rule in the flat registry
+;;   (end/none rule values are not in Stage 1)
+;;
+;; The registry is a flat block [name rule name rule ...]. The engine below is
+;; pure Glon; the host only supplies the source string and prints test results.
+[
+p/depth-limit: 100
+p/ws: mk-string reduce [ 32 9 10 11 12 13 ]
+;; Encoded executable rule tags: 0 alternative separator, 1 some, 2 any, 3 opt.
+p/op-bar: 0
+p/op-some: 1
+p/op-any: 2
+p/op-opt: 3
+
+;; p/tag: low four bits of any Glon value, without reading memory (same
+;; technique as iter.glon's it/raw-tag).
+p/tag: masm 1 [ LIT 16 MOD LIT 16 MUL ARITY 1 EXIT ]
+
+p/lower: func [c] [
+    either >= c 65 [ either <= c 90 [ + c 32 ] [ c ] ] [ c ]
+]
+;; Compare [pos,pos+n) of src with literal [i,n), case-folded when case=0.
+p/eq: func [src pos lit i n case] [
+    either >= i n [ 1 ] [
+        either = n + i 1 [
+            p-a: s/at src + pos i
+            p-b: s/at lit i
+            either = case 0 [
+                p-a: p/lower p-a
+                p-b: p/lower p-b
+            ] [ none ]
+            = p-a p-b
+        ] [
+            p-m: / + i n 2
+            = p/eq src pos lit i p-m case p/eq src pos lit p-m n case
+        ]
+    ]
+]
+p/skip-ws: func [src pos all] [
+    either = all 1 [ pos ] [ s/scan-set src pos p/ws ]
+]
+p/literal: func [src pos lit all case] [
+    p-n: s/length lit
+    either > + pos p-n s/length src [ reduce [ 0 pos ] ] [
+        either p/eq src pos lit 0 p-n case [ reduce [ 1 + pos p-n ] ] [ reduce [ 0 pos ] ]
+    ]
+]
+p/find-bar: func [blk i end] [
+    either >= i end [ end ] [
+        either = block-at blk i p/op-bar [ i ] [ p/find-bar blk + i 1 end ]
+    ]
+]
+p/lookup: func [rules word i n] [
+    either >= i n [ none ] [
+        either = block-at rules i word [ block-at rules + i 1 ]
+            [ p/lookup rules word + i 2 n ]
+    ]
+]
+;; p/rule: parse one rule at pos. Every rule starts after default whitespace
+;; unless all=1. Results are [success new-pos]; no exception is used for a
+;; normal mismatch.
+p/rule: func [rules src rule pos all case depth] [
+    either > depth p/depth-limit [
+        raise create-sin 'parse 'too-deep pos
+    ] [
+        p-p: p/skip-ws src pos all
+        either s/raw-string? rule [
+            p/literal src p-p rule all case
+        ] [
+            either = p/tag rule 6 [
+                p/block rules src rule p-p all case + depth 1
+            ] [
+                ;; Stage 1: every non-string, non-block value is a named rule.
+                ;; `end`/`none` rule values are not implemented yet.
+                p-r: p/lookup rules rule 0 block-len rules
+                either = p-r none [ raise create-sin 'parse 'unknown-rule rule ] [
+                    p/rule rules src p-r p-p all case + depth 1
+                ]
+            ]
+        ]
+    ]
+]
+p/block: func [rules src blk pos all case depth] [
+    p/alt rules src blk pos 0 block-len blk all case depth
+]
+;; Ordered alternatives. Once a branch succeeds, the result is returned; the
+;; engine does not re-enter that choice if a later outer rule fails. This is
+;; documented as a Stage 1 compatibility choice.
+p/alt: func [rules src blk pos i end all case depth] [
+    p-bar: p/find-bar blk i end
+    p-r: p/seq rules src blk pos i p-bar all case depth
+    either = block-at p-r 0 1 [ p-r ] [
+        either < p-bar end [
+            p/alt rules src blk pos + p-bar 1 end all case depth
+        ] [ reduce [ 0 pos ] ]
+    ]
+]
+p/seq: func [rules src blk pos i end all case depth] [
+    either >= i end [ reduce [ 1 pos ] ] [
+        p-e: block-at blk i
+        either = p-e p/op-some [
+            either >= + i 1 end [ raise create-sin 'parse 'bad-rule p-e ] [
+                p-r: p/repeat rules src block-at blk + i 1 pos all case depth p/op-some
+                either = block-at p-r 0 0 [ p-r ] [
+                    p/seq rules src blk block-at p-r 1 + i 2 end all case depth
+                ]
+            ]
+        ] [
+            either = p-e p/op-any [
+                either >= + i 1 end [ raise create-sin 'parse 'bad-rule p-e ] [
+                    p-r: p/repeat rules src block-at blk + i 1 pos all case depth p/op-any
+                    either = block-at p-r 0 0 [ p-r ] [
+                        p/seq rules src blk block-at p-r 1 + i 2 end all case depth
+                    ]
+                ]
+            ] [
+                either = p-e p/op-opt [
+                    either >= + i 1 end [ raise create-sin 'parse 'bad-rule p-e ] [
+                        p-r: p/rule rules src block-at blk + i 1 pos all case + depth 1
+                        p-r: either = block-at p-r 0 0 [ reduce [ 1 pos ] ] [ p-r ]
+                        p/seq rules src blk block-at p-r 1 + i 2 end all case depth
+                    ]
+                ] [
+                    p-r: p/rule rules src p-e pos all case + depth 1
+                    either = block-at p-r 0 0 [ p-r ] [
+                        p/seq rules src blk block-at p-r 1 + i 1 end all case depth
+                    ]
+                ]
+            ]
+        ]
+    ]
+]
+;; some/any: parse one rule; some requires success, any accepts failure.
+p/repeat: func [rules src rule pos all case depth kind] [
+    p-r: p/rule rules src rule pos all case + depth 1
+    either = block-at p-r 0 0 [
+        either = kind p/op-some [ p-r ] [ reduce [ 1 pos ] ]
+    ] [
+        p-p: block-at p-r 1
+        either = p-p pos [
+            either = kind p/op-some [
+                raise create-sin 'parse 'zero-length pos
+            ] [ reduce [ 1 pos ] ]
+        ] [
+            p/repeat-loop rules src rule p-p all case depth kind
+        ]
+    ]
+]
+p/repeat-loop: func [rules src rule pos all case depth kind] [
+    p-r: p/rule rules src rule pos all case + depth 1
+    either = block-at p-r 0 0 [ reduce [ 1 pos ] ] [
+        p-p: block-at p-r 1
+        either = p-p pos [
+            raise create-sin 'parse 'zero-length pos
+        ] [ p/repeat-loop rules src rule p-p all case depth kind ]
+    ]
+]
+p/match-mode: func [rules src rule all case] [
+    p-pos: p/skip-ws src 0 all
+    p/rule rules src rule p-pos all case 0
+]
+p/match: func [rules src rule] [ p/match-mode rules src rule 0 0 ]
+p/match-all: func [rules src rule] [ p/match-mode rules src rule 1 0 ]
+p/match-case: func [rules src rule] [ p/match-mode rules src rule 0 1 ]
+p/parse-mode: func [rules src rule all case] [
+    p-r: p/match-mode rules src rule all case
+    either = block-at p-r 0 0 [ 0 ] [
+        p-p: p/skip-ws src block-at p-r 1 all
+        either = p-p s/length src [ 1 ] [ 0 ]
+    ]
+]
+p/parse: func [rules src rule] [ p/parse-mode rules src rule 0 0 ]
+p/parse-all: func [rules src rule] [ p/parse-mode rules src rule 1 0 ]
+p/parse-case: func [rules src rule] [ p/parse-mode rules src rule 0 1 ]
+]

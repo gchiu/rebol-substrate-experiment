@@ -1,0 +1,9 @@
+t/cases: reduce [
+    reduce [ 'p "C12 nested some" "abba" reduce [ 1 reduce [ "a" 0 "b" ] ] 1 ]
+    reduce [ 'e "D1 some zero-length rule is guarded" "x" reduce [ 1 "" ] 'parse 'zero-length ]
+    reduce [ 'e "D2 unknown named rule is an error" "x" 'missing 'parse 'unknown-rule ]
+    reduce [ 'm "E1 match starts at zero" "a b" reduce [ "a" "b" ] 1 3 ]
+    reduce [ 'm "E2 all mode position" "ab" reduce [ "a" "b" ] 1 2 ]
+]
+t/run 0
+t/done "D2 tests"

@@ -1,0 +1,12 @@
+t/cases: reduce [
+    reduce [ 'p "A1 literal complete" "Hello" "hello" 1 ]
+    reduce [ 'p "A2 literal case-insensitive default" "HELLO" "hello" 1 ]
+    reduce [ 'pc "A3 literal case-sensitive mode" "HELLO" "hello" 0 ]
+    reduce [ 'pc "A4 literal case-sensitive match" "hello" "hello" 1 ]
+    reduce [ 'p "A5 sequence default skips spaces" "a b" reduce [ "a" "b" ] 1 ]
+    reduce [ 'p "A6 sequence default skips whitespace" "a	b" reduce [ "a" "b" ] 1 ]
+    reduce [ 'pa "A7 /all requires exact spacing" "a b" reduce [ "a" "b" ] 0 ]
+    reduce [ 'pa "A8 /all exact sequence" "ab" reduce [ "a" "b" ] 1 ]
+]
+t/run 0
+t/done "A tests"

@@ -1,0 +1,9 @@
+t/cases: reduce [
+    reduce [ 'p "C7 opt present" "a" reduce [ 3 "a" ] 1 ]
+    reduce [ 'p "C8 opt absent" "" reduce [ 3 "a" ] 1 ]
+    reduce [ 'p "C9 named rule" "101" 'digits 1 ]
+    reduce [ 'p "C10 named rule in sequence" "x(x)" reduce [ 'parens "(" 'parens ")" ] 1 ]
+    reduce [ 'p "C11 recursive named rule" "( x )" 'parens 1 ]
+]
+t/run 0
+t/done "D1 tests"
