@@ -11,17 +11,6 @@ t/cases: reduce [
     reduce [ 'p "F10 to then wrong literal" "abc" reduce [ reduce [ 5 "b" ] "c" ] 0 ]
     reduce [ 'p "F11 to failure alternative" "abc" reduce [ reduce [ 5 "z" ] 0 "abc" ] 1 ]
     reduce [ 'p "F12 thru failure alternative" "abc" reduce [ reduce [ 6 "z" ] 0 "abc" ] 1 ]
-    reduce [ 'p "F13 to target at start then literal" "abc" reduce [ reduce [ 5 "a" ] "a" "bc" ] 1 ]
-    reduce [ 'p "F14 thru target at start" "abc" reduce [ reduce [ 6 "a" ] "bc" ] 1 ]
-    reduce [ 'p "F15 to target at end" "abc" reduce [ reduce [ 5 "c" ] "c" ] 1 ]
-    reduce [ 'p "F16 thru target at end" "abc" reduce [ 6 "c" ] 1 ]
-    reduce [ 'p "F17 to not found" "abc" reduce [ 5 "z" ] 0 ]
-    reduce [ 'p "F18 thru not found" "abc" reduce [ 6 "z" ] 0 ]
-    reduce [ 'p "F19 to skips spaces in search" "a b" reduce [ 6 "b" ] 1 ]
-    reduce [ 'p "F20 to leaves trailing input" "a b" reduce [ 5 "b" ] 0 ]
-    reduce [ 'p "F21 end empty" "" reduce [ 7 ] 1 ]
-    reduce [ 'p "F22 end nonempty" "a" reduce [ 7 ] 0 ]
-    reduce [ 'p "F23 end after literal and space" "a " reduce [ "a" reduce [ 7 ] ] 1 ]
 ]
 t/run 0
-t/done "F (Stage 2A) tests"
+t/done "F1 (Stage 2A) tests"

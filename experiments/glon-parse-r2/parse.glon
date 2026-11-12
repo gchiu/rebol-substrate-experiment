@@ -27,6 +27,8 @@ p/op-to: 5
 p/op-thru: 6
 p/op-end: 7
 p/op-charset: 8
+p/op-copy: 9
+p/op-set: 10
 p/op-exact: 20
 p/op-bounded: 21
 
@@ -59,8 +61,10 @@ p/skip-ws: func [src pos all] [
 ]
 p/literal: func [src pos lit all case] [
     p-n: s/length lit
+    either = p-n 0 [ reduce [ 0 pos ] ] [
     either > + pos p-n s/length src [ reduce [ 0 pos ] ] [
         either p/eq src pos lit 0 p-n case [ reduce [ 1 + pos p-n ] ] [ reduce [ 0 pos ] ]
+    ]
     ]
 ]
 p/find-bar: func [blk i end] [
@@ -172,6 +176,32 @@ p/bounded-loop: func [rules src rule min max pos all case depth] [
 p/rule-op: func [rules src target pos all case depth op] [
     p/to-op rules src target pos all case depth either = op p/op-thru [ 1 ] [ 0 ]
 ]
+;; Capture log is a linked list of [name kind start end value next] records.
+;; It is deliberately not a Rebol variable system: names are test-visible
+;; identifiers and the newest record wins. Captures are not rolled back when a
+;; later rule or alternative fails, matching the R2 oracle.
+p/captures: none
+p/cap-reset: func [] [ p/captures: none ]
+p/cap-put: func [name kind start end value] [
+    p/captures: reduce [ name kind start end value p/captures ]
+]
+p/cap-get: func [name rec] [
+    either = rec none [ none ] [
+        either = block-at rec 0 name [ block-at rec 4 ] [ p/cap-get name block-at rec 5 ]
+    ]
+]
+p/copy-op: func [rules src name rule pos all case depth] [
+    p-r: p/rule rules src rule pos all case + depth 1
+    either = block-at p-r 0 0 [ p-r ] [
+        p-end: block-at p-r 1
+        p-val: either > p-end pos [ s/span src pos p-end ] [ none ]
+        p/cap-put name 'copy pos p-end p-val
+        reduce [ 1 p-end ]
+    ]
+]
+p/set-op: func [name] [
+    raise create-sin 'parse 'unsupported-set name
+]
 ;; p/rule: parse one rule at pos. Every rule starts after default whitespace
 ;; unless all=1. Results are [success new-pos]; no exception is used for a
 ;; normal mismatch.
@@ -194,12 +224,18 @@ p/rule: func [rules src rule pos all case depth] [
                         ] [
                             either = p-op p/op-end [ p/end-op src p-p ] [
                                 either = p-op p/op-charset [ p/charset-op src p-p block-at rule 1 ] [
+                                    either = p-op p/op-copy [
+                                        p/copy-op rules src block-at rule 1 block-at rule 2 p-p all case depth
+                                    ] [
+                                        either = p-op p/op-set [ p/set-op block-at rule 1 ] [
                                     either = p-op p/op-exact [
                                         p/exact rules src block-at rule 2 block-at rule 1 p-p all case depth
                                     ] [
                                         either = p-op p/op-bounded [
                                             p/bounded rules src block-at rule 3 block-at rule 1 block-at rule 2 p-p all case depth
                                         ] [ p/block rules src rule p-p all case + depth 1 ]
+                                    ]
+                                        ]
                                     ]
                                 ]
                             ]
@@ -298,6 +334,7 @@ p/repeat-loop: func [rules src rule pos all case depth kind] [
     ]
 ]
 p/match-mode: func [rules src rule all case] [
+    p/cap-reset
     p-pos: p/skip-ws src 0 all
     p/rule rules src rule p-pos all case 0
 ]

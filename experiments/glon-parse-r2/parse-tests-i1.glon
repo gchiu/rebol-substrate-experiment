@@ -1,0 +1,12 @@
+t/cases: reduce [
+    reduce [ 'c "I1 copy literal, parse fails trailing" "abc" reduce [ 9 'x "a" ] 0 'x "a" ]
+    reduce [ 'c "I2 copy failed target leaves sentinel" "abc" reduce [ 9 'x "z" ] 0 'x none ]
+    reduce [ 'c "I3 capture survives later failure" "abc" reduce [ reduce [ 9 'x "a" ] "z" ] 0 'x "a" ]
+    reduce [ 'c "I4 capture survives failed alternative" "abc" reduce [ reduce [ 9 'x "a" ] "z" 0 "abc" ] 1 'x "a" ]
+    reduce [ 'c "I5 last repeated assignment wins" "ab" reduce [ reduce [ 9 'x "a" ] reduce [ 9 'x "b" ] ] 1 'x "b" ]
+    reduce [ 'c "I6 copy nested block" "ab" reduce [ 9 'x reduce [ "a" "b" ] ] 1 'x "ab" ]
+    reduce [ 'c "I7 copy some" "aaa" reduce [ 9 'x reduce [ 1 "a" ] ] 1 'x "aaa" ]
+    reduce [ 'c "I8 copy zero-length any is none" "" reduce [ 9 'x reduce [ 2 "a" ] ] 1 'x none ]
+]
+t/run 0
+t/done "I1 (Stage 2D capture) tests"

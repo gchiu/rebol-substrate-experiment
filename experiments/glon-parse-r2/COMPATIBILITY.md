@@ -1,4 +1,4 @@
-# Rebol 2 PARSE — Stage 1–2C compatibility matrix
+# Rebol 2 PARSE — Stage 1–2D compatibility matrix
 
 ## Oracle
 
@@ -60,21 +60,25 @@ in a block. This is an encoding/API difference, not a hidden host parser.
 | General `charset!`/`bitset!` datatype | **NOT IMPLEMENTED** | Stage 2C supports only the encoded pair descriptor |
 | Textual Rebol rule syntax | **NOT IMPLEMENTED** | Rules are encoded Glon data; no host parser |
 | `|` as a word token | **NOT IMPLEMENTED** | Encoded integer separator `0` |
-| General `copy`/`set`, mark/restore | **NOT IMPLEMENTED** | Stage 2D optional; not attempted |
-| Actions, block parsing, general R2 datatypes | **NOT IMPLEMENTED** | Outside Stage 2A–2C |
+| `copy word rule` | **PASS** | R2 I1–I15; captures source slice, survives later failure/alternative, last assignment wins |
+| `set word rule` in string parse | **UNSUPPORTED (R2 ERROR)** | R2 I16 errors `Invalid argument: set`; Glon raises `parse unsupported-set`; set is a block-parse operation |
+| Capture zero-length | **PASS** | R2 I8/I9: `copy` of `any`/`opt` zero match sets `none`; I10 empty literal fails |
+| Capture side effects | **NO ROLLBACK** | Captures persist after later sequence failure and failed alternative (I3/I4/I5) |
+| General `copy`/`set`, mark/restore | **PARTIAL: copy only** | `set` string form deliberately unsupported; no mark/restore |
+| Actions, block parsing, general R2 datatypes | **NOT IMPLEMENTED** | Outside Stage 2A–2D |
 | Unicode/non-ASCII case | **NOT IMPLEMENTED** | Glon strings are byte strings |
 
 ## Test evidence
 
 R2 was run locally under WSL (`rebol-core/rebol`, version `2.7.8.4.10`,
-ELF x86-64). `make oracle` runs 96 probes: 42 Stage 1 and 54 Stage 2A–2C. The
-full sequence includes true/false for literals, case, `/all`, whitespace,
-alternatives, nested rules, repetition, named/recursive rules, navigation,
-numeric repetition, charsets and zero-length boundaries.
+ELF x86-64). `make oracle` runs **112 probes**: 42 Stage 1, 54 Stage 2A–2C and
+16 Stage 2D capture probes. The capture probes check both the parse result and
+the assigned value (using a sentinel where needed).
 
-`make test` runs nine fresh native S1-7 processes (A, B, C, D1, D2, E, F, G, H)
-and reports **102 passing checks, 0 failures**. This is 93 encoded rule cases
-(39 Stage 1 + 54 Stage 2A–2C); some include position or error assertions. The
+`make test` runs twelve fresh native S1-7 processes (A, B, C, D1, D2, E, F1,
+F2, G, H, I1, I2) and reports **133 passing checks, 0 failures**. This is
+109 encoded rule cases (39 Stage 1 + 54 Stage 2A–2C + 16 Stage 2D). Some include
+position, capture or error assertions. The
 groups are separate because the test data/code must fit the fixed 64K
 machine—not because a host parses.
 
@@ -86,9 +90,10 @@ non-boolean:
   does not expose consumed positions.
 - X1/X2 add zero-length boundary probes beyond the Glon suite.
 
-Stage 2 representative processes: F (2A) **2.33 s / 2.18 MB**, G (2B)
-**0.16 s / 2.05 MB**, H (2C) **0.07 s / 2.05 MB** including CLI/library startup
-(`/usr/bin/time -v`). These are smoke measurements, not parse benchmarks.
+Representative processes including CLI/library startup (`/usr/bin/time -v`):
+Stage 2A F groups **2.33 s / 2.18 MB**, Stage 2B G **0.16 s / 2.05 MB**, Stage
+2C H **0.07 s / 2.05 MB**, Stage 2D I1 **0.13 s / 2.18 MB**, I2 **0.08 s /
+2.05 MB**. These are smoke measurements, not parse benchmarks.
 
 ## Stage 2A–2C oracle notes
 
@@ -103,6 +108,24 @@ Stage 2 representative processes: F (2A) **2.33 s / 2.18 MB**, G (2B)
   here as `lo,hi` byte pairs. `charset!`/bitsets are not general R2 datatypes.
 - Failures/positions are reported by the Glon `p/match` API; R2 has no position
   result, so prefix cases use an extended rule.
+
+## Stage 2D capture notes
+
+- R2 `copy` stores the source slice, not a case-normalized target, and the
+  capture persists if a later rule or alternative fails. There is no
+  transactional rollback. Repeated assignments keep the newest value.
+- `copy` of a successful zero-length repetition sets the capture to `none`
+  (I8/I9). An empty literal rule fails in R2 (I10), so no capture occurs.
+- R2 2.7.8 accepts `set` only in block parsing; in string rules it raises
+  `Invalid argument: set`. Glon therefore has no faithful string `set` to
+  implement; it raises `parse unsupported-set`. This is a deliberate unsupported
+  case, not a silent extension.
+- Glon names are test-visible symbols, not general Rebol variables; capture
+  values are read with `p/cap-get`/`p/captures` and are stored as linked
+  records. No arbitrary assignment/action execution was added.
+- A failed/no capture has no Glon record (`p/cap-get` = `none`); the oracle
+  uses a pre-set sentinel to show R2 leaves its variable unchanged. These are
+  equivalent assignment states, not equal captured values.
 
 ## Corrections made after R2 oracle
 

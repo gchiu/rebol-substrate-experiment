@@ -1,4 +1,4 @@
-# Glon PARSE R2 — Stage 2A–2C
+# Glon PARSE R2 — Stage 2A–2D
 
 A bounded Rebol 2 `parse` rule engine written entirely in Glon and running on
 the frozen seven-primitive S1-7 CLI. The host only compiles/loads Glon sources
@@ -33,11 +33,15 @@ needs a nested block for each operator):
 | `[ 8 descriptor ]` | charset; descriptor is a byte string of `[lo hi]` pairs |
 | `[ 20 n rule ]` | exact numeric repetition |
 | `[ 21 min max rule ]` | bounded numeric repetition |
+| `[ 9 'name rule ]` | `copy` capture (Stage 2D) |
+| `[ 10 'name rule ]` | `set` marker (unsupported in R2 string parse) |
 
 Stage 2 charset matching is case-sensitive, matching the R2 oracle. `to`/`thru`
 currently require a literal string target, not an arbitrary rule. Numeric
 repetition skips intervening whitespace; zero-length rules cannot satisfy a
-positive count.
+positive count. `copy` stores a source slice in the Glon capture log; `set` is
+rejected because Rebol 2.7.8 does not support it in string rules (it is a block
+parse operation).
 
 The registry is a flat data block `[ name rule name rule ... ]`. Example:
 
@@ -65,15 +69,16 @@ bash test.sh
 ```
 
 The suite runs in separate native processes because the test data/code must fit
-the 64K machine. It consists of **102 checks across nine groups** (`A`/`B`/`C`/
-`D1`/`D2`/`E` Stage 1, plus `F` Stage 2A, `G` Stage 2B and `H` Stage 2C).
+the 64K machine. It consists of **133 checks across twelve groups** (`A`–`E`
+Stage 1; `F1`/`F2` Stage 2A; `G` Stage 2B; `H` Stage 2C; `I1`/`I2` Stage 2D).
 
 ## Compatibility status
 
-Stage 2A–2C are implemented and all **102/102 local checks** pass. Representative
-native process measurements including CLI/library startup (`/usr/bin/time -v`):
-Stage 2A F group **2.33 s / 2.18 MB**, Stage 2B G group **0.16 s / 2.05 MB**,
-Stage 2C H group **0.07 s / 2.05 MB**. These are smoke measurements, not parse
+Stage 2A–2D are implemented to the verified extent and all **133/133 local
+checks** pass. Representative native process measurements including CLI/library
+startup (`/usr/bin/time -v`): Stage 2A F groups **2.33 s / 2.18 MB**, Stage 2B G
+**0.16 s / 2.05 MB**, Stage 2C H **0.07 s / 2.05 MB**, Stage 2D I1 **0.13 s /
+2.18 MB**, I2 **0.08 s / 2.05 MB**. These are smoke measurements, not parse
 benchmarks.
 
 - literal matching, default ASCII case-insensitivity and `/case`;
@@ -90,17 +95,19 @@ benchmarks.
 Rebol 2 reference: the REBOL/Core Users Guide, chapter 15 “Parsing”
 (<https://www.rebol.com/docs/core23/rebolcore-15.html>), plus the genuine
 REBOL/Core **2.7.8.4.10** Linux x86-64 binary (`rebol-core/rebol`) under WSL.
-`make oracle` runs `r2-oracle.r` (42 Stage 1 probes) and
-`r2-stage2-oracle.r` (54 Stage 2A–2C probes). All comparable boolean outcomes
-match; the only non-boolean cases are B3 position and D2 unknown-rule,
-documented in `COMPATIBILITY.md`. Rebol 3 was not used as an R2 oracle.
+`make oracle` runs `r2-oracle.r` (42 Stage 1 probes),
+`r2-stage2-oracle.r` (54 Stage 2A–2C probes) and `r2-capture-oracle.r` (16
+Stage 2D probes). All comparable boolean outcomes match; capture values also
+match except for the deliberately unsupported `set` form, where R2 raises an
+error and Glon raises `unsupported-set`. Rebol 3 was not used as an R2 oracle.
 
 Stage 2A–2C implement `skip`, `to`, `thru`, `end`, exact/bounded numeric
-repetition, and minimal range/member charsets. Stage 2D captures (`copy`,
-`set`) and arbitrary R2 actions are **not implemented**. Still not implemented:
-textual Rebol rule syntax, `|` as a word, `none`, block parsing, general
-charsets/bitsets beyond the minimal pair descriptor, and full `/all`/`/case`
-surface syntax. `p/parse` is the Glon API, not a native `parse` primitive.
+repetition, and minimal range/member charsets. Stage 2D implements `copy` with
+a Glon capture log; `set` is unsupported because R2 2.7.8 rejects it in string
+rules. Still not implemented: textual Rebol rule syntax, `|` as a word, `none`,
+block parsing, general charsets/bitsets beyond the minimal pair descriptor,
+general R2 actions, and full `/all`/`/case` surface syntax. `p/parse` is the Glon
+API, not a native `parse` primitive.
 
 R2-verified semantics: alternatives are ordered with no re-entry after a
 successful branch (`E6` matches R2). Leading whitespace is accepted; trailing
@@ -123,8 +130,9 @@ The full matrix, oracle translation note, and corrected deviations are in
 
 ## Limits / next obstacle
 
-Stage 2A–2C are an encoded, bounded subset, not full Rebol 2. The next
-compatibility obstacle is captures (`copy`/`set`) and then the textual rule
-dialect/parser and general actions. Those should be introduced incrementally
-with the same data format and R2 oracle comparisons; do not add VM features for
-them. Stage 2D was not attempted, so this milestone stops at 2A–2C.
+Stage 2A–2D are an encoded, bounded subset, not full Rebol 2. The next
+compatibility obstacle is the textual rule dialect/parser, general actions and
+block parsing; those should be introduced incrementally with the same data
+format and R2 oracle comparisons, without adding VM features. `set` in string
+parsing has no R2 semantics to implement; it remains an explicit unsupported
+case. No Stage 3 was started.

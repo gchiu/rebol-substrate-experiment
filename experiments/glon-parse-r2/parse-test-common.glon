@@ -45,8 +45,12 @@ t/run: func [i] [
                         t/num block-at t/c 1 block-at t/x 0 t/want
                         t/num s/+ block-at t/c 1 " position" block-at t/x 1 block-at t/c 5
                     ] [
-                        t/e: judge [ p/parse r t/src t/rule ]
-                        t/sin block-at t/c 1 t/e t/want block-at t/c 5
+                        either = t/k 'c [
+                            t/cap block-at t/c 1 r t/src t/rule t/want block-at t/c 5 block-at t/c 6
+                        ] [
+                            t/e: judge [ p/parse r t/src t/rule ]
+                            t/sin block-at t/c 1 t/e t/want block-at t/c 5
+                        ]
                     ]
                 ]
             ]
@@ -55,6 +59,12 @@ t/run: func [i] [
     ]
 ]
 
+t/cap: func [n rules src rule want-res name want-val] [
+    p-r: p/parse rules src rule
+    t/num n p-r want-res
+    p-v: p/cap-get name p/captures
+    either = want-val none [ t/num s/+ n " capture" p-v none ] [ t/str s/+ n " capture" p-v want-val ]
+]
 t/done: func [label] [
     print t/pass
     print t/fail

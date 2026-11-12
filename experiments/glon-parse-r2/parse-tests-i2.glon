@@ -1,0 +1,12 @@
+t/cases: reduce [
+    reduce [ 'c "I9 copy zero-length opt is none" "" reduce [ 9 'x reduce [ 3 "a" ] ] 1 'x none ]
+    reduce [ 'c "I10 copy empty literal fails" "" reduce [ 9 'x "" ] 0 'x none ]
+    reduce [ 'c "I11 copy retains source case" "ABC" reduce [ 9 'x "a" ] 0 'x "A" ]
+    reduce [ 'c "I12 copy exact numeric" "aaa" reduce [ 9 'x reduce [ 20 2 "a" ] ] 0 'x "aa" ]
+    reduce [ 'c "I13 copy bounded numeric" "aaa" reduce [ 9 'x reduce [ 21 1 3 "a" ] ] 1 'x "aaa" ]
+    reduce [ 'c "I14 copy skip" "a" reduce [ 9 'x reduce [ 4 ] ] 1 'x "a" ]
+    reduce [ 'c "I15 copy alternative span" "abc" reduce [ reduce [ 9 'x reduce [ "a" 0 "b" ] ] "bc" ] 1 'x "a" ]
+]
+t/run 0
+t/sin "I16 set is unsupported in R2 string parse" judge [ p/parse r "abc" reduce [ 10 'x "a" ] ] 'parse 'unsupported-set
+t/done "I2 (Stage 2D capture) tests"
