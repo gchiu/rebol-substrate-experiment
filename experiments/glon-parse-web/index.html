@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glon Parse Playground</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="masthead">
+  <p class="eyebrow">Glon experiment</p>
+  <h1>Glon Parse</h1>
+  <p class="subtitle">Rebol 2-style PARSE on the original seven-primitive S1 execution core.</p>
+</header>
+
+<main>
+  <section class="panel intro">
+    <p>Glon is an experimental compact execution language for AI-generated software. This page runs the existing Glon PARSE engine—the same rule interpreter tested against a genuine REBOL/Core 2.7.8 oracle—in WebAssembly on the frozen S1-7 runtime.</p>
+    <p>The parser, search, repetition, character-set matching and capture logic run in Glon. JavaScript only loads the runtime, sends the source/rule text, and displays the Glon output.</p>
+  </section>
+
+  <section class="panel controls">
+    <div class="row">
+      <label for="example">Example</label>
+      <select id="example"><option value="">Choose an example…</option></select>
+      <span id="example-note" class="note"></span>
+    </div>
+    <div class="grid">
+      <div>
+        <label for="input">Input text</label>
+        <textarea id="input" spellcheck="false" rows="5">hello</textarea>
+      </div>
+      <div>
+        <label for="registry">Named rules registry (Glon data)</label>
+        <textarea id="registry" spellcheck="false" rows="5">[]</textarea>
+      </div>
+    </div>
+    <label for="rule">Top rule (encoded Glon data expression)</label>
+    <textarea id="rule" spellcheck="false" rows="4">"hello"</textarea>
+    <div class="row options">
+      <label class="check"><input id="all" type="checkbox"> <code>/all</code> (do not skip whitespace)</label>
+      <label class="check"><input id="case" type="checkbox"> <code>/case</code> (case-sensitive literals)</label>
+    </div>
+    <div class="actions">
+      <button id="run" class="primary" disabled>Run Glon parser</button>
+      <button id="clear" class="secondary">Clear output</button>
+      <span id="status" class="status" role="status"></span>
+    </div>
+    <p class="note" id="input-note">Editable rules use the existing encoded Glon representation. The generated driver is limited to 16 KiB by the runtime source buffer; inputs are limited to 2,000 UTF-8 bytes.</p>
+  </section>
+
+  <section id="result" class="panel result" hidden>
+    <div class="result-head"><h2>Result</h2><span id="result-time" class="note"></span></div>
+    <p id="result-line" class="result-line"></p>
+    <div id="captures" class="captures"></div>
+    <p id="result-error" class="error" hidden></p>
+  </section>
+
+  <section class="panel reference">
+    <h2>Encoded rule representation</h2>
+    <p>This is the Stage 1–2E Glon rule data, not text Rebol syntax. Rules are ordinary Glon data built with <code>reduce</code>; a literal Glon block is code, so string-containing rules use nested <code>reduce</code>.</p>
+    <table>
+      <tr><th>Data</th><th>Meaning</th></tr>
+      <tr><td><code>"literal"</code></td><td>literal string; case-insensitive by default</td></tr>
+      <tr><td><code>[ rule … ]</code></td><td>sequence; <code>0</code> separates ordered alternatives</td></tr>
+      <tr><td><code>[ 1 rule ]</code>, <code>[ 2 rule ]</code>, <code>[ 3 rule ]</code></td><td><code>some</code>, <code>any</code>, <code>opt</code></td></tr>
+      <tr><td><code>[ 4 ]</code>, <code>[ 5 "target" ]</code>, <code>[ 6 "target" ]</code>, <code>[ 7 ]</code></td><td><code>skip</code>, <code>to</code>, <code>thru</code>, <code>end</code></td></tr>
+      <tr><td><code>[ 8 descriptor ]</code></td><td>charset; descriptor = byte pairs <code>lo,hi</code></td></tr>
+      <tr><td><code>[ 20 n rule ]</code>, <code>[ 21 min max rule ]</code></td><td>exact / bounded repetition</td></tr>
+      <tr><td><code>[ 9 "name" rule ]</code></td><td><code>copy</code> capture; names are strings in this page</td></tr>
+      <tr><td><code>'none</code></td><td>zero-length success, no consumption</td></tr>
+      <tr><td><code>'name</code></td><td>named rule from the flat registry</td></tr>
+    </table>
+    <p class="note"><code>set</code>, <code>ahead</code> and <code>not</code> are not R2 string-parse capabilities and are not offered here. There is no textual Rebol rule reader, block parsing or arbitrary action execution.</p>
+  </section>
+
+  <section class="panel tech">
+    <h2>Execution path</h2>
+    <dl>
+      <div><dt>Core</dt><dd>Frozen S1-7: <code>LIT DUP DROP @ ! 0BRANCH HOST</code>. Not S1-12.</dd></div>
+      <div><dt>Runtime</dt><dd>Standard <code>glon.wasm</code> (seven-primitive shop runtime) built from the current runtime sources.</dd></div>
+      <div><dt>Parser</dt><dd>The existing <code>parse.glon</code> from <code>experiments/glon-parse-r2/</code>; captures are displayed after the parse. No host parser or precomputed results.</dd></div>
+      <div><dt>Verification</dt><dd>Repository baseline: 151/151 Glon checks and 127 Rebol 2 oracle probes. Those are repository results, not tests performed by each click.</dd></div>
+    </dl>
+    <p class="note">Local demonstration only; not deployed. <a href="https://github.com/gchiu/rebol-substrate-experiment/tree/glon-shop-g1a/experiments/glon-parse-r2">Source and compatibility notes</a>.</p>
+  </section>
+</main>
+<footer><p>Glon Parse · seven-primitive S1 · actual Glon parsing in WebAssembly</p></footer>
+<script src="app.js"></script>
+</body>
+</html>

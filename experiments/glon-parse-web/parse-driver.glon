@@ -1,0 +1,32 @@
+;; Browser driver for the existing Glon PARSE engine.
+;; It only resets the capture log, calls p/parse-mode, and prints a small
+;; length-prefixed result/capture frame. Matching and captures stay in
+;; parse.glon; this file has no parser logic.
+[
+web/reset: func [] [ p/cap-reset ]
+web/emit-one: func [name value] [
+    s/print s/+ "C " s/from-int s/length name
+    s/print name
+    either = value none [
+        s/print "N"
+    ] [
+        s/print s/+ "V " s/from-int s/length value
+        s/print value
+    ]
+]
+web/emit-caps: func [rec] [
+    either = rec none [ none ] [
+        web/emit-one block-at rec 0 block-at rec 4
+        web/emit-caps block-at rec 5
+    ]
+]
+web/report: func [r] [
+    either sin? r [
+        s/print "E"
+        web/emit-caps p/captures
+    ] [
+        s/print s/+ "R " s/from-int r
+        web/emit-caps p/captures
+    ]
+]
+]
