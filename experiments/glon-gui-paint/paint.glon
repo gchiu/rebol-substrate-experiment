@@ -39,7 +39,7 @@ paint/status: func [] [
 paint/line: func [x1 y1 x2 y2] [
     paint/c: either = paint/tool 2 [ 0 ] [ paint/color ]
     paint/rgb: either = paint/tool 2 [ reduce [ 255 255 255 ] ] [ paint/color-rgb paint/c ]
-    paint/cmd: "L "
+    paint/cmd: either = paint/tool 2 [ "E " ] [ "L " ]
     paint/cmd: s/+ paint/cmd s/from-int x1
     paint/cmd: s/+ paint/cmd " "
     paint/cmd: s/+ paint/cmd s/from-int y1

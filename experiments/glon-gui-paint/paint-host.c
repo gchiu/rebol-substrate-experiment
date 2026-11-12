@@ -8,6 +8,7 @@
  *
  * Commands (one per newline):
  *   L x1 y1 x2 y2 size r g b
+ *   E x1 y1 x2 y2 size r g b
  *   C
  *   T title text
  *   I color size tool drawing
@@ -20,6 +21,7 @@
 #include "r0_s1.h"
 #include "s1.h"
 #include <SDL.h>
+#include <SDL_image.h>
 #include <png.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,7 +54,9 @@
 
 static SDL_Window *win;
 static SDL_Renderer *ren;
+static SDL_Texture *background;
 static SDL_Texture *canvas;
+static SDL_Texture *composite;
 static struct nk_context *nk;
 static int dirty = 1;
 static int quit_flag = 0;
@@ -66,6 +70,11 @@ typedef struct { Uint32 *pixels; } HistoryEntry;
 typedef struct { HistoryEntry items[HISTORY_LIMIT]; int count; } HistoryStack;
 static HistoryStack undo_stack, redo_stack;
 static Uint32 *stroke_snapshot = NULL;
+static int unsaved = 0;
+static int open_dialog = 0;
+static int confirm_open = 0;
+static char open_path[1024] = "";
+static char open_error[256] = "";
 static SDL_Rect ui_brush_bounds, ui_eraser_bounds;
 static SDL_Rect ui_color_bounds[4];
 static SDL_Rect ui_size_bounds;
@@ -152,10 +161,16 @@ static int glon_call(const char *src, char *out, size_t cap) {
     return failed ? -1 : 0;
 }
 
-static void set_color(int r, int g, int b) {
-    SDL_SetRenderDrawColor(ren, (Uint8)r, (Uint8)g, (Uint8)b, 255);
+static void set_color(int r, int g, int b, int a) {
+    SDL_SetRenderDrawColor(ren, (Uint8)r, (Uint8)g, (Uint8)b, (Uint8)a);
 }
 static void begin_canvas(void) { SDL_SetRenderTarget(ren, canvas); }
+static void clear_background(void) {
+    SDL_SetRenderTarget(ren, background);
+    SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
+    SDL_RenderClear(ren);
+    SDL_SetRenderTarget(ren, NULL);
+}
 
 /* ---- G2 layout and image/canvas geometry -------------------------------- */
 static int point_in_rect(const SDL_Rect *r, int x, int y) {
@@ -228,7 +243,7 @@ static int canvas_to_window(int cx, int cy, int *wx, int *wy) {
     return 1;
 }
 static int point_in_ui(int x, int y) {
-    if (show_about) return 1;
+    if (show_about || open_dialog || confirm_open) return 1;
     return point_in_rect(&layout.menu, x, y) ||
            point_in_rect(&layout.toolbar, x, y) ||
            point_in_rect(&layout.right, x, y) ||
@@ -240,14 +255,16 @@ static int point_in_ui(int x, int y) {
 }
 static void clear_canvas(void) {
     begin_canvas();
-    SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
+    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+    SDL_SetRenderDrawColor(ren, 0, 0, 0, 0);
     SDL_RenderClear(ren);
     dirty = 1;
 }
 static void draw_line(int x1, int y1, int x2, int y2, int size,
-                      int r, int g, int b) {
+                      int r, int g, int b, int a) {
     begin_canvas();
-    set_color(r, g, b);
+    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+    set_color(r, g, b, a);
     int radius = size > 1 ? size / 2 : 0;
     for (int dy = -radius; dy <= radius; dy++) {
         for (int dx = -radius; dx <= radius; dx++) {
@@ -256,6 +273,17 @@ static void draw_line(int x1, int y1, int x2, int y2, int size,
         }
     }
     dirty = 1;
+}
+static void build_composite(void) {
+    SDL_SetRenderTarget(ren, composite);
+    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+    SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
+    SDL_RenderClear(ren);
+    SDL_SetTextureBlendMode(background, SDL_BLENDMODE_NONE);
+    SDL_RenderCopy(ren, background, NULL, NULL);
+    SDL_SetTextureBlendMode(canvas, SDL_BLENDMODE_BLEND);
+    SDL_RenderCopy(ren, canvas, NULL, NULL);
+    SDL_SetRenderTarget(ren, NULL);
 }
 static void render_frame(void) {
     update_layout();
@@ -271,6 +299,9 @@ static void render_frame(void) {
                             layout.image.w + 6, layout.image.h + 6 };
         SDL_SetRenderDrawColor(ren, 8, 9, 11, 255);
         SDL_RenderFillRect(ren, &shadow);
+        SDL_SetTextureBlendMode(background, SDL_BLENDMODE_NONE);
+        SDL_RenderCopy(ren, background, NULL, &layout.image);
+        SDL_SetTextureBlendMode(canvas, SDL_BLENDMODE_BLEND);
         SDL_RenderCopy(ren, canvas, NULL, &layout.image);
         SDL_SetRenderDrawColor(ren, 92, 96, 106, 255);
         SDL_RenderDrawRect(ren, &layout.image);
@@ -291,13 +322,16 @@ static void present_ui(void) {
 }
 
 static int save_png(const char *path) {
-    begin_canvas();
+    build_composite();
+    SDL_SetRenderTarget(ren, composite);
     Uint32 *pixels = malloc((size_t)PAINT_W * PAINT_H * sizeof(Uint32));
-    if (!pixels) return -1;
+    if (!pixels) { SDL_SetRenderTarget(ren, NULL); return -1; }
     if (SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888,
                              pixels, PAINT_W * sizeof(Uint32)) != 0) {
+        SDL_SetRenderTarget(ren, NULL);
         free(pixels); return -1;
     }
+    SDL_SetRenderTarget(ren, NULL);
     FILE *f = fopen(path, "wb");
     if (!f) { free(pixels); return -1; }
     png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
@@ -413,6 +447,7 @@ static int history_undo(void) {
         return -1;
     }
     free(previous);
+    unsaved = 1;
     return 1;
 }
 static int history_redo(void) {
@@ -427,6 +462,7 @@ static int history_redo(void) {
         return -1;
     }
     free(next);
+    unsaved = 1;
     return 1;
 }
 static int history_shortcut(SDL_Keycode sym, Uint16 mod) {
@@ -442,20 +478,92 @@ static void history_free(void) {
     history_cancel_stroke();
 }
 
+/* Load a PNG/JPEG into the immutable background. The document stays 800x600:
+ * the image is aspect-fit over white and the drawing layer is reset only after
+ * decoding and scaling succeed. Invalid files leave the current document as-is. */
+static int load_image_file(const char *path) {
+    if (!path || !*path) {
+        snprintf(open_error, sizeof open_error, "Enter a PNG or JPEG path.");
+        return -1;
+    }
+    SDL_Texture *img = IMG_LoadTexture(ren, path);
+    if (!img) {
+        snprintf(open_error, sizeof open_error, "Cannot open image: %s", IMG_GetError());
+        return -1;
+    }
+    int iw = 0, ih = 0;
+    if (SDL_QueryTexture(img, NULL, NULL, &iw, &ih) != 0 || iw <= 0 || ih <= 0) {
+        snprintf(open_error, sizeof open_error, "Invalid image dimensions.");
+        SDL_DestroyTexture(img);
+        return -1;
+    }
+    SDL_Texture *newbg = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
+                                           SDL_TEXTUREACCESS_TARGET, PAINT_W, PAINT_H);
+    if (!newbg) {
+        snprintf(open_error, sizeof open_error, "Cannot allocate background.");
+        SDL_DestroyTexture(img);
+        return -1;
+    }
+    double scale_x = (double)PAINT_W / (double)iw;
+    double scale_y = (double)PAINT_H / (double)ih;
+    double scale = scale_x < scale_y ? scale_x : scale_y;
+    int dw = (int)(iw * scale + 0.5);
+    int dh = (int)(ih * scale + 0.5);
+    if (dw < 1) dw = 1;
+    if (dh < 1) dh = 1;
+    if (dw > PAINT_W) dw = PAINT_W;
+    if (dh > PAINT_H) dh = PAINT_H;
+    SDL_Rect dst = { (PAINT_W - dw) / 2, (PAINT_H - dh) / 2, dw, dh };
+    SDL_SetRenderTarget(ren, newbg);
+    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+    SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
+    SDL_RenderClear(ren);
+    SDL_SetTextureBlendMode(img, SDL_BLENDMODE_BLEND);
+    int copy_rc = SDL_RenderCopy(ren, img, NULL, &dst);
+    SDL_SetRenderTarget(ren, NULL);
+    SDL_DestroyTexture(img);
+    if (copy_rc != 0) {
+        snprintf(open_error, sizeof open_error, "Cannot scale image: %s", SDL_GetError());
+        SDL_DestroyTexture(newbg);
+        return -1;
+    }
+
+    SDL_DestroyTexture(background);
+    background = newbg;
+    clear_canvas();
+    history_free();
+    unsaved = 0;
+    open_error[0] = 0;
+    dirty = 1;
+    return 0;
+}
+
+static void request_open(void) {
+    open_error[0] = 0;
+    if (unsaved) {
+        confirm_open = 1;
+    } else {
+        open_dialog = 1;
+    }
+}
+
 /* Execute one Glon command. C does not decide brush/tool state. */
 static void command(const char *line, int *saved) {
-    if (line[0] == 'L' && line[1] == ' ') {
+    if ((line[0] == 'L' || line[0] == 'E') && line[1] == ' ') {
         int x1, y1, x2, y2, size, r, g, b;
         if (sscanf(line + 2, "%d %d %d %d %d %d %d %d",
-                   &x1, &y1, &x2, &y2, &size, &r, &g, &b) == 8)
-            draw_line(x1, y1, x2, y2, size, r, g, b);
+                   &x1, &y1, &x2, &y2, &size, &r, &g, &b) == 8) {
+            draw_line(x1, y1, x2, y2, size, r, g, b, line[0] == 'E' ? 0 : 255);
+            unsaved = 1;
+        }
     } else if (line[0] == 'C' && line[1] == 0) {
         history_record_clear();
         clear_canvas();
+        unsaved = 1;
     } else if (line[0] == 'T' && line[1] == ' ') {
         SDL_SetWindowTitle(win, line + 2);
     } else if (line[0] == 'S' && line[1] == ' ') {
-        if (save_png(line + 2) == 0) *saved = 1;
+        if (save_png(line + 2) == 0) { *saved = 1; unsaved = 0; }
     } else if (line[0] == 'I' && line[1] == ' ') {
         int c, z, t, d;
         if (sscanf(line + 2, "%d %d %d %d", &c, &z, &t, &d) == 4) {
@@ -560,6 +668,12 @@ static int sdl_init(int hidden) {
         fprintf(stderr, "glon-paint: SDL_Init: %s\n", SDL_GetError());
         return -1;
     }
+    int img_flags = IMG_INIT_PNG | IMG_INIT_JPG;
+    if ((IMG_Init(img_flags) & img_flags) != img_flags) {
+        fprintf(stderr, "glon-paint: SDL_image: %s\n", IMG_GetError());
+        SDL_Quit();
+        return -1;
+    }
     Uint32 flags = hidden ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN;
     win = SDL_CreateWindow("Glon Paint", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                            1200, 800, flags | SDL_WINDOW_RESIZABLE);
@@ -567,9 +681,21 @@ static int sdl_init(int hidden) {
     ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
     if (!ren) { fprintf(stderr, "glon-paint: renderer: %s\n", SDL_GetError()); SDL_DestroyWindow(win); SDL_Quit(); return -1; }
+    background = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
+                                   SDL_TEXTUREACCESS_TARGET, PAINT_W, PAINT_H);
     canvas = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
                                SDL_TEXTUREACCESS_TARGET, PAINT_W, PAINT_H);
-    if (!canvas) { fprintf(stderr, "glon-paint: canvas: %s\n", SDL_GetError()); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit(); return -1; }
+    composite = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
+                                  SDL_TEXTUREACCESS_TARGET, PAINT_W, PAINT_H);
+    if (!background || !canvas || !composite) {
+        fprintf(stderr, "glon-paint: canvas: %s\n", SDL_GetError());
+        if (background) SDL_DestroyTexture(background);
+        if (canvas) SDL_DestroyTexture(canvas);
+        if (composite) SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        return -1;
+    }
+    clear_background();
     clear_canvas();
     update_layout();
     return 0;
@@ -643,9 +769,9 @@ static void ui_menus(void) {
         if (nk_menu_begin_label(nk, "File", NK_TEXT_LEFT, nk_vec2(150, 190))) {
             nk_layout_row_dynamic(nk, 24, 1);
             if (nk_menu_item_label(nk, "New / Clear", NK_TEXT_LEFT)) app_key_code(99);
+            if (nk_menu_item_label(nk, "Open PNG / JPEG...", NK_TEXT_LEFT)) request_open();
             if (nk_menu_item_label(nk, "Save PNG", NK_TEXT_LEFT)) app_key_code(115);
             nk_widget_disable_begin(nk);
-            nk_menu_item_label(nk, "Open...", NK_TEXT_LEFT);
             nk_menu_item_label(nk, "Export...", NK_TEXT_LEFT);
             nk_widget_disable_end(nk);
             if (nk_menu_item_label(nk, "Quit", NK_TEXT_LEFT)) app_key_code(27);
@@ -792,6 +918,46 @@ static void ui_status(void) {
     }
     nk_end(nk);
 }
+static void ui_file_dialogs(void) {
+    int ww = 0, wh = 0;
+    SDL_GetWindowSize(win, &ww, &wh);
+    if (confirm_open) {
+        int w = 430, h = 150;
+        struct nk_rect r = ui_rect((ww - w) / 2, (wh - h) / 2, w, h);
+        if (nk_begin(nk, "Unsaved Drawing", r,
+                     NK_WINDOW_TITLE | NK_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR)) {
+            nk_layout_row_dynamic(nk, 24, 1);
+            nk_label_wrap(nk, "Current drawing has unsaved changes. Opening another image resets the drawing and undo/redo history.");
+            nk_layout_row_dynamic(nk, 28, 2);
+            if (nk_button_label(nk, "Discard and Open")) {
+                confirm_open = 0; open_dialog = 1; open_error[0] = 0;
+            }
+            if (nk_button_label(nk, "Cancel")) confirm_open = 0;
+        }
+        nk_end(nk);
+    }
+    if (open_dialog) {
+        int w = 560, h = 210;
+        struct nk_rect r = ui_rect((ww - w) / 2, (wh - h) / 2, w, h);
+        if (nk_begin(nk, "Open Image", r,
+                     NK_WINDOW_TITLE | NK_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR)) {
+            nk_layout_row_dynamic(nk, 22, 1);
+            nk_label(nk, "PNG or JPEG path:", NK_TEXT_LEFT);
+            nk_layout_row_dynamic(nk, 30, 1);
+            nk_edit_string_zero_terminated(nk, NK_EDIT_FIELD, open_path,
+                                           (int)sizeof open_path, nk_filter_default);
+            nk_layout_row_dynamic(nk, 20, 1);
+            if (open_error[0]) nk_label_wrap(nk, open_error);
+            else nk_label(nk, "The image is aspect-fit over white at 800x600.", NK_TEXT_LEFT);
+            nk_layout_row_dynamic(nk, 30, 2);
+            if (nk_button_label(nk, "Open")) {
+                if (load_image_file(open_path) == 0) open_dialog = 0;
+            }
+            if (nk_button_label(nk, "Cancel")) open_dialog = 0;
+        }
+        nk_end(nk);
+    }
+}
 static void ui_build(void) {
     update_layout();
     ui_menus();
@@ -799,6 +965,7 @@ static void ui_build(void) {
     ui_right_panel();
     ui_layers();
     ui_status();
+    ui_file_dialogs();
     if (show_about) {
         int w = 360, h = 160;
         int ww = 0, wh = 0; SDL_GetWindowSize(win, &ww, &wh);
@@ -843,15 +1010,20 @@ static int read_output_pixel(int x, int y, Uint8 *rr, Uint8 *gg, Uint8 *bb) {
     return 0;
 }
 static int read_canvas_pixel(int x, int y, Uint8 *rr, Uint8 *gg, Uint8 *bb) {
-    begin_canvas();
+    build_composite();
+    SDL_SetRenderTarget(ren, composite);
     SDL_Rect r = { x, y, 1, 1 };
     Uint32 px = 0;
-    if (SDL_RenderReadPixels(ren, &r, SDL_PIXELFORMAT_ARGB8888, &px, 4) != 0) return -1;
+    if (SDL_RenderReadPixels(ren, &r, SDL_PIXELFORMAT_ARGB8888, &px, 4) != 0) {
+        SDL_SetRenderTarget(ren, NULL);
+        return -1;
+    }
     SDL_PixelFormat *fmt = SDL_AllocFormat(SDL_PIXELFORMAT_ARGB8888);
-    if (!fmt) return -1;
+    if (!fmt) { SDL_SetRenderTarget(ren, NULL); return -1; }
     Uint8 a;
     SDL_GetRGBA(px, fmt, rr, gg, bb, &a);
     SDL_FreeFormat(fmt);
+    SDL_SetRenderTarget(ren, NULL);
     return 0;
 }
 static int resize_to(int w, int h) {
@@ -1156,6 +1328,7 @@ static void run_app_ui(void) {
         nk_input_begin(nk);
 
         int pending_down = 0, pending_up = 0, pending_motion = 0;
+        int down_ui = 0;
         int dx = 0, dy = 0, mx = 0, my = 0;
         SDL_KeyboardEvent keys[16];
         int nkeys = 0;
@@ -1170,6 +1343,8 @@ static void run_app_ui(void) {
             } else if (e.type == SDL_MOUSEBUTTONDOWN) {
                 if (e.button.button == SDL_BUTTON_LEFT) {
                     pending_down = 1; dx = e.button.x; dy = e.button.y;
+                    down_ui = open_dialog || confirm_open || show_about ||
+                              point_in_ui(dx, dy);
                 }
             } else if (e.type == SDL_MOUSEBUTTONUP) {
                 if (e.button.button == SDL_BUTTON_LEFT) pending_up = 1;
@@ -1186,7 +1361,8 @@ static void run_app_ui(void) {
         ui_build();
 
         if (pending_down) {
-            int down_inside = !point_in_ui(dx, dy) && point_in_rect(&layout.image, dx, dy);
+            int down_inside = !down_ui && !point_in_ui(dx, dy) &&
+                              point_in_rect(&layout.image, dx, dy);
             if (down_inside) {
                 history_begin_stroke();   /* snapshot before the first pixel */
                 if (dispatch_canvas_pointer(SDL_MOUSEBUTTONDOWN, dx, dy,
@@ -1218,6 +1394,7 @@ static void run_app_ui(void) {
         /* Key actions happen after pending painting, so a save key in the
          * same batch exports the stroke, not the previous frame. */
         for (int k = 0; k < nkeys; k++) {
+            if (open_dialog || confirm_open) continue;  /* Nuklear owns text keys */
             if ((keys[k].keysym.mod & KMOD_CTRL) &&
                 (keys[k].keysym.sym == SDLK_z || keys[k].keysym.sym == SDLK_y)) {
                 if (dragging) {
@@ -1260,6 +1437,92 @@ static int test_stroke(int cx0, int cy0, int cx1, int cy1, int steps) {
     history_commit_stroke();
     return 0;
 }
+static int pixel_is(Uint8 r, Uint8 g, Uint8 b, Uint8 cr, Uint8 cg, Uint8 cb) {
+    return r == cr && g == cg && b == cb;
+}
+static int image_test(void) {
+    int saved = 0;
+    if (app_init() != 0) return 2;
+    clear_canvas();
+    history_free();
+    unsaved = 0;
+
+    /* Wide PNG: aspect-fit to 800x200, centred vertically over white. */
+    if (load_image_file("tests/fixtures/wide.png") != 0) return 3;
+    Uint8 r = 0, g = 0, b = 0;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,220,20,20)) return 4;
+    if (read_canvas_pixel(400, 100, &r, &g, &b) != 0 || !pixel_is(r,g,b,255,255,255)) return 5;
+    if (read_canvas_pixel(100, 100, &r, &g, &b) != 0 || !pixel_is(r,g,b,255,255,255)) return 5;
+    if (unsaved) return 6;
+    request_open();
+    if (!open_dialog || confirm_open) return 7;
+    open_dialog = 0;
+
+    /* Brush over the image, then eraser reveals the immutable background. */
+    if (app_set_color(2) != 0 || app_set_tool(1) != 0 || app_set_size(8) != 0) return 7;
+    if (test_stroke(300, 300, 500, 300, 10) != 0) return 8;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,40,120,220)) return 9;
+    if (app_set_tool(2) != 0) return 10;
+    if (test_stroke(300, 300, 500, 300, 10) != 0) return 11;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,220,20,20)) return 12;
+    if (history_undo() != 1 ||
+        read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,40,120,220)) return 13;
+    if (history_redo() != 1 ||
+        read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,220,20,20)) return 14;
+
+    /* Clear removes only the drawing layer; undo restores the stroke. */
+    if (app_set_tool(1) != 0 || test_stroke(300, 300, 500, 300, 10) != 0) return 15;
+    if (event_key(SDLK_c, 0, &saved) != 0) return 16;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,220,20,20)) return 17;
+    if (history_undo() != 1 ||
+        read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,40,120,220)) return 18;
+    if (history_redo() != 1 ||
+        read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,220,20,20)) return 19;
+
+    /* Tall JPEG: aspect-fit to 150x600, centred horizontally over white. */
+    if (load_image_file("tests/fixtures/tall.jpg") != 0) return 20;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        !(g > 150 && r < 80 && b < 100)) return 21;
+    if (read_canvas_pixel(50, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,255,255,255)) return 22;
+    if (read_canvas_pixel(775, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,255,255,255)) return 22;
+    if (undo_stack.count != 0 || redo_stack.count != 0) return 23;
+
+    /* Transparent PNG pixels become white, opaque pixels remain visible. */
+    if (load_image_file("tests/fixtures/alpha.png") != 0) return 24;
+    if (read_canvas_pixel(200, 100, &r, &g, &b) != 0 || !pixel_is(r,g,b,255,255,255)) return 25;
+    if (read_canvas_pixel(500, 500, &r, &g, &b) != 0 || !pixel_is(r,g,b,20,60,220)) return 26;
+
+    /* Invalid input must not reset the current document or history. */
+    if (load_image_file("tests/fixtures/tall.jpg") != 0) return 27;
+    if (app_set_color(2) != 0 || app_set_tool(1) != 0 ||
+        test_stroke(100, 100, 200, 200, 3) != 0) return 28;
+    int undo_before = undo_stack.count;
+    if (load_image_file("tests/fixtures/invalid.png") == 0) return 29;
+    if (open_error[0] == 0) return 30;
+    if (undo_stack.count != undo_before) return 31;
+    if (read_canvas_pixel(150, 150, &r, &g, &b) != 0 || !pixel_is(r,g,b,40,120,220)) return 32;
+    if (!unsaved) return 33;
+
+    /* Loading a new image resets drawing and history after confirmation. */
+    if (!unsaved) return 34;
+    request_open();
+    if (!confirm_open) return 35;
+    confirm_open = 0;
+    if (load_image_file("tests/fixtures/wide.png") != 0) return 36;
+    if (undo_stack.count != 0 || redo_stack.count != 0) return 37;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,220,20,20)) return 38;
+
+    /* Export a composite containing both the imported image and a new stroke. */
+    if (app_set_color(2) != 0 || app_set_tool(1) != 0 ||
+        test_stroke(300, 300, 500, 300, 10) != 0) return 39;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,40,120,220)) return 39;
+    if (event_key(SDLK_s, 0, &saved) != 0 || !saved) return 39;
+    printf("image-test: png=ok jpeg=ok alpha=ok scale_center=ok immutable=ok "
+           "eraser=ok clear=ok undo=ok invalid=ok history_reset=ok result=ok\n");
+    history_free();
+    return 0;
+}
+
 static int undo_test(void) {
     int saved = 0;
     if (app_init() != 0) return 2;
@@ -1416,6 +1679,15 @@ int main(int argc, char **argv) {
         history_free();
         SDL_DestroyTexture(canvas); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
         fprintf(stderr, "glon-paint: undo-test %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--image-test") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = image_test();
+        history_free();
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        fprintf(stderr, "glon-paint: image-test %s\n", rc == 0 ? "passed" : "failed");
         return rc;
     }
     if (argc > 1 && strcmp(argv[1], "--coalesce-test") == 0) {
