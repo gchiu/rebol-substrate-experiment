@@ -48,6 +48,7 @@
 #define UI_RIGHT_W  252
 #define UI_GAP      8
 #define UI_MARGIN   24
+#define HISTORY_LIMIT 16
 
 static SDL_Window *win;
 static SDL_Renderer *ren;
@@ -61,6 +62,10 @@ static int ui_tool = 1;
 static int ui_drawing = 0;
 static int show_about = 0;
 static long perf_raw_motions = 0, perf_app_moves = 0, perf_renders = 0;
+typedef struct { Uint32 *pixels; } HistoryEntry;
+typedef struct { HistoryEntry items[HISTORY_LIMIT]; int count; } HistoryStack;
+static HistoryStack undo_stack, redo_stack;
+static Uint32 *stroke_snapshot = NULL;
 static SDL_Rect ui_brush_bounds, ui_eraser_bounds;
 static SDL_Rect ui_color_bounds[4];
 static SDL_Rect ui_size_bounds;
@@ -325,6 +330,118 @@ static int save_png(const char *path) {
     return 0;
 }
 
+/* ---- bounded canvas history --------------------------------------------- */
+/* Snapshot history: one pre-operation 800x600 ARGB image per entry. This is
+ * deliberately not a recorded-command history; it is the safe fallback for
+ * exact canvas undo until the scripting milestone can record/replay commands. */
+static Uint32 *snapshot_canvas(void) {
+    Uint32 *px = malloc((size_t)PAINT_W * PAINT_H * sizeof(Uint32));
+    if (!px) return NULL;
+    begin_canvas();
+    if (SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888,
+                             px, PAINT_W * sizeof(Uint32)) != 0) {
+        free(px);
+        return NULL;
+    }
+    return px;
+}
+static int restore_canvas(const Uint32 *px) {
+    begin_canvas();
+    if (SDL_UpdateTexture(canvas, NULL, px, PAINT_W * sizeof(Uint32)) != 0) return -1;
+    dirty = 1;
+    return 0;
+}
+static void history_stack_clear(HistoryStack *h) {
+    for (int i = 0; i < h->count; i++) free(h->items[i].pixels);
+    h->count = 0;
+}
+static void history_push(HistoryStack *h, Uint32 *px) {
+    if (!px) return;
+    if (h->count >= HISTORY_LIMIT) {
+        free(h->items[0].pixels);
+        memmove(&h->items[0], &h->items[1],
+                sizeof(h->items[0]) * (HISTORY_LIMIT - 1));
+        h->count = HISTORY_LIMIT - 1;
+    }
+    h->items[h->count++].pixels = px;
+}
+static Uint32 *history_pop(HistoryStack *h) {
+    if (h->count <= 0) return NULL;
+    return h->items[--h->count].pixels;
+}
+static size_t history_bytes(void) {
+    size_t n = (size_t)(undo_stack.count + redo_stack.count) *
+               PAINT_W * PAINT_H * sizeof(Uint32);
+    if (stroke_snapshot) n += PAINT_W * PAINT_H * sizeof(Uint32);
+    return n;
+}
+static int history_can_undo(void) { return undo_stack.count > 0; }
+static int history_can_redo(void) { return redo_stack.count > 0; }
+static int history_begin_stroke(void) {
+    if (stroke_snapshot) free(stroke_snapshot);
+    stroke_snapshot = snapshot_canvas();
+    history_stack_clear(&redo_stack);
+    return stroke_snapshot ? 0 : -1;
+}
+static void history_commit_stroke(void) {
+    if (stroke_snapshot) {
+        history_push(&undo_stack, stroke_snapshot);
+        stroke_snapshot = NULL;
+    }
+}
+static void history_cancel_stroke(void) {
+    free(stroke_snapshot);
+    stroke_snapshot = NULL;
+}
+static void history_record_clear(void) {
+    if (stroke_snapshot) history_commit_stroke();
+    Uint32 *px = snapshot_canvas();
+    if (px) {
+        history_stack_clear(&redo_stack);
+        history_push(&undo_stack, px);
+    }
+}
+static int history_undo(void) {
+    if (stroke_snapshot) history_commit_stroke();
+    if (undo_stack.count <= 0) return 0;
+    Uint32 *current = snapshot_canvas();
+    if (!current) return -1;
+    history_push(&redo_stack, current);
+    Uint32 *previous = history_pop(&undo_stack);
+    if (restore_canvas(previous) != 0) {
+        free(previous);
+        return -1;
+    }
+    free(previous);
+    return 1;
+}
+static int history_redo(void) {
+    if (stroke_snapshot) history_commit_stroke();
+    if (redo_stack.count <= 0) return 0;
+    Uint32 *current = snapshot_canvas();
+    if (!current) return -1;
+    history_push(&undo_stack, current);
+    Uint32 *next = history_pop(&redo_stack);
+    if (restore_canvas(next) != 0) {
+        free(next);
+        return -1;
+    }
+    free(next);
+    return 1;
+}
+static int history_shortcut(SDL_Keycode sym, Uint16 mod) {
+    if (!(mod & KMOD_CTRL)) return 0;
+    if (sym == SDLK_z && (mod & KMOD_SHIFT)) { history_redo(); return 1; }
+    if (sym == SDLK_z) { history_undo(); return 1; }
+    if (sym == SDLK_y) { history_redo(); return 1; }
+    return 0;
+}
+static void history_free(void) {
+    history_stack_clear(&undo_stack);
+    history_stack_clear(&redo_stack);
+    history_cancel_stroke();
+}
+
 /* Execute one Glon command. C does not decide brush/tool state. */
 static void command(const char *line, int *saved) {
     if (line[0] == 'L' && line[1] == ' ') {
@@ -333,6 +450,7 @@ static void command(const char *line, int *saved) {
                    &x1, &y1, &x2, &y2, &size, &r, &g, &b) == 8)
             draw_line(x1, y1, x2, y2, size, r, g, b);
     } else if (line[0] == 'C' && line[1] == 0) {
+        history_record_clear();
         clear_canvas();
     } else if (line[0] == 'T' && line[1] == ' ') {
         SDL_SetWindowTitle(win, line + 2);
@@ -533,13 +651,23 @@ static void ui_menus(void) {
             if (nk_menu_item_label(nk, "Quit", NK_TEXT_LEFT)) app_key_code(27);
             nk_menu_end(nk);
         }
-        if (nk_menu_begin_label(nk, "Edit", NK_TEXT_LEFT, nk_vec2(150, 170))) {
+        if (nk_menu_begin_label(nk, "Edit", NK_TEXT_LEFT, nk_vec2(170, 170))) {
             nk_layout_row_dynamic(nk, 24, 1);
             if (nk_menu_item_label(nk, "Clear Canvas", NK_TEXT_LEFT)) app_key_code(99);
-            nk_widget_disable_begin(nk);
-            nk_menu_item_label(nk, "Undo", NK_TEXT_LEFT);
-            nk_menu_item_label(nk, "Redo", NK_TEXT_LEFT);
-            nk_widget_disable_end(nk);
+            if (history_can_undo()) {
+                if (nk_menu_item_label(nk, "Undo  Ctrl+Z", NK_TEXT_LEFT)) history_undo();
+            } else {
+                nk_widget_disable_begin(nk);
+                nk_menu_item_label(nk, "Undo  Ctrl+Z", NK_TEXT_LEFT);
+                nk_widget_disable_end(nk);
+            }
+            if (history_can_redo()) {
+                if (nk_menu_item_label(nk, "Redo  Ctrl+Y", NK_TEXT_LEFT)) history_redo();
+            } else {
+                nk_widget_disable_begin(nk);
+                nk_menu_item_label(nk, "Redo  Ctrl+Y", NK_TEXT_LEFT);
+                nk_widget_disable_end(nk);
+            }
             nk_menu_end(nk);
         }
         if (nk_menu_begin_label(nk, "View", NK_TEXT_LEFT, nk_vec2(160, 140))) {
@@ -694,9 +822,11 @@ static void push_mouse(Uint32 type, int x, int y) {
     else { e.button.x = x; e.button.y = y; e.button.button = SDL_BUTTON_LEFT; e.button.state = (type == SDL_MOUSEBUTTONDOWN) ? SDL_PRESSED : SDL_RELEASED; }
     SDL_PushEvent(&e);
 }
-static void push_key(SDL_Keycode k) {
-    SDL_Event e; memset(&e, 0, sizeof e); e.type = SDL_KEYDOWN; e.key.keysym.sym = k; SDL_PushEvent(&e);
+static void push_key_mod(SDL_Keycode k, Uint16 mod) {
+    SDL_Event e; memset(&e, 0, sizeof e); e.type = SDL_KEYDOWN;
+    e.key.keysym.sym = k; e.key.keysym.mod = mod; SDL_PushEvent(&e);
 }
+static void push_key(SDL_Keycode k) { push_key_mod(k, 0); }
 static long loader_used(void) { return (long)(M[GC_LOADER_HP] - R0S1_HEAP_BASE); }
 static long loader_free_cells(void) { return (long)(R0S1_HEAP_LIMIT - M[GC_LOADER_HP]); }
 
@@ -1057,9 +1187,16 @@ static void run_app_ui(void) {
 
         if (pending_down) {
             int down_inside = !point_in_ui(dx, dy) && point_in_rect(&layout.image, dx, dy);
-            if (down_inside && dispatch_canvas_pointer(SDL_MOUSEBUTTONDOWN, dx, dy,
-                                                       SDL_BUTTON_LEFT, &saved) == 0) {
-                dragging = 1; last_wx = dx; last_wy = dy;
+            if (down_inside) {
+                history_begin_stroke();   /* snapshot before the first pixel */
+                if (dispatch_canvas_pointer(SDL_MOUSEBUTTONDOWN, dx, dy,
+                                            SDL_BUTTON_LEFT, &saved) == 0) {
+                    dragging = 1; last_wx = dx; last_wy = dy;
+                } else {
+                    history_cancel_stroke();
+                }
+            } else {
+                history_cancel_stroke();
             }
         }
         if (pending_motion && dragging) {
@@ -1069,20 +1206,149 @@ static void run_app_ui(void) {
                 perf_app_moves++;
             } else {
                 event_mouse(SDL_MOUSEBUTTONUP, last_wx, last_wy, SDL_BUTTON_LEFT, &saved);
+                history_commit_stroke();
                 dragging = 0;
             }
         }
         if (pending_up && dragging) {
             event_mouse(SDL_MOUSEBUTTONUP, last_wx, last_wy, SDL_BUTTON_LEFT, &saved);
+            history_commit_stroke();
             dragging = 0;
         }
         /* Key actions happen after pending painting, so a save key in the
          * same batch exports the stroke, not the previous frame. */
-        for (int k = 0; k < nkeys; k++)
-            event_key(keys[k].keysym.sym, keys[k].keysym.mod, &saved);
+        for (int k = 0; k < nkeys; k++) {
+            if ((keys[k].keysym.mod & KMOD_CTRL) &&
+                (keys[k].keysym.sym == SDLK_z || keys[k].keysym.sym == SDLK_y)) {
+                if (dragging) {
+                    event_mouse(SDL_MOUSEBUTTONUP, last_wx, last_wy, SDL_BUTTON_LEFT, &saved);
+                    history_commit_stroke();
+                    dragging = 0;
+                }
+                history_shortcut(keys[k].keysym.sym, keys[k].keysym.mod);
+            } else {
+                event_key(keys[k].keysym.sym, keys[k].keysym.mod, &saved);
+            }
+        }
         present_ui();
         perf_renders++;
     }
+}
+
+static int test_stroke(int cx0, int cy0, int cx1, int cy1, int steps) {
+    int wx = 0, wy = 0;
+    if (!canvas_to_window(cx0, cy0, &wx, &wy)) return -1;
+    history_begin_stroke();
+    if (event_mouse(SDL_MOUSEBUTTONDOWN, wx, wy, SDL_BUTTON_LEFT, &(int){0}) != 0) {
+        history_cancel_stroke();
+        return -1;
+    }
+    for (int i = 1; i <= steps; i++) {
+        int cx = cx0 + (cx1 - cx0) * i / steps;
+        int cy = cy0 + (cy1 - cy0) * i / steps;
+        if (!canvas_to_window(cx, cy, &wx, &wy) ||
+            event_mouse(SDL_MOUSEMOTION, wx, wy, 0, &(int){0}) != 0) {
+            history_cancel_stroke();
+            return -1;
+        }
+    }
+    if (!canvas_to_window(cx1, cy1, &wx, &wy) ||
+        event_mouse(SDL_MOUSEBUTTONUP, wx, wy, SDL_BUTTON_LEFT, &(int){0}) != 0) {
+        history_cancel_stroke();
+        return -1;
+    }
+    history_commit_stroke();
+    return 0;
+}
+static int undo_test(void) {
+    int saved = 0;
+    if (app_init() != 0) return 2;
+    if (app_set_color(1) != 0 || app_set_size(4) != 0) return 3;
+    clear_canvas();
+    history_free();
+
+    /* A stroke with many moves is one operation; undo restores the blank. */
+    if (test_stroke(100, 100, 700, 500, 100) != 0) return 4;
+    if (undo_stack.count != 1 || !history_can_undo()) return 5;
+    Uint8 r = 0, g = 0, b = 0;
+    if (history_undo() != 1 || undo_stack.count != 0 || !history_can_redo()) return 6;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        r != 255 || g != 255 || b != 255) return 7;
+    if (history_redo() != 1 || undo_stack.count != 1) return 8;
+    if (read_canvas_pixel(100, 100, &r, &g, &b) != 0 ||
+        r != 220 || g != 60 || b != 60) return 9;
+
+    /* Repeated undo/redo over several operations. */
+    history_free();
+    clear_canvas();
+    if (test_stroke(150, 100, 300, 200, 5) != 0) return 10;
+    if (test_stroke(350, 100, 500, 200, 5) != 0) return 11;
+    if (test_stroke(550, 100, 700, 200, 5) != 0) return 12;
+    int before = undo_stack.count;
+    if (before != 3) return 13;
+    for (int i = 0; i < before; i++) if (history_undo() != 1) return 14;
+    if (undo_stack.count != 0 || redo_stack.count != before) return 15;
+    for (int i = 0; i < before; i++) if (history_redo() != 1) return 16;
+    if (undo_stack.count != before || redo_stack.count != 0) return 17;
+
+    /* Clear/undo restores the previous canvas; clear/redo returns blank. */
+    if (event_key(SDLK_c, 0, &saved) != 0) return 18;
+    if (read_canvas_pixel(400, 100, &r, &g, &b) != 0 ||
+        r != 255 || g != 255 || b != 255) return 19;
+    if (history_undo() != 1) return 20;
+    if (read_canvas_pixel(350, 100, &r, &g, &b) != 0 ||
+        r != 220 || g != 60 || b != 60) return 21;
+    if (history_redo() != 1) return 22;
+    if (read_canvas_pixel(350, 100, &r, &g, &b) != 0 ||
+        r != 255 || g != 255 || b != 255) return 23;
+
+    /* Drawing after undo discards redo. */
+    if (test_stroke(100, 400, 250, 500, 4) != 0) return 24;
+    if (history_undo() != 1 || !history_can_redo()) return 25;
+    if (test_stroke(300, 400, 450, 500, 4) != 0) return 26;
+    if (redo_stack.count != 0 || history_can_redo()) return 27;
+
+    /* An eraser stroke is one operation and can be undone exactly. */
+    history_free();
+    clear_canvas();
+    if (app_set_tool(1) != 0 || app_set_color(1) != 0) return 28;
+    if (test_stroke(100, 300, 700, 300, 20) != 0) return 28;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        r != 220 || g != 60 || b != 60) return 28;
+    if (app_set_tool(2) != 0) return 28;
+    if (test_stroke(100, 300, 700, 300, 20) != 0) return 28;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        r != 255 || g != 255 || b != 255) return 28;
+    if (history_undo() != 1) return 28;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        r != 220 || g != 60 || b != 60) return 28;
+    if (history_redo() != 1) return 28;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        r != 255 || g != 255 || b != 255) return 28;
+    if (app_set_tool(1) != 0) return 28;
+
+    /* Keyboard shortcut mapping (the run loop calls the same helper). */
+    if (history_undo() != 1) return 29;
+    if (!history_shortcut(SDLK_y, KMOD_CTRL) || undo_stack.count < 1) return 29;
+    if (history_shortcut(SDLK_z, KMOD_CTRL) != 1 || undo_stack.count < 0) return 30;
+    if (!history_shortcut(SDLK_z, KMOD_CTRL | KMOD_SHIFT)) return 31;
+    if (history_shortcut(SDLK_z, 0) != 0) return 32;
+
+    /* Bounded history under many operations. */
+    history_free();
+    clear_canvas();
+    for (int i = 0; i < HISTORY_LIMIT + 6; i++) {
+        if (test_stroke(50 + i, 50, 100 + i, 100, 2) != 0) return 34;
+    }
+    if (undo_stack.count != HISTORY_LIMIT) return 35;
+    if (redo_stack.count != 0) return 36;
+    size_t bound = (size_t)HISTORY_LIMIT * PAINT_W * PAINT_H * sizeof(Uint32);
+    if (history_bytes() > bound) return 37;
+    printf("undo-test: grouped_stroke=ok repeated=ok clear=ok redo_invalidation=ok "
+           "shortcuts=ok undo_depth=%d redo_depth=%d history_bytes=%zu limit=%d result=ok\n",
+           undo_stack.count, redo_stack.count, history_bytes(), HISTORY_LIMIT);
+    history_free();
+    return 0;
 }
 
 static int coalesce_test(void) {
@@ -1091,6 +1357,7 @@ static int coalesce_test(void) {
     if (event_key(SDLK_1, 0, &saved) != 0) return 3;
     if (app_set_size(8) != 0) return 4;
     if (event_key(SDLK_c, 0, &saved) != 0) return 5;
+    history_free();  /* keep the coalescing test's undo depth to its own stroke */
     int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
     if (!canvas_to_window(100, 100, &x0, &y0) ||
         !canvas_to_window(700, 500, &x1, &y1)) return 6;
@@ -1103,6 +1370,8 @@ static int coalesce_test(void) {
         push_mouse(SDL_MOUSEMOTION, wx, wy);
     }
     push_mouse(SDL_MOUSEBUTTONUP, x1, y1);
+    push_key_mod(SDLK_z, KMOD_CTRL);       /* exercise run-loop undo */
+    push_key_mod(SDLK_y, KMOD_CTRL);       /* then redo */
     push_key(SDLK_s);
     push_key(SDLK_ESCAPE);
     perf_raw_motions = perf_app_moves = perf_renders = 0;
@@ -1110,8 +1379,10 @@ static int coalesce_test(void) {
     run_app_ui();
     Uint64 t1 = SDL_GetPerformanceCounter();
     double ms = (double)(t1 - t0) * 1000.0 / (double)SDL_GetPerformanceFrequency();
-    printf("coalesce-test: raw_motions=%ld app_moves=%ld renders=%ld elapsed_ms=%.2f\n",
-           perf_raw_motions, perf_app_moves, perf_renders, ms);
+    printf("coalesce-test: raw_motions=%ld app_moves=%ld renders=%ld elapsed_ms=%.2f "
+           "undo_depth=%d redo_depth=%d\n",
+           perf_raw_motions, perf_app_moves, perf_renders, ms,
+           undo_stack.count, redo_stack.count);
     if (perf_raw_motions < 1000) return 8;
     if (perf_app_moves >= perf_raw_motions) return 9;
     if (perf_app_moves < 1) return 10;
@@ -1137,6 +1408,14 @@ int main(int argc, char **argv) {
         ui_shutdown();
         SDL_DestroyTexture(canvas); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
         fprintf(stderr, "glon-paint: ui-test %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--undo-test") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = undo_test();
+        history_free();
+        SDL_DestroyTexture(canvas); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
+        fprintf(stderr, "glon-paint: undo-test %s\n", rc == 0 ? "passed" : "failed");
         return rc;
     }
     if (argc > 1 && strcmp(argv[1], "--coalesce-test") == 0) {
@@ -1178,6 +1457,7 @@ int main(int argc, char **argv) {
         return 2;
     }
     run_app_ui();
+    history_free();
     ui_shutdown();
     SDL_DestroyTexture(canvas); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
     return 0;

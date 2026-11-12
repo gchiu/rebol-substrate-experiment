@@ -52,8 +52,10 @@ The default library root is `../..` when launched from this directory. Set
 | `C` | clear canvas |
 | `S` | save `glon-paint.png` |
 | `Esc` | quit |
+| `Ctrl+Z` | undo the last complete stroke or clear |
+| `Ctrl+Y` / `Ctrl+Shift+Z` | redo |
 | Menu File | New / Clear, Save PNG, Quit |
-| Menu Edit / View / Help | Clear, reset window size, About |
+| Menu Edit / View / Help | Clear, Undo, Redo, reset window size, About |
 
 The image is always 800x600 internally. Window resizing preserves its aspect
 ratio, centres it, and maps mouse coordinates through its current destination
@@ -101,6 +103,15 @@ The 10,000-move result reports loader usage and bridge elapsed time. Mouse
 motion in the interactive loop is coalesced to one `paint/move` per event
 batch so the final position still draws a continuous line; the frame is
 presented once per batch, not once per raw motion event.
+
+## Undo model
+
+Undo/Redo uses a bounded snapshot history, not recorded Glon commands. Each
+completed brush/eraser stroke stores the 800x600 canvas immediately before the
+stroke; Clear Canvas stores the pre-clear canvas. The limit is 16 undo entries
+and 16 redo entries. New drawing or clear invalidates redo history. Exact
+command recording/replay remains for the scripting milestone; these snapshots
+must not be described as a Glon command log.
 
 ## Limitations
 

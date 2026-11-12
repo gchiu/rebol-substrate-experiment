@@ -21,6 +21,7 @@ test: all
 	$(TARGET) --self-test
 	$(TARGET) --ui-test
 	python3 tests/check-png.py glon-paint.png
+	$(TARGET) --undo-test
 	$(TARGET) --coalesce-test
 	python3 tests/check-png.py glon-paint.png
 	$(TARGET) --resize-test
