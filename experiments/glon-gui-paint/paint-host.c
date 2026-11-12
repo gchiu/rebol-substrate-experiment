@@ -23,6 +23,9 @@
 #include <SDL.h>
 #include <SDL_image.h>
 #include <png.h>
+#ifdef HAVE_NFD
+#include "third_party/nfd/nfd.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -85,6 +88,11 @@ static char script_message[256] = "";
 static char *script_source = NULL;
 static size_t script_source_len = 0;
 static int history_replaying = 0;
+#ifdef HAVE_NFD
+static int nfd_state = 0;  /* 0 unknown, 1 ready, -1 unavailable */
+static char last_image_dir[1024] = "";
+static char last_script_dir[1024] = "";
+#endif
 static SDL_Rect ui_brush_bounds, ui_eraser_bounds;
 static SDL_Rect ui_color_bounds[4];
 static SDL_Rect ui_size_bounds;
@@ -548,17 +556,94 @@ static int load_image_file(const char *path) {
     return 0;
 }
 
+static int load_script_file(const char *path);
+#ifdef HAVE_NFD
+static void remember_directory(char *dst, size_t cap, const char *path) {
+    const char *slash = strrchr(path, '/');
+    if (!slash) { snprintf(dst, cap, "."); return; }
+    size_t n = (size_t)(slash - path);
+    if (n == 0) n = 1;
+    if (n >= cap) n = cap - 1;
+    memcpy(dst, path, n);
+    dst[n] = 0;
+}
+static int nfd_ready(void) {
+    if (nfd_state == 0)
+        nfd_state = (NFD_Init() == NFD_OKAY) ? 1 : -1;
+    return nfd_state == 1;
+}
+#endif
+static void show_image_chooser(void) {
+#ifdef HAVE_NFD
+    if (nfd_ready()) {
+        nfdu8filteritem_t filters[] = { { "Images", "png,jpg,jpeg" } };
+        nfdopendialogu8args_t args = {0};
+        args.filterList = filters;
+        args.filterCount = 1;
+        args.defaultPath = last_image_dir[0] ? last_image_dir : NULL;
+        args.title = "Open Image";
+        nfdu8char_t *path = NULL;
+        nfdresult_t result = NFD_OpenDialogU8_With(&path, &args);
+        if (result == NFD_OKAY) {
+            if (load_image_file(path) == 0) {
+                remember_directory(last_image_dir, sizeof last_image_dir, path);
+            } else {
+                snprintf(open_path, sizeof open_path, "%s", path);
+                open_dialog = 1;
+            }
+            NFD_FreePathU8(path);
+            return;
+        }
+        if (result == NFD_CANCEL) return;
+        snprintf(open_error, sizeof open_error, "Native dialog error: %s",
+                 NFD_GetError() ? NFD_GetError() : "unknown");
+        open_dialog = 1;
+        return;
+    }
+#endif
+    open_dialog = 1;
+}
+static void show_script_chooser(void) {
+#ifdef HAVE_NFD
+    if (nfd_ready()) {
+        nfdu8filteritem_t filters[] = { { "Glon scripts", "glon" } };
+        nfdopendialogu8args_t args = {0};
+        args.filterList = filters;
+        args.filterCount = 1;
+        args.defaultPath = last_script_dir[0] ? last_script_dir : NULL;
+        args.title = "Open Glon Script";
+        nfdu8char_t *path = NULL;
+        nfdresult_t result = NFD_OpenDialogU8_With(&path, &args);
+        if (result == NFD_OKAY) {
+            if (load_script_file(path) == 0) {
+                remember_directory(last_script_dir, sizeof last_script_dir, path);
+            } else {
+                snprintf(script_path, sizeof script_path, "%s", path);
+                script_dialog = 1;
+            }
+            NFD_FreePathU8(path);
+            return;
+        }
+        if (result == NFD_CANCEL) return;
+        snprintf(script_error, sizeof script_error, "Native dialog error: %s",
+                 NFD_GetError() ? NFD_GetError() : "unknown");
+        script_dialog = 1;
+        return;
+    }
+#endif
+    script_dialog = 1;
+}
 static void request_open(void) {
     open_error[0] = 0;
     if (unsaved) {
         confirm_open = 1;
     } else {
-        open_dialog = 1;
+        show_image_chooser();
     }
 }
 static void request_open_script(void) {
-    script_dialog = 1;
     script_error[0] = 0;
+    show_script_chooser();
 }
 static int read_script_file(const char *path, char **out, size_t *out_len) {
     FILE *f = fopen(path, "rb");
@@ -943,7 +1028,7 @@ static void ui_menus(void) {
         if (nk_menu_begin_label(nk, "File", NK_TEXT_LEFT, nk_vec2(190, 240))) {
             nk_layout_row_dynamic(nk, 24, 1);
             if (nk_menu_item_label(nk, "New / Clear", NK_TEXT_LEFT)) app_key_code(99);
-            if (nk_menu_item_label(nk, "Open PNG / JPEG...", NK_TEXT_LEFT)) request_open();
+            if (nk_menu_item_label(nk, "Open Image...", NK_TEXT_LEFT)) request_open();
             if (nk_menu_item_label(nk, "Open Script...", NK_TEXT_LEFT)) request_open_script();
             if (nk_menu_item_label(nk, "Save PNG", NK_TEXT_LEFT)) app_key_code(115);
             if (script_loaded) {
@@ -1126,7 +1211,8 @@ static void ui_file_dialogs(void) {
             nk_label_wrap(nk, "Current drawing has unsaved changes. Opening another image resets the drawing and undo/redo history.");
             nk_layout_row_dynamic(nk, 28, 2);
             if (nk_button_label(nk, "Discard and Open")) {
-                confirm_open = 0; open_dialog = 1; open_error[0] = 0;
+                confirm_open = 0; open_error[0] = 0;
+                show_image_chooser();
             }
             if (nk_button_label(nk, "Cancel")) confirm_open = 0;
         }
@@ -1147,7 +1233,12 @@ static void ui_file_dialogs(void) {
             else nk_label(nk, "The image is aspect-fit over white at 800x600.", NK_TEXT_LEFT);
             nk_layout_row_dynamic(nk, 30, 2);
             if (nk_button_label(nk, "Open")) {
-                if (load_image_file(open_path) == 0) open_dialog = 0;
+                if (load_image_file(open_path) == 0) {
+                    open_dialog = 0;
+#ifdef HAVE_NFD
+                    remember_directory(last_image_dir, sizeof last_image_dir, open_path);
+#endif
+                }
             }
             if (nk_button_label(nk, "Cancel")) open_dialog = 0;
         }
@@ -1172,7 +1263,12 @@ static void ui_script_dialog(void) {
         else nk_label(nk, "The script is validated now; Run Script executes it.", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 30, 2);
         if (nk_button_label(nk, "Load Script")) {
-            if (load_script_file(script_path) == 0) script_dialog = 0;
+            if (load_script_file(script_path) == 0) {
+                script_dialog = 0;
+#ifdef HAVE_NFD
+                remember_directory(last_script_dir, sizeof last_script_dir, script_path);
+#endif
+            }
         }
         if (nk_button_label(nk, "Cancel")) script_dialog = 0;
     }
@@ -1667,14 +1763,21 @@ static int image_test(void) {
     clear_canvas();
     history_free();
     unsaved = 0;
+    Uint8 r = 0, g = 0, b = 0;
+
+    /* Paths with spaces go through the same loader. */
+    if (load_image_file("tests/fixtures/wide space.png") != 0) return 3;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,220,20,20)) return 3;
 
     /* Wide PNG: aspect-fit to 800x200, centred vertically over white. */
     if (load_image_file("tests/fixtures/wide.png") != 0) return 3;
-    Uint8 r = 0, g = 0, b = 0;
     if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,220,20,20)) return 4;
     if (read_canvas_pixel(400, 100, &r, &g, &b) != 0 || !pixel_is(r,g,b,255,255,255)) return 5;
     if (read_canvas_pixel(100, 100, &r, &g, &b) != 0 || !pixel_is(r,g,b,255,255,255)) return 5;
     if (unsaved) return 6;
+#ifdef HAVE_NFD
+    nfd_state = -1;  /* automated test uses the path-dialog fallback */
+#endif
     request_open();
     if (!open_dialog || confirm_open) return 7;
     open_dialog = 0;
@@ -1750,6 +1853,12 @@ static int script_test(void) {
     clear_canvas();
     history_free();
     unsaved = 0;
+
+    /* A script path containing spaces loads through the same parser. */
+    if (load_script_file("tests/fixtures/script space.glon") != 0) return 3;
+    if (run_script() != 0) return 3;
+    history_free();
+    clear_canvas();
 
     /* Loading validates but does not execute. */
     if (load_script_file("examples/rectangle.glon") != 0) return 3;
@@ -2026,6 +2135,20 @@ int main(int argc, char **argv) {
         SDL_DestroyTexture(canvas); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
         fprintf(stderr, "glon-paint: coalesce-test %s\n", rc == 0 ? "passed" : "failed");
         return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--nfd-probe") == 0) {
+#ifdef HAVE_NFD
+        if (nfd_ready()) {
+            printf("nfd-probe: ready\n");
+            NFD_Quit();
+            return 0;
+        }
+        printf("nfd-probe: unavailable: %s\n", NFD_GetError() ? NFD_GetError() : "unknown");
+        return 1;
+#else
+        printf("nfd-probe: unavailable: built without GTK/NFD\n");
+        return 1;
+#endif
     }
     if (argc > 1 && strcmp(argv[1], "--resize-test") == 0) {
         if (sdl_init(1) != 0) return 2;

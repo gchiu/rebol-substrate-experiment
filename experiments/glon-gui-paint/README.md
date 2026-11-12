@@ -25,11 +25,17 @@ visibly disabled rather than fake live controls.
 On Debian/Ubuntu:
 
 ```sh
-sudo apt install build-essential libsdl2-dev libsdl2-image-dev libpng-dev
+sudo apt install build-essential libsdl2-dev libsdl2-image-dev libpng-dev libgtk-3-dev
 ```
 
 Nuklear is vendored in `third_party/`; no system Nuklear package is needed.
 SDL2_image supplies PNG/JPEG decoding (through its libpng/libjpeg backends).
+
+Native File Dialog Extended (NFD) is vendored in `third_party/nfd/` and built
+with its GTK3 Linux backend when `pkg-config gtk+-3.0` is available. Install
+`libgtk-3-dev` for the graphical requester. If GTK3 development files are
+absent, or GTK initialisation fails at runtime, the application keeps the
+Nuklear path-entry fallback.
 
 From the repository root:
 
@@ -58,7 +64,7 @@ The default library root is `../..` when launched from this directory. Set
 | `Esc` | quit |
 | `Ctrl+Z` | undo the last complete stroke or clear |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | redo |
-| Menu File | New / Clear, Open PNG/JPEG, Open Script, Run Script, Save PNG, Quit |
+| Menu File | New / Clear, Open Image, Open Script, Run Script, Save PNG, Quit |
 | Menu Edit / View / Help | Clear, Undo, Redo, reset window size, About |
 
 The document is always 800x600 internally. Window resizing preserves its aspect
@@ -68,8 +74,13 @@ never reach the canvas.
 
 ## Image background
 
-File → Open shows a Nuklear path field; this WSLg setup has no native file
-dialog dependency. PNG and JPEG files are decoded with SDL2_image. The image is
+File → Open Image uses the native NFD/GTK file chooser with a PNG/JPEG filter.
+The chooser supports normal folder navigation, spaces in filenames, and
+WSL-mounted Windows drives such as `/mnt/c` and `/mnt/d`. It starts in the last
+successfully used image directory when available. If the native backend is not
+available or fails, the existing Nuklear path field is used instead.
+
+PNG and JPEG files are decoded with SDL2_image. The image is
 aspect-fit over white, centred, and stored as an immutable background beneath
 the drawing layer. The document remains 800x600.
 
@@ -81,7 +92,9 @@ clears only the drawing layer. Save PNG exports the visible composite.
 
 ## Scripts
 
-File → Open Script uses a Nuklear path field. Loading reads and parses the
+File → Open Script uses the same native NFD/GTK requester with a `.glon`
+filter, starting in the last used script directory. If native selection is
+unavailable it falls back to a Nuklear path field. Loading reads and parses the
 source with the existing Glon parser; it does not execute it or change the
 canvas. File → Run Script (or the Run Script button in the inspector) executes
 the loaded source in the persistent Glon session.
@@ -117,9 +130,10 @@ examples/rectangle.glon
 examples/landscape.glon
 ```
 
-To try the acceptance path: File → Open Script, enter
-`examples/landscape.glon`, Load Script, then Run Script. Paint over the result
-and use File → Save PNG to export the composite.
+To try the acceptance path: File → Open Script, choose
+`examples/landscape.glon` in the native chooser (or enter it in the path
+fallback), then Run Script. Paint over the result and use File → Save PNG to
+export the composite.
 
 ## Glon command interface
 
@@ -175,7 +189,8 @@ these snapshots must not be described as a Glon command log.
 
 ## Limitations
 
-- File Open/Open Script use Nuklear path fields, not native file choosers.
+- Native file dialogs require GTK3 development files at build time; without
+  them the Nuklear path-entry fallback is used.
 - Imported images are immutable backgrounds, not editable layers.
 - Single drawing layer only; no layer creation or compositing.
 - Rectangle, custom Export and grid are disabled.
@@ -183,3 +198,5 @@ these snapshots must not be described as a Glon command log.
 - Scripts are ordinary Glon source, not a drawing DSL; there is no step execution.
 - Nuklear is vendored in `third_party/` (public-domain Nuklear v4.13.4 and its
   SDL2 renderer backend).
+- Native File Dialog Extended is vendored in `third_party/nfd/` under the
+  Zlib license.

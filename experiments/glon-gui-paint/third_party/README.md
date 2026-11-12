@@ -7,3 +7,9 @@
 
 The headers are vendored so the experiment builds without a system Nuklear
 package. They are compiled by `paint-host.c` with the SDL2 renderer only.
+
+`nfd/` contains Native File Dialog Extended (Zlib license) sources:
+`nfd.h`, `nfd_gtk.cpp`, `nfd_linux_shared.hpp` and `LICENSE`, from
+https://github.com/btzy/nativefiledialog-extended. The Makefile builds it with
+the GTK3 backend when `pkg-config gtk+-3.0` is available; otherwise the
+application keeps the Nuklear path-entry fallback.
