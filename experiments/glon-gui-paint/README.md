@@ -222,20 +222,35 @@ Controls:
 - **Play** prepares if needed, then advances at the selected speed.
 - **Pause** stops dispatch while preserving the current canvas and pending
   commands.
+- **Back** reverses exactly one replay drawing command.
 - **Step** executes exactly one pending command and pauses.
-- **Stop** restores the drawing layer captured before playback.
+- **Stop** cancels an active playback and restores the drawing layer captured
+  before playback.
+- **End** leaves completed replay navigation, preserving the displayed result
+  and returning ordinary document Undo/Redo.
 - **Speed**: 1, 5, 20 or 60 operations/second; default 5.
+
+While replay navigation is available, `Ctrl+Z` moves back one replay command and
+`Ctrl+Y`/`Ctrl+Shift+Z` moves forward one command. These are replay commands, not
+document Undo entries. The inspector labels this explicitly. Once **End** (or
+Stop) leaves replay navigation, ordinary document Undo/Redo is available again.
+
+Backward navigation deterministically restores the saved pre-playback layer and
+replays the command prefix; it never attempts to invert alpha compositing. This
+handles Clear, eraser, zero-pressure and overlapping translucent calligraphy
+commands correctly. Completion still commits the complete replay as exactly one
+document Undo action; individual navigation steps do not add document history
+entries. A second Play restarts from the same pre-playback state rather than
+accumulating pixels.
 
 The inspector displays Ready / Playing / Paused / Complete / Error, current and
 total command counts, and the current speed. The inspector scrolls when the
 window is too short; the canvas remains an 800x600 aspect-correct document.
 
-Preparation and playback are atomic with respect to failure and Stop. Completion
-commits the whole replay as one snapshot Undo action. A second Play after
-completion restarts from the same pre-playback state rather than accumulating
-pixels. While Playing/Paused, painting, script execution, image replacement,
-Clear and Undo/Redo are disabled; Save remains available. Window resizing does
-not affect playback or canvas coordinates.
+Preparation and playback are atomic with respect to failure and Stop. While
+replay navigation is active, painting, script execution, image replacement,
+Clear and document Undo/Redo are disabled; Save remains available. Window
+resizing does not affect playback or canvas coordinates.
 
 Timing uses monotonic `SDL_GetTicks64` and only decides when commands are
 dispatched. A bounded catch-up policy applies at most two commands per pump;
@@ -247,7 +262,9 @@ nominal scheduling rate and may be limited by rendering throughput.
 `examples/replay-demo.glon` is a short replay demonstration containing a clear,
 an ordinary line, an eraser command and a pressure calligraphy taper. The
 calligraphy example and replay demo both execute through the ordinary Glon
-script pipeline.
+script pipeline. Replay tests compare complete RGBA snapshots at intermediate
+prefixes after repeated Back/Step navigation, as well as immediate-vs-replay
+final output.
 
 ## Glon command interface
 
@@ -287,7 +304,8 @@ make test
 ```
 
 The calligraphy and replay tests compare complete 800x600 drawing-layer
-snapshots with `memcmp` for repeated and immediate-vs-replay command sequences.
+snapshots with `memcmp` for repeated, immediate-vs-replay and intermediate
+replay-prefix command sequences.
 The image test uses committed PNG/JPEG/alpha/invalid fixtures under
 `tests/fixtures/`. `make test` also runs a coalescing check that feeds 1,000
 motion events in one batch and reports raw motions versus Glon move calls and

@@ -94,6 +94,8 @@ static char *script_source = NULL;
 static size_t script_source_len = 0;
 static int history_replaying = 0;
 static int replay_busy(void);
+static int replay_nav_available(void);
+static int replay_locked(void);
 typedef enum {
     REPLAY_READY = 0, REPLAY_PLAYING, REPLAY_PAUSED, REPLAY_COMPLETE, REPLAY_ERROR
 } ReplayState;
@@ -105,6 +107,7 @@ static int replay_count = 0;
 static int replay_pos = 0;
 static int replay_prepared = 0;
 static int replay_active = 0;
+static int replay_history_committed = 0;
 static Uint32 *replay_pre = NULL;
 static int replay_unsaved = 0;
 static Uint64 replay_last_tick = 0;
@@ -545,7 +548,7 @@ static void history_record_clear(void) {
     }
 }
 static int history_undo(void) {
-    if (replay_busy()) return 0;
+    if (replay_locked()) return 0;
     if (stroke_snapshot) history_commit_stroke();
     if (undo_stack.count <= 0) return 0;
     Uint32 *current = snapshot_canvas();
@@ -561,7 +564,7 @@ static int history_undo(void) {
     return 1;
 }
 static int history_redo(void) {
-    if (replay_busy()) return 0;
+    if (replay_locked()) return 0;
     if (stroke_snapshot) history_commit_stroke();
     if (redo_stack.count <= 0) return 0;
     Uint32 *current = snapshot_canvas();
@@ -594,7 +597,7 @@ static void history_free(void) {
  * decoding and scaling succeed. Invalid files leave the current document as-is. */
 static void replay_forget(void);
 static int load_image_file(const char *path) {
-    if (replay_busy()) return -1;
+    if (replay_locked()) return -1;
     if (!path || !*path) {
         snprintf(open_error, sizeof open_error, "Enter a PNG or JPEG path.");
         return -1;
@@ -742,7 +745,7 @@ static void show_script_chooser(void) {
     script_dialog = 1;
 }
 static void request_open(void) {
-    if (replay_busy()) return;
+    if (replay_locked()) return;
     open_error[0] = 0;
     if (unsaved) {
         confirm_open = 1;
@@ -751,7 +754,7 @@ static void request_open(void) {
     }
 }
 static void request_open_script(void) {
-    if (replay_busy()) return;
+    if (replay_locked()) return;
     script_error[0] = 0;
     show_script_chooser();
 }
@@ -781,7 +784,7 @@ static int read_script_file(const char *path, char **out, size_t *out_len) {
     return 0;
 }
 static int load_script_file(const char *path) {
-    if (replay_busy()) return -1;
+    if (replay_locked()) return -1;
     if (!path || !*path) { snprintf(script_error, sizeof script_error, "Enter a .glon path."); return -1; }
     char *src = NULL; size_t len = 0;
     if (read_script_file(path, &src, &len) != 0) return -1;
@@ -960,6 +963,7 @@ static void replay_forget(void) {
     replay_prepared = 0;
     replay_count = replay_pos = 0;
     replay_active = 0;
+    replay_history_committed = 0;
     replay_state = REPLAY_READY;
     replay_error[0] = 0;
 }
@@ -974,6 +978,7 @@ static int replay_prepare(void) {
     replay_pre = NULL;
     replay_prepared = 0;
     replay_count = replay_pos = 0;
+    replay_history_committed = 0;
     replay_error[0] = 0;
     if (prepare_script_commands(replay_buf, sizeof replay_buf, &replay_count,
                                 replay_offsets, replay_lengths) != 0) {
@@ -1002,12 +1007,13 @@ static void replay_complete(void) {
     if (replay_pos < replay_count) return;
     replay_state = REPLAY_COMPLETE;
     replay_active = 0;
-    if (replay_pre) {
+    if (replay_pre && !replay_history_committed) {
         Uint32 *commit = malloc((size_t)PAINT_W * PAINT_H * sizeof(Uint32));
         if (commit) {
             memcpy(commit, replay_pre, (size_t)PAINT_W * PAINT_H * sizeof(Uint32));
             history_stack_clear(&redo_stack);
             history_push(&undo_stack, commit);
+            replay_history_committed = 1;
         }
     }
     unsaved = 1;
@@ -1050,11 +1056,8 @@ static void replay_pause(void) {
 
 static int replay_step(void) {
     if (!replay_prepared && replay_prepare() != 0) return -1;
-    if (replay_state == REPLAY_COMPLETE && replay_pre) {
-        if (restore_canvas(replay_pre) != 0) return -1;
-        replay_pos = 0;
-        replay_active = 1;
-    } else if (!replay_active) {
+    if (replay_state == REPLAY_COMPLETE) return 0;
+    if (!replay_active) {
         free(replay_pre);
         replay_pre = snapshot_canvas();
         if (!replay_pre) {
@@ -1072,6 +1075,67 @@ static int replay_step(void) {
     return 0;
 }
 
+static int replay_reconstruct(int target) {
+    if (!replay_pre || !replay_prepared || target < 0 || target > replay_count) return -1;
+    if (restore_canvas(replay_pre) != 0) return -1;
+    int old = history_replaying;
+    history_replaying = 1;
+    for (int i = 0; i < target; i++) {
+        int saved = 0;
+        command(replay_buf + replay_offsets[i], &saved);
+    }
+    history_replaying = old;
+    replay_pos = target;
+    replay_active = 1;
+    dirty = 1;
+    return 0;
+}
+
+static int replay_step_back(void) {
+    if (!replay_prepared || !replay_pre || replay_pos <= 0) return 0;
+    if (replay_reconstruct(replay_pos - 1) != 0) return -1;
+    replay_state = REPLAY_PAUSED;
+    replay_accum_ns = 0;
+    return 1;
+}
+
+static int replay_step_forward(void) {
+    if (!replay_prepared || replay_pos >= replay_count) return 0;
+    if (!replay_active) {
+        free(replay_pre);
+        replay_pre = snapshot_canvas();
+        if (!replay_pre) {
+            snprintf(replay_error, sizeof replay_error, "Cannot snapshot drawing layer.");
+            replay_state = REPLAY_ERROR;
+            return -1;
+        }
+        replay_unsaved = unsaved;
+        replay_pos = 0;
+        replay_active = 1;
+    }
+    replay_state = REPLAY_PAUSED;
+    replay_apply_one();
+    if (replay_pos >= replay_count) replay_complete();
+    return 1;
+}
+
+static int replay_nav_available(void) {
+    return replay_prepared && replay_pre &&
+           (replay_state == REPLAY_PLAYING || replay_state == REPLAY_PAUSED ||
+            replay_state == REPLAY_COMPLETE);
+}
+
+static int replay_locked(void) {
+    return replay_busy() || replay_nav_available();
+}
+
+static void replay_end(void) {
+    if (!replay_nav_available()) return;
+    if (replay_busy() && !replay_history_committed) return;
+    replay_forget();
+    snprintf(script_message, sizeof script_message, "Replay ended; document Undo restored.");
+}
+
 static void replay_stop(void) {
     if (replay_state != REPLAY_PLAYING && replay_state != REPLAY_PAUSED) return;
     if (replay_pre) restore_canvas(replay_pre);
@@ -1079,6 +1143,7 @@ static void replay_stop(void) {
     replay_pre = NULL;
     replay_active = 0;
     replay_pos = 0;
+    replay_history_committed = 0;
     replay_state = REPLAY_READY;
     unsaved = replay_unsaved;
     dirty = 1;
@@ -1102,12 +1167,26 @@ static int replay_pump(void) {
     return applied;
 }
 
+static int replay_nav_key(SDL_Keycode sym, Uint16 mod) {
+    if (!replay_nav_available() || !(mod & KMOD_CTRL)) return 0;
+    if (sym == SDLK_z) {
+        if (mod & KMOD_SHIFT) replay_step_forward();
+        else replay_step_back();
+        return 1;
+    }
+    if (sym == SDLK_y) {
+        replay_step_forward();
+        return 1;
+    }
+    return 0;
+}
+
 static int replay_busy(void) {
     return replay_state == REPLAY_PLAYING || replay_state == REPLAY_PAUSED;
 }
 
 static int run_script(void) {
-    if (replay_busy()) {
+    if (replay_locked()) {
         snprintf(script_error, sizeof script_error, "Playback is active.");
         return -1;
     }
@@ -1159,7 +1238,7 @@ static int map_key(SDL_Keycode k, Uint16 mod) {
 }
 
 static int event_key(SDL_Keycode sym, Uint16 mod, int *saved) {
-    if (replay_busy()) return 0;
+    if (replay_locked()) return 0;
     char src[128], cmdbuf[2048];
     snprintf(src, sizeof src, "paint/key %d", map_key(sym, mod));
     if (glon_call(src, cmdbuf, sizeof cmdbuf) != 0) return -1;
@@ -1167,7 +1246,7 @@ static int event_key(SDL_Keycode sym, Uint16 mod, int *saved) {
     return 0;
 }
 static int event_mouse(int type, int wx, int wy, int button, int *saved) {
-    if (replay_busy()) return 0;
+    if (replay_locked()) return 0;
     int ww, wh, x, y;
     SDL_GetWindowSize(win, &ww, &wh);
     if (!map_window_to_canvas(ww, wh, wx, wy, &x, &y)) return -1;
@@ -1236,7 +1315,7 @@ static const char *tool_name(int t) {
     return t == 2 ? "Eraser" : t == 3 ? "Calligraphy" : "Brush";
 }
 static int dispatch_canvas_pointer(int type, int wx, int wy, int button, int *saved) {
-    if (replay_busy()) return 0;
+    if (replay_locked()) return 0;
     if (point_in_ui(wx, wy)) return 0;
     if (!point_in_rect(&layout.image, wx, wy)) return 0;
     return event_mouse(type, wx, wy, button, saved);
@@ -1352,7 +1431,7 @@ static void ui_menus(void) {
         nk_layout_row_static(nk, 22, 64, 4);
         if (nk_menu_begin_label(nk, "File", NK_TEXT_LEFT, nk_vec2(190, 240))) {
             nk_layout_row_dynamic(nk, 24, 1);
-            if (!replay_busy()) {
+            if (!replay_locked()) {
                 if (nk_menu_item_label(nk, "New / Clear", NK_TEXT_LEFT)) app_key_code(99);
                 if (nk_menu_item_label(nk, "Open Image...", NK_TEXT_LEFT)) request_open();
                 if (nk_menu_item_label(nk, "Open Script...", NK_TEXT_LEFT)) request_open_script();
@@ -1364,7 +1443,7 @@ static void ui_menus(void) {
                 nk_widget_disable_end(nk);
             }
             if (nk_menu_item_label(nk, "Save PNG", NK_TEXT_LEFT)) app_key_code(115);
-            if (script_loaded && !replay_busy()) {
+            if (script_loaded && !replay_locked()) {
                 if (nk_menu_item_label(nk, "Run Script", NK_TEXT_LEFT)) run_script();
             } else {
                 nk_widget_disable_begin(nk);
@@ -1379,23 +1458,40 @@ static void ui_menus(void) {
         }
         if (nk_menu_begin_label(nk, "Edit", NK_TEXT_LEFT, nk_vec2(170, 170))) {
             nk_layout_row_dynamic(nk, 24, 1);
-            if (!replay_busy()) {
+            if (!replay_locked()) {
                 if (nk_menu_item_label(nk, "Clear Canvas", NK_TEXT_LEFT)) app_key_code(99);
             } else {
                 nk_widget_disable_begin(nk);
                 nk_menu_item_label(nk, "Clear Canvas", NK_TEXT_LEFT);
                 nk_widget_disable_end(nk);
             }
-            if (!replay_busy() && history_can_undo()) {
+            if (replay_nav_available()) {
+                if (replay_pos > 0) {
+                    if (nk_menu_item_label(nk, "Replay Step Back  Ctrl+Z", NK_TEXT_LEFT))
+                        replay_step_back();
+                } else {
+                    nk_widget_disable_begin(nk);
+                    nk_menu_item_label(nk, "Replay Step Back  Ctrl+Z", NK_TEXT_LEFT);
+                    nk_widget_disable_end(nk);
+                }
+                if (replay_pos < replay_count) {
+                    if (nk_menu_item_label(nk, "Replay Step Forward  Ctrl+Y", NK_TEXT_LEFT))
+                        replay_step_forward();
+                } else {
+                    nk_widget_disable_begin(nk);
+                    nk_menu_item_label(nk, "Replay Step Forward  Ctrl+Y", NK_TEXT_LEFT);
+                    nk_widget_disable_end(nk);
+                }
+            } else if (!replay_locked() && history_can_undo()) {
                 if (nk_menu_item_label(nk, "Undo  Ctrl+Z", NK_TEXT_LEFT)) history_undo();
             } else {
                 nk_widget_disable_begin(nk);
                 nk_menu_item_label(nk, "Undo  Ctrl+Z", NK_TEXT_LEFT);
                 nk_widget_disable_end(nk);
             }
-            if (!replay_busy() && history_can_redo()) {
+            if (!replay_nav_available() && !replay_locked() && history_can_redo()) {
                 if (nk_menu_item_label(nk, "Redo  Ctrl+Y", NK_TEXT_LEFT)) history_redo();
-            } else {
+            } else if (!replay_nav_available()) {
                 nk_widget_disable_begin(nk);
                 nk_menu_item_label(nk, "Redo  Ctrl+Y", NK_TEXT_LEFT);
                 nk_widget_disable_end(nk);
@@ -1530,7 +1626,7 @@ static void ui_right_panel(void) {
         nk_layout_row_dynamic(nk, 20, 1);
         nk_label(nk, "SCRIPT", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 28, 1);
-        if (script_loaded && !replay_busy()) {
+        if (script_loaded && !replay_locked()) {
             if (nk_button_label(nk, "Run Script")) run_script();
         } else {
             nk_widget_disable_begin(nk);
@@ -1543,13 +1639,13 @@ static void ui_right_panel(void) {
         else nk_label(nk, "Open Script from File", NK_TEXT_LEFT);
 
         nk_layout_row_dynamic(nk, 20, 1);
-        nk_label(nk, "REPLAY", NK_TEXT_LEFT);
+        nk_label(nk, "REPLAY (not document Undo)", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 18, 1);
-        char rs[96];
+        char rs[112];
         snprintf(rs, sizeof rs, "%s  %d/%d  %d ops/s", replay_state_name(),
                  replay_pos, replay_count, replay_speeds[replay_speed_index]);
         nk_label(nk, rs, NK_TEXT_LEFT);
-        nk_layout_row_dynamic(nk, 28, 4);
+        nk_layout_row_dynamic(nk, 28, 3);
         if (replay_state != REPLAY_PLAYING && script_loaded) {
             if (nk_button_label(nk, "Play")) replay_play();
         } else {
@@ -1564,18 +1660,33 @@ static void ui_right_panel(void) {
             nk_button_label(nk, "Pause");
             nk_widget_disable_end(nk);
         }
-        if (script_loaded && replay_state != REPLAY_PLAYING) {
-            if (nk_button_label(nk, "Step")) replay_step();
-        } else {
-            nk_widget_disable_begin(nk);
-            nk_button_label(nk, "Step");
-            nk_widget_disable_end(nk);
-        }
         if (replay_busy()) {
             if (nk_button_label(nk, "Stop")) replay_stop();
         } else {
             nk_widget_disable_begin(nk);
             nk_button_label(nk, "Stop");
+            nk_widget_disable_end(nk);
+        }
+        nk_layout_row_dynamic(nk, 28, 3);
+        if (replay_nav_available() && replay_pos > 0) {
+            if (nk_button_label(nk, "Back")) replay_step_back();
+        } else {
+            nk_widget_disable_begin(nk);
+            nk_button_label(nk, "Back");
+            nk_widget_disable_end(nk);
+        }
+        if (script_loaded && replay_state != REPLAY_PLAYING && replay_pos < replay_count) {
+            if (nk_button_label(nk, "Step")) replay_step_forward();
+        } else {
+            nk_widget_disable_begin(nk);
+            nk_button_label(nk, "Step");
+            nk_widget_disable_end(nk);
+        }
+        if (replay_nav_available() && replay_history_committed) {
+            if (nk_button_label(nk, "End")) replay_end();
+        } else {
+            nk_widget_disable_begin(nk);
+            nk_button_label(nk, "End");
             nk_widget_disable_end(nk);
         }
         nk_layout_row_dynamic(nk, 24, 4);
@@ -2169,7 +2280,10 @@ static void run_app_ui(void) {
                     history_commit_stroke();
                     dragging = 0;
                 }
-                history_shortcut(keys[k].keysym.sym, keys[k].keysym.mod);
+                if (replay_nav_available())
+                    replay_nav_key(keys[k].keysym.sym, keys[k].keysym.mod);
+                else
+                    history_shortcut(keys[k].keysym.sym, keys[k].keysym.mod);
             } else {
                 event_key(keys[k].keysym.sym, keys[k].keysym.mod, &saved);
             }
@@ -2464,6 +2578,43 @@ static int replay_finish_steps(void) {
     }
     return replay_state == REPLAY_COMPLETE ? 0 : -1;
 }
+static Uint32 *replay_prefix_snapshot(const Uint32 *initial, int prefix) {
+    if (restore_canvas(initial) != 0 || prefix < 0 || prefix > replay_count) return NULL;
+    int old = history_replaying;
+    history_replaying = 1;
+    for (int i = 0; i < prefix; i++) {
+        int saved = 0;
+        command(replay_buf + replay_offsets[i], &saved);
+    }
+    history_replaying = old;
+    return snapshot_canvas();
+}
+static int replay_nav_prefix_test(const char *script, const Uint32 *initial) {
+    if (load_script_file(script) != 0 || replay_prepare() != 0) return 1;
+    if (replay_finish_steps() != 0) return 2;
+    int total = replay_count;
+    int history_before = undo_stack.count;
+    int targets[] = { total - 1, 2, total / 2, 0, total };
+    for (unsigned i = 0; i < sizeof targets / sizeof targets[0]; i++) {
+        int target = targets[i];
+        if (target < 0) target = 0;
+        while (replay_pos > target) if (replay_step_back() != 1) return 3;
+        while (replay_pos < target) if (replay_step_forward() != 1) return 4;
+        if (undo_stack.count != history_before) return 5;
+        Uint32 *expected = replay_prefix_snapshot(initial, target);
+        Uint32 *actual = snapshot_canvas();
+        if (!expected || !actual || !replay_snapshots_equal(expected, actual)) {
+            free(expected); free(actual); return 6;
+        }
+        free(expected); free(actual);
+    }
+    if (history_undo() != 0) return 7;  /* replay mode blocks document Undo */
+    replay_end();
+    if (replay_nav_available()) return 8;
+    history_free(); replay_forget();
+    return 0;
+}
+
 static int replay_compare_paths(const char *script, const Uint32 *initial) {
     if (load_script_file(script) != 0) return 1;
     restore_canvas(initial);
@@ -2492,6 +2643,7 @@ static int replay_test(void) {
     if (!blank) return 3;
     if (replay_compare_paths("examples/calligraphy.glon", blank) != 0) return 4;
     if (replay_compare_paths("examples/replay-demo.glon", blank) != 0) return 5;
+    if (replay_nav_prefix_test("examples/replay-demo.glon", blank) != 0) return 5;
     free(blank); blank = NULL;
 
     /* Imported JPEG background. */
@@ -2543,31 +2695,51 @@ static int replay_test(void) {
     immediate_ref = snapshot_canvas();
     if (!immediate_ref || !replay_snapshots_equal(final, immediate_ref)) return 29;
 
-    /* Completion undo/redo. */
-    restore_canvas(final); history_free();
-    if (history_undo() != 0) return 30; /* no replay history now; harmless */
-
-    /* Re-run the completed replay session from its saved pre-state. */
+    /* Bidirectional replay navigation against exact command prefixes. */
     restore_canvas(initial); history_free(); replay_forget();
-    if (load_script_file("examples/calligraphy.glon") != 0) return 31;
-    if (replay_prepare() != 0) return 32;
-    if (replay_finish_steps() != 0) return 33;
-    Uint32 *completed = snapshot_canvas();
-    if (!completed) return 34;
-    if (history_undo() != 1) return 35;
-    Uint32 *undone = snapshot_canvas();
-    if (!undone || !replay_snapshots_equal(initial, undone)) return 36;
-    free(undone);
-    if (history_redo() != 1) return 37;
-    Uint32 *redone = snapshot_canvas();
-    if (!redone || !replay_snapshots_equal(completed, redone)) return 38;
-    free(completed); free(redone);
-
-    /* A second playback must start from the pre-playback state, not accumulate. */
-    if (replay_play() != 0 || replay_finish_steps() != 0) return 39;
+    if (load_script_file("examples/calligraphy.glon") != 0) return 30;
+    if (replay_prepare() != 0 || replay_finish_steps() != 0) return 31;
+    int nav_total = replay_count;
+    int history_before_nav = undo_stack.count;
+    if (history_before_nav != 1) return 32;
+    int nav_targets[] = { nav_total - 1, nav_total - 3, 2, 0, nav_total / 2, nav_total };
+    for (unsigned i = 0; i < sizeof nav_targets / sizeof nav_targets[0]; i++) {
+        int target = nav_targets[i];
+        if (target < 0) target = 0;
+        while (replay_pos > target) if (replay_step_back() != 1) return 33;
+        while (replay_pos < target) if (replay_step_forward() != 1) return 34;
+        if (undo_stack.count != history_before_nav) return 35;
+        Uint32 *expected = replay_prefix_snapshot(initial, target);
+        Uint32 *actual = snapshot_canvas();
+        if (!expected || !actual || !replay_snapshots_equal(expected, actual)) {
+            free(expected); free(actual); return 36;
+        }
+        free(expected); free(actual);
+    }
+    /* Ctrl+Z/Ctrl+Y route to replay commands, not document history. */
+    if (replay_nav_key(SDLK_z, KMOD_CTRL) != 1 || replay_pos != nav_total - 1) return 37;
+    if (replay_nav_key(SDLK_y, KMOD_CTRL) != 1 || replay_pos != nav_total) return 38;
+    if (replay_nav_key(SDLK_z, KMOD_CTRL) != 1 ||
+        replay_pos != nav_total - 1) return 39;
+    if (replay_nav_key(SDLK_z, KMOD_CTRL | KMOD_SHIFT) != 1 ||
+        replay_pos != nav_total) return 40;
+    /* A second playback must restart from pre-playback and not add a document entry. */
+    if (replay_play() != 0 || replay_finish_steps() != 0) return 41;
     Uint32 *second = snapshot_canvas();
-    if (!second || !replay_snapshots_equal(immediate_ref, second)) return 40;
+    if (!second || !replay_snapshots_equal(final, second)) return 42;
     free(second);
+    if (undo_stack.count != history_before_nav) return 43;
+    if (history_undo() != 0) return 44;  /* replay navigation blocks document Undo */
+    replay_end();
+    if (replay_nav_available()) return 45;
+    if (history_undo() != 1) return 43;
+    Uint32 *undone = snapshot_canvas();
+    if (!undone || !replay_snapshots_equal(initial, undone)) return 44;
+    free(undone);
+    if (history_redo() != 1) return 45;
+    Uint32 *redone = snapshot_canvas();
+    if (!redone || !replay_snapshots_equal(final, redone)) return 46;
+    free(redone);
     free(immediate_ref); immediate_ref = NULL;
     free(final); final = NULL;
 
@@ -2587,6 +2759,7 @@ static int replay_test(void) {
     if (replay_prepare() != 0 || replay_play() != 0) return 46;
     if (resize_to(1600, 1200) != 0) return 47;
     if (replay_finish_steps() != 0) return 48;
+    replay_end();
     if (event_key(SDLK_s, 0, &saved) != 0 || !saved) return 49;
     if (resize_to(1200, 800) != 0) return 50;
 
@@ -2606,8 +2779,8 @@ static int replay_test(void) {
     Uint64 t1 = SDL_GetPerformanceCounter();
     if (loader_used() != loader0) return 53;
     double ms = (double)(t1 - t0) * 1000.0 / (double)SDL_GetPerformanceFrequency();
-    printf("replay-test: blank=ok jpeg=ok nonempty=ok step=ok pause=ok speed=ok "
-           "stop=ok undo=ok repeat=ok failure=ok resize=ok loader=%ld "
+    printf("replay-test: blank=ok jpeg=ok nonempty=ok nav=ok step=ok pause=ok speed=ok "
+           "stop=ok end=ok undo=ok repeat=ok failure=ok resize=ok loader=%ld "
            "commands=%d buffer_bytes=%d prepare_repeat_ms=%.2f result=ok\n",
            loader_used(), measured_commands, measured_bytes, ms);
     free(initial);
