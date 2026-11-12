@@ -4,121 +4,141 @@
       "id": "literal",
       "name": "Literal",
       "input": "hello",
-      "rules": "[]",
-      "rule": "\"hello\"",
+      "definitions": "",
+      "rule": "[ \"hello\" end ]",
       "all": false,
       "case": false,
-      "note": "A string rule matches a literal; default matching is case-insensitive."
+      "note": "Literal string plus end."
     },
     {
       "id": "failure",
       "name": "Failure",
       "input": "x",
-      "rules": "[]",
-      "rule": "\"hello\"",
+      "definitions": "",
+      "rule": "[ \"hello\" end ]",
       "all": false,
       "case": false,
-      "note": "A literal that does not match returns false; the input and position are unchanged."
+      "note": "A literal that does not match returns false."
     },
     {
       "id": "sequence-alternative",
       "name": "Sequence and alternatives",
       "input": "a b",
-      "rules": "[]",
-      "rule": "reduce [ \"a\" \"b\" ]",
+      "definitions": "",
+      "rule": "[ \"a\" \"b\" end ]",
       "all": false,
       "case": false,
-      "note": "Default parsing skips intervening whitespace. Use [/all] to require exact spacing."
+      "note": "A sequence; default parsing skips intervening whitespace."
     },
     {
       "id": "alternatives",
       "name": "Alternatives",
       "input": "b",
-      "rules": "[]",
-      "rule": "reduce [ \"a\" 0 \"b\" ]",
+      "definitions": "",
+      "rule": "[ \"a\" | \"b\" end ]",
       "all": false,
       "case": false,
-      "note": "0 separates ordered alternatives. The first successful branch wins."
+      "note": "Alternatives are ordered; the first successful branch wins."
+    },
+    {
+      "id": "nested",
+      "name": "Nested rules",
+      "input": "ac",
+      "definitions": "",
+      "rule": "[ [ \"a\" | \"b\" ] \"c\" end ]",
+      "all": false,
+      "case": false,
+      "note": "A nested block is a rule sequence with its own alternatives."
     },
     {
       "id": "repetition",
       "name": "Repetition",
-      "input": "aaa",
-      "rules": "[]",
-      "rule": "reduce [ 1 \"a\" ]",
+      "input": "aaab",
+      "definitions": "",
+      "rule": "[ some \"a\" \"b\" end ]",
       "all": false,
       "case": false,
-      "note": "Encoded [ 1 rule ] means one or more; [ 2 rule ] means zero or more; [ 3 rule ] means optional."
+      "note": "some means one or more; any/opt are also supported."
+    },
+    {
+      "id": "numeric",
+      "name": "Numeric repetition",
+      "input": "aaa",
+      "definitions": "",
+      "rule": "[ 1 3 \"a\" end ]",
+      "all": false,
+      "case": false,
+      "note": "A number before a rule means exact count; two numbers mean min and max."
     },
     {
       "id": "recursive",
       "name": "Recursive named rules",
       "input": "(x)",
-      "rules": "reduce [ 'parens reduce [ \"(\" 'parens \")\" 0 \"x\" ] ]",
-      "rule": "'parens",
+      "definitions": "parens: [ \"(\" parens \")\" | \"x\" ]",
+      "rule": "[ parens end ]",
       "all": false,
       "case": false,
-      "note": "Named rules live in a flat data registry. This rule is recursive."
+      "note": "Named recursive rule."
     },
     {
       "id": "navigation",
       "name": "skip / to / thru / end",
       "input": "abc",
-      "rules": "[]",
-      "rule": "reduce [ reduce [ 6 \"b\" ] \"c\" ]",
+      "definitions": "",
+      "rule": "[ thru \"b\" \"c\" end ]",
       "all": false,
       "case": false,
-      "note": "[ 4 ] skips one byte, [ 5 target ] seeks without consuming, [ 6 target ] seeks and consumes, [ 7 ] matches end."
-    },
-    {
-      "id": "to",
-      "name": "to target",
-      "input": "abc",
-      "rules": "[]",
-      "rule": "reduce [ reduce [ 5 \"b\" ] \"b\" \"c\" ]",
-      "all": false,
-      "case": false,
-      "note": "to seeks to the target and leaves it unconsumed; the following literal consumes it."
+      "note": "thru searches and consumes its target; to leaves it unconsumed."
     },
     {
       "id": "skip",
       "name": "skip",
-      "input": "a",
-      "rules": "[]",
-      "rule": "reduce [ 4 ]",
+      "input": "ab",
+      "definitions": "",
+      "rule": "[ skip \"b\" end ]",
       "all": false,
       "case": false,
       "note": "skip consumes one byte."
     },
     {
+      "id": "to",
+      "name": "to target",
+      "input": "abc",
+      "definitions": "",
+      "rule": "[ to \"b\" \"b\" \"c\" end ]",
+      "all": false,
+      "case": false,
+      "note": "to seeks to b without consuming it; the following literal consumes it."
+    },
+    {
       "id": "charset",
       "name": "Character set",
       "input": "12345",
-      "rules": "[]",
-      "rule": "reduce [ 1 reduce [ 8 mk-string reduce [ 48 57 ] ] ]",
+      "definitions": "",
+      "rule": "[ some charset \"0-9\" end ]",
       "all": false,
       "case": false,
-      "note": "A charset is [ 8 descriptor ]; descriptor is a byte string of lo,hi ranges. Sets are case-sensitive."
+      "note": "A charset string uses byte ranges; matching is case-sensitive."
     },
     {
       "id": "copy",
       "name": "copy capture",
       "input": "abc",
-      "rules": "[]",
-      "rule": "reduce [ reduce [ 9 \"word\" \"a\" ] \"bc\" ]",
+      "definitions": "",
+      "rule": "[ copy captured \"a\" \"bc\" end ]",
       "all": false,
       "case": false,
-      "note": "copy records the source slice; capture names in this playground are strings so the host can display them."
+      "note": "copy captures the source slice matched by its rule."
     },
     {
       "id": "none-end",
       "name": "none and end",
       "input": "",
-      "rules": "[]",
-      "rule": "reduce [ 'none reduce [ 7 ] ]",
+      "definitions": "",
+      "rule": "[ none end ]",
       "all": false,
       "case": false,
-      "note": "'none succeeds without consuming input. [ 7 ] matches end-of-input."
+      "note": "none succeeds without consuming; end matches end-of-input."
     }
   ]
 }

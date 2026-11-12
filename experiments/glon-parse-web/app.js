@@ -17,8 +17,8 @@
   var modulePromise, libsPromise, examples = [];
 
   var $ = function (id) { return document.getElementById(id); };
-  var exampleEl = $("example"), inputEl = $("input"), registryEl = $("registry");
-  var ruleEl = $("rule"), allEl = $("all"), caseEl = $("case");
+  var exampleEl = $("example"), inputEl = $("input"), definitionsEl = $("definitions");
+  var ruleEl = $("rule"), allEl = $("all"), caseEl = $("case"), loweredEl = $("lowered");
   var runEl = $("run"), clearEl = $("clear"), statusEl = $("status");
   var resultEl = $("result"), resultLineEl = $("result-line");
   var capturesEl = $("captures"), errorEl = $("result-error");
@@ -112,7 +112,12 @@
     return out;
   }
 
-  async function runParser(input, registry, rule, all, caseMode) {
+  function lowerRules(definitions, rule) {
+    if (!window.GlonRules) throw new Error("textual rule reader did not load");
+    return window.GlonRules.lower(definitions, rule);
+  }
+  async function runParser(input, definitions, rule, all, caseMode) {
+    var lowered = lowerRules(definitions, rule);
     var mod = await modulePromise, libs = await libsPromise;
     if (bytesOf(input).length > MAX_INPUT)
       throw new Error("input is too large for this playground (max " + MAX_INPUT + " UTF-8 bytes)");
@@ -120,8 +125,8 @@
       "web/reset",
       "b: mk-string [ " + bytesList(bytesOf(input)) + " ]",
       "web-r: judge [",
-      "  web-rules: " + (registry.trim() || "[]"),
-      "  web-rule: " + rule,
+      "  web-rules: " + lowered.registry,
+      "  web-rule: " + lowered.rule,
       "  p/parse-mode web-rules b web-rule " + (all ? "1" : "0") + " " + (caseMode ? "1" : "0"),
       "]",
       "web/report web-r"
@@ -153,7 +158,7 @@
     var runMs = performance.now() - t1;
     if (rc !== 0) throw new Error("Glon rejected the generated program (rc " + rc + ")");
     var result = parseFrames(new Uint8Array(captured.slice(before)));
-    result.initMs = initMs; result.runMs = runMs;
+    result.initMs = initMs; result.runMs = runMs; result.lowered = lowered;
     return result;
   }
 
@@ -180,7 +185,10 @@
     }
     if (r.error) {
       errorEl.hidden = false;
-      errorEl.textContent = "The Glon parser raised an error. Check the rule data and input.";
+      errorEl.textContent = "The Glon parser raised an error. Check the rule syntax and input.";
+    }
+    if (r.lowered) {
+      loweredEl.textContent = "registry: " + r.lowered.registry + "\nrule:     " + r.lowered.rule;
     }
   }
   function showError(message) {
@@ -196,7 +204,7 @@
     var e = examples.find(function (x) { return x.id === id; });
     if (!e) return;
     inputEl.value = e.input;
-    registryEl.value = e.rules;
+    definitionsEl.value = e.definitions || "";
     ruleEl.value = e.rule;
     allEl.checked = !!e.all;
     caseEl.checked = !!e.case;
@@ -209,7 +217,7 @@
     status("Running the Glon parser…", "busy");
     resultEl.hidden = true;
     setTimeout(function () {
-      runParser(inputEl.value, registryEl.value, ruleEl.value, allEl.checked, caseEl.checked)
+      runParser(inputEl.value, definitionsEl.value, ruleEl.value, allEl.checked, caseEl.checked)
         .then(function (r) {
           showResult(r, bytesOf(inputEl.value).length);
           status(r.error ? "Glon reported an error." : "Parser completed.", r.error ? "bad" : "ok");
