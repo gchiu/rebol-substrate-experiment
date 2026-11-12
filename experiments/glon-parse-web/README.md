@@ -136,9 +136,7 @@ charset, `copy`, and `none`/`end` examples. Input and rules remain editable.
 - `to`/`thru` targets are literal strings.
 - Capture names are strings so the browser can display them.
 - This is a tested subset, not full Rebol 2 PARSE compatibility.
-- This local version has not yet been deployed; the public `/parse/` page still
-  serves the previous encoded-rule version until a separately approved
-  deployment.
+- The textual-rule version is deployed at the public `/parse/` URL.
 
 ## Assets
 
@@ -154,6 +152,6 @@ charset, `copy`, and `none`/`end` examples. Input and rules remain editable.
 
 ## Deployment (not performed)
 
-When authorised, follow the existing Pages integration: stage these assets as
-`docs/parse/`, add the required files to `site/check-site.py`, and update the
-landing page. No push or deployment was done in this task.
+The page is published at `https://gchiu.github.io/rebol-substrate-experiment/parse/` through the
+existing Pages workflow. Future changes should use the same staging and
+`site/check-site.py` checks.
