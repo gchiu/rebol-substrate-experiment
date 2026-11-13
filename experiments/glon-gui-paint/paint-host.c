@@ -50,7 +50,7 @@
 
 #define UI_MENU_H   36
 #define UI_STATUS_H 32
-#define UI_TOOL_W   108
+#define UI_TOOL_W   124
 #define UI_RIGHT_W  252
 #define UI_GAP      8
 #define UI_MARGIN   24
@@ -1333,12 +1333,25 @@ static int dispatch_canvas_pointer(int type, int wx, int wy, int button, int *sa
     return event_mouse(type, wx, wy, button, saved);
 }
 
+static int wslg_wayland_session(void) {
+    return getenv("WSL_DISTRO_NAME") && getenv("WAYLAND_DISPLAY");
+}
 static int sdl_init(int hidden) {
     /* WSLg's X11/Xwayland path leaves the Windows pointer hidden over SDL X11
      * windows even when SDL says the cursor is visible. Prefer Wayland there;
      * an explicit SDL_VIDEODRIVER still wins. */
-    if (!getenv("SDL_VIDEODRIVER") && getenv("WSL_DISTRO_NAME") && getenv("WAYLAND_DISPLAY"))
+    if (!getenv("SDL_VIDEODRIVER") && wslg_wayland_session())
         setenv("SDL_VIDEODRIVER", "wayland", 1);
+    /* SDL's libdecor client-side decoration surface is not resized/cleared with
+     * the toplevel under WSLg: maximising leaves the old decoration and shadow
+     * composited inside the enlarged window. SDL's undecorated xdg_toplevel
+     * path redraws cleanly, and WSLg supplies no visible client decoration
+     * anyway. An explicit SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR still wins. */
+    const char *video_driver = getenv("SDL_VIDEODRIVER");
+    if (wslg_wayland_session() &&
+        (!video_driver || strcmp(video_driver, "wayland") == 0) &&
+        !getenv("SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR"))
+        setenv("SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR", "0", 1);
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
         fprintf(stderr, "glon-paint: SDL_Init: %s\n", SDL_GetError());
         return -1;
@@ -1877,6 +1890,28 @@ static int read_output_pixel(int x, int y, Uint8 *rr, Uint8 *gg, Uint8 *bb) {
     SDL_FreeFormat(fmt);
     return 0;
 }
+static Uint32 *read_output_frame(int *w, int *h) {
+    SDL_SetRenderTarget(ren, NULL);
+    int ow = 0, oh = 0;
+    if (SDL_GetRendererOutputSize(ren, &ow, &oh) != 0 || ow < 1 || oh < 1)
+        return NULL;
+    Uint32 *px = malloc((size_t)ow * (size_t)oh * sizeof(Uint32));
+    if (!px) return NULL;
+    if (SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888,
+                             px, ow * (int)sizeof(Uint32)) != 0) {
+        free(px);
+        return NULL;
+    }
+    *w = ow; *h = oh;
+    return px;
+}
+static void frame_pixel(const Uint32 *px, int stride, int x, int y,
+                        Uint8 *rr, Uint8 *gg, Uint8 *bb) {
+    Uint32 v = px[(size_t)y * (size_t)stride + (size_t)x];
+    *rr = (Uint8)((v >> 16) & 255);
+    *gg = (Uint8)((v >> 8) & 255);
+    *bb = (Uint8)(v & 255);
+}
 static int read_canvas_pixel(int x, int y, Uint8 *rr, Uint8 *gg, Uint8 *bb) {
     build_composite();
     SDL_SetRenderTarget(ren, composite);
@@ -1906,8 +1941,12 @@ static int resize_to(int w, int h) {
     }
     dirty = 1;
     render_frame();
+    SDL_RenderPresent(ren);
     int ww = 0, wh = 0, tw = 0, th = 0;
+    int ow = 0, oh = 0;
     SDL_GetWindowSize(win, &ww, &wh);
+    SDL_GetRendererOutputSize(ren, &ow, &oh);
+    if (ow < w || oh < h) return -1;
     if (ww != w || wh != h) return -1;
     if (SDL_QueryTexture(canvas, NULL, NULL, &tw, &th) != 0 ||
         tw != PAINT_W || th != PAINT_H) return -1;
@@ -1984,6 +2023,49 @@ static int resize_test(void) {
                     cases[i].cx, cases[i].cy, cases[i].w, cases[i].h);
             return 11;
         }
+        /* Verify the presented output, not only the logical canvas: the
+         * painted pixel, workspace margin, shadow and outline must all be at
+         * the current destination rectangle after the resize. */
+        render_frame();
+        int fw = 0, fh = 0;
+        Uint32 *frame = read_output_frame(&fw, &fh);
+        if (!frame || fw < cases[i].w || fh < cases[i].h) {
+            free(frame);
+            fprintf(stderr, "resize-test: output readback failed at %dx%d\n",
+                    cases[i].w, cases[i].h);
+            return 14;
+        }
+        frame_pixel(frame, fw, wx, wy, &r, &g, &b);
+        if (r != 220 || g != 60 || b != 60) {
+            free(frame);
+            fprintf(stderr, "resize-test: output (%d,%d) not painted at %dx%d: %u,%u,%u\n",
+                    wx, wy, cases[i].w, cases[i].h, r, g, b);
+            return 14;
+        }
+        frame_pixel(frame, fw, layout.workspace.x + 2, layout.workspace.y + 2,
+                    &r, &g, &b);
+        if (r != 43 || g != 45 || b != 51) {
+            free(frame);
+            fprintf(stderr, "resize-test: workspace pixel wrong at %dx%d: %u,%u,%u\n",
+                    cases[i].w, cases[i].h, r, g, b);
+            return 15;
+        }
+        frame_pixel(frame, fw, layout.image.x - 1, layout.image.y - 1, &r, &g, &b);
+        if (r != 8 || g != 9 || b != 11) {
+            free(frame);
+            fprintf(stderr, "resize-test: shadow pixel wrong at %dx%d: %u,%u,%u\n",
+                    cases[i].w, cases[i].h, r, g, b);
+            return 16;
+        }
+        frame_pixel(frame, fw, layout.image.x, layout.image.y + layout.image.h / 2,
+                    &r, &g, &b);
+        if (r != 92 || g != 96 || b != 106) {
+            free(frame);
+            fprintf(stderr, "resize-test: document outline wrong at %dx%d: %u,%u,%u\n",
+                    cases[i].w, cases[i].h, r, g, b);
+            return 17;
+        }
+        free(frame);
     }
     Uint8 r, g, b;
     if (read_canvas_pixel(100, 100, &r, &g, &b) != 0 || r != 220 || g != 60 || b != 60)
@@ -3206,7 +3288,15 @@ int main(int argc, char **argv) {
         if (sdl_init(1) != 0) return 2;
         int cursor_before = SDL_ShowCursor(SDL_QUERY);
         const char *driver = SDL_GetCurrentVideoDriver();
-        printf("cursor-test: video=%s cursor=%d\n", driver ? driver : "(none)", cursor_before);
+        const char *libdecor = getenv("SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR");
+        printf("cursor-test: video=%s cursor=%d libdecor=%s\n",
+               driver ? driver : "(none)", cursor_before,
+               libdecor ? libdecor : "(default)");
+        if (wslg_wayland_session() && driver && strcmp(driver, "wayland") == 0 &&
+            (!libdecor || strcmp(libdecor, "0") != 0)) {
+            fprintf(stderr, "cursor-test: WSLg Wayland must disable libdecor\n");
+            return 5;
+        }
 #ifdef HAVE_NFD
         int ready = nfd_ready();
         const char *gdk = getenv("GDK_BACKEND");
@@ -3243,7 +3333,7 @@ int main(int argc, char **argv) {
 #endif
     }
     if (argc > 1 && strcmp(argv[1], "--resize-test") == 0) {
-        if (sdl_init(1) != 0) return 2;
+        if (sdl_init(0) != 0) return 2;
         int rc = resize_test();
         SDL_DestroyTexture(canvas); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
         fprintf(stderr, "glon-paint: resize-test %s\n", rc == 0 ? "passed" : "failed");

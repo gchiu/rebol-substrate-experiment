@@ -46,6 +46,17 @@ remains available by explicitly setting `SDL_VIDEODRIVER=x11`.
 `./build/glon-paint --cursor-test` checks SDL cursor state and backend
 matching.
 
+On that WSLg Wayland path, Paint also sets
+`SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=0` unless the user supplied a value.
+SDL's libdecor client-side decoration surface is not resized or cleared with
+the toplevel: maximising leaves the previous decoration and its shadow
+composited inside the enlarged window (a smaller white/document rectangle with
+a stray grey shadow). The undecorated `xdg_toplevel` path resizes and redraws
+cleanly, and WSLg shows no client decoration anyway. A minimal SDL Wayland
+window reproduces the libdecor ghost and is clean 7/7 runs with the override.
+Resizing in-place (through SDL) was already clean; only the decoration surface
+was stale, not the canvas, viewport or Nuklear layout.
+
 Check whether the built binary has native dialogs:
 
 ```sh
@@ -323,6 +334,9 @@ make test
 The calligraphy and replay tests compare complete 800x600 drawing-layer
 snapshots with `memcmp` for repeated, immediate-vs-replay and intermediate
 replay-prefix command sequences.
+The resize test verifies the rendered output framebuffer after each resize, not
+only the logical canvas: the painted pixel, workspace margin, document shadow
+and document outline must all land on the current destination rectangle.
 The image test uses committed PNG/JPEG/alpha/invalid fixtures under
 `tests/fixtures/`. `make test` also runs a coalescing check that feeds 1,000
 motion events in one batch and reports raw motions versus Glon move calls and

@@ -216,6 +216,25 @@ test finishes with loader usage 4,398 → 4,398 (10,402 free), managed
 high-water 39,984, 800 live cells and 3,789 GCs; symbols stayed 99. No VM, GC,
 allocator or capacity change was made.
 
+[MEASURED 2026-11-13, `experiments/glon-gui-paint`, WSLg Wayland, SDL 2.0.20,
+Windows display 1536x960 at 125% (compositor output 1920x1200)]
+**The maximised-window ghost is SDL/libdecor, not Paint's canvas or layout.**
+Maximising the Wayland window left a smaller white/document rectangle and a
+grey shadow inside the enlarged window. A minimal SDL Wayland window with the
+same window/renderer setup reproduced it, and its rendered backbuffer was
+correct; the stale pixels were the previous libdecor decoration surface
+composited by msrdc. The canvas texture stayed 800x600, `SDL_GetWindowSize` and
+`SDL_GetRendererOutputSize` both reported the new size, and Nuklear laid out to
+the new size. Disabling libdecor (`SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=0`) was
+clean in 7/7 runs; every controlled default-libdecor run ghosted.
+In-place `SDL_SetWindowSize` resizes (never maximised) were already clean.
+Paint now sets the libdecor override on WSLg Wayland unless the user set it,
+and `--cursor-test` asserts it. The resize regression now reads the rendered
+output pixels (painted document pixel, workspace, shadow, outline) after every
+resize, not only canvas coordinates. No frozen S1, VM, allocator, canvas-size
+or Nuklear change was made. The left toolbar was also widened from 108 to 124
+px so the "Calligraphy" option label is no longer clipped.
+
 **[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
 worklist has a fixed 256 entries (`GC_WORKLIST_CAP`, the cells before `GC_A1`).
 - **It cannot overflow in the 64K configuration.** Each object is pushed at
