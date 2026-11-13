@@ -1,205 +1,163 @@
-# Glon AvP — G5d: Genuine Texture Mapping
+# Glon AvP — G5e: Industrial Artwork Integration
 
-G5d replaces G5c's flat surfaces and projected line detail with pixel-textured
-walls, floors, ceilings and a door. The Marine, door, Alien, motion tracker,
-collision, fixed ticks and controls are unchanged.
+G5e replaces G5d's noisy generated textures with artwork extracted from the
+supplied industrial contact sheet. The texture mapper, geometry, collision,
+player, door, Alien and tracker are unchanged.
 
-## Build and run
+## Artwork source
 
-From this directory:
-
-```sh
-make
-DOOM_ROOT=../.. ./build/doom
-```
-
-Textured mode is the default. Press **R** to toggle simple flat rendering, or
-start with:
-
-```sh
-DOOM_ROOT=../.. ./build/doom --simple
-```
-
-Headless tools:
-
-```sh
-./build/doom --self-test
-./build/doom --trace
-./build/doom --shots /tmp/g5d-shots
-DOOM_ROOT=../.. ./build/doom --bench 60
-DOOM_ROOT=../.. ./build/doom --bench 60 simple
-```
-
-Requires SDL2 (`libsdl2-dev`) and Python 3 for reproducible texture generation.
-
-## Textures
-
-Four original 64x64 pixel textures are generated deterministically at build
-time by `tools/gen_textures.py` into `build/textures.h`:
-
-- **Wall:** steel panels, seams, bolts, recessed vent slits and subtle wear.
-- **Floor:** dark grating with raised structural bars, voids and wear.
-- **Ceiling:** recessed panels, warm light strips, ventilation slots and seams.
-- **Door:** amber industrial slabs, dark mechanical frame, beams, bolts and a
-  centre seam.
-
-No copied Doom/AvP or third-party texture pixels are used. The generator uses
-only integer hashes and fixed drawing rules.
-
-## Wall texture mapping
-
-Glon still computes wall intersection, distance, material, world-surface U and
-distance shade. The host samples the 64x64 texture using:
-
-- horizontal U from Glon's world-space wall coordinate, repeating every four
-  world units;
-- vertical V from the projected wall span (top..bottom maps to 0..63);
-- door U normalized across the known door width;
-- deterministic distance shade 0..3 applied after texture lookup;
-- subtle material tint for room, corridor and blue turn walls.
-
-Walls, seams, bolts and door framing therefore remain attached to world
-geometry while moving or turning.
-
-## Floor and ceiling texture mapping
-
-Glon generates a 200-row bounded perspective table. Each record contains:
+Reference:
 
 ```text
-screen y, valid, world-base-x, world-base-y,
-world-step-x-per-screen-pixel, world-step-y-per-screen-pixel, shade
+sprites/Glon_AvP_Industrial_Texture_Set.png
 ```
 
-The row transform uses the same camera direction/right camera plane and G5c
-horizontal focal correction as walls. The native host loops pixels and samples
-the floor or ceiling 64x64 texture at the resulting world coordinates. There is
-no Glon interpreter invocation per pixel.
+The sheet is 1536x1024 and is preserved byte-for-byte. Its SHA-256 is
+`b677ed632f117d60a5cab21246af27db72a384df4b2a5d53d1529aec0dfde412`.
 
-The host masks texture coordinates to 0..63 and applies the row's deterministic
-shade. Horizon rows are marked invalid and keep the flat horizon base colour.
+Extracted panels, all 64x64 game assets:
+
+| Asset | Source panel |
+| --- | --- |
+| `wall_panel.png` | W1 Panel (A) |
+| `wall_service.png` | W4 Service Panel |
+| `vent_grille.png` | W3 Grille / Vent |
+| `rib.png` | W6 Ribbed Support |
+| `pipes.png` | W7 Pipes / Conduit |
+| `floor.png` | F1 Grating |
+| `ceiling_light.png` | C1 Light Panel |
+| `ceiling_panel.png` | C2 Ceiling Plate |
+| `door.png` | D1 Closed |
+
+The extraction in `tools/extract_textures.py` uses interior artwork rectangles;
+labels, magenta frames, palette swatches and example corridor renders are
+excluded. PNG crops are nearest-neighbour resized to 64x64 and stored under
+`sprites/textures/`. `textures.h` embeds the resulting pixels for the build.
+
+## Material assignment
+
+Existing wall linedefs retain their geometry and colour but now carry a
+deterministic material ID:
+
+| Linedef | Colour / role | Material |
+| --- | --- | --- |
+| 0 | room south | panel |
+| 1 | room east lower | service panel |
+| 2 | corridor south | vent grille |
+| 3 | east end | pipes |
+| 4 | north end | panel |
+| 5 | north west | rib |
+| 6 | corridor north | vent grille |
+| 7 | room east upper | service panel |
+| 8 | room north | panel |
+| 9 | room west | rib |
+| door | amber bulkhead | door |
+
+Material IDs are packed with the shade level into one bounded wall field:
+`meta = material * 4 + shade`. Glon still returns top, bottom, colour, U and
+this material/shade field.
+
+## Mapping and architecture
+
+Glon calculates:
+
+- wall rays, intersections, world-space U, distance shade and material;
+- the 200-row floor/ceiling perspective table with world base, per-pixel step,
+  validity and shade;
+- door, Alien, line-of-sight, sprite rectangle and tracker state.
+
+The host only:
+
+- selects the artwork texture from the Glon material ID;
+- samples 64x64 texels at Glon-supplied U, vertical V, or floor/ceiling world
+  coordinates;
+- writes framebuffer pixels;
+- draws the Alien rectangle and tracker HUD;
+- handles SDL input/timing/presentation.
+
+Wall U remains fixed in world space, including during translation and turning.
+Door U is normalized across the bulkhead width. Floor/ceiling world coordinates
+remain anchored through the shared G5c camera/focal convention.
 
 ## Rendering modes
 
-- **Textured (default):** genuine wall/floor/ceiling/door pixel textures.
-- **Simple:** G5c-style flat shaded walls and flat floor/ceiling, no texture
-  sampling or perspective floor table.
-- **R** toggles between them at runtime.
+- **Textured (default):** artwork textures for walls, floors, ceilings and door.
+- **Simple:** flat-shaded G5c-style surfaces.
+- **R** toggles; `--simple` starts flat.
 
-Both modes retain the 160 sampled wall columns and 320x200 framebuffer. No
-resolution reduction was introduced.
-
-## Division of labour
-
-Glon owns:
-
-- camera, wall ray intersection, wall surface U and distance shade;
-- door/Alien/tracker/occlusion state;
-- the 200-row floor/ceiling perspective table, including shared camera
-  conventions, world base/step and row shade;
-- sprite rectangle and gameplay state.
-
-The native host owns only:
-
-- SDL input/timing/presentation;
-- running pre-parsed Glon blocks and parsing bounded integer streams;
-- sampling the generated 64x64 textures at Glon-supplied coordinates;
-- writing framebuffer pixels;
-- drawing the Alien rectangle and tracker HUD supplied by Glon;
-- performance measurement.
-
-The camera, world geometry and perspective transforms remain in Glon.
-
-## Preserved gameplay
-
-Unchanged: player speed/turning, collision geometry, door transitions,
-Alien detection/movement/attack, Alien sprite, motion tracker, fixed 60 Hz
-simulation, frozen S1, detailed/simple toggle and controls.
+No resolution change: wall projection remains 160 sampled columns expanded to
+320 pixels.
 
 ## Tests
 
-`make test` preserves the G5a/G5b/G5c tests and adds texture checks:
+`make test` preserves all G5a-G5d tests and adds:
 
-1. wall texture U remains world-anchored under translation;
-2. diagnostic wall U distribution and texture row validity at 0°/45°/90°/135°/
-   180° camera states;
-3. wall vertical V covers 0..63 across a span;
-4. floor/ceiling rows are deterministic and valid;
-5. texture row shade is bounded 0..3;
-6. floor base row world coordinates align with the door wall base;
-7. ceiling top row world coordinates align with the same wall top;
-8. floor/ceiling row hashes change with translation and turning;
-9. textured framebuffer hashes are deterministic and change with movement;
-10. door visibility/collision remains consistent;
-11. Alien occlusion over textured walls remains correct;
-12. tracker behavior remains correct;
-13. 160 wall columns × 5 fields, 200 texture rows, bounded texture indices;
-14. repeated frames and fresh sessions show no loader growth;
-15. frozen-S1 compliance.
+- contact-sheet SHA validation and all nine asset dimensions/modes;
+- texture-row count, validity, shade bounds and deterministic hashes;
+- wall material bounds and deterministic material selection;
+- door material selection;
+- world-anchored U, wall V mapping 0..63 and floor/ceiling row alignment with
+  the door wall base/top;
+- row changes under translation/turning;
+- deterministic textured framebuffer hashes and movement changes;
+- door collision/visibility, Alien occlusion and tracker preservation;
+- bounded texture indices, 160x5 wall fields, 200 rows and loader stability;
+- frozen-S1 compliance;
+- preserved G5a-G5d gameplay/collision/projection tests.
 
-The G5c diagnostic line block was retained as an eight-line projection
-regression check; G5d's textured path no longer draws line detail.
+The G5c diagnostic detail block remains an eight-line regression check; it is
+not used by the textured renderer.
 
-## Measured performance
+## Performance
 
-G5c baseline before G5d (recorded again):
+Same-environment G5d comparison:
 
-- FPS **7.7**
-- simulation 1.68 ms/tick
-- wall projection 120.99 ms/frame
-- presentation 6.59 ms/frame
-- total frame 129.34 ms
+| Mode | G5d | G5e |
+| --- | ---: | ---: |
+| Textured FPS | 5.2 | 4.9 |
+| Simple FPS | 7.1 | 7.3 |
 
-G5d textured mode (final):
+G5e textured mode (final):
+- simulation **2.20 ms/tick**
+- Glon wall projection **130.38 ms/frame**
+- Glon floor/ceiling rows **62.86 ms/frame**
+- native texture sampling **0.54 ms/frame**
+- presentation **8.10 ms/frame**
+- total **204.07 ms**, **4.9 FPS**
 
-- FPS **6.1**
-- simulation **1.65 ms/tick**
-- Glon wall projection **101.80 ms/frame**
-- Glon texture-row generation **52.51 ms/frame**
-- native texture sampling/rasterisation **0.46 ms/frame**
-- native presentation **6.60 ms/frame**
-- total frame **163.02 ms**
-
-G5d simple mode (final):
-
-- FPS **8.5**
-- simulation **1.72 ms/tick**
-- wall projection **106.71 ms/frame**
-- texture-row/status update **2.01 ms/frame**
-- rasterisation **0.06 ms/frame**
-- presentation **6.79 ms/frame**
-- total frame **117.29 ms**
+G5e simple mode:
+- simulation **2.05 ms/tick**
+- wall projection **125.00 ms/frame**
+- row/status **2.32 ms/frame**
+- rasterisation **0.07 ms/frame**
+- presentation **7.63 ms/frame**
+- total **137.07 ms**, **7.3 FPS**
 
 Managed heap high-water: **33,504 cells**; GC=0 and live=0 in measured frames.
-Loader frontier: **54,729 cells**, stable across three fresh sessions.
-
-The bottleneck is Glon wall projection plus row-coordinate generation, not
-native texture sampling. Textured mode remains playable but choppy; simple mode
-is retained for comparison.
+Loader frontier: **54,729 cells**, stable across sessions. Texture sampling is
+not the bottleneck; Glon wall/row generation dominates.
 
 ## Screenshots
 
-Final generated views:
-
-- `/tmp/g5d-shots/room.png`
-- `/tmp/g5d-shots/near-door.png`
-- `/tmp/g5d-shots/corridor.png`
-- `/tmp/g5d-shots/alien.png`
-- `/tmp/g5d-shots/inside.png`
-- `/tmp/g5d-shots/turn.png`
-- contact sheet: `/tmp/g5d-contact-final.png`
-- actual WSLg window: `/tmp/g5d-gui.png`
+- `/tmp/g5e-shots/room.png`
+- `/tmp/g5e-shots/near-door.png`
+- `/tmp/g5e-shots/corridor.png`
+- `/tmp/g5e-shots/alien.png`
+- `/tmp/g5e-shots/inside.png`
+- `/tmp/g5e-shots/turn.png`
+- contact sheet: `/tmp/g5e-contact-final.png`
+- G5d/G5e same-view comparison: `/tmp/g5e-vs-g5d.png`
+- actual WSLg window: `/tmp/g5e-gui-final.png`
 
 ## Known limitations
 
-- Textured mode is about **6.1 FPS**; disabling texture sampling alone does not
-  recover G5c speed, because wall projection and 200-row generation dominate.
-- 64x64 nearest-neighbour textures with no mipmaps or anisotropic filtering;
-  distant surfaces can alias/shimmer.
-- 160 sampled wall columns expanded to 320 pixels; pixel textures are genuine
-  but horizontal sampling remains 2-pixel.
-- Floor/ceiling row interface is 200 rows; it avoids per-pixel Glon calls at the
-  cost of a substantial Glon row-generation pass.
-- The loader is close to its frontier after the texture-row table; no larger
-  texture format or per-pixel Glon path is possible without a different design.
-- Door is manually toggled; Alien has no damage/death/animation/pathfinding.
+- Textured mode is about **4.9 FPS**; simple mode is about **7.3 FPS**.
+- Textures are 64x64 nearest-neighbour panels; no mipmaps or filtering.
+- The panels are independent tiles upscaled from a contact sheet, not bespoke
+  128x128 material maps; some repetition and tiling seams remain visible.
+- Wall projection and 200-row floor/ceiling generation dominate frame time,
+  not native texture sampling.
+- Loader capacity is nearly exhausted; no larger texture/table format fits
+  without redesign.
+- Door/Alien behaviour, collision and gameplay are unchanged.
 - No BSP, WAD, weapons, sound, networking, menus or editor.

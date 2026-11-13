@@ -47,16 +47,16 @@ doom/verts: [
 ;; Linedefs: [vertex-a vertex-b wall-colour-id]. All walls are solid; the
 ;; sector is one open space so an opening is simply the absence of a wall.
 doom/lines: [
-        [0 1 1]
-        [1 2 1]
-        [2 3 2]
-        [3 4 3]
-        [4 5 3]
-        [5 6 3]
-        [6 7 2]
-        [7 8 1]
-        [8 9 1]
-        [9 0 1]
+        [0 1 1 0]
+        [1 2 1 1]
+        [2 3 2 2]
+        [3 4 3 4]
+        [4 5 3 0]
+        [5 6 3 3]
+        [6 7 2 2]
+        [7 8 1 1]
+        [8 9 1 0]
+        [9 0 1 3]
 ]
 
 ;; 256-direction integer sine/cosine table (scaled by 64).
@@ -107,6 +107,7 @@ doom/planey: 42
 doom/hit: 0
 doom/best: 100000
 doom/bcolor: 0
+doom/bmat: 0
 doom/row: []
 doom/rayx: 0
 doom/rayy: 0
@@ -392,6 +393,7 @@ doom/render-column-block: [
     doom/best: 100000
     doom/bcolor: 0
     doom/bu: 0
+    doom/bmat: 0
     either = doom/rayy 0 [ none ] [
       doom/t: / * - 128 doom/py 64 doom/rayy
       either > doom/t 0 [
@@ -402,6 +404,7 @@ doom/render-column-block: [
               doom/best: doom/t
               doom/bcolor: 1
               doom/bu: doom/hx
+              doom/bmat: 0
             ] [ none ]
           ]
         ]
@@ -417,6 +420,7 @@ doom/render-column-block: [
               doom/best: doom/t
               doom/bcolor: 1
               doom/bu: doom/hy
+              doom/bmat: 1
             ] [ none ]
           ]
         ]
@@ -432,6 +436,7 @@ doom/render-column-block: [
               doom/best: doom/t
               doom/bcolor: 2
               doom/bu: doom/hx
+              doom/bmat: 2
             ] [ none ]
           ]
         ]
@@ -447,6 +452,7 @@ doom/render-column-block: [
               doom/best: doom/t
               doom/bcolor: 3
               doom/bu: doom/hy
+              doom/bmat: 4
             ] [ none ]
           ]
         ]
@@ -462,6 +468,7 @@ doom/render-column-block: [
               doom/best: doom/t
               doom/bcolor: 3
               doom/bu: doom/hx
+              doom/bmat: 0
             ] [ none ]
           ]
         ]
@@ -477,6 +484,7 @@ doom/render-column-block: [
               doom/best: doom/t
               doom/bcolor: 3
               doom/bu: doom/hy
+              doom/bmat: 3
             ] [ none ]
           ]
         ]
@@ -492,6 +500,7 @@ doom/render-column-block: [
               doom/best: doom/t
               doom/bcolor: 2
               doom/bu: doom/hx
+              doom/bmat: 2
             ] [ none ]
           ]
         ]
@@ -507,6 +516,7 @@ doom/render-column-block: [
               doom/best: doom/t
               doom/bcolor: 1
               doom/bu: doom/hy
+              doom/bmat: 1
             ] [ none ]
           ]
         ]
@@ -522,6 +532,7 @@ doom/render-column-block: [
               doom/best: doom/t
               doom/bcolor: 1
               doom/bu: doom/hx
+              doom/bmat: 0
             ] [ none ]
           ]
         ]
@@ -537,6 +548,7 @@ doom/render-column-block: [
               doom/best: doom/t
               doom/bcolor: 1
               doom/bu: doom/hy
+              doom/bmat: 3
             ] [ none ]
           ]
         ]
@@ -553,6 +565,7 @@ doom/render-column-block: [
                 doom/best: doom/t
                 doom/bcolor: 4
                 doom/bu: doom/hy
+                doom/bmat: 5
               ] [ none ]
             ]
           ]
@@ -573,7 +586,7 @@ doom/render-column-block: [
     print doom/bot
     print doom/bcolor
     print doom/bu
-    print doom/shade
+    print + * doom/bmat 4 doom/shade
 ]
 
 doom/los: func [ax ay] [

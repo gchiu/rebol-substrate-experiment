@@ -7,17 +7,14 @@ SDL_LIBS := $(shell $(PKG_CONFIG) --libs sdl2 2>/dev/null || echo -lSDL2)
 BUILD := build
 TARGET := $(BUILD)/doom
 SRCS := doom-host.c $(ROOT)/r0_s1_session.c $(ROOT)/r0_s1_runtime.c $(ROOT)/s1.c
-TEXHDR := $(BUILD)/textures.h
-
 all: $(TARGET)
 $(BUILD):
 	@mkdir -p $@
-$(TEXHDR): tools/gen_textures.py | $(BUILD)
-	python3 tools/gen_textures.py $@
-$(TARGET): doom-host.c $(ROOT)/r0_s1.h $(ROOT)/m1_layout.h $(ROOT)/s1.h $(TEXHDR) | $(BUILD)
-	$(CC) $(CFLAGS) -I$(BUILD) $(SDL_CFLAGS) -o $@ $(SRCS) $(SDL_LIBS) -lm -lpthread
+$(TARGET): doom-host.c textures.h $(ROOT)/r0_s1.h $(ROOT)/m1_layout.h $(ROOT)/s1.h | $(BUILD)
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -o $@ $(SRCS) $(SDL_LIBS) -lm -lpthread
 
 test: $(TARGET)
+	python3 tests/check-textures.py
 	./$(TARGET) --self-test
 	./$(TARGET) --trace
 	cd $(ROOT) && ./check-frozen-s1.sh

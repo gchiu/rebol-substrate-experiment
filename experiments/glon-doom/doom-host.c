@@ -35,7 +35,7 @@
 
 typedef struct {
     int top[PROJ_COLS], bot[PROJ_COLS], color[PROJ_COLS];
-    int u[PROJ_COLS], shade[PROJ_COLS];
+    int u[PROJ_COLS], shade[PROJ_COLS], material[PROJ_COLS];
     uint32_t hash;
 } Spans;
 
@@ -398,7 +398,9 @@ static int render_spans(Spans *s, long *ns) {
             s->bot[i] = vals[i * 5 + 1];
             s->color[i] = vals[i * 5 + 2];
             s->u[i] = vals[i * 5 + 3];
-            s->shade[i] = vals[i * 5 + 4];
+            int meta = vals[i * 5 + 4];
+            s->shade[i] = meta & 3;
+            s->material[i] = meta >> 2;
         }
         s->hash = fnv1a(vals, sizeof vals);
     }
@@ -617,6 +619,14 @@ static int self_test(void) {
     fails += expect_eq("wall panel u not screen x", sa.u[PROJ_COLS / 2] != 160, 1);
     fails += expect_eq("wall shade far/near level", sa.shade[PROJ_COLS / 2], 2);
     fails += expect_eq("edge wall visible", sa.color[0], 1);
+    fails += expect_eq("door material selected", sa.material[PROJ_COLS / 2], 5);
+    int material_ok = 1;
+    for (int i = 0; i < PROJ_COLS; i++)
+        if (sa.material[i] < 0 || sa.material[i] > 5) material_ok = 0;
+    fails += expect_eq("wall material bounds", material_ok, 1);
+    fails += expect_eq("wall material deterministic",
+                       fnv1a(sa.material, sizeof sa.material) ==
+                       fnv1a(sb.material, sizeof sb.material), 1);
     fails += expect_eq("identical frame wall hash", sa.hash == sb.hash, 1);
     fails += expect_eq("identical frame detail hash", da.hash == db.hash, 1);
     fails += expect_eq("deterministic shading", sa.shade[0] == sb.shade[0] &&
@@ -920,14 +930,16 @@ static void plot(uint32_t *fb, int x, int y, uint32_t c) {
     if (x >= 0 && x < FB_W && y >= 0 && y < FB_H) fb[y * FB_W + x] = c;
 }
 
-static int clamp255(int v) { return v < 0 ? 0 : v > 255 ? 255 : v; }
-static uint32_t tint_wall(uint32_t c, int color) {
-    int r = (int)((c >> 16) & 255), g = (int)((c >> 8) & 255), b = (int)(c & 255);
-    if (color == 1) { r = r * 108 / 100; g = g * 99 / 100; b = b * 94 / 100; }
-    else if (color == 2) { r = r * 92 / 100; g = g * 100 / 100; b = b * 110 / 100; }
-    else if (color == 3) { r = r * 78 / 100; g = g * 98 / 100; b = b * 130 / 100; }
-    return 0xff000000u | ((uint32_t)clamp255(r) << 16) |
-           ((uint32_t)clamp255(g) << 8) | (uint32_t)clamp255(b);
+static const uint32_t *wall_texture(int material) {
+    switch (material) {
+    case 0: return tex_wall_panel;
+    case 1: return tex_wall_service;
+    case 2: return tex_vent_grille;
+    case 3: return tex_rib;
+    case 4: return tex_pipes;
+    case 5: return tex_door;
+    default: return tex_wall_panel;
+    }
 }
 
 static int wall_tex_v(int y, int top, int bot) {
@@ -939,26 +951,19 @@ static int wall_tex_v(int y, int top, int bot) {
     return v;
 }
 
-static uint32_t sample_wall_tex(int color, int u, int y, int top, int bot, int shade) {
-    const uint32_t *tex = (color == 4) ? tex_door : tex_wall;
-    int tu;
-    if (color == 4) {
-        tu = (u - 256) * 64 / 128;
-    } else {
-        tu = (u >> 2) & 63;
-    }
+static uint32_t sample_wall_tex(int material, int u, int y, int top, int bot, int shade) {
+    const uint32_t *tex = wall_texture(material);
+    int tu = (material == 5) ? (u - 256) * 64 / 128 : (u >> 2) & 63;
     if (tu < 0) tu = 0;
     if (tu > 63) tu = 63;
     int v = wall_tex_v(y, top, bot);
-    uint32_t c = tex[v * 64 + tu];
-    if (color != 4) c = tint_wall(c, color);
-    return shade_color(c, shade);
+    return shade_color(tex[v * 64 + tu], shade);
 }
 
 static void draw_tex_planes(uint32_t *fb, const TexRows *r) {
     for (int y = 0; y < FB_H; y++) {
         if (!r->valid[y]) continue;
-        const uint32_t *tex = (y > FB_H / 2) ? tex_floor : tex_ceiling;
+        const uint32_t *tex = (y > FB_H / 2) ? tex_floor : tex_ceiling_light;
         int shade = r->shade[y];
         for (int x = 0; x < FB_W; x++) {
             int64_t wx = (int64_t)r->bx[y] + (int64_t)r->sx[y] * x;
@@ -1049,10 +1054,11 @@ static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
         if (bot >= FB_H) bot = FB_H - 1;
         if (top > bot) continue;
         int color = s->color[i], u = s->u[i], shade = s->shade[i];
+        int material = s->material[i];
         uint32_t flat = palette(color);
         for (int y = top; y <= bot; y++) {
             uint32_t c = simple_mode ? shade_color(flat, shade)
-                                     : sample_wall_tex(color, u, y, top, bot, shade);
+                                     : sample_wall_tex(material, u, y, top, bot, shade);
             for (int x = i * PROJ_SCALE; x < (i + 1) * PROJ_SCALE; x++)
                 fb[y * FB_W + x] = c;
         }
@@ -1155,7 +1161,7 @@ static int bench(int frames) {
 
 static int interactive(void) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return 2;
-    SDL_Window *win = SDL_CreateWindow("Glon AVP G5d | W/S/A/D move  arrows turn  E door  R textured/simple  Esc quit",
+    SDL_Window *win = SDL_CreateWindow("Glon AVP G5e | W/S/A/D move  arrows turn  E door  R textured/simple  Esc quit",
                                        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                        960, 600, SDL_WINDOW_SHOWN);
     if (!win) fail(SDL_GetError());
