@@ -1,0 +1,389 @@
+;; Glon Doom G5a - one room, one corridor, one 90-degree turn.
+;; Geometry is expressed as Doom-inspired vertices, linedefs and one sector.
+;; Player movement, circle/wall collision, ray/wall intersection, wall
+;; occlusion, perspective span calculation and wall selection execute here in
+;; Glon. The native host supplies SDL input, fixed-tick scheduling, a logical
+;; 320x200 framebuffer, span rasterisation and presentation.
+;;
+;; World units: 64 subunits per map unit. Map x is east, y is north.
+[
+doom/scale: 64
+doom/radius: 20
+doom/radius2: 400
+doom/speed: 8
+doom/eye: 64
+doom/wall-height: 128
+doom/horizon: 100
+doom/projection: 246
+doom/screen-w: 320
+doom/screen-h: 200
+doom/line-count: 10
+doom/start-x: 320
+doom/start-y: 320
+doom/start-angle: 0
+
+;; A single sector: floor z, ceiling z, floor colour id, ceiling colour id.
+doom/sector: [ 0 128 6 7 ]
+
+;; Ten boundary vertices. The union is a room, an east corridor, then a
+;; north corridor: one connected walkable space with one 90-degree turn.
+doom/verts: [
+        128 128 768 128 768 256 1280 256 1280 1024 1152 1024 1152 384 768 384
+        768 640 128 640
+]
+
+;; Linedefs: [vertex-a vertex-b wall-colour-id]. All walls are solid; the
+;; sector is one open space so an opening is simply the absence of a wall.
+doom/lines: [
+        [0 1 1]
+        [1 2 1]
+        [2 3 2]
+        [3 4 3]
+        [4 5 3]
+        [5 6 3]
+        [6 7 2]
+        [7 8 1]
+        [8 9 1]
+        [9 0 1]
+]
+
+;; 256-direction integer sine/cosine table (scaled by 64).
+doom/cos: [
+        64 64 64 64 64 64 63 63 63 62 62 62 61 61 60 60
+        59 59 58 57 56 56 55 54 53 52 51 50 49 48 47 46
+        45 44 43 42 41 39 38 37 36 34 33 32 30 29 27 26
+        24 23 22 20 19 17 16 14 12 11 9 8 6 5 3 2
+        0 -2 -3 -5 -6 -8 -9 -11 -12 -14 -16 -17 -19 -20 -22 -23
+        -24 -26 -27 -29 -30 -32 -33 -34 -36 -37 -38 -39 -41 -42 -43 -44
+        -45 -46 -47 -48 -49 -50 -51 -52 -53 -54 -55 -56 -56 -57 -58 -59
+        -59 -60 -60 -61 -61 -62 -62 -62 -63 -63 -63 -64 -64 -64 -64 -64
+        -64 -64 -64 -64 -64 -64 -63 -63 -63 -62 -62 -62 -61 -61 -60 -60
+        -59 -59 -58 -57 -56 -56 -55 -54 -53 -52 -51 -50 -49 -48 -47 -46
+        -45 -44 -43 -42 -41 -39 -38 -37 -36 -34 -33 -32 -30 -29 -27 -26
+        -24 -23 -22 -20 -19 -17 -16 -14 -12 -11 -9 -8 -6 -5 -3 -2
+        0 2 3 5 6 8 9 11 12 14 16 17 19 20 22 23
+        24 26 27 29 30 32 33 34 36 37 38 39 41 42 43 44
+        45 46 47 48 49 50 51 52 53 54 55 56 56 57 58 59
+        59 60 60 61 61 62 62 62 63 63 63 64 64 64 64 64
+]
+doom/sin: [
+        0 2 3 5 6 8 9 11 12 14 16 17 19 20 22 23
+        24 26 27 29 30 32 33 34 36 37 38 39 41 42 43 44
+        45 46 47 48 49 50 51 52 53 54 55 56 56 57 58 59
+        59 60 60 61 61 62 62 62 63 63 63 64 64 64 64 64
+        64 64 64 64 64 64 63 63 63 62 62 62 61 61 60 60
+        59 59 58 57 56 56 55 54 53 52 51 50 49 48 47 46
+        45 44 43 42 41 39 38 37 36 34 33 32 30 29 27 26
+        24 23 22 20 19 17 16 14 12 11 9 8 6 5 3 2
+        0 -2 -3 -5 -6 -8 -9 -11 -12 -14 -16 -17 -19 -20 -22 -23
+        -24 -26 -27 -29 -30 -32 -33 -34 -36 -37 -38 -39 -41 -42 -43 -44
+        -45 -46 -47 -48 -49 -50 -51 -52 -53 -54 -55 -56 -56 -57 -58 -59
+        -59 -60 -60 -61 -61 -62 -62 -62 -63 -63 -63 -64 -64 -64 -64 -64
+        -64 -64 -64 -64 -64 -64 -63 -63 -63 -62 -62 -62 -61 -61 -60 -60
+        -59 -59 -58 -57 -56 -56 -55 -54 -53 -52 -51 -50 -49 -48 -47 -46
+        -45 -44 -43 -42 -41 -39 -38 -37 -36 -34 -33 -32 -30 -29 -27 -26
+        -24 -23 -22 -20 -19 -17 -16 -14 -12 -11 -9 -8 -6 -5 -3 -2
+]
+
+doom/px: 320
+doom/py: 320
+doom/angle: 0
+doom/dirx: 64
+doom/diry: 0
+doom/planex: 0
+doom/planey: 42
+doom/hit: 0
+doom/best: 100000
+doom/bcolor: 0
+doom/row: []
+doom/rayx: 0
+doom/rayy: 0
+doom/ax: 0
+doom/ay: 0
+doom/bx: 0
+doom/by: 0
+doom/lox: 0
+doom/hix: 0
+doom/loy: 0
+doom/hiy: 0
+doom/cx: 0
+doom/cy: 0
+doom/nx: 0
+doom/ny: 0
+doom/dx: 0
+doom/dy: 0
+doom/mdx: 0
+doom/mdy: 0
+doom/t: 0
+doom/hy: 0
+doom/hx: 0
+doom/half: 0
+doom/top: 0
+doom/bot: 0
+doom/fw: 0
+doom/st: 0
+doom/sx: 0
+
+doom/wrap-angle: does [
+    either < doom/angle 0 [
+        doom/angle: + doom/angle 256
+    ] [
+        either > doom/angle 255 [ doom/angle: - doom/angle 256 ] [ none ]
+    ]
+]
+
+doom/aim: does [
+    doom/dirx: block-at doom/cos doom/angle
+    doom/diry: block-at doom/sin doom/angle
+    do [ doom/planex: / * doom/diry 42 64
+         doom/planey: / * - 0 doom/dirx 42 64 ]
+]
+
+doom/check-all: func [x y r] [
+    doom/cx: either < x 128 [ 128 ] [ either > x 768 [ 768 ] [ x ] ]
+    doom/dx: - x doom/cx
+    doom/dy: - y 128
+    either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
+    doom/cy: either < y 128 [ 128 ] [ either > y 256 [ 256 ] [ y ] ]
+    doom/dx: - x 768
+    doom/dy: - y doom/cy
+    either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
+    doom/cx: either < x 768 [ 768 ] [ either > x 1280 [ 1280 ] [ x ] ]
+    doom/dx: - x doom/cx
+    doom/dy: - y 256
+    either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
+    doom/cy: either < y 256 [ 256 ] [ either > y 1024 [ 1024 ] [ y ] ]
+    doom/dx: - x 1280
+    doom/dy: - y doom/cy
+    either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
+    doom/cx: either < x 1152 [ 1152 ] [ either > x 1280 [ 1280 ] [ x ] ]
+    doom/dx: - x doom/cx
+    doom/dy: - y 1024
+    either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
+    doom/cy: either < y 384 [ 384 ] [ either > y 1024 [ 1024 ] [ y ] ]
+    doom/dx: - x 1152
+    doom/dy: - y doom/cy
+    either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
+    doom/cx: either < x 768 [ 768 ] [ either > x 1152 [ 1152 ] [ x ] ]
+    doom/dx: - x doom/cx
+    doom/dy: - y 384
+    either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
+    doom/cy: either < y 384 [ 384 ] [ either > y 640 [ 640 ] [ y ] ]
+    doom/dx: - x 768
+    doom/dy: - y doom/cy
+    either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
+    doom/cx: either < x 128 [ 128 ] [ either > x 768 [ 768 ] [ x ] ]
+    doom/dx: - x doom/cx
+    doom/dy: - y 640
+    either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
+    doom/cy: either < y 128 [ 128 ] [ either > y 640 [ 640 ] [ y ] ]
+    doom/dx: - x 128
+    doom/dy: - y doom/cy
+    either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
+]
+
+doom/move-x: func [nx] [
+    doom/hit: 0
+    doom/check-all nx doom/py doom/radius2
+    either = doom/hit 0 [ doom/px: nx ] [ none ]
+]
+doom/move-y: func [ny] [
+    doom/hit: 0
+    doom/check-all doom/px ny doom/radius2
+    either = doom/hit 0 [ doom/py: ny ] [ none ]
+]
+
+doom/tick: func [fw bk lf rt tl tr] [
+    doom/angle: + doom/angle - tl tr
+    doom/wrap-angle
+    doom/aim
+    doom/fw: - fw bk
+    doom/st: - rt lf
+    doom/mdx: / * + * doom/dirx doom/fw * doom/diry doom/st doom/speed 64
+    doom/mdy: / * - * doom/diry doom/fw * doom/dirx doom/st doom/speed 64
+    doom/move-x + doom/px doom/mdx
+    doom/move-y + doom/py doom/mdy
+]
+
+doom/reset: does [
+    doom/px: doom/start-x
+    doom/py: doom/start-y
+    doom/angle: doom/start-angle
+    doom/aim
+    doom/best: 100000
+    doom/bcolor: 0
+]
+
+
+doom/render-column-block: [
+    doom/rayx: + doom/dirx / * doom/planex - * 2 doom/sx 319 319
+    doom/rayy: + doom/diry / * doom/planey - * 2 doom/sx 319 319
+    doom/best: 100000
+    doom/bcolor: 0
+    either = doom/rayy 0 [ none ] [
+      doom/t: / * - 128 doom/py 64 doom/rayy
+      either > doom/t 0 [
+        doom/hx: + doom/px / * doom/t doom/rayx 64
+        either < doom/hx 128 [ none ] [
+          either > doom/hx 768 [ none ] [
+            either < doom/t doom/best [
+              doom/best: doom/t
+              doom/bcolor: 1
+            ] [ none ]
+          ]
+        ]
+      ] [ none ]
+    ]
+    either = doom/rayx 0 [ none ] [
+      doom/t: / * - 768 doom/px 64 doom/rayx
+      either > doom/t 0 [
+        doom/hy: + doom/py / * doom/t doom/rayy 64
+        either < doom/hy 128 [ none ] [
+          either > doom/hy 256 [ none ] [
+            either < doom/t doom/best [
+              doom/best: doom/t
+              doom/bcolor: 1
+            ] [ none ]
+          ]
+        ]
+      ] [ none ]
+    ]
+    either = doom/rayy 0 [ none ] [
+      doom/t: / * - 256 doom/py 64 doom/rayy
+      either > doom/t 0 [
+        doom/hx: + doom/px / * doom/t doom/rayx 64
+        either < doom/hx 768 [ none ] [
+          either > doom/hx 1280 [ none ] [
+            either < doom/t doom/best [
+              doom/best: doom/t
+              doom/bcolor: 2
+            ] [ none ]
+          ]
+        ]
+      ] [ none ]
+    ]
+    either = doom/rayx 0 [ none ] [
+      doom/t: / * - 1280 doom/px 64 doom/rayx
+      either > doom/t 0 [
+        doom/hy: + doom/py / * doom/t doom/rayy 64
+        either < doom/hy 256 [ none ] [
+          either > doom/hy 1024 [ none ] [
+            either < doom/t doom/best [
+              doom/best: doom/t
+              doom/bcolor: 3
+            ] [ none ]
+          ]
+        ]
+      ] [ none ]
+    ]
+    either = doom/rayy 0 [ none ] [
+      doom/t: / * - 1024 doom/py 64 doom/rayy
+      either > doom/t 0 [
+        doom/hx: + doom/px / * doom/t doom/rayx 64
+        either < doom/hx 1152 [ none ] [
+          either > doom/hx 1280 [ none ] [
+            either < doom/t doom/best [
+              doom/best: doom/t
+              doom/bcolor: 3
+            ] [ none ]
+          ]
+        ]
+      ] [ none ]
+    ]
+    either = doom/rayx 0 [ none ] [
+      doom/t: / * - 1152 doom/px 64 doom/rayx
+      either > doom/t 0 [
+        doom/hy: + doom/py / * doom/t doom/rayy 64
+        either < doom/hy 384 [ none ] [
+          either > doom/hy 1024 [ none ] [
+            either < doom/t doom/best [
+              doom/best: doom/t
+              doom/bcolor: 3
+            ] [ none ]
+          ]
+        ]
+      ] [ none ]
+    ]
+    either = doom/rayy 0 [ none ] [
+      doom/t: / * - 384 doom/py 64 doom/rayy
+      either > doom/t 0 [
+        doom/hx: + doom/px / * doom/t doom/rayx 64
+        either < doom/hx 768 [ none ] [
+          either > doom/hx 1152 [ none ] [
+            either < doom/t doom/best [
+              doom/best: doom/t
+              doom/bcolor: 2
+            ] [ none ]
+          ]
+        ]
+      ] [ none ]
+    ]
+    either = doom/rayx 0 [ none ] [
+      doom/t: / * - 768 doom/px 64 doom/rayx
+      either > doom/t 0 [
+        doom/hy: + doom/py / * doom/t doom/rayy 64
+        either < doom/hy 384 [ none ] [
+          either > doom/hy 640 [ none ] [
+            either < doom/t doom/best [
+              doom/best: doom/t
+              doom/bcolor: 1
+            ] [ none ]
+          ]
+        ]
+      ] [ none ]
+    ]
+    either = doom/rayy 0 [ none ] [
+      doom/t: / * - 640 doom/py 64 doom/rayy
+      either > doom/t 0 [
+        doom/hx: + doom/px / * doom/t doom/rayx 64
+        either < doom/hx 128 [ none ] [
+          either > doom/hx 768 [ none ] [
+            either < doom/t doom/best [
+              doom/best: doom/t
+              doom/bcolor: 1
+            ] [ none ]
+          ]
+        ]
+      ] [ none ]
+    ]
+    either = doom/rayx 0 [ none ] [
+      doom/t: / * - 128 doom/px 64 doom/rayx
+      either > doom/t 0 [
+        doom/hy: + doom/py / * doom/t doom/rayy 64
+        either < doom/hy 128 [ none ] [
+          either > doom/hy 640 [ none ] [
+            either < doom/t doom/best [
+              doom/best: doom/t
+              doom/bcolor: 1
+            ] [ none ]
+          ]
+        ]
+      ] [ none ]
+    ]
+    doom/half: / * doom/projection 64 either < doom/best 1 [ 1 ] [ doom/best ]
+    doom/top: - doom/horizon doom/half
+    doom/bot: + doom/horizon doom/half
+    either < doom/top 0 [ doom/top: 0 ] [ none ]
+    either > doom/bot 199 [ doom/bot: 199 ] [ none ]
+    print doom/top
+    print doom/bot
+    print doom/bcolor
+]
+
+doom/sector-report: does [
+    print block-at doom/sector 2
+    print block-at doom/sector 3
+]
+
+doom/report: does [
+    print doom/px
+    print doom/py
+    print doom/angle
+]
+
+doom/valid: does [
+    doom/hit: 0
+    doom/check-all doom/px doom/py doom/radius2
+    print either = doom/hit 0 [ 1 ] [ 0 ]
+]
+]
