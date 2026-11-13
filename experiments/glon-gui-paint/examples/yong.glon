@@ -1,0 +1,43 @@
+;; 永 (yǒng, "eternity") — the Eight Principles of Yong.
+;; Five physical strokes, written in conventional order. The eight principles
+;; are distributed across the strokes as brush pressure and direction changes:
+;; 側 dot; 勒 horizontal; 努 vertical; 趯 hook; 策 rising entry;
+;; 掠 left sweep; 啄 short right entry; 磔 right sweep.
+;;
+;; Black ink is palette colour 5 (script-only; the interactive UI still shows
+;; the original four colour swatches).
+paint/draw-clear
+paint/set-tool 3
+paint/set-color 5
+paint/set-calligraphy-diameter 54
+paint/set-ink-opacity 255
+
+;; 1. 側 — top dot. Heavy contact, then a tapered descending point.
+paint/draw-pressure-line 398 108 190 383 128 175
+paint/draw-pressure-line 383 128 175 366 158 10
+
+;; 2. 勒 / 策 — horizontal with a light rising entry, weighted centre and
+;; controlled finish at the top of the central vertical.
+paint/draw-pressure-line 238 222 55 272 214 160
+paint/draw-pressure-line 272 214 160 352 204 230
+paint/draw-pressure-line 352 204 230 408 201 165
+
+;; 3. 努 / 趯 — firm vertical, then a compact upward-left hook.
+paint/draw-pressure-line 405 200 170 400 290 210
+paint/draw-pressure-line 400 290 210 405 405 225
+paint/draw-pressure-line 405 405 225 400 432 135
+paint/draw-pressure-line 400 432 135 386 440 60
+paint/draw-pressure-line 386 440 60 362 418 6
+
+;; 4. 掠 — long left sweep, broadening under pressure and tapering to a point.
+paint/draw-pressure-line 400 275 165 356 326 210
+paint/draw-pressure-line 356 326 210 292 402 155
+paint/draw-pressure-line 292 402 155 220 500 8
+
+;; 5. 啄 / 磔 — one continuous right stroke: short down-left entry (啄),
+;; pressure at the turn, then the expanding right sweep (磔) with a sharp exit.
+paint/draw-pressure-line 505 240 35 480 272 150
+paint/draw-pressure-line 480 272 150 455 300 215
+paint/draw-pressure-line 455 300 215 505 360 245
+paint/draw-pressure-line 505 360 245 560 425 225
+paint/draw-pressure-line 560 425 225 600 490 10

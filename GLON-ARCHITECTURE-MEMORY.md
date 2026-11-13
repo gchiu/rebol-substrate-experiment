@@ -288,6 +288,23 @@ after End, bounded loader use and overlay isolation. `--smooth-demo` captures
 start/25/50/75%/final PNG frames and checks final equality. No frozen S1, VM,
 allocator, brush semantics or Glon command vocabulary change was made.
 
+[CONTENT 2026-11-13, `experiments/glon-gui-paint`, `examples/yong.glon`]
+**永 exercises the existing calligraphy vocabulary without engine changes.**
+The conventional five-stroke form is used (dot; horizontal; vertical hook; left
+sweep; one continuous right 啄/磔 stroke), with the Eight Principles expressed as
+pressure and direction changes inside those strokes. The script emits one Clear
+and 18 pressure segments (19 replay commands, 694 command bytes), using black
+palette colour 5 (`0,0,0`, script-only; the UI keeps its four swatches). The
+character occupies roughly 380x400 px of the 800x600 canvas. Immediate
+execution, smooth replay completion and replay prefixes compare by full 800x600
+RGBA `memcmp`; `--yong-test` also covers black pixels, undo/redo, Pause, Step,
+Back, Stop, End, command/byte bounds and stable loader use. `--yong-demo` captures
+first-segment start/25/50/75%/final frames; `--yong-frames` captures one frame
+after each completed stroke. Visual judgement: recognisable but not authentic
+brushwork. The circular hard-edged brush leaves a blob-like dot, a small hook
+termination and a geometric right-sweep turn; no renderer or rasterisation
+change was made. Existing calligraphy/replay/smooth tests and frozen S1 pass.
+
 **[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
 worklist has a fixed 256 entries (`GC_WORKLIST_CAP`, the cells before `GC_A1`).
 - **It cannot overflow in the 64K configuration.** Each object is pushed at

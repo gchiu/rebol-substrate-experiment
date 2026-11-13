@@ -1945,7 +1945,8 @@ static void ui_right_panel(void) {
         if (nk_button_color(nk, nk_rgb(230, 170, 40))) app_set_color(4);
         nk_layout_row_dynamic(nk, 20, 1);
         nk_label(nk, ui_color == 1 ? "Red" : ui_color == 2 ? "Blue" :
-                     ui_color == 3 ? "Green" : "Yellow", NK_TEXT_LEFT);
+                     ui_color == 3 ? "Green" : ui_color == 5 ? "Black" :
+                     "Yellow", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 20, 1);
         nk_label(nk, "BRUSH SIZE", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 28, 1);
@@ -3204,11 +3205,12 @@ static int canvas_alpha_at(const Uint32 *px, int x, int y) {
 }
 /* Load calligraphy.glon, start playback and advance to the first P command.
  * Leaves replay active and positioned at that pressure command. */
-static int smooth_prepare_first(const Uint32 *initial, int *first) {
+static int smooth_prepare_first_path(const char *script, const Uint32 *initial,
+                                     int *first) {
     restore_canvas(initial);
     history_free();
     replay_forget();
-    if (load_script_file("examples/calligraphy.glon") != 0) return -1;
+    if (load_script_file(script) != 0) return -1;
     restore_canvas(initial);
     if (replay_prepare() != 0) return -1;
     if (replay_play() != 0) return -1;
@@ -3218,6 +3220,9 @@ static int smooth_prepare_first(const Uint32 *initial, int *first) {
     if (replay_pos >= replay_count) return -1;
     *first = replay_pos;
     return 0;
+}
+static int smooth_prepare_first(const Uint32 *initial, int *first) {
+    return smooth_prepare_first_path("examples/calligraphy.glon", initial, first);
 }
 static int smooth_animation_test(void) {
     int saved = 0;
@@ -3447,7 +3452,191 @@ static int smooth_animation_test(void) {
 }
 
 
-static int smooth_demo(void) {
+
+
+static int yong_frames(void) {
+    if (app_init() != 0) return 2;
+    clear_canvas();
+    history_free();
+    replay_forget();
+    unsaved = 0;
+    Uint32 *initial = snapshot_canvas();
+    if (!initial) return 3;
+    if (load_script_file("examples/yong.glon") != 0) return 4;
+    if (replay_prepare() != 0) return 5;
+    /* Command boundaries: Clear + dot, + horizontal, + vertical, + left sweep,
+     * + right sweep. */
+    int stages[] = { 3, 6, 11, 14, 19 };
+    const char *names[] = { "glon-yong-stage1-dot.png",
+                            "glon-yong-stage2-horizontal.png",
+                            "glon-yong-stage3-vertical-hook.png",
+                            "glon-yong-stage4-left-sweep.png",
+                            "glon-yong-stage5-complete.png" };
+    if (replay_count < stages[4]) return 6;
+    for (int i = 0; i < 5; i++) {
+        Uint32 *prefix = replay_prefix_snapshot(initial, stages[i]);
+        if (!prefix) return 7;
+        free(prefix);
+        if (save_png(names[i]) != 0) return 8;
+    }
+    printf("yong-frames: stages=%s,%s,%s,%s,%s commands=%d result=ok\n",
+           names[0], names[1], names[2], names[3], names[4], replay_count);
+    restore_canvas(initial);
+    free(initial);
+    history_free(); replay_forget();
+    return 0;
+}
+
+static int yong_test(void) {
+    int saved = 0;
+    if (app_init() != 0) return 2;
+
+    /* A nonempty starting layer makes End/Stop and undo checks meaningful. */
+    clear_canvas();
+    history_free();
+    unsaved = 0;
+    if (app_set_tool(1) != 0 || app_set_color(2) != 0 || app_set_size(12) != 0)
+        return 3;
+    if (test_stroke(80, 80, 250, 160, 5) != 0) return 4;
+    history_free();
+    Uint32 *initial = snapshot_canvas();
+    if (!initial) return 5;
+
+    /* Immediate execution and black ink. */
+    restore_canvas(initial);
+    history_free(); replay_forget();
+    if (load_script_file("examples/yong.glon") != 0 || run_script() != 0) return 6;
+    Uint32 *immediate = snapshot_canvas();
+    if (!immediate) return 7;
+    Uint8 r = 0, g = 0, b = 0;
+    if (read_canvas_pixel(383, 128, &r, &g, &b) != 0 || !pixel_is(r,g,b,0,0,0)) return 8;
+    if (read_canvas_pixel(405, 300, &r, &g, &b) != 0 || !pixel_is(r,g,b,0,0,0)) return 9;
+    if (read_canvas_pixel(300, 410, &r, &g, &b) != 0 || !pixel_is(r,g,b,0,0,0)) return 10;
+    if (read_canvas_pixel(560, 425, &r, &g, &b) != 0 || !pixel_is(r,g,b,0,0,0)) return 11;
+    if (read_canvas_pixel(50, 50, &r, &g, &b) != 0 || !pixel_is(r,g,b,255,255,255)) return 12;
+
+    /* One undoable script operation; undo/redo remain exact. */
+    if (undo_stack.count != 1) return 13;
+    if (history_undo() != 1) return 14;
+    Uint32 *undone = snapshot_canvas();
+    if (!undone || !replay_snapshots_equal(initial, undone)) return 15;
+    free(undone);
+    if (history_redo() != 1) return 16;
+    Uint32 *redone = snapshot_canvas();
+    if (!redone || !replay_snapshots_equal(immediate, redone)) return 17;
+    free(redone);
+
+    /* Command vocabulary and limits: one Clear plus 18 pressure segments. */
+    restore_canvas(initial);
+    history_free(); replay_forget();
+    if (load_script_file("examples/yong.glon") != 0) return 18;
+    if (replay_prepare() != 0) return 19;
+    int pressure_segments = 0;
+    size_t command_bytes = 0;
+    for (int i = 0; i < replay_count; i++) {
+        const char *cmd = replay_buf + replay_offsets[i];
+        if (cmd[0] == 'P' && cmd[1] == ' ') pressure_segments++;
+        command_bytes += (size_t)replay_lengths[i] + 1;
+    }
+    int total_commands = replay_count;
+    if (total_commands != 19 || pressure_segments != 18) return 20;
+    if (command_bytes >= SCRIPT_CMD_BYTES ||
+        total_commands > REPLAY_MAX_COMMANDS) return 21;
+
+    /* Smooth replay must equal immediate execution exactly. */
+    if (replay_play() != 0) return 22;
+    if (replay_finish_smooth(4) != 0) return 23;
+    Uint32 *smooth = snapshot_canvas();
+    if (!smooth || !replay_snapshots_equal(immediate, smooth)) return 24;
+    free(smooth);
+    replay_stop();
+
+    /* Pause/resume on a partially animated 永 stroke. */
+    int first = 0;
+    if (smooth_prepare_first_path("examples/yong.glon", initial, &first) != 0 ||
+        first < 1) return 25;
+    if (replay_anim_begin() != 1 || replay_anim_render_at(500) != 0) return 26;
+    if (replay_anim_memory_bytes() != 2 * replay_pixels_bytes()) return 27;
+    replay_pause();
+    if (replay_state != REPLAY_PAUSED || !replay_animating ||
+        replay_anim_progress != 500) return 28;
+    if (replay_play() != 0 || replay_state != REPLAY_PLAYING ||
+        !replay_animating || replay_anim_progress != 500) return 29;
+    if (replay_anim_finish(1) != 0) return 30;
+
+    /* Step completes a partial command. */
+    if (smooth_prepare_first_path("examples/yong.glon", initial, &first) != 0) return 31;
+    if (replay_anim_begin() != 1 || replay_anim_render_at(500) != 0) return 32;
+    int pos_before = replay_pos;
+    if (replay_step() != 0 || replay_state != REPLAY_PAUSED || replay_animating ||
+        replay_pos != pos_before + 1) return 33;
+    Uint32 *stepped = snapshot_canvas();
+    Uint32 *step_ref = replay_prefix_snapshot(initial, pos_before + 1);
+    if (!stepped || !step_ref || !replay_snapshots_equal(stepped, step_ref)) return 34;
+    free(stepped); free(step_ref);
+
+    /* Back discards a partial command and restores the previous boundary. */
+    if (smooth_prepare_first_path("examples/yong.glon", initial, &first) != 0) return 35;
+    if (replay_anim_begin() != 1 || replay_anim_render_at(500) != 0) return 36;
+    pos_before = replay_pos;
+    if (replay_step_back() != 1 || replay_animating) return 37;
+    int back_target = pos_before > 0 ? pos_before - 1 : 0;
+    if (replay_pos != back_target) return 38;
+    Uint32 *backed = snapshot_canvas();
+    Uint32 *back_ref = replay_prefix_snapshot(initial, back_target);
+    if (!backed || !back_ref || !replay_snapshots_equal(backed, back_ref)) return 39;
+    free(backed); free(back_ref);
+
+    /* Stop restores pre-playback. */
+    if (smooth_prepare_first_path("examples/yong.glon", initial, &first) != 0) return 40;
+    if (replay_anim_begin() != 1 || replay_anim_render_at(500) != 0) return 41;
+    replay_stop();
+    Uint32 *stopped = snapshot_canvas();
+    if (!stopped || !replay_snapshots_equal(initial, stopped) ||
+        replay_animating || undo_stack.count != 0) return 42;
+    free(stopped);
+
+    /* End during a partial command commits only the completed prefix. */
+    if (smooth_prepare_first_path("examples/yong.glon", initial, &first) != 0) return 43;
+    Uint32 *prefix_before = replay_prefix_snapshot(initial, first);
+    if (!prefix_before) return 44;
+    if (replay_anim_begin() != 1 || replay_anim_render_at(500) != 0) return 45;
+    replay_end();
+    if (replay_animating || undo_stack.count != 1) return 46;
+    Uint32 *ended = snapshot_canvas();
+    if (!ended || !replay_snapshots_equal(prefix_before, ended)) return 47;
+    free(ended);
+    if (history_undo() != 1) return 48;
+    Uint32 *undo_end = snapshot_canvas();
+    if (!undo_end || !replay_snapshots_equal(initial, undo_end)) return 49;
+    free(undo_end);
+    if (history_redo() != 1) return 50;
+    Uint32 *redo_end = snapshot_canvas();
+    if (!redo_end || !replay_snapshots_equal(prefix_before, redo_end)) return 51;
+    free(redo_end); free(prefix_before);
+
+    /* Repeated smooth playback leaves the loader bounded. */
+    long loader0 = loader_used();
+    for (int rep = 0; rep < 3; rep++) {
+        if (smooth_prepare_first_path("examples/yong.glon", initial, &first) != 0 ||
+            replay_finish_smooth(3) != 0) return 52;
+        replay_stop();
+        replay_forget();
+    }
+    if (loader_used() != loader0) return 53;
+
+    printf("yong-test: load=ok black=ok undo=ok redo=ok commands=%d "
+           "pressure_segments=%d command_bytes=%zu smooth_equal=ok pause=ok "
+           "step=ok back=ok stop=ok end=ok loader=%ld result=ok\n",
+           total_commands, pressure_segments, command_bytes, loader_used());
+    free(immediate);
+    free(initial);
+    history_free(); replay_forget();
+    (void)saved;
+    return 0;
+}
+
+static int smooth_demo_path(const char *script, const char *prefix) {
     if (app_init() != 0) return 2;
     clear_canvas();
     history_free();
@@ -3458,11 +3647,15 @@ static int smooth_demo(void) {
     ui_smooth_strokes = 1;
     ui_stroke_duration_index = 2;
     int first = 0;
-    if (smooth_prepare_first(initial, &first) != 0) return 4;
+    if (smooth_prepare_first_path(script, initial, &first) != 0) return 4;
     if (replay_anim_begin() != 1) return 5;
 
-    const char *names[] = { "glon-smooth-start.png", "glon-smooth-25.png",
-                            "glon-smooth-50.png", "glon-smooth-75.png" };
+    char names[5][256];
+    snprintf(names[0], sizeof names[0], "%s-start.png", prefix);
+    snprintf(names[1], sizeof names[1], "%s-25.png", prefix);
+    snprintf(names[2], sizeof names[2], "%s-50.png", prefix);
+    snprintf(names[3], sizeof names[3], "%s-75.png", prefix);
+    snprintf(names[4], sizeof names[4], "%s-final.png", prefix);
     if (save_png(names[0]) != 0) return 6;
     const int percents[] = { 250, 500, 750 };
     for (int i = 0; i < 3; i++) {
@@ -3471,23 +3664,29 @@ static int smooth_demo(void) {
     }
     /* Finish the demonstrated stroke authoritatively, then the rest smoothly. */
     if (replay_anim_finish(1) != 0 || replay_finish_smooth(4) != 0) return 8;
-    if (save_png("glon-smooth-final.png") != 0) return 9;
+    if (save_png(names[4]) != 0) return 9;
     Uint32 *smooth_final = snapshot_canvas();
     if (!smooth_final) return 10;
 
     restore_canvas(initial);
     history_free(); replay_forget();
-    if (load_script_file("examples/calligraphy.glon") != 0 || run_script() != 0) return 11;
+    if (load_script_file(script) != 0 || run_script() != 0) return 11;
     Uint32 *immediate = snapshot_canvas();
     if (!immediate) return 12;
     int same = replay_snapshots_equal(smooth_final, immediate);
     free(smooth_final); free(immediate); free(initial);
-    printf("smooth-demo: frames=glon-smooth-start.png,glon-smooth-25.png,"
-           "glon-smooth-50.png,glon-smooth-75.png final=glon-smooth-final.png "
+    printf("smooth-demo: script=%s start=%s p25=%s p50=%s p75=%s final=%s "
            "final_equal_immediate=%d result=%s\n",
+           script, names[0], names[1], names[2], names[3], names[4],
            same, same ? "ok" : "FAILED");
     history_free(); replay_forget();
     return same ? 0 : 13;
+}
+static int smooth_demo(void) {
+    return smooth_demo_path("examples/calligraphy.glon", "glon-smooth");
+}
+static int yong_demo(void) {
+    return smooth_demo_path("examples/yong.glon", "glon-yong");
 }
 
 static int replay_test(void) {
@@ -3951,6 +4150,33 @@ int main(int argc, char **argv) {
         SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
         SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
         fprintf(stderr, "glon-paint: smooth-demo %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--yong-test") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = yong_test();
+        history_free(); replay_forget(); free(script_source);
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        fprintf(stderr, "glon-paint: yong-test %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--yong-frames") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = yong_frames();
+        history_free(); replay_forget(); free(script_source);
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        fprintf(stderr, "glon-paint: yong-frames %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--yong-demo") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = yong_demo();
+        history_free(); replay_forget(); free(script_source);
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        fprintf(stderr, "glon-paint: yong-demo %s\n", rc == 0 ? "passed" : "failed");
         return rc;
     }
     if (argc > 1 && strcmp(argv[1], "--calligraphy-test") == 0) {

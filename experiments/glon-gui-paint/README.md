@@ -154,7 +154,7 @@ and undo/redo history unchanged. Loading a script never touches the canvas.
 The exact script vocabulary is:
 
 ```text
-paint/set-color n                  select colour 1-4
+paint/set-color n                  select colour 1-4, or 5 = black (script-only)
 paint/set-size n                   set brush size 1-64
 paint/draw-line x1 y1 x2 y2        opaque line using current colour/size
 paint/draw-rect x y w h           rectangle outline
@@ -175,6 +175,7 @@ Examples:
 examples/rectangle.glon
 examples/landscape.glon
 examples/calligraphy.glon
+examples/yong.glon
 examples/replay-demo.glon
 ```
 
@@ -231,6 +232,32 @@ does not depend on SDL frame timing. The command sequence is deterministic and
 is suitable for the later recording/replay milestones; recording, playback,
 stylus hardware, bristles, texture, diffusion and character recognition are not
 implemented here.
+
+## Writing 永
+
+`examples/yong.glon` writes 永 with the existing pressure calligraphy commands.
+It follows the conventional five-stroke order (dot; horizontal; vertical hook;
+left sweep; right sweep). The Eight Principles are distributed as brush
+behaviour inside those five strokes: 側 (dot), 勒 (horizontal), 努 (vertical),
+趯 (hook), 策 (rising entry), 掠 (left sweep), 啄 (short right entry) and 磔
+(right sweep).
+
+The script uses palette colour 5, a script-only black (`0,0,0`); the interactive
+UI still exposes the original four colour swatches. It sets maximum calligraphy
+diameter 54 and ink opacity 255, then emits 18 connected pressure segments
+within an approximately 380x400 px character box. It contains one Clear plus 18
+`P` commands (19 replay commands) and stays well below the command, byte and
+loader limits.
+
+To watch it: File → Open Script → `examples/yong.glon`, enable Smooth strokes,
+then Play. The five strokes develop in writing order; Pause freezes a partial
+segment, Step/Back navigate command boundaries, and End commits only completed
+segments. The final frame is RGBA-identical to immediate Run Script execution.
+
+The circular brush gives hard round caps and geometric joins. The dot is
+slightly blob-like, the hook termination is small, and the right 啄/磔 turn is
+sharper than a brush turn. The character is recognisable, but this is not an
+authentic brush rendering; no new renderer or stroke primitive is used.
 
 ## Replay
 
@@ -389,13 +416,17 @@ command sink, not a second Glon execution.
   demo/shop/strings-ext.glon experiments/glon-gui-paint/paint.glon \
   experiments/glon-gui-paint/tests/paint-tests.glon
 
-# SDL/Nuklear UI, image, script, calligraphy, replay, smooth animation, undo,
-# resize, PNG and 10,000-move loader tests
+# SDL/Nuklear UI, image, script, calligraphy, replay, smooth animation, 永,
+# undo, resize, PNG and 10,000-move loader tests
 make test
 
-# Write start/25/50/75%/final PNG frames for the first calligraphy stroke and
+# Write start/25/50/75%/final PNG frames for the first stroke of a script and
 # verify the final full replay equals immediate script execution.
 ./build/glon-paint --smooth-demo
+./build/glon-paint --yong-demo
+
+# Write one frame after each completed 永 stroke.
+./build/glon-paint --yong-frames
 ```
 
 The calligraphy and replay tests compare complete 800x600 drawing-layer

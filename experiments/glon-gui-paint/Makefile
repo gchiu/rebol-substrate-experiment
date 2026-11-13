@@ -86,6 +86,8 @@ test: all
 	python3 tests/check-png.py glon-paint.png
 	$(TARGET) --smooth-test
 	python3 tests/check-png.py glon-paint.png
+	$(TARGET) --yong-test
+	python3 tests/check-png.py glon-paint.png
 	$(TARGET) --coalesce-test
 	python3 tests/check-png.py glon-paint.png
 	$(TARGET) --resize-test
