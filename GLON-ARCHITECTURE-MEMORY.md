@@ -263,6 +263,31 @@ two maximize/restore cycles and a 1200 → 1300 px resize preserved a painted re
 stroke scaled with the 800x600 document, with no ghost. No frozen S1, VM,
 allocator or Glon semantics change was made.
 
+[MEASURED 2026-11-13, `experiments/glon-gui-paint`, smooth replay]
+**Smooth `P` playback uses the existing rasteriser and authoritative completion.**
+The replay stream and Glon execution are unchanged. For an animated pressure
+command the host reads the pre-command canvas once into a reusable 1.92 MB
+buffer. Each frame copies it into one reusable 1.92 MB work buffer, calls the
+same `raster_pressure_line` used by full commands for a partial segment, and
+uploads the work buffer once. There is no per-frame GPU readback and no
+per-frame snapshot. Endpoint and pressure use integer permille interpolation
+rounded to nearest, ties away from zero. On completion the pre-command buffer
+is restored and the original full `P` command is dispatched once, so final
+pixels are exactly the immediate-execution result. Pause freezes progress;
+Back discards the partial and reconstructs the previous completed prefix; Step
+completes the partial or advances one full command; Stop restores the
+pre-playback canvas; End discards the partial and commits only completed
+commands. The counter shows completed commands plus `+1` while partial.
+Measured over 200 partial frames of the first `calligraphy.glon` stroke on WSLg:
+average 5.4-7.3 ms/frame, worst 8.4-12.5 ms, one texture upload per frame, no
+readback, 3.84 MB extra memory; these are CPU raster/upload times, not a display
+FPS claim. Automated `--smooth-test` covers progression, pressure interpolation,
+pause/resume, Step/Back/Stop/End during a partial, resize mapping, speed and
+duration independence, exact RGBA equality with immediate execution, Undo/Redo
+after End, bounded loader use and overlay isolation. `--smooth-demo` captures
+start/25/50/75%/final PNG frames and checks final equality. No frozen S1, VM,
+allocator, brush semantics or Glon command vocabulary change was made.
+
 **[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
 worklist has a fixed 256 entries (`GC_WORKLIST_CAP`, the cells before `GC_A1`).
 - **It cannot overflow in the 64K configuration.** Each object is pushed at

@@ -77,6 +77,10 @@ static int ui_drawing = 0;
 static int ui_call_diameter = 24;
 static int ui_pressure = 180;
 static int ui_opacity = 255;
+static int ui_smooth_strokes = 1;
+static int ui_show_brush_tip = 1;
+static int ui_stroke_duration_index = 2;  /* 600 ms */
+static const int ui_stroke_durations[] = { 150, 300, 600, 1200 };
 static int show_about = 0;
 static long perf_raw_motions = 0, perf_app_moves = 0, perf_renders = 0;
 typedef struct { Uint32 *pixels; } HistoryEntry;
@@ -118,6 +122,21 @@ static Uint64 replay_accum_ns = 0;
 static int replay_speed_index = 1;  /* 5 operations/second */
 static const int replay_speeds[] = { 1, 5, 20, 60 };
 static char replay_error[256] = "";
+typedef struct {
+    int x1, y1, p1, x2, y2, p2, dia, op, r, g, b;
+} PressureCommand;
+static int replay_animating = 0;
+static PressureCommand replay_anim_cmd;
+static Uint32 *replay_cmd_pre = NULL;   /* canvas immediately before this command */
+static Uint32 *replay_anim_work = NULL; /* reusable partial-frame buffer */
+static Uint64 replay_anim_elapsed_ms = 0;
+static int replay_anim_duration_ms = 600;
+static int replay_anim_progress = 0;     /* 0..999, presentation only */
+static int replay_anim_x = 0, replay_anim_y = 0, replay_anim_diameter = 0;
+static long replay_anim_frames = 0;
+static long replay_anim_uploads = 0;
+static Uint64 replay_anim_total_ns = 0;
+static Uint64 replay_anim_worst_ns = 0;
 #ifdef HAVE_NFD
 static int nfd_state = 0;  /* 0 unknown, 1 ready, -1 unavailable */
 static char last_image_dir[1024] = "";
@@ -333,6 +352,38 @@ static void build_composite(void) {
     SDL_RenderCopy(ren, canvas, NULL, NULL);
     SDL_SetRenderTarget(ren, NULL);
 }
+static void draw_circle_outline(int cx, int cy, int radius, int r, int g, int b) {
+    if (radius < 1) radius = 1;
+    SDL_SetRenderDrawColor(ren, (Uint8)r, (Uint8)g, (Uint8)b, 255);
+    int x = radius, y = 0, err = 1 - radius;
+    while (x >= y) {
+        SDL_RenderDrawPoint(ren, cx + x, cy + y);
+        SDL_RenderDrawPoint(ren, cx + y, cy + x);
+        SDL_RenderDrawPoint(ren, cx - y, cy + x);
+        SDL_RenderDrawPoint(ren, cx - x, cy + y);
+        SDL_RenderDrawPoint(ren, cx - x, cy - y);
+        SDL_RenderDrawPoint(ren, cx - y, cy - x);
+        SDL_RenderDrawPoint(ren, cx + y, cy - x);
+        SDL_RenderDrawPoint(ren, cx + x, cy - y);
+        y++;
+        if (err < 0) err += 2 * y + 1;
+        else { x--; err += 2 * (y - x) + 1; }
+    }
+}
+/* Presentation-only brush tip. It is drawn directly to the window after the
+ * canvas, never into the drawing layer, composite or exported PNG. */
+static void draw_brush_tip_indicator(void) {
+    if (!ui_show_brush_tip || !replay_animating || replay_anim_diameter <= 0)
+        return;
+    if (layout.image.w <= 0 || layout.image.h <= 0) return;
+    int wx = 0, wy = 0;
+    if (!canvas_to_window(replay_anim_x, replay_anim_y, &wx, &wy)) return;
+    int scaled = (int)((int64_t)replay_anim_diameter * layout.image.w / PAINT_W);
+    int radius = scaled / 2;
+    if (radius < 2) radius = 2;
+    draw_circle_outline(wx, wy, radius + 1, 0, 0, 0);
+    draw_circle_outline(wx, wy, radius, 255, 255, 255);
+}
 static void render_frame(void) {
     update_layout();
     SDL_SetRenderTarget(ren, NULL);
@@ -354,6 +405,7 @@ static void render_frame(void) {
         SDL_SetRenderDrawColor(ren, 92, 96, 106, 255);
         SDL_RenderDrawRect(ren, &layout.image);
     }
+    draw_brush_tip_indicator();
     dirty = 0;
 }
 static void present_frame(void) {
@@ -416,12 +468,15 @@ static int save_png(const char *path) {
 /* Snapshot history: one pre-operation 800x600 ARGB image per entry. This is
  * deliberately not a recorded-command history; it is the safe fallback for
  * exact canvas undo until the scripting milestone can record/replay commands. */
+static int read_canvas_into(Uint32 *px) {
+    begin_canvas();
+    return SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888,
+                                px, PAINT_W * sizeof(Uint32));
+}
 static Uint32 *snapshot_canvas(void) {
     Uint32 *px = malloc((size_t)PAINT_W * PAINT_H * sizeof(Uint32));
     if (!px) return NULL;
-    begin_canvas();
-    if (SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888,
-                             px, PAINT_W * sizeof(Uint32)) != 0) {
+    if (read_canvas_into(px) != 0) {
         free(px);
         return NULL;
     }
@@ -444,15 +499,14 @@ static int pressure_diameter(int max_diameter, int pressure) {
  * interpolated linearly and rounded to nearest. Coverage is hard-edged; the
  * resulting alpha is `opacity`, and overlapping coverage uses max-alpha rather
  * than repeated source-over so joins do not darken. */
-static void draw_pressure_line(int x1, int y1, int p1, int x2, int y2, int p2,
-                               int max_diameter, int opacity,
-                               int r, int g, int b) {
+static void raster_pressure_line(Uint32 *pixels,
+                                 int x1, int y1, int p1, int x2, int y2, int p2,
+                                 int max_diameter, int opacity,
+                                 int r, int g, int b) {
     if (opacity <= 0 || max_diameter <= 0) return;
     int d1 = pressure_diameter(max_diameter, p1);
     int d2 = pressure_diameter(max_diameter, p2);
     if (d1 <= 0 && d2 <= 0) return;
-    Uint32 *pixels = snapshot_canvas();
-    if (!pixels) return;
     int maxd = d1 > d2 ? d1 : d2;
     int pad = (maxd + 2) / 2 + 1;
     int minx = (x1 < x2 ? x1 : x2) - pad;
@@ -495,6 +549,17 @@ static void draw_pressure_line(int x1, int y1, int p1, int x2, int y2, int p2,
             }
         }
     }
+}
+static void draw_pressure_line(int x1, int y1, int p1, int x2, int y2, int p2,
+                               int max_diameter, int opacity,
+                               int r, int g, int b) {
+    if (opacity <= 0 || max_diameter <= 0) return;
+    if (pressure_diameter(max_diameter, p1) <= 0 &&
+        pressure_diameter(max_diameter, p2) <= 0) return;
+    Uint32 *pixels = snapshot_canvas();
+    if (!pixels) return;
+    raster_pressure_line(pixels, x1, y1, p1, x2, y2, p2,
+                         max_diameter, opacity, r, g, b);
     SDL_UpdateTexture(canvas, NULL, pixels, PAINT_W * sizeof(Uint32));
     free(pixels);
     dirty = 1;
@@ -960,9 +1025,137 @@ static int prepare_script_commands(char *out, size_t cap, int *count,
     return failed ? -1 : 0;
 }
 
+static int parse_pressure_command(const char *line, PressureCommand *pc) {
+    if (line[0] != 'P' || line[1] != ' ') return 0;
+    return sscanf(line + 2, "%d %d %d %d %d %d %d %d %d %d %d",
+                  &pc->x1, &pc->y1, &pc->p1, &pc->x2, &pc->y2, &pc->p2,
+                  &pc->dia, &pc->op, &pc->r, &pc->g, &pc->b) == 11;
+}
+/* Explicit integer interpolation, rounded to nearest with ties away from zero.
+ * den is positive; num is clamped by the callers. */
+static int lerp_int(int a, int b, int num, int den) {
+    int64_t v = (int64_t)a * (den - num) + (int64_t)b * num;
+    if (v >= 0) return (int)((v + den / 2) / den);
+    return (int)(-((-v + den / 2) / den));
+}
+static size_t replay_pixels_bytes(void) {
+    return (size_t)PAINT_W * PAINT_H * sizeof(Uint32);
+}
+static int replay_anim_alloc(void) {
+    if (!replay_cmd_pre)
+        replay_cmd_pre = malloc(replay_pixels_bytes());
+    if (!replay_anim_work)
+        replay_anim_work = malloc(replay_pixels_bytes());
+    if (!replay_cmd_pre || !replay_anim_work) {
+        free(replay_cmd_pre); replay_cmd_pre = NULL;
+        free(replay_anim_work); replay_anim_work = NULL;
+        return -1;
+    }
+    return 0;
+}
+static void replay_anim_free(void) {
+    free(replay_cmd_pre); replay_cmd_pre = NULL;
+    free(replay_anim_work); replay_anim_work = NULL;
+    replay_animating = 0;
+    replay_anim_elapsed_ms = 0;
+    replay_anim_progress = 0;
+    replay_anim_x = replay_anim_y = replay_anim_diameter = 0;
+}
+static size_t replay_anim_memory_bytes(void) {
+    size_t n = 0;
+    if (replay_cmd_pre) n += replay_pixels_bytes();
+    if (replay_anim_work) n += replay_pixels_bytes();
+    return n;
+}
+static int replay_next_pressure(PressureCommand *pc) {
+    if (replay_pos < 0 || replay_pos >= replay_count) return 0;
+    return parse_pressure_command(replay_buf + replay_offsets[replay_pos], pc);
+}
+/* Render progress `permille` of the active pressure command. The pre-command
+ * canvas is copied into one reusable work buffer, the shared rasteriser draws
+ * the partial segment, and the result is uploaded once. No GPU readback and no
+ * frame-history allocation occur here. */
+static int replay_anim_render_at(int permille) {
+    if (!replay_animating || !replay_cmd_pre || !replay_anim_work) return -1;
+    if (permille < 0) permille = 0;
+    if (permille > 999) permille = 999;
+    PressureCommand *pc = &replay_anim_cmd;
+    int px = lerp_int(pc->x1, pc->x2, permille, 1000);
+    int py = lerp_int(pc->y1, pc->y2, permille, 1000);
+    int pp = lerp_int(pc->p1, pc->p2, permille, 1000);
+    Uint64 t0 = SDL_GetPerformanceCounter();
+    memcpy(replay_anim_work, replay_cmd_pre, replay_pixels_bytes());
+    raster_pressure_line(replay_anim_work, pc->x1, pc->y1, pc->p1,
+                         px, py, pp, pc->dia, pc->op, pc->r, pc->g, pc->b);
+    if (SDL_UpdateTexture(canvas, NULL, replay_anim_work,
+                          PAINT_W * sizeof(Uint32)) != 0) return -1;
+    Uint64 t1 = SDL_GetPerformanceCounter();
+    Uint64 ns = (t1 - t0) * 1000000000ULL /
+                (Uint64)SDL_GetPerformanceFrequency();
+    replay_anim_total_ns += ns;
+    if (ns > replay_anim_worst_ns) replay_anim_worst_ns = ns;
+    replay_anim_frames++;
+    replay_anim_uploads++;
+    replay_anim_progress = permille;
+    replay_anim_x = px;
+    replay_anim_y = py;
+    replay_anim_diameter = pressure_diameter(pc->dia, pp);
+    dirty = 1;
+    return 0;
+}
+static int replay_anim_begin(void) {
+    if (replay_animating) return 0;
+    if (!replay_active || replay_pos >= replay_count) return 0;
+    PressureCommand pc;
+    if (!replay_next_pressure(&pc)) return 0;
+    if (replay_anim_alloc() != 0) {
+        snprintf(replay_error, sizeof replay_error,
+                 "Cannot allocate animation buffers.");
+        replay_state = REPLAY_ERROR;
+        return -1;
+    }
+    if (read_canvas_into(replay_cmd_pre) != 0) {
+        snprintf(replay_error, sizeof replay_error,
+                 "Cannot snapshot pre-command drawing layer.");
+        replay_state = REPLAY_ERROR;
+        return -1;
+    }
+    replay_anim_cmd = pc;
+    replay_animating = 1;
+    replay_anim_elapsed_ms = 0;
+    replay_anim_duration_ms = ui_stroke_durations[ui_stroke_duration_index];
+    if (replay_anim_duration_ms < 1) replay_anim_duration_ms = 1;
+    replay_accum_ns = 0;
+    unsaved = 1;
+    return replay_anim_render_at(0) == 0 ? 1 : -1;
+}
+/* Finish the active presentation. apply_full restores the pre-command canvas
+ * and dispatches the original full command once through the authoritative
+ * renderer; otherwise the temporary partial pixels are discarded. */
+static int replay_anim_finish(int apply_full) {
+    if (!replay_animating) return 0;
+    if (!replay_cmd_pre) return -1;
+    if (restore_canvas(replay_cmd_pre) != 0) return -1;
+    replay_animating = 0;
+    replay_anim_elapsed_ms = 0;
+    replay_anim_progress = 0;
+    replay_anim_x = replay_anim_y = replay_anim_diameter = 0;
+    if (apply_full) {
+        if (replay_pos < 0 || replay_pos >= replay_count) return -1;
+        int saved = 0;
+        int old = history_replaying;
+        history_replaying = 1;
+        command(replay_buf + replay_offsets[replay_pos], &saved);
+        history_replaying = old;
+        replay_pos++;
+        dirty = 1;
+    }
+    return 0;
+}
 static void replay_forget(void) {
     free(replay_pre);
     replay_pre = NULL;
+    replay_anim_free();
     replay_prepared = 0;
     replay_count = replay_pos = 0;
     replay_active = 0;
@@ -978,6 +1171,7 @@ static int replay_prepare(void) {
     }
     free(replay_pre);
     replay_pre = NULL;
+    replay_anim_free();
     replay_prepared = 0;
     replay_count = replay_pos = 0;
     replay_error[0] = 0;
@@ -1005,6 +1199,7 @@ static void replay_apply_one(void) {
 }
 
 static void replay_complete(void) {
+    if (replay_animating) return;
     if (replay_pos < replay_count) return;
     replay_state = REPLAY_COMPLETE;
     replay_active = 1;  /* temporary replay drawing is still owned by replay */
@@ -1018,6 +1213,7 @@ static int replay_play(void) {
     if (replay_state == REPLAY_PLAYING) return 0;
     if (!replay_prepared && replay_prepare() != 0) return -1;
     if (replay_state == REPLAY_COMPLETE && replay_pre) {
+        replay_anim_free();
         if (restore_canvas(replay_pre) != 0) return -1;
         replay_pos = 0;
         replay_active = 1;
@@ -1032,6 +1228,10 @@ static int replay_play(void) {
         replay_unsaved = unsaved;
         replay_pos = 0;
         replay_active = 1;
+        replay_animating = 0;
+        replay_anim_elapsed_ms = 0;
+        replay_anim_progress = 0;
+        replay_anim_x = replay_anim_y = replay_anim_diameter = 0;
     }
     replay_state = REPLAY_PLAYING;
     replay_last_tick = SDL_GetTicks64();
@@ -1062,13 +1262,19 @@ static int replay_step(void) {
         replay_active = 1;
     }
     replay_state = REPLAY_PAUSED;
-    if (replay_pos < replay_count) replay_apply_one();
+    if (replay_animating) {
+        if (replay_anim_finish(1) != 0) return -1;
+    } else if (replay_pos < replay_count) {
+        replay_apply_one();
+    }
     if (replay_pos >= replay_count) replay_complete();
+    else dirty = 1;
     return 0;
 }
 
 static int replay_reconstruct(int target) {
     if (!replay_pre || !replay_prepared || target < 0 || target > replay_count) return -1;
+    if (replay_animating && replay_anim_finish(0) != 0) return -1;
     if (restore_canvas(replay_pre) != 0) return -1;
     int old = history_replaying;
     history_replaying = 1;
@@ -1079,20 +1285,33 @@ static int replay_reconstruct(int target) {
     history_replaying = old;
     replay_pos = target;
     replay_active = 1;
+    replay_anim_elapsed_ms = 0;
+    replay_anim_progress = 0;
+    replay_anim_x = replay_anim_y = replay_anim_diameter = 0;
     dirty = 1;
     return 0;
 }
 
 static int replay_step_back(void) {
-    if (!replay_prepared || !replay_pre || replay_pos <= 0) return 0;
-    if (replay_reconstruct(replay_pos - 1) != 0) return -1;
+    if (!replay_prepared || !replay_pre) return 0;
+    if (!replay_animating && replay_pos <= 0) return 0;
+    int target = replay_pos > 0 ? replay_pos - 1 : 0;
+    if (replay_reconstruct(target) != 0) return -1;
     replay_state = REPLAY_PAUSED;
     replay_accum_ns = 0;
     return 1;
 }
 
 static int replay_step_forward(void) {
-    if (!replay_prepared || replay_pos >= replay_count) return 0;
+    if (!replay_prepared) return 0;
+    if (replay_animating) {
+        replay_state = REPLAY_PAUSED;
+        if (replay_anim_finish(1) != 0) return -1;
+        if (replay_pos >= replay_count) replay_complete();
+        else dirty = 1;
+        return 1;
+    }
+    if (replay_pos >= replay_count) return 0;
     if (!replay_active) {
         free(replay_pre);
         replay_pre = snapshot_canvas();
@@ -1123,6 +1342,9 @@ static int replay_locked(void) {
 
 static void replay_end(void) {
     if (!replay_nav_available() || !replay_pre) return;
+    /* A partially animated command is never committed. Restore the completed
+     * command boundary before snapshotting the prefix. */
+    if (replay_animating && replay_anim_finish(0) != 0) return;
     Uint32 *current = snapshot_canvas();
     if (!current) {
         snprintf(replay_error, sizeof replay_error, "Cannot snapshot current replay prefix.");
@@ -1146,6 +1368,7 @@ static void replay_end(void) {
     replay_count = replay_pos = 0;
     replay_state = REPLAY_ENDED;
     replay_error[0] = 0;
+    replay_anim_free();
     snprintf(script_message, sizeof script_message,
              changed ? "Replay prefix committed to document history."
                      : "Replay ended at unchanged canvas; no document entry.");
@@ -1154,6 +1377,7 @@ static void replay_end(void) {
 
 static void replay_stop(void) {
     if (!replay_nav_available()) return;
+    replay_anim_free();
     if (replay_pre) restore_canvas(replay_pre);
     free(replay_pre);
     replay_pre = NULL;
@@ -1169,10 +1393,44 @@ static int replay_pump(void) {
     Uint64 now = SDL_GetTicks64();
     Uint64 elapsed = now >= replay_last_tick ? now - replay_last_tick : 0;
     replay_last_tick = now;
+    if (replay_animating) {
+        /* Bound one catch-up step so a scheduler stall cannot jump the whole
+         * stroke; progress still comes only from monotonic elapsed time. */
+        Uint64 step = elapsed > 250 ? 250 : elapsed;
+        replay_anim_elapsed_ms += step;
+        Uint64 dur = replay_anim_duration_ms > 0
+                   ? (Uint64)replay_anim_duration_ms : 1;
+        if (replay_anim_elapsed_ms >= dur) {
+            if (replay_anim_finish(1) != 0) {
+                snprintf(replay_error, sizeof replay_error,
+                         "Cannot complete animated stroke.");
+                replay_state = REPLAY_ERROR;
+                return 0;
+            }
+            replay_accum_ns = 0;
+            if (replay_pos >= replay_count) replay_complete();
+            return 1;
+        }
+        int permille = (int)((replay_anim_elapsed_ms * 1000) / dur);
+        if (permille > 999) permille = 999;
+        if (replay_anim_render_at(permille) != 0) {
+            snprintf(replay_error, sizeof replay_error,
+                     "Cannot render animated stroke.");
+            replay_state = REPLAY_ERROR;
+            return 0;
+        }
+        return 1;
+    }
     Uint64 ns_per = 1000000000ULL / (Uint64)replay_speeds[replay_speed_index];
     replay_accum_ns += elapsed * 1000000ULL;
     int applied = 0;
     while (replay_pos < replay_count && replay_accum_ns >= ns_per && applied < 2) {
+        PressureCommand pc;
+        if (ui_smooth_strokes && replay_next_pressure(&pc)) {
+            int began = replay_anim_begin();
+            if (began < 0) return 0;
+            if (began > 0) { applied++; break; }
+        }
         replay_apply_one();
         replay_accum_ns -= ns_per;
         applied++;
@@ -1182,6 +1440,31 @@ static int replay_pump(void) {
     return applied;
 }
 
+/* Test/demo helper: finish the prepared replay, rendering partial frames
+ * deterministically (no wall-clock dependency). */
+static int replay_finish_smooth(int steps) {
+    while (replay_pos < replay_count || replay_animating) {
+        if (replay_animating) {
+            for (int i = 1; i <= steps; i++) {
+                int p = (int)((int64_t)i * 1000 / (steps + 1));
+                if (p > 999) p = 999;
+                if (replay_anim_render_at(p) != 0) return -1;
+            }
+            if (replay_anim_finish(1) != 0) return -1;
+        } else {
+            PressureCommand pc;
+            if (ui_smooth_strokes && replay_next_pressure(&pc)) {
+                int began = replay_anim_begin();
+                if (began < 0) return -1;
+                if (began == 0) replay_apply_one();
+            } else {
+                replay_apply_one();
+            }
+        }
+    }
+    replay_complete();
+    return replay_state == REPLAY_COMPLETE ? 0 : -1;
+}
 static int replay_nav_key(SDL_Keycode sym, Uint16 mod) {
     if (!replay_nav_available() || !(mod & KMOD_CTRL)) return 0;
     if (sym == SDLK_z) {
@@ -1726,10 +2009,37 @@ static void ui_right_panel(void) {
         nk_layout_row_dynamic(nk, 20, 1);
         nk_label(nk, "REPLAY (not document Undo)", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 18, 1);
-        char rs[112];
-        snprintf(rs, sizeof rs, "%s  %d/%d  %d ops/s", replay_state_name(),
-                 replay_pos, replay_count, replay_speeds[replay_speed_index]);
+        char rs[160];
+        snprintf(rs, sizeof rs, "%s  %d%s/%d  %d ops/s  %s", replay_state_name(),
+                 replay_pos, replay_animating ? "+1" : "", replay_count,
+                 replay_speeds[replay_speed_index],
+                 ui_smooth_strokes ? "smooth" : "whole");
         nk_label(nk, rs, NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 24, 2);
+        int smooth_before = ui_smooth_strokes;
+        if (nk_checkbox_label(nk, "Smooth strokes", &ui_smooth_strokes)) {
+            if (smooth_before && !ui_smooth_strokes && replay_animating) {
+                int was_playing = replay_state == REPLAY_PLAYING;
+                if (replay_anim_finish(1) == 0) {
+                    if (replay_pos >= replay_count) replay_complete();
+                    else {
+                        replay_state = was_playing ? REPLAY_PLAYING : REPLAY_PAUSED;
+                        replay_accum_ns = 0;
+                        replay_last_tick = SDL_GetTicks64();
+                    }
+                }
+            }
+        }
+        nk_checkbox_label(nk, "Brush tip", &ui_show_brush_tip);
+        nk_layout_row_dynamic(nk, 20, 1);
+        nk_label(nk, "Stroke duration", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 24, 4);
+        static const char *stroke_durations[] = { "0.15s", "0.3s", "0.6s", "1.2s" };
+        for (int i = 0; i < 4; i++) {
+            if (nk_option_label(nk, stroke_durations[i],
+                                ui_stroke_duration_index == i))
+                ui_stroke_duration_index = i;
+        }
         nk_layout_row_dynamic(nk, 28, 3);
         if (replay_state != REPLAY_PLAYING && script_loaded) {
             if (nk_button_label(nk, "Play")) replay_play();
@@ -1753,14 +2063,16 @@ static void ui_right_panel(void) {
             nk_widget_disable_end(nk);
         }
         nk_layout_row_dynamic(nk, 28, 3);
-        if (replay_nav_available() && replay_pos > 0) {
+        if (replay_nav_available() && (replay_pos > 0 || replay_animating)) {
             if (nk_button_label(nk, "Back")) replay_step_back();
         } else {
             nk_widget_disable_begin(nk);
             nk_button_label(nk, "Back");
             nk_widget_disable_end(nk);
         }
-        if (script_loaded && replay_state != REPLAY_PLAYING && replay_pos < replay_count) {
+        if (script_loaded &&
+            (replay_state != REPLAY_PLAYING || replay_animating) &&
+            replay_pos < replay_count) {
             if (nk_button_label(nk, "Step")) replay_step_forward();
         } else {
             nk_widget_disable_begin(nk);
@@ -2879,6 +3191,305 @@ static int replay_end_semantics_test(void) {
     return 0;
 }
 
+
+static long canvas_alpha_count(const Uint32 *px) {
+    long n = 0;
+    for (int i = 0; i < PAINT_W * PAINT_H; i++)
+        if (((px[i] >> 24) & 255) != 0) n++;
+    return n;
+}
+static int canvas_alpha_at(const Uint32 *px, int x, int y) {
+    if (x < 0 || x >= PAINT_W || y < 0 || y >= PAINT_H) return 0;
+    return (int)((px[(size_t)y * PAINT_W + x] >> 24) & 255);
+}
+/* Load calligraphy.glon, start playback and advance to the first P command.
+ * Leaves replay active and positioned at that pressure command. */
+static int smooth_prepare_first(const Uint32 *initial, int *first) {
+    restore_canvas(initial);
+    history_free();
+    replay_forget();
+    if (load_script_file("examples/calligraphy.glon") != 0) return -1;
+    restore_canvas(initial);
+    if (replay_prepare() != 0) return -1;
+    if (replay_play() != 0) return -1;
+    PressureCommand pc;
+    while (replay_pos < replay_count && !replay_next_pressure(&pc))
+        replay_apply_one();
+    if (replay_pos >= replay_count) return -1;
+    *first = replay_pos;
+    return 0;
+}
+static int smooth_animation_test(void) {
+    int saved = 0;
+    if (app_init() != 0) return 2;
+
+    /* Explicit pressure and interpolation arithmetic. */
+    if (lerp_int(20, 240, 0, 1000) != 20) return 3;
+    if (lerp_int(20, 240, 250, 1000) != 75) return 4;
+    if (lerp_int(20, 240, 500, 1000) != 130) return 5;
+    if (lerp_int(20, 240, 750, 1000) != 185) return 6;
+    if (lerp_int(20, 240, 1000, 1000) != 240) return 7;
+    if (pressure_diameter(48, 20) != 4 || pressure_diameter(48, 240) != 45) return 8;
+
+    /* A nonempty starting layer makes End/Stop and undo checks meaningful. */
+    clear_canvas();
+    history_free();
+    unsaved = 0;
+    if (app_set_tool(1) != 0 || app_set_color(2) != 0 || app_set_size(12) != 0) return 9;
+    if (test_stroke(80, 80, 250, 160, 5) != 0) return 10;
+    history_free();
+    Uint32 *initial = snapshot_canvas();
+    if (!initial) return 11;
+
+    ui_smooth_strokes = 1;
+    ui_stroke_duration_index = 2;
+    replay_speed_index = 1;
+    int first = 0;
+    if (smooth_prepare_first(initial, &first) != 0) return 12;
+    if (first < 1) return 13;
+    Uint32 *prefix_before = replay_prefix_snapshot(initial, first);
+    if (!prefix_before) return 14;
+    if (replay_anim_begin() != 1 || !replay_animating || replay_pos != first) return 15;
+    if (replay_anim_memory_bytes() != 2 * replay_pixels_bytes()) return 16;
+
+    const int percents[] = { 0, 250, 500, 750, 999 };
+    Uint32 *frame[5] = { 0 };
+    long counts[5] = { 0 };
+    frame[0] = snapshot_canvas();
+    if (!frame[0]) return 17;
+    counts[0] = canvas_alpha_count(frame[0]);
+    int anim_x[5] = { replay_anim_x };
+    int anim_d[5] = { replay_anim_diameter };
+    for (int i = 1; i < 5; i++) {
+        if (replay_anim_render_at(percents[i]) != 0) return 18;
+        frame[i] = snapshot_canvas();
+        if (!frame[i]) return 19;
+        counts[i] = canvas_alpha_count(frame[i]);
+        anim_x[i] = replay_anim_x;
+        anim_d[i] = replay_anim_diameter;
+    }
+    for (int i = 1; i < 5; i++) {
+        if (replay_snapshots_equal(frame[i - 1], frame[i])) return 20;
+        if (counts[i] < counts[i - 1]) return 21;
+        if (anim_x[i] < anim_x[i - 1]) return 80;
+        if (anim_d[i] < anim_d[i - 1]) return 81;
+    }
+    if (counts[4] <= counts[0]) return 22;
+    /* Thin-to-thick stroke grows from 80,100 towards 300,100. */
+    if (canvas_alpha_at(frame[1], 100, 100) == 0) return 23;
+    if (canvas_alpha_at(frame[1], 280, 100) != 0) return 24;
+    if (canvas_alpha_at(frame[3], 280, 100) != 0) return 25;
+    if (canvas_alpha_at(frame[4], 280, 100) == 0) return 26;
+    /* The brush-tip overlay is presentation-only: drawing the window frame
+     * must not change the drawing-layer pixels. */
+    Uint32 *overlay_before = snapshot_canvas();
+    render_frame();
+    Uint32 *overlay_after = snapshot_canvas();
+    if (!overlay_before || !overlay_after ||
+        !replay_snapshots_equal(overlay_before, overlay_after)) return 82;
+    free(overlay_before); free(overlay_after);
+
+    /* Completing the command restores the pre-command layer and applies the
+     * original full command once. */
+    if (replay_anim_finish(1) != 0) return 27;
+    Uint32 *after_full = snapshot_canvas();
+    Uint32 *expected_full = replay_prefix_snapshot(initial, first + 1);
+    if (!after_full || !expected_full ||
+        !replay_snapshots_equal(after_full, expected_full)) return 28;
+    free(after_full); free(expected_full);
+    for (int i = 0; i < 5; i++) free(frame[i]);
+    free(prefix_before);
+
+    /* Pause freezes the partial presentation; resume keeps progress/canvas. */
+    if (smooth_prepare_first(initial, &first) != 0) return 29;
+    if (replay_anim_begin() != 1 || replay_anim_render_at(500) != 0) return 30;
+    Uint32 *paused = snapshot_canvas();
+    if (!paused) return 31;
+    replay_pause();
+    if (replay_state != REPLAY_PAUSED || !replay_animating ||
+        replay_anim_progress != 500) return 32;
+    if (replay_play() != 0 || replay_state != REPLAY_PLAYING ||
+        !replay_animating || replay_anim_progress != 500) return 33;
+    Uint32 *resumed = snapshot_canvas();
+    if (!resumed || !replay_snapshots_equal(paused, resumed)) return 34;
+    free(paused); free(resumed);
+    if (replay_anim_finish(1) != 0) return 35;
+
+    /* Step during a partial stroke completes exactly that command. */
+    if (smooth_prepare_first(initial, &first) != 0) return 36;
+    if (replay_anim_begin() != 1 || replay_anim_render_at(500) != 0) return 37;
+    int pos_before = replay_pos;
+    if (replay_step() != 0 || replay_state != REPLAY_PAUSED || replay_animating) return 38;
+    if (replay_pos != pos_before + 1) return 39;
+    Uint32 *stepped = snapshot_canvas();
+    Uint32 *step_ref = replay_prefix_snapshot(initial, pos_before + 1);
+    if (!stepped || !step_ref || !replay_snapshots_equal(stepped, step_ref)) return 40;
+    free(stepped); free(step_ref);
+
+    /* Back during a partial stroke discards it and moves to the previous
+     * completed boundary. */
+    if (smooth_prepare_first(initial, &first) != 0) return 41;
+    if (replay_anim_begin() != 1 || replay_anim_render_at(500) != 0) return 42;
+    pos_before = replay_pos;
+    if (replay_step_back() != 1 || replay_state != REPLAY_PAUSED || replay_animating) return 43;
+    int back_target = pos_before > 0 ? pos_before - 1 : 0;
+    if (replay_pos != back_target) return 44;
+    Uint32 *backed = snapshot_canvas();
+    Uint32 *back_ref = replay_prefix_snapshot(initial, back_target);
+    if (!backed || !back_ref || !replay_snapshots_equal(backed, back_ref)) return 45;
+    free(backed); free(back_ref);
+
+    /* Stop during a partial stroke restores the pre-playback layer. */
+    if (smooth_prepare_first(initial, &first) != 0) return 46;
+    if (replay_anim_begin() != 1 || replay_anim_render_at(500) != 0) return 47;
+    replay_stop();
+    if (replay_animating || replay_nav_available() || undo_stack.count != 0) return 48;
+    Uint32 *stopped = snapshot_canvas();
+    if (!stopped || !replay_snapshots_equal(initial, stopped)) return 49;
+    free(stopped);
+    if (replay_anim_memory_bytes() != 0) return 50;
+
+    /* End during a partial stroke commits only the completed prefix. */
+    if (smooth_prepare_first(initial, &first) != 0) return 51;
+    prefix_before = replay_prefix_snapshot(initial, first);
+    if (!prefix_before) return 52;
+    if (replay_anim_begin() != 1 || replay_anim_render_at(500) != 0) return 53;
+    replay_end();
+    if (replay_animating || replay_nav_available() || undo_stack.count != 1) return 54;
+    Uint32 *ended = snapshot_canvas();
+    if (!ended || !replay_snapshots_equal(prefix_before, ended)) return 55;
+    free(ended);
+    if (history_undo() != 1) return 56;
+    Uint32 *undone = snapshot_canvas();
+    if (!undone || !replay_snapshots_equal(initial, undone)) return 57;
+    free(undone);
+    if (history_redo() != 1) return 58;
+    Uint32 *redone = snapshot_canvas();
+    if (!redone || !replay_snapshots_equal(prefix_before, redone)) return 59;
+    free(redone); free(prefix_before);
+
+    /* Resize during animation and verify the brush-tip mapping. */
+    if (smooth_prepare_first(initial, &first) != 0) return 60;
+    if (replay_anim_begin() != 1 || replay_anim_render_at(500) != 0) return 61;
+    if (resize_to(1600, 1200) != 0) return 62;
+    int wx = 0, wy = 0, cx = 0, cy = 0;
+    if (!canvas_to_window(replay_anim_x, replay_anim_y, &wx, &wy) ||
+        !point_in_rect(&layout.image, wx, wy) ||
+        !map_window_to_canvas(1600, 1200, wx, wy, &cx, &cy) ||
+        abs(cx - replay_anim_x) > 2 || abs(cy - replay_anim_y) > 2) return 63;
+    if (replay_anim_render_at(750) != 0 || replay_anim_finish(1) != 0) return 64;
+    if (resize_to(1200, 800) != 0) return 65;
+
+    /* Performance sample: 200 partial frames of the first stroke. */
+    if (smooth_prepare_first(initial, &first) != 0) return 66;
+    if (replay_anim_begin() != 1) return 67;
+    replay_anim_frames = 0;
+    replay_anim_uploads = 0;
+    replay_anim_total_ns = 0;
+    replay_anim_worst_ns = 0;
+    Uint64 perf0 = SDL_GetPerformanceCounter();
+    for (int i = 0; i < 200; i++) {
+        int p = (int)((int64_t)i * 999 / 199);
+        if (replay_anim_render_at(p) != 0) return 68;
+    }
+    Uint64 perf1 = SDL_GetPerformanceCounter();
+    double wall_ms = (double)(perf1 - perf0) * 1000.0 /
+                     (double)SDL_GetPerformanceFrequency();
+    double avg_ms = replay_anim_frames
+        ? (double)replay_anim_total_ns / 1e6 / (double)replay_anim_frames : 0.0;
+    double worst_ms = (double)replay_anim_worst_ns / 1e6;
+    size_t anim_bytes = replay_anim_memory_bytes();
+    long perf_frames = replay_anim_frames;
+    long perf_uploads = replay_anim_uploads;
+    if (perf_frames != 200 || perf_uploads != 200) return 69;
+    if (replay_anim_finish(1) != 0) return 70;
+
+    /* Final smooth replay must equal immediate execution for several duration
+     * and playback-speed settings. */
+    restore_canvas(initial);
+    history_free(); replay_forget();
+    if (load_script_file("examples/calligraphy.glon") != 0 || run_script() != 0) return 71;
+    Uint32 *immediate = snapshot_canvas();
+    if (!immediate) return 72;
+    for (int variant = 0; variant < 3; variant++) {
+        ui_stroke_duration_index = variant == 0 ? 0 : (variant == 1 ? 2 : 3);
+        replay_speed_index = variant == 0 ? 0 : (variant == 1 ? 1 : 3);
+        if (smooth_prepare_first(initial, &first) != 0) return 73;
+        if (replay_finish_smooth(4) != 0) return 74;
+        Uint32 *final = snapshot_canvas();
+        if (!final || !replay_snapshots_equal(immediate, final)) return 75;
+        free(final);
+        replay_stop();
+    }
+
+    /* Repeated smooth playback does not grow the loader. */
+    long loader0 = loader_used();
+    for (int rep = 0; rep < 3; rep++) {
+        if (smooth_prepare_first(initial, &first) != 0) return 76;
+        if (replay_finish_smooth(3) != 0) return 77;
+        replay_stop();
+        replay_forget();
+    }
+    if (loader_used() != loader0) return 78;
+
+    printf("smooth-test: interpolation=ok progression=ok direction=ok pause=ok "
+           "resume=ok step=ok back=ok stop=ok end=ok undo=ok resize=ok "
+           "speed=ok equality=ok loader=%ld sample_frames=%ld "
+           "uploads_per_frame=1 extra_bytes=%zu avg_frame_ms=%.3f "
+           "worst_frame_ms=%.3f sample_wall_ms=%.2f result=ok\n",
+           loader_used(), perf_frames, anim_bytes, avg_ms, worst_ms, wall_ms);
+
+    free(immediate);
+    free(initial);
+    history_free(); replay_forget();
+    (void)saved;
+    return 0;
+}
+
+
+static int smooth_demo(void) {
+    if (app_init() != 0) return 2;
+    clear_canvas();
+    history_free();
+    replay_forget();
+    unsaved = 0;
+    Uint32 *initial = snapshot_canvas();
+    if (!initial) return 3;
+    ui_smooth_strokes = 1;
+    ui_stroke_duration_index = 2;
+    int first = 0;
+    if (smooth_prepare_first(initial, &first) != 0) return 4;
+    if (replay_anim_begin() != 1) return 5;
+
+    const char *names[] = { "glon-smooth-start.png", "glon-smooth-25.png",
+                            "glon-smooth-50.png", "glon-smooth-75.png" };
+    if (save_png(names[0]) != 0) return 6;
+    const int percents[] = { 250, 500, 750 };
+    for (int i = 0; i < 3; i++) {
+        if (replay_anim_render_at(percents[i]) != 0 || save_png(names[i + 1]) != 0)
+            return 7;
+    }
+    /* Finish the demonstrated stroke authoritatively, then the rest smoothly. */
+    if (replay_anim_finish(1) != 0 || replay_finish_smooth(4) != 0) return 8;
+    if (save_png("glon-smooth-final.png") != 0) return 9;
+    Uint32 *smooth_final = snapshot_canvas();
+    if (!smooth_final) return 10;
+
+    restore_canvas(initial);
+    history_free(); replay_forget();
+    if (load_script_file("examples/calligraphy.glon") != 0 || run_script() != 0) return 11;
+    Uint32 *immediate = snapshot_canvas();
+    if (!immediate) return 12;
+    int same = replay_snapshots_equal(smooth_final, immediate);
+    free(smooth_final); free(immediate); free(initial);
+    printf("smooth-demo: frames=glon-smooth-start.png,glon-smooth-25.png,"
+           "glon-smooth-50.png,glon-smooth-75.png final=glon-smooth-final.png "
+           "final_equal_immediate=%d result=%s\n",
+           same, same ? "ok" : "FAILED");
+    history_free(); replay_forget();
+    return same ? 0 : 13;
+}
+
 static int replay_test(void) {
     int saved = 0;
     if (app_init() != 0) return 2;
@@ -3322,6 +3933,24 @@ int main(int argc, char **argv) {
         SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
         SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
         fprintf(stderr, "glon-paint: replay-test %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--smooth-test") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = smooth_animation_test();
+        history_free(); replay_forget(); free(script_source);
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        fprintf(stderr, "glon-paint: smooth-test %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--smooth-demo") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = smooth_demo();
+        history_free(); replay_forget(); free(script_source);
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        fprintf(stderr, "glon-paint: smooth-demo %s\n", rc == 0 ? "passed" : "failed");
         return rc;
     }
     if (argc > 1 && strcmp(argv[1], "--calligraphy-test") == 0) {

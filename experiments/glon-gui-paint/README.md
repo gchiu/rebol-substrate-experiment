@@ -110,7 +110,8 @@ The default library root is `../..` when launched from this directory. Set
 | `Ctrl+Y` / `Ctrl+Shift+Z` | redo |
 | Menu File | New / Clear, Open Image, Open Script, Run Script, Save PNG, Quit |
 | Menu Edit / View / Help | Clear, Undo, Redo, reset window size, About |
-| Inspector Replay | Play, Pause, Step, Stop; 1/5/20/60 ops/s |
+| Inspector Replay | Play, Pause, Step, Back, Stop, End; 1/5/20/60 ops/s |
+| Inspector Smooth | Smooth strokes On/Off, Brush tip On/Off, stroke duration 0.15/0.3/0.6/1.2 s |
 
 The document is always 800x600 internally. Window resizing preserves its aspect
 ratio, centres it, and maps mouse coordinates through its current destination
@@ -238,21 +239,68 @@ drawing layer. Preparation executes the ordinary Glon pipeline, reads its
 bounded command sink, validates every command, and stores the ordered stream in
 a 4,096-command / 1 MiB playback buffer. Playback dispatches those stored
 commands through the normal host drawing dispatcher; Glon is not rerun per
-frame and there is no image animation or reveal mask.
+frame. Smooth strokes are a presentation of stored `P` commands, not a second
+renderer or a reveal mask.
 
 Controls:
 
 - **Play** prepares if needed, then advances at the selected speed.
 - **Pause** stops dispatch while preserving the current canvas and pending
-  commands.
-- **Back** reverses exactly one replay drawing command.
-- **Step** executes exactly one pending command and pauses.
+  commands, including a partially animated stroke.
+- **Back** reverses to the preceding completed command boundary. If a stroke is
+  partially animated, its temporary progress is discarded first.
+- **Step** completes the current partially animated command, or executes exactly
+  one pending command and pauses when no command is partial.
 - **Stop** cancels an active playback and restores the drawing layer captured
   before playback.
-- **End** commits the currently visible replay prefix as one document action
-  and leaves replay navigation. End at command zero, or at a prefix whose
-  pixels equal the pre-playback canvas, adds no document entry.
+- **End** commits the currently visible completed-command prefix as one document
+  action and leaves replay navigation. A partially animated command is
+  discarded, never committed.
+- **Smooth strokes**: animate pressure-aware `P` commands; default On.
+- **Brush tip**: draw the optional approximate-diameter ring; default On.
+- **Stroke duration**: 0.15, 0.3, 0.6 or 1.2 seconds; default 0.6.
 - **Speed**: 1, 5, 20 or 60 operations/second; default 5.
+
+### Smooth pressure strokes
+
+When Smooth strokes is on, a `P` command is presented over its stroke duration:
+
+1. The canvas immediately before the command is read once into a reusable
+   pre-command buffer.
+2. Each animation frame copies that buffer into one reusable work buffer and
+   renders a partial segment from the command start to an integer-interpolated
+   endpoint and pressure. The partial segment uses the same
+   `raster_pressure_line` function as authoritative drawing.
+3. Only the work buffer is uploaded to the canvas texture: one texture transfer
+   per frame, with no GPU readback and no per-frame full snapshot.
+4. On completion the pre-command buffer is restored and the original full `P`
+   command is dispatched once through the normal command path. The final pixels
+   therefore come from the authoritative full command, not accumulated partial
+   alpha compositing.
+
+Progress is an integer permille (`0..999`) derived from monotonic elapsed time
+and the selected stroke duration. Endpoint and pressure interpolation use
+round-to-nearest with ties away from zero. A pump advances at most 250 ms of
+animation catch-up, so a scheduler stall cannot jump the whole stroke. Pause
+freezes progress; resume continues from the same progress. Window resizing does
+not reset progress or alter canvas coordinates. Stroke duration affects
+presentation only; playback speed schedules command starts only; neither changes
+the final image. If the selected duration is longer than the playback interval,
+the animation duration dominates for `P` commands. Changing the duration applies
+to strokes started after the change; turning Smooth strokes off during a partial
+stroke completes that command authoritatively.
+
+The replay counter displays completed commands plus `+1` while one command is
+partially animated (for example `Playing 3+1/12`). The brush-tip ring is drawn
+directly to the window after the canvas, using the aspect-fit mapping; it never
+touches the drawing layer, composite, exported PNG or undo history.
+
+Measured on the WSLg test build over 200 partial frames of the first
+`calligraphy.glon` stroke: average 5.4–7.3 ms per frame, worst 8.4–12.5 ms,
+exactly one texture upload per frame, no per-frame readback, and 3.84 MB extra
+working memory (pre-command plus work buffer). These are CPU raster/upload
+timings, not a display refresh-rate claim. The cost scales with the segment's
+destination rectangle and brush diameter.
 
 While replay navigation is available, `Ctrl+Z` moves back one replay command and
 `Ctrl+Y`/`Ctrl+Shift+Z` moves forward one command. These are replay commands, not
@@ -264,8 +312,9 @@ replays the command prefix; it never attempts to invert alpha compositing. This
 handles Clear, eraser, zero-pressure and overlapping translucent calligraphy
 commands correctly. Completion does **not** implicitly commit document history;
 Back/Step remain available at Complete until End or Stop. End commits exactly
-the visible prefix as one document action and invalidates redo only when that
-prefix genuinely changes the canvas. Stop restores the pre-playback canvas
+the completed prefix as one document action and invalidates redo only when that
+prefix genuinely changes the canvas; a partial stroke is discarded. Stop
+restores the pre-playback canvas
 without adding history and preserves existing document redo history. A second
 Play restarts from the same pre-playback state rather than accumulating pixels.
 
@@ -292,12 +341,13 @@ replay navigation is active, painting, script execution, image replacement,
 Clear and document Undo/Redo are disabled; Save remains available. Window
 resizing does not affect playback or canvas coordinates.
 
-Timing uses monotonic `SDL_GetTicks64` and only decides when commands are
-dispatched. A bounded catch-up policy applies at most two commands per pump;
-geometry and final pixels depend only on the stored command order. The existing
-calligraphy renderer reads/updates a full 800x600 texture per pressure segment;
-this costs roughly 35 ms per command in the measured WSLg test, so 60/s is a
-nominal scheduling rate and may be limited by rendering throughput.
+Timing uses monotonic `SDL_GetTicks64`. Non-animated command scheduling applies
+at most two commands per pump; animated progress is bounded to 250 ms of
+catch-up per pump. Geometry and final pixels depend only on the stored command
+order. Authoritative full-command dispatch still reads and updates a full
+800x600 texture once per pressure command (earlier measured roughly 35 ms per
+command on WSLg); partial animation frames avoid that readback. Therefore 60/s
+is a nominal scheduling rate and may be limited by rendering throughput.
 
 `examples/replay-demo.glon` is a short replay demonstration containing a clear,
 an ordinary line, an eraser command and a pressure calligraphy taper. The
@@ -328,7 +378,8 @@ Mouse down/move/up invoke `paint/down`, `paint/move` and `paint/up`; those Glon
 words emit `L` or `E` through the same `paint/line` path. Inspector controls
 invoke `paint/set-color`, `paint/set-size` and `paint/set-tool`. Future Glon
 scripts must use those same words and command interface; there is no C drawing
-language and no script editor or replay engine yet.
+language and no script editor. Replay is host-side playback of the bounded
+command sink, not a second Glon execution.
 
 ## Checks
 
@@ -338,9 +389,13 @@ language and no script editor or replay engine yet.
   demo/shop/strings-ext.glon experiments/glon-gui-paint/paint.glon \
   experiments/glon-gui-paint/tests/paint-tests.glon
 
-# SDL/Nuklear UI, image, script, calligraphy, replay, undo, resize, PNG and
-# 10,000-move loader tests
+# SDL/Nuklear UI, image, script, calligraphy, replay, smooth animation, undo,
+# resize, PNG and 10,000-move loader tests
 make test
+
+# Write start/25/50/75%/final PNG frames for the first calligraphy stroke and
+# verify the final full replay equals immediate script execution.
+./build/glon-paint --smooth-demo
 ```
 
 The calligraphy and replay tests compare complete 800x600 drawing-layer
@@ -380,8 +435,13 @@ these snapshots must not be described as a Glon command log.
 - Imported images are immutable backgrounds, not editable layers.
 - Single drawing layer only; no layer creation or compositing.
 - Rectangle, custom Export and grid are disabled.
-- No PDF decoding, script editor, recording, replay or animation.
-- Scripts are ordinary Glon source, not a drawing DSL; there is no step execution.
+- No PDF decoding or script editor; replay is stored-command playback, not
+  recording.
+- Smooth animation applies only to pressure-aware `P` commands; ordinary lines,
+  erasers and clears remain whole-command steps. It is a partial presentation of
+  the existing CPU calligraphy renderer, not a vector brush or bristle model.
+- Scripts are ordinary Glon source, not a drawing DSL; replay Step governs stored
+  drawing commands, not Glon source evaluation.
 - Nuklear is vendored in `third_party/` (public-domain Nuklear v4.13.4 and its
   SDL2 renderer backend).
 - Native File Dialog Extended is vendored in `third_party/nfd/` under the
