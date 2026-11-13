@@ -324,6 +324,26 @@ paused, failed-load recovery, undo/redo consistency, animation-buffer release
 and bounded loader use. No Glon vocabulary, rasteriser, replay command format
 or frozen S1 change was made.
 
+[DESIGN 2026-11-13, `experiments/glon-gui-paint`, geometric tools]
+**Geometry is emitted as existing `L` commands; no new drawing vocabulary.**
+Line/Rectangle/Ellipse gestures are tracked by the host for preview, then
+converted to a bounded standard command stream and executed through the normal
+dispatcher. Outlines use the current brush size; fills use one-pixel horizontal
+`L` scanlines. Ellipse outlines are 72-segment integer polygons built from an
+integer extent search; filled ellipses use one command per row. Shift snaps
+lines to 0/45/90 degrees, rectangles to squares and ellipses to circles.
+Reversed drags are normalised; zero-size rectangles/ellipses emit nothing;
+zero-length lines emit a dot; clipped gestures clamp to the 800x600 canvas.
+Each completed gesture takes one undo snapshot, previews are presentation-only,
+and Clear/Open Script/replay start cancel an in-progress preview. Measured
+representative costs: line 1/31 B; 200x150 rect outline 4/120 B; 200x150 rect
+fill 151/4530 B; 200x200 ellipse outline 72/2232 B; ellipse fill 201/6231 B.
+`--geometry-test` checks outlines/fills, Shift, reversed drags, zero-size,
+clipping, undo/redo, literal-command replay equality and lifecycle reset; the UI
+test clicks the new tool buttons. The main limitation is ellipse polygonal
+fidelity and fill command expansion (up to one command per canvas row). No
+rasteriser or command-letter change was made.
+
 **[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
 worklist has a fixed 256 entries (`GC_WORKLIST_CAP`, the cells before `GC_A1`).
 - **It cannot overflow in the 64K configuration.** Each object is pushed at

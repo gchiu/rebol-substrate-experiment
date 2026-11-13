@@ -25,13 +25,24 @@ paint/color-rgb: func [n] [
         ]
     ]
 ]
+paint/tool-name: func [] [
+    either = paint/tool 1 [ "brush" ] [
+        either = paint/tool 2 [ "eraser" ] [
+            either = paint/tool 3 [ "calligraphy" ] [
+                either = paint/tool 4 [ "line" ] [
+                    either = paint/tool 5 [ "rectangle" ] [ "ellipse" ]
+                ]
+            ]
+        ]
+    ]
+]
 paint/title: func [] [
     paint/t: "T Glon Paint | color="
     paint/t: s/+ paint/t s/from-int paint/color
     paint/t: s/+ paint/t " size="
     paint/t: s/+ paint/t s/from-int paint/size
     paint/t: s/+ paint/t " tool="
-    paint/t: s/+ paint/t either = paint/tool 1 [ "brush" ] [ "eraser" ]
+    paint/t: s/+ paint/t paint/tool-name
     paint/t: s/+ paint/t mk-string [ 10 ]
     s/+ paint/t paint/status
 ]
@@ -83,7 +94,9 @@ paint/set-size: func [n] [
     paint/title
 ]
 paint/set-tool: func [n] [
-    paint/tool: either = n 2 [ 2 ] [ either = n 3 [ 3 ] [ 1 ] ]
+    paint/tool: either = n 2 [ 2 ] [ either = n 3 [ 3 ] [
+        either = n 4 [ 4 ] [ either = n 5 [ 5 ] [ either = n 6 [ 6 ] [ 1 ] ] ]
+    ] ]
     paint/title
 ]
 paint/set-calligraphy-diameter: func [n] [
@@ -188,26 +201,30 @@ paint/init: func [] [
     paint/title
 ]
 paint/down: func [x y button] [
-    either = button 1 [
-        paint/drawing: 1
-        paint/px: x
-        paint/py: y
-        paint/pressure-prev: paint/pressure
-        either = paint/tool 3 [
-            paint/pressure-command x y paint/pressure x y paint/pressure
-        ] [ paint/line x y x y ]
-    ] [ "" ]
+    either > paint/tool 3 [ "" ] [
+        either = button 1 [
+            paint/drawing: 1
+            paint/px: x
+            paint/py: y
+            paint/pressure-prev: paint/pressure
+            either = paint/tool 3 [
+                paint/pressure-command x y paint/pressure x y paint/pressure
+            ] [ paint/line x y x y ]
+        ] [ "" ]
+    ]
 ]
 paint/move: func [x y] [
-    either = paint/drawing 1 [
-        paint/cmd: either = paint/tool 3 [
-            paint/pressure-command paint/px paint/py paint/pressure-prev x y paint/pressure
-        ] [ paint/line paint/px paint/py x y ]
-        paint/px: x
-        paint/py: y
-        paint/pressure-prev: paint/pressure
-        paint/cmd
-    ] [ "" ]
+    either > paint/tool 3 [ "" ] [
+        either = paint/drawing 1 [
+            paint/cmd: either = paint/tool 3 [
+                paint/pressure-command paint/px paint/py paint/pressure-prev x y paint/pressure
+            ] [ paint/line paint/px paint/py x y ]
+            paint/px: x
+            paint/py: y
+            paint/pressure-prev: paint/pressure
+            paint/cmd
+        ] [ "" ]
+    ]
 ]
 paint/up: func [x y button] [
     either = button 1 [ paint/drawing: 0 ] [ none ]
@@ -222,8 +239,11 @@ paint/key: func [k] [
     either = k 45 [ paint/size: either > paint/size 1 [ - paint/size 1 ] [ 1 ]  paint/title ] [
     either = k 101 [ paint/tool: 2  paint/title ] [
     either = k 98 [ paint/tool: 1  paint/title ] [
+    either = k 108 [ paint/tool: 4  paint/title ] [
+    either = k 114 [ paint/tool: 5  paint/title ] [
+    either = k 111 [ paint/tool: 6  paint/title ] [
     either = k 99 [ s/+ "C" mk-string [ 10 ] ] [
     either = k 115 [ s/+ "S glon-paint.png" mk-string [ 10 ] ] [
     either = k 27 [ s/+ "Q" mk-string [ 10 ] ] [ "" ]
-    ] ] ] ] ] ] ] ] ] ] ]
+    ] ] ] ] ] ] ] ] ] ] ] ] ] ]
 ]

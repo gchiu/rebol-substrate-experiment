@@ -8,7 +8,7 @@ PNG/JPEG files.
 ## Layout
 
 - Menu bar: File, Edit, View, Help.
-- Left toolbar: Brush, Eraser, Calligraphy, and a visibly disabled Rectangle.
+- Left toolbar: Brush, Eraser, Calligraphy, Line, Rectangle and Ellipse.
 - Centre workspace: the fixed 800x600 document, aspect-fit and centred with
   margins; it scales with the window.
 - Right inspector: four colour swatches, brush-size slider, calligraphy
@@ -17,8 +17,8 @@ PNG/JPEG files.
   background.
 - Status bar: image size and current tool.
 
-Unavailable operations (Export, grid, additional layers and Rectangle) are
-visibly disabled rather than fake live controls.
+Unavailable operations (Export, grid and additional layers) are visibly
+disabled rather than fake live controls.
 
 ## Build and launch
 
@@ -103,6 +103,7 @@ The default library root is `../..` when launched from this directory. Set
 | `1`-`4` | colour shortcuts |
 | `+` / `-` | brush-size shortcuts |
 | `B` / `E` | Brush / Eraser shortcuts |
+| `L` / `R` / `O` | Line / Rectangle / Ellipse shortcuts |
 | `C` | clear the drawing layer |
 | `S` | save the composite as `glon-paint.png` |
 | `Esc` | quit |
@@ -112,6 +113,9 @@ The default library root is `../..` when launched from this directory. Set
 | Menu Edit / View / Help | Clear, Undo, Redo, reset window size, About |
 | Inspector Replay | Play, Pause, Step, Back, Stop, End; 1/5/20/60 ops/s |
 | Inspector Smooth | Smooth strokes On/Off, Brush tip On/Off, stroke duration 0.15/0.3/0.6/1.2 s |
+| Toolbar Line / Rectangle / Ellipse | click-drag geometric tools; Shift constrains line angle, square and circle |
+| Inspector Fill shapes | outline (Off) or filled (On) rectangles/ellipses |
+| Esc / right-click / focus loss | cancel an in-progress geometric preview without committing |
 
 The document is always 800x600 internally. Window resizing preserves its aspect
 ratio, centres it, and maps mouse coordinates through its current destination
@@ -237,6 +241,36 @@ does not depend on SDL frame timing. The command sequence is deterministic and
 is suitable for the later recording/replay milestones; recording, playback,
 stylus hardware, bristles, texture, diffusion and character recognition are not
 implemented here.
+
+## Geometric tools
+
+Line, Rectangle and Ellipse are click-drag tools. The document overlays a live
+preview while dragging, clipped to the 800x600 canvas; the preview is
+presentation only. Releasing the mouse commits the gesture as ordinary `L`
+commands through the normal command dispatcher. Shift snaps a line to
+horizontal/vertical/45 degrees, a rectangle to a square and an ellipse to a
+circle. Reversed drags are normalised. Zero-size rectangles/ellipses emit no
+commands; a zero-length line emits a dot. Esc, right-click and window focus loss
+cancel the preview. Each completed gesture is one undoable document action.
+
+Outline shapes use the current brush size; filled shapes use one-pixel
+horizontal scanlines because there is no fill primitive. Ellipse outlines are
+72-segment integer polygons; filled ellipses use one `L` command per canvas row.
+The generated command stream is only `L` commands; it is standard, deterministic
+and replayable. Measured costs for representative gestures:
+
+```text
+line                 1 command    ~31 bytes
+200x150 rect outline 4 commands   ~120 bytes
+200x150 rect filled  151 commands ~4.5 KiB
+200x200 ellipse out  72 commands  ~2.2 KiB
+200x200 ellipse fill 201 commands ~6.2 KiB
+```
+
+The ellipse is a polygonal approximation, not a true vector rasteriser; large
+outlines show slight faceting. Filled shapes can expand to hundreds of commands,
+so replaying them at 5 ops/s is slow. The preview approximates outline width
+with a one-pixel guide and uses translucent fill.
 
 ## Writing 永
 
@@ -423,8 +457,8 @@ command sink, not a second Glon execution.
   demo/shop/strings-ext.glon experiments/glon-gui-paint/paint.glon \
   experiments/glon-gui-paint/tests/paint-tests.glon
 
-# SDL/Nuklear UI, image, script lifecycle, calligraphy, replay, smooth
-# animation, 永, undo, resize, PNG and 10,000-move loader tests
+# SDL/Nuklear UI, image, script lifecycle, geometric tools, calligraphy,
+# replay, smooth animation, 永, undo, resize, PNG and 10,000-move tests
 make test
 
 # Write start/25/50/75%/final PNG frames for the first stroke of a script and
@@ -472,7 +506,9 @@ these snapshots must not be described as a Glon command log.
   them the Nuklear path-entry fallback is used.
 - Imported images are immutable backgrounds, not editable layers.
 - Single drawing layer only; no layer creation or compositing.
-- Rectangle, custom Export and grid are disabled.
+- Custom Export and grid are disabled.
+- Ellipses are 72-segment polygons; filled shapes emit one L command per row
+  (up to 600) rather than a new fill primitive.
 - No PDF decoding or script editor; replay is stored-command playback, not
   recording.
 - Smooth animation applies only to pressure-aware `P` commands; ordinary lines,

@@ -80,6 +80,15 @@ static int ui_opacity = 255;
 static int ui_smooth_strokes = 1;
 static int ui_show_brush_tip = 1;
 static int ui_stroke_duration_index = 2;  /* 600 ms */
+static int ui_fill_shapes = 0;
+static int shape_active = 0;
+static int shape_tool = 0;
+static int shape_start_x = 0, shape_start_y = 0;
+static int shape_end_x = 0, shape_end_y = 0;
+static int shape_shift = 0;
+static int shape_last_commands = 0;
+static size_t shape_last_bytes = 0;
+static char shape_last_text[SCRIPT_CMD_BYTES];
 static const int ui_stroke_durations[] = { 150, 300, 600, 1200 };
 static int show_about = 0;
 static long perf_raw_motions = 0, perf_app_moves = 0, perf_renders = 0;
@@ -143,6 +152,7 @@ static char last_image_dir[1024] = "";
 static char last_script_dir[1024] = "";
 #endif
 static SDL_Rect ui_brush_bounds, ui_eraser_bounds, ui_calligraphy_bounds;
+static SDL_Rect ui_line_bounds, ui_rect_bounds, ui_ellipse_bounds;
 static SDL_Rect ui_color_bounds[4];
 static SDL_Rect ui_size_bounds;
 
@@ -303,6 +313,23 @@ static int map_window_to_canvas_for(int ww, int wh, int wx, int wy, int *cx, int
 static int map_window_to_canvas(int ww, int wh, int wx, int wy, int *cx, int *cy) {
     return map_window_to_canvas_for(ww, wh, wx, wy, cx, cy);
 }
+static int map_window_to_canvas_clamped(int ww, int wh, int wx, int wy,
+                                        int *cx, int *cy) {
+    SDL_Rect image;
+    fit_image(ww, wh, &image);
+    if (wx < image.x) wx = image.x;
+    if (wy < image.y) wy = image.y;
+    if (wx >= image.x + image.w) wx = image.x + image.w - 1;
+    if (wy >= image.y + image.h) wy = image.y + image.h - 1;
+    int x = (int)(((int64_t)(wx - image.x) * PAINT_W) / image.w);
+    int y = (int)(((int64_t)(wy - image.y) * PAINT_H) / image.h);
+    if (x < 0) x = 0;
+    if (x >= PAINT_W) x = PAINT_W - 1;
+    if (y < 0) y = 0;
+    if (y >= PAINT_H) y = PAINT_H - 1;
+    *cx = x; *cy = y;
+    return 1;
+}
 static int canvas_to_window(int cx, int cy, int *wx, int *wy) {
     if (layout.image.w <= 0 || layout.image.h <= 0) return 0;
     *wx = layout.image.x + (int)((int64_t)cx * layout.image.w / PAINT_W);
@@ -370,6 +397,172 @@ static void draw_circle_outline(int cx, int cy, int radius, int r, int g, int b)
         else { x--; err += 2 * (y - x) + 1; }
     }
 }
+/* ---- geometric tools ----------------------------------------------------
+ * Shapes are committed as ordinary L commands. The host owns only the integer
+ * geometry/presentation; the Glon command dispatcher remains the only drawing
+ * path. */
+typedef struct { int minx, miny, maxx, maxy; } ShapeBox;
+static void palette_rgb(int c, int *r, int *g, int *b) {
+    switch (c) {
+    case 2: *r = 40;  *g = 120; *b = 220; break;
+    case 3: *r = 40;  *g = 160; *b = 80;  break;
+    case 4: *r = 230; *g = 170; *b = 40;  break;
+    case 5: *r = 0;   *g = 0;   *b = 0;   break;
+    default: *r = 220; *g = 60; *b = 60; break;
+    }
+}
+static int shape_clamp_x(int x) {
+    if (x < 0) return 0;
+    if (x >= PAINT_W) return PAINT_W - 1;
+    return x;
+}
+static int shape_clamp_y(int y) {
+    if (y < 0) return 0;
+    if (y >= PAINT_H) return PAINT_H - 1;
+    return y;
+}
+static int shape_abs(int v) { return v < 0 ? -v : v; }
+static void shape_constrain_line(int x1, int y1, int *x2, int *y2, int shift) {
+    if (!shift) return;
+    int dx = *x2 - x1, dy = *y2 - y1;
+    int adx = shape_abs(dx), ady = shape_abs(dy);
+    int sx = dx >= 0 ? 1 : -1, sy = dy >= 0 ? 1 : -1;
+    if (adx >= 2 * ady) {
+        *y2 = y1;
+    } else if (ady >= 2 * adx) {
+        *x2 = x1;
+    } else {
+        int len = adx < ady ? adx : ady;
+        *x2 = x1 + sx * len;
+        *y2 = y1 + sy * len;
+    }
+}
+static void shape_constrain_square(int x1, int y1, int *x2, int *y2, int shift) {
+    if (!shift) return;
+    int dx = *x2 - x1, dy = *y2 - y1;
+    int adx = shape_abs(dx), ady = shape_abs(dy);
+    int side = adx > ady ? adx : ady;
+    int sx = dx >= 0 ? 1 : -1, sy = dy >= 0 ? 1 : -1;
+    int room_x = sx > 0 ? PAINT_W - 1 - x1 : x1;
+    int room_y = sy > 0 ? PAINT_H - 1 - y1 : y1;
+    if (side > room_x) side = room_x;
+    if (side > room_y) side = room_y;
+    *x2 = x1 + sx * side;
+    *y2 = y1 + sy * side;
+}
+static void shape_make_box(int x1, int y1, int x2, int y2, ShapeBox *b) {
+    b->minx = shape_clamp_x(x1 < x2 ? x1 : x2);
+    b->maxx = shape_clamp_x(x1 > x2 ? x1 : x2);
+    b->miny = shape_clamp_y(y1 < y2 ? y1 : y2);
+    b->maxy = shape_clamp_y(y1 > y2 ? y1 : y2);
+}
+/* Largest positive x whose pixel centre is inside the ellipse. */
+static int ellipse_extent(int rx, int ry, int ay) {
+    if (rx <= 0 || ry <= 0 || ay < 0 || ay > ry) return -1;
+    int64_t a = (int64_t)rx * rx;
+    int64_t bb = (int64_t)ry * ry;
+    int64_t rhs = a * bb;
+    int lo = 0, hi = rx, best = 0;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        int64_t lhs = (int64_t)mid * mid * bb + (int64_t)ay * ay * a;
+        if (lhs <= rhs) { best = mid; lo = mid + 1; }
+        else hi = mid - 1;
+    }
+    return best;
+}
+/* Trace an ellipse boundary as a bounded polygon. Points are in canvas
+ * coordinates; the caller connects consecutive points. */
+static int ellipse_polygon(const ShapeBox *b, int *xs, int *ys, int cap) {
+    int cx = (b->minx + b->maxx) / 2;
+    int cy = (b->miny + b->maxy) / 2;
+    int rx = (b->maxx - b->minx) / 2;
+    int ry = (b->maxy - b->miny) / 2;
+    if (rx < 1 || ry < 1 || cap < 4) return 0;
+    const int steps = 36;
+    int n = 0;
+    for (int k = 0; k <= steps && n < cap; k++) {
+        int off = -ry + (int)((int64_t)2 * ry * k / steps);
+        int x = ellipse_extent(rx, ry, shape_abs(off));
+        xs[n] = cx + x; ys[n] = cy + off; n++;
+    }
+    for (int k = steps - 1; k >= 1 && n < cap; k--) {
+        int off = -ry + (int)((int64_t)2 * ry * k / steps);
+        int x = ellipse_extent(rx, ry, shape_abs(off));
+        xs[n] = cx - x; ys[n] = cy + off; n++;
+    }
+    return n;
+}
+static void preview_canvas_line(int x1, int y1, int x2, int y2,
+                                int r, int g, int b) {
+    int wx1 = 0, wy1 = 0, wx2 = 0, wy2 = 0;
+    if (!canvas_to_window(x1, y1, &wx1, &wy1) ||
+        !canvas_to_window(x2, y2, &wx2, &wy2)) return;
+    SDL_SetRenderDrawColor(ren, (Uint8)r, (Uint8)g, (Uint8)b, 255);
+    SDL_RenderDrawLine(ren, wx1, wy1, wx2, wy2);
+}
+static void draw_shape_preview(void) {
+    if (!shape_active) return;
+    if (layout.image.w <= 0 || layout.image.h <= 0) return;
+    int x2 = shape_end_x, y2 = shape_end_y;
+    int x1 = shape_start_x, y1 = shape_start_y;
+    int r = 0, g = 0, b = 0;
+    palette_rgb(ui_color, &r, &g, &b);
+    SDL_RenderSetClipRect(ren, &layout.image);
+    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+    if (shape_tool == 4) {
+        shape_constrain_line(x1, y1, &x2, &y2, shape_shift);
+        preview_canvas_line(x1, y1, x2, y2, r, g, b);
+    } else {
+        shape_constrain_square(x1, y1, &x2, &y2, shape_shift);
+        ShapeBox box;
+        shape_make_box(x1, y1, x2, y2, &box);
+        if (shape_tool == 5) {
+            int wx0 = 0, wy0 = 0, wx1 = 0, wy1 = 0;
+            if (canvas_to_window(box.minx, box.miny, &wx0, &wy0) &&
+                canvas_to_window(box.maxx + 1, box.maxy + 1, &wx1, &wy1)) {
+                SDL_Rect rr = { wx0, wy0, wx1 - wx0, wy1 - wy0 };
+                if (ui_fill_shapes) {
+                    SDL_SetRenderDrawColor(ren, (Uint8)r, (Uint8)g, (Uint8)b, 170);
+                    SDL_RenderFillRect(ren, &rr);
+                } else {
+                    SDL_SetRenderDrawColor(ren, (Uint8)r, (Uint8)g, (Uint8)b, 255);
+                    SDL_RenderDrawRect(ren, &rr);
+                }
+            }
+        } else if (shape_tool == 6) {
+            int cx = (box.minx + box.maxx) / 2;
+            int cy = (box.miny + box.maxy) / 2;
+            int rx = (box.maxx - box.minx) / 2;
+            int ry = (box.maxy - box.miny) / 2;
+            if (rx >= 1 && ry >= 1) {
+                if (ui_fill_shapes) {
+                    SDL_SetRenderDrawColor(ren, (Uint8)r, (Uint8)g, (Uint8)b, 170);
+                    for (int y = box.miny; y <= box.maxy; y++) {
+                        int ext = ellipse_extent(rx, ry, shape_abs(y - cy));
+                        if (ext < 0) continue;
+                        int wx0 = 0, wy0 = 0, wx1 = 0, wy1 = 0;
+                        if (!canvas_to_window(cx - ext, y, &wx0, &wy0) ||
+                            !canvas_to_window(cx + ext + 1, y + 1, &wx1, &wy1))
+                            continue;
+                        SDL_Rect rr = { wx0, wy0, wx1 - wx0, wy1 - wy0 };
+                        SDL_RenderFillRect(ren, &rr);
+                    }
+                } else {
+                    int xs[96], ys[96];
+                    int n = ellipse_polygon(&box, xs, ys, 96);
+                    for (int i = 0; i < n; i++) {
+                        int j = (i + 1) % n;
+                        preview_canvas_line(xs[i], ys[i], xs[j], ys[j], r, g, b);
+                    }
+                }
+            }
+        }
+    }
+    SDL_RenderSetClipRect(ren, NULL);
+    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+}
+
 /* Presentation-only brush tip. It is drawn directly to the window after the
  * canvas, never into the drawing layer, composite or exported PNG. */
 static void draw_brush_tip_indicator(void) {
@@ -405,6 +598,7 @@ static void render_frame(void) {
         SDL_SetRenderDrawColor(ren, 92, 96, 106, 255);
         SDL_RenderDrawRect(ren, &layout.image);
     }
+    draw_shape_preview();
     draw_brush_tip_indicator();
     dirty = 0;
 }
@@ -933,6 +1127,159 @@ static void process_commands(char *buf, int *saved) {
     }
 }
 
+static int shape_append_cmd(char *out, size_t cap, size_t *used, int *count,
+                            int x1, int y1, int x2, int y2, int size,
+                            int r, int g, int b) {
+    char line[128];
+    int n = snprintf(line, sizeof line, "L %d %d %d %d %d %d %d %d\n",
+                     x1, y1, x2, y2, size, r, g, b);
+    if (n < 0 || *used + (size_t)n + 1 > cap) return -1;
+    memcpy(out + *used, line, (size_t)n);
+    *used += (size_t)n;
+    out[*used] = 0;
+    (*count)++;
+    return 0;
+}
+/* Build the exact standard L-command stream for a shape. This is the only
+ * place geometric tools turn a gesture into drawing commands. */
+static int shape_build_commands(int tool, int x1, int y1, int x2, int y2,
+                                int shift, int fill, int size,
+                                int r, int g, int b,
+                                char *out, size_t cap, size_t *bytes) {
+    out[0] = 0;
+    *bytes = 0;
+    int count = 0;
+    size_t used = 0;
+    x1 = shape_clamp_x(x1); y1 = shape_clamp_y(y1);
+    x2 = shape_clamp_x(x2); y2 = shape_clamp_y(y2);
+    if (tool == 4) {
+        shape_constrain_line(x1, y1, &x2, &y2, shift);
+        x2 = shape_clamp_x(x2); y2 = shape_clamp_y(y2);
+        if (shape_append_cmd(out, cap, &used, &count, x1, y1, x2, y2,
+                             size, r, g, b) != 0) return 0;
+    } else if (tool == 5 || tool == 6) {
+        shape_constrain_square(x1, y1, &x2, &y2, shift);
+        ShapeBox box;
+        shape_make_box(x1, y1, x2, y2, &box);
+        if (box.maxx <= box.minx || box.maxy <= box.miny) return 0;
+        if (tool == 5) {
+            if (fill) {
+                for (int y = box.miny; y <= box.maxy; y++) {
+                    if (shape_append_cmd(out, cap, &used, &count,
+                                         box.minx, y, box.maxx, y, 1,
+                                         r, g, b) != 0) return 0;
+                }
+            } else {
+                if (shape_append_cmd(out, cap, &used, &count,
+                                     box.minx, box.miny, box.maxx, box.miny,
+                                     size, r, g, b) != 0) return 0;
+                if (shape_append_cmd(out, cap, &used, &count,
+                                     box.maxx, box.miny, box.maxx, box.maxy,
+                                     size, r, g, b) != 0) return 0;
+                if (shape_append_cmd(out, cap, &used, &count,
+                                     box.maxx, box.maxy, box.minx, box.maxy,
+                                     size, r, g, b) != 0) return 0;
+                if (shape_append_cmd(out, cap, &used, &count,
+                                     box.minx, box.maxy, box.minx, box.miny,
+                                     size, r, g, b) != 0) return 0;
+            }
+        } else {
+            int cx = (box.minx + box.maxx) / 2;
+            int cy = (box.miny + box.maxy) / 2;
+            int rx = (box.maxx - box.minx) / 2;
+            int ry = (box.maxy - box.miny) / 2;
+            if (rx < 1 || ry < 1) return 0;
+            if (fill) {
+                for (int y = box.miny; y <= box.maxy; y++) {
+                    int ext = ellipse_extent(rx, ry, shape_abs(y - cy));
+                    if (ext < 0) continue;
+                    if (shape_append_cmd(out, cap, &used, &count,
+                                         cx - ext, y, cx + ext, y, 1,
+                                         r, g, b) != 0) return 0;
+                }
+            } else {
+                int xs[96], ys[96];
+                int n = ellipse_polygon(&box, xs, ys, 96);
+                for (int i = 0; i < n; i++) {
+                    int j = (i + 1) % n;
+                    if (shape_append_cmd(out, cap, &used, &count,
+                                         xs[i], ys[i], xs[j], ys[j],
+                                         size, r, g, b) != 0) return 0;
+                }
+            }
+        }
+    }
+    *bytes = used;
+    return count;
+}
+static void shape_begin_gesture(int tool, int x, int y, int shift) {
+    shape_active = 1;
+    shape_tool = tool;
+    shape_start_x = shape_clamp_x(x);
+    shape_start_y = shape_clamp_y(y);
+    shape_end_x = shape_start_x;
+    shape_end_y = shape_start_y;
+    shape_shift = shift ? 1 : 0;
+    shape_last_commands = 0;
+    shape_last_bytes = 0;
+    shape_last_text[0] = 0;
+}
+static void shape_update_gesture(int x, int y, int shift) {
+    if (!shape_active) return;
+    shape_end_x = shape_clamp_x(x);
+    shape_end_y = shape_clamp_y(y);
+    shape_shift = shift ? 1 : 0;
+    dirty = 1;
+}
+static void shape_cancel_gesture(void) {
+    shape_active = 0;
+    shape_last_commands = 0;
+    shape_last_bytes = 0;
+    shape_last_text[0] = 0;
+    dirty = 1;
+}
+static int shape_finish_gesture(void) {
+    if (!shape_active) return 0;
+    shape_active = 0;
+    int r = 0, g = 0, b = 0;
+    palette_rgb(ui_color, &r, &g, &b);
+    size_t bytes = 0;
+    int count = shape_build_commands(shape_tool, shape_start_x, shape_start_y,
+                                     shape_end_x, shape_end_y, shape_shift,
+                                     ui_fill_shapes, ui_size, r, g, b,
+                                     shape_last_text, sizeof shape_last_text,
+                                     &bytes);
+    shape_last_commands = count;
+    shape_last_bytes = bytes;
+    if (count <= 0) {
+        shape_last_commands = 0;
+        shape_last_bytes = 0;
+        shape_last_text[0] = 0;
+        dirty = 1;
+        return 0;
+    }
+    if (history_begin_stroke() != 0) {
+        shape_last_commands = 0;
+        shape_last_bytes = 0;
+        shape_last_text[0] = 0;
+        return 0;
+    }
+    int saved = 0;
+    char *p = shape_last_text;
+    while (*p) {
+        char *nl = strchr(p, '\n');
+        if (nl) *nl = 0;
+        if (*p) command(p, &saved);
+        if (nl) *nl = '\n';
+        if (!nl) break;
+        p = nl + 1;
+    }
+    history_commit_stroke();
+    unsaved = 1;
+    dirty = 1;
+    return count;
+}
+
 static int app_call(const char *src);
 static int prepare_script_commands(char *out, size_t cap, int *count,
                                    int *offsets, int *lengths) {
@@ -1168,7 +1515,39 @@ static void replay_forget(void) {
     replay_error[0] = 0;
 }
 
+/* Test helper: load a literal standard-command stream into the replay buffer
+ * without rerunning Glon. Used to prove shape-generated L commands replay. */
+static int replay_load_command_text(const char *text) {
+    replay_forget();
+    const char *p = text;
+    int n = 0;
+    size_t used = 0;
+    while (p && *p) {
+        const char *nl = strchr(p, '\n');
+        int len = nl ? (int)(nl - p) : (int)strlen(p);
+        if (len > 0) {
+            if (n >= REPLAY_MAX_COMMANDS ||
+                used + (size_t)len + 1 > sizeof replay_buf) return -1;
+            replay_offsets[n] = (int)used;
+            replay_lengths[n] = len;
+            memcpy(replay_buf + used, p, (size_t)len);
+            replay_buf[used + len] = 0;
+            used += (size_t)len + 1;
+            n++;
+        }
+        if (!nl) break;
+        p = nl + 1;
+    }
+    replay_count = n;
+    replay_pos = 0;
+    replay_prepared = 1;
+    replay_active = 0;
+    replay_state = REPLAY_READY;
+    replay_error[0] = 0;
+    return 0;
+}
 static int replay_prepare(void) {
+    if (shape_active) shape_cancel_gesture();
     if (replay_active) {
         snprintf(replay_error, sizeof replay_error, "Playback is active.");
         replay_state = REPLAY_ERROR;
@@ -1215,6 +1594,7 @@ static void replay_complete(void) {
 }
 
 static int replay_play(void) {
+    if (shape_active) shape_cancel_gesture();
     if (replay_state == REPLAY_PLAYING) return 0;
     if (!replay_prepared && replay_prepare() != 0) return -1;
     if (replay_state == REPLAY_COMPLETE && replay_pre) {
@@ -1398,6 +1778,7 @@ static void replay_stop(void) {
     dirty = 1;
 }
 static void replay_cancel_for_lifecycle(void) {
+    if (shape_active) shape_cancel_gesture();
     if (replay_active || replay_pre || replay_animating || replay_nav_available())
         replay_stop();
 }
@@ -1633,7 +2014,14 @@ static int app_set_ink_opacity(int n) {
     return app_call(src);
 }
 static const char *tool_name(int t) {
-    return t == 2 ? "Eraser" : t == 3 ? "Calligraphy" : "Brush";
+    switch (t) {
+    case 2: return "Eraser";
+    case 3: return "Calligraphy";
+    case 4: return "Line";
+    case 5: return "Rectangle";
+    case 6: return "Ellipse";
+    default: return "Brush";
+    }
 }
 static int dispatch_canvas_pointer(int type, int wx, int wy, int button, int *saved) {
     if (replay_locked()) return 0;
@@ -1920,9 +2308,17 @@ static void ui_toolbar(void) {
         ui_calligraphy_bounds = (SDL_Rect){ (int)cb2.x, (int)cb2.y, (int)cb2.w, (int)cb2.h };
         if (nk_option_label(nk, "Calligraphy", ui_tool == 3)) app_set_tool(3);
         nk_layout_row_dynamic(nk, 34, 1);
-        nk_widget_disable_begin(nk);
-        nk_button_label(nk, "Rectangle");
-        nk_widget_disable_end(nk);
+        struct nk_rect lb = nk_widget_bounds(nk);
+        ui_line_bounds = (SDL_Rect){ (int)lb.x, (int)lb.y, (int)lb.w, (int)lb.h };
+        if (nk_option_label(nk, "Line", ui_tool == 4)) app_set_tool(4);
+        nk_layout_row_dynamic(nk, 34, 1);
+        struct nk_rect rb = nk_widget_bounds(nk);
+        ui_rect_bounds = (SDL_Rect){ (int)rb.x, (int)rb.y, (int)rb.w, (int)rb.h };
+        if (nk_option_label(nk, "Rectangle", ui_tool == 5)) app_set_tool(5);
+        nk_layout_row_dynamic(nk, 34, 1);
+        struct nk_rect elb = nk_widget_bounds(nk);
+        ui_ellipse_bounds = (SDL_Rect){ (int)elb.x, (int)elb.y, (int)elb.w, (int)elb.h };
+        if (nk_option_label(nk, "Ellipse", ui_tool == 6)) app_set_tool(6);
         nk_layout_row_dynamic(nk, 18, 1);
         nk_label(nk, "size", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 24, 1);
@@ -2003,11 +2399,14 @@ static void ui_right_panel(void) {
         nk_layout_row_dynamic(nk, 20, 1);
         nk_label(nk, tool_name(ui_tool), NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 20, 1);
-        nk_label(nk, ui_tool == 3 ? "Circular pressure tip" : "Opacity 100% (fixed)", NK_TEXT_LEFT);
+        nk_label(nk, ui_tool == 3 ? "Circular pressure tip" :
+                     ui_tool >= 4 ? "Standard geometric shape" :
+                     "Opacity 100% (fixed)", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 20, 1);
-        nk_label(nk, "Hardness 100% (fixed)", NK_TEXT_LEFT);
-        nk_layout_row_dynamic(nk, 20, 1);
-        nk_label(nk, "Rectangle: unavailable", NK_TEXT_LEFT);
+        nk_label(nk, ui_tool >= 4 ? "Stroke = brush size" :
+                     "Hardness 100% (fixed)", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 24, 1);
+        nk_checkbox_label(nk, "Fill shapes", &ui_fill_shapes);
         nk_layout_row_dynamic(nk, 20, 1);
         nk_label(nk, "SCRIPT", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 28, 1);
@@ -2615,6 +3014,14 @@ static int ui_test(void) {
     if (ui_calligraphy_bounds.w <= 0) return 90;
     ui_click_at(ui_calligraphy_bounds);
     if (ui_tool != 3) return 91;
+    if (ui_line_bounds.w <= 0 || ui_rect_bounds.w <= 0 || ui_ellipse_bounds.w <= 0)
+        return 97;
+    ui_click_at(ui_line_bounds);
+    if (ui_tool != 4) return 98;
+    ui_click_at(ui_rect_bounds);
+    if (ui_tool != 5) return 99;
+    ui_click_at(ui_ellipse_bounds);
+    if (ui_tool != 6) return 100;
     if (app_set_tool(1) != 0) return 92;
     if (app_set_calligraphy_diameter(40) != 0 || ui_call_diameter != 40) return 93;
     if (app_set_pressure(99) != 0 || ui_pressure != 99) return 94;
@@ -2684,8 +3091,9 @@ static void run_app_ui(void) {
         nk_input_begin(nk);
 
         int pending_down = 0, pending_up = 0, pending_motion = 0;
+        int pending_cancel_shape = 0;
         int down_ui = 0;
-        int dx = 0, dy = 0, mx = 0, my = 0;
+        int dx = 0, dy = 0, mx = 0, my = 0, up_x = 0, up_y = 0;
         SDL_KeyboardEvent keys[16];
         int nkeys = 0;
         do {
@@ -2694,6 +3102,9 @@ static void run_app_ui(void) {
                      (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
                       e.window.event == SDL_WINDOWEVENT_RESIZED ||
                       e.window.event == SDL_WINDOWEVENT_EXPOSED)) dirty = 1;
+            else if (e.type == SDL_WINDOWEVENT &&
+                     e.window.event == SDL_WINDOWEVENT_FOCUS_LOST &&
+                     shape_active) pending_cancel_shape = 1;
             else if (e.type == SDL_KEYDOWN) {
                 if (nkeys < (int)(sizeof keys / sizeof keys[0])) keys[nkeys++] = e.key;
             } else if (e.type == SDL_MOUSEBUTTONDOWN) {
@@ -2701,9 +3112,13 @@ static void run_app_ui(void) {
                     pending_down = 1; dx = e.button.x; dy = e.button.y;
                     down_ui = open_dialog || confirm_open || script_dialog || show_about ||
                               point_in_ui(dx, dy);
+                } else if (e.button.button == SDL_BUTTON_RIGHT && shape_active) {
+                    pending_cancel_shape = 1;
                 }
             } else if (e.type == SDL_MOUSEBUTTONUP) {
-                if (e.button.button == SDL_BUTTON_LEFT) pending_up = 1;
+                if (e.button.button == SDL_BUTTON_LEFT) {
+                    pending_up = 1; up_x = e.button.x; up_y = e.button.y;
+                }
             } else if (e.type == SDL_MOUSEMOTION) {
                 pending_motion = 1; mx = e.motion.x; my = e.motion.y;
                 perf_raw_motions++;
@@ -2718,47 +3133,95 @@ static void run_app_ui(void) {
         ui_build();
         if (replay_busy()) {
             pending_down = pending_up = pending_motion = 0;
+            if (shape_active) shape_cancel_gesture();
             dragging = 0;
+        }
+        if (pending_cancel_shape) {
+            if (shape_active) shape_cancel_gesture();
+            dragging = 0;
+            pending_down = pending_up = pending_motion = 0;
         }
 
         if (pending_down) {
             int down_inside = !down_ui && !point_in_ui(dx, dy) &&
                               point_in_rect(&layout.image, dx, dy);
             if (down_inside) {
-                history_begin_stroke();   /* snapshot before the first pixel */
-                if (dispatch_canvas_pointer(SDL_MOUSEBUTTONDOWN, dx, dy,
-                                            SDL_BUTTON_LEFT, &saved) == 0) {
+                if (ui_tool >= 4) {
+                    int cx = 0, cy = 0, ww = 0, wh = 0;
+                    SDL_GetWindowSize(win, &ww, &wh);
+                    map_window_to_canvas_clamped(ww, wh, dx, dy, &cx, &cy);
+                    shape_begin_gesture(ui_tool, cx, cy,
+                                        (SDL_GetModState() & KMOD_SHIFT) != 0);
                     dragging = 1; last_wx = dx; last_wy = dy;
                 } else {
-                    history_cancel_stroke();
+                    history_begin_stroke();   /* snapshot before the first pixel */
+                    if (dispatch_canvas_pointer(SDL_MOUSEBUTTONDOWN, dx, dy,
+                                                SDL_BUTTON_LEFT, &saved) == 0) {
+                        dragging = 1; last_wx = dx; last_wy = dy;
+                    } else {
+                        history_cancel_stroke();
+                    }
                 }
             } else {
-                history_cancel_stroke();
+                if (!shape_active) history_cancel_stroke();
             }
         }
         if (pending_motion && dragging) {
-            int motion_inside = !point_in_ui(mx, my) && point_in_rect(&layout.image, mx, my);
-            if (motion_inside && dispatch_canvas_pointer(SDL_MOUSEMOTION, mx, my, 0, &saved) == 0) {
+            if (shape_active) {
+                int cx = 0, cy = 0, ww = 0, wh = 0;
+                SDL_GetWindowSize(win, &ww, &wh);
+                map_window_to_canvas_clamped(ww, wh, mx, my, &cx, &cy);
+                shape_update_gesture(cx, cy,
+                                     (SDL_GetModState() & KMOD_SHIFT) != 0);
                 last_wx = mx; last_wy = my;
                 perf_app_moves++;
+            } else {
+                int motion_inside = !point_in_ui(mx, my) && point_in_rect(&layout.image, mx, my);
+                if (motion_inside && dispatch_canvas_pointer(SDL_MOUSEMOTION, mx, my, 0, &saved) == 0) {
+                    last_wx = mx; last_wy = my;
+                    perf_app_moves++;
+                } else {
+                    event_mouse(SDL_MOUSEBUTTONUP, last_wx, last_wy, SDL_BUTTON_LEFT, &saved);
+                    history_commit_stroke();
+                    dragging = 0;
+                }
+            }
+        }
+        if (pending_up && dragging) {
+            if (shape_active) {
+                int cx = 0, cy = 0, ww = 0, wh = 0;
+                SDL_GetWindowSize(win, &ww, &wh);
+                map_window_to_canvas_clamped(ww, wh, up_x, up_y, &cx, &cy);
+                shape_update_gesture(cx, cy,
+                                     (SDL_GetModState() & KMOD_SHIFT) != 0);
+                shape_finish_gesture();
+                dragging = 0;
             } else {
                 event_mouse(SDL_MOUSEBUTTONUP, last_wx, last_wy, SDL_BUTTON_LEFT, &saved);
                 history_commit_stroke();
                 dragging = 0;
             }
         }
-        if (pending_up && dragging) {
-            event_mouse(SDL_MOUSEBUTTONUP, last_wx, last_wy, SDL_BUTTON_LEFT, &saved);
-            history_commit_stroke();
-            dragging = 0;
-        }
         /* Key actions happen after pending painting, so a save key in the
          * same batch exports the stroke, not the previous frame. */
         for (int k = 0; k < nkeys; k++) {
             if (open_dialog || confirm_open || script_dialog) continue;  /* Nuklear owns text keys */
+            if (shape_active && keys[k].keysym.sym == SDLK_ESCAPE) {
+                shape_cancel_gesture();
+                dragging = 0;
+                continue;
+            }
+            if (shape_active &&
+                map_key(keys[k].keysym.sym, keys[k].keysym.mod) == 'c') {
+                shape_cancel_gesture();
+                dragging = 0;
+            }
             if ((keys[k].keysym.mod & KMOD_CTRL) &&
                 (keys[k].keysym.sym == SDLK_z || keys[k].keysym.sym == SDLK_y)) {
-                if (dragging) {
+                if (shape_active) {
+                    shape_cancel_gesture();
+                    dragging = 0;
+                } else if (dragging) {
                     event_mouse(SDL_MOUSEBUTTONUP, last_wx, last_wy, SDL_BUTTON_LEFT, &saved);
                     history_commit_stroke();
                     dragging = 0;
@@ -3503,6 +3966,230 @@ static int yong_frames(void) {
     return 0;
 }
 
+
+
+static int geometry_do(int tool, int x1, int y1, int x2, int y2, int shift) {
+    shape_begin_gesture(tool, x1, y1, shift);
+    shape_update_gesture(x2, y2, shift);
+    return shape_finish_gesture();
+}
+static int geometry_test(void) {
+    int saved = 0;
+    if (app_init() != 0) return 2;
+
+    /* Toolbar/keyboard tool selection reaches Glon and the C mirror. */
+    if (event_key(SDLK_l, 0, &saved) != 0 || ui_tool != 4) return 67;
+    if (event_key(SDLK_r, 0, &saved) != 0 || ui_tool != 5) return 68;
+    if (event_key(SDLK_o, 0, &saved) != 0 || ui_tool != 6) return 69;
+
+    /* Straight line, one command, one undo entry. */
+    clear_canvas(); history_free(); replay_forget(); unsaved = 0;
+    if (app_set_tool(4) != 0 || app_set_color(2) != 0 || app_set_size(8) != 0)
+        return 3;
+    int line_cmds = 0, rect_outline_cmds = 0, rect_fill_cmds = 0;
+    int ellipse_outline_cmds = 0, ellipse_fill_cmds = 0;
+    size_t line_bytes = 0, rect_outline_bytes = 0, rect_fill_bytes = 0;
+    size_t ellipse_outline_bytes = 0, ellipse_fill_bytes = 0;
+    ui_fill_shapes = 0;
+    Uint32 *line_pre = snapshot_canvas();
+    if (!line_pre) return 4;
+    int n = geometry_do(4, 100, 100, 200, 100, 0);
+    if (n != 1 || shape_last_commands != 1 || shape_last_bytes == 0 ||
+        shape_last_bytes >= SCRIPT_CMD_BYTES) return 5;
+    line_cmds = n; line_bytes = shape_last_bytes;
+    Uint8 r = 0, g = 0, b = 0;
+    if (read_canvas_pixel(150, 100, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,40,120,220)) return 6;
+    Uint32 *line_post = snapshot_canvas();
+    if (!line_post) return 7;
+    if (history_undo() != 1) return 8;
+    Uint32 *line_undo = snapshot_canvas();
+    if (!line_undo || !replay_snapshots_equal(line_pre, line_undo)) return 9;
+    free(line_undo);
+    if (history_redo() != 1) return 10;
+    Uint32 *line_redo = snapshot_canvas();
+    if (!line_redo || !replay_snapshots_equal(line_post, line_redo)) return 11;
+    free(line_redo); free(line_post); free(line_pre);
+
+    /* Rectangle outline and fill. */
+    clear_canvas(); history_free(); replay_forget();
+    if (app_set_tool(5) != 0 || app_set_color(3) != 0 || app_set_size(4) != 0)
+        return 12;
+    ui_fill_shapes = 0;
+    n = geometry_do(5, 100, 100, 300, 250, 0);
+    if (n != 4) return 13;
+    rect_outline_cmds = n; rect_outline_bytes = shape_last_bytes;
+    if (read_canvas_pixel(200, 100, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,40,160,80)) return 14;
+    if (read_canvas_pixel(200, 175, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 15;
+    clear_canvas(); history_free();
+    ui_fill_shapes = 1;
+    n = geometry_do(5, 100, 100, 300, 250, 0);
+    if (n != 151) return 16;
+    rect_fill_cmds = n; rect_fill_bytes = shape_last_bytes;
+    if (read_canvas_pixel(200, 175, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,40,160,80)) return 17;
+    if (shape_last_bytes >= SCRIPT_CMD_BYTES) return 18;
+
+    /* Reversed drag produces the same filled rectangle. */
+    Uint32 *rect_normal = snapshot_canvas();
+    if (!rect_normal) return 19;
+    clear_canvas(); history_free();
+    n = geometry_do(5, 300, 250, 100, 100, 0);
+    if (n != 151) return 20;
+    Uint32 *rect_reversed = snapshot_canvas();
+    if (!rect_reversed || !replay_snapshots_equal(rect_normal, rect_reversed))
+        return 21;
+    free(rect_reversed); free(rect_normal);
+
+    /* Shift makes a square. */
+    clear_canvas(); history_free();
+    ui_fill_shapes = 0;
+    if (app_set_color(2) != 0 || app_set_size(4) != 0) return 22;
+    n = geometry_do(5, 100, 100, 300, 180, 1);
+    if (n != 4) return 23;
+    if (read_canvas_pixel(300, 200, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,40,120,220)) return 24;
+
+    /* Ellipse outline and fill. */
+    clear_canvas(); history_free();
+    if (app_set_tool(6) != 0 || app_set_color(4) != 0 || app_set_size(4) != 0)
+        return 25;
+    ui_fill_shapes = 0;
+    n = geometry_do(6, 100, 100, 300, 300, 0);
+    if (n < 48 || n > 96) return 26;
+    ellipse_outline_cmds = n; ellipse_outline_bytes = shape_last_bytes;
+    if (read_canvas_pixel(200, 100, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,230,170,40)) return 27;
+    if (read_canvas_pixel(200, 200, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 28;
+    clear_canvas(); history_free();
+    ui_fill_shapes = 1;
+    n = geometry_do(6, 100, 100, 300, 300, 0);
+    if (n < 100 || n > 220) return 29;
+    ellipse_fill_cmds = n; ellipse_fill_bytes = shape_last_bytes;
+    if (read_canvas_pixel(200, 200, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,230,170,40)) return 30;
+    if (read_canvas_pixel(105, 105, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 31;
+
+    /* Shift makes a circle. */
+    clear_canvas(); history_free();
+    ui_fill_shapes = 0;
+    n = geometry_do(6, 100, 100, 300, 200, 1);
+    if (n < 48 || n > 96) return 32;
+    if (read_canvas_pixel(200, 100, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,230,170,40)) return 33;
+    if (read_canvas_pixel(300, 200, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,230,170,40)) return 34;
+
+    /* Zero-size rectangle/ellipse do nothing and create no history. */
+    clear_canvas(); history_free();
+    Uint32 *zero_pre = snapshot_canvas();
+    if (!zero_pre) return 35;
+    int undo_before = undo_stack.count;
+    n = geometry_do(5, 200, 200, 200, 200, 0);
+    if (n != 0 || undo_stack.count != undo_before) return 36;
+    n = geometry_do(6, 200, 200, 200, 260, 0);
+    if (n != 0 || undo_stack.count != undo_before) return 37;
+    Uint32 *zero_post = snapshot_canvas();
+    if (!zero_post || !replay_snapshots_equal(zero_pre, zero_post)) return 38;
+    free(zero_pre); free(zero_post);
+
+    /* Zero-length line is a dot. */
+    clear_canvas(); history_free();
+    n = geometry_do(4, 200, 200, 200, 200, 0);
+    if (n != 1) return 39;
+    if (read_canvas_pixel(200, 200, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,230,170,40)) return 40;
+
+    /* Clipping: a drag extending outside the canvas is clipped and bounded. */
+    clear_canvas(); history_free();
+    ui_fill_shapes = 1;
+    n = geometry_do(5, 700, 500, 900, 700, 0);
+    if (n != 100) return 41;
+    if (read_canvas_pixel(750, 550, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,230,170,40)) return 42;
+    if (read_canvas_pixel(799, 599, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,230,170,40)) return 43;
+    if (shape_last_bytes >= SCRIPT_CMD_BYTES) return 44;
+
+    /* Generated commands are standard L commands and replay to the same RGBA. */
+    clear_canvas(); history_free(); replay_forget();
+    if (app_set_color(1) != 0 || app_set_size(4) != 0) return 45;
+    ui_fill_shapes = 0;
+    Uint32 *initial = snapshot_canvas();
+    if (!initial) return 46;
+    n = geometry_do(6, 250, 150, 550, 450, 0);
+    if (n <= 0) return 47;
+    Uint32 *immediate = snapshot_canvas();
+    if (!immediate) return 48;
+    if (replay_load_command_text(shape_last_text) != 0) return 49;
+    restore_canvas(initial);
+    if (replay_play() != 0 || replay_finish_steps() != 0) return 50;
+    Uint32 *replayed = snapshot_canvas();
+    if (!replayed || !replay_snapshots_equal(immediate, replayed)) return 51;
+    replay_stop();
+    free(replayed); free(immediate); free(initial);
+
+    /* Cancelled drag leaves the canvas and undo history untouched. */
+    clear_canvas(); history_free(); replay_forget();
+    Uint32 *cancel_pre = snapshot_canvas();
+    if (!cancel_pre) return 64;
+    int cancel_undo = undo_stack.count;
+    shape_begin_gesture(5, 100, 100, 0);
+    shape_update_gesture(300, 300, 0);
+    shape_cancel_gesture();
+    if (shape_active || undo_stack.count != cancel_undo) return 65;
+    Uint32 *cancel_post = snapshot_canvas();
+    if (!cancel_post || !replay_snapshots_equal(cancel_pre, cancel_post)) return 66;
+    free(cancel_pre); free(cancel_post);
+
+    /* Lifecycle: shape gesture, then Clear and Load B. */
+    clear_canvas(); history_free(); replay_forget();
+    if (app_set_tool(5) != 0 || app_set_color(2) != 0 || app_set_size(4) != 0)
+        return 54;
+    ui_fill_shapes = 0;
+    n = geometry_do(5, 100, 100, 200, 200, 0);
+    if (n != 4) return 55;
+    document_clear();
+    if (read_canvas_pixel(150, 150, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 56;
+    /* Clear and Load both cancel an in-progress preview instead of committing. */
+    clear_canvas(); history_free();
+    shape_begin_gesture(5, 100, 100, 0);
+    shape_update_gesture(300, 300, 0);
+    document_clear();
+    if (shape_active) return 61;
+    if (read_canvas_pixel(200, 200, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 62;
+    shape_begin_gesture(6, 100, 100, 0);
+    shape_update_gesture(300, 300, 0);
+    if (load_script_file("examples/calligraphy.glon") != 0 || shape_active)
+        return 63;
+    if (run_script() != 0) return 57;
+    document_clear();
+    clear_canvas(); history_free(); replay_forget();
+    if (app_set_tool(5) != 0 || app_set_color(1) != 0 || app_set_size(4) != 0)
+        return 58;
+    ui_fill_shapes = 0;
+    if (geometry_do(5, 150, 150, 350, 350, 0) != 4) return 59;
+    if (save_png("glon-paint.png") != 0) return 60;
+
+    printf("geometry-test: line=ok rect_outline=ok rect_fill=ok reversed=ok "
+           "square=ok ellipse_outline=ok ellipse_fill=ok circle=ok zero=ok "
+           "line_dot=ok clipping=ok undo=ok redo=ok replay_equal=ok "
+           "cancel=ok lifecycle=ok line=%d/%zuB rect_outline=%d/%zuB "
+           "rect_fill=%d/%zuB ellipse_outline=%d/%zuB "
+           "ellipse_fill=%d/%zuB result=ok\n",
+           line_cmds, line_bytes, rect_outline_cmds, rect_outline_bytes,
+           rect_fill_cmds, rect_fill_bytes, ellipse_outline_cmds,
+           ellipse_outline_bytes, ellipse_fill_cmds, ellipse_fill_bytes);
+    history_free(); replay_forget();
+    (void)saved;
+    return 0;
+}
 
 static int lifecycle_test(void) {
     int saved = 0;
@@ -4353,6 +5040,15 @@ int main(int argc, char **argv) {
         SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
         SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
         fprintf(stderr, "glon-paint: smooth-demo %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--geometry-test") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = geometry_test();
+        history_free(); replay_forget(); free(script_source);
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        fprintf(stderr, "glon-paint: geometry-test %s\n", rc == 0 ? "passed" : "failed");
         return rc;
     }
     if (argc > 1 && strcmp(argv[1], "--lifecycle-test") == 0) {

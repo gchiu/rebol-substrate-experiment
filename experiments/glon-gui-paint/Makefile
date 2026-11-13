@@ -90,6 +90,8 @@ test: all
 	python3 tests/check-png.py glon-paint.png
 	$(TARGET) --lifecycle-test
 	python3 tests/check-png.py glon-paint.png
+	$(TARGET) --geometry-test
+	python3 tests/check-png.py glon-paint.png
 	$(TARGET) --coalesce-test
 	python3 tests/check-png.py glon-paint.png
 	$(TARGET) --resize-test
