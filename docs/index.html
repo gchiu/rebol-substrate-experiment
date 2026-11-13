@@ -7,7 +7,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Glon Programming Language</title>
-<meta name="description" content="Glon is a small experimental programming language inspired by the Rebol family. Try it in your browser: it runs interactively in WebAssembly.">
+<meta name="description" content="Glon is a compact execution substrate for LLM-generated software with Rebol-family heritage. Run browser demos, or download the native Linux Glon Paint application.">
 <link rel="canonical" href="https://gchiu.github.io/rebol-substrate-experiment/">
 <style>
   :root { --fg: #16181d; --muted: #5d6470; --bg: #fdfdfc; --panel: #f3f4f6; --line: #d9dce1;
@@ -37,15 +37,25 @@
   .cta strong { display: block; color: var(--accent); font-size: 1.05rem; }
   .cta span { display: block; color: var(--muted); font-size: 0.9rem; }
   .cta .first a { border-color: var(--accent); }
+  figure { margin: 1.25rem 0 1rem; }
+  figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line);
+               border-radius: 8px; background: var(--panel); }
+  figcaption { margin-top: 0.5rem; color: var(--muted); font-size: 0.9rem; }
   ul.plain { padding-left: 1.2rem; }
   ul.plain li { margin: 0.25rem 0; }
   footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); font-size: 0.85rem; }
+  @media (max-width: 560px) {
+    body { padding: 1.5rem 14px 3rem; }
+    h1 { font-size: 2rem; }
+    .cta { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
 <header>
   <h1>Glon</h1>
-  <p class="lede">Glon is a small experimental programming language inspired by the Rebol family.</p>
+  <p class="lede">Glon is a compact, reliable execution substrate designed primarily for
+     LLM-generated software, with a Rebol-family language and heritage.</p>
   <p>It runs interactively in WebAssembly, right in this browser. Code is made of
      blocks, words and values; functions are lexically bound closures; programs can
      run as cooperative tasks; and failures are first-class <code>SIN!</code> values
@@ -59,6 +69,9 @@
     <li class="first"><a href="shop/primer.html">
       <strong>Saturnine &mdash; A Glonbook</strong>
       <span>Glon in 5 minutes: edit and run every example live</span></a></li>
+    <li><a href="https://github.com/gchiu/rebol-substrate-experiment/releases/tag/glon-paint-g3b.2">
+      <strong>Glon Paint &mdash; native Linux</strong>
+      <span>SDL2/Wayland paint app with deterministic replay and a 926-command mandala</span></a></li>
     <li><a href="shop/traffic.html">
       <strong>Traffic simulator</strong>
       <span>Four car-following models, written in Glon</span></a></li>
@@ -83,6 +96,22 @@
   </ul>
   <p class="muted">New to Glon? Start with Saturnine. Every example there runs in a fresh
      Glon WebAssembly runtime, and you can change it and run it again.</p>
+</section>
+
+<section aria-labelledby="paint">
+  <h2 id="paint">Glon Paint</h2>
+  <figure>
+    <img src="https://raw.githubusercontent.com/gchiu/rebol-substrate-experiment/glon-gui-paint/experiments/glon-gui-paint/docs/assets/mandala-deluxe-v2.png"
+         alt="Glon Paint on Linux showing the mandala-deluxe-v2 artwork: coral petals, turquoise garlands, indigo leaves, gold filigree and a detailed central rosette."
+         width="1203" height="802" loading="lazy" decoding="async">
+    <figcaption>The 926-command mandala-deluxe-v2 rendered in Glon Paint under Ubuntu 22.04/WSLg.</figcaption>
+  </figure>
+  <p>Glon Paint is a native Linux x86-64 SDL2/Wayland application, not an in-browser
+     WebAssembly demo. It was tested under Ubuntu 22.04/WSLg. The download includes
+     the precompiled binary, the patched WSLg libdecor plugin and runtime instructions.</p>
+  <p><a href="https://github.com/gchiu/rebol-substrate-experiment/releases/tag/glon-paint-g3b.2">Download Glon Paint</a>
+     &middot; <a href="https://github.com/gchiu/rebol-substrate-experiment/tree/glon-gui-paint">Source branch</a>
+     &middot; <a href="https://github.com/gchiu/rebol-substrate-experiment/blob/glon-gui-paint/experiments/glon-gui-paint/README.md">Paint README</a></p>
 </section>
 
 <section aria-labelledby="taste">
