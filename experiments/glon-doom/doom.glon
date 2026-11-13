@@ -296,6 +296,7 @@ doom/tick: func [fw bk lf rt tl tr] [
     ]
     doom/door-blocked: either < doom/door-open 32 [ 1 ] [ 0 ]
     doom/update-alien
+    doom/light-phase: + doom/light-phase 1
 ]
 
 doom/activate: func [] [
@@ -385,6 +386,7 @@ doom/reset: does [
     doom/door-bars: 0
     doom/occluded: 0
     doom/alien-visible: 0
+    doom/light-phase: 0
 ]
 
 
@@ -1031,6 +1033,7 @@ doom/texrows-block: [
 
 
 doom/objects-on: 0
+doom/light-phase: 0
 
 doom/status-block: [
     doom/alien-dx: - doom/alien-x doom/px
@@ -1075,6 +1078,7 @@ doom/status-block: [
     print doom/alien-right
     print doom/alien-top
     print doom/alien-bot
+    print doom/light-phase
 ]
 
 doom/sector-report: does [

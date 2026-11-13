@@ -12,7 +12,7 @@ all: $(TARGET)
 $(BUILD):
 	@mkdir -p $@
 $(TARGET): doom-host.c textures.h $(ROOT)/r0_s1.h $(ROOT)/m1_layout.h $(ROOT)/s1.h | $(BUILD)
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) -o $@ $(SRCS) $(SDL_LIBS) -lm -lpthread
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -o $@ $(SRCS) $(SDL_LIBS) -lGL -lm -lpthread
 
 # Diagnostic build: instrumented COPY of frozen S1 (s1_prof.c), for event counts only.
 # The production binary above still links the frozen s1.c. This target is not

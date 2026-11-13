@@ -588,6 +588,20 @@ Object-vs-wall occlusion is screen/door-state based rather than per-pixel; this
 limitation is documented. The object module is separate and does not affect
 the default loader. Full report: `experiments/glon-doom/G5K-INVESTIGATION.md`.
 
+## 10f. AvP G5l OpenGL renderer (2026-11-14)
+
+G5l added an explicit SDL/OpenGL backend on the verified WSLg D3D12 AMD Radeon
+device. Static level geometry/textures are uploaded once; Glon supplies camera,
+door, object, Alien and light-phase state each frame. OpenGL rendered 60.0 FPS
+at 320x200, 62.4 at 640x400 and 57.7 at 960x600 with objects, versus 27.5 FPS
+for the G5k CPU reference. Ceiling illumination, a subtle Glon-controlled pulse,
+depth occlusion, door occlusion, transparent Alien/object sprites and CPU
+fallback were retained.
+
+Static geometry is currently a renderer-side ABI copy; moving it into a compact
+Glon scene block is the next architectural cleanup. Sound remains a proposed
+event interface. Full report: `experiments/glon-doom/G5L-INVESTIGATION.md`.
+
 ## 11. Detailed documents
 
 - `README.md` — project intro.

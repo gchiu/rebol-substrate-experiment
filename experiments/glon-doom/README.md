@@ -269,3 +269,28 @@ is screen/door-state based, not per-pixel. See `G5K-INVESTIGATION.md`.
 ./build/doom --demo-close --raw-wall --flat-surfaces --demo-emerge
 ./build/doom --shots /tmp/g5k-clutter --flat-surfaces --objects
 ```
+
+## G5l OpenGL renderer
+
+The G5k CPU renderer remains the reference. `--gl-bench`, `--gl-demo` and
+`--gl-shots` use an SDL/OpenGL backend on the verified WSLg D3D12/Mesa device:
+
+| Configuration | FPS |
+|---|---:|
+| CPU 320×200 flat+objects | 27.5 |
+| GL 320×200 | 60.0 |
+| GL 640×400 | 62.4 |
+| GL 960×600 | 57.7 |
+
+```sh
+./build/doom --gl-bench 120 640 400 objects
+./build/doom --gl-demo 640 400 objects
+./build/doom --gl-shots /tmp/g5l-shot 640 400 objects
+```
+
+The OpenGL backend renders static walls/floor/ceiling, illuminated ceiling
+panels, six objects, the Alien and the door with depth testing and alpha-tested
+billboards. Glon still owns camera, movement, collision, door/Alien state,
+object records and light phase. Static geometry is currently a renderer-side
+ABI copy; moving it to a Glon scene block is the next cleanup step. See
+`G5L-INVESTIGATION.md`.

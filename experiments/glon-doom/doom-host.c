@@ -29,6 +29,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <SDL2/SDL_opengl.h>
 #include <unistd.h>
 
 #define FB_W 320
@@ -60,9 +61,10 @@ typedef struct {
     int ax, ay, health, state, detected;
     int td2, tside, tdepth;
     int visible, left, right, top, bot;
+    int light;
 } Status;
 
-typedef struct { int id, depth, left, right, top, bot, visible; } Obj;
+typedef struct { int id, depth, left, right, top, bot, visible; int x,y,hw,hd,h; } Obj;
 typedef struct { int depth, l, r, t, b, pct; const uint32_t *src; int sw, sh; } SpriteDraw;
 typedef struct {
     double sim_ms, proj_ms, texrow_ms, raster_ms, present_ms, frame_ms;
@@ -115,6 +117,8 @@ static int objects_mode = 0;
 static Obj current_objs[6];
 static int current_objs_valid = 0;
 static int last_px = 320;
+static int last_py = 320;
+static double st_current_angle = 0;
 static int get_objects(Obj out[6]);
 static int alien_cover = 0;
 static int cover_view = 0;
@@ -390,7 +394,7 @@ static void build_blocks(void) {
 static int get_state(int *x, int *y, int *a) {
     int v[3];
     if (run_capture(report_block, v, 3, "report") != 0) return -1;
-    *x = v[0]; *y = v[1]; *a = v[2]; last_px = *x;
+    *x = v[0]; *y = v[1]; *a = v[2]; last_px = *x; last_py = *y;
     return 0;
 }
 static int get_sector(int *floor_c, int *ceil_c) {
@@ -405,11 +409,11 @@ static int get_valid(void) {
     return v;
 }
 static int get_status(Status *st) {
-    int v[16];
+    int v[17];
 #ifdef DOOM_S1_PROFILE
     prof_begin();
 #endif
-    int grc = run_capture(status_block, v, 16, "status");
+    int grc = run_capture(status_block, v, 17, "status");
 #ifdef DOOM_S1_PROFILE
     prof_collect(&prof_status);
 #endif
@@ -418,7 +422,7 @@ static int get_status(Status *st) {
     st->ax = v[3]; st->ay = v[4]; st->health = v[5]; st->state = v[6];
     st->detected = v[7]; st->td2 = v[8]; st->tside = v[9]; st->tdepth = v[10];
     st->visible = v[11]; st->left = v[12]; st->right = v[13];
-    st->top = v[14]; st->bot = v[15];
+    st->top = v[14]; st->bot = v[15]; st->light = v[16];
     if (objects_mode && get_objects(current_objs) == 0) {
         current_objs_valid = 1;
         if (st->door_blocked && last_px < 768)
@@ -427,13 +431,13 @@ static int get_status(Status *st) {
     return 0;
 }
 static int get_objects(Obj out[6]) {
-    int v[42];
-    if (run_capture(objects_block, v, 42, "objects") != 0) return -1;
+    int v[72];
+    if (run_capture(objects_block, v, 72, "objects") != 0) return -1;
     for (int i = 0; i < 6; i++) {
-        out[i].id = v[i*7]; out[i].depth = v[i*7+1];
-        out[i].left = v[i*7+2]; out[i].right = v[i*7+3];
-        out[i].top = v[i*7+4]; out[i].bot = v[i*7+5];
-        out[i].visible = v[i*7+6];
+        int *p = v + i*12;
+        out[i].id=p[0]; out[i].depth=p[1]; out[i].left=p[2]; out[i].right=p[3];
+        out[i].top=p[4]; out[i].bot=p[5]; out[i].visible=p[6];
+        out[i].x=p[7]; out[i].y=p[8]; out[i].hw=p[9]; out[i].hd=p[10]; out[i].h=p[11];
     }
     return 0;
 }
@@ -1507,7 +1511,8 @@ static int cache_frame(ViewCache *c, uint32_t *fb, int floor_c, int ceil_c, int 
     if (get_status(&st) != 0) return -1;
     ViewSig sig;
     sig.px = px; sig.py = py; sig.angle = pa; sig.simple = simple_mode;
-    sig.floor_c = floor_c; sig.ceil_c = ceil_c; sig.st = st;
+    sig.floor_c = floor_c; sig.ceil_c = ceil_c;
+    sig.st = st; sig.st.light = 0; /* stationary cache ignores the light pulse */
     if (!force && c->valid && memcmp(&sig, &c->sig, sizeof sig) == 0) return 0;
     if (render_spans(&c->s, NULL) != 0) return -1;
     if (need_texrows() && get_texrows(&c->tr) != 0) return -1;
@@ -1543,6 +1548,7 @@ static int stationary_test(void) {
     get_state(&sx1, &sy1, &sa1); get_status(&st1);
     fails += expect_eq("stationary cache does not alter player",
                        sx0 == sx1 && sy0 == sy1 && sa0 == sa1, 1);
+    st0.light = st1.light = 0;  /* the light pulse advances independently */
     fails += expect_eq("stationary cache does not alter status",
                        memcmp(&st0, &st1, sizeof st0) == 0, 1);
 
@@ -2085,6 +2091,226 @@ static int objects_test(void) {
     return fails ? 1 : 0;
 }
 
+
+/* ---- G5l OpenGL renderer -------------------------------------------------
+ * Static level geometry is a renderer-side ABI copy, uploaded once. Glon
+ * supplies camera, door, light phase, object records and Alien state every
+ * frame; the GPU performs projection/clipping/raster/depth/texture sampling.
+ */
+typedef struct { int x1,y1,x2,y2,mat; } GlWall;
+static const GlWall gl_walls[10] = {
+    {128,128,768,128,1},{768,128,768,256,1},{768,256,1280,256,2},
+    {1280,256,1280,1024,3},{1280,1024,1152,1024,3},{1152,1024,1152,384,3},
+    {1152,384,768,384,2},{768,384,768,640,1},{768,640,128,640,1},
+    {128,640,128,128,1}
+};
+enum { GT_PANEL, GT_SERVICE, GT_FLOOR, GT_CEIL, GT_DOOR,
+       GT_DRUM, GT_CRATE, GT_CABINET, GT_CONTAINER, GT_ALIEN0, GT_ALIEN_N=5, GT_COUNT=GT_ALIEN0+GT_ALIEN_N };
+static GLuint gl_tex[GT_COUNT];
+static SDL_Window *gl_win;
+static SDL_GLContext gl_ctx;
+static int gl_w, gl_h;
+static int gl_door_closed = 0;
+
+static void gl_upload(GLuint id, const uint32_t *src, int w, int h) {
+    uint8_t *rgba = malloc((size_t)w * h * 4);
+    if (!rgba) fail("gl texture memory");
+    for (int i = 0; i < w*h; i++) {
+        uint32_t c = src[i];
+        rgba[i*4+0] = (uint8_t)(c >> 16); rgba[i*4+1] = (uint8_t)(c >> 8);
+        rgba[i*4+2] = (uint8_t)c; rgba[i*4+3] = (uint8_t)(c >> 24);
+    }
+    glBindTexture(GL_TEXTURE_2D, id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    free(rgba);
+}
+
+static int gl_init(int w, int h, int shown) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return -1;
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+    gl_win = SDL_CreateWindow("Glon AVP G5l OpenGL",
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w, h,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | (shown ? 0 : SDL_WINDOW_HIDDEN));
+    if (!gl_win) { fprintf(stderr, "gl: window: %s\n", SDL_GetError()); return -1; }
+    gl_ctx = SDL_GL_CreateContext(gl_win);
+    if (!gl_ctx) { fprintf(stderr, "gl: context: %s\n", SDL_GetError()); return -1; }
+    SDL_GL_SetSwapInterval(0);
+    printf("gl renderer=%s vendor=%s version=%s\n",
+           glGetString(GL_RENDERER), glGetString(GL_VENDOR), glGetString(GL_VERSION));
+    glGenTextures(GT_COUNT, gl_tex);
+    gl_upload(gl_tex[GT_PANEL], tex_panel_v2, 64,64);
+    gl_upload(gl_tex[GT_SERVICE], tex_service_v2,64,64);
+    gl_upload(gl_tex[GT_FLOOR], tex_floor,64,64);
+    gl_upload(gl_tex[GT_CEIL], tex_ceiling_light,64,64);
+    gl_upload(gl_tex[GT_DOOR], tex_door,64,64);
+    gl_upload(gl_tex[GT_DRUM], obj_drum,64,96);
+    gl_upload(gl_tex[GT_CRATE], obj_crate,64,96);
+    gl_upload(gl_tex[GT_CABINET], obj_cabinet,64,96);
+    gl_upload(gl_tex[GT_CONTAINER], obj_container,64,96);
+    gl_upload(gl_tex[GT_ALIEN0+0], alien_idle,64,128);
+    gl_upload(gl_tex[GT_ALIEN0+1], alien_walk1,64,128);
+    gl_upload(gl_tex[GT_ALIEN0+2], alien_walk2,64,128);
+    gl_upload(gl_tex[GT_ALIEN0+3], alien_attack,64,128);
+    gl_upload(gl_tex[GT_ALIEN0+4], alien_side,64,128);
+    gl_w=w; gl_h=h; glViewport(0,0,w,h); glClearColor(0.04,0.05,0.06,1); glEnable(GL_DEPTH_TEST);
+    return 0;
+}
+
+static void gl_gv(double x,double y,double z) { glVertex3d(x/64.0, z/64.0, -y/64.0); }
+static void gl_view(double px,double py,double angle) {
+    /* map world (x,y,z) -> GL (x,z,-y), y up; yaw +90 - game angle */
+    double ex=px/64.0, ey=1.0, ez=-py/64.0;
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glRotatef((float)(90.0 - angle*360.0/256.0), 0, 1, 0);
+    glTranslatef((float)-ex, (float)-ey, (float)-ez);
+}
+static void gl_projection(void) {
+    double aspect=(double)gl_w/(double)gl_h;
+    double fovy=2.0*atan(100.0/246.0), near=0.05, far=40.0;
+    double top=near*tan(fovy/2.0), right=top*aspect;
+    glMatrixMode(GL_PROJECTION); glLoadIdentity();
+    glFrustum(-right,right,-top,top,near,far);
+}
+static void gl_wall(const GlWall *w, int door) {
+    int mat=w->mat; GLuint t = door?GT_DOOR:(mat==1||mat==3?GT_SERVICE:GT_PANEL);
+    double dx=w->x2-w->x1, dy=w->y2-w->y1, len=sqrt(dx*dx+dy*dy);
+    glBindTexture(GL_TEXTURE_2D, gl_tex[t]);
+    glColor3f(1,1,1);
+    glBegin(GL_QUADS);
+    glTexCoord2f(0,0); gl_gv(w->x1,w->y1,0);
+    glTexCoord2f(len/256.0,0); gl_gv(w->x2,w->y2,0);
+    glTexCoord2f(len/256.0,1); gl_gv(w->x2,w->y2,128);
+    glTexCoord2f(0,1); gl_gv(w->x1,w->y1,128);
+    glEnd();
+}
+static void gl_plane(double z, GLuint tex, double off) {
+    glBindTexture(GL_TEXTURE_2D, gl_tex[tex]);
+    glBegin(GL_QUADS);
+    glTexCoord2f(128/256.0,128/256.0); gl_gv(128,128,z);
+    glTexCoord2f(1280/256.0,128/256.0); gl_gv(1280,128,z);
+    glTexCoord2f(1280/256.0,1024/256.0); gl_gv(1280,1024,z);
+    glTexCoord2f(128/256.0,1024/256.0); gl_gv(128,1024,z);
+    glEnd();
+}
+static void gl_billboard(GLuint tex, double x,double y,double wworld,double hworld) {
+    double a=0; (void)a;
+    /* camera-facing axes in world/game coordinates */
+    double ca=cos(st_current_angle*2.0*M_PI/256.0), sa=sin(st_current_angle*2.0*M_PI/256.0);
+    double rx=sa, ry=-ca; /* right */
+    double cx=x/64.0, cy=y/64.0, cz=hworld/2.0;
+    glBindTexture(GL_TEXTURE_2D, tex); glColor3f(1,1,1);
+    glBegin(GL_QUADS);
+    glTexCoord2f(0,0); gl_gv(x - rx*wworld*32, y - ry*wworld*32, 0);
+    glTexCoord2f(1,0); gl_gv(x + rx*wworld*32, y + ry*wworld*32, 0);
+    glTexCoord2f(1,1); gl_gv(x + rx*wworld*32, y + ry*wworld*32, hworld*64);
+    glTexCoord2f(0,1); gl_gv(x - rx*wworld*32, y - ry*wworld*32, hworld*64);
+    glEnd();
+    (void)cx;(void)cy;(void)cz;
+}
+static void gl_scene(const Status *st, const Obj *objs, int nobj) {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    gl_projection(); gl_view(last_px, last_py, st_current_angle);
+    glEnable(GL_TEXTURE_2D); glDisable(GL_BLEND); glDepthMask(GL_TRUE); glEnable(GL_DEPTH_TEST);
+    gl_plane(0,GT_FLOOR,0);
+    float l=0.70f + 0.16f*(float)sin((double)st->light*0.09);
+    glColor3f(l,l,l); gl_plane(128,GT_CEIL,0); glColor3f(1,1,1);
+    for (int i=0;i<10;i++) gl_wall(&gl_walls[i],0);
+    if (st->door_blocked) {
+        GlWall d={768,256,768,384,5}; gl_wall(&d,1);
+    }
+    /* localized illuminated ceiling strips; Glon supplies light phase */
+    glDisable(GL_TEXTURE_2D); glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA,GL_ONE);
+    glDepthMask(GL_FALSE);
+    float pulse=0.08f+0.08f*(float)((sin((double)st->light*0.09)+1.0)*0.5);
+    glColor4f(1.0f,0.82f,0.52f,pulse);
+    for (int i=0;i<4;i++) {
+        double x=400+i*220;
+        glBegin(GL_QUADS); gl_gv(x-40,300,127); gl_gv(x+40,300,127); gl_gv(x+40,360,127); gl_gv(x-40,360,127); glEnd();
+    }
+    glColor4f(1,1,1,1); glDisable(GL_BLEND); glDepthMask(GL_TRUE);
+    /* depth-tested, alpha-tested billboards */
+    glEnable(GL_TEXTURE_2D); glEnable(GL_ALPHA_TEST); glAlphaFunc(GL_GREATER,0.25f);
+    glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    for (int i=0;i<nobj;i++) {
+        if (!objs[i].visible) continue;
+        GLuint t = GT_DRUM + (objs[i].id == 0 ? 0 : objs[i].id == 1 ? 1 : objs[i].id == 2 ? 2 : 3);
+        glDepthMask(GL_TRUE);
+        gl_billboard(t, objs[i].x, objs[i].y, objs[i].hw*2.0/64.0, objs[i].h/64.0);
+    }
+    if (st->visible) {
+        const uint32_t *f = alien_frame_for(st);
+        int idx = f==alien_walk1?1:f==alien_walk2?2:f==alien_attack?3:f==alien_side?4:0;
+        glDepthMask(GL_TRUE);
+        gl_billboard(gl_tex[GT_ALIEN0+idx], st->ax, st->ay, 0.75, 1.5);
+    }
+    glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
+    glFinish();
+}
+
+static int gl_bench(int frames, int w, int h) {
+    if (gl_init(w,h,0) != 0) return 2;
+    load_session(); build_blocks();
+    Spans s; Detail det; TexRows tr; Status st; Obj objs[6];
+    double sim=0, gpu=0, total=0; int n=0;
+    for (int i=0;i<frames;i++) {
+        long t0=now_ns();
+        if (tick(i&63)!=0) return 2;
+        int px,py,pa; if (get_state(&px,&py,&pa)!=0) return 2; st_current_angle=pa;
+        if (get_status(&st)!=0) return 2;
+        if (objects_mode) memcpy(objs,current_objs,sizeof current_objs);
+        long t1=now_ns();
+        int nobj=objects_mode?6:0;
+        gl_scene(&st,objs,nobj);
+        long t2=now_ns(); SDL_GL_SwapWindow(gl_win); long t3=now_ns();
+        sim+=(t1-t0)/1e6; gpu+=(t2-t1)/1e6; total+=(t3-t0)/1e6; n++;
+    }
+    printf("gl bench renderer=%s resolution=%dx%d frames=%d sim=%.2fms submit=%.2fms total=%.2fms fps=%.1f loader=%ld heap=%ld\n",
+           glGetString(GL_RENDERER), w,h,n,sim/n,gpu/n,total/n,1000.0/(total/n),(long)M[GC_LOADER_HP],r0_s1_heap_high());
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
+    return 0;
+}
+
+static void gl_fixed_pose(void) {
+    reset();
+    if (alien_cover) { if (set_close_pose()!=0) fail("gl cover pose"); return; }
+    cell p=parse_source("[ doom/px: 616 doom/py: 320 doom/angle: 0 doom/aim doom/door-open: 48 doom/door-target: 64 doom/door-blocked: 0 doom/alien-x: 990 doom/alien-y: 320 doom/alien-state: 1 doom/alien-health: 100 doom/alien-detected: 1 ]", "gl pose");
+    if (run_block(p,"gl pose")!=0) fail("gl pose");
+}
+static int gl_demo(int w,int h) {
+    if (gl_init(w,h,1)!=0) return 2;
+    load_session(); build_blocks();
+    if (gl_door_closed) reset(); else gl_fixed_pose();
+    Spans s; Detail det; TexRows tr; Status st; Obj objs[6];
+    int px,py,pa; get_state(&px,&py,&pa); st_current_angle=pa;
+    int running=1;
+    while(running){ SDL_Event e; while(SDL_PollEvent(&e)) if(e.type==SDL_QUIT||(e.type==SDL_KEYDOWN&&e.key.keysym.sym==SDLK_ESCAPE))running=0;
+        tick(0); get_state(&px,&py,&pa); st_current_angle=pa; get_status(&st); int nobj=0; if(objects_mode) {get_objects(objs);nobj=6;}
+        gl_scene(&st,objs,nobj); SDL_GL_SwapWindow(gl_win); sim_tick++; SDL_Delay(16);
+    }
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+static int gl_shots(const char *dir,int w,int h) {
+    if (gl_init(w,h,0)!=0) return 2; load_session(); build_blocks(); gl_fixed_pose();
+    Status st; Obj objs[6]; int px,py,pa; get_state(&px,&py,&pa); st_current_angle=pa; get_status(&st); int nobj=0;
+    if(objects_mode){get_objects(objs);nobj=6;}
+    gl_scene(&st,objs,nobj);
+    uint8_t *buf=malloc((size_t)w*h*4); if(!buf)return 2;
+    glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,buf);
+    char path[4096]; snprintf(path,sizeof path,"%s/corridor.ppm",dir);
+    FILE *f=fopen(path,"wb"); if(!f)return 2; fprintf(f,"P6\n%d %d\n255\n",w,h);
+    for(int y=h-1;y>=0;y--) for(int x=0;x<w;x++){uint8_t*p=buf+(y*w+x)*4;fwrite(p,1,3,f);} fclose(f); free(buf);
+    printf("gl shot %dx%d %s\n",w,h,path);
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
 int main(int argc, char **argv) {
     const char *env = getenv("DOOM_ROOT");
     if (env && *env) root_dir = env;
@@ -2094,11 +2320,13 @@ int main(int argc, char **argv) {
         if (strcmp(argv[i], "--new-textures") == 0) new_textures = 1;
         if (strcmp(argv[i], "--smooth-shading") == 0) smooth_shading = 1;
         if (strcmp(argv[i], "--flat-surfaces") == 0) flat_surfaces = 1;
+        if (strcmp(argv[i], "--renderer") == 0 && i+1<argc && strcmp(argv[i+1],"gl")==0) { /* routed below */ }
         if (strcmp(argv[i], "--objects") == 0) objects_mode = 1;
         if (strcmp(argv[i], "--alien-cover") == 0) { objects_mode = 1; alien_cover = 1; }
         if (strcmp(argv[i], "--demo-partial") == 0) { objects_mode = 1; alien_cover = 1; cover_view = 1; }
         if (strcmp(argv[i], "--demo-emerge") == 0) { objects_mode = 1; alien_cover = 1; cover_view = 2; }
         if (strcmp(argv[i], "--demo-side") == 0) { objects_mode = 1; alien_cover = 1; cover_view = 3; }
+        if (strcmp(argv[i], "--gl-door") == 0) gl_door_closed = 1;
         if (strcmp(argv[i], "--filter") == 0 && i + 1 < argc &&
             strcmp(argv[i + 1], "linear") == 0) linear_filter = 1;
     }
@@ -2117,6 +2345,21 @@ int main(int argc, char **argv) {
             }
             return bench(atoi(argv[3]), bench_alien);
         }
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-bench") == 0) {
+        int w=argc>3?atoi(argv[3]):640, h=argc>4?atoi(argv[4]):400;
+        for(int i=5;i<argc;i++) if(strcmp(argv[i],"objects")==0) objects_mode=1;
+        return gl_bench(atoi(argv[2]),w,h);
+    }
+    if (argc > 1 && strcmp(argv[1], "--gl-demo") == 0) {
+        int w=argc>2?atoi(argv[2]):640, h=argc>3?atoi(argv[3]):400;
+        for(int i=4;i<argc;i++) if(strcmp(argv[i],"objects")==0) objects_mode=1;
+        return gl_demo(w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-shots") == 0) {
+        int w=argc>3?atoi(argv[3]):640, h=argc>4?atoi(argv[4]):400;
+        for(int i=5;i<argc;i++) if(strcmp(argv[i],"objects")==0) objects_mode=1;
+        return gl_shots(argv[2],w,h);
     }
     if (argc > 1 && strcmp(argv[1], "--self-test") == 0) return self_test();
     if (argc > 1 && strcmp(argv[1], "--projection-test") == 0) {

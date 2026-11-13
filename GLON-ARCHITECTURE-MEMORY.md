@@ -477,6 +477,30 @@ Not yet run in WASM. Details are in `experiments/glon-iter/GLON-ITER-V001.md`.
   Default mode remains compact and does not load `objects.glon`. No frozen
   capacity changed.
 
+### G5l AvP OpenGL renderer [MEASURED]
+
+[MEASURED 2026-11-14, `experiments/glon-avp-g5l`, WSLg, AMD Ryzen 5 7535U,
+AMD Radeon integrated, Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
+
+- **Hardware verified:** `D3D12 (AMD Radeon(TM) Graphics)`, vendor Microsoft,
+  Mesa 23.2.1-1ubuntu3.1~22.04.4. OpenGL 2.1 compatibility fixed-function
+  backend in the SDL host.
+- **Benchmarks (120 frames, objects/Alien):** CPU G5k 320×200 27.5 FPS;
+  GL 320×200 60.0 FPS; GL 640×400 62.4 FPS; GL 960×600 57.7 FPS. GL sim
+  11.9–12.6 ms, submit+glFinish 2.05–2.34 ms. GPU is not resolution-bound at
+  these sizes; object/status/Glon work dominates.
+- **ABI:** static walls/door/floor/ceiling are a one-time renderer ABI copy;
+  dynamic camera, door, object records, Alien status and Glon `light-phase`
+  are supplied per frame. No wall/texrow S1 work in GL mode. CPU renderer
+  remains the default/fallback.
+- **Visual:** illuminated ceiling panels, subtle localized pulse from Glon
+  light phase, depth-tested objects/Alien, door occlusion, transparent sprite
+  edges. G5h raw wall and G5i Alien remain intact; no primitive/memory-map
+  change.
+- **Memory:** loader 14,082 used / 718 free; heap 33,600; GC 0; executable
+  596,696 bytes. Static geometry should move into a compact Glon scene block
+  in G5m; sound remains a proposed event ABI.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

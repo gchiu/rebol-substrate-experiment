@@ -41,6 +41,11 @@ doom/object-project: func [id x y hw hd h] [
     print doom/obj-top
     print doom/obj-bot
     print doom/obj-visible
+    print x
+    print y
+    print hw
+    print hd
+    print h
 ]
 doom/object-reports: func [i] [
     either < i 6 [
