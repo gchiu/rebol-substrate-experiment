@@ -15,6 +15,8 @@ WSLg machine. GUI replay at the default 5 operations/s is much slower (about
 three minutes for the command stream alone); use 20/60 ops/s or the headless
 demo for demonstration.
 
+![Glon Paint displaying the 926-command mandala-deluxe-v2](docs/assets/mandala-deluxe-v2.png)
+
 **Tested environment:** Ubuntu 22.04 under WSLg, using the SDL2 Wayland backend
 and the vendored patched libdecor plugin. Other Linux desktops and native
 Windows/macOS have not been tested for this experiment.
