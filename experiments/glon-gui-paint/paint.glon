@@ -21,7 +21,21 @@ paint/color-rgb: func [n] [
     either = n 1 [ reduce [ 220 60 60 ] ] [
         either = n 2 [ reduce [ 40 120 220 ] ] [
             either = n 3 [ reduce [ 40 160 80 ] ] [
-                either = n 5 [ reduce [ 0 0 0 ] ] [ reduce [ 230 170 40 ] ]
+                either = n 5 [ reduce [ 0 0 0 ] ] [
+                    either = n 6 [ reduce [ 42 48 104 ] ] [
+                        either = n 7 [ reduce [ 26 170 160 ] ] [
+                            either = n 8 [ reduce [ 22 104 100 ] ] [
+                                either = n 9 [ reduce [ 236 112 92 ] ] [
+                                    either = n 10 [ reduce [ 208 166 74 ] ] [
+                                        either = n 11 [ reduce [ 244 234 208 ] ] [
+                                            reduce [ 230 170 40 ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
             ]
         ]
     ]
@@ -89,7 +103,7 @@ paint/line: func [x1 y1 x2 y2] [
 ]
 
 paint/set-color: func [n] [
-    paint/color: either = n 2 [ 2 ] [ either = n 3 [ 3 ] [ either = n 4 [ 4 ] [ either = n 5 [ 5 ] [ 1 ] ] ] ]
+    paint/color: either < n 1 [ 1 ] [ either > n 11 [ 1 ] [ n ] ]
     paint/title
 ]
 paint/set-size: func [n] [

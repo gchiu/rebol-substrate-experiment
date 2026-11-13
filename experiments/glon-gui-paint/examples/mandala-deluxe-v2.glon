@@ -1,0 +1,1258 @@
+;; Deluxe mandala v2 - indigo, turquoise, coral, gold, ivory.
+;; Ordinary Glon line and pressure commands; host streaming sink.
+;; Exact 16-fold construction, centre (400,300), outer radius about 273.
+;; clear
+do [
+    paint/draw-clear
+]
+;; outer indigo frame
+do [
+    paint/set-color 6
+    paint/set-size 5
+    paint/draw-line 670 300 669 318
+    paint/draw-line 669 318 668 335
+    paint/draw-line 668 335 665 353
+    paint/draw-line 665 353 661 370
+    paint/draw-line 661 370 656 387
+    paint/draw-line 656 387 649 403
+    paint/draw-line 649 403 642 419
+    paint/draw-line 642 419 634 435
+    paint/draw-line 634 435 624 450
+    paint/draw-line 624 450 614 464
+    paint/draw-line 614 464 603 478
+    paint/draw-line 603 478 591 491
+    paint/draw-line 591 491 578 503
+    paint/draw-line 578 503 564 514
+    paint/draw-line 564 514 550 524
+    paint/draw-line 550 524 535 534
+    paint/draw-line 535 534 519 542
+    paint/draw-line 519 542 503 549
+    paint/draw-line 503 549 487 556
+    paint/draw-line 487 556 470 561
+    paint/draw-line 470 561 453 565
+    paint/draw-line 453 565 435 568
+    paint/draw-line 435 568 418 569
+    paint/draw-line 418 569 400 570
+    paint/draw-line 400 570 382 569
+    paint/draw-line 382 569 365 568
+    paint/draw-line 365 568 347 565
+    paint/draw-line 347 565 330 561
+    paint/draw-line 330 561 313 556
+    paint/draw-line 313 556 297 549
+    paint/draw-line 297 549 281 542
+    paint/draw-line 281 542 265 534
+    paint/draw-line 265 534 250 524
+    paint/draw-line 250 524 236 514
+    paint/draw-line 236 514 222 503
+    paint/draw-line 222 503 209 491
+    paint/draw-line 209 491 197 478
+    paint/draw-line 197 478 186 464
+]
+;; outer indigo frame (cont.)
+do [
+    paint/draw-line 186 464 176 450
+    paint/draw-line 176 450 166 435
+    paint/draw-line 166 435 158 419
+    paint/draw-line 158 419 151 403
+    paint/draw-line 151 403 144 387
+    paint/draw-line 144 387 139 370
+    paint/draw-line 139 370 135 353
+    paint/draw-line 135 353 132 335
+    paint/draw-line 132 335 131 318
+    paint/draw-line 131 318 130 300
+    paint/draw-line 130 300 131 282
+    paint/draw-line 131 282 132 265
+    paint/draw-line 132 265 135 247
+    paint/draw-line 135 247 139 230
+    paint/draw-line 139 230 144 213
+    paint/draw-line 144 213 151 197
+    paint/draw-line 151 197 158 181
+    paint/draw-line 158 181 166 165
+    paint/draw-line 166 165 176 150
+    paint/draw-line 176 150 186 136
+    paint/draw-line 186 136 197 122
+    paint/draw-line 197 122 209 109
+    paint/draw-line 209 109 222 97
+    paint/draw-line 222 97 236 86
+    paint/draw-line 236 86 250 76
+    paint/draw-line 250 76 265 66
+    paint/draw-line 265 66 281 58
+    paint/draw-line 281 58 297 51
+    paint/draw-line 297 51 313 44
+    paint/draw-line 313 44 330 39
+    paint/draw-line 330 39 347 35
+    paint/draw-line 347 35 365 32
+    paint/draw-line 365 32 382 31
+    paint/draw-line 382 31 400 30
+    paint/draw-line 400 30 418 31
+    paint/draw-line 418 31 435 32
+    paint/draw-line 435 32 453 35
+    paint/draw-line 453 35 470 39
+    paint/draw-line 470 39 487 44
+    paint/draw-line 487 44 503 51
+]
+;; outer indigo frame (cont.)
+do [
+    paint/draw-line 503 51 519 58
+    paint/draw-line 519 58 535 66
+    paint/draw-line 535 66 550 76
+    paint/draw-line 550 76 564 86
+    paint/draw-line 564 86 578 97
+    paint/draw-line 578 97 591 109
+    paint/draw-line 591 109 603 122
+    paint/draw-line 603 122 614 136
+    paint/draw-line 614 136 624 150
+    paint/draw-line 624 150 634 165
+    paint/draw-line 634 165 642 181
+    paint/draw-line 642 181 649 197
+    paint/draw-line 649 197 656 213
+    paint/draw-line 656 213 661 230
+    paint/draw-line 661 230 665 247
+    paint/draw-line 665 247 668 265
+    paint/draw-line 668 265 669 282
+    paint/draw-line 669 282 670 300
+]
+;; fine turquoise band
+do [
+    paint/set-color 7
+    paint/set-size 2
+    paint/draw-line 662 300 661 323
+    paint/draw-line 661 323 658 345
+    paint/draw-line 658 345 653 368
+    paint/draw-line 653 368 646 390
+    paint/draw-line 646 390 637 411
+    paint/draw-line 637 411 627 431
+    paint/draw-line 627 431 615 450
+    paint/draw-line 615 450 601 468
+    paint/draw-line 601 468 585 485
+    paint/draw-line 585 485 568 501
+    paint/draw-line 568 501 550 515
+    paint/draw-line 550 515 531 527
+    paint/draw-line 531 527 511 537
+    paint/draw-line 511 537 490 546
+    paint/draw-line 490 546 468 553
+    paint/draw-line 468 553 445 558
+    paint/draw-line 445 558 423 561
+    paint/draw-line 423 561 400 562
+    paint/draw-line 400 562 377 561
+    paint/draw-line 377 561 355 558
+    paint/draw-line 355 558 332 553
+    paint/draw-line 332 553 310 546
+    paint/draw-line 310 546 289 537
+    paint/draw-line 289 537 269 527
+    paint/draw-line 269 527 250 515
+    paint/draw-line 250 515 232 501
+    paint/draw-line 232 501 215 485
+    paint/draw-line 215 485 199 468
+    paint/draw-line 199 468 185 450
+    paint/draw-line 185 450 173 431
+    paint/draw-line 173 431 163 411
+    paint/draw-line 163 411 154 390
+    paint/draw-line 154 390 147 368
+    paint/draw-line 147 368 142 345
+    paint/draw-line 142 345 139 323
+    paint/draw-line 139 323 138 300
+    paint/draw-line 138 300 139 277
+    paint/draw-line 139 277 142 255
+]
+;; fine turquoise band (cont.)
+do [
+    paint/draw-line 142 255 147 232
+    paint/draw-line 147 232 154 210
+    paint/draw-line 154 210 163 189
+    paint/draw-line 163 189 173 169
+    paint/draw-line 173 169 185 150
+    paint/draw-line 185 150 199 132
+    paint/draw-line 199 132 215 115
+    paint/draw-line 215 115 232 99
+    paint/draw-line 232 99 250 85
+    paint/draw-line 250 85 269 73
+    paint/draw-line 269 73 289 63
+    paint/draw-line 289 63 310 54
+    paint/draw-line 310 54 332 47
+    paint/draw-line 332 47 355 42
+    paint/draw-line 355 42 377 39
+    paint/draw-line 377 39 400 38
+    paint/draw-line 400 38 423 39
+    paint/draw-line 423 39 445 42
+    paint/draw-line 445 42 468 47
+    paint/draw-line 468 47 490 54
+    paint/draw-line 490 54 511 63
+    paint/draw-line 511 63 531 73
+    paint/draw-line 531 73 550 85
+    paint/draw-line 550 85 568 99
+    paint/draw-line 568 99 585 115
+    paint/draw-line 585 115 601 132
+    paint/draw-line 601 132 615 150
+    paint/draw-line 615 150 627 169
+    paint/draw-line 627 169 637 189
+    paint/draw-line 637 189 646 210
+    paint/draw-line 646 210 653 232
+    paint/draw-line 653 232 658 255
+    paint/draw-line 658 255 661 277
+    paint/draw-line 661 277 662 300
+]
+;; gold meridian
+do [
+    paint/set-color 10
+    paint/set-size 1
+    paint/draw-line 654 300 653 322
+    paint/draw-line 653 322 650 344
+    paint/draw-line 650 344 645 366
+    paint/draw-line 645 366 639 387
+    paint/draw-line 639 387 630 407
+    paint/draw-line 630 407 620 427
+    paint/draw-line 620 427 608 446
+    paint/draw-line 608 446 595 463
+    paint/draw-line 595 463 580 480
+    paint/draw-line 580 480 563 495
+    paint/draw-line 563 495 546 508
+    paint/draw-line 546 508 527 520
+    paint/draw-line 527 520 507 530
+    paint/draw-line 507 530 487 539
+    paint/draw-line 487 539 466 545
+    paint/draw-line 466 545 444 550
+    paint/draw-line 444 550 422 553
+    paint/draw-line 422 553 400 554
+    paint/draw-line 400 554 378 553
+    paint/draw-line 378 553 356 550
+    paint/draw-line 356 550 334 545
+    paint/draw-line 334 545 313 539
+    paint/draw-line 313 539 293 530
+    paint/draw-line 293 530 273 520
+    paint/draw-line 273 520 254 508
+    paint/draw-line 254 508 237 495
+    paint/draw-line 237 495 220 480
+    paint/draw-line 220 480 205 463
+    paint/draw-line 205 463 192 446
+    paint/draw-line 192 446 180 427
+    paint/draw-line 180 427 170 407
+    paint/draw-line 170 407 161 387
+    paint/draw-line 161 387 155 366
+    paint/draw-line 155 366 150 344
+    paint/draw-line 150 344 147 322
+    paint/draw-line 147 322 146 300
+    paint/draw-line 146 300 147 278
+    paint/draw-line 147 278 150 256
+]
+;; gold meridian (cont.)
+do [
+    paint/draw-line 150 256 155 234
+    paint/draw-line 155 234 161 213
+    paint/draw-line 161 213 170 193
+    paint/draw-line 170 193 180 173
+    paint/draw-line 180 173 192 154
+    paint/draw-line 192 154 205 137
+    paint/draw-line 205 137 220 120
+    paint/draw-line 220 120 237 105
+    paint/draw-line 237 105 254 92
+    paint/draw-line 254 92 273 80
+    paint/draw-line 273 80 293 70
+    paint/draw-line 293 70 313 61
+    paint/draw-line 313 61 334 55
+    paint/draw-line 334 55 356 50
+    paint/draw-line 356 50 378 47
+    paint/draw-line 378 47 400 46
+    paint/draw-line 400 46 422 47
+    paint/draw-line 422 47 444 50
+    paint/draw-line 444 50 466 55
+    paint/draw-line 466 55 487 61
+    paint/draw-line 487 61 507 70
+    paint/draw-line 507 70 527 80
+    paint/draw-line 527 80 546 92
+    paint/draw-line 546 92 563 105
+    paint/draw-line 563 105 580 120
+    paint/draw-line 580 120 595 137
+    paint/draw-line 595 137 608 154
+    paint/draw-line 608 154 620 173
+    paint/draw-line 620 173 630 193
+    paint/draw-line 630 193 639 213
+    paint/draw-line 639 213 645 234
+    paint/draw-line 645 234 650 256
+    paint/draw-line 650 256 653 278
+    paint/draw-line 653 278 654 300
+]
+;; indigo leaf lattice
+do [
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 608 341 25 630 346 215
+    paint/draw-pressure-line 630 346 215 647 349 25
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 576 418 25 595 430 215
+    paint/draw-pressure-line 595 430 215 610 440 25
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 518 476 25 530 495 215
+    paint/draw-pressure-line 530 495 215 540 510 25
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 441 508 25 446 530 215
+    paint/draw-pressure-line 446 530 215 449 547 25
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 359 508 25 354 530 215
+    paint/draw-pressure-line 354 530 215 351 547 25
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 282 476 25 270 495 215
+    paint/draw-pressure-line 270 495 215 260 510 25
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 224 418 25 205 430 215
+    paint/draw-pressure-line 205 430 215 190 440 25
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 192 341 25 170 346 215
+    paint/draw-pressure-line 170 346 215 153 349 25
+]
+;; indigo leaf lattice (cont.)
+do [
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 192 259 25 170 254 215
+    paint/draw-pressure-line 170 254 215 153 251 25
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 224 182 25 205 170 215
+    paint/draw-pressure-line 205 170 215 190 160 25
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 282 124 25 270 105 215
+    paint/draw-pressure-line 270 105 215 260 90 25
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 359 92 25 354 70 215
+    paint/draw-pressure-line 354 70 215 351 53 25
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 441 92 25 446 70 215
+    paint/draw-pressure-line 446 70 215 449 53 25
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 518 124 25 530 105 215
+    paint/draw-pressure-line 530 105 215 540 90 25
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 576 182 25 595 170 215
+    paint/draw-pressure-line 595 170 215 610 160 25
+    paint/set-color 6
+    paint/set-calligraphy-diameter 12
+    paint/set-ink-opacity 220
+    paint/draw-pressure-line 608 259 25 630 254 215
+    paint/draw-pressure-line 630 254 215 647 251 25
+]
+;; coral outer petals
+do [
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 606 300 70 634 300 235
+    paint/draw-pressure-line 634 300 235 658 300 35
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 590 379 70 616 390 235
+    paint/draw-pressure-line 616 390 235 638 399 35
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 546 446 70 565 465 235
+    paint/draw-pressure-line 565 465 235 582 482 35
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 479 490 70 490 516 235
+    paint/draw-pressure-line 490 516 235 499 538 35
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 400 506 70 400 534 235
+    paint/draw-pressure-line 400 534 235 400 558 35
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 321 490 70 310 516 235
+    paint/draw-pressure-line 310 516 235 301 538 35
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 254 446 70 235 465 235
+    paint/draw-pressure-line 235 465 235 218 482 35
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 210 379 70 184 390 235
+    paint/draw-pressure-line 184 390 235 162 399 35
+]
+;; coral outer petals (cont.)
+do [
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 194 300 70 166 300 235
+    paint/draw-pressure-line 166 300 235 142 300 35
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 210 221 70 184 210 235
+    paint/draw-pressure-line 184 210 235 162 201 35
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 254 154 70 235 135 235
+    paint/draw-pressure-line 235 135 235 218 118 35
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 321 110 70 310 84 235
+    paint/draw-pressure-line 310 84 235 301 62 35
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 400 94 70 400 66 235
+    paint/draw-pressure-line 400 66 235 400 42 35
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 479 110 70 490 84 235
+    paint/draw-pressure-line 490 84 235 499 62 35
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 546 154 70 565 135 235
+    paint/draw-pressure-line 565 135 235 582 118 35
+    paint/set-color 9
+    paint/set-calligraphy-diameter 22
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 590 221 70 616 210 235
+    paint/draw-pressure-line 616 210 235 638 201 35
+]
+;; gold petal veins and tips
+do [
+    paint/set-color 10
+    paint/set-size 1
+    paint/draw-line 614 300 650 300
+    paint/draw-line 598 382 631 396
+    paint/draw-line 551 451 577 477
+    paint/draw-line 482 498 496 531
+    paint/draw-line 400 514 400 550
+    paint/draw-line 318 498 304 531
+    paint/draw-line 249 451 223 477
+    paint/draw-line 202 382 169 396
+    paint/draw-line 186 300 150 300
+    paint/draw-line 202 218 169 204
+    paint/draw-line 249 149 223 123
+    paint/draw-line 318 102 304 69
+    paint/draw-line 400 86 400 50
+    paint/draw-line 482 102 496 69
+    paint/draw-line 551 149 577 123
+    paint/draw-line 598 218 631 204
+    paint/set-color 10
+    paint/set-size 7
+    paint/draw-line 660 300 660 300
+    paint/draw-line 640 399 640 399
+    paint/draw-line 584 484 584 484
+    paint/draw-line 499 540 499 540
+    paint/draw-line 400 560 400 560
+    paint/draw-line 301 540 301 540
+    paint/draw-line 216 484 216 484
+    paint/draw-line 160 399 160 399
+    paint/draw-line 140 300 140 300
+    paint/draw-line 160 201 160 201
+    paint/draw-line 216 116 216 116
+    paint/draw-line 301 60 301 60
+    paint/draw-line 400 40 400 40
+    paint/draw-line 499 60 499 60
+    paint/draw-line 584 116 584 116
+    paint/draw-line 640 201 640 201
+]
+;; turquoise garland
+do [
+    paint/set-color 7
+    paint/set-size 4
+    paint/draw-line 596 300 602 313
+    paint/draw-line 602 313 600 326
+    paint/draw-line 600 326 592 338
+    paint/draw-line 592 338 583 349
+    paint/draw-line 583 349 580 361
+    paint/draw-line 580 361 581 375
+    paint/draw-line 581 375 581 389
+    paint/draw-line 581 389 575 401
+    paint/draw-line 575 401 563 409
+    paint/draw-line 563 409 551 416
+    paint/draw-line 551 416 543 425
+    paint/draw-line 543 425 539 439
+    paint/draw-line 539 439 533 452
+    paint/draw-line 533 452 523 460
+    paint/draw-line 523 460 509 463
+    paint/draw-line 509 463 495 464
+    paint/draw-line 495 464 484 470
+    paint/draw-line 484 470 475 481
+    paint/draw-line 475 481 465 491
+    paint/draw-line 465 491 452 495
+    paint/draw-line 452 495 438 492
+    paint/draw-line 438 492 425 488
+    paint/draw-line 425 488 412 490
+    paint/draw-line 412 490 400 496
+    paint/draw-line 400 496 387 502
+    paint/draw-line 387 502 374 500
+    paint/draw-line 374 500 362 492
+    paint/draw-line 362 492 351 483
+    paint/draw-line 351 483 339 480
+    paint/draw-line 339 480 325 481
+    paint/draw-line 325 481 311 481
+    paint/draw-line 311 481 299 475
+    paint/draw-line 299 475 291 463
+    paint/draw-line 291 463 284 451
+    paint/draw-line 284 451 275 443
+    paint/draw-line 275 443 261 439
+    paint/draw-line 261 439 248 433
+    paint/draw-line 248 433 240 423
+]
+;; turquoise garland (cont.)
+do [
+    paint/draw-line 240 423 237 409
+    paint/draw-line 237 409 236 395
+    paint/draw-line 236 395 230 384
+    paint/draw-line 230 384 219 375
+    paint/draw-line 219 375 209 365
+    paint/draw-line 209 365 205 352
+    paint/draw-line 205 352 208 338
+    paint/draw-line 208 338 212 325
+    paint/draw-line 212 325 210 312
+    paint/draw-line 210 312 204 300
+    paint/draw-line 204 300 198 287
+    paint/draw-line 198 287 200 274
+    paint/draw-line 200 274 208 262
+    paint/draw-line 208 262 217 251
+    paint/draw-line 217 251 220 239
+    paint/draw-line 220 239 219 225
+    paint/draw-line 219 225 219 211
+    paint/draw-line 219 211 225 199
+    paint/draw-line 225 199 237 191
+    paint/draw-line 237 191 249 184
+    paint/draw-line 249 184 257 175
+    paint/draw-line 257 175 261 161
+    paint/draw-line 261 161 267 148
+    paint/draw-line 267 148 277 140
+    paint/draw-line 277 140 291 137
+    paint/draw-line 291 137 305 136
+    paint/draw-line 305 136 316 130
+    paint/draw-line 316 130 325 119
+    paint/draw-line 325 119 335 109
+    paint/draw-line 335 109 348 105
+    paint/draw-line 348 105 362 108
+    paint/draw-line 362 108 375 112
+    paint/draw-line 375 112 388 110
+    paint/draw-line 388 110 400 104
+    paint/draw-line 400 104 413 98
+    paint/draw-line 413 98 426 100
+    paint/draw-line 426 100 438 108
+    paint/draw-line 438 108 449 117
+    paint/draw-line 449 117 461 120
+    paint/draw-line 461 120 475 119
+]
+;; turquoise garland (cont.)
+do [
+    paint/draw-line 475 119 489 119
+    paint/draw-line 489 119 501 125
+    paint/draw-line 501 125 509 137
+    paint/draw-line 509 137 516 149
+    paint/draw-line 516 149 525 157
+    paint/draw-line 525 157 539 161
+    paint/draw-line 539 161 552 167
+    paint/draw-line 552 167 560 177
+    paint/draw-line 560 177 563 191
+    paint/draw-line 563 191 564 205
+    paint/draw-line 564 205 570 216
+    paint/draw-line 570 216 581 225
+    paint/draw-line 581 225 591 235
+    paint/draw-line 591 235 595 248
+    paint/draw-line 595 248 592 262
+    paint/draw-line 592 262 588 275
+    paint/draw-line 588 275 590 288
+    paint/draw-line 590 288 596 300
+]
+;; fine gold garland
+do [
+    paint/set-color 10
+    paint/set-size 2
+    paint/draw-line 585 300 587 318
+    paint/draw-line 587 318 580 336
+    paint/draw-line 580 336 573 352
+    paint/draw-line 573 352 571 371
+    paint/draw-line 571 371 565 388
+    paint/draw-line 565 388 552 402
+    paint/draw-line 552 402 540 415
+    paint/draw-line 540 415 531 431
+    paint/draw-line 531 431 519 445
+    paint/draw-line 519 445 502 452
+    paint/draw-line 502 452 485 459
+    paint/draw-line 485 459 471 471
+    paint/draw-line 471 471 454 479
+    paint/draw-line 454 479 436 480
+    paint/draw-line 436 480 418 480
+    paint/draw-line 418 480 400 485
+    paint/draw-line 400 485 382 487
+    paint/draw-line 382 487 364 480
+    paint/draw-line 364 480 348 473
+    paint/draw-line 348 473 329 471
+    paint/draw-line 329 471 312 465
+    paint/draw-line 312 465 298 452
+    paint/draw-line 298 452 285 440
+    paint/draw-line 285 440 269 431
+    paint/draw-line 269 431 255 419
+    paint/draw-line 255 419 248 402
+    paint/draw-line 248 402 241 385
+    paint/draw-line 241 385 229 371
+    paint/draw-line 229 371 221 354
+    paint/draw-line 221 354 220 336
+    paint/draw-line 220 336 220 318
+    paint/draw-line 220 318 215 300
+    paint/draw-line 215 300 213 282
+    paint/draw-line 213 282 220 264
+    paint/draw-line 220 264 227 248
+    paint/draw-line 227 248 229 229
+    paint/draw-line 229 229 235 212
+    paint/draw-line 235 212 248 198
+]
+;; fine gold garland (cont.)
+do [
+    paint/draw-line 248 198 260 185
+    paint/draw-line 260 185 269 169
+    paint/draw-line 269 169 281 155
+    paint/draw-line 281 155 298 148
+    paint/draw-line 298 148 315 141
+    paint/draw-line 315 141 329 129
+    paint/draw-line 329 129 346 121
+    paint/draw-line 346 121 364 120
+    paint/draw-line 364 120 382 120
+    paint/draw-line 382 120 400 115
+    paint/draw-line 400 115 418 113
+    paint/draw-line 418 113 436 120
+    paint/draw-line 436 120 452 127
+    paint/draw-line 452 127 471 129
+    paint/draw-line 471 129 488 135
+    paint/draw-line 488 135 502 148
+    paint/draw-line 502 148 515 160
+    paint/draw-line 515 160 531 169
+    paint/draw-line 531 169 545 181
+    paint/draw-line 545 181 552 198
+    paint/draw-line 552 198 559 215
+    paint/draw-line 559 215 571 229
+    paint/draw-line 571 229 579 246
+    paint/draw-line 579 246 580 264
+    paint/draw-line 580 264 580 282
+    paint/draw-line 580 282 585 300
+]
+;; hanging gold leaves
+do [
+    paint/set-color 10
+    paint/set-size 2
+    paint/draw-line 574 300 564 294
+    paint/draw-line 564 294 552 300
+    paint/draw-line 552 300 564 306
+    paint/draw-line 564 306 574 300
+    paint/draw-line 561 367 554 357
+    paint/draw-line 554 357 540 358
+    paint/draw-line 540 358 549 368
+    paint/draw-line 549 368 561 367
+    paint/draw-line 523 423 520 412
+    paint/draw-line 520 412 507 407
+    paint/draw-line 507 407 512 420
+    paint/draw-line 512 420 523 423
+    paint/draw-line 467 461 468 449
+    paint/draw-line 468 449 458 440
+    paint/draw-line 458 440 457 454
+    paint/draw-line 457 454 467 461
+    paint/draw-line 400 474 406 464
+    paint/draw-line 406 464 400 452
+    paint/draw-line 400 452 394 464
+    paint/draw-line 394 464 400 474
+    paint/draw-line 333 461 343 454
+    paint/draw-line 343 454 342 440
+    paint/draw-line 342 440 332 449
+    paint/draw-line 332 449 333 461
+    paint/draw-line 277 423 288 420
+    paint/draw-line 288 420 293 407
+    paint/draw-line 293 407 280 412
+    paint/draw-line 280 412 277 423
+    paint/draw-line 239 367 251 368
+    paint/draw-line 251 368 260 358
+    paint/draw-line 260 358 246 357
+    paint/draw-line 246 357 239 367
+    paint/draw-line 226 300 236 306
+    paint/draw-line 236 306 248 300
+    paint/draw-line 248 300 236 294
+    paint/draw-line 236 294 226 300
+    paint/draw-line 239 233 246 243
+    paint/draw-line 246 243 260 242
+]
+;; hanging gold leaves (cont.)
+do [
+    paint/draw-line 260 242 251 232
+    paint/draw-line 251 232 239 233
+    paint/draw-line 277 177 280 188
+    paint/draw-line 280 188 293 193
+    paint/draw-line 293 193 288 180
+    paint/draw-line 288 180 277 177
+    paint/draw-line 333 139 332 151
+    paint/draw-line 332 151 342 160
+    paint/draw-line 342 160 343 146
+    paint/draw-line 343 146 333 139
+    paint/draw-line 400 126 394 136
+    paint/draw-line 394 136 400 148
+    paint/draw-line 400 148 406 136
+    paint/draw-line 406 136 400 126
+    paint/draw-line 467 139 457 146
+    paint/draw-line 457 146 458 160
+    paint/draw-line 458 160 468 151
+    paint/draw-line 468 151 467 139
+    paint/draw-line 523 177 512 180
+    paint/draw-line 512 180 507 193
+    paint/draw-line 507 193 520 188
+    paint/draw-line 520 188 523 177
+    paint/draw-line 561 233 549 232
+    paint/draw-line 549 232 540 242
+    paint/draw-line 540 242 554 243
+    paint/draw-line 554 243 561 233
+]
+;; middle indigo ring
+do [
+    paint/set-color 6
+    paint/set-size 1
+    paint/draw-line 546 300 545 319
+    paint/draw-line 545 319 541 338
+    paint/draw-line 541 338 535 356
+    paint/draw-line 535 356 526 373
+    paint/draw-line 526 373 516 389
+    paint/draw-line 516 389 503 403
+    paint/draw-line 503 403 489 416
+    paint/draw-line 489 416 473 426
+    paint/draw-line 473 426 456 435
+    paint/draw-line 456 435 438 441
+    paint/draw-line 438 441 419 445
+    paint/draw-line 419 445 400 446
+    paint/draw-line 400 446 381 445
+    paint/draw-line 381 445 362 441
+    paint/draw-line 362 441 344 435
+    paint/draw-line 344 435 327 426
+    paint/draw-line 327 426 311 416
+    paint/draw-line 311 416 297 403
+    paint/draw-line 297 403 284 389
+    paint/draw-line 284 389 274 373
+    paint/draw-line 274 373 265 356
+    paint/draw-line 265 356 259 338
+    paint/draw-line 259 338 255 319
+    paint/draw-line 255 319 254 300
+    paint/draw-line 254 300 255 281
+    paint/draw-line 255 281 259 262
+    paint/draw-line 259 262 265 244
+    paint/draw-line 265 244 274 227
+    paint/draw-line 274 227 284 211
+    paint/draw-line 284 211 297 197
+    paint/draw-line 297 197 311 184
+    paint/draw-line 311 184 327 174
+    paint/draw-line 327 174 344 165
+    paint/draw-line 344 165 362 159
+    paint/draw-line 362 159 381 155
+    paint/draw-line 381 155 400 154
+    paint/draw-line 400 154 419 155
+    paint/draw-line 419 155 438 159
+]
+;; middle indigo ring (cont.)
+do [
+    paint/draw-line 438 159 456 165
+    paint/draw-line 456 165 473 174
+    paint/draw-line 473 174 489 184
+    paint/draw-line 489 184 503 197
+    paint/draw-line 503 197 516 211
+    paint/draw-line 516 211 526 227
+    paint/draw-line 526 227 535 244
+    paint/draw-line 535 244 541 262
+    paint/draw-line 541 262 545 281
+    paint/draw-line 545 281 546 300
+]
+;; middle gold points
+do [
+    paint/set-color 10
+    paint/set-size 5
+    paint/draw-line 533 327 533 327
+    paint/draw-line 513 376 513 376
+    paint/draw-line 476 413 476 413
+    paint/draw-line 427 433 427 433
+    paint/draw-line 373 433 373 433
+    paint/draw-line 324 413 324 413
+    paint/draw-line 287 376 287 376
+    paint/draw-line 267 327 267 327
+    paint/draw-line 267 273 267 273
+    paint/draw-line 287 224 287 224
+    paint/draw-line 324 187 324 187
+    paint/draw-line 373 167 373 167
+    paint/draw-line 427 167 427 167
+    paint/draw-line 476 187 476 187
+    paint/draw-line 513 224 513 224
+    paint/draw-line 533 273 533 273
+]
+;; teal inner ring
+do [
+    paint/set-color 8
+    paint/set-size 4
+    paint/draw-line 528 300 527 317
+    paint/draw-line 527 317 524 333
+    paint/draw-line 524 333 518 349
+    paint/draw-line 518 349 511 364
+    paint/draw-line 511 364 502 378
+    paint/draw-line 502 378 491 391
+    paint/draw-line 491 391 478 402
+    paint/draw-line 478 402 464 411
+    paint/draw-line 464 411 449 418
+    paint/draw-line 449 418 433 424
+    paint/draw-line 433 424 417 427
+    paint/draw-line 417 427 400 428
+    paint/draw-line 400 428 383 427
+    paint/draw-line 383 427 367 424
+    paint/draw-line 367 424 351 418
+    paint/draw-line 351 418 336 411
+    paint/draw-line 336 411 322 402
+    paint/draw-line 322 402 309 391
+    paint/draw-line 309 391 298 378
+    paint/draw-line 298 378 289 364
+    paint/draw-line 289 364 282 349
+    paint/draw-line 282 349 276 333
+    paint/draw-line 276 333 273 317
+    paint/draw-line 273 317 272 300
+    paint/draw-line 272 300 273 283
+    paint/draw-line 273 283 276 267
+    paint/draw-line 276 267 282 251
+    paint/draw-line 282 251 289 236
+    paint/draw-line 289 236 298 222
+    paint/draw-line 298 222 309 209
+    paint/draw-line 309 209 322 198
+    paint/draw-line 322 198 336 189
+    paint/draw-line 336 189 351 182
+    paint/draw-line 351 182 367 176
+    paint/draw-line 367 176 383 173
+    paint/draw-line 383 173 400 172
+    paint/draw-line 400 172 417 173
+    paint/draw-line 417 173 433 176
+]
+;; teal inner ring (cont.)
+do [
+    paint/draw-line 433 176 449 182
+    paint/draw-line 449 182 464 189
+    paint/draw-line 464 189 478 198
+    paint/draw-line 478 198 491 209
+    paint/draw-line 491 209 502 222
+    paint/draw-line 502 222 511 236
+    paint/draw-line 511 236 518 251
+    paint/draw-line 518 251 524 267
+    paint/draw-line 524 267 527 283
+    paint/draw-line 527 283 528 300
+]
+;; indigo inner ring
+do [
+    paint/set-color 6
+    paint/set-size 2
+    paint/draw-line 520 300 519 316
+    paint/draw-line 519 316 516 331
+    paint/draw-line 516 331 511 346
+    paint/draw-line 511 346 504 360
+    paint/draw-line 504 360 495 373
+    paint/draw-line 495 373 485 385
+    paint/draw-line 485 385 473 395
+    paint/draw-line 473 395 460 404
+    paint/draw-line 460 404 446 411
+    paint/draw-line 446 411 431 416
+    paint/draw-line 431 416 416 419
+    paint/draw-line 416 419 400 420
+    paint/draw-line 400 420 384 419
+    paint/draw-line 384 419 369 416
+    paint/draw-line 369 416 354 411
+    paint/draw-line 354 411 340 404
+    paint/draw-line 340 404 327 395
+    paint/draw-line 327 395 315 385
+    paint/draw-line 315 385 305 373
+    paint/draw-line 305 373 296 360
+    paint/draw-line 296 360 289 346
+    paint/draw-line 289 346 284 331
+    paint/draw-line 284 331 281 316
+    paint/draw-line 281 316 280 300
+    paint/draw-line 280 300 281 284
+    paint/draw-line 281 284 284 269
+    paint/draw-line 284 269 289 254
+    paint/draw-line 289 254 296 240
+    paint/draw-line 296 240 305 227
+    paint/draw-line 305 227 315 215
+    paint/draw-line 315 215 327 205
+    paint/draw-line 327 205 340 196
+    paint/draw-line 340 196 354 189
+    paint/draw-line 354 189 369 184
+    paint/draw-line 369 184 384 181
+    paint/draw-line 384 181 400 180
+    paint/draw-line 400 180 416 181
+    paint/draw-line 416 181 431 184
+]
+;; indigo inner ring (cont.)
+do [
+    paint/draw-line 431 184 446 189
+    paint/draw-line 446 189 460 196
+    paint/draw-line 460 196 473 205
+    paint/draw-line 473 205 485 215
+    paint/draw-line 485 215 495 227
+    paint/draw-line 495 227 504 240
+    paint/draw-line 504 240 511 254
+    paint/draw-line 511 254 516 269
+    paint/draw-line 516 269 519 284
+    paint/draw-line 519 284 520 300
+]
+;; gold inner meridian
+do [
+    paint/set-color 10
+    paint/set-size 1
+    paint/draw-line 512 300 511 318
+    paint/draw-line 511 318 507 335
+    paint/draw-line 507 335 500 351
+    paint/draw-line 500 351 491 366
+    paint/draw-line 491 366 479 379
+    paint/draw-line 479 379 466 391
+    paint/draw-line 466 391 451 400
+    paint/draw-line 451 400 435 407
+    paint/draw-line 435 407 418 411
+    paint/draw-line 418 411 400 412
+    paint/draw-line 400 412 382 411
+    paint/draw-line 382 411 365 407
+    paint/draw-line 365 407 349 400
+    paint/draw-line 349 400 334 391
+    paint/draw-line 334 391 321 379
+    paint/draw-line 321 379 309 366
+    paint/draw-line 309 366 300 351
+    paint/draw-line 300 351 293 335
+    paint/draw-line 293 335 289 318
+    paint/draw-line 289 318 288 300
+    paint/draw-line 288 300 289 282
+    paint/draw-line 289 282 293 265
+    paint/draw-line 293 265 300 249
+    paint/draw-line 300 249 309 234
+    paint/draw-line 309 234 321 221
+    paint/draw-line 321 221 334 209
+    paint/draw-line 334 209 349 200
+    paint/draw-line 349 200 365 193
+    paint/draw-line 365 193 382 189
+    paint/draw-line 382 189 400 188
+    paint/draw-line 400 188 418 189
+    paint/draw-line 418 189 435 193
+    paint/draw-line 435 193 451 200
+    paint/draw-line 451 200 466 209
+    paint/draw-line 466 209 479 221
+    paint/draw-line 479 221 491 234
+    paint/draw-line 491 234 500 249
+    paint/draw-line 500 249 507 265
+]
+;; gold inner meridian (cont.)
+do [
+    paint/draw-line 507 265 511 282
+    paint/draw-line 511 282 512 300
+]
+;; inner turquoise petals
+do [
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 458 300 60 488 300 225
+    paint/draw-pressure-line 488 300 225 506 300 35
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 454 322 60 481 334 225
+    paint/draw-pressure-line 481 334 225 498 341 35
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 441 341 60 462 362 225
+    paint/draw-pressure-line 462 362 225 475 375 35
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 422 354 60 434 381 225
+    paint/draw-pressure-line 434 381 225 441 398 35
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 400 358 60 400 388 225
+    paint/draw-pressure-line 400 388 225 400 406 35
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 378 354 60 366 381 225
+    paint/draw-pressure-line 366 381 225 359 398 35
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 359 341 60 338 362 225
+    paint/draw-pressure-line 338 362 225 325 375 35
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 346 322 60 319 334 225
+    paint/draw-pressure-line 319 334 225 302 341 35
+]
+;; inner turquoise petals (cont.)
+do [
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 342 300 60 312 300 225
+    paint/draw-pressure-line 312 300 225 294 300 35
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 346 278 60 319 266 225
+    paint/draw-pressure-line 319 266 225 302 259 35
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 359 259 60 338 238 225
+    paint/draw-pressure-line 338 238 225 325 225 35
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 378 246 60 366 219 225
+    paint/draw-pressure-line 366 219 225 359 202 35
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 400 242 60 400 212 225
+    paint/draw-pressure-line 400 212 225 400 194 35
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 422 246 60 434 219 225
+    paint/draw-pressure-line 434 219 225 441 202 35
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 441 259 60 462 238 225
+    paint/draw-pressure-line 462 238 225 475 225 35
+    paint/set-color 7
+    paint/set-calligraphy-diameter 15
+    paint/set-ink-opacity 235
+    paint/draw-pressure-line 454 278 60 481 266 225
+    paint/draw-pressure-line 481 266 225 498 259 35
+]
+;; inner turquoise petals (cont.)
+do [
+    paint/set-color 11
+    paint/set-size 1
+    paint/draw-line 464 300 502 300
+    paint/draw-line 459 324 494 339
+    paint/draw-line 445 345 472 372
+    paint/draw-line 424 359 439 394
+    paint/draw-line 400 364 400 402
+    paint/draw-line 376 359 361 394
+    paint/draw-line 355 345 328 372
+    paint/draw-line 341 324 306 339
+    paint/draw-line 336 300 298 300
+    paint/draw-line 341 276 306 261
+    paint/draw-line 355 255 328 228
+    paint/draw-line 376 241 361 206
+    paint/draw-line 400 236 400 198
+    paint/draw-line 424 241 439 206
+    paint/draw-line 445 255 472 228
+    paint/draw-line 459 276 494 261
+]
+;; central rosette
+do [
+    paint/set-color 6
+    paint/set-size 2
+    paint/draw-line 458 300 457 310
+    paint/draw-line 457 310 455 320
+    paint/draw-line 455 320 450 329
+    paint/draw-line 450 329 444 337
+    paint/draw-line 444 337 437 344
+    paint/draw-line 437 344 429 350
+    paint/draw-line 429 350 420 355
+    paint/draw-line 420 355 410 357
+    paint/draw-line 410 357 400 358
+    paint/draw-line 400 358 390 357
+    paint/draw-line 390 357 380 355
+    paint/draw-line 380 355 371 350
+    paint/draw-line 371 350 363 344
+    paint/draw-line 363 344 356 337
+    paint/draw-line 356 337 350 329
+    paint/draw-line 350 329 345 320
+    paint/draw-line 345 320 343 310
+    paint/draw-line 343 310 342 300
+    paint/draw-line 342 300 343 290
+    paint/draw-line 343 290 345 280
+    paint/draw-line 345 280 350 271
+    paint/draw-line 350 271 356 263
+    paint/draw-line 356 263 363 256
+    paint/draw-line 363 256 371 250
+    paint/draw-line 371 250 380 245
+    paint/draw-line 380 245 390 243
+    paint/draw-line 390 243 400 242
+    paint/draw-line 400 242 410 243
+    paint/draw-line 410 243 420 245
+    paint/draw-line 420 245 429 250
+    paint/draw-line 429 250 437 256
+    paint/draw-line 437 256 444 263
+    paint/draw-line 444 263 450 271
+    paint/draw-line 450 271 455 280
+    paint/draw-line 455 280 457 290
+    paint/draw-line 457 290 458 300
+    paint/set-color 10
+    paint/set-size 1
+]
+;; central rosette (cont.)
+do [
+    paint/draw-line 450 300 449 311
+    paint/draw-line 449 311 445 322
+    paint/draw-line 445 322 439 331
+    paint/draw-line 439 331 431 339
+    paint/draw-line 431 339 422 345
+    paint/draw-line 422 345 411 349
+    paint/draw-line 411 349 400 350
+    paint/draw-line 400 350 389 349
+    paint/draw-line 389 349 378 345
+    paint/draw-line 378 345 369 339
+    paint/draw-line 369 339 361 331
+    paint/draw-line 361 331 355 322
+    paint/draw-line 355 322 351 311
+    paint/draw-line 351 311 350 300
+    paint/draw-line 350 300 351 289
+    paint/draw-line 351 289 355 278
+    paint/draw-line 355 278 361 269
+    paint/draw-line 361 269 369 261
+    paint/draw-line 369 261 378 255
+    paint/draw-line 378 255 389 251
+    paint/draw-line 389 251 400 250
+    paint/draw-line 400 250 411 251
+    paint/draw-line 411 251 422 255
+    paint/draw-line 422 255 431 261
+    paint/draw-line 431 261 439 269
+    paint/draw-line 439 269 445 278
+    paint/draw-line 445 278 449 289
+    paint/draw-line 449 289 450 300
+    paint/set-color 9
+    paint/set-calligraphy-diameter 14
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 416 300 100 433 300 240
+    paint/draw-pressure-line 433 300 240 446 300 30
+    paint/set-color 9
+    paint/set-calligraphy-diameter 14
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 414 308 100 429 316 240
+    paint/draw-pressure-line 429 316 240 440 323 30
+    paint/set-color 9
+    paint/set-calligraphy-diameter 14
+]
+;; central rosette (cont.)
+do [
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 408 314 100 416 329 240
+    paint/draw-pressure-line 416 329 240 423 340 30
+    paint/set-color 9
+    paint/set-calligraphy-diameter 14
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 400 316 100 400 333 240
+    paint/draw-pressure-line 400 333 240 400 346 30
+    paint/set-color 9
+    paint/set-calligraphy-diameter 14
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 392 314 100 384 329 240
+    paint/draw-pressure-line 384 329 240 377 340 30
+    paint/set-color 9
+    paint/set-calligraphy-diameter 14
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 386 308 100 371 316 240
+    paint/draw-pressure-line 371 316 240 360 323 30
+    paint/set-color 9
+    paint/set-calligraphy-diameter 14
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 384 300 100 367 300 240
+    paint/draw-pressure-line 367 300 240 354 300 30
+    paint/set-color 9
+    paint/set-calligraphy-diameter 14
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 386 292 100 371 284 240
+    paint/draw-pressure-line 371 284 240 360 277 30
+    paint/set-color 9
+    paint/set-calligraphy-diameter 14
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 392 286 100 384 271 240
+    paint/draw-pressure-line 384 271 240 377 260 30
+    paint/set-color 9
+    paint/set-calligraphy-diameter 14
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 400 284 100 400 267 240
+    paint/draw-pressure-line 400 267 240 400 254 30
+    paint/set-color 9
+    paint/set-calligraphy-diameter 14
+]
+;; central rosette (cont.)
+do [
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 408 286 100 416 271 240
+    paint/draw-pressure-line 416 271 240 423 260 30
+    paint/set-color 9
+    paint/set-calligraphy-diameter 14
+    paint/set-ink-opacity 245
+    paint/draw-pressure-line 414 292 100 429 284 240
+    paint/draw-pressure-line 429 284 240 440 277 30
+    paint/set-color 10
+    paint/set-size 4
+    paint/draw-line 441 311 441 311
+    paint/draw-line 430 330 430 330
+    paint/draw-line 411 341 411 341
+    paint/draw-line 389 341 389 341
+    paint/draw-line 370 330 370 330
+    paint/draw-line 359 311 359 311
+    paint/draw-line 359 289 359 289
+    paint/draw-line 370 270 370 270
+    paint/draw-line 389 259 389 259
+    paint/draw-line 411 259 411 259
+    paint/draw-line 430 270 430 270
+    paint/draw-line 441 289 441 289
+    paint/set-color 11
+    paint/set-size 3
+    paint/draw-line 414 300 413 305
+    paint/draw-line 413 305 410 310
+    paint/draw-line 410 310 405 313
+    paint/draw-line 405 313 400 314
+    paint/draw-line 400 314 395 313
+    paint/draw-line 395 313 390 310
+    paint/draw-line 390 310 387 305
+    paint/draw-line 387 305 386 300
+    paint/draw-line 386 300 387 295
+    paint/draw-line 387 295 390 290
+    paint/draw-line 390 290 395 287
+    paint/draw-line 395 287 400 286
+    paint/draw-line 400 286 405 287
+    paint/draw-line 405 287 410 290
+    paint/draw-line 410 290 413 295
+    paint/draw-line 413 295 414 300
+]
+;; central rosette (cont.)
+do [
+    paint/set-color 10
+    paint/set-size 8
+    paint/draw-line 400 300 400 300
+]

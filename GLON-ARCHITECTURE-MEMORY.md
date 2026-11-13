@@ -439,6 +439,23 @@ completed image on Stop. This confirms the earlier ~1,350-call boundary is not
 hit by a design in the requested 700-1,000 range; no parser or capacity
 workaround was needed.
 
+[MEASURED 2026-11-13, `experiments/glon-gui-paint` mandala-deluxe-v2]
+**Refined 926-command mandala uses the existing palette interface for extra
+script colours.** v2 is 42,750 bytes on disk (41,639 stripped), emitting one
+Clear, 805 `L` commands and 120 tapered `P` commands (29,759 command bytes).
+`paint/set-color` now accepts indices 1-11; 1-4 are the unchanged UI palette,
+5 is script black, and 6-11 add indigo, turquoise, teal, coral, gold and ivory
+RGB values already carried by the ordinary `L`/`P` command fields. No new
+drawing opcode, interpreter path or frozen-S1 change was made. On WSLg:
+load 0.49-0.58 ms, immediate 7.13-8.72 s, preparation 5.84-7.70 s, smooth
+replay 5.33-7.82 s; managed high-water 40,000, live cells 1,520/1,488, GC
+568/1,135. The higher
+cost over v1 comes from 104 additional pressure commands used to taper leaves
+and petal endpoints. Immediate and replay are pixel-identical; the real GUI
+startup path rendered the same image. The 16-fold construction, continuous
+garland, reduced central rosette and 41.6 KB source remain below all empirical
+command, sink, parser and managed-heap limits.
+
 **[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
 worklist has a fixed 256 entries (`GC_WORKLIST_CAP`, the cells before `GC_A1`).
 - **It cannot overflow in the 64K configuration.** Each object is pushed at

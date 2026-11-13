@@ -188,6 +188,7 @@ examples/calligraphy.glon
 examples/yong.glon
 examples/mandala.glon
 examples/mandala-deluxe.glon
+examples/mandala-deluxe-v2.glon
 examples/replay-demo.glon
 ```
 
@@ -367,6 +368,49 @@ completed replay images compare pixel-identical. A real GUI load/run produced
 the same artwork; Play/Pause showed the first stroke in progress and Stop
 restored the completed image.
 
+### Deluxe mandala v2
+
+`examples/mandala-deluxe-v2.glon` is the refined version. It keeps the v1 file
+as a baseline and changes the visual language: deep indigo structure, turquoise
+and teal garlands, coral petals, gold filigree and warm ivory accents. The outer
+border alternates 16 tapered indigo leaves with 16 coral pressure petals; a
+single continuous 96-segment turquoise garland and a fine gold garland replace
+the disconnected green dashes. The crowded starburst is reduced to a 12-petal
+coral rosette inside a 16-petal turquoise crown, with open middle space and
+clearer ring hierarchy.
+
+The v2 file is 42,750 bytes on disk (41,639 after comments) and produces
+926 replay commands: one Clear, 805 `L` commands and 120 tapered `P` commands,
+for 29,759 command bytes. The extra pressure strokes are deliberate: they give
+the leaves and petals tapered ends instead of abrupt line caps. It remains well
+below the empirical ~1,350-command boundary, the 4,096-command cap and the
+1 MiB sink.
+
+The palette extension uses the existing `paint/set-color` interface. UI colours
+1-4 are unchanged; scripts may additionally use 5 black, 6 indigo
+`(42,48,104)`, 7 turquoise `(26,170,160)`, 8 teal `(22,104,100)`, 9 coral
+`(236,112,92)`, 10 gold `(208,166,74)` and 11 ivory `(244,234,208)`. Ordinary
+line and pressure commands still carry their RGB bytes; no new drawing opcode
+or host rendering path was added.
+
+To view it: File -> Open Script -> `examples/mandala-deluxe-v2.glon` -> Run
+Script. For a direct GUI startup, `./build/glon-paint --gui-run
+examples/mandala-deluxe-v2.glon` loads and executes it before entering the
+event loop. The headless `--mandala-deluxe-v2-demo` saves
+`glon-mandala-deluxe-v2-final.png`, the 25/50/75% stages and the replay-final
+image, and checks pixel equality, Pause/Step/Back/Stop/End, undo/redo and
+repeated Load-Clear-Load.
+
+Measured on WSLg across final runs: load 0.49-0.58 ms, immediate execution
+7.13-8.72 s, replay preparation 5.84-7.70 s, full smooth replay 5.33-7.82 s;
+managed high-water 40,000, live cells 1,520 after immediate and 1,488 after
+preparation, with 568 and 1,135 GC collections. Immediate and completed replay
+are pixel-identical. Compared with v1
+(894 commands, 34,263-byte file, about 4.9-5.9 s immediate), v2 uses 32 more
+commands and 104 more pressure strokes, replacing 72 line commands with tapered
+forms. It is slower because pressure geometry is more expensive; the visual
+hierarchy, colour harmony and curve quality are the intended trade-off.
+
 ## Writing 永
 
 `examples/yong.glon` writes 永 with the existing pressure calligraphy commands.
@@ -377,7 +421,8 @@ behaviour inside those five strokes: 側 (dot), 勒 (horizontal), 努 (vertical)
 (right sweep).
 
 The script uses palette colour 5, a script-only black (`0,0,0`); the interactive
-UI still exposes the original four colour swatches. It sets maximum calligraphy
+UI still exposes the original four colour swatches, while scripts can also use
+the six deluxe palette entries 6-11 documented above. It sets maximum calligraphy
 diameter 54 and ink opacity 255, then emits 18 connected pressure segments
 within an approximately 380x400 px character box. It contains one Clear plus 18
 `P` commands (19 replay commands) and stays well below the command, byte and
@@ -602,6 +647,7 @@ make test
 # Render the mandala, save replay stages and verify immediate/replay equality.
 ./build/glon-paint --mandala-demo
 ./build/glon-paint --mandala-deluxe-demo
+./build/glon-paint --mandala-deluxe-v2-demo
 ```
 
 The calligraphy and replay tests compare complete 800x600 drawing-layer

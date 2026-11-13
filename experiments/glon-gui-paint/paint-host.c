@@ -415,6 +415,12 @@ static void palette_rgb(int c, int *r, int *g, int *b) {
     case 3: *r = 40;  *g = 160; *b = 80;  break;
     case 4: *r = 230; *g = 170; *b = 40;  break;
     case 5: *r = 0;   *g = 0;   *b = 0;   break;
+    case 6: *r = 42;  *g = 48;  *b = 104; break;
+    case 7: *r = 26;  *g = 170; *b = 160; break;
+    case 8: *r = 22;  *g = 104; *b = 100; break;
+    case 9: *r = 236; *g = 112; *b = 92;  break;
+    case 10: *r = 208; *g = 166; *b = 74; break;
+    case 11: *r = 244; *g = 234; *b = 208; break;
     default: *r = 220; *g = 60; *b = 60; break;
     }
 }
@@ -2578,8 +2584,11 @@ static void ui_right_panel(void) {
         if (nk_button_color(nk, nk_rgb(230, 170, 40))) app_set_color(4);
         nk_layout_row_dynamic(nk, 20, 1);
         nk_label(nk, ui_color == 1 ? "Red" : ui_color == 2 ? "Blue" :
-                     ui_color == 3 ? "Green" : ui_color == 5 ? "Black" :
-                     "Yellow", NK_TEXT_LEFT);
+                     ui_color == 3 ? "Green" : ui_color == 4 ? "Yellow" :
+                     ui_color == 5 ? "Black" : ui_color == 6 ? "Indigo" :
+                     ui_color == 7 ? "Turquoise" : ui_color == 8 ? "Teal" :
+                     ui_color == 9 ? "Coral" : ui_color == 10 ? "Gold" :
+                     "Ivory", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 20, 1);
         nk_label(nk, "BRUSH SIZE", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 28, 1);
@@ -5162,6 +5171,9 @@ static int mandala_demo(void) {
 static int mandala_deluxe_demo(void) {
     return mandala_demo_path("examples/mandala-deluxe.glon", "glon-mandala-deluxe");
 }
+static int mandala_deluxe_v2_demo(void) {
+    return mandala_demo_path("examples/mandala-deluxe-v2.glon", "glon-mandala-deluxe-v2");
+}
 
 static int stream_test(void) {
     int saved = 0;
@@ -5932,6 +5944,15 @@ int main(int argc, char **argv) {
         fprintf(stderr, "glon-paint: script-test %s\n", rc == 0 ? "passed" : "failed");
         return rc;
     }
+    if (argc > 1 && strcmp(argv[1], "--mandala-deluxe-v2-demo") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = mandala_deluxe_v2_demo();
+        history_free(); replay_forget(); free(script_source);
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        fprintf(stderr, "glon-paint: mandala-deluxe-v2-demo %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
     if (argc > 1 && strcmp(argv[1], "--mandala-deluxe-demo") == 0) {
         if (sdl_init(1) != 0) return 2;
         int rc = mandala_deluxe_demo();
@@ -6132,10 +6153,25 @@ int main(int argc, char **argv) {
         fprintf(stderr, "glon-paint: self-test %s\n", rc == 0 ? "passed" : "failed");
         return rc;
     }
+    int startup_run = 0, startup_arg = 1;
+    if (argc > 1 && strcmp(argv[1], "--gui-run") == 0) {
+        startup_run = 1;
+        startup_arg = 2;
+    }
+    const char *startup_script = (argc > startup_arg && argv[startup_arg][0] != '-')
+                                 ? argv[startup_arg] : NULL;
     if (sdl_init(0) != 0) return 2;
     if (ui_init() != 0) return 2;
     if (app_init() != 0) {
         ui_shutdown(); SDL_DestroyTexture(canvas); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
+        return 2;
+    }
+    if (startup_script && load_script_file(startup_script) != 0) {
+        fprintf(stderr, "glon-paint: cannot load starting script %s\n", startup_script);
+        return 2;
+    }
+    if (startup_run && startup_script && run_script() != 0) {
+        fprintf(stderr, "glon-paint: cannot run starting script %s\n", startup_script);
         return 2;
     }
     run_app_ui();
