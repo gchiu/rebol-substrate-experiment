@@ -31,6 +31,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <dlfcn.h>
+#include <limits.h>
+#include <unistd.h>
 
 #define NK_INCLUDE_FIXED_TYPES
 #define NK_INCLUDE_STANDARD_IO
@@ -1336,22 +1339,78 @@ static int dispatch_canvas_pointer(int type, int wx, int wy, int button, int *sa
 static int wslg_wayland_session(void) {
     return getenv("WSL_DISTRO_NAME") && getenv("WAYLAND_DISPLAY");
 }
+typedef enum {
+    DECOR_DEFAULT = 0, DECOR_PATCHED_LIBDECOR, DECOR_EXTERNAL_LIBDECOR,
+    DECOR_DISABLED
+} DecorMode;
+static DecorMode decor_mode = DECOR_DEFAULT;
+static char libdecor_plugin_dir[PATH_MAX] = "";
+static const char *decor_mode_name(void) {
+    switch (decor_mode) {
+    case DECOR_PATCHED_LIBDECOR: return "libdecor-patched";
+    case DECOR_EXTERNAL_LIBDECOR: return "libdecor-external";
+    case DECOR_DISABLED: return "disabled";
+    default: return "default";
+    }
+}
+static int libdecor_legacy_plugin_abi(void) {
+    void *handle = dlopen("libdecor-0.so.0", RTLD_NOW | RTLD_LOCAL);
+    if (!handle) return 0;
+    int legacy = dlsym(handle, "libdecor_configuration_get_window_size") != NULL;
+    dlclose(handle);
+    return legacy;
+}
+static int paint_libdecor_plugin_dir(char *out, size_t cap) {
+    char exe[PATH_MAX];
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    if (n <= 0 || (size_t)n >= sizeof exe - 1) return 0;
+    exe[n] = 0;
+    char *slash = strrchr(exe, '/');
+    if (!slash) return 0;
+    *slash = 0;
+    int written = snprintf(out, cap, "%s/libdecor", exe);
+    if (written < 0 || (size_t)written >= cap) return 0;
+    return access(out, R_OK) == 0;
+}
+static void configure_decorations(void) {
+    const char *video_driver = getenv("SDL_VIDEODRIVER");
+    if (!wslg_wayland_session() ||
+        (video_driver && strcmp(video_driver, "wayland") != 0))
+        return;
+    const char *allow = getenv("SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR");
+    if (allow && strcmp(allow, "0") == 0) {
+        decor_mode = DECOR_DISABLED;
+        return;
+    }
+    if (getenv("LIBDECOR_PLUGIN_DIR")) {
+        decor_mode = DECOR_EXTERNAL_LIBDECOR;
+        return;
+    }
+    if (libdecor_legacy_plugin_abi() &&
+        paint_libdecor_plugin_dir(libdecor_plugin_dir,
+                                  sizeof libdecor_plugin_dir)) {
+        setenv("LIBDECOR_PLUGIN_DIR", libdecor_plugin_dir, 1);
+        decor_mode = DECOR_PATCHED_LIBDECOR;
+        return;
+    }
+    /* No ABI-compatible patched decoration plugin. Prefer an undecorated
+     * window over a stale decoration shadow, but keep this visible. */
+    setenv("SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR", "0", 1);
+    decor_mode = DECOR_DISABLED;
+    fprintf(stderr, "glon-paint: no patched libdecor plugin; window decorations disabled\n");
+}
 static int sdl_init(int hidden) {
     /* WSLg's X11/Xwayland path leaves the Windows pointer hidden over SDL X11
      * windows even when SDL says the cursor is visible. Prefer Wayland there;
      * an explicit SDL_VIDEODRIVER still wins. */
     if (!getenv("SDL_VIDEODRIVER") && wslg_wayland_session())
         setenv("SDL_VIDEODRIVER", "wayland", 1);
-    /* SDL's libdecor client-side decoration surface is not resized/cleared with
-     * the toplevel under WSLg: maximising leaves the old decoration and shadow
-     * composited inside the enlarged window. SDL's undecorated xdg_toplevel
-     * path redraws cleanly, and WSLg supplies no visible client decoration
-     * anyway. An explicit SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR still wins. */
-    const char *video_driver = getenv("SDL_VIDEODRIVER");
-    if (wslg_wayland_session() &&
-        (!video_driver || strcmp(video_driver, "wayland") == 0) &&
-        !getenv("SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR"))
-        setenv("SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR", "0", 1);
+    /* WSLg has no server-side decoration protocol. SDL must use client-side
+     * libdecor decorations, but its stock shadow surface is left stale by the
+     * compositor on maximize. Select our patched cairo plugin, which keeps the
+     * border surface mapped but transparent while maximized, so the title bar,
+     * drag and resize borders stay available without the ghost shadow. */
+    configure_decorations();
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
         fprintf(stderr, "glon-paint: SDL_Init: %s\n", SDL_GetError());
         return -1;
@@ -3289,12 +3348,14 @@ int main(int argc, char **argv) {
         int cursor_before = SDL_ShowCursor(SDL_QUERY);
         const char *driver = SDL_GetCurrentVideoDriver();
         const char *libdecor = getenv("SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR");
-        printf("cursor-test: video=%s cursor=%d libdecor=%s\n",
-               driver ? driver : "(none)", cursor_before,
-               libdecor ? libdecor : "(default)");
+        printf("cursor-test: video=%s cursor=%d decorations=%s libdecor=%s plugin=%s\n",
+               driver ? driver : "(none)", cursor_before, decor_mode_name(),
+               libdecor ? libdecor : "(default)",
+               libdecor_plugin_dir[0] ? libdecor_plugin_dir : "(none)");
         if (wslg_wayland_session() && driver && strcmp(driver, "wayland") == 0 &&
-            (!libdecor || strcmp(libdecor, "0") != 0)) {
-            fprintf(stderr, "cursor-test: WSLg Wayland must disable libdecor\n");
+            decor_mode != DECOR_PATCHED_LIBDECOR) {
+            fprintf(stderr, "cursor-test: WSLg Wayland needs the patched libdecor "
+                    "plugin (decorations=%s)\n", decor_mode_name());
             return 5;
         }
 #ifdef HAVE_NFD

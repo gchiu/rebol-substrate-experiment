@@ -235,6 +235,34 @@ resize, not only canvas coordinates. No frozen S1, VM, allocator, canvas-size
 or Nuklear change was made. The left toolbar was also widened from 108 to 124
 px so the "Calligraphy" option label is no longer clipped.
 
+[MEASURED 2026-11-13, follow-up on `experiments/glon-gui-paint`, same WSLg]
+**Disabling libdecor removed the ghost but also the title bar and resize
+borders.** WSLg's compositor advertises `wl_compositor`, `wl_subcompositor`,
+`xdg_wm_base`, `wl_shm`, `wl_seat`, etc., but no `zxdg_decoration_manager_v1`
+or server-decoration manager. Server-side decorations are therefore not
+available to SDL under WSLg; libdecor client-side decorations are required for
+drag/resize. Stock libdecor 0.1.0 (Ubuntu 22.04), libdecor 0.2.2 with its cairo
+plugin, and libdecor 0.2.2 with its GTK plugin all reproduced the ghost on
+maximize. The stale pixels come from libdecor unmapping its decoration/shadow
+subsurface; the app's main surface, canvas texture, viewport and Nuklear layout
+were correct in every case.
+The fix is a patched libdecor 0.1.0 cairo plugin (vendored in
+`experiments/glon-gui-paint/third_party/libdecor-cairo`). For maximized/tiled
+windows it keeps the border/shadow surface mapped, sized and transparent
+instead of unmapping it, while retaining the title bar and border input region.
+This mirrors the transparent-shadow path in libdecor 0.2.2. Paint sets
+`LIBDECOR_PLUGIN_DIR` to its `build/libdecor` directory only on WSLg Wayland
+and only when libdecor has the 0.1.0 ABI (`libdecor_configuration_get_window_size`
+is exported); otherwise it falls back to undecorated with a warning. Automated
+`--cursor-test` prints the selected backend and fails on WSLg Wayland if the
+patched plugin is inactive.
+Actual Windows mouse injection verified: title-bar drag moved the window by
++100,+80 px; right-border drag widened 1000 → 1100 px; the title-bar maximize
+button produced a 1920x1116 client; the restore button returned to 1200x800;
+two maximize/restore cycles and a 1200 → 1300 px resize preserved a painted red
+stroke scaled with the 800x600 document, with no ghost. No frozen S1, VM,
+allocator or Glon semantics change was made.
+
 **[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
 worklist has a fixed 256 entries (`GC_WORKLIST_CAP`, the cells before `GC_A1`).
 - **It cannot overflow in the 64K configuration.** Each object is pushed at

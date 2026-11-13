@@ -25,7 +25,8 @@ visibly disabled rather than fake live controls.
 On Debian/Ubuntu:
 
 ```sh
-sudo apt install build-essential libsdl2-dev libsdl2-image-dev libpng-dev libgtk-3-dev
+sudo apt install build-essential libsdl2-dev libsdl2-image-dev libpng-dev libgtk-3-dev \
+  libdecor-0-dev libcairo2-dev libpango1.0-dev libwayland-dev
 ```
 
 Nuklear is vendored in `third_party/`; no system Nuklear package is needed.
@@ -46,16 +47,27 @@ remains available by explicitly setting `SDL_VIDEODRIVER=x11`.
 `./build/glon-paint --cursor-test` checks SDL cursor state and backend
 matching.
 
-On that WSLg Wayland path, Paint also sets
-`SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=0` unless the user supplied a value.
-SDL's libdecor client-side decoration surface is not resized or cleared with
-the toplevel: maximising leaves the previous decoration and its shadow
-composited inside the enlarged window (a smaller white/document rectangle with
-a stray grey shadow). The undecorated `xdg_toplevel` path resizes and redraws
-cleanly, and WSLg shows no client decoration anyway. A minimal SDL Wayland
-window reproduces the libdecor ghost and is clean 7/7 runs with the override.
-Resizing in-place (through SDL) was already clean; only the decoration surface
-was stale, not the canvas, viewport or Nuklear layout.
+WSLg's Wayland compositor does not advertise
+`zxdg_decoration_manager_v1`, so SDL cannot use server-side decorations there.
+Paint must keep its client-side libdecor title bar and resize borders. Stock
+libdecor 0.1.0 hides its shadow/border subsurface when maximising; WSLg leaves
+those old pixels composited inside the enlarged window, producing the ghost
+white/document rectangle with a grey shadow.
+
+Paint builds the vendored, patched libdecor 0.1.0 cairo plugin from
+`third_party/libdecor-cairo/` and points `LIBDECOR_PLUGIN_DIR` at it on WSLg
+Wayland. The patch keeps the border surface mapped but transparent while the
+window is maximized, instead of unmapping it. The title bar, buttons, drag,
+resize borders, maximize and restore all remain active, and the stale shadow
+cannot be left behind. This is selected only when `libdecor-0.so.0` has the
+0.1.0 ABI; an explicit `LIBDECOR_PLUGIN_DIR` or
+`SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=0` still wins. If the patched plugin cannot be
+built, Paint falls back to an undecorated window and prints a warning rather
+than reintroducing the ghost. Building the plugin needs `libdecor-0-dev`,
+`libcairo2-dev`, `libpango1.0-dev` and `libwayland-dev`
+(`cairo`, `pangocairo`, `wayland-cursor` via `pkg-config`).
+`./build/glon-paint --cursor-test` reports the selected decoration backend and
+fails on WSLg Wayland if the patched plugin is not active.
 
 Check whether the built binary has native dialogs:
 
@@ -337,6 +349,11 @@ replay-prefix command sequences.
 The resize test verifies the rendered output framebuffer after each resize, not
 only the logical canvas: the painted pixel, workspace margin, document shadow
 and document outline must all land on the current destination rectangle.
+On WSLg Wayland, `--cursor-test` also prints and checks the selected decoration
+backend. The manual acceptance path is to drag the title bar, drag a side or
+bottom resize border, use the maximize and restore buttons, and repeat those
+cycles; the painted document must scale correctly and no stale shadow may
+reappear.
 The image test uses committed PNG/JPEG/alpha/invalid fixtures under
 `tests/fixtures/`. `make test` also runs a coalescing check that feeds 1,000
 motion events in one batch and reports raw motions versus Glon move calls and

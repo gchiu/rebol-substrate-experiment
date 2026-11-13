@@ -1,0 +1,45 @@
+--- a/src/plugins/cairo/libdecor-cairo.c
++++ b/src/plugins/cairo/libdecor-cairo.c
+@@ -1249,14 +1249,18 @@
+ 	case NONE:
+ 		break;
+ 	case SHADOW:
+-		render_shadow(cr,
+-			      frame_cairo->shadow_blur,
+-			      -(int)SHADOW_MARGIN/2,
+-			      -(int)SHADOW_MARGIN/2,
+-			      width + SHADOW_MARGIN,
+-			      height + SHADOW_MARGIN,
+-			      64,
+-			      64);
++		/* WSLg leaves stale pixels when a decoration subsurface is
++		 * unmapped. Keep the surface mapped but transparent while the
++		 * window is maximized/tiled; the resize border stays active. */
++		if (frame_cairo->decoration_type != DECORATION_TYPE_TITLE_ONLY)
++			render_shadow(cr,
++				      frame_cairo->shadow_blur,
++				      -(int)SHADOW_MARGIN/2,
++				      -(int)SHADOW_MARGIN/2,
++				      width + SHADOW_MARGIN,
++				      height + SHADOW_MARGIN,
++				      64,
++				      64);
+ 		break;
+ 	case TITLE:
+ 		cairo_set_rgba32(cr, &col_title);
+@@ -1659,9 +1663,12 @@
+ 				&frame_cairo->link);
+ 		break;
+ 	case DECORATION_TYPE_TITLE_ONLY:
+-		/* hide borders */
+-		if (is_border_surfaces_showing(frame_cairo))
+-			hide_border_surfaces(frame_cairo);
++		/* Keep the border/shadow surface mapped but transparent. WSLg
++		 * does not clear the old shadow when it is unmapped on maximize;
++		 * keeping the surface current avoids the stale rectangle while
++		 * preserving the title bar and resize borders. */
++		ensure_border_surfaces(frame_cairo);
++		draw_border(frame_cairo);
+ 		/* show title bar */
+ 		ensure_title_bar_surfaces(frame_cairo);
+ 		draw_title_bar(frame_cairo);
