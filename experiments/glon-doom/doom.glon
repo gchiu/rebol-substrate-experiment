@@ -21,6 +21,17 @@ doom/line-count: 10
 doom/start-x: 320
 doom/start-y: 320
 doom/start-angle: 0
+doom/door-x: 768
+doom/door-y0: 256
+doom/door-y1: 384
+doom/door-step: 4
+doom/door-threshold: 32
+doom/alien-detect2: 490000
+doom/alien-attack2: 9216
+doom/alien-speed: 2
+doom/alien-radius2: 256
+doom/alien-start-x: 1120
+doom/alien-start-y: 320
 
 ;; A single sector: floor z, ceiling z, floor colour id, ceiling colour id.
 doom/sector: [ 0 128 6 7 ]
@@ -123,6 +134,43 @@ doom/bot: 0
 doom/fw: 0
 doom/st: 0
 doom/sx: 0
+doom/door-open: 0
+doom/door-target: 0
+doom/door-blocked: 1
+doom/adx: 0
+doom/ady: 0
+;; Conceptual Linda-style tuple: [enemy 1 alien x y health state].
+;; The fields are held in these Glon globals so fixed-tick updates need no
+;; mutation opcode or new VM primitive.
+doom/alien-x: 1120
+doom/alien-y: 320
+doom/alien-health: 100
+doom/alien-state: 0
+doom/alien-detected: 0
+doom/door-bars: 0
+doom/alien-dx: 0
+doom/alien-dy: 0
+doom/alien-d2: 0
+doom/tdepth: 0
+doom/tside: 0
+doom/td2: 0
+doom/occluded: 0
+doom/ldx: 0
+doom/ldy: 0
+doom/lsx: 0
+doom/lsy: 0
+doom/lapx: 0
+doom/lapy: 0
+doom/lden: 0
+doom/ltn: 0
+doom/lun: 0
+doom/alien-visible: 0
+doom/alien-sx: 0
+doom/alien-sprite-h: 0
+doom/alien-left: 0
+doom/alien-right: 0
+doom/alien-top: 0
+doom/alien-bot: 0
 
 doom/wrap-angle: does [
     either < doom/angle 0 [
@@ -180,6 +228,12 @@ doom/check-all: func [x y r] [
     doom/dx: - x 128
     doom/dy: - y doom/cy
     either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
+    either = doom/door-blocked 0 [ none ] [
+        doom/cy: either < y 256 [ 256 ] [ either > y 384 [ 384 ] [ y ] ]
+        doom/dx: - x 768
+        doom/dy: - y doom/cy
+        either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
+    ]
 ]
 
 doom/move-x: func [nx] [
@@ -203,6 +257,86 @@ doom/tick: func [fw bk lf rt tl tr] [
     doom/mdy: / * - * doom/diry doom/fw * doom/dirx doom/st doom/speed 64
     doom/move-x + doom/px doom/mdx
     doom/move-y + doom/py doom/mdy
+    either < doom/door-open doom/door-target [
+        doom/door-open: + doom/door-open doom/door-step
+        either > doom/door-open doom/door-target [ doom/door-open: doom/door-target ] [ none ]
+    ] [
+        either > doom/door-open doom/door-target [
+            doom/door-open: - doom/door-open doom/door-step
+            either < doom/door-open doom/door-target [ doom/door-open: doom/door-target ] [ none ]
+        ] [ none ]
+    ]
+    doom/door-blocked: either < doom/door-open 32 [ 1 ] [ 0 ]
+    doom/update-alien
+]
+
+doom/activate: func [] [
+    doom/adx: - doom/px 768
+    doom/ady: - doom/py 320
+    either < + * doom/adx doom/adx * doom/ady doom/ady 25600 [
+        doom/door-target: either = doom/door-target 0 [ 64 ] [ 0 ]
+    ] [ none ]
+]
+
+doom/move-alien-x: func [nx] [
+    doom/hit: 0
+    doom/check-all nx doom/alien-y doom/alien-radius2
+    either = doom/hit 0 [ doom/alien-x: nx ] [ none ]
+]
+doom/move-alien-y: func [ny] [
+    doom/hit: 0
+    doom/check-all doom/alien-x ny doom/alien-radius2
+    either = doom/hit 0 [ doom/alien-y: ny ] [ none ]
+]
+
+doom/update-alien: func [] [
+    doom/alien-dx: - doom/px doom/alien-x
+    doom/alien-dy: - doom/py doom/alien-y
+    doom/alien-d2: + * doom/alien-dx doom/alien-dx * doom/alien-dy doom/alien-dy
+    either < doom/alien-d2 doom/alien-detect2 [
+        doom/alien-detected: 1
+        doom/door-bars: 0
+        either = doom/door-blocked 1 [
+            either < doom/py 256 [ none ] [
+                either > doom/py 384 [ none ] [
+                    either < doom/alien-y 256 [ none ] [
+                        either > doom/alien-y 384 [ none ] [
+                            either < doom/px 768 [
+                                either > doom/alien-x 768 [ doom/door-bars: 1 ] [ none ]
+                            ] [
+                                either < doom/alien-x 768 [ doom/door-bars: 1 ] [ none ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ] [ none ]
+        either < doom/alien-d2 doom/alien-attack2 [
+            either = doom/door-bars 0 [ doom/alien-state: 2 ] [ doom/alien-state: 1 ]
+        ] [ doom/alien-state: 1 ]
+        either = doom/alien-state 1 [
+          either = doom/door-bars 0 [
+            either > doom/alien-dx doom/alien-speed [
+                doom/move-alien-x + doom/alien-x doom/alien-speed
+            ] [
+                either < doom/alien-dx - 0 doom/alien-speed [
+                    doom/move-alien-x - doom/alien-x doom/alien-speed
+                ] [ none ]
+            ]
+            either > doom/alien-dy doom/alien-speed [
+                doom/move-alien-y + doom/alien-y doom/alien-speed
+            ] [
+                either < doom/alien-dy - 0 doom/alien-speed [
+                    doom/move-alien-y - doom/alien-y doom/alien-speed
+                ] [ none ]
+            ]
+          ] [ none ]
+        ] [ none ]
+    ] [
+        doom/alien-detected: 0
+        doom/alien-state: 0
+        doom/door-bars: 0
+    ]
 ]
 
 doom/reset: does [
@@ -212,6 +346,17 @@ doom/reset: does [
     doom/aim
     doom/best: 100000
     doom/bcolor: 0
+    doom/door-open: 0
+    doom/door-target: 0
+    doom/door-blocked: 1
+    doom/alien-x: doom/alien-start-x
+    doom/alien-y: doom/alien-start-y
+    doom/alien-health: 100
+    doom/alien-state: 0
+    doom/alien-detected: 0
+    doom/door-bars: 0
+    doom/occluded: 0
+    doom/alien-visible: 0
 ]
 
 
@@ -360,6 +505,22 @@ doom/render-column-block: [
         ]
       ] [ none ]
     ]
+    either = doom/door-blocked 0 [ none ] [
+      either = doom/rayx 0 [ none ] [
+        doom/t: / * - 768 doom/px 64 doom/rayx
+        either > doom/t 0 [
+          doom/hy: + doom/py / * doom/t doom/rayy 64
+          either < doom/hy 256 [ none ] [
+            either > doom/hy 384 [ none ] [
+              either < doom/t doom/best [
+                doom/best: doom/t
+                doom/bcolor: 4
+              ] [ none ]
+            ]
+          ]
+        ] [ none ]
+      ]
+    ]
     doom/half: / * doom/projection 64 either < doom/best 1 [ 1 ] [ doom/best ]
     doom/top: - doom/horizon doom/half
     doom/bot: + doom/horizon doom/half
@@ -368,6 +529,345 @@ doom/render-column-block: [
     print doom/top
     print doom/bot
     print doom/bcolor
+]
+
+doom/los: func [ax ay] [
+    doom/occluded: 0
+    doom/ldx: - ax doom/px
+    doom/ldy: - ay doom/py
+    doom/lsx: 640
+    doom/lsy: 0
+    doom/lden: - * doom/ldx doom/lsy * doom/ldy doom/lsx
+    either = doom/lden 0 [ none ] [
+      doom/lapx: - 128 doom/px
+      doom/lapy: - 128 doom/py
+      doom/ltn: - * doom/lapx doom/lsy * doom/lapy doom/lsx
+      doom/lun: - * doom/lapx doom/ldy * doom/lapy doom/ldx
+      either > doom/lden 0 [
+        either > doom/ltn 0 [
+          either < doom/ltn doom/lden [
+            either < doom/lun 0 [ none ] [
+              either > doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ] [
+        either < doom/ltn 0 [
+          either > doom/ltn doom/lden [
+            either > doom/lun 0 [ none ] [
+              either < doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ]
+    ]
+    doom/lsx: 0
+    doom/lsy: 128
+    doom/lden: - * doom/ldx doom/lsy * doom/ldy doom/lsx
+    either = doom/lden 0 [ none ] [
+      doom/lapx: - 768 doom/px
+      doom/lapy: - 128 doom/py
+      doom/ltn: - * doom/lapx doom/lsy * doom/lapy doom/lsx
+      doom/lun: - * doom/lapx doom/ldy * doom/lapy doom/ldx
+      either > doom/lden 0 [
+        either > doom/ltn 0 [
+          either < doom/ltn doom/lden [
+            either < doom/lun 0 [ none ] [
+              either > doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ] [
+        either < doom/ltn 0 [
+          either > doom/ltn doom/lden [
+            either > doom/lun 0 [ none ] [
+              either < doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ]
+    ]
+    doom/lsx: 512
+    doom/lsy: 0
+    doom/lden: - * doom/ldx doom/lsy * doom/ldy doom/lsx
+    either = doom/lden 0 [ none ] [
+      doom/lapx: - 768 doom/px
+      doom/lapy: - 256 doom/py
+      doom/ltn: - * doom/lapx doom/lsy * doom/lapy doom/lsx
+      doom/lun: - * doom/lapx doom/ldy * doom/lapy doom/ldx
+      either > doom/lden 0 [
+        either > doom/ltn 0 [
+          either < doom/ltn doom/lden [
+            either < doom/lun 0 [ none ] [
+              either > doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ] [
+        either < doom/ltn 0 [
+          either > doom/ltn doom/lden [
+            either > doom/lun 0 [ none ] [
+              either < doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ]
+    ]
+    doom/lsx: 0
+    doom/lsy: 768
+    doom/lden: - * doom/ldx doom/lsy * doom/ldy doom/lsx
+    either = doom/lden 0 [ none ] [
+      doom/lapx: - 1280 doom/px
+      doom/lapy: - 256 doom/py
+      doom/ltn: - * doom/lapx doom/lsy * doom/lapy doom/lsx
+      doom/lun: - * doom/lapx doom/ldy * doom/lapy doom/ldx
+      either > doom/lden 0 [
+        either > doom/ltn 0 [
+          either < doom/ltn doom/lden [
+            either < doom/lun 0 [ none ] [
+              either > doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ] [
+        either < doom/ltn 0 [
+          either > doom/ltn doom/lden [
+            either > doom/lun 0 [ none ] [
+              either < doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ]
+    ]
+    doom/lsx: -128
+    doom/lsy: 0
+    doom/lden: - * doom/ldx doom/lsy * doom/ldy doom/lsx
+    either = doom/lden 0 [ none ] [
+      doom/lapx: - 1280 doom/px
+      doom/lapy: - 1024 doom/py
+      doom/ltn: - * doom/lapx doom/lsy * doom/lapy doom/lsx
+      doom/lun: - * doom/lapx doom/ldy * doom/lapy doom/ldx
+      either > doom/lden 0 [
+        either > doom/ltn 0 [
+          either < doom/ltn doom/lden [
+            either < doom/lun 0 [ none ] [
+              either > doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ] [
+        either < doom/ltn 0 [
+          either > doom/ltn doom/lden [
+            either > doom/lun 0 [ none ] [
+              either < doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ]
+    ]
+    doom/lsx: 0
+    doom/lsy: -640
+    doom/lden: - * doom/ldx doom/lsy * doom/ldy doom/lsx
+    either = doom/lden 0 [ none ] [
+      doom/lapx: - 1152 doom/px
+      doom/lapy: - 1024 doom/py
+      doom/ltn: - * doom/lapx doom/lsy * doom/lapy doom/lsx
+      doom/lun: - * doom/lapx doom/ldy * doom/lapy doom/ldx
+      either > doom/lden 0 [
+        either > doom/ltn 0 [
+          either < doom/ltn doom/lden [
+            either < doom/lun 0 [ none ] [
+              either > doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ] [
+        either < doom/ltn 0 [
+          either > doom/ltn doom/lden [
+            either > doom/lun 0 [ none ] [
+              either < doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ]
+    ]
+    doom/lsx: -384
+    doom/lsy: 0
+    doom/lden: - * doom/ldx doom/lsy * doom/ldy doom/lsx
+    either = doom/lden 0 [ none ] [
+      doom/lapx: - 1152 doom/px
+      doom/lapy: - 384 doom/py
+      doom/ltn: - * doom/lapx doom/lsy * doom/lapy doom/lsx
+      doom/lun: - * doom/lapx doom/ldy * doom/lapy doom/ldx
+      either > doom/lden 0 [
+        either > doom/ltn 0 [
+          either < doom/ltn doom/lden [
+            either < doom/lun 0 [ none ] [
+              either > doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ] [
+        either < doom/ltn 0 [
+          either > doom/ltn doom/lden [
+            either > doom/lun 0 [ none ] [
+              either < doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ]
+    ]
+    doom/lsx: 0
+    doom/lsy: 256
+    doom/lden: - * doom/ldx doom/lsy * doom/ldy doom/lsx
+    either = doom/lden 0 [ none ] [
+      doom/lapx: - 768 doom/px
+      doom/lapy: - 384 doom/py
+      doom/ltn: - * doom/lapx doom/lsy * doom/lapy doom/lsx
+      doom/lun: - * doom/lapx doom/ldy * doom/lapy doom/ldx
+      either > doom/lden 0 [
+        either > doom/ltn 0 [
+          either < doom/ltn doom/lden [
+            either < doom/lun 0 [ none ] [
+              either > doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ] [
+        either < doom/ltn 0 [
+          either > doom/ltn doom/lden [
+            either > doom/lun 0 [ none ] [
+              either < doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ]
+    ]
+    doom/lsx: -640
+    doom/lsy: 0
+    doom/lden: - * doom/ldx doom/lsy * doom/ldy doom/lsx
+    either = doom/lden 0 [ none ] [
+      doom/lapx: - 768 doom/px
+      doom/lapy: - 640 doom/py
+      doom/ltn: - * doom/lapx doom/lsy * doom/lapy doom/lsx
+      doom/lun: - * doom/lapx doom/ldy * doom/lapy doom/ldx
+      either > doom/lden 0 [
+        either > doom/ltn 0 [
+          either < doom/ltn doom/lden [
+            either < doom/lun 0 [ none ] [
+              either > doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ] [
+        either < doom/ltn 0 [
+          either > doom/ltn doom/lden [
+            either > doom/lun 0 [ none ] [
+              either < doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ]
+    ]
+    doom/lsx: 0
+    doom/lsy: -512
+    doom/lden: - * doom/ldx doom/lsy * doom/ldy doom/lsx
+    either = doom/lden 0 [ none ] [
+      doom/lapx: - 128 doom/px
+      doom/lapy: - 640 doom/py
+      doom/ltn: - * doom/lapx doom/lsy * doom/lapy doom/lsx
+      doom/lun: - * doom/lapx doom/ldy * doom/lapy doom/ldx
+      either > doom/lden 0 [
+        either > doom/ltn 0 [
+          either < doom/ltn doom/lden [
+            either < doom/lun 0 [ none ] [
+              either > doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ] [
+        either < doom/ltn 0 [
+          either > doom/ltn doom/lden [
+            either > doom/lun 0 [ none ] [
+              either < doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ]
+    ]
+    either = doom/door-blocked 0 [ none ] [
+    doom/lsx: 0
+    doom/lsy: 128
+    doom/lden: - * doom/ldx doom/lsy * doom/ldy doom/lsx
+    either = doom/lden 0 [ none ] [
+      doom/lapx: - 768 doom/px
+      doom/lapy: - 256 doom/py
+      doom/ltn: - * doom/lapx doom/lsy * doom/lapy doom/lsx
+      doom/lun: - * doom/lapx doom/ldy * doom/lapy doom/ldx
+      either > doom/lden 0 [
+        either > doom/ltn 0 [
+          either < doom/ltn doom/lden [
+            either < doom/lun 0 [ none ] [
+              either > doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ] [
+        either < doom/ltn 0 [
+          either > doom/ltn doom/lden [
+            either > doom/lun 0 [ none ] [
+              either < doom/lun doom/lden [ none ] [ doom/occluded: 1 ]
+            ]
+          ] [ none ]
+        ] [ none ]
+      ]
+    ]
+    ]
+]
+
+doom/status-block: [
+    doom/alien-dx: - doom/alien-x doom/px
+    doom/alien-dy: - doom/alien-y doom/py
+    doom/td2: + * doom/alien-dx doom/alien-dx * doom/alien-dy doom/alien-dy
+    doom/tdepth: / + * doom/alien-dx doom/dirx * doom/alien-dy doom/diry 64
+    doom/tside: / + * doom/alien-dx doom/planex * doom/alien-dy doom/planey 64
+    doom/los doom/alien-x doom/alien-y
+    doom/alien-visible: 0
+    doom/alien-sx: 0
+    doom/alien-sprite-h: 0
+    doom/alien-left: 0
+    doom/alien-right: 0
+    doom/alien-top: 0
+    doom/alien-bot: 0
+    either > doom/tdepth 0 [
+        doom/alien-sx: + 160 / * doom/tside 160 doom/tdepth
+        doom/alien-sprite-h: / * 96 doom/projection doom/tdepth
+        doom/alien-left: - doom/alien-sx / doom/alien-sprite-h 4
+        doom/alien-right: + doom/alien-sx / doom/alien-sprite-h 4
+        doom/alien-top: - doom/horizon / doom/alien-sprite-h 2
+        doom/alien-bot: + doom/horizon / doom/alien-sprite-h 2
+        either = doom/occluded 0 [
+            either >= doom/alien-sx -40 [
+                either <= doom/alien-sx 359 [ doom/alien-visible: 1 ] [ none ]
+            ] [ none ]
+        ] [ none ]
+    ] [ none ]
+    print doom/door-open
+    print doom/door-blocked
+    print doom/door-target
+    print doom/alien-x
+    print doom/alien-y
+    print doom/alien-health
+    print doom/alien-state
+    print doom/alien-detected
+    print doom/td2
+    print doom/tside
+    print doom/tdepth
+    print doom/alien-visible
+    print doom/alien-left
+    print doom/alien-right
+    print doom/alien-top
+    print doom/alien-bot
 ]
 
 doom/sector-report: does [
