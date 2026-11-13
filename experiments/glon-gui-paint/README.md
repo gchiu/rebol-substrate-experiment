@@ -320,15 +320,17 @@ canvas 305-343 ms.
 The final and replay images are pixel-identical; the stage frames show the
 progressive build.
 
-The practical limit is the script sink, not the data or return stack. Each
-`paint/draw-*` call appends to one managed `paint/script-buf` STRING! through
-`s/+`, which allocates a new full-length string every time. In the 64K profile
-the non-compacting managed heap eventually has no contiguous extent for the next
-buffer version: about 60 short `L` calls (a ~1.8 KB sink) succeed and the 61st
-fails; longer command text fails earlier. The data stack stays at depth 2 and
-the return stack at a constant depth. The mandala is deliberately kept compact
-for this reason. Larger generated scripts would need an approved streaming or
-chunked sink design, not a larger stack.
+Paint now streams drawing commands through an experimental host-backed sink:
+`paint/script-emit` writes each existing command representation byte-for-byte
+through the frozen `HOST_PUTCHAR` output path, and the host captures it directly
+into the bounded C command buffer. The old managed `paint/script-buf` sink is
+retained for the standalone Glon CLI and non-streaming tests. Streaming removes
+the old growing-string failure (60 calls OK, 61 failed): 1,000 short drawing
+calls now complete with the same command bytes. The host sink is bounded to
+1 MiB and the Glon operation counter to 4,096 commands; overflow invalidates the
+whole stream and leaves the document unchanged. A residual limit remains around
+1,350 calls because each command's temporary Glon strings still fragment the
+non-compacting managed heap; 1,400 calls fail and the UI recovers cleanly.
 
 ## Writing 永
 
@@ -526,6 +528,22 @@ data-stack or return-stack overflow. Controls (`arith`, `setsize`, `nop4`) and
 sink-reset runs complete at 200 calls because they do not accumulate a large
 managed string.
 
+The streaming adapter has its own probes:
+
+```sh
+./build/glon-paint --stream-probe 1000       # 1,000 calls through the host sink
+./build/glon-paint --stream-probe 100 1000   # force a small C sink; overflow/recovery
+./build/glon-paint --stream-compare examples/mandala.glon
+./build/glon-paint --stream-test              # 101-command app/replay regression
+```
+
+`--stream-probe` verified 40, 60, 61, 100, 500 and 1,000 calls all complete;
+1,350 is the observed maximum and 1,400 fails on residual per-command managed
+strings. `--stream-compare` matches the old and new streams byte-for-byte for
+calligraphy, 永, mandala, rectangle, landscape and replay-demo. Forced sink
+overflow reports `overflow=1`, discards the stream and succeeds on a following
+short stream.
+
 ## Checks
 
 ```sh
@@ -592,11 +610,10 @@ these snapshots must not be described as a Glon command log.
 - Bucket fills with more than 4,096 horizontal spans or 1 MiB of commands are
   rejected rather than partially applied. Tolerance may include boundary pixels
   and can visually merge a close-coloured outline.
-- The Paint script sink grows one managed STRING! through repeated `s/+`.
-  At roughly a 1.8 KB sink the non-compacting managed heap can fail to find a
-  contiguous extent and the allocator OOM-halts; the data and return stacks
-  remain flat. Dense generated scripts need an approved streaming/chunked sink
-  design, not a larger stack.
+- The host streaming sink removes the old managed growing-string limit, but
+  per-command temporary Glon strings still fragment the non-compacting managed
+  heap at roughly 1,350 drawing calls; 1,400 fails. The host C sink is bounded
+  at 1 MiB and the Glon operation counter at 4,096 commands.
 - No PDF decoding or script editor; replay is stored-command playback, not
   recording.
 - Smooth animation applies only to pressure-aware `P` commands; ordinary lines,

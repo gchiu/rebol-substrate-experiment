@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #define _POSIX_C_SOURCE 200809L
 /* Glon Paint native host (SDL2 + libpng).
  *
@@ -1431,6 +1432,41 @@ static int bucket_fill(int sx, int sy, int tolerance) {
 }
 
 static int app_call(const char *src);
+typedef struct {
+    char *buf;
+    size_t len;
+    size_t cap;
+    int overflow;
+} ScriptSink;
+static ssize_t script_sink_write(void *cookie, const char *data, size_t n) {
+    ScriptSink *sink = cookie;
+    if (n > sink->cap - sink->len) {
+        sink->overflow = 1;
+        return 0;
+    }
+    memcpy(sink->buf + sink->len, data, n);
+    sink->len += n;
+    return (ssize_t)n;
+}
+static int script_sink_begin(FILE **saved_stdout, FILE **stream, ScriptSink *sink) {
+    cookie_io_functions_t fns;
+    memset(&fns, 0, sizeof fns);
+    fns.write = script_sink_write;
+    *stream = fopencookie(sink, "w", fns);
+    if (!*stream) return -1;
+    fflush(stdout);
+    *saved_stdout = stdout;
+    stdout = *stream;
+    return 0;
+}
+static int script_sink_end(FILE *saved_stdout, FILE *stream, ScriptSink *sink) {
+    int rc = 0;
+    if (fflush(stream) != 0) rc = -1;
+    stdout = saved_stdout;
+    if (fclose(stream) != 0) rc = -1;
+    if (sink->overflow) rc = -1;
+    return rc;
+}
 static int prepare_script_commands(char *out, size_t cap, int *count,
                                    int *offsets, int *lengths) {
     *count = 0;
@@ -1441,6 +1477,11 @@ static int prepare_script_commands(char *out, size_t cap, int *count,
     cell save_lhp = M[GC_LOADER_HP];
     char *cmds = malloc(SCRIPT_CMD_BYTES);
     char status[32] = "";
+    ScriptSink sink = { cmds, 0, cmds ? SCRIPT_CMD_BYTES - 1 : 0, 0 };
+    FILE *saved_stdout = NULL;
+    FILE *stream = NULL;
+    int stream_enabled = 0;
+    int captured = 0;
     int failed = 0;
     script_error[0] = 0;
     if (!cmds) {
@@ -1450,6 +1491,18 @@ static int prepare_script_commands(char *out, size_t cap, int *count,
     if (!failed && app_call("paint/script-reset") != 0) {
         snprintf(script_error, sizeof script_error, "Cannot reset script sink.");
         failed = 1;
+    }
+    if (!failed && app_call("paint/script-set-stream 1") != 0) {
+        snprintf(script_error, sizeof script_error, "Cannot enable script streaming.");
+        failed = 1;
+    } else if (!failed) {
+        stream_enabled = 1;
+        if (script_sink_begin(&saved_stdout, &stream, &sink) != 0) {
+            snprintf(script_error, sizeof script_error, "Cannot allocate script stream.");
+            failed = 1;
+        } else {
+            captured = 1;
+        }
     }
     if (!failed) {
         int perr = 0;
@@ -1472,18 +1525,31 @@ static int prepare_script_commands(char *out, size_t cap, int *count,
             }
         }
     }
+    if (captured) {
+        captured = 0;
+        if (script_sink_end(saved_stdout, stream, &sink) != 0) {
+            if (!failed)
+                snprintf(script_error, sizeof script_error,
+                         "Script command stream exceeds its bound.");
+            failed = 1;
+        }
+    }
+    if (stream_enabled) {
+        stream_enabled = 0;
+        app_call("paint/script-set-stream 0");
+    }
+    if (!failed) {
+        cmds[sink.len] = 0;
+        if (sink.len >= SCRIPT_CMD_BYTES - 1) {
+            snprintf(script_error, sizeof script_error,
+                     "Script command buffer is too large.");
+            failed = 1;
+        }
+    }
     if (!failed && (glon_call("paint/script-status", status, sizeof status) != 0 ||
                     strcmp(status, "OK") != 0)) {
         snprintf(script_error, sizeof script_error,
                  "Script exceeded the drawing-operation limit.");
-        failed = 1;
-    }
-    if (!failed && glon_call("paint/script-result", cmds, SCRIPT_CMD_BYTES) != 0) {
-        snprintf(script_error, sizeof script_error, "Cannot read script drawing commands.");
-        failed = 1;
-    }
-    if (!failed && strlen(cmds) >= SCRIPT_CMD_BYTES - 1) {
-        snprintf(script_error, sizeof script_error, "Script command buffer is too large.");
         failed = 1;
     }
     if (!failed) {
@@ -5078,6 +5144,90 @@ static int mandala_demo(void) {
     return 0;
 }
 
+
+static int stream_test(void) {
+    int saved = 0;
+    if (app_init() != 0) return 2;
+    clear_canvas(); history_free(); replay_forget(); unsaved = 0;
+    Uint32 *initial = snapshot_canvas();
+    if (!initial) return 3;
+    if (load_script_file("tests/fixtures/stream-100.glon") != 0) return 4;
+    if (run_script() != 0) return 5;
+    Uint32 *immediate = snapshot_canvas();
+    if (!immediate) return 6;
+    if (undo_stack.count != 1) return 7;
+    if (history_undo() != 1) return 8;
+    Uint32 *undone = snapshot_canvas();
+    if (!undone || !replay_snapshots_equal(initial, undone)) return 9;
+    free(undone);
+    if (history_redo() != 1) return 10;
+    Uint32 *redone = snapshot_canvas();
+    if (!redone || !replay_snapshots_equal(immediate, redone)) return 11;
+    free(redone);
+
+    restore_canvas(initial); history_free(); replay_forget();
+    if (load_script_file("tests/fixtures/stream-100.glon") != 0) return 12;
+    if (replay_prepare() != 0) return 13;
+    int commands = replay_count;
+    size_t command_bytes = 0;
+    for (int i = 0; i < replay_count; i++) command_bytes += replay_lengths[i] + 1;
+    if (commands != 101 || command_bytes < 3000) return 14;
+    if (replay_play() != 0 || replay_finish_steps() != 0) return 15;
+    Uint32 *replayed = snapshot_canvas();
+    if (!replayed || !replay_snapshots_equal(immediate, replayed)) return 16;
+    free(replayed);
+    replay_stop();
+
+    /* Replay pause/step/back/stop remains usable after a long stream. */
+    restore_canvas(initial); history_free(); replay_forget();
+    if (load_script_file("tests/fixtures/stream-100.glon") != 0 ||
+        replay_prepare() != 0 || replay_play() != 0) return 17;
+    replay_pause();
+    int before = replay_pos;
+    if (replay_step_forward() != 1 || replay_pos != before + 1) return 18;
+    if (replay_step_back() != 1 || replay_pos != before) return 19;
+    replay_stop();
+    Uint32 *stopped = snapshot_canvas();
+    if (!stopped || !replay_snapshots_equal(initial, stopped)) return 20;
+    free(stopped);
+
+    /* End commits the full long stream; undo/redo are exact. */
+    restore_canvas(initial); history_free(); replay_forget();
+    if (load_script_file("tests/fixtures/stream-100.glon") != 0 ||
+        replay_prepare() != 0 || replay_play() != 0 ||
+        replay_finish_steps() != 0) return 21;
+    replay_end();
+    if (replay_nav_available()) return 22;
+    if (history_undo() != 1) return 23;
+    Uint32 *end_undo = snapshot_canvas();
+    if (!end_undo || !replay_snapshots_equal(initial, end_undo)) return 24;
+    free(end_undo);
+    if (history_redo() != 1) return 25;
+    Uint32 *end_redo = snapshot_canvas();
+    if (!end_redo || !replay_snapshots_equal(immediate, end_redo)) return 26;
+    free(end_redo);
+
+    /* Repeated Load -> Clear -> Load after the long stream. */
+    restore_canvas(initial); history_free(); replay_forget();
+    if (load_script_file("tests/fixtures/stream-100.glon") != 0 || run_script() != 0)
+        return 27;
+    document_clear();
+    if (load_script_file("tests/fixtures/stream-100.glon") != 0 || run_script() != 0)
+        return 28;
+    Uint32 *again = snapshot_canvas();
+    if (!again || !replay_snapshots_equal(immediate, again)) return 29;
+    free(again);
+    if (save_png("glon-paint.png") != 0) return 30;
+
+    printf("stream-test: commands=%d command_bytes=%zu immediate_replay_equal=ok "
+           "undo_redo=ok pause_step_back_stop=ok end=ok repeated_load=ok "
+           "result=ok\n", commands, command_bytes);
+    free(immediate); free(initial);
+    history_free(); replay_forget();
+    (void)saved;
+    return 0;
+}
+
 static int replay_test(void) {
     int saved = 0;
     if (app_init() != 0) return 2;
@@ -5468,6 +5618,144 @@ static int coalesce_test(void) {
 }
 
 
+
+static int stream_probe(int n, size_t cap_bytes) {
+    if (n < 1) n = 1;
+    if (cap_bytes < 32) cap_bytes = SCRIPT_CMD_BYTES - 1;
+    char *buf = malloc(cap_bytes + 1);
+    if (!buf) return 2;
+    ScriptSink sink = { buf, 0, cap_bytes, 0 };
+    FILE *saved_stdout = NULL;
+    FILE *stream = NULL;
+    int captured = 0;
+    int failed = 0;
+    r0_s1_outcome last_oc;
+    memset(&last_oc, 0, sizeof last_oc);
+    if (app_call("paint/script-reset") != 0) failed = 1;
+    if (!failed && app_call("paint/script-set-stream 1") != 0) failed = 1;
+    if (!failed && script_sink_begin(&saved_stdout, &stream, &sink) != 0) failed = 1;
+    else if (!failed) captured = 1;
+    int done = 0;
+    while (!failed && done < n) {
+        char batch[8192];
+        size_t used = 0;
+        int m = snprintf(batch, sizeof batch, "do [\n");
+        if (m < 0) { failed = 1; break; }
+        used += (size_t)m;
+        for (int j = 0; j < 50 && done < n; j++, done++) {
+            m = snprintf(batch + used, sizeof batch - used,
+                         "    paint/draw-line %d 100 %d 101\n",
+                         100 + done % 500, 101 + done % 500);
+            if (m < 0 || (size_t)m >= sizeof batch - used) { failed = 1; break; }
+            used += (size_t)m;
+        }
+        m = snprintf(batch + used, sizeof batch - used, "]\n");
+        if (m < 0 || (size_t)m >= sizeof batch - used) { failed = 1; break; }
+        used += (size_t)m;
+        int rc = r0_s1_session_run(batch, (unsigned)used, &last_oc);
+        if (rc != R0S1_OUT_OK) { failed = 1; break; }
+    }
+    if (captured) {
+        captured = 0;
+        if (script_sink_end(saved_stdout, stream, &sink) != 0) failed = 1;
+    }
+    app_call("paint/script-set-stream 0");
+    char status[32] = "";
+    if (glon_call("paint/script-status", status, sizeof status) != 0)
+        snprintf(status, sizeof status, "ERR");
+    int commands = 0;
+    for (size_t i = 0; i < sink.len; i++) if (buf[i] == '\n') commands++;
+    int recovered = -1;
+    if (failed || sink.overflow || strcmp(status, "OK") != 0) {
+        /* Recovery probe: a fresh cleared sink must accept a short stream. */
+        char small[1024];
+        int m = snprintf(small, sizeof small,
+                         "do [\n    paint/draw-line 10 10 20 20\n]\n");
+        char *rbuf = malloc(cap_bytes + 1);
+        ScriptSink rsink = { rbuf, 0, cap_bytes, 0 };
+        FILE *rsaved = NULL, *rstream = NULL;
+        int ok = rbuf && app_call("paint/script-reset") == 0 &&
+                 app_call("paint/script-set-stream 1") == 0 &&
+                 script_sink_begin(&rsaved, &rstream, &rsink) == 0;
+        if (ok && r0_s1_session_run(small, (unsigned)m, &last_oc) == R0S1_OUT_OK) {
+            if (script_sink_end(rsaved, rstream, &rsink) == 0) recovered = 1;
+        } else {
+            if (rstream) { stdout = rsaved; fclose(rstream); }
+            recovered = 0;
+        }
+        app_call("paint/script-set-stream 0");
+        free(rbuf);
+    }
+    printf("stream-probe n=%d cap=%zu failed=%d status=%s emitted=%zu commands=%d "
+           "overflow=%d recovered=%d heap_high=%ld gc=%ld live_cells=%ld loader=%ld\n",
+           n, cap_bytes, failed, status, sink.len, commands, sink.overflow,
+           recovered, r0_s1_heap_high(), r0_s1_gc_count(), r0_s1_gc_live_cells(),
+           (long)(M[GC_LOADER_HP] - R0S1_HEAP_BASE));
+    free(buf);
+    return failed || sink.overflow || strcmp(status, "OK") != 0 ? 3 : 0;
+}
+
+static int run_source_old_sink(const char *src, unsigned len, char *out, size_t cap,
+                               int *out_len) {
+    *out_len = 0;
+    if (app_call("paint/script-reset") != 0) return -1;
+    if (app_call("paint/script-set-stream 0") != 0) return -1;
+    r0_s1_outcome oc;
+    int rc = r0_s1_session_run(src, len, &oc);
+    if (rc != R0S1_OUT_OK) return -1;
+    char status[32] = "";
+    if (glon_call("paint/script-status", status, sizeof status) != 0 ||
+        strcmp(status, "OK") != 0) return -1;
+    if (glon_call("paint/script-result", out, cap) != 0) return -1;
+    *out_len = (int)strlen(out);
+    return 0;
+}
+static int run_source_stream(const char *src, unsigned len, char *out, size_t cap,
+                             int *out_len, int *overflow) {
+    *out_len = 0; *overflow = 0;
+    if (app_call("paint/script-reset") != 0) return -1;
+    if (app_call("paint/script-set-stream 1") != 0) return -1;
+    ScriptSink sink = { out, 0, cap, 0 };
+    FILE *saved = NULL, *stream = NULL;
+    if (script_sink_begin(&saved, &stream, &sink) != 0) {
+        app_call("paint/script-set-stream 0");
+        return -1;
+    }
+    r0_s1_outcome oc;
+    int rc = r0_s1_session_run(src, len, &oc);
+    int end_rc = script_sink_end(saved, stream, &sink);
+    app_call("paint/script-set-stream 0");
+    *overflow = sink.overflow;
+    if (rc != R0S1_OUT_OK || end_rc != 0) return -1;
+    char status[32] = "";
+    if (glon_call("paint/script-status", status, sizeof status) != 0 ||
+        strcmp(status, "OK") != 0) return -1;
+    out[sink.len] = 0;
+    *out_len = (int)sink.len;
+    return 0;
+}
+static int stream_compare(const char *path) {
+    if (load_script_file(path) != 0) return 2;
+    char *old = malloc(SCRIPT_CMD_BYTES);
+    char *fresh = malloc(SCRIPT_CMD_BYTES);
+    int old_len = 0, new_len = 0, overflow = 0;
+    int a = old && fresh ? run_source_old_sink(script_source,
+                                               (unsigned)script_source_len,
+                                               old, SCRIPT_CMD_BYTES, &old_len) : -1;
+    int b = old && fresh ? run_source_stream(script_source,
+                                             (unsigned)script_source_len,
+                                             fresh, SCRIPT_CMD_BYTES - 1,
+                                             &new_len, &overflow) : -1;
+    int equal = a == 0 && b == 0 && old_len == new_len && !overflow &&
+                memcmp(old, fresh, (size_t)old_len) == 0;
+    printf("stream-compare script=%s old_rc=%d new_rc=%d old_bytes=%d new_bytes=%d "
+           "overflow=%d byte_equal=%d result=%s\n",
+           path, a, b, old_len, new_len, overflow, equal,
+           equal ? "ok" : "FAILED");
+    free(old); free(fresh); replay_forget();
+    return equal ? 0 : 3;
+}
+
 static int stack_probe(const char *kind, int n, int interval) {
     if (n < 1) n = 1;
     if (interval < 1) interval = 0;
@@ -5585,6 +5873,11 @@ int main(int argc, char **argv) {
     if (argc > 3 && strcmp(argv[1], "--stack-probe") == 0)
         return stack_probe(argv[2], atoi(argv[3]),
                            argc > 4 ? atoi(argv[4]) : 0);
+    if (argc > 2 && strcmp(argv[1], "--stream-probe") == 0)
+        return stream_probe(atoi(argv[2]),
+                            argc > 3 && argv[3][0] ? (size_t)strtoul(argv[3], NULL, 10) : 0);
+    if (argc > 2 && strcmp(argv[1], "--stream-compare") == 0)
+        return stream_compare(argv[2]);
     if (argc > 1 && strcmp(argv[1], "--ui-test") == 0) {
         if (sdl_init(1) != 0) return 2;
         if (ui_init() != 0) return 2;
@@ -5619,6 +5912,15 @@ int main(int argc, char **argv) {
         SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
         SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
         fprintf(stderr, "glon-paint: script-test %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--stream-test") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = stream_test();
+        history_free(); replay_forget(); free(script_source);
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        fprintf(stderr, "glon-paint: stream-test %s\n", rc == 0 ? "passed" : "failed");
         return rc;
     }
     if (argc > 1 && strcmp(argv[1], "--mandala-demo") == 0) {

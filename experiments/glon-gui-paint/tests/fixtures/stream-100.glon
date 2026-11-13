@@ -1,0 +1,115 @@
+;; Streaming sink regression: 100 lines after a Clear.
+;; The old managed growing-string sink failed around 61 draw calls.
+paint/draw-clear
+paint/set-color 2
+paint/set-size 3
+do [
+    paint/draw-line 50 50 80 70
+    paint/draw-line 57 55 87 75
+    paint/draw-line 64 60 94 80
+    paint/draw-line 71 65 101 85
+    paint/draw-line 78 70 108 90
+    paint/draw-line 85 75 115 95
+    paint/draw-line 92 80 122 100
+    paint/draw-line 99 85 129 105
+    paint/draw-line 106 90 136 110
+    paint/draw-line 113 95 143 115
+    paint/draw-line 120 100 150 120
+    paint/draw-line 127 105 157 125
+    paint/draw-line 134 110 164 130
+    paint/draw-line 141 115 171 135
+    paint/draw-line 148 120 178 140
+    paint/draw-line 155 125 185 145
+    paint/draw-line 162 130 192 150
+    paint/draw-line 169 135 199 155
+    paint/draw-line 176 140 206 160
+    paint/draw-line 183 145 213 165
+]
+do [
+    paint/draw-line 190 150 220 170
+    paint/draw-line 197 155 227 175
+    paint/draw-line 204 160 234 180
+    paint/draw-line 211 165 241 185
+    paint/draw-line 218 170 248 190
+    paint/draw-line 225 175 255 195
+    paint/draw-line 232 180 262 200
+    paint/draw-line 239 185 269 205
+    paint/draw-line 246 190 276 210
+    paint/draw-line 253 195 283 215
+    paint/draw-line 260 200 290 220
+    paint/draw-line 267 205 297 225
+    paint/draw-line 274 210 304 230
+    paint/draw-line 281 215 311 235
+    paint/draw-line 288 220 318 240
+    paint/draw-line 295 225 325 245
+    paint/draw-line 302 230 332 250
+    paint/draw-line 309 235 339 255
+    paint/draw-line 316 240 346 260
+    paint/draw-line 323 245 353 265
+]
+do [
+    paint/draw-line 330 250 360 270
+    paint/draw-line 337 255 367 275
+    paint/draw-line 344 260 374 280
+    paint/draw-line 351 265 381 285
+    paint/draw-line 358 270 388 290
+    paint/draw-line 365 275 395 295
+    paint/draw-line 372 280 402 300
+    paint/draw-line 379 285 409 305
+    paint/draw-line 386 290 416 310
+    paint/draw-line 393 295 423 315
+    paint/draw-line 400 300 430 320
+    paint/draw-line 407 305 437 325
+    paint/draw-line 414 310 444 330
+    paint/draw-line 421 315 451 335
+    paint/draw-line 428 320 458 340
+    paint/draw-line 435 325 465 345
+    paint/draw-line 442 330 472 350
+    paint/draw-line 449 335 479 355
+    paint/draw-line 456 340 486 360
+    paint/draw-line 463 345 493 365
+]
+do [
+    paint/draw-line 470 350 500 370
+    paint/draw-line 477 355 507 375
+    paint/draw-line 484 360 514 380
+    paint/draw-line 491 365 521 385
+    paint/draw-line 498 370 528 390
+    paint/draw-line 505 375 535 395
+    paint/draw-line 512 380 542 400
+    paint/draw-line 519 385 549 405
+    paint/draw-line 526 390 556 410
+    paint/draw-line 533 395 563 415
+    paint/draw-line 540 400 570 420
+    paint/draw-line 547 405 577 425
+    paint/draw-line 554 410 584 430
+    paint/draw-line 561 415 591 435
+    paint/draw-line 568 420 598 440
+    paint/draw-line 575 425 605 445
+    paint/draw-line 582 430 612 450
+    paint/draw-line 589 435 619 455
+    paint/draw-line 596 440 626 460
+    paint/draw-line 603 445 633 465
+]
+do [
+    paint/draw-line 610 450 640 470
+    paint/draw-line 617 455 647 475
+    paint/draw-line 624 460 654 480
+    paint/draw-line 631 465 661 485
+    paint/draw-line 638 470 668 490
+    paint/draw-line 645 475 675 495
+    paint/draw-line 652 480 682 500
+    paint/draw-line 659 485 689 505
+    paint/draw-line 666 490 696 510
+    paint/draw-line 673 495 703 515
+    paint/draw-line 680 500 710 520
+    paint/draw-line 687 505 717 525
+    paint/draw-line 694 510 724 530
+    paint/draw-line 701 515 731 535
+    paint/draw-line 708 520 738 540
+    paint/draw-line 715 525 745 545
+    paint/draw-line 722 530 752 550
+    paint/draw-line 729 535 759 555
+    paint/draw-line 736 540 766 560
+    paint/draw-line 743 545 773 565
+]

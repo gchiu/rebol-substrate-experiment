@@ -14,6 +14,7 @@ paint/ink-opacity: 255
 paint/script-buf: ""
 paint/script-ops: 0
 paint/script-error: 0
+paint/script-stream: 0
 paint/script-saved-tool: 1
 
 paint/color-rgb: func [n] [
@@ -143,7 +144,7 @@ paint/pressure-command: func [x1 y1 p1 x2 y2 p2] [
 ]
 paint/draw-pressure-line: func [x1 y1 p1 x2 y2 p2] [
     paint/cmd: paint/pressure-command x1 y1 p1 x2 y2 p2
-    paint/script-add paint/cmd
+    paint/script-output paint/cmd
 ]
 paint/script-reset: func [] [
     paint/script-buf: ""
@@ -161,6 +162,38 @@ paint/script-add: func [cmd] [
         ""
     ]
 ]
+;; Exact-byte writer for the experimental host streaming sink. HOST_PUTCHAR is
+;; the existing frozen S1 output primitive; Paint redirects stdout to a bounded
+;; C buffer while the script runs.
+paint/script-write: masm 1 [
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_C !
+  paint-write-loop:
+    LIT SCRATCH_C @ ZBRANCH paint-write-done
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ HOST HOST_PUTCHAR
+    LIT SCRATCH_C @ LIT 1 SUB LIT SCRATCH_C !
+    BRANCH paint-write-loop
+  paint-write-done:
+    ARITY 0 EXIT
+]
+paint/script-emit: func [cmd] [
+    either < paint/script-ops 4096 [
+        paint/script-ops: + paint/script-ops 1
+        paint/script-write cmd
+        ""
+    ] [
+        paint/script-error: 1
+        ""
+    ]
+]
+paint/script-set-stream: func [n] [
+    paint/script-stream: either = n 1 [ 1 ] [ 0 ]
+    ""
+]
+paint/script-output: func [cmd] [
+    either = paint/script-stream 1 [ paint/script-emit cmd ] [ paint/script-add cmd ]
+]
 paint/script-status: func [] [
     either = paint/script-error 1 [ "ERR" ] [ "OK" ]
 ]
@@ -170,18 +203,18 @@ paint/draw-line: func [x1 y1 x2 y2] [
     paint/tool: 1
     paint/cmd: paint/line x1 y1 x2 y2
     paint/tool: paint/script-saved-tool
-    paint/script-add paint/cmd
+    paint/script-output paint/cmd
 ]
 paint/erase-line: func [x1 y1 x2 y2] [
     paint/script-saved-tool: paint/tool
     paint/tool: 2
     paint/cmd: paint/line x1 y1 x2 y2
     paint/tool: paint/script-saved-tool
-    paint/script-add paint/cmd
+    paint/script-output paint/cmd
 ]
 paint/draw-clear: func [] [
     paint/cmd: s/+ "C" mk-string [ 10 ]
-    paint/script-add paint/cmd
+    paint/script-output paint/cmd
 ]
 paint/draw-rect: func [x y w h] [
     paint/rx2: + x w

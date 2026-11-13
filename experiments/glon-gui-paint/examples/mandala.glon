@@ -1,6 +1,6 @@
 ;; Procedural 12-fold sunburst mandala, 800x600.
 ;; Self-contained: ordinary Glon drawing commands only.
-;; Compact because the managed command sink bounds peak string growth.
+;; Compact for clear progressive replay and a modest command count.
 paint/draw-clear
 paint/set-color 1
 paint/set-size 12

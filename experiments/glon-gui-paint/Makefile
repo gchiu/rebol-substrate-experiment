@@ -96,6 +96,8 @@ test: all
 	python3 tests/check-png.py glon-paint.png
 	$(TARGET) --mandala-demo
 	python3 tests/check-png.py glon-paint.png
+	$(TARGET) --stream-test
+	python3 tests/check-png.py glon-paint.png
 	$(TARGET) --coalesce-test
 	python3 tests/check-png.py glon-paint.png
 	$(TARGET) --resize-test

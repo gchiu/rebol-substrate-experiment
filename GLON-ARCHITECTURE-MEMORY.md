@@ -400,6 +400,30 @@ binding/vocabulary): a bounded host-backed streaming command sink, or an
 approved chunked sink reset/stream interface. No automatic state reset or
 engine change was made.
 
+[MEASURED 2026-11-13, `experiments/glon-gui-paint`, streaming sink fix]
+**The growing managed command string was replaced by a host-captured stream.**
+`paint/script-set-stream 1` makes `paint/script-output` call the experimental
+`paint/script-emit`, which writes the existing command bytes through the frozen
+`HOST_PUTCHAR` path. Paint installs a bounded `fopencookie` stdout sink that
+appends directly into the C command buffer; the old managed `paint/script-buf`
+sink remains available when streaming is off for the standalone CLI and
+non-stream tests. The host sink capacity is 1 MiB (one byte reserved for NUL),
+and `paint/script-ops` still caps at 4,096 commands. Overflow sets the script
+error/host failure, discards the entire temp stream and leaves the canvas,
+history and replay unchanged; streaming mode is restored to 0.
+`--stream-probe` verifies 40, 60, 61, 100, 500 and 1,000 drawing calls; the
+observed maximum is 1,350 calls, with 1,400 failing on residual per-command
+managed temporary strings (not the growing sink). A forced 1,000-byte host sink
+reports overflow and a following short stream succeeds. `--stream-compare`
+matches old and new command streams byte-for-byte for calligraphy, 永, mandala,
+rectangle, landscape and replay-demo. `--stream-test` runs a 101-command app
+script through immediate execution and replay, checks undo/redo, Pause/Step/
+Back/Stop/End and repeated Load-Clear-Load. Mandala timings remain about
+290-410 ms immediate and 315 ms smooth replay. No frozen S1, runtime opcode,
+rasteriser or vocabulary change was made; the remaining ~1,350-call limit is
+the next optimization target and would require a structured host binding to
+avoid per-command managed strings.
+
 **[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
 worklist has a fixed 256 entries (`GC_WORKLIST_CAP`, the cells before `GC_A1`).
 - **It cannot overflow in the 64K configuration.** Each object is pushed at
