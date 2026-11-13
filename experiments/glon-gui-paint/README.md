@@ -1,5 +1,24 @@
 # Glon Paint G3b.2
 
+Glon Paint is a graphical host experiment for **Glon**, a small REBOL-family
+language designed primarily for LLM-generated software. Glon runs on a frozen
+seven-primitive S1 substrate (`LIT`, `DUP`, `DROP`, `@`, `!`, `0BRANCH`, `HOST`);
+the higher-level language is built above it without changing that substrate.
+Drawing scripts emit bounded line, erase, pressure and clear commands to this
+native SDL2 host, which owns rasterisation, PNG export and the UI. Rendering is
+deterministic, and stored commands can be replayed with smooth pressure-stroke
+animation.
+
+`examples/mandala-deluxe-v2.glon` exercises this path with a 926-command,
+16-fold mandala. Immediate execution takes roughly 7-11 seconds on the tested
+WSLg machine. GUI replay at the default 5 operations/s is much slower (about
+three minutes for the command stream alone); use 20/60 ops/s or the headless
+demo for demonstration.
+
+**Tested environment:** Ubuntu 22.04 under WSLg, using the SDL2 Wayland backend
+and the vendored patched libdecor plugin. Other Linux desktops and native
+Windows/macOS have not been tested for this experiment.
+
 A Photoshop-inspired desktop paint pad. SDL2 owns the window, events,
 renderer and PNG export; Nuklear supplies the immediate-mode interface; Glon
 owns the painting state and drawing decisions; SDL2_image decodes imported
@@ -25,8 +44,8 @@ disabled rather than fake live controls.
 On Debian/Ubuntu:
 
 ```sh
-sudo apt install build-essential libsdl2-dev libsdl2-image-dev libpng-dev libgtk-3-dev \
-  libdecor-0-dev libcairo2-dev libpango1.0-dev libwayland-dev
+sudo apt install build-essential pkg-config python3 libsdl2-dev libsdl2-image-dev \
+  libpng-dev libgtk-3-dev libdecor-0-dev libcairo2-dev libpango1.0-dev libwayland-dev
 ```
 
 Nuklear is vendored in `third_party/`; no system Nuklear package is needed.
@@ -84,9 +103,19 @@ From the repository root:
 
 ```sh
 cd experiments/glon-gui-paint
-make
+make clean && make
 ./build/glon-paint
 ```
+
+To launch the public mandala directly through the normal Paint window:
+
+```sh
+./build/glon-paint --gui-run examples/mandala-deluxe-v2.glon
+```
+
+Or use File → Open Script → `examples/mandala-deluxe-v2.glon` → Run Script.
+The 926-command script takes several seconds to apply; the 25/50/75% replay
+stages are visible progressively when playing the stored command stream.
 
 The default library root is `../..` when launched from this directory. Set
 `PAINT_ROOT=/path/to/checkout` to launch from elsewhere.
@@ -164,13 +193,23 @@ Pause, Complete or End.
 The exact script vocabulary is:
 
 ```text
-paint/set-color n                  select colour 1-4, or 5 = black (script-only)
+paint/set-color n                  select palette 1-11 (1-4 are the UI colours;
+                                   5 black, 6 indigo, 7 turquoise, 8 teal,
+                                   9 coral, 10 gold, 11 ivory are script-only)
 paint/set-size n                   set brush size 1-64
 paint/draw-line x1 y1 x2 y2        opaque line using current colour/size
 paint/draw-rect x y w h           rectangle outline
 paint/draw-clear                   clear the drawing layer
 paint/erase-line x1 y1 x2 y2      erase to transparency using current size
+paint/set-calligraphy-diameter n   set maximum pressure diameter 1-64
+paint/set-pressure p               set pressure 0-255
+paint/set-ink-opacity a            set ink opacity 0-255
+paint/draw-pressure-line x1 y1 p1 x2 y2 p2
+                                   tapered pressure segment
 ```
+
+The extra script colours are ordinary RGB values carried by the existing `L`
+and `P` command fields; the interactive UI still exposes only its four swatches.
 
 Coordinates are always in the fixed 800x600 canvas system. Scripts do not see
 SDL or Nuklear. Scripts are validated against the existing parser, but arity and
@@ -401,11 +440,12 @@ event loop. The headless `--mandala-deluxe-v2-demo` saves
 image, and checks pixel equality, Pause/Step/Back/Stop/End, undo/redo and
 repeated Load-Clear-Load.
 
-Measured on WSLg across final runs: load 0.49-0.58 ms, immediate execution
-7.13-8.72 s, replay preparation 5.84-7.70 s, full smooth replay 5.33-7.82 s;
-managed high-water 40,000, live cells 1,520 after immediate and 1,488 after
-preparation, with 568 and 1,135 GC collections. Immediate and completed replay
-are pixel-identical. Compared with v1
+Measured on WSLg across final runs: load about 0.5-0.9 ms, immediate execution
+7-11 s, replay preparation 5.8-7.7 s and full smooth replay 5.3-9.4 s. Timings
+vary substantially under WSLg. Managed high-water is 40,000, with 1,520 live
+cells after immediate execution and 1,488 after preparation, and 568 and 1,135
+GC collections. Immediate and completed replay are pixel-identical. Compared
+with v1
 (894 commands, 34,263-byte file, about 4.9-5.9 s immediate), v2 uses 32 more
 commands and 104 more pressure strokes, replacing 72 line commands with tapered
 forms. It is slower because pressure geometry is more expensive; the visual
@@ -626,28 +666,34 @@ short stream.
 
 ## Checks
 
+Run from the repository root unless noted:
+
 ```sh
-# 31 Glon paint-logic tests
+# Clean build of the Paint target.
+cd experiments/glon-gui-paint && make clean && make && cd ../..
+
+# Frozen S1 substrate must remain unchanged.
+./check-frozen-s1.sh
+
+# 31 Glon paint-logic tests.
 ./glon jupyter/prelude.glon demo/shop/strings.glon \
   demo/shop/strings-ext.glon experiments/glon-gui-paint/paint.glon \
   experiments/glon-gui-paint/tests/paint-tests.glon
 
-# SDL/Nuklear UI, image, script lifecycle, geometric/bucket tools, mandala,
-# calligraphy, replay, smooth animation, 永, undo, resize, PNG and 10,000-move tests
+# Full application suite: SDL/Nuklear UI, image and script lifecycle,
+# geometric/bucket tools, both deluxe mandalas, calligraphy, replay, smooth
+# animation, 永, undo, resize, PNG and 10,000-move tests.
+cd experiments/glon-gui-paint
 make test
 
-# Write start/25/50/75%/final PNG frames for the first stroke of a script and
-# verify the final full replay equals immediate script execution.
+# Write frames and verify immediate-vs-replay equality for representative scripts.
 ./build/glon-paint --smooth-demo
 ./build/glon-paint --yong-demo
-
-# Write one frame after each completed 永 stroke.
 ./build/glon-paint --yong-frames
-
-# Render the mandala, save replay stages and verify immediate/replay equality.
 ./build/glon-paint --mandala-demo
 ./build/glon-paint --mandala-deluxe-demo
 ./build/glon-paint --mandala-deluxe-v2-demo
+cd ../..
 ```
 
 The calligraphy and replay tests compare complete 800x600 drawing-layer
@@ -707,3 +753,6 @@ these snapshots must not be described as a Glon command log.
   SDL2 renderer backend).
 - Native File Dialog Extended is vendored in `third_party/nfd/` under the
   Zlib license.
+- The libdecor 0.1.0 Cairo plugin is vendored in
+  `third_party/libdecor-cairo/` under the MIT license, with the WSLg shadow
+  patch documented there; see `third_party/README.md` and its `LICENSE`.

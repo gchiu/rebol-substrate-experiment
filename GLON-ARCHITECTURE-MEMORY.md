@@ -447,9 +447,9 @@ Clear, 805 `L` commands and 120 tapered `P` commands (29,759 command bytes).
 5 is script black, and 6-11 add indigo, turquoise, teal, coral, gold and ivory
 RGB values already carried by the ordinary `L`/`P` command fields. No new
 drawing opcode, interpreter path or frozen-S1 change was made. On WSLg:
-load 0.49-0.58 ms, immediate 7.13-8.72 s, preparation 5.84-7.70 s, smooth
-replay 5.33-7.82 s; managed high-water 40,000, live cells 1,520/1,488, GC
-568/1,135. The higher
+load about 0.5-0.9 ms, immediate 7-11 s, preparation 5.8-7.7 s, smooth replay
+5.3-9.4 s (WSLg timings vary substantially); managed high-water 40,000, live
+cells 1,520/1,488, GC 568/1,135. The higher
 cost over v1 comes from 104 additional pressure commands used to taper leaves
 and petal endpoints. Immediate and replay are pixel-identical; the real GUI
 startup path rendered the same image. The 16-fold construction, continuous
