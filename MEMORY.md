@@ -543,6 +543,23 @@ loader cells and 1,300 code cells. It uses only frozen S1 primitives and the
 existing RAW/CALL macros. The complete default self-test passes through the raw
 path. Full report: `experiments/glon-doom/G5H-INVESTIGATION.md`.
 
+## 10c. AvP G5i Alien sprites and visual diagnosis (2026-11-14)
+
+G5i replaced the geometric Alien with five original 64x128 transparent
+pixel-art frames (idle, two walk frames, attack, side), rendered with alpha
+blending, nearest sampling, distance shading and simulation-tick animation.
+Glon still owns the Alien's position, state, door/LOS occlusion and projected
+rectangle. Sprite cost is 0.10–0.11 ms when visible; raw-wall textured
+performance remains about 21.8 FPS, with unchanged 4,555,404 wall S1 ops and
+846,833 HOST calls per frame.
+
+The requested Alien reference sheet was absent; the supplied environment
+contact sheet has no Alien art, so all frames are original. A checker diagnostic
+found no wall-strip gaps; the remaining blockiness is low internal resolution,
+3x nearest scaling, repeated 64x64 tiles and coarse shading. Bilinear final
+scaling is optional and does not replace the deferred G5j environmental review.
+Full report: `experiments/glon-doom/G5I-INVESTIGATION.md`.
+
 ## 11. Detailed documents
 
 - `README.md` — project intro.

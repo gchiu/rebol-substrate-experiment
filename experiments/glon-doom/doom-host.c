@@ -16,6 +16,7 @@
 #include "r0_s1.h"
 #include "m1_layout.h"
 #include "textures.h"
+#include "alien_sprites.h"
 #ifdef DOOM_S1_PROFILE
 #include "s1_prof.h"
 #endif
@@ -61,6 +62,7 @@ typedef struct {
 
 typedef struct {
     double sim_ms, proj_ms, texrow_ms, raster_ms, present_ms, frame_ms;
+    double sprite_ms;
     long heap_high, gc_count, live_cells;
 } Metrics;
 
@@ -100,6 +102,10 @@ static const char *root_dir = "../..";
 static int simple_mode = 0;
 static int stationary_enabled = 0;
 static int raw_wall_mode = 0;
+static int checker_walls = 0;
+static int linear_filter = 0;
+static uint32_t sim_tick = 0;
+static double last_sprite_ms = 0.0;
 static cell reset_block, sector_block, report_block, valid_block, collision_block;
 static cell activate_block, status_block, detail_block, texrows_block;
 static cell floor_line_block, ceil_line_block;
@@ -111,6 +117,8 @@ static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
                         const TexRows *tr, const Status *st,
                         int floor_c, int ceil_c);
 static int wall_tex_v(int y, int top, int bot);
+static int alien_frame_index(const Status *st);
+static void draw_alien_sprite(uint32_t *fb, const Status *st);
 
 static long now_ns(void) {
     struct timespec ts;
@@ -447,6 +455,7 @@ static int tick(int mask) {
 #ifdef DOOM_S1_PROFILE
     prof_collect(&prof_tick);
 #endif
+    if (rc == 0) sim_tick++;
     return rc;
 }
 
@@ -624,6 +633,23 @@ static int self_test(void) {
     fails += expect_eq("open wall occlusion hierarchy", edge_h > centre_h, 1);
     fails += expect_eq("alien sprite rect bounds",
                        st.left < st.right && st.top < st.bot, 1);
+    {
+        Status fs = st;
+        sim_tick = 0;
+        fs.state = 0; fails += expect_eq("alien idle frame", alien_frame_index(&fs), 0);
+        fs.state = 1; sim_tick = 0; fails += expect_eq("alien walk frame A", alien_frame_index(&fs), 1);
+        sim_tick = 8; fails += expect_eq("alien walk frame B", alien_frame_index(&fs), 2);
+        fs.state = 2; fails += expect_eq("alien attack frame", alien_frame_index(&fs), 3);
+        uint32_t *tfb = malloc((size_t)FB_W * FB_H * sizeof *tfb);
+        for (int i = 0; i < FB_W * FB_H; i++) tfb[i] = 0xff112233u;
+        fs.visible = 1; fs.left = 100; fs.right = 180; fs.top = 30; fs.bot = 150;
+        draw_alien_sprite(tfb, &fs);
+        fails += expect_eq("alien sprite transparent corner", tfb[0], 0xff112233u);
+        int changed = 0;
+        for (int i = 0; i < FB_W * FB_H; i++) if (tfb[i] != 0xff112233u) changed++;
+        fails += expect_eq("alien sprite draws pixels", changed > 0, 1);
+        free(tfb);
+    }
 
     /* Alien detection/movement: it approaches but respects the closed door. */
     if (approach_closed_door() != 0) return 2;
@@ -1059,8 +1085,21 @@ static int wall_tex_v(int y, int top, int bot) {
     return v;
 }
 
+static uint32_t checker_tex(int u, int v) {
+    int cell = ((u >> 3) + (v >> 3)) & 1;
+    int grid = ((u & 7) == 0 || (v & 7) == 0);
+    if (grid) return 0xffd8d0b0u;
+    if ((u >> 5) == (v >> 5)) return cell ? 0xff2d6c72u : 0xff667b62u;
+    return cell ? 0xffa34c42u : 0xff3e4d5cau;
+}
+
 static uint32_t sample_wall_tex(int material, int u, int y, int top, int bot, int shade) {
     const uint32_t *tex = wall_texture(material);
+    if (checker_walls) {
+        int tu = (u >> 2) & 63;
+        int tv = wall_tex_v(y, top, bot);
+        return shade_color(checker_tex(tu, tv), shade);
+    }
     int tu = (material == 5) ? (u - 256) * 64 / 128 : (u >> 2) & 63;
     if (tu < 0) tu = 0;
     if (tu > 63) tu = 63;
@@ -1084,36 +1123,68 @@ static void draw_tex_planes(uint32_t *fb, const TexRows *r) {
     }
 }
 
+static uint32_t shade_argb(uint32_t c, int pct) {
+    int a = (int)(c >> 24), r = (int)((c >> 16) & 255), g = (int)((c >> 8) & 255), b = (int)(c & 255);
+    r = r * pct / 100; g = g * pct / 100; b = b * pct / 100;
+    if (r > 255) r = 255;
+    if (g > 255) g = 255;
+    if (b > 255) b = 255;
+    return ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+}
+
+static const uint32_t *alien_frame_for(const Status *st) {
+    if (st->state == 2) return alien_attack;
+    if (st->state == 1) {
+        if (st->tside > 600 || st->tside < -600) return alien_side;
+        return ((sim_tick / 8) & 1) ? alien_walk2 : alien_walk1;
+    }
+    if (st->tside > 700 || st->tside < -700) return alien_side;
+    return alien_idle;
+}
+
+static int alien_frame_index(const Status *st) {
+    const uint32_t *f = alien_frame_for(st);
+    if (f == alien_idle) return 0;
+    if (f == alien_walk1) return 1;
+    if (f == alien_walk2) return 2;
+    if (f == alien_attack) return 3;
+    return 4;
+}
+
 static void draw_alien_sprite(uint32_t *fb, const Status *st) {
     if (!st->visible) return;
+    const uint32_t *src = alien_frame_for(st);
     int l = st->left, r = st->right, t = st->top, b = st->bot;
     if (l < 0) l = 0;
     if (r >= FB_W) r = FB_W - 1;
     if (t < 0) t = 0;
     if (b >= FB_H) b = FB_H - 1;
-    if (l >= r || t >= b) return;
-    int w = r - l + 1, h = b - t + 1, cx = (l + r) / 2;
-    uint32_t body = 0xff4f7b48u, dark = 0xff294027u, eye = 0xffdf4d4du;
-    int head_h = h * 45 / 100;
+    int dw = r - l + 1, dh = b - t + 1;
+    if (dw <= 0 || dh <= 0) return;
+    int pct = st->tdepth < 256 ? 112 : st->tdepth < 512 ? 100 : st->tdepth < 1024 ? 86 : 72;
     for (int y = t; y <= b; y++) {
-        int yy = y - t, hw;
-        if (yy < head_h) {
-            int rem = head_h - yy;
-            hw = w * (28 + 22 * (yy < head_h / 2 ? yy : rem) / (head_h / 2 + 1)) / 100;
-        } else {
-            int rem = b - y;
-            hw = w * (32 + 14 * rem / (h - head_h + 1)) / 100;
+        int sy = (y - t) * ALIEN_H / dh;
+        if (sy < 0) sy = 0;
+        if (sy >= ALIEN_H) sy = ALIEN_H - 1;
+        for (int x = l; x <= r; x++) {
+            int sx = (x - l) * ALIEN_W / dw;
+            if (sx < 0) sx = 0;
+            if (sx >= ALIEN_W) sx = ALIEN_W - 1;
+            uint32_t c = src[sy * ALIEN_W + sx];
+            int a = (int)(c >> 24);
+            if (a == 0) continue;
+            c = shade_argb(c, pct);
+            if (a == 255) { fb[y * FB_W + x] = c; continue; }
+            int da = 255 - a;
+            int dr = (int)((fb[y * FB_W + x] >> 16) & 255);
+            int dg = (int)((fb[y * FB_W + x] >> 8) & 255);
+            int db = (int)(fb[y * FB_W + x] & 255);
+            int rr = ((int)((c >> 16) & 255) * a + dr * da) / 255;
+            int gg = ((int)((c >> 8) & 255) * a + dg * da) / 255;
+            int bb = ((int)(c & 255) * a + db * da) / 255;
+            fb[y * FB_W + x] = 0xff000000u | ((uint32_t)rr << 16) | ((uint32_t)gg << 8) | (uint32_t)bb;
         }
-        if (hw < 1) hw = 1;
-        for (int x = cx - hw; x <= cx + hw; x++) plot(fb, x, y, body);
-        plot(fb, cx - hw, y, dark); plot(fb, cx + hw, y, dark);
     }
-    int eye_y = t + h * 22 / 100, eye_dx = w / 12;
-    for (int dy = 0; dy < 2; dy++)
-        for (int dx = 0; dx < 2; dx++) {
-            plot(fb, cx - eye_dx + dx, eye_y + dy, eye);
-            plot(fb, cx + eye_dx + dx, eye_y + dy, eye);
-        }
 }
 
 static void draw_tracker(uint32_t *fb, const Status *st) {
@@ -1171,8 +1242,15 @@ static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
                 fb[y * FB_W + x] = c;
         }
     }
+    long sp0 = now_ns();
     draw_alien_sprite(fb, st);
+    long sp1 = now_ns();
+    last_sprite_ms = (double)(sp1 - sp0) / 1e6;
     draw_tracker(fb, st);
+}
+
+static void apply_scale_hint(void) {
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, linear_filter ? "1" : "0");
 }
 
 static int sdl_present(SDL_Renderer *ren, SDL_Texture *tex, uint32_t *fb,
@@ -1234,7 +1312,7 @@ static int bench_fixed(int frames, int camx, int camy, int cama) {
     SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
     if (!ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
     if (!ren) fail(SDL_GetError());
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+    apply_scale_hint();
     SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
                                          SDL_TEXTUREACCESS_STREAMING, FB_W, FB_H);
     if (!tex) fail(SDL_GetError());
@@ -1401,6 +1479,7 @@ static int stationary_bench(int frames, int throttle) {
     SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
     if (!ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
     if (!ren) fail(SDL_GetError());
+    apply_scale_hint();
     SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
                                          SDL_TEXTUREACCESS_STREAMING, FB_W, FB_H);
     if (!tex) fail(SDL_GetError());
@@ -1598,16 +1677,26 @@ static int opcode_bench(int frames) {
 
 static void print_metrics(const Metrics *m) {
     printf("metrics: sim=%.2fms wall=%.2fms texrow=%.2fms raster=%.2fms "
-           "present=%.2fms frame=%.2fms fps=%.1f "
+           "sprite=%.2fms present=%.2fms frame=%.2fms fps=%.1f "
            "heap_high=%ld gc=%ld live=%ld\n",
-           m->sim_ms, m->proj_ms, m->texrow_ms, m->raster_ms, m->present_ms,
+           m->sim_ms, m->proj_ms, m->texrow_ms, m->raster_ms, m->sprite_ms, m->present_ms,
            m->frame_ms, m->frame_ms > 0.0 ? 1000.0 / m->frame_ms : 0.0,
            m->heap_high, m->gc_count, m->live_cells);
 }
 
-static int bench(int frames) {
+static int set_close_pose(void) {
+    reset();
+    cell pose = parse_source(
+        "[ doom/px: 700 doom/py: 320 doom/angle: 0 doom/aim "
+        "doom/door-open: 64 doom/door-target: 64 doom/door-blocked: 0 "
+        "doom/alien-x: 850 doom/alien-y: 320 doom/alien-state: 2 "
+        "doom/alien-health: 100 doom/alien-detected: 1 ]", "close pose");
+    return run_block(pose, "close pose");
+}
+
+static int bench(int frames, int bench_alien) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return 2;
-    SDL_Window *win = SDL_CreateWindow("Glon AVP G5f - benchmark",
+    SDL_Window *win = SDL_CreateWindow("Glon AVP G5i - benchmark",
                                        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                        960, 600, SDL_WINDOW_SHOWN);
     if (!win) fail(SDL_GetError());
@@ -1615,7 +1704,7 @@ static int bench(int frames) {
         SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
     if (!ren) fail(SDL_GetError());
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+    apply_scale_hint();
     SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
                                          SDL_TEXTUREACCESS_STREAMING, FB_W, FB_H);
     if (!tex) fail(SDL_GetError());
@@ -1624,6 +1713,7 @@ static int bench(int frames) {
 
     load_session();
     build_blocks();
+    if (bench_alien && set_close_pose() != 0) return 2;
     int floor_c, ceil_c;
     if (get_sector(&floor_c, &ceil_c) != 0) return 2;
     Spans s;
@@ -1651,6 +1741,7 @@ static int bench(int frames) {
         sum.proj_ms += (double)proj_ns / 1e6;
         sum.texrow_ms += (double)(t2 - t1 - proj_ns) / 1e6;
         sum.raster_ms += raster_ms;
+        sum.sprite_ms += last_sprite_ms;
         sum.present_ms += present_ms;
         sum.frame_ms += (double)(t3 - t0) / 1e6;
         SDL_PumpEvents();
@@ -1659,7 +1750,7 @@ static int bench(int frames) {
     }
     long wall1 = now_ns();
     sum.sim_ms /= frames; sum.proj_ms /= frames; sum.texrow_ms /= frames;
-    sum.raster_ms /= frames; sum.present_ms /= frames; sum.frame_ms /= frames;
+    sum.raster_ms /= frames; sum.sprite_ms /= frames; sum.present_ms /= frames; sum.frame_ms /= frames;
     sum.heap_high = r0_s1_heap_high();
     sum.gc_count = r0_s1_gc_count();
     sum.live_cells = r0_s1_gc_live_cells();
@@ -1674,14 +1765,14 @@ static int bench(int frames) {
 
 static int interactive(void) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return 2;
-    SDL_Window *win = SDL_CreateWindow("Glon AVP G5f | W/S/A/D move  arrows turn  E door  R textured/simple  Esc quit",
+    SDL_Window *win = SDL_CreateWindow("Glon AVP G5i | W/S/A/D move  arrows turn  E door  R textured/simple  Esc quit",
                                        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                        960, 600, SDL_WINDOW_SHOWN);
     if (!win) fail(SDL_GetError());
     SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
     if (!ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
     if (!ren) fail(SDL_GetError());
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+    apply_scale_hint();
     SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
                                          SDL_TEXTUREACCESS_STREAMING, FB_W, FB_H);
     if (!tex) fail(SDL_GetError());
@@ -1771,7 +1862,7 @@ static int interactive(void) {
             double secs = ((double)now_ns() - fps_start) / 1e9;
             Metrics m = { sim_ms / 120, proj_ms / 120, texrow_ms / 120,
                           raster_ms / 120, present_ms / 120,
-                          secs * 1000.0 / 120, r0_s1_heap_high(),
+                          secs * 1000.0 / 120, 0.0, r0_s1_heap_high(),
                           r0_s1_gc_count(), r0_s1_gc_live_cells() };
             printf("frame %d: ", frames); print_metrics(&m);
             int sx, sy, sa; Status ds;
@@ -1790,17 +1881,70 @@ static int interactive(void) {
     return 0;
 }
 
+
+static int alien_demo(int state) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return 2;
+    SDL_Window *win = SDL_CreateWindow("Glon AVP G5i - close Alien",
+                                       SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                       960, 600, SDL_WINDOW_SHOWN);
+    if (!win) fail(SDL_GetError());
+    SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
+    if (!ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
+    if (!ren) fail(SDL_GetError());
+    apply_scale_hint();
+    SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
+                                         SDL_TEXTUREACCESS_STREAMING, FB_W, FB_H);
+    if (!tex) fail(SDL_GetError());
+    uint32_t *fb = malloc((size_t)FB_W * FB_H * sizeof *fb);
+    if (!fb) fail("out of memory");
+    load_session();
+    build_blocks();
+    int floor_c, ceil_c;
+    if (get_sector(&floor_c, &ceil_c) != 0) return 2;
+    if (set_close_pose() != 0) return 2;
+    if (state == 1) {
+        cell w = parse_source("[ doom/alien-state: 1 ]", "walk pose");
+        if (run_block(w, "walk pose") != 0) return 2;
+    }
+    Spans s; Detail det; TexRows tr; Status st;
+    if (get_status(&st) != 0 || (!simple_mode && get_texrows(&tr) != 0)) return 2;
+    int running = 1;
+    while (running) {
+        SDL_Event e;
+        while (SDL_PollEvent(&e)) if (e.type == SDL_QUIT ||
+            (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)) running = 0;
+        if (render_spans(&s, NULL) != 0 || get_status(&st) != 0) break;
+        double rm, pm;
+        if (sdl_present(ren, tex, fb, &s, &det, simple_mode ? NULL : &tr, &st,
+                        floor_c, ceil_c, &rm, &pm) != 0) break;
+        sim_tick++;
+        SDL_Delay(16);
+    }
+    free(fb); SDL_DestroyTexture(tex); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
+    return 0;
+}
+
 int main(int argc, char **argv) {
     const char *env = getenv("DOOM_ROOT");
     if (env && *env) root_dir = env;
-    for (int i = 1; i < argc; i++)
+    for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--raw-wall") == 0) raw_wall_mode = 1;
+        if (strcmp(argv[i], "--checker") == 0) checker_walls = 1;
+        if (strcmp(argv[i], "--filter") == 0 && i + 1 < argc &&
+            strcmp(argv[i + 1], "linear") == 0) linear_filter = 1;
+    }
+    if (argc > 1 && strcmp(argv[1], "--demo-close") == 0) return alien_demo(2);
+    if (argc > 1 && strcmp(argv[1], "--demo-walk") == 0) return alien_demo(1);
     if (argc > 2 && strcmp(argv[1], "--raw-wall") == 0) {
         if (strcmp(argv[2], "--self-test") == 0) return self_test();
         if (strcmp(argv[2], "--loader-report") == 0) return loader_report();
         if (strcmp(argv[2], "--bench") == 0) {
-            if (argc > 4 && strcmp(argv[4], "simple") == 0) simple_mode = 1;
-            return bench(atoi(argv[3]));
+            int bench_alien = 0;
+            for (int i = 4; i < argc; i++) {
+                if (strcmp(argv[i], "simple") == 0) simple_mode = 1;
+                if (strcmp(argv[i], "alien") == 0) bench_alien = 1;
+            }
+            return bench(atoi(argv[3]), bench_alien);
         }
     }
     if (argc > 1 && strcmp(argv[1], "--self-test") == 0) return self_test();
@@ -1816,8 +1960,12 @@ int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "--simple") == 0) simple_mode = 1;
     if (argc > 1 && strcmp(argv[1], "--stationary") == 0) stationary_enabled = 1;
     if (argc > 2 && strcmp(argv[1], "--bench") == 0) {
-        if (argc > 3 && strcmp(argv[3], "simple") == 0) simple_mode = 1;
-        return bench(atoi(argv[2]));
+        int bench_alien = 0;
+        for (int i = 3; i < argc; i++) {
+            if (strcmp(argv[i], "simple") == 0) simple_mode = 1;
+            if (strcmp(argv[i], "alien") == 0) bench_alien = 1;
+        }
+        return bench(atoi(argv[2]), bench_alien);
     }
     if (argc > 2 && strcmp(argv[1], "--bench-fixed") == 0) {
         int frames = atoi(argv[2]);

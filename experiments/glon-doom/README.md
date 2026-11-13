@@ -194,3 +194,26 @@ correctness cases, memory accounting and limitations.
 
 Use `--bench 120 --raw-wall`, `--self-test --raw-wall`, or
 `--loader-report --raw-wall`.
+
+## G5i Alien sprites and visual diagnosis
+
+The Alien is now rendered from five original transparent 64x128 pixel-art
+frames (`sprites/aliens/`): idle, two walk frames, attack and side. Glon still
+owns position, state, door/LOS occlusion and the projected rectangle; the host
+does alpha sampling, distance shading and simulation-tick-driven animation.
+There is no green placeholder rectangle.
+
+Commands:
+
+```sh
+./build/doom --raw-wall --demo-close      # actual WSLg close Alien
+./build/doom --raw-wall --demo-walk       # actual WSLg walking Alien
+./build/doom --shots /tmp/g5i-shots --raw-wall
+./build/doom --shots /tmp/g5i-checker --checker
+./build/doom --raw-wall --demo-close --filter linear
+```
+
+Wall diagnosis: `--checker` preserves geometry/materials and shows repeated
+64x64 tiles without strip gaps. `--filter linear` is an optional final
+framebuffer softening, not a default and not a substitute for fixing texture
+density/tiling. See `G5I-INVESTIGATION.md`.

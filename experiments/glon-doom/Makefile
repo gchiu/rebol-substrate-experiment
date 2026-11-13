@@ -27,6 +27,7 @@ diagnostics: $(OPCODE_TARGET) bench-tools
 
 test: $(TARGET)
 	python3 tests/check-textures.py
+	python3 tests/check_aliens.py
 	./$(TARGET) --self-test
 	./$(TARGET) --projection-test
 	./$(TARGET) --stationary-test
