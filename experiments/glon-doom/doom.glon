@@ -261,6 +261,7 @@ doom/check-all: func [x y r] [
         doom/dy: - y doom/cy
         either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
     ]
+    either = doom/objects-on 1 [ doom/check-objects x y r 0 ] [ none ]
 ]
 
 doom/move-x: func [nx] [
@@ -1027,6 +1028,9 @@ doom/texrows-block: [
     doom/tex-row-mirror 98
     doom/tex-row-mirror 99
 ]
+
+
+doom/objects-on: 0
 
 doom/status-block: [
     doom/alien-dx: - doom/alien-x doom/px

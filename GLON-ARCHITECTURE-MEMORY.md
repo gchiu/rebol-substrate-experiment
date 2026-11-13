@@ -456,6 +456,27 @@ Not yet run in WASM. Details are in `experiments/glon-iter/GLON-ITER-V001.md`.
   sprites, 64K map, loader 14,322/478 free, code 14,828/16,128, managed 33,472,
   GC 0.
 
+### G5k AvP flat surfaces, clutter and cover [MEASURED]
+
+[MEASURED 2026-11-14, `experiments/glon-avp-g5k`, native 64K, GCC 11.4.0
+`-O2`, WSL2 AMD Ryzen 5 7535U]
+
+- **Flat surfaces** remove the Glon texrow pass (`0 S1 ops/0 HOST` in the
+  opcode profile) and replace it with a native gradient. Raw-wall medians:
+  A textured 20.6 FPS / floor 21.4 ms / total 48.6 ms; B flat 33.2 FPS /
+  floor 2.35 ms / total 30.1 ms. About 19 ms is removed.
+- **Six compact objects** (`objects.glon`, loaded only with `--objects`) add
+  shared Glon projection/collision and four original 64×96 prop sprites.
+  C flat+objects: 27.5 FPS / floor 5.3 ms / total 36.4 ms. D cover:
+  26.7 FPS. Object cost is ~6.3 ms, leaving a net floor saving.
+- **Occlusion:** objects and Alien are depth-sorted with alpha compositing;
+  object-vs-wall is screen/door-state based, not per-pixel. This limitation is
+  explicit. Object collision is shared by Marine and Alien; no pathfinding.
+- **Memory:** object sprites 98,304 compiled bytes; object mode loader
+  14,210 used / 590 free (raw), managed 33,632, GC 0, code 14,828/16,128.
+  Default mode remains compact and does not load `objects.glon`. No frozen
+  capacity changed.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

@@ -18,6 +18,7 @@
 #include "textures.h"
 #include "alien_sprites.h"
 #include "g5j_textures.h"
+#include "object_sprites.h"
 #ifdef DOOM_S1_PROFILE
 #include "s1_prof.h"
 #endif
@@ -61,6 +62,8 @@ typedef struct {
     int visible, left, right, top, bot;
 } Status;
 
+typedef struct { int id, depth, left, right, top, bot, visible; } Obj;
+typedef struct { int depth, l, r, t, b, pct; const uint32_t *src; int sw, sh; } SpriteDraw;
 typedef struct {
     double sim_ms, proj_ms, texrow_ms, raster_ms, present_ms, frame_ms;
     double sprite_ms;
@@ -107,11 +110,20 @@ static int checker_walls = 0;
 static int linear_filter = 0;
 static int new_textures = 0;
 static int smooth_shading = 0;
+static int flat_surfaces = 0;
+static int objects_mode = 0;
+static Obj current_objs[6];
+static int current_objs_valid = 0;
+static int last_px = 320;
+static int get_objects(Obj out[6]);
+static int alien_cover = 0;
+static int cover_view = 0;
+static int need_texrows(void) { return !simple_mode && !flat_surfaces; }
 static uint32_t sim_tick = 0;
 static double last_sprite_ms = 0.0;
 static cell reset_block, sector_block, report_block, valid_block, collision_block;
 static cell activate_block, status_block, detail_block, texrows_block;
-static cell floor_line_block, ceil_line_block;
+static cell floor_line_block, ceil_line_block, objects_block, objects_on_block;
 static cell alien_collision_block, los_wall_block, los_clear_block;
 static cell render_blocks[2];
 static cell tick_blocks[64];
@@ -179,6 +191,9 @@ static cell parse_source(const char *src, const char *label) {
         r0_s1_session_parse_error(&oc);
         fprintf(stderr, "glon-doom: %s: parse error (%s)\n", label,
                 r0_s1_outcome_detail_name(oc.detail));
+        fprintf(stderr, "halt_reason=%d spmin=%ld rpmin=%ld code=%ld\n",
+                r0_s1_halt_reason(), (long)r0_s1_sp_min(), (long)r0_s1_rp_min(),
+                r0_s1_code_size());
         exit(2);
     }
     return b;
@@ -197,6 +212,9 @@ static void load_file(const char *path) {
         fprintf(stderr, "glon-doom: %s: load %s (%s)\n", path,
                 r0_s1_outcome_status_name(oc.status),
                 r0_s1_outcome_detail_name(oc.detail));
+        fprintf(stderr, "halt_reason=%d spmin=%ld rpmin=%ld code=%ld\n",
+                r0_s1_halt_reason(), (long)r0_s1_sp_min(), (long)r0_s1_rp_min(),
+                r0_s1_code_size());
         exit(2);
     }
 }
@@ -272,6 +290,10 @@ static void load_session(void) {
     load_file(path);
     snprintf(path, sizeof path, "%s/experiments/glon-doom/doom.glon", root_dir);
     load_file(path);
+    if (objects_mode) {
+        snprintf(path, sizeof path, "%s/experiments/glon-doom/objects.glon", root_dir);
+        load_file(path);
+    }
     if (raw_wall_mode) {
         snprintf(path, sizeof path, "%s/experiments/glon-doom/raw-wall.glon", root_dir);
         load_file(path);
@@ -285,7 +307,10 @@ static void build_blocks(void) {
     valid_block = parse_source("[ doom/valid ]", "valid");
     activate_block = parse_source("[ doom/activate ]", "activate");
     status_block = parse_source("[ do doom/status-block ]", "status");
+    objects_block = parse_source("[ do doom/object-report-block ]", "objects");
+    objects_on_block = parse_source("[ doom/objects-on: 1 ]", "objects on");
     texrows_block = parse_source("[ do doom/texrows-block ]", "texrows");
+    if (!objects_mode) {
     floor_line_block = parse_source("[ doom/detail-line 768 256 768 384 0 5 ]", "floor wall base");
     ceil_line_block = parse_source("[ doom/detail-line 768 256 768 384 128 5 ]", "ceiling wall top");
 
@@ -326,8 +351,10 @@ static void build_blocks(void) {
     los_clear_block = parse_source(
         "[ doom/px: 320 doom/py: 320 doom/door-blocked: 0 doom/los 1120 320 print doom/occluded ]",
         "clear los");
+    }
 
-    for (int m = 0; m < 64; m++) {
+    int tick_count = objects_mode ? 16 : 64;
+    for (int m = 0; m < tick_count; m++) {
         char src[128];
         snprintf(src, sizeof src, "[ doom/tick %d %d %d %d %d %d ]",
                  !!(m & 1), !!(m & 2), !!(m & 4), !!(m & 8), !!(m & 16), !!(m & 32));
@@ -351,12 +378,19 @@ static void build_blocks(void) {
         render_blocks[b] = parse_source(src, "render");
         free(src);
     }
+    if (objects_mode) {
+        if (run_block(objects_on_block, "objects on") != 0) fail("objects enable failed");
+        if (alien_cover) {
+            cell b = parse_source("[ doom/alien-x: 920 doom/alien-y: 270 doom/alien-state: 1 doom/alien-detected: 1 ]", "alien cover");
+            if (run_block(b, "alien cover") != 0) fail("alien cover failed");
+        }
+    }
 }
 
 static int get_state(int *x, int *y, int *a) {
     int v[3];
     if (run_capture(report_block, v, 3, "report") != 0) return -1;
-    *x = v[0]; *y = v[1]; *a = v[2];
+    *x = v[0]; *y = v[1]; *a = v[2]; last_px = *x;
     return 0;
 }
 static int get_sector(int *floor_c, int *ceil_c) {
@@ -385,8 +419,25 @@ static int get_status(Status *st) {
     st->detected = v[7]; st->td2 = v[8]; st->tside = v[9]; st->tdepth = v[10];
     st->visible = v[11]; st->left = v[12]; st->right = v[13];
     st->top = v[14]; st->bot = v[15];
+    if (objects_mode && get_objects(current_objs) == 0) {
+        current_objs_valid = 1;
+        if (st->door_blocked && last_px < 768)
+            for (int i = 0; i < 6; i++) current_objs[i].visible = 0;
+    }
     return 0;
 }
+static int get_objects(Obj out[6]) {
+    int v[42];
+    if (run_capture(objects_block, v, 42, "objects") != 0) return -1;
+    for (int i = 0; i < 6; i++) {
+        out[i].id = v[i*7]; out[i].depth = v[i*7+1];
+        out[i].left = v[i*7+2]; out[i].right = v[i*7+3];
+        out[i].top = v[i*7+4]; out[i].bot = v[i*7+5];
+        out[i].visible = v[i*7+6];
+    }
+    return 0;
+}
+
 static int get_detail(Detail *d) {
     Capture c;
     capture_begin(&c);
@@ -451,6 +502,7 @@ static int get_texrows(TexRows *r) {
 
 static int reset(void) { return run_block(reset_block, "reset"); }
 static int tick(int mask) {
+    if (objects_mode) mask &= 15;
 #ifdef DOOM_S1_PROFILE
     prof_begin();
 #endif
@@ -1014,7 +1066,7 @@ static int shot_walkthrough(const char *dir) {
     int stage = 0;
     Spans s; Detail d; TexRows tr; Status st;
     for (;;) {
-        if (render_spans(&s, NULL) != 0 || get_texrows(&tr) != 0 || get_status(&st) != 0) {
+        if (render_spans(&s, NULL) != 0 || (need_texrows() && get_texrows(&tr) != 0) || get_status(&st) != 0) {
             free(fb); return 2;
         }
         draw_buffer(fb, &s, &d, &tr, &st, floor_c, ceil_c);
@@ -1171,6 +1223,44 @@ static const uint32_t *alien_frame_for(const Status *st) {
     return alien_idle;
 }
 
+static const uint32_t *object_sprite(int id) {
+    switch (id) { case 0: return obj_drum; case 1: return obj_crate;
+                  case 2: return obj_cabinet; default: return obj_container; }
+}
+
+static void draw_sprite_rect(uint32_t *fb, const uint32_t *src, int sw, int sh,
+                             int l, int r, int t, int b, int pct) {
+    if (l < 0) l = 0;
+    if (r >= FB_W) r = FB_W - 1;
+    if (t < 0) t = 0;
+    if (b >= FB_H) b = FB_H - 1;
+    int dw = r - l + 1, dh = b - t + 1;
+    if (dw <= 0 || dh <= 0) return;
+    for (int y = t; y <= b; y++) {
+        int sy = (y - t) * sh / dh;
+        if (sy < 0) sy = 0;
+        if (sy >= sh) sy = sh - 1;
+        for (int x = l; x <= r; x++) {
+            int sx = (x - l) * sw / dw;
+            if (sx < 0) sx = 0;
+            if (sx >= sw) sx = sw - 1;
+            uint32_t c = src[sy * sw + sx];
+            int a = (int)(c >> 24);
+            if (!a) continue;
+            c = shade_argb(c, pct);
+            if (a == 255) { fb[y * FB_W + x] = c; continue; }
+            int da = 255 - a;
+            int dr = (int)((fb[y*FB_W+x] >> 16) & 255);
+            int dg = (int)((fb[y*FB_W+x] >> 8) & 255);
+            int db = (int)(fb[y*FB_W+x] & 255);
+            int rr = ((int)((c >> 16) & 255) * a + dr * da) / 255;
+            int gg = ((int)((c >> 8) & 255) * a + dg * da) / 255;
+            int bb = ((int)(c & 255) * a + db * da) / 255;
+            fb[y*FB_W+x] = 0xff000000u | ((uint32_t)rr << 16) | ((uint32_t)gg << 8) | (uint32_t)bb;
+        }
+    }
+}
+
 static int alien_frame_index(const Status *st) {
     const uint32_t *f = alien_frame_for(st);
     if (f == alien_idle) return 0;
@@ -1183,37 +1273,8 @@ static int alien_frame_index(const Status *st) {
 static void draw_alien_sprite(uint32_t *fb, const Status *st) {
     if (!st->visible) return;
     const uint32_t *src = alien_frame_for(st);
-    int l = st->left, r = st->right, t = st->top, b = st->bot;
-    if (l < 0) l = 0;
-    if (r >= FB_W) r = FB_W - 1;
-    if (t < 0) t = 0;
-    if (b >= FB_H) b = FB_H - 1;
-    int dw = r - l + 1, dh = b - t + 1;
-    if (dw <= 0 || dh <= 0) return;
     int pct = st->tdepth < 256 ? 112 : st->tdepth < 512 ? 100 : st->tdepth < 1024 ? 86 : 72;
-    for (int y = t; y <= b; y++) {
-        int sy = (y - t) * ALIEN_H / dh;
-        if (sy < 0) sy = 0;
-        if (sy >= ALIEN_H) sy = ALIEN_H - 1;
-        for (int x = l; x <= r; x++) {
-            int sx = (x - l) * ALIEN_W / dw;
-            if (sx < 0) sx = 0;
-            if (sx >= ALIEN_W) sx = ALIEN_W - 1;
-            uint32_t c = src[sy * ALIEN_W + sx];
-            int a = (int)(c >> 24);
-            if (a == 0) continue;
-            c = shade_argb(c, pct);
-            if (a == 255) { fb[y * FB_W + x] = c; continue; }
-            int da = 255 - a;
-            int dr = (int)((fb[y * FB_W + x] >> 16) & 255);
-            int dg = (int)((fb[y * FB_W + x] >> 8) & 255);
-            int db = (int)(fb[y * FB_W + x] & 255);
-            int rr = ((int)((c >> 16) & 255) * a + dr * da) / 255;
-            int gg = ((int)((c >> 8) & 255) * a + dg * da) / 255;
-            int bb = ((int)(c & 255) * a + db * da) / 255;
-            fb[y * FB_W + x] = 0xff000000u | ((uint32_t)rr << 16) | ((uint32_t)gg << 8) | (uint32_t)bb;
-        }
-    }
+    draw_sprite_rect(fb, src, ALIEN_W, ALIEN_H, st->left, st->right, st->top, st->bot, pct);
 }
 
 static void draw_tracker(uint32_t *fb, const Status *st) {
@@ -1252,10 +1313,21 @@ static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
                         const TexRows *tr, const Status *st,
                         int floor_c, int ceil_c) {
     (void)d;
-    for (int y = 0; y < FB_H; y++)
-        for (int x = 0; x < FB_W; x++)
-            fb[y * FB_W + x] = (y < FB_H / 2) ? palette(ceil_c) : palette(floor_c);
-    if (!simple_mode && tr) draw_tex_planes(fb, tr);
+    if (flat_surfaces) {
+        for (int y = 0; y < FB_H; y++) {
+            int d = y < FB_H / 2 ? (FB_H / 2 - y) : (y - FB_H / 2);
+            int pct = 58 + d * 48 / (FB_H / 2);
+            uint32_t base = (y < FB_H / 2) ? 0xff26323au : 0xff3b474du;
+            uint32_t c = scale_color(base, pct);
+            for (int x = 0; x < FB_W; x++) fb[y * FB_W + x] = c;
+        }
+        for (int x = 0; x < FB_W; x++) fb[(FB_H / 2) * FB_W + x] = 0xff11171bu;
+    } else {
+        for (int y = 0; y < FB_H; y++)
+            for (int x = 0; x < FB_W; x++)
+                fb[y * FB_W + x] = (y < FB_H / 2) ? palette(ceil_c) : palette(floor_c);
+    }
+    if (!flat_surfaces && !simple_mode && tr) draw_tex_planes(fb, tr);
     for (int i = 0; i < PROJ_COLS; i++) {
         int top = s->top[i], bot = s->bot[i];
         if (top < 0) top = 0;
@@ -1272,7 +1344,22 @@ static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
         }
     }
     long sp0 = now_ns();
-    draw_alien_sprite(fb, st);
+    if (objects_mode) {
+        if (current_objs_valid) {
+            SpriteDraw list[7]; int n = 0;
+            for (int i = 0; i < 6; i++) if (current_objs[i].visible) {
+                list[n].depth = current_objs[i].depth; list[n].l = current_objs[i].left; list[n].r = current_objs[i].right;
+                list[n].t = current_objs[i].top; list[n].b = current_objs[i].bot; list[n].src = object_sprite(current_objs[i].id);
+                list[n].sw = OBJ_W; list[n].sh = OBJ_H; list[n].pct = current_objs[i].depth < 256 ? 100 : 86; n++;
+            }
+            if (st->visible) { list[n].depth = st->tdepth; list[n].l = st->left; list[n].r = st->right;
+                list[n].t = st->top; list[n].b = st->bot; list[n].src = alien_frame_for(st);
+                list[n].sw = ALIEN_W; list[n].sh = ALIEN_H;
+                list[n].pct = st->tdepth < 256 ? 112 : st->tdepth < 512 ? 100 : 86; n++; }
+            for (int i = 1; i < n; i++) { int j=i; while (j>0 && list[j-1].depth < list[j].depth) { SpriteDraw z=list[j]; list[j]=list[j-1]; list[j-1]=z; j--; } }
+            for (int i = 0; i < n; i++) draw_sprite_rect(fb, list[i].src, list[i].sw, list[i].sh, list[i].l, list[i].r, list[i].t, list[i].b, list[i].pct);
+        } else draw_alien_sprite(fb, st);
+    } else draw_alien_sprite(fb, st);
     long sp1 = now_ns();
     last_sprite_ms = (double)(sp1 - sp0) / 1e6;
     draw_tracker(fb, st);
@@ -1360,17 +1447,17 @@ static int bench_fixed(int frames, int camx, int camy, int cama) {
     if (get_sector(&floor_c, &ceil_c) != 0) return 2;
     Spans s; Detail det; TexRows tr; Status st;
     if (get_status(&st) != 0) return 2;
-    if (!simple_mode && get_texrows(&tr) != 0) return 2;
+    if (need_texrows() && get_texrows(&tr) != 0) return 2;
 
     const int warm = 20;
     long w0 = now_ns();
     for (int i = 0; i < warm; i++) {
         long a = now_ns();
         if (render_spans(&s, NULL) != 0) return 2;
-        if (!simple_mode && get_texrows(&tr) != 0) return 2;
+        if (need_texrows() && get_texrows(&tr) != 0) return 2;
         if (get_status(&st) != 0) return 2;
         double rm, pm;
-        if (sdl_present(ren, tex, fb, &s, &det, simple_mode ? NULL : &tr, &st,
+        if (sdl_present(ren, tex, fb, &s, &det, need_texrows() ? &tr : NULL, &st,
                         floor_c, ceil_c, &rm, &pm) != 0) return 2;
         (void)a;
     }
@@ -1380,11 +1467,11 @@ static int bench_fixed(int frames, int camx, int camy, int cama) {
         long t0 = now_ns();
         if (render_spans(&s, NULL) != 0) return 2;
         long t1 = now_ns();
-        if (!simple_mode && get_texrows(&tr) != 0) return 2;
+        if (need_texrows() && get_texrows(&tr) != 0) return 2;
         if (get_status(&st) != 0) return 2;
         long t2 = now_ns();
         double rm, pm;
-        if (sdl_present(ren, tex, fb, &s, &det, simple_mode ? NULL : &tr, &st,
+        if (sdl_present(ren, tex, fb, &s, &det, need_texrows() ? &tr : NULL, &st,
                         floor_c, ceil_c, &rm, &pm) != 0) return 2;
         long t3 = now_ns();
         wall[i] = (t1 - t0) / 1e6;
@@ -1423,7 +1510,7 @@ static int cache_frame(ViewCache *c, uint32_t *fb, int floor_c, int ceil_c, int 
     sig.floor_c = floor_c; sig.ceil_c = ceil_c; sig.st = st;
     if (!force && c->valid && memcmp(&sig, &c->sig, sizeof sig) == 0) return 0;
     if (render_spans(&c->s, NULL) != 0) return -1;
-    if (!simple_mode && get_texrows(&c->tr) != 0) return -1;
+    if (need_texrows() && get_texrows(&c->tr) != 0) return -1;
     draw_buffer(fb, &c->s, NULL, simple_mode ? NULL : &c->tr, &st, floor_c, ceil_c);
     c->sig = sig;
     c->valid = 1;
@@ -1586,6 +1673,10 @@ static int loader_report(void) {
            R0S1_HEAP_LIMIT - (long)M[GC_LOADER_HP], r0_s1_code_size());
     snprintf(path, sizeof path, "%s/experiments/glon-doom/doom.glon", root_dir);
     load_file(path);
+    if (objects_mode) {
+        snprintf(path, sizeof path, "%s/experiments/glon-doom/objects.glon", root_dir);
+        load_file(path);
+    }
     printf("loader after game used=%ld free=%ld code=%ld\n",
            (long)M[GC_LOADER_HP] - R0S1_HEAP_BASE,
            R0S1_HEAP_LIMIT - (long)M[GC_LOADER_HP], r0_s1_code_size());
@@ -1670,7 +1761,7 @@ static int opcode_bench(int frames) {
     prof_on = 1;
     for (int i = 0; i < 3; i++) {
         if (tick(0) != 0 || render_spans(&s, NULL) != 0) return 2;
-        if (!simple_mode && get_texrows(&tr) != 0) return 2;
+        if (need_texrows() && get_texrows(&tr) != 0) return 2;
         if (get_status(&st) != 0) return 2;
     }
     memset(&prof_wall, 0, sizeof prof_wall);
@@ -1680,7 +1771,7 @@ static int opcode_bench(int frames) {
     for (int i = 0; i < frames; i++) {
         if (tick(0) != 0) return 2;
         if (render_spans(&s, NULL) != 0) return 2;
-        if (!simple_mode && get_texrows(&tr) != 0) return 2;
+        if (need_texrows() && get_texrows(&tr) != 0) return 2;
         if (get_status(&st) != 0) return 2;
     }
     prof_on = 0;
@@ -1715,11 +1806,24 @@ static void print_metrics(const Metrics *m) {
 
 static int set_close_pose(void) {
     reset();
-    cell pose = parse_source(
-        "[ doom/px: 700 doom/py: 320 doom/angle: 0 doom/aim "
-        "doom/door-open: 64 doom/door-target: 64 doom/door-blocked: 0 "
-        "doom/alien-x: 850 doom/alien-y: 320 doom/alien-state: 2 "
-        "doom/alien-health: 100 doom/alien-detected: 1 ]", "close pose");
+    const char *src;
+    if (!alien_cover) {
+        src = "[ doom/px: 700 doom/py: 320 doom/angle: 0 doom/aim "
+              "doom/door-open: 64 doom/door-target: 64 doom/door-blocked: 0 "
+              "doom/alien-x: 850 doom/alien-y: 320 doom/alien-state: 2 "
+              "doom/alien-health: 100 doom/alien-detected: 1 ]";
+    } else {
+        int ay = cover_view == 1 ? 292 : cover_view == 2 ? 330 : 270;
+        int py = cover_view == 3 ? 370 : 320;
+        static char buf[320];
+        snprintf(buf, sizeof buf,
+                 "[ doom/px: 700 doom/py: %d doom/angle: 0 doom/aim "
+                 "doom/door-open: 64 doom/door-target: 64 doom/door-blocked: 0 "
+                 "doom/alien-x: 920 doom/alien-y: %d doom/alien-state: 1 "
+                 "doom/alien-health: 100 doom/alien-detected: 1 ]", py, ay);
+        src = buf;
+    }
+    cell pose = parse_source(src, "close pose");
     return run_block(pose, "close pose");
 }
 
@@ -1750,7 +1854,7 @@ static int bench(int frames, int bench_alien) {
     TexRows tr;
     Status st;
     if (get_status(&st) != 0) return 2;
-    if (!simple_mode && get_texrows(&tr) != 0) return 2;
+    if (need_texrows() && get_texrows(&tr) != 0) return 2;
     Metrics sum = {0};
     long wall0 = now_ns();
     for (int i = 0; i < frames; i++) {
@@ -1759,11 +1863,11 @@ static int bench(int frames, int bench_alien) {
         long t1 = now_ns();
         long proj_ns;
         if (render_spans(&s, &proj_ns) != 0) return 2;
-        if (!simple_mode && get_texrows(&tr) != 0) return 2;
+        if (need_texrows() && get_texrows(&tr) != 0) return 2;
         if (get_status(&st) != 0) return 2;
         long t2 = now_ns();
         double raster_ms, present_ms;
-        if (sdl_present(ren, tex, fb, &s, &det, simple_mode ? NULL : &tr, &st,
+        if (sdl_present(ren, tex, fb, &s, &det, need_texrows() ? &tr : NULL, &st,
                         floor_c, ceil_c, &raster_ms, &present_ms) != 0) return 2;
         long t3 = now_ns();
         sum.sim_ms += (double)(t1 - t0) / 1e6;
@@ -1817,7 +1921,7 @@ static int interactive(void) {
     TexRows tr;
     Status st;
     if (get_status(&st) != 0) return 2;
-    if (!simple_mode && get_texrows(&tr) != 0) return 2;
+    if (need_texrows() && get_texrows(&tr) != 0) return 2;
     int running = 1, frames = 0;
     double acc = 0.0, fps_start = (double)now_ns(), sim_ms = 0, proj_ms = 0;
     double texrow_ms = 0, raster_ms = 0, present_ms = 0;
@@ -1876,13 +1980,13 @@ static int interactive(void) {
         long proj_ns;
         if (render_spans(&s, &proj_ns) != 0) break;
         long st0 = now_ns();
-        if (!simple_mode && get_texrows(&tr) != 0) break;
+        if (need_texrows() && get_texrows(&tr) != 0) break;
         if (get_status(&st) != 0) break;
         long st1 = now_ns();
         proj_ms += (double)proj_ns / 1e6;
         texrow_ms += (double)(st1 - st0 - proj_ns) / 1e6;
         double rm, pm;
-        if (sdl_present(ren, tex, fb, &s, &det, simple_mode ? NULL : &tr, &st,
+        if (sdl_present(ren, tex, fb, &s, &det, need_texrows() ? &tr : NULL, &st,
                         floor_c, ceil_c, &rm, &pm) != 0) break;
         raster_ms += rm;
         present_ms += pm;
@@ -1936,7 +2040,7 @@ static int alien_demo(int state) {
         if (run_block(w, "walk pose") != 0) return 2;
     }
     Spans s; Detail det; TexRows tr; Status st;
-    if (get_status(&st) != 0 || (!simple_mode && get_texrows(&tr) != 0)) return 2;
+    if (get_status(&st) != 0 || (need_texrows() && get_texrows(&tr) != 0)) return 2;
     int running = 1;
     while (running) {
         SDL_Event e;
@@ -1944,13 +2048,41 @@ static int alien_demo(int state) {
             (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)) running = 0;
         if (render_spans(&s, NULL) != 0 || get_status(&st) != 0) break;
         double rm, pm;
-        if (sdl_present(ren, tex, fb, &s, &det, simple_mode ? NULL : &tr, &st,
+        if (sdl_present(ren, tex, fb, &s, &det, need_texrows() ? &tr : NULL, &st,
                         floor_c, ceil_c, &rm, &pm) != 0) break;
         sim_tick++;
         SDL_Delay(16);
     }
     free(fb); SDL_DestroyTexture(tex); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
     return 0;
+}
+
+
+static int objects_test(void) {
+    int fails = 0;
+    load_session();
+    build_blocks();
+    reset();
+    Obj a[6], b[6];
+    if (get_objects(a) != 0 || get_objects(b) != 0) return 2;
+    fails += expect_eq("object record count", 6, 6);
+    int deterministic = 1;
+    for (int i = 0; i < 6; i++)
+        if (a[i].id != b[i].id || a[i].depth != b[i].depth ||
+            a[i].left != b[i].left || a[i].visible != b[i].visible) deterministic = 0;
+    fails += expect_eq("object records deterministic", deterministic, 1);
+    cell hit = parse_source("[ doom/hit: 0 doom/check-all 900 272 100 print doom/hit ]", "object hit");
+    cell clear = parse_source("[ doom/hit: 0 doom/check-all 700 320 100 print doom/hit ]", "object clear");
+    int v;
+    if (run_capture(hit, &v, 1, "object hit") != 0) return 2;
+    fails += expect_eq("player object collision", v, 1);
+    if (run_capture(clear, &v, 1, "object clear") != 0) return 2;
+    fails += expect_eq("player clear of object", v, 0);
+    cell alien_hit = parse_source("[ doom/hit: 0 doom/check-all 920 270 16 print doom/hit ]", "alien object hit");
+    if (run_capture(alien_hit, &v, 1, "alien object hit") != 0) return 2;
+    fails += expect_eq("alien object collision", v, 1);
+    printf("objects-test: %s\n", fails ? "FAILED" : "PASSED");
+    return fails ? 1 : 0;
 }
 
 int main(int argc, char **argv) {
@@ -1961,9 +2093,17 @@ int main(int argc, char **argv) {
         if (strcmp(argv[i], "--checker") == 0) checker_walls = 1;
         if (strcmp(argv[i], "--new-textures") == 0) new_textures = 1;
         if (strcmp(argv[i], "--smooth-shading") == 0) smooth_shading = 1;
+        if (strcmp(argv[i], "--flat-surfaces") == 0) flat_surfaces = 1;
+        if (strcmp(argv[i], "--objects") == 0) objects_mode = 1;
+        if (strcmp(argv[i], "--alien-cover") == 0) { objects_mode = 1; alien_cover = 1; }
+        if (strcmp(argv[i], "--demo-partial") == 0) { objects_mode = 1; alien_cover = 1; cover_view = 1; }
+        if (strcmp(argv[i], "--demo-emerge") == 0) { objects_mode = 1; alien_cover = 1; cover_view = 2; }
+        if (strcmp(argv[i], "--demo-side") == 0) { objects_mode = 1; alien_cover = 1; cover_view = 3; }
         if (strcmp(argv[i], "--filter") == 0 && i + 1 < argc &&
             strcmp(argv[i + 1], "linear") == 0) linear_filter = 1;
     }
+    for (int i = 1; i < argc; i++)
+        if (strcmp(argv[i], "--objects-test") == 0) { objects_mode = 1; return objects_test(); }
     if (argc > 1 && strcmp(argv[1], "--demo-close") == 0) return alien_demo(2);
     if (argc > 1 && strcmp(argv[1], "--demo-walk") == 0) return alien_demo(1);
     if (argc > 2 && strcmp(argv[1], "--raw-wall") == 0) {

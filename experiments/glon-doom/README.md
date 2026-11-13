@@ -241,3 +241,31 @@ The new textures are
 configuration remains 320×200/160 rays with the prepared-masm wall path.
 320-ray and 640×400 variants are blocked by loader and Glon projection/texrow
 coupling, respectively; see `G5J-INVESTIGATION.md`.
+
+## G5k industrial clutter, cover and flat surfaces
+
+`--flat-surfaces` removes the Glon texrow pass and draws a cheap native depth
+gradient. `--objects` loads six compact Glon-defined industrial props (two
+drums, two crates, cabinet, low container) with shared projection/collision and
+original transparent sprites.
+
+Measured raw-wall run medians:
+
+| Mode | FPS | Floor/ceiling | Total |
+|---|---:|---:|---:|
+| A textured | 20.6 | 21.4 ms | 48.6 ms |
+| B flat | 33.2 | 2.35 ms | 30.1 ms |
+| C flat + objects | 27.5 | 5.3 ms | 36.4 ms |
+| D flat + objects + cover | 26.7 | 5.8 ms | 37.4 ms |
+
+The flat deck is visibly emptier than the textured floor but reads acceptably
+with clutter. Object-vs-sprite occlusion is alpha/depth sorted; object-vs-wall
+is screen/door-state based, not per-pixel. See `G5K-INVESTIGATION.md`.
+
+```sh
+./build/doom --raw-wall --bench 120 --flat-surfaces
+./build/doom --raw-wall --bench 120 --flat-surfaces --objects
+./build/doom --demo-close --raw-wall --flat-surfaces --objects --alien-cover
+./build/doom --demo-close --raw-wall --flat-surfaces --demo-emerge
+./build/doom --shots /tmp/g5k-clutter --flat-surfaces --objects
+```

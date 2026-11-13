@@ -574,6 +574,20 @@ parallel Glon projection/texrow work. Textured performance remains 19.6–21.7
 FPS across new/smooth variants, above 15 FPS. Raw wall and Alien paths are
 preserved. Full report: `experiments/glon-doom/G5J-INVESTIGATION.md`.
 
+## 10e. AvP G5k flat surfaces, clutter and cover (2026-11-14)
+
+G5k replaced the expensive floor/ceiling texrow pass with an optional cheap
+depth gradient. Flat mode removed about 19 ms of floor work and raised raw-wall
+textured performance from 20.6 to 33.2 FPS. Six compact Glon-defined industrial
+props added shared projection/collision and depth-sorted sprites; the
+flat+objects mode measured 27.5 FPS, spending roughly 6 ms on objects and
+collision while retaining a net saving. The Alien can be hidden behind a crate
+and emerge around it; player and Alien object collision are tested.
+
+Object-vs-wall occlusion is screen/door-state based rather than per-pixel; this
+limitation is documented. The object module is separate and does not affect
+the default loader. Full report: `experiments/glon-doom/G5K-INVESTIGATION.md`.
+
 ## 11. Detailed documents
 
 - `README.md` — project intro.
