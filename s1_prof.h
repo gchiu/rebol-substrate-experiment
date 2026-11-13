@@ -18,6 +18,9 @@ extern long s1_prof_host_count[16];
  * code bucket (IP>>8). Used to attribute execution to emitter functions. */
 extern long s1_prof_ip_hist[256];
 
+/* dynamic count of 0BRANCH instructions whose flag was zero (branch taken) */
+extern long s1_prof_branch_taken;
+
 /* aggregate cycle accumulators (rdtsc) for coarse time attribution: total
  * inside s1_run, and inside the host() dispatch. Aggregate, not per-op. */
 extern unsigned long long s1_prof_run_cycles;

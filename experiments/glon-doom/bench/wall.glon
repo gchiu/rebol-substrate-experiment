@@ -1,0 +1,94 @@
+;; Isolated 160-ray / 10-wall workload. This is the G5f wall shape without
+;; host output, textures, floor rows, rendering or game state.
+b/px: 320 b/py: 320 b/dirx: 64 b/diry: 0 b/planex: 0 b/planey: -42
+b/projection: 246 b/horizon: 100
+b/best: 0 b/bc: 0 b/t: 0 b/hx: 0 b/hy: 0 b/half: 0 b/top: 0 b/bot: 0
+b/wall: func [sx] [
+    b/rayx: + b/dirx / * b/planex - * 2 sx 319 319
+    b/rayy: + b/diry / * b/planey - * 2 sx 319 319
+    b/best: 100000
+    b/bc: 0
+    either = b/rayy 0 [ none ] [
+      b/t: / * - 128 b/py 64 b/rayy
+      either > b/t 0 [
+        b/hx: + b/px / * b/t b/rayx 64
+        either < b/hx 128 [ none ] [ either > b/hx 768 [ none ] [
+          either < b/t b/best [ b/best: b/t b/bc: 1 ] [ none ] ] ] ] [ none ]
+    ]
+    either = b/rayx 0 [ none ] [
+      b/t: / * - 768 b/px 64 b/rayx
+      either > b/t 0 [
+        b/hy: + b/py / * b/t b/rayy 64
+        either < b/hy 128 [ none ] [ either > b/hy 256 [ none ] [
+          either < b/t b/best [ b/best: b/t b/bc: 1 ] [ none ] ] ] ] [ none ]
+    ]
+    either = b/rayy 0 [ none ] [
+      b/t: / * - 256 b/py 64 b/rayy
+      either > b/t 0 [
+        b/hx: + b/px / * b/t b/rayx 64
+        either < b/hx 768 [ none ] [ either > b/hx 1280 [ none ] [
+          either < b/t b/best [ b/best: b/t b/bc: 2 ] [ none ] ] ] ] [ none ]
+    ]
+    either = b/rayx 0 [ none ] [
+      b/t: / * - 1280 b/px 64 b/rayx
+      either > b/t 0 [
+        b/hy: + b/py / * b/t b/rayy 64
+        either < b/hy 256 [ none ] [ either > b/hy 1024 [ none ] [
+          either < b/t b/best [ b/best: b/t b/bc: 3 ] [ none ] ] ] ] [ none ]
+    ]
+    either = b/rayy 0 [ none ] [
+      b/t: / * - 1024 b/py 64 b/rayy
+      either > b/t 0 [
+        b/hx: + b/px / * b/t b/rayx 64
+        either < b/hx 1152 [ none ] [ either > b/hx 1280 [ none ] [
+          either < b/t b/best [ b/best: b/t b/bc: 3 ] [ none ] ] ] ] [ none ]
+    ]
+    either = b/rayx 0 [ none ] [
+      b/t: / * - 1152 b/px 64 b/rayx
+      either > b/t 0 [
+        b/hy: + b/py / * b/t b/rayy 64
+        either < b/hy 384 [ none ] [ either > b/hy 1024 [ none ] [
+          either < b/t b/best [ b/best: b/t b/bc: 3 ] [ none ] ] ] ] [ none ]
+    ]
+    either = b/rayy 0 [ none ] [
+      b/t: / * - 384 b/py 64 b/rayy
+      either > b/t 0 [
+        b/hx: + b/px / * b/t b/rayx 64
+        either < b/hx 768 [ none ] [ either > b/hx 1152 [ none ] [
+          either < b/t b/best [ b/best: b/t b/bc: 2 ] [ none ] ] ] ] [ none ]
+    ]
+    either = b/rayx 0 [ none ] [
+      b/t: / * - 768 b/px 64 b/rayx
+      either > b/t 0 [
+        b/hy: + b/py / * b/t b/rayy 64
+        either < b/hy 384 [ none ] [ either > b/hy 640 [ none ] [
+          either < b/t b/best [ b/best: b/t b/bc: 1 ] [ none ] ] ] ] [ none ]
+    ]
+    either = b/rayy 0 [ none ] [
+      b/t: / * - 640 b/py 64 b/rayy
+      either > b/t 0 [
+        b/hx: + b/px / * b/t b/rayx 64
+        either < b/hx 128 [ none ] [ either > b/hx 768 [ none ] [
+          either < b/t b/best [ b/best: b/t b/bc: 1 ] [ none ] ] ] ] [ none ]
+    ]
+    either = b/rayx 0 [ none ] [
+      b/t: / * - 128 b/px 64 b/rayx
+      either > b/t 0 [
+        b/hy: + b/py / * b/t b/rayy 64
+        either < b/hy 128 [ none ] [ either > b/hy 640 [ none ] [
+          either < b/t b/best [ b/best: b/t b/bc: 1 ] [ none ] ] ] ] [ none ]
+    ]
+    b/half: / * b/projection 64 either < b/best 1 [ 1 ] [ b/best ]
+    b/top: - b/horizon b/half
+    b/bot: + b/horizon b/half
+    either < b/top 0 [ b/top: 0 ] [ none ]
+    either > b/bot 199 [ b/bot: 199 ] [ none ]
+    + + b/best b/bc b/top
+]
+b/sum: 0
+b/rays: func [sx end] [
+    either > sx end [ b/sum ] [
+        b/sum: + b/sum b/wall sx
+        b/rays + sx 2 end
+    ]
+]

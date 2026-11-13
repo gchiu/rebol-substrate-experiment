@@ -512,6 +512,23 @@ history/navigation.
 Principle: **let the shop reveal what Glon actually needs rather than adding
 language facilities speculatively.** Full specification: `docs/glon-shop-product-spec.md`.
 
+## 10a. AvP G5g execution-cost investigation (2026-11-14)
+
+G5g measured the AvP renderer rather than changing it. The G5f wall regression
+was traced to host C build layout, not to the wall or row algorithm: the same
+wall stage executed 33,377,988 S1 operations/frame at both 103.7 ms and
+136.6 ms depending on the host binary composition. G5f's row compiler was
+confirmed (16.62M → 5.19M S1 operations/frame).
+
+An isolated benchmark outside the game loader measured S1 primitives at about
+1.6–3.1 ns each, Glon recursion at 22–33 µs/level, a 160-ray/10-wall Glon
+workload at 112 ms median versus 0.00126 ms native C, and identical checksums.
+A reversible stationary-view cache cut idle frame production from ~168 ms to
+~7 ms, but input-to-visible update remained a full render. The loader frontier
+was measured at 638 free cells with the game contributing no masm code.
+All tests, including the new stationary-cache tests and frozen-S1 check,
+passed. Full report: `experiments/glon-doom/G5G-INVESTIGATION.md`.
+
 ## 11. Detailed documents
 
 - `README.md` — project intro.

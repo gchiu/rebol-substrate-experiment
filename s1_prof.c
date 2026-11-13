@@ -12,6 +12,7 @@ cell M[MEM_CELLS];
 long s1_prof_op_count[8];
 long s1_prof_host_count[16];
 long s1_prof_ip_hist[256];
+long s1_prof_branch_taken;
 unsigned long long s1_prof_run_cycles;
 unsigned long long s1_prof_host_cycles;
 
@@ -25,6 +26,7 @@ void s1_prof_reset(void) {
     for (int i = 0; i < 8; i++) s1_prof_op_count[i] = 0;
     for (int i = 0; i < 16; i++) s1_prof_host_count[i] = 0;
     for (int i = 0; i < 256; i++) s1_prof_ip_hist[i] = 0;
+    s1_prof_branch_taken = 0;
     s1_prof_run_cycles = 0;
     s1_prof_host_cycles = 0;
 }
@@ -207,7 +209,7 @@ void s1_run(cell start) {
         case OP_DROP:    SP++; break;
         case OP_FETCH:  { cell a = pop(); cell v = M[a]; push(v); break; }
         case OP_STORE:  { cell a = pop(); cell v = pop(); M[a] = v; break; }
-        case OP_ZBRANCH:{ cell f = pop(); cell t = M[IP++]; if (f == 0) IP = t; break; }
+        case OP_ZBRANCH:{ cell f = pop(); cell t = M[IP++]; if (f == 0) { s1_prof_branch_taken++; IP = t; } break; }
         case OP_HOST:    host(M[IP++]); break;
         case OP_HALT:
             s1_prof_run_cycles += rdtsc() - t0;

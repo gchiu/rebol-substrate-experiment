@@ -144,3 +144,28 @@ share it with Glon, not a throughput tweak.
 - Wall projection remains O(160 × 10) with camera-dependent divisions.
 - No camera/world geometry was moved to C.
 - No resolution, artwork, gameplay or frozen-S1 changes.
+
+## G5g execution-cost investigation
+
+G5g does not add a renderer optimisation. It measures where the time and
+loader cells go. See `G5G-INVESTIGATION.md` for the full report and commands.
+
+Key measured results:
+
+- The G5f wall regression is in the **host C build layout**, not the wall
+  algorithm: the G5f game runs at ~103.7 ms wall under an equivalent host that
+  omits the G5f projection diagnostic code, versus ~136.6 ms in the G5f host.
+  The wall-stage instruction count is identical (33,377,988 S1 operations).
+- Wall is ~84% of rendering S1 work: 33.38M operations/frame in wall, 5.19M in
+  the G5f texture rows. The G5f row compiler is real (G5e rows: 16.62M
+  operations).
+- The host is not where the wall cost is: 1,600 checks cost ~0.0013 ms in C,
+  ~112 ms in the isolated Glon wall benchmark, and ~136 ms in the game.
+- Instrumentation is a separate `build/doom-opcode` binary linking the
+  diagnostic `s1_prof.c`; production still links frozen `s1.c`.
+- `--stationary` / `--stationary-bench` retain a rendered scene while
+  simulation and input continue. Idle frame production drops from ~168 ms to
+  ~7 ms, but input-to-update remains a full render (~168 ms). This is an idle
+  optimisation, not an interactive-speed improvement.
+- Loader frontier: 14,800 cells, 638 free after load; the game adds zero
+  executable code (no masm). A 320-integer table does not fit.

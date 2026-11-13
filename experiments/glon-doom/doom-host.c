@@ -16,12 +16,16 @@
 #include "r0_s1.h"
 #include "m1_layout.h"
 #include "textures.h"
+#ifdef DOOM_S1_PROFILE
+#include "s1_prof.h"
+#endif
 #include <SDL2/SDL.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 #include <unistd.h>
 
 #define FB_W 320
@@ -60,8 +64,41 @@ typedef struct {
     long heap_high, gc_count, live_cells;
 } Metrics;
 
+typedef struct {
+    int px, py, angle, simple, floor_c, ceil_c;
+    Status st;
+} ViewSig;
+
+typedef struct {
+    int valid;
+    ViewSig sig;
+    Spans s;
+    TexRows tr;
+} ViewCache;
+
+#ifdef DOOM_S1_PROFILE
+typedef struct {
+    long op[8], host[16];
+    long branches_taken;
+    long hist[256];
+    unsigned long long cycles;
+} ProfAccum;
+static int prof_on;
+static ProfAccum prof_wall, prof_tex, prof_status, prof_tick;
+static void prof_begin(void) { if (prof_on) s1_prof_reset(); }
+static void prof_collect(ProfAccum *a) {
+    if (!prof_on) return;
+    for (int i = 0; i < 8; i++) a->op[i] += s1_prof_op_count[i];
+    for (int i = 0; i < 16; i++) a->host[i] += s1_prof_host_count[i];
+    a->branches_taken += s1_prof_branch_taken;
+    for (int i = 0; i < 256; i++) a->hist[i] += s1_prof_ip_hist[i];
+    a->cycles += s1_prof_run_cycles;
+}
+#endif
+
 static const char *root_dir = "../..";
 static int simple_mode = 0;
+static int stationary_enabled = 0;
 static cell reset_block, sector_block, report_block, valid_block, collision_block;
 static cell activate_block, status_block, detail_block, texrows_block;
 static cell floor_line_block, ceil_line_block;
@@ -317,7 +354,14 @@ static int get_valid(void) {
 }
 static int get_status(Status *st) {
     int v[16];
-    if (run_capture(status_block, v, 16, "status") != 0) return -1;
+#ifdef DOOM_S1_PROFILE
+    prof_begin();
+#endif
+    int grc = run_capture(status_block, v, 16, "status");
+#ifdef DOOM_S1_PROFILE
+    prof_collect(&prof_status);
+#endif
+    if (grc != 0) return -1;
     st->door_open = v[0]; st->door_blocked = v[1]; st->door_target = v[2];
     st->ax = v[3]; st->ay = v[4]; st->health = v[5]; st->state = v[6];
     st->detected = v[7]; st->td2 = v[8]; st->tside = v[9]; st->tdepth = v[10];
@@ -353,7 +397,13 @@ static int get_detail(Detail *d) {
 static int get_texrows(TexRows *r) {
     Capture c;
     capture_begin(&c);
+#ifdef DOOM_S1_PROFILE
+    prof_begin();
+#endif
     int rc = run_block(texrows_block, "texrows");
+#ifdef DOOM_S1_PROFILE
+    prof_collect(&prof_tex);
+#endif
     capture_end(&c);
     if (rc != 0) { free(c.buf); return -1; }
     char *end;
@@ -382,15 +432,34 @@ static int get_texrows(TexRows *r) {
 }
 
 static int reset(void) { return run_block(reset_block, "reset"); }
-static int tick(int mask) { return run_block(tick_blocks[mask & 63], "tick"); }
+static int tick(int mask) {
+#ifdef DOOM_S1_PROFILE
+    prof_begin();
+#endif
+    int rc = run_block(tick_blocks[mask & 63], "tick");
+#ifdef DOOM_S1_PROFILE
+    prof_collect(&prof_tick);
+#endif
+    return rc;
+}
 
 static int render_spans(Spans *s, long *ns) {
     int vals[RENDER_INTS];
     Capture c;
     long t0 = now_ns();
     capture_begin(&c);
+#ifdef DOOM_S1_PROFILE
+    prof_begin();
+#endif
     int rc = run_block(render_blocks[0], "render");
+#ifdef DOOM_S1_PROFILE
+    if (rc == 0) prof_collect(&prof_wall);
+    if (rc == 0) prof_begin();
+#endif
     if (rc == 0) rc = run_block(render_blocks[1], "render");
+#ifdef DOOM_S1_PROFILE
+    if (rc == 0) prof_collect(&prof_wall);
+#endif
     capture_end(&c);
     long t1 = now_ns();
     if (ns) *ns = t1 - t0;
@@ -1114,6 +1183,402 @@ static int sdl_present(SDL_Renderer *ren, SDL_Texture *tex, uint32_t *fb,
     return 0;
 }
 
+
+/* ---- G5g: controlled benchmarks, view cache and loader diagnostics ------ */
+
+static int set_camera(int x, int y, int angle) {
+    char src[160];
+    snprintf(src, sizeof src,
+             "[ doom/px: %d doom/py: %d doom/angle: %d doom/aim ]", x, y, angle);
+    cell b = parse_source(src, "fixed camera");
+    return run_block(b, "fixed camera");
+}
+
+static double median_of(double *v, int n) {
+    for (int i = 1; i < n; i++) {
+        double key = v[i];
+        int j = i - 1;
+        while (j >= 0 && v[j] > key) { v[j + 1] = v[j]; j--; }
+        v[j + 1] = key;
+    }
+    return n & 1 ? v[n / 2] : (v[n / 2 - 1] + v[n / 2]) * 0.5;
+}
+
+static void sample_summary(const char *name, double *v, int n, double *mean_out) {
+    double sum = 0, min = v[0];
+    for (int i = 0; i < n; i++) { sum += v[i]; if (v[i] < min) min = v[i]; }
+    double mean = sum / n, var = 0;
+    for (int i = 0; i < n; i++) { double d = v[i] - mean; var += d * d; }
+    double med = median_of(v, n);
+    printf("%s min=%.2f med=%.2f mean=%.2f sd=%.2f\n",
+           name, min, med, mean, n > 1 ? sqrt(var / (n - 1)) : 0.0);
+    if (mean_out) *mean_out = mean;
+}
+
+static int bench_fixed(int frames, int camx, int camy, int cama) {
+    if (frames < 1) return 2;
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return 2;
+    SDL_Window *win = SDL_CreateWindow("Glon AVP G5g - fixed benchmark",
+                                       SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                       960, 600, SDL_WINDOW_HIDDEN);
+    if (!win) fail(SDL_GetError());
+    SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
+    if (!ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
+    if (!ren) fail(SDL_GetError());
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+    SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
+                                         SDL_TEXTUREACCESS_STREAMING, FB_W, FB_H);
+    if (!tex) fail(SDL_GetError());
+    uint32_t *fb = malloc((size_t)FB_W * FB_H * sizeof *fb);
+    double *wall = malloc((size_t)frames * sizeof *wall);
+    double *row = malloc((size_t)frames * sizeof *row);
+    double *raster = malloc((size_t)frames * sizeof *raster);
+    double *present = malloc((size_t)frames * sizeof *present);
+    double *total = malloc((size_t)frames * sizeof *total);
+    if (!fb || !wall || !row || !raster || !present || !total) fail("out of memory");
+
+    load_session();
+    build_blocks();
+    if (reset() != 0 || set_camera(camx, camy, cama) != 0) return 2;
+    int floor_c, ceil_c;
+    if (get_sector(&floor_c, &ceil_c) != 0) return 2;
+    Spans s; Detail det; TexRows tr; Status st;
+    if (get_status(&st) != 0) return 2;
+    if (!simple_mode && get_texrows(&tr) != 0) return 2;
+
+    const int warm = 20;
+    long w0 = now_ns();
+    for (int i = 0; i < warm; i++) {
+        long a = now_ns();
+        if (render_spans(&s, NULL) != 0) return 2;
+        if (!simple_mode && get_texrows(&tr) != 0) return 2;
+        if (get_status(&st) != 0) return 2;
+        double rm, pm;
+        if (sdl_present(ren, tex, fb, &s, &det, simple_mode ? NULL : &tr, &st,
+                        floor_c, ceil_c, &rm, &pm) != 0) return 2;
+        (void)a;
+    }
+    long w1 = now_ns();
+
+    for (int i = 0; i < frames; i++) {
+        long t0 = now_ns();
+        if (render_spans(&s, NULL) != 0) return 2;
+        long t1 = now_ns();
+        if (!simple_mode && get_texrows(&tr) != 0) return 2;
+        if (get_status(&st) != 0) return 2;
+        long t2 = now_ns();
+        double rm, pm;
+        if (sdl_present(ren, tex, fb, &s, &det, simple_mode ? NULL : &tr, &st,
+                        floor_c, ceil_c, &rm, &pm) != 0) return 2;
+        long t3 = now_ns();
+        wall[i] = (t1 - t0) / 1e6;
+        row[i] = (t2 - t1) / 1e6;
+        raster[i] = rm; present[i] = pm;
+        total[i] = (t3 - t0) / 1e6;
+    }
+    printf("fixed frames=%d warmup=%d camera=%d,%d,%d mode=%s\n",
+           frames, warm, camx, camy, cama, simple_mode ? "simple" : "textured");
+    printf("fixed warmup_wall=%.2fms\n", (double)(w1 - w0) / warm / 1e6);
+    sample_summary("fixed wall", wall, frames, NULL);
+    sample_summary("fixed texrow", row, frames, NULL);
+    sample_summary("fixed raster", raster, frames, NULL);
+    sample_summary("fixed present", present, frames, NULL);
+    sample_summary("fixed total", total, frames, NULL);
+    printf("fixed hash spans=%08x rows=%08x status=%08x\n", s.hash,
+           simple_mode ? 0 : tr.hash, fnv1a(&st, sizeof st));
+    printf("fixed loader=%ld used=%ld free=%ld code=%ld heap_high=%ld gc=%ld\n",
+           (long)M[GC_LOADER_HP], (long)M[GC_LOADER_HP] - R0S1_HEAP_BASE,
+           R0S1_HEAP_LIMIT - (long)M[GC_LOADER_HP], r0_s1_code_size(),
+           r0_s1_heap_high(), r0_s1_gc_count());
+
+    free(wall); free(row); free(raster); free(present); free(total); free(fb);
+    SDL_DestroyTexture(tex); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win);
+    SDL_Quit();
+    return 0;
+}
+
+static int cache_frame(ViewCache *c, uint32_t *fb, int floor_c, int ceil_c, int force) {
+    int px, py, pa;
+    if (get_state(&px, &py, &pa) != 0) return -1;
+    Status st;
+    if (get_status(&st) != 0) return -1;
+    ViewSig sig;
+    sig.px = px; sig.py = py; sig.angle = pa; sig.simple = simple_mode;
+    sig.floor_c = floor_c; sig.ceil_c = ceil_c; sig.st = st;
+    if (!force && c->valid && memcmp(&sig, &c->sig, sizeof sig) == 0) return 0;
+    if (render_spans(&c->s, NULL) != 0) return -1;
+    if (!simple_mode && get_texrows(&c->tr) != 0) return -1;
+    draw_buffer(fb, &c->s, NULL, simple_mode ? NULL : &c->tr, &st, floor_c, ceil_c);
+    c->sig = sig;
+    c->valid = 1;
+    return 1;
+}
+
+static int stationary_test(void) {
+    uint32_t *fb = malloc((size_t)FB_W * FB_H * sizeof *fb);
+    if (!fb) return 2;
+    load_session();
+    build_blocks();
+    if (reset() != 0 || set_camera(320, 320, 0) != 0) return 2;
+    int floor_c, ceil_c;
+    if (get_sector(&floor_c, &ceil_c) != 0) return 2;
+    ViewCache cache; memset(&cache, 0, sizeof cache);
+    int fails = 0;
+    int miss = cache_frame(&cache, fb, floor_c, ceil_c, 0);
+    if (miss < 0) return 2;
+    uint32_t h0 = fnv1a(fb, (size_t)FB_W * FB_H * sizeof *fb);
+    fails += expect_eq("stationary first frame is a miss", miss, 1);
+    int sx0, sy0, sa0; Status st0;
+    get_state(&sx0, &sy0, &sa0); get_status(&st0);
+    if (tick(0) != 0) return 2;
+    miss = cache_frame(&cache, fb, floor_c, ceil_c, 0);
+    if (miss < 0) return 2;
+    fails += expect_eq("stationary unchanged frame is a hit", miss, 0);
+    fails += expect_eq("stationary cached pixels identical",
+                       fnv1a(fb, (size_t)FB_W * FB_H * sizeof *fb), h0);
+    int sx1, sy1, sa1; Status st1;
+    get_state(&sx1, &sy1, &sa1); get_status(&st1);
+    fails += expect_eq("stationary cache does not alter player",
+                       sx0 == sx1 && sy0 == sy1 && sa0 == sa1, 1);
+    fails += expect_eq("stationary cache does not alter status",
+                       memcmp(&st0, &st1, sizeof st0) == 0, 1);
+
+    if (tick(32) != 0) return 2;  /* turn right */
+    miss = cache_frame(&cache, fb, floor_c, ceil_c, 0);
+    if (miss < 0) return 2;
+    uint32_t h1 = fnv1a(fb, (size_t)FB_W * FB_H * sizeof *fb);
+    fails += expect_eq("camera turn invalidates cache", miss, 1);
+    fails += expect_eq("camera turn changes pixels", h1 != h0, 1);
+
+    if (reset() != 0 || set_camera(320, 320, 0) != 0) return 2;
+    memset(&cache, 0, sizeof cache);
+    if (cache_frame(&cache, fb, floor_c, ceil_c, 0) < 0) return 2;
+    uint32_t hd = fnv1a(fb, (size_t)FB_W * FB_H * sizeof *fb);
+    cell door = parse_source("[ doom/door-target: 64 ]", "door target");
+    if (run_block(door, "door target") != 0 || run_ticks(0, 12) != 0) return 2;
+    miss = cache_frame(&cache, fb, floor_c, ceil_c, 0);
+    if (miss < 0) return 2;
+    uint32_t h2 = fnv1a(fb, (size_t)FB_W * FB_H * sizeof *fb);
+    fails += expect_eq("door state invalidates cache", miss, 1);
+    fails += expect_eq("door change alters pixels", h2 != hd, 1);
+
+    ViewCache fresh; memset(&fresh, 0, sizeof fresh);
+    if (cache_frame(&fresh, fb, floor_c, ceil_c, 1) < 0) return 2;
+    fails += expect_eq("forced uncached frame matches cached path",
+                       fnv1a(fb, (size_t)FB_W * FB_H * sizeof *fb), h2);
+
+    free(fb);
+    printf("stationary-test: %s\n", fails ? "FAILED" : "PASSED");
+    return fails ? 1 : 0;
+}
+
+static int sdl_present_cached(SDL_Renderer *ren, SDL_Texture *tex, uint32_t *fb,
+                              int redraw) {
+    if (redraw && SDL_UpdateTexture(tex, NULL, fb, FB_W * (int)sizeof(uint32_t)) != 0)
+        return -1;
+    SDL_RenderClear(ren);
+    SDL_RenderCopy(ren, tex, NULL, NULL);
+    SDL_RenderPresent(ren);
+    return 0;
+}
+
+static int stationary_bench(int frames, int throttle) {
+    if (frames < 4) return 2;
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return 2;
+    SDL_Window *win = SDL_CreateWindow("Glon AVP G5g - stationary benchmark",
+                                       SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                       960, 600, SDL_WINDOW_HIDDEN);
+    if (!win) fail(SDL_GetError());
+    SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
+    if (!ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
+    if (!ren) fail(SDL_GetError());
+    SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
+                                         SDL_TEXTUREACCESS_STREAMING, FB_W, FB_H);
+    if (!tex) fail(SDL_GetError());
+    uint32_t *fb = malloc((size_t)FB_W * FB_H * sizeof *fb);
+    if (!fb) fail("out of memory");
+    load_session();
+    build_blocks();
+    if (reset() != 0 || set_camera(320, 320, 0) != 0) return 2;
+    int floor_c, ceil_c;
+    if (get_sector(&floor_c, &ceil_c) != 0) return 2;
+    ViewCache cache; memset(&cache, 0, sizeof cache);
+    int hits = 0, misses = 0;
+    double hit_ms = 0, miss_ms = 0, sim_ms = 0, present_ms = 0;
+    double input_ms = -1;
+    struct timespec cpu0, cpu1, wall0, wall1;
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &cpu0);
+    clock_gettime(CLOCK_MONOTONIC, &wall0);
+    for (int i = -5; i < frames; i++) {
+        long t0 = now_ns();
+        if (tick(0) != 0) return 2;
+        int inject = (i == frames / 2);
+        if (inject && tick(32) != 0) return 2;
+        long t1 = now_ns();
+        int miss = cache_frame(&cache, fb, floor_c, ceil_c, 0);
+        if (miss < 0) return 2;
+        long t2 = now_ns();
+        if (sdl_present_cached(ren, tex, fb, miss) != 0) return 2;
+        long t3 = now_ns();
+        if (i >= 0) {
+            if (miss) { misses++; miss_ms += (double)(t3 - t0) / 1e6; }
+            else { hits++; hit_ms += (double)(t3 - t0) / 1e6; }
+            sim_ms += (double)(t1 - t0) / 1e6;
+            present_ms += (double)(t3 - t2) / 1e6;
+            if (inject) input_ms = (double)(t3 - t0) / 1e6;
+        }
+        if (throttle) {
+            long spent = t3 - t0;
+            long target = 1000000000L / TICK_HZ;
+            if (spent < target) SDL_Delay((Uint32)((target - spent + 999999) / 1000000));
+        }
+    }
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &cpu1);
+    clock_gettime(CLOCK_MONOTONIC, &wall1);
+    double cpu_ms = ((double)(cpu1.tv_sec - cpu0.tv_sec) * 1e9 +
+                     (double)(cpu1.tv_nsec - cpu0.tv_nsec)) / 1e6;
+    double wall_ms = ((double)(wall1.tv_sec - wall0.tv_sec) * 1e9 +
+                      (double)(wall1.tv_nsec - wall0.tv_nsec)) / 1e6;
+    printf("stationary frames=%d throttle=%d hits=%d misses=%d hit_rate=%.1f%%\n",
+           frames, throttle, hits, misses, 100.0 * hits / (hits + misses));
+    printf("stationary full_frame=%.2fms cached_frame=%.2fms sim=%.2fms present=%.2fms input_to_update=%.2fms\n",
+           misses ? miss_ms / misses : 0.0, hits ? hit_ms / hits : 0.0,
+           sim_ms / frames, present_ms / frames, input_ms);
+    printf("stationary cpu=%.2fms/frame wall=%.2fms cpu_pct=%.1f%%\n",
+           cpu_ms / frames, wall_ms / frames, wall_ms > 0 ? 100.0 * cpu_ms / wall_ms : 0.0);
+    printf("stationary loader=%ld heap_high=%ld gc=%ld\n",
+           (long)M[GC_LOADER_HP], r0_s1_heap_high(), r0_s1_gc_count());
+    free(fb);
+    SDL_DestroyTexture(tex); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win);
+    SDL_Quit();
+    return 0;
+}
+
+static int loader_report(void) {
+    init_runtime();
+    printf("loader report: base=%ld limit=%ld reserved=%ld\n",
+           R0S1_HEAP_BASE, R0S1_HEAP_LIMIT, R0S1_HEAP_LIMIT - R0S1_HEAP_BASE);
+    printf("loader after init used=%ld free=%ld code=%ld\n",
+           (long)M[GC_LOADER_HP] - R0S1_HEAP_BASE,
+           R0S1_HEAP_LIMIT - (long)M[GC_LOADER_HP], r0_s1_code_size());
+    char path[4096];
+    snprintf(path, sizeof path, "%s/jupyter/prelude.glon", root_dir);
+    load_file(path);
+    printf("loader after prelude used=%ld free=%ld code=%ld\n",
+           (long)M[GC_LOADER_HP] - R0S1_HEAP_BASE,
+           R0S1_HEAP_LIMIT - (long)M[GC_LOADER_HP], r0_s1_code_size());
+    snprintf(path, sizeof path, "%s/experiments/glon-doom/doom.glon", root_dir);
+    load_file(path);
+    printf("loader after game used=%ld free=%ld code=%ld\n",
+           (long)M[GC_LOADER_HP] - R0S1_HEAP_BASE,
+           R0S1_HEAP_LIMIT - (long)M[GC_LOADER_HP], r0_s1_code_size());
+    build_blocks();
+    long hp = (long)M[GC_LOADER_HP];
+    cell gc, cap;
+    r0_s1_global_usage(&gc, &cap);
+    printf("loader after host blocks used=%ld free=%ld code=%ld globals=%ld/%ld\n",
+           hp - R0S1_HEAP_BASE, R0S1_HEAP_LIMIT - hp, r0_s1_code_size(), gc, cap);
+    printf("code bytes? cells=%ld ip_start=%ld ip_end=%ld\n",
+           r0_s1_code_size(), r0_s1_ip_start(), r0_s1_ip_end());
+    int made = 0;
+    const int probes[] = {128, 256, 320, 384, 448};
+    for (size_t pi = 0; pi < sizeof probes / sizeof probes[0]; pi++) {
+        int n = probes[pi];
+        size_t capn = (size_t)n * 4 + 8;
+        char *src = malloc(capn);
+        if (!src) return 2;
+        size_t w = 0;
+        w += (size_t)snprintf(src + w, capn - w, "[");
+        for (int i = 0; i < n; i++)
+            w += (size_t)snprintf(src + w, capn - w, " %d", i & 255);
+        snprintf(src + w, capn - w, " ]");
+        long before = (long)M[GC_LOADER_HP];
+        int err = 0;
+        cell b = r0_s1_parse(src, &err);
+        if (err) {
+            printf("loader table probe n=%d refused kind=%d free_before=%ld\n",
+                   n, r0_s1_parse_error_kind(), R0S1_HEAP_LIMIT - before);
+            free(src);
+            continue;
+        }
+        (void)b;
+        made = n;
+        printf("loader table probe n=%d delta=%ld used=%ld free=%ld\n",
+               n, (long)M[GC_LOADER_HP] - before,
+               (long)M[GC_LOADER_HP] - R0S1_HEAP_BASE,
+               R0S1_HEAP_LIMIT - (long)M[GC_LOADER_HP]);
+        free(src);
+    }
+    printf("loader table probe largest=%d; game has no masm (all loader data, runtime code resident)\n", made);
+    return 0;
+}
+
+#ifdef DOOM_S1_PROFILE
+static void print_prof(const char *name, const ProfAccum *a, int frames) {
+    static const char *opname[8] = {"LIT","DUP","DROP","@","!","0BRANCH","HOST","HALT"};
+    static const char *hname[16] = {"+","-","*","/","mod","neg","=","!=","<",">",
+                                    "<=",">=","alloc","putchar","print","dump"};
+    long total = 0, hosttotal = 0;
+    for (int i = 0; i < 8; i++) total += a->op[i];
+    for (int i = 0; i < 16; i++) hosttotal += a->host[i];
+    printf("profile %s per_frame ops=%ld host=%ld branches=%ld taken=%ld cycles=%.0f\n",
+           name, total / frames, hosttotal / frames, a->op[5] / frames,
+           a->branches_taken / frames, (double)a->cycles / frames);
+    printf("profile %s opcodes:", name);
+    for (int i = 0; i < 8; i++) printf(" %s=%ld", opname[i], a->op[i] / frames);
+    printf("\nprofile %s host:", name);
+    for (int i = 0; i < 16; i++) if (a->host[i]) printf(" %s=%ld", hname[i], a->host[i] / frames);
+    printf("\n");
+}
+
+static int opcode_bench(int frames) {
+    load_session();
+    build_blocks();
+    if (reset() != 0 || set_camera(320, 320, 0) != 0) return 2;
+    int floor_c, ceil_c;
+    if (get_sector(&floor_c, &ceil_c) != 0) return 2;
+    Spans s; TexRows tr; Status st;
+    memset(&prof_wall, 0, sizeof prof_wall);
+    memset(&prof_tex, 0, sizeof prof_tex);
+    memset(&prof_status, 0, sizeof prof_status);
+    memset(&prof_tick, 0, sizeof prof_tick);
+    prof_on = 1;
+    for (int i = 0; i < 3; i++) {
+        if (tick(0) != 0 || render_spans(&s, NULL) != 0) return 2;
+        if (!simple_mode && get_texrows(&tr) != 0) return 2;
+        if (get_status(&st) != 0) return 2;
+    }
+    memset(&prof_wall, 0, sizeof prof_wall);
+    memset(&prof_tex, 0, sizeof prof_tex);
+    memset(&prof_status, 0, sizeof prof_status);
+    memset(&prof_tick, 0, sizeof prof_tick);
+    for (int i = 0; i < frames; i++) {
+        if (tick(0) != 0) return 2;
+        if (render_spans(&s, NULL) != 0) return 2;
+        if (!simple_mode && get_texrows(&tr) != 0) return 2;
+        if (get_status(&st) != 0) return 2;
+    }
+    prof_on = 0;
+    printf("opcode frames=%d mode=%s loader=%ld heap_high=%ld gc=%ld\n",
+           frames, simple_mode ? "simple" : "textured",
+           (long)M[GC_LOADER_HP], r0_s1_heap_high(), r0_s1_gc_count());
+    print_prof("wall", &prof_wall, frames);
+    print_prof("texrow", &prof_tex, frames);
+    print_prof("status", &prof_status, frames);
+    print_prof("tick", &prof_tick, frames);
+    /* top execution buckets in the wall stage */
+    long *h = prof_wall.hist;
+    for (int k = 0; k < 8; k++) {
+        int best = -1;
+        for (int i = 0; i < 256; i++) if (h[i] > 0 && (best < 0 || h[i] > h[best])) best = i;
+        if (best < 0) break;
+        printf("profile wall bucket ip=%d count_per_frame=%ld\n", best * 256, h[best] / frames);
+        h[best] = 0;
+    }
+    return 0;
+}
+#endif
+
 static void print_metrics(const Metrics *m) {
     printf("metrics: sim=%.2fms wall=%.2fms texrow=%.2fms raster=%.2fms "
            "present=%.2fms frame=%.2fms fps=%.1f "
@@ -1219,6 +1684,7 @@ static int interactive(void) {
     int running = 1, frames = 0;
     double acc = 0.0, fps_start = (double)now_ns(), sim_ms = 0, proj_ms = 0;
     double texrow_ms = 0, raster_ms = 0, present_ms = 0;
+    ViewCache live_cache; memset(&live_cache, 0, sizeof live_cache);
     long last = now_ns();
     while (running) {
         SDL_Event e;
@@ -1229,6 +1695,7 @@ static int interactive(void) {
                 run_block(activate_block, "activate");
             else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_r && !e.key.repeat) {
                 simple_mode = !simple_mode;
+                live_cache.valid = 0;
                 printf("render mode: %s\n", simple_mode ? "simple" : "detailed");
                 fflush(stdout);
             }
@@ -1251,6 +1718,24 @@ static int interactive(void) {
         }
         long te = now_ns();
         sim_ms += (double)(te - ts) / 1e6;
+        if (stationary_enabled) {
+            long cf0 = now_ns();
+            int miss = cache_frame(&live_cache, fb, floor_c, ceil_c, 0);
+            if (miss < 0) break;
+            if (sdl_present_cached(ren, tex, fb, miss) != 0) break;
+            long cf1 = now_ns();
+            proj_ms += (double)(cf1 - cf0) / 1e6;
+            frames++;
+            if (frames % 120 == 0) {
+                double secs = ((double)now_ns() - fps_start) / 1e9;
+                printf("frame %d stationary: frame=%.2fms fps=%.1f\n", frames,
+                       proj_ms / 120, 120 / secs);
+                fflush(stdout);
+                sim_ms = proj_ms = texrow_ms = raster_ms = present_ms = 0;
+                fps_start = (double)now_ns();
+            }
+            continue;
+        }
         long proj_ns;
         if (render_spans(&s, &proj_ns) != 0) break;
         long st0 = now_ns();
@@ -1299,10 +1784,35 @@ int main(int argc, char **argv) {
     }
     if (argc > 1 && strcmp(argv[1], "--trace") == 0) return scripted_trace();
     if (argc > 2 && strcmp(argv[1], "--shots") == 0) return shot_walkthrough(argv[2]);
+    if (argc > 1 && strcmp(argv[1], "--stationary-test") == 0) return stationary_test();
+    if (argc > 1 && strcmp(argv[1], "--loader-report") == 0) return loader_report();
     if (argc > 1 && strcmp(argv[1], "--simple") == 0) simple_mode = 1;
+    if (argc > 1 && strcmp(argv[1], "--stationary") == 0) stationary_enabled = 1;
     if (argc > 2 && strcmp(argv[1], "--bench") == 0) {
         if (argc > 3 && strcmp(argv[3], "simple") == 0) simple_mode = 1;
         return bench(atoi(argv[2]));
     }
+    if (argc > 2 && strcmp(argv[1], "--bench-fixed") == 0) {
+        int frames = atoi(argv[2]);
+        int i = 3;
+        int x = 320, y = 320, a = 0;
+        if (i < argc && strcmp(argv[i], "simple") == 0) { simple_mode = 1; i++; }
+        if (i + 2 < argc) { x = atoi(argv[i]); y = atoi(argv[i + 1]); a = atoi(argv[i + 2]); }
+        return bench_fixed(frames, x, y, a);
+    }
+    if (argc > 2 && strcmp(argv[1], "--stationary-bench") == 0) {
+        int throttle = argc > 3 && strcmp(argv[3], "throttle") == 0;
+        return stationary_bench(atoi(argv[2]), throttle);
+    }
+#ifdef DOOM_S1_PROFILE
+    if (argc > 2 && strcmp(argv[1], "--opcode-bench") == 0)
+        return opcode_bench(atoi(argv[2]));
+#endif
+#ifdef DOOM_S1_PROFILE
+    if (argc > 2 && strcmp(argv[1], "--opcode-bench-simple") == 0) {
+        simple_mode = 1;
+        return opcode_bench(atoi(argv[2]));
+    }
+#endif
     return interactive();
 }

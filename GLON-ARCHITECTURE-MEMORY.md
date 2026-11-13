@@ -334,6 +334,49 @@ scanner (`variants/iter-masm.glon`) was measured and not adopted:
 
 Not yet run in WASM. Details are in `experiments/glon-iter/GLON-ITER-V001.md`.
 
+### G5g AvP execution-cost investigation [FINDING]
+
+[MEASURED 2026-11-14, `experiments/glon-avp-g5g`, native 64K, GCC 11.4.0
+`-O2`, WSL2 AMD Ryzen 5 7535U]
+
+- **G5f wall regression is a host-build effect, not a wall/row algorithm
+  effect.** The G5f game under a host without the G5f projection diagnostic code
+  measured 103.65 ms wall; the G5f host measured 136.62 ms. Wall-stage S1
+  operation count was identical: 33,377,988 per textured frame (160 rays,
+  1,600 candidates; 208,612 ops/ray, 20,861/candidate). The exact
+  microarchitectural cause is undetermined; function/loop alignment flags did
+  not help. Host diagnostics must be isolated from production measurements.
+- **G5f rows work.** Row-stage operations fell from 16,622,624 (G5e) to
+  5,188,130 (G5f), 68.8%; row time fell from ~51.8 ms to ~18.5 ms under the
+  same host. Wall is ~84% of the remaining textured render instruction count.
+- **Primitive cost is small; macro cost is large.** Assembled S1 loops cost
+  roughly 1.6–3.1 ns per additional primitive; normal Glon recursion measured
+  22–33 µs per 60-level workload (add 22.6, divide 26.9, branch 30.2, memory
+  33.5 µs/level). An isolated 160-ray/10-wall Glon workload measured a median
+  112.4 ms versus 0.00126 ms native C (identical checksum, ~89,000×).
+- **Loader frontier.** `GC_LOADER_HP` is a permanent bump pointer into
+  `[40000,54800)` (14,800 cells), not managed heap or code. After prelude + game
+  + host blocks it used 14,162 cells (638 free); the game contains no masm and
+  adds 0 code cells (runtime code 12,454). A 128-integer table cost 144 loader
+  cells (~1.125/int); 320 integers were refused with 222 cells free. A compact
+  per-ray wall table therefore does not fit as ordinary loader data.
+- **Stationary view cache.** A reversible last-scene cache (camera + player +
+  door + Alien/tracker + render mode signature) had 99.4% hits in a static
+  corridor state. Frame production fell from ~168 ms to ~6.7–7.5 ms, but
+  input-to-visible-update remained ~168–179 ms because a turn invalidated the
+  cache. At 60 Hz CPU use was ~41% (busy loop ~84%). This is an idle
+  optimisation, not a responsiveness improvement.
+- **Diagnostic safety.** Opcode/HOST/branch counts came from the separate
+  `s1_prof.c` build; production still links frozen `s1.c`. Instrumented and
+  ordinary fixed-frame hashes matched, and all existing tests and the frozen-S1
+  check passed. No primitive, memory-map, resolution, artwork or gameplay
+  change was made.
+- **G5h direction.** Isolate production and diagnostic host code, keep the
+  64K map, and measure a compact prepared-wall representation against the
+  638-cell loader margin before attempting another renderer rewrite. The
+  current macro cost is evaluator/activation dominated, not primitive
+  arithmetic dominated.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

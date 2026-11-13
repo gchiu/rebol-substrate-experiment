@@ -1,0 +1,25 @@
+;; Isolated Glon execution benchmarks. Loaded outside the game loader.
+b/add: func [n a] [
+    either = n 0 [ a ] [ b/add - n 1 + a 1 ]
+]
+b/mul: func [n a] [
+    either = n 0 [ a ] [ b/mul - n 1 + a * a 3 ]
+]
+b/div: func [n a] [
+    either = n 0 [ a ] [ b/div - n 1 + a / a 3 ]
+]
+b/branch: func [n a] [
+    either = n 0 [ a ] [
+        either > a 0 [ b/branch - n 1 - a 1 ] [ b/branch - n 1 + a 1 ]
+    ]
+]
+b/mem: 0
+b/memory: func [n a] [
+    either = n 0 [ a ] [
+        b/mem: + b/mem 1
+        b/memory - n 1 + a b/mem
+    ]
+]
+b/tree: func [d] [
+    either = d 0 [ 1 ] [ + b/tree - d 1 b/tree - d 1 ]
+]
