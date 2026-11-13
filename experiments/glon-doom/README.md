@@ -169,3 +169,28 @@ Key measured results:
   optimisation, not an interactive-speed improvement.
 - Loader frontier: 14,800 cells, 638 free after load; the game adds zero
   executable code (no masm). A 320-integer table does not fit.
+
+## G5h prepared wall execution
+
+`--raw-wall` is an experimental prepared-execution path for the wall stage.
+It uses the existing `masm` lowerer and the frozen seven S1 primitives. It is
+loaded from `raw-wall.glon` only in that mode; the default Glon raycaster is
+unchanged and remains the regression oracle.
+
+Measured on the same host binary (`--bench 120`, textured):
+
+| | Default | `--raw-wall` |
+|---|---:|---:|
+| FPS | 6.2 | **19.5–20.3** |
+| Wall | 129.34 ms | **18.53 ms** |
+| S1 wall ops/frame | 33,377,988 | **4,555,404** |
+| HOST wall calls/frame | 6,014,444 | **846,833** |
+| Loader free (after blocks) | 638 | 478 |
+| Code cursor / limit | 13,126 / 16,128 | **14,828 / 16,128** |
+
+Simple mode improves from ~6.7 to ~30.4 FPS. `--self-test --raw-wall` passes
+the complete default self-test. See `G5H-INVESTIGATION.md` for the trace,
+correctness cases, memory accounting and limitations.
+
+Use `--bench 120 --raw-wall`, `--self-test --raw-wall`, or
+`--loader-report --raw-wall`.

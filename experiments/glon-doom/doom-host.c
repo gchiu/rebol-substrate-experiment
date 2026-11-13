@@ -99,6 +99,7 @@ static void prof_collect(ProfAccum *a) {
 static const char *root_dir = "../..";
 static int simple_mode = 0;
 static int stationary_enabled = 0;
+static int raw_wall_mode = 0;
 static cell reset_block, sector_block, report_block, valid_block, collision_block;
 static cell activate_block, status_block, detail_block, texrows_block;
 static cell floor_line_block, ceil_line_block;
@@ -260,6 +261,10 @@ static void load_session(void) {
     load_file(path);
     snprintf(path, sizeof path, "%s/experiments/glon-doom/doom.glon", root_dir);
     load_file(path);
+    if (raw_wall_mode) {
+        snprintf(path, sizeof path, "%s/experiments/glon-doom/raw-wall.glon", root_dir);
+        load_file(path);
+    }
 }
 
 static void build_blocks(void) {
@@ -327,7 +332,9 @@ static void build_blocks(void) {
         for (int i = b * (PROJ_COLS / 2); i < (b + 1) * (PROJ_COLS / 2); i++) {
             int sx = i * PROJ_SCALE + PROJ_SCALE / 2;
             used += (size_t)snprintf(src + used, cap - used,
-                                     "doom/sx: %d do doom/render-column-block ", sx);
+                                     "doom/sx: %d do %s ", sx,
+                                     raw_wall_mode ? "doom/raw-column-block"
+                                                   : "doom/render-column-block");
         }
         snprintf(src + used, cap - used, "]");
         render_blocks[b] = parse_source(src, "render");
@@ -823,7 +830,9 @@ static void build_projection_blocks(void) {
         for (int i = b * (PROJ_COLS / 2); i < (b + 1) * (PROJ_COLS / 2); i++) {
             int sx = i * PROJ_SCALE + PROJ_SCALE / 2;
             used += (size_t)snprintf(src + used, cap - used,
-                                     "doom/sx: %d do doom/render-column-block ", sx);
+                                     "doom/sx: %d do %s ", sx,
+                                     raw_wall_mode ? "doom/raw-column-block"
+                                                   : "doom/render-column-block");
         }
         snprintf(src + used, cap - used, "]");
         render_blocks[b] = parse_source(src, "projection render");
@@ -1472,12 +1481,20 @@ static int loader_report(void) {
     printf("loader after game used=%ld free=%ld code=%ld\n",
            (long)M[GC_LOADER_HP] - R0S1_HEAP_BASE,
            R0S1_HEAP_LIMIT - (long)M[GC_LOADER_HP], r0_s1_code_size());
+    if (raw_wall_mode) {
+        snprintf(path, sizeof path, "%s/experiments/glon-doom/raw-wall.glon", root_dir);
+        load_file(path);
+        printf("loader after raw-wall used=%ld free=%ld asm_here=%ld\n",
+               (long)M[GC_LOADER_HP] - R0S1_HEAP_BASE,
+               R0S1_HEAP_LIMIT - (long)M[GC_LOADER_HP], (long)asm_here());
+    }
     build_blocks();
     long hp = (long)M[GC_LOADER_HP];
     cell gc, cap;
     r0_s1_global_usage(&gc, &cap);
-    printf("loader after host blocks used=%ld free=%ld code=%ld globals=%ld/%ld\n",
-           hp - R0S1_HEAP_BASE, R0S1_HEAP_LIMIT - hp, r0_s1_code_size(), gc, cap);
+    printf("loader after host blocks used=%ld free=%ld code=%ld asm_here=%ld globals=%ld/%ld\n",
+           hp - R0S1_HEAP_BASE, R0S1_HEAP_LIMIT - hp, r0_s1_code_size(),
+           (long)asm_here(), gc, cap);
     printf("code bytes? cells=%ld ip_start=%ld ip_end=%ld\n",
            r0_s1_code_size(), r0_s1_ip_start(), r0_s1_ip_end());
     int made = 0;
@@ -1776,6 +1793,16 @@ static int interactive(void) {
 int main(int argc, char **argv) {
     const char *env = getenv("DOOM_ROOT");
     if (env && *env) root_dir = env;
+    for (int i = 1; i < argc; i++)
+        if (strcmp(argv[i], "--raw-wall") == 0) raw_wall_mode = 1;
+    if (argc > 2 && strcmp(argv[1], "--raw-wall") == 0) {
+        if (strcmp(argv[2], "--self-test") == 0) return self_test();
+        if (strcmp(argv[2], "--loader-report") == 0) return loader_report();
+        if (strcmp(argv[2], "--bench") == 0) {
+            if (argc > 4 && strcmp(argv[4], "simple") == 0) simple_mode = 1;
+            return bench(atoi(argv[3]));
+        }
+    }
     if (argc > 1 && strcmp(argv[1], "--self-test") == 0) return self_test();
     if (argc > 1 && strcmp(argv[1], "--projection-test") == 0) {
         int rc = projection_test();

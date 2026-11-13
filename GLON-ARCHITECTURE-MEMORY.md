@@ -377,6 +377,32 @@ Not yet run in WASM. Details are in `experiments/glon-iter/GLON-ITER-V001.md`.
   current macro cost is evaluator/activation dominated, not primitive
   arithmetic dominated.
 
+### G5h AvP prepared wall execution [MEASURED]
+
+[MEASURED 2026-11-14, `experiments/glon-avp-g5h`, native 64K, GCC 11.4.0
+`-O2`, WSL2 AMD Ryzen 5 7535U]
+
+- **Prepared execution works within the frozen substrate.** The existing
+  `masm`/RAW lowerer compiles the 10-wall calculation once into S1; no primitive
+  or memory-map change. Integrated under `--raw-wall`, the wall stage falls from
+  33,377,988 to 4,555,404 S1 operations/frame (86.4%) and from 6,014,444 to
+  846,833 HOST calls/frame (85.9%). Per candidate: 20,861 → 2,847 operations;
+  3,759 → 529 HOST calls.
+- **Measured game effect, same host binary:** textured 6.2 → 19.5–20.3 FPS
+  (wall 129.34 → 18.53 ms; total 160.53 → 51.23 ms); simple 6.7 → ~30.4 FPS.
+  The raw path passes the complete default self-test, including deterministic
+  framebuffer, floor/wall/ceiling alignment, materials, door, Alien, occlusion
+  and repeated-session loader stability.
+- **Memory:** raw mode adds ~170 loader cells (14,162 → 14,322 used; 478 free)
+  and ~1,702 code cells (`asm_here` 13,126 → 14,828; limit 16,128). There is no
+  data table or managed allocation in the raw workers; managed frontier is
+  33,472 and GC is 0. The raw file is loaded only in the experimental mode.
+- **Preparation:** isolated load 0.39 ms; 10/10 edge/camera cases and full
+  160-ray checksum 112,340 match native C. The main remaining costs are the
+  Glon wrapper/output and texture rows, not wall arithmetic.
+- **Reserve primitives:** not justified. The 86% reduction came from removing
+  repeated evaluator lookup/traversal, not from a missing instruction.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

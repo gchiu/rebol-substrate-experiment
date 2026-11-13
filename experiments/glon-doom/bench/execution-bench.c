@@ -280,6 +280,171 @@ static void run_wall_suite(int reps) {
     printf("wall checksums_equal=%d\n", gsum == nsum);
 }
 
+
+/* ---- Prepared (masm) wall prototype ----------------------------------- */
+
+static intptr_t native_wall5(int sx, int px, int py, int dirx, int diry,
+                             int planex, int planey, int door, int out[5]) {
+    intptr_t rayx = dirx + planex * (2 * sx - 319) / 319;
+    intptr_t rayy = diry + planey * (2 * sx - 319) / 319;
+    intptr_t best = 100000, packed = 0, t, hx, hy;
+#define HCHECK(coord,lo,hi,pack) do { \
+    if (rayy != 0) { t = ((coord) - py) * 64 / rayy; \
+      if (t > 0) { hx = px + t * rayx / 64; \
+        if (hx >= (lo) && hx <= (hi) && t < best) { best = t; packed = (pack); } } } } while (0)
+#define VCHECK(coord,lo,hi,pack) do { \
+    if (rayx != 0) { t = ((coord) - px) * 64 / rayx; \
+      if (t > 0) { hy = py + t * rayy / 64; \
+        if (hy >= (lo) && hy <= (hi) && t < best) { best = t; packed = (pack); } } } } while (0)
+    HCHECK(128,128,768,8);
+    VCHECK(768,128,256,9);
+    HCHECK(256,768,1280,18);
+    VCHECK(1280,256,1024,28);
+    HCHECK(1024,1152,1280,24);
+    VCHECK(1152,384,1024,27);
+    HCHECK(384,768,1152,18);
+    VCHECK(768,384,640,9);
+    HCHECK(640,128,768,8);
+    VCHECK(128,128,640,11);
+    if (door) VCHECK(768,256,384,37);
+#undef HCHECK
+#undef VCHECK
+    if (packed == 0) {
+        out[0] = 100; out[1] = 100; out[2] = 0; out[3] = 0; out[4] = 0;
+        return best;
+    }
+    int color = (int)(packed / 8), bmat = (int)(packed % 8);
+    int u = (bmat == 0 || bmat == 2)
+          ? (int)(px + best * rayx / 64)
+          : (int)(py + best * rayy / 64);
+    int half = (int)(246 * 64 / best);
+    int top = 100 - half, bot = 100 + half;
+    if (top < 0) top = 0;
+    if (bot > 199) bot = 199;
+    int shade = best < 256 ? 3 : best < 512 ? 2 : best < 1024 ? 1 : 0;
+    out[0] = top; out[1] = bot; out[2] = color; out[3] = u;
+    out[4] = bmat * 4 + shade;
+    return best;
+}
+
+typedef struct { FILE *saved, *stream; char *buf; size_t len; } BenchCapture;
+static void cap_begin(BenchCapture *c) {
+    memset(c, 0, sizeof *c);
+    c->saved = stdout;
+    c->stream = open_memstream(&c->buf, &c->len);
+    if (!c->stream) { perror("open_memstream"); exit(2); }
+    stdout = c->stream;
+}
+static void cap_end(BenchCapture *c) {
+    fflush(stdout);
+    fclose(c->stream);
+    stdout = c->saved;
+}
+
+static void run_prepared_suite(int reps) {
+    init_runtime();
+    long l0 = now_ns();
+    if (load_glon("../../../jupyter/prelude.glon") != 0) exit(2);
+    if (load_glon("prepared.glon") != 0) exit(2);
+    long l1 = now_ns();
+    printf("prepared load_ms=%.2f code_cells=%ld asm_here=%ld loader_used=%ld loader_free=%ld\n",
+           (double)(l1 - l0) / 1e6, r0_s1_code_size(), (long)asm_here(),
+           (long)M[GC_LOADER_HP] - R0S1_HEAP_BASE,
+           R0S1_HEAP_LIMIT - (long)M[GC_LOADER_HP]);
+    struct { int sx, px, py, dirx, diry, planex, planey, door; } cases[] = {
+        {1,320,320,64,0,0,-42,0},
+        {319,320,320,64,0,0,-42,0},
+        {160,320,320,64,0,0,-42,0},
+        {1,320,320,0,64,42,0,0},
+        {319,320,320,0,64,42,0,1},
+        {1,320,320,1,0,0,0,0},       /* rayx=1, rayy=0 */
+        {1,320,320,0,1,0,0,0},       /* rayx=0, rayy=1 */
+        {1,128,128,64,0,0,-42,1},
+        {1,1280,1024,64,0,0,-42,1},
+        {3,900,500,64,0,0,-42,0}
+    };
+    int failures = 0;
+    for (size_t ci = 0; ci < sizeof cases / sizeof cases[0]; ci++) {
+        char src[256];
+        snprintf(src, sizeof src, "[ w/ray-at %d %d %d %d %d %d %d %d ]",
+                 cases[ci].sx, cases[ci].px, cases[ci].py, cases[ci].dirx,
+                 cases[ci].diry, cases[ci].planex, cases[ci].planey,
+                 cases[ci].door);
+        int err = 0; cell b = r0_s1_parse(src, &err);
+        if (err) { printf("prepared case %zu parse error\n", ci); failures++; continue; }
+        r0_s1_outcome oc; r0_s1_session_run_block(b, &oc);
+        int got[5], want[5];
+        if (oc.status != R0S1_OUT_OK || oc.count != 5) {
+            printf("prepared case %zu status=%d count=%d\n", ci, oc.status, oc.count);
+            failures++; continue;
+        }
+        for (int i = 0; i < 5; i++) got[i] = (int)bench_int(r0_s1_result(i, oc.count));
+        native_wall5(cases[ci].sx, cases[ci].px, cases[ci].py, cases[ci].dirx,
+                     cases[ci].diry, cases[ci].planex, cases[ci].planey,
+                     cases[ci].door, want);
+        int ok = memcmp(got, want, sizeof got) == 0;
+        if (!ok) {
+            printf("prepared case %zu got=%d,%d,%d,%d,%d want=%d,%d,%d,%d,%d\n",
+                   ci, got[0],got[1],got[2],got[3],got[4],
+                   want[0],want[1],want[2],want[3],want[4]);
+            failures++;
+        }
+    }
+    printf("prepared correctness cases=%zu failures=%d\n",
+           sizeof cases / sizeof cases[0], failures);
+    /* Repeated single-ray execution. */
+    int err = 0; cell b = r0_s1_parse("[ w/ray-at 1 320 320 64 0 0 -42 0 ]", &err);
+    double t[32]; if (reps > 32) reps = 32;
+    for (int r = 0; r < reps + 2; r++) {
+        long a = now_ns();
+        r0_s1_outcome oc; r0_s1_session_run_block(b, &oc);
+        long e = now_ns();
+        if (oc.status != R0S1_OUT_OK) { printf("prepared timed run failed\n"); exit(2); }
+        if (r >= 2) t[r - 2] = (double)(e - a) / 1e3;
+    }
+    printf("prepared single_ray_us=%.1f\n", median(t, reps));
+    /* Full 160-ray / 10-wall frame through the same workers. */
+    cell frame = parse_block("prepared-frame.glon");
+    if (frame == R0_NONE) { printf("prepared frame parse failed\n"); exit(2); }
+    BenchCapture cap; cap_begin(&cap);
+    long a = now_ns();
+    r0_s1_outcome fo; r0_s1_session_run_block(frame, &fo);
+    long e = now_ns();
+    cap_end(&cap);
+    if (fo.status != R0S1_OUT_OK) { printf("prepared frame failed %d\n", fo.status); exit(2); }
+    char *p = cap.buf, *endp;
+    int n = 0; long sum = 0;
+    while (p && *p && n < 800) {
+        long v = strtol(p, &endp, 10);
+        if (endp == p) break;
+        sum += v; n++; p = endp;
+    }
+    long nsum = 0;
+    for (int i = 0; i < 160; i++) {
+        int o5[5];
+        native_wall5(i * 2 + 1, 320, 320, 64, 0, 0, -42, 0, o5);
+        for (int j = 0; j < 5; j++) nsum += o5[j];
+    }
+    printf("prepared frame_values=%d checksum=%ld native_checksum=%ld checksums_equal=%d frame_ms=%.3f\n",
+           n, sum, nsum, sum == nsum, (double)(e - a) / 1e6);
+#ifdef S1_PROFILE
+    /* one instrumented single-ray and full-frame replay, counts only */
+    s1_prof_reset();
+    r0_s1_outcome po; r0_s1_session_run_block(b, &po);
+    long pops = 0, phost = 0;
+    for (int i = 0; i < 8; i++) pops += s1_prof_op_count[i];
+    for (int i = 0; i < 16; i++) phost += s1_prof_host_count[i];
+    s1_prof_reset();
+    r0_s1_outcome fo2; r0_s1_session_run_block(frame, &fo2);
+    long fops = 0, fhost = 0;
+    for (int i = 0; i < 8; i++) fops += s1_prof_op_count[i];
+    for (int i = 0; i < 16; i++) fhost += s1_prof_host_count[i];
+    printf("prepared profile single_ops=%ld single_host=%ld frame_ops=%ld frame_host=%ld\n",
+           pops, phost, fops, fhost);
+#endif
+    free(cap.buf);
+}
+
 /* ---- Native arithmetic loop floors ------------------------------------ */
 
 static void run_native_suite(int n) {
@@ -310,17 +475,19 @@ static void run_native_suite(int n) {
 
 int main(int argc, char **argv) {
     int n = 200000, reps = 7;
-    int do_s1 = 1, do_glon = 1, do_wall = 1, do_native = 1;
+    int do_s1 = 1, do_glon = 1, do_wall = 1, do_native = 1, do_prepared = 0;
     if (argc > 1 && strcmp(argv[1], "--s1") == 0) { do_glon = do_wall = do_native = 0; }
     if (argc > 1 && strcmp(argv[1], "--glon") == 0) { do_s1 = do_wall = do_native = 0; }
     if (argc > 1 && strcmp(argv[1], "--wall") == 0) { do_s1 = do_glon = do_native = 0; }
     if (argc > 1 && strcmp(argv[1], "--native") == 0) { do_s1 = do_glon = do_wall = 0; }
+    if (argc > 1 && strcmp(argv[1], "--prepared") == 0) { do_s1 = do_glon = do_wall = do_native = 0; do_prepared = 1; }
     if (argc > 2) n = atoi(argv[2]);
     if (argc > 3) reps = atoi(argv[3]);
     if (do_s1) run_s1_suite(n, reps);
     if (do_native) run_native_suite(n);
     if (do_glon) run_glon_suite(reps);
     if (do_wall) run_wall_suite(reps);
+    if (do_prepared) run_prepared_suite(reps);
     printf("bench sink=%lu\n", (unsigned long)sink);
     return 0;
 }

@@ -30,6 +30,7 @@ test: $(TARGET)
 	./$(TARGET) --self-test
 	./$(TARGET) --projection-test
 	./$(TARGET) --stationary-test
+	./$(TARGET) --self-test --raw-wall
 	./$(TARGET) --trace
 	cd $(ROOT) && ./check-frozen-s1.sh
 

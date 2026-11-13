@@ -529,6 +529,20 @@ was measured at 638 free cells with the game contributing no masm code.
 All tests, including the new stationary-cache tests and frozen-S1 check,
 passed. Full report: `experiments/glon-doom/G5G-INVESTIGATION.md`.
 
+## 10b. AvP G5h prepared wall execution (2026-11-14)
+
+G5h showed that the existing seven-primitive substrate can execute the wall
+calculation far more efficiently when the repeated evaluator structure is
+prepared with the existing `masm` lowerer. The experimental `--raw-wall` path
+reduced wall S1 operations/frame from 33,377,988 to 4,555,404 (86.4%) and HOST
+calls/frame from 6,014,444 to 846,833 (85.9%). Textured FPS improved from 6.2
+to 19.5–20.3; simple from 6.7 to ~30.4.
+
+The prepared worker adds ~170 loader cells and ~1,702 code cells, leaving 478
+loader cells and 1,300 code cells. It uses only frozen S1 primitives and the
+existing RAW/CALL macros. The complete default self-test passes through the raw
+path. Full report: `experiments/glon-doom/G5H-INVESTIGATION.md`.
+
 ## 11. Detailed documents
 
 - `README.md` — project intro.
