@@ -97,7 +97,8 @@ static int replay_busy(void);
 static int replay_nav_available(void);
 static int replay_locked(void);
 typedef enum {
-    REPLAY_READY = 0, REPLAY_PLAYING, REPLAY_PAUSED, REPLAY_COMPLETE, REPLAY_ERROR
+    REPLAY_READY = 0, REPLAY_PLAYING, REPLAY_PAUSED, REPLAY_COMPLETE,
+    REPLAY_ENDED, REPLAY_ERROR
 } ReplayState;
 static ReplayState replay_state = REPLAY_READY;
 static char replay_buf[SCRIPT_CMD_BYTES];
@@ -107,7 +108,6 @@ static int replay_count = 0;
 static int replay_pos = 0;
 static int replay_prepared = 0;
 static int replay_active = 0;
-static int replay_history_committed = 0;
 static Uint32 *replay_pre = NULL;
 static int replay_unsaved = 0;
 static Uint64 replay_last_tick = 0;
@@ -963,7 +963,6 @@ static void replay_forget(void) {
     replay_prepared = 0;
     replay_count = replay_pos = 0;
     replay_active = 0;
-    replay_history_committed = 0;
     replay_state = REPLAY_READY;
     replay_error[0] = 0;
 }
@@ -978,7 +977,6 @@ static int replay_prepare(void) {
     replay_pre = NULL;
     replay_prepared = 0;
     replay_count = replay_pos = 0;
-    replay_history_committed = 0;
     replay_error[0] = 0;
     if (prepare_script_commands(replay_buf, sizeof replay_buf, &replay_count,
                                 replay_offsets, replay_lengths) != 0) {
@@ -1006,19 +1004,10 @@ static void replay_apply_one(void) {
 static void replay_complete(void) {
     if (replay_pos < replay_count) return;
     replay_state = REPLAY_COMPLETE;
-    replay_active = 0;
-    if (replay_pre && !replay_history_committed) {
-        Uint32 *commit = malloc((size_t)PAINT_W * PAINT_H * sizeof(Uint32));
-        if (commit) {
-            memcpy(commit, replay_pre, (size_t)PAINT_W * PAINT_H * sizeof(Uint32));
-            history_stack_clear(&redo_stack);
-            history_push(&undo_stack, commit);
-            replay_history_committed = 1;
-        }
-    }
+    replay_active = 1;  /* temporary replay drawing is still owned by replay */
     unsaved = 1;
     replay_pos = replay_count;
-    snprintf(replay_error, sizeof replay_error, "Playback complete.");
+    snprintf(replay_error, sizeof replay_error, "Complete; press End to commit this prefix.");
     dirty = 1;
 }
 
@@ -1130,20 +1119,43 @@ static int replay_locked(void) {
 }
 
 static void replay_end(void) {
-    if (!replay_nav_available()) return;
-    if (replay_busy() && !replay_history_committed) return;
-    replay_forget();
-    snprintf(script_message, sizeof script_message, "Replay ended; document Undo restored.");
+    if (!replay_nav_available() || !replay_pre) return;
+    Uint32 *current = snapshot_canvas();
+    if (!current) {
+        snprintf(replay_error, sizeof replay_error, "Cannot snapshot current replay prefix.");
+        return;
+    }
+    int changed = memcmp(current, replay_pre,
+                         (size_t)PAINT_W * PAINT_H * sizeof(Uint32)) != 0;
+    free(current);
+    if (changed) {
+        history_stack_clear(&redo_stack);
+        history_push(&undo_stack, replay_pre);
+        replay_pre = NULL;
+        unsaved = 1;
+    } else {
+        free(replay_pre);
+        replay_pre = NULL;
+        unsaved = replay_unsaved;
+    }
+    replay_active = 0;
+    replay_prepared = 0;
+    replay_count = replay_pos = 0;
+    replay_state = REPLAY_ENDED;
+    replay_error[0] = 0;
+    snprintf(script_message, sizeof script_message,
+             changed ? "Replay prefix committed to document history."
+                     : "Replay ended at unchanged canvas; no document entry.");
+    dirty = 1;
 }
 
 static void replay_stop(void) {
-    if (replay_state != REPLAY_PLAYING && replay_state != REPLAY_PAUSED) return;
+    if (!replay_nav_available()) return;
     if (replay_pre) restore_canvas(replay_pre);
     free(replay_pre);
     replay_pre = NULL;
     replay_active = 0;
     replay_pos = 0;
-    replay_history_committed = 0;
     replay_state = REPLAY_READY;
     unsaved = replay_unsaved;
     dirty = 1;
@@ -1552,6 +1564,7 @@ static const char *replay_state_name(void) {
     case REPLAY_PLAYING: return "Playing";
     case REPLAY_PAUSED: return "Paused";
     case REPLAY_COMPLETE: return "Complete";
+    case REPLAY_ENDED: return "Ended";
     case REPLAY_ERROR: return "Error";
     default: return "Ready";
     }
@@ -1660,7 +1673,7 @@ static void ui_right_panel(void) {
             nk_button_label(nk, "Pause");
             nk_widget_disable_end(nk);
         }
-        if (replay_busy()) {
+        if (replay_nav_available()) {
             if (nk_button_label(nk, "Stop")) replay_stop();
         } else {
             nk_widget_disable_begin(nk);
@@ -1682,7 +1695,7 @@ static void ui_right_panel(void) {
             nk_button_label(nk, "Step");
             nk_widget_disable_end(nk);
         }
-        if (replay_nav_available() && replay_history_committed) {
+        if (replay_nav_available()) {
             if (nk_button_label(nk, "End")) replay_end();
         } else {
             nk_widget_disable_begin(nk);
@@ -2633,6 +2646,98 @@ static int replay_compare_paths(const char *script, const Uint32 *initial) {
     replay_forget();
     return same ? 0 : 7;
 }
+static int replay_end_semantics_test(void) {
+    clear_canvas(); history_free(); replay_forget();
+    Uint32 *initial = snapshot_canvas();
+    if (!initial) return 1;
+
+    /* End at zero: unchanged canvas, no redundant document entry. */
+    if (load_script_file("examples/calligraphy.glon") != 0 ||
+        replay_prepare() != 0 || replay_finish_steps() != 0) return 2;
+    while (replay_pos > 0) if (replay_step_back() != 1) return 3;
+    replay_end();
+    if (undo_stack.count != 0 || redo_stack.count != 0) return 4;
+    Uint32 *zero = snapshot_canvas();
+    if (!zero || !replay_snapshots_equal(initial, zero)) return 5;
+    free(zero);
+
+    /* End at an intermediate prefix commits exactly that visible prefix. */
+    restore_canvas(initial); history_free(); replay_forget();
+    if (load_script_file("examples/calligraphy.glon") != 0 ||
+        replay_prepare() != 0 || replay_finish_steps() != 0) return 6;
+    int target = 5;
+    if (target > replay_count) target = replay_count;
+    while (replay_pos > target) if (replay_step_back() != 1) return 7;
+    Uint32 *prefix = replay_prefix_snapshot(initial, target);
+    if (!prefix) return 8;
+    replay_end();
+    if (undo_stack.count != 1) return 9;
+    Uint32 *committed = snapshot_canvas();
+    if (!committed || !replay_snapshots_equal(prefix, committed)) return 10;
+    free(committed);
+    if (history_undo() != 1) return 11;
+    Uint32 *undone = snapshot_canvas();
+    if (!undone || !replay_snapshots_equal(initial, undone)) return 12;
+    free(undone);
+    if (history_redo() != 1) return 13;
+    Uint32 *redone = snapshot_canvas();
+    if (!redone || !replay_snapshots_equal(prefix, redone)) return 14;
+    free(redone); free(prefix);
+
+    /* Stop after stepping back restores the original and adds no history. */
+    restore_canvas(initial); history_free(); replay_forget();
+    if (load_script_file("examples/calligraphy.glon") != 0 ||
+        replay_prepare() != 0 || replay_finish_steps() != 0) return 15;
+    while (replay_pos > 3) if (replay_step_back() != 1) return 16;
+    replay_stop();
+    if (undo_stack.count != 0) return 17;
+    Uint32 *stopped = snapshot_canvas();
+    if (!stopped || !replay_snapshots_equal(initial, stopped)) return 18;
+    free(stopped);
+
+    /* Stop preserves an existing document redo entry. */
+    restore_canvas(initial); history_free(); replay_forget();
+    if (load_script_file("examples/rectangle.glon") != 0 || run_script() != 0) return 19;
+    Uint32 *rect = snapshot_canvas();
+    if (!rect) return 20;
+    if (history_undo() != 1 || redo_stack.count != 1) return 21;
+    if (load_script_file("examples/calligraphy.glon") != 0 ||
+        replay_prepare() != 0 || replay_step() != 0) return 22;
+    replay_stop();
+    if (redo_stack.count != 1) return 23;
+    Uint32 *after_stop = snapshot_canvas();
+    if (!after_stop || !replay_snapshots_equal(initial, after_stop)) return 24;
+    free(after_stop);
+    if (history_redo() != 1) return 25;
+    Uint32 *rect_again = snapshot_canvas();
+    if (!rect_again || !replay_snapshots_equal(rect, rect_again)) return 26;
+    free(rect_again); free(rect);
+
+    /* A genuine End commit invalidates redo history. */
+    restore_canvas(initial); history_free(); replay_forget();
+    if (load_script_file("examples/rectangle.glon") != 0 || run_script() != 0) return 27;
+    if (history_undo() != 1 || redo_stack.count != 1) return 28;
+    if (load_script_file("examples/calligraphy.glon") != 0 ||
+        replay_prepare() != 0 || replay_finish_steps() != 0) return 29;
+    replay_end();
+    if (redo_stack.count != 0 || undo_stack.count != 1) return 30;
+
+    /* Repeated prepare/play/End cycles keep loader use bounded. */
+    history_free(); replay_forget();
+    if (load_script_file("examples/calligraphy.glon") != 0) return 31;
+    long loader0 = loader_used();
+    for (int rep = 0; rep < 3; rep++) {
+        if (replay_prepare() != 0 || replay_finish_steps() != 0) return 32;
+        replay_end();
+        history_free(); replay_forget();
+    }
+    if (loader_used() != loader0) return 33;
+
+    free(initial);
+    history_free(); replay_forget();
+    return 0;
+}
+
 static int replay_test(void) {
     int saved = 0;
     if (app_init() != 0) return 2;
@@ -2662,6 +2767,7 @@ static int replay_test(void) {
     if (!nonempty) return 11;
     if (replay_compare_paths("examples/replay-demo.glon", nonempty) != 0) return 12;
     free(nonempty);
+    if (replay_end_semantics_test() != 0) return 12;
 
     /* Single-step, pause/resume, speed, stop and conflicts. */
     clear_canvas(); history_free(); replay_forget();
@@ -2701,7 +2807,7 @@ static int replay_test(void) {
     if (replay_prepare() != 0 || replay_finish_steps() != 0) return 31;
     int nav_total = replay_count;
     int history_before_nav = undo_stack.count;
-    if (history_before_nav != 1) return 32;
+    if (history_before_nav != 0) return 32;
     int nav_targets[] = { nav_total - 1, nav_total - 3, 2, 0, nav_total / 2, nav_total };
     for (unsigned i = 0; i < sizeof nav_targets / sizeof nav_targets[0]; i++) {
         int target = nav_targets[i];

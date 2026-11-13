@@ -226,8 +226,9 @@ Controls:
 - **Step** executes exactly one pending command and pauses.
 - **Stop** cancels an active playback and restores the drawing layer captured
   before playback.
-- **End** leaves completed replay navigation, preserving the displayed result
-  and returning ordinary document Undo/Redo.
+- **End** commits the currently visible replay prefix as one document action
+  and leaves replay navigation. End at command zero, or at a prefix whose
+  pixels equal the pre-playback canvas, adds no document entry.
 - **Speed**: 1, 5, 20 or 60 operations/second; default 5.
 
 While replay navigation is available, `Ctrl+Z` moves back one replay command and
@@ -238,10 +239,26 @@ Stop) leaves replay navigation, ordinary document Undo/Redo is available again.
 Backward navigation deterministically restores the saved pre-playback layer and
 replays the command prefix; it never attempts to invert alpha compositing. This
 handles Clear, eraser, zero-pressure and overlapping translucent calligraphy
-commands correctly. Completion still commits the complete replay as exactly one
-document Undo action; individual navigation steps do not add document history
-entries. A second Play restarts from the same pre-playback state rather than
-accumulating pixels.
+commands correctly. Completion does **not** implicitly commit document history;
+Back/Step remain available at Complete until End or Stop. End commits exactly
+the visible prefix as one document action and invalidates redo only when that
+prefix genuinely changes the canvas. Stop restores the pre-playback canvas
+without adding history and preserves existing document redo history. A second
+Play restarts from the same pre-playback state rather than accumulating pixels.
+
+Replay states:
+
+```text
+Ready -> Playing -> Paused -> Complete -> Ended
+             \         /
+              Stop -> Ready
+Preparation failure -> Error
+```
+
+`Ended` is a terminal display state after End; the next Play/Step prepares a
+fresh replay from the then-current document. `Playing/Paused/Complete` own a
+temporary drawing layer, not document history. Only End transfers that drawing
+into document history.
 
 The inspector displays Ready / Playing / Paused / Complete / Error, current and
 total command counts, and the current speed. The inspector scrolls when the
