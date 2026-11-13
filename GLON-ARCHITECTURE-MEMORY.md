@@ -424,6 +424,21 @@ rasteriser or vocabulary change was made; the remaining ~1,350-call limit is
 the next optimization target and would require a structured host binding to
 avoid per-command managed strings.
 
+[MEASURED 2026-11-13, `experiments/glon-gui-paint` mandala-deluxe]
+**A 894-command deluxe mandala validates the streaming sink end-to-end.**
+`examples/mandala-deluxe.glon` is a 16-fold, radius-274 drawing in 34,111
+stripped bytes (34,263 on disk). It emits one Clear, 877 `L` commands and 16 `P`
+commands (26,611 command bytes), parsed as ordinary source in 40-form `do`
+blocks. The host sink and 4,096-op cap are not approached. On WSLg final
+runs: load 0.46-0.61 ms, immediate execution 5.66-5.91 s, replay preparation
+5.44-5.58 s, full smooth replay 0.65-0.87 s; managed high-water 40,000, live cells 1,568 after
+immediate and 1,504 after preparation, GC counts 452 and 904. Immediate and
+replay canvases are pixel-identical. The real GUI path (File -> Open Script ->
+Run Script -> Play/Pause/Stop) rendered the same artwork and restored the
+completed image on Stop. This confirms the earlier ~1,350-call boundary is not
+hit by a design in the requested 700-1,000 range; no parser or capacity
+workaround was needed.
+
 **[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
 worklist has a fixed 256 entries (`GC_WORKLIST_CAP`, the cells before `GC_A1`).
 - **It cannot overflow in the 64K configuration.** Each object is pushed at

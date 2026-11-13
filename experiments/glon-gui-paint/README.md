@@ -187,6 +187,7 @@ examples/landscape.glon
 examples/calligraphy.glon
 examples/yong.glon
 examples/mandala.glon
+examples/mandala-deluxe.glon
 examples/replay-demo.glon
 ```
 
@@ -331,6 +332,40 @@ calls now complete with the same command bytes. The host sink is bounded to
 whole stream and leaves the document unchanged. A residual limit remains around
 1,350 calls because each command's temporary Glon strings still fragment the
 non-compacting managed heap; 1,400 calls fail and the UI recovers cleanly.
+
+### Deluxe mandala
+
+`examples/mandala-deluxe.glon` is a larger 16-fold procedural mandala using only
+the same ordinary palette, size, line and pressure commands. It is centred at
+`(400,300)`, extends to radius 274 and fills the 800x600 canvas without clipping.
+The design has five concentric field rings, two offset interlocking 16-gons,
+16 large red petals, green scalloped filigree, 32 outer ticks, inner blue
+filigree lozenges, a yellow diamond band, 16 animated red pressure petals and a
+12-petal central rosette with a black star and red jewel. It is built in
+painterly order from the outer frame inward, so replay reveals the structure
+layer by layer.
+
+The file is 34,263 bytes on disk (34,111 after comments) and produces exactly
+894 replay commands: one Clear, 877 `L` commands and 16 `P` commands, for
+26,611 command bytes. This is comfortably below the empirical ~1,350-command
+managed-heap boundary, the 4,096-command cap and the 1 MiB host sink.
+
+To view it in Glon Paint: File → Open Script, choose
+`examples/mandala-deluxe.glon`, then Run Script. The inspector reports
+`Prepared 894 commands`; Play animates the replay, Pause holds the current
+stroke, and Stop restores the pre-playback image. Step/Back/End and repeated
+Load→Clear→Load are covered by the headless demo.
+
+`./build/glon-paint --mandala-deluxe-demo` saves
+`glon-mandala-deluxe-final.png`, the 25/50/75% replay stages and
+`glon-mandala-deluxe-replay-final.png`. Across final WSLg runs: load
+0.46-0.61 ms, immediate execution 5.66-5.91 s, replay preparation
+5.44-5.58 s and full smooth replay 0.65-0.87 s. Managed heap high-water is
+40,000, with 1,568 live cells after the immediate run and 1,504 after
+preparation, and 452 and 904 GC collections respectively. Immediate and
+completed replay images compare pixel-identical. A real GUI load/run produced
+the same artwork; Play/Pause showed the first stroke in progress and Stop
+restored the completed image.
 
 ## Writing 永
 
@@ -566,6 +601,7 @@ make test
 
 # Render the mandala, save replay stages and verify immediate/replay equality.
 ./build/glon-paint --mandala-demo
+./build/glon-paint --mandala-deluxe-demo
 ```
 
 The calligraphy and replay tests compare complete 800x600 drawing-layer

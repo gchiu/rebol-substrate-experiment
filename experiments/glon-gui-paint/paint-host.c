@@ -5037,7 +5037,7 @@ static int yong_demo(void) {
 }
 
 
-static int mandala_demo(void) {
+static int mandala_demo_path(const char *script, const char *prefix) {
     int saved = 0;
     if (app_init() != 0) return 2;
     clear_canvas(); history_free(); replay_forget(); unsaved = 0;
@@ -5045,7 +5045,7 @@ static int mandala_demo(void) {
     if (!initial) return 3;
 
     Uint64 t0 = SDL_GetPerformanceCounter();
-    if (load_script_file("examples/mandala.glon") != 0) return 4;
+    if (load_script_file(script) != 0) return 4;
     Uint64 t1 = SDL_GetPerformanceCounter();
     double load_ms = (double)(t1 - t0) * 1000.0 /
                      (double)SDL_GetPerformanceFrequency();
@@ -5056,18 +5056,29 @@ static int mandala_demo(void) {
     t1 = SDL_GetPerformanceCounter();
     double immediate_ms = (double)(t1 - t0) * 1000.0 /
                           (double)SDL_GetPerformanceFrequency();
+    long immediate_heap_high = r0_s1_heap_high();
+    long immediate_gc = r0_s1_gc_count();
+    long immediate_live = r0_s1_gc_live_cells();
     Uint32 *immediate = snapshot_canvas();
     if (!immediate) return 6;
-    if (save_png("glon-mandala-final.png") != 0) return 7;
+    char final_name[256], replay_name[256], stage_names[3][256];
+    snprintf(final_name, sizeof final_name, "%s-final.png", prefix);
+    snprintf(replay_name, sizeof replay_name, "%s-replay-final.png", prefix);
+    snprintf(stage_names[0], sizeof stage_names[0], "%s-25.png", prefix);
+    snprintf(stage_names[1], sizeof stage_names[1], "%s-50.png", prefix);
+    snprintf(stage_names[2], sizeof stage_names[2], "%s-75.png", prefix);
+    if (save_png(final_name) != 0) return 7;
 
     /* Prepare replay and count its command stream. */
     restore_canvas(initial); history_free(); replay_forget();
-    if (load_script_file("examples/mandala.glon") != 0) return 8;
+    if (load_script_file(script) != 0) return 8;
     t0 = SDL_GetPerformanceCounter();
     if (replay_prepare() != 0) return 9;
     t1 = SDL_GetPerformanceCounter();
     double prepare_ms = (double)(t1 - t0) * 1000.0 /
                         (double)SDL_GetPerformanceFrequency();
+    long prepare_gc = r0_s1_gc_count();
+    long prepare_live = r0_s1_gc_live_cells();
     int commands = replay_count;
     size_t command_bytes = 0;
     for (int i = 0; i < replay_count; i++) command_bytes += replay_lengths[i] + 1;
@@ -5087,11 +5098,9 @@ static int mandala_demo(void) {
     /* Capture 25/50/75% replay prefixes for visual inspection. */
     if (replay_prepare() != 0 || replay_play() != 0) return 15;
     int targets[3] = { replay_count / 4, replay_count / 2, replay_count * 3 / 4 };
-    const char *names[3] = { "glon-mandala-25.png", "glon-mandala-50.png",
-                             "glon-mandala-75.png" };
     for (int i = 0; i < 3; i++) {
         if (replay_reconstruct(targets[i]) != 0) return 16;
-        if (save_png(names[i]) != 0) return 17;
+        if (save_png(stage_names[i]) != 0) return 17;
     }
 
     /* Full smooth replay from the pre-playback canvas. */
@@ -5102,7 +5111,7 @@ static int mandala_demo(void) {
     double replay_ms = (double)(t1 - t0) * 1000.0 /
                        (double)SDL_GetPerformanceFrequency();
     Uint32 *replayed = snapshot_canvas();
-    if (save_png("glon-mandala-replay-final.png") != 0) return 20;
+    if (save_png(replay_name) != 0) return 20;
     if (!replayed || !replay_snapshots_equal(immediate, replayed)) {
         free(replayed);
         return 19;
@@ -5123,20 +5132,22 @@ static int mandala_demo(void) {
 
     /* Repeated Load -> Clear -> Load. */
     restore_canvas(initial); history_free(); replay_forget();
-    if (load_script_file("examples/mandala.glon") != 0 || run_script() != 0)
+    if (load_script_file(script) != 0 || run_script() != 0)
         return 26;
     document_clear();
-    if (load_script_file("examples/mandala.glon") != 0 || run_script() != 0)
+    if (load_script_file(script) != 0 || run_script() != 0)
         return 27;
     Uint32 *again = snapshot_canvas();
     if (!again || !replay_snapshots_equal(immediate, again)) return 28;
     free(again);
 
-    printf("mandala-demo: source_bytes_stripped=%zu commands=%d command_bytes=%zu "
+    printf("mandala-demo: script=%s source_bytes_stripped=%zu commands=%d command_bytes=%zu "
            "load_ms=%.2f immediate_ms=%.2f prepare_ms=%.2f "
-           "smooth_replay_ms=%.2f final_equal=1 lifecycle=ok result=ok\n",
-           script_bytes, commands, command_bytes, load_ms, immediate_ms,
-           prepare_ms, replay_ms);
+           "smooth_replay_ms=%.2f heap_high=%ld gc_run=%ld live_run=%ld "
+           "gc_prepare=%ld live_prepare=%ld final_equal=1 lifecycle=ok result=ok\n",
+           script, script_bytes, commands, command_bytes, load_ms, immediate_ms,
+           prepare_ms, replay_ms, immediate_heap_high, immediate_gc,
+           immediate_live, prepare_gc, prepare_live);
     free(immediate);
     free(initial);
     history_free(); replay_forget();
@@ -5144,6 +5155,13 @@ static int mandala_demo(void) {
     return 0;
 }
 
+
+static int mandala_demo(void) {
+    return mandala_demo_path("examples/mandala.glon", "glon-mandala");
+}
+static int mandala_deluxe_demo(void) {
+    return mandala_demo_path("examples/mandala-deluxe.glon", "glon-mandala-deluxe");
+}
 
 static int stream_test(void) {
     int saved = 0;
@@ -5912,6 +5930,15 @@ int main(int argc, char **argv) {
         SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
         SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
         fprintf(stderr, "glon-paint: script-test %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--mandala-deluxe-demo") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = mandala_deluxe_demo();
+        history_free(); replay_forget(); free(script_source);
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        fprintf(stderr, "glon-paint: mandala-deluxe-demo %s\n", rc == 0 ? "passed" : "failed");
         return rc;
     }
     if (argc > 1 && strcmp(argv[1], "--stream-test") == 0) {

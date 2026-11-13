@@ -1,0 +1,1024 @@
+;; Procedural deluxe 16-fold mandala, 800x600.
+;; Self-contained ordinary Glon drawing/pressure commands.
+;; Designed for the host streaming command sink.
+do [
+    paint/draw-clear
+    paint/set-color 5
+    paint/set-size 3
+    paint/draw-line 668 300 667 318
+    paint/draw-line 667 318 666 335
+    paint/draw-line 666 335 663 352
+    paint/draw-line 663 352 659 369
+    paint/draw-line 659 369 654 386
+    paint/draw-line 654 386 648 403
+    paint/draw-line 648 403 640 419
+    paint/draw-line 640 419 632 434
+    paint/draw-line 632 434 623 449
+    paint/draw-line 623 449 613 463
+    paint/draw-line 613 463 601 477
+    paint/draw-line 601 477 590 490
+    paint/draw-line 590 490 577 501
+    paint/draw-line 577 501 563 513
+    paint/draw-line 563 513 549 523
+    paint/draw-line 549 523 534 532
+    paint/draw-line 534 532 519 540
+    paint/draw-line 519 540 503 548
+    paint/draw-line 503 548 486 554
+    paint/draw-line 486 554 469 559
+    paint/draw-line 469 559 452 563
+    paint/draw-line 452 563 435 566
+    paint/draw-line 435 566 418 567
+    paint/draw-line 418 567 400 568
+    paint/draw-line 400 568 382 567
+    paint/draw-line 382 567 365 566
+    paint/draw-line 365 566 348 563
+    paint/draw-line 348 563 331 559
+    paint/draw-line 331 559 314 554
+    paint/draw-line 314 554 297 548
+    paint/draw-line 297 548 281 540
+    paint/draw-line 281 540 266 532
+    paint/draw-line 266 532 251 523
+    paint/draw-line 251 523 237 513
+    paint/draw-line 237 513 223 501
+    paint/draw-line 223 501 210 490
+    paint/draw-line 210 490 199 477
+]
+do [
+    paint/draw-line 199 477 187 463
+    paint/draw-line 187 463 177 449
+    paint/draw-line 177 449 168 434
+    paint/draw-line 168 434 160 419
+    paint/draw-line 160 419 152 403
+    paint/draw-line 152 403 146 386
+    paint/draw-line 146 386 141 369
+    paint/draw-line 141 369 137 352
+    paint/draw-line 137 352 134 335
+    paint/draw-line 134 335 133 318
+    paint/draw-line 133 318 132 300
+    paint/draw-line 132 300 133 282
+    paint/draw-line 133 282 134 265
+    paint/draw-line 134 265 137 248
+    paint/draw-line 137 248 141 231
+    paint/draw-line 141 231 146 214
+    paint/draw-line 146 214 152 197
+    paint/draw-line 152 197 160 181
+    paint/draw-line 160 181 168 166
+    paint/draw-line 168 166 177 151
+    paint/draw-line 177 151 187 137
+    paint/draw-line 187 137 199 123
+    paint/draw-line 199 123 210 110
+    paint/draw-line 210 110 223 99
+    paint/draw-line 223 99 237 87
+    paint/draw-line 237 87 251 77
+    paint/draw-line 251 77 266 68
+    paint/draw-line 266 68 281 60
+    paint/draw-line 281 60 297 52
+    paint/draw-line 297 52 314 46
+    paint/draw-line 314 46 331 41
+    paint/draw-line 331 41 348 37
+    paint/draw-line 348 37 365 34
+    paint/draw-line 365 34 382 33
+    paint/draw-line 382 33 400 32
+    paint/draw-line 400 32 418 33
+    paint/draw-line 418 33 435 34
+    paint/draw-line 435 34 452 37
+    paint/draw-line 452 37 469 41
+    paint/draw-line 469 41 486 46
+]
+do [
+    paint/draw-line 486 46 503 52
+    paint/draw-line 503 52 519 60
+    paint/draw-line 519 60 534 68
+    paint/draw-line 534 68 549 77
+    paint/draw-line 549 77 563 87
+    paint/draw-line 563 87 577 99
+    paint/draw-line 577 99 590 110
+    paint/draw-line 590 110 601 123
+    paint/draw-line 601 123 613 137
+    paint/draw-line 613 137 623 151
+    paint/draw-line 623 151 632 166
+    paint/draw-line 632 166 640 181
+    paint/draw-line 640 181 648 197
+    paint/draw-line 648 197 654 214
+    paint/draw-line 654 214 659 231
+    paint/draw-line 659 231 663 248
+    paint/draw-line 663 248 666 265
+    paint/draw-line 666 265 667 282
+    paint/draw-line 667 282 668 300
+    paint/set-color 2
+    paint/set-size 7
+    paint/draw-line 658 300 657 320
+    paint/draw-line 657 320 655 340
+    paint/draw-line 655 340 651 360
+    paint/draw-line 651 360 645 380
+    paint/draw-line 645 380 638 399
+    paint/draw-line 638 399 630 417
+    paint/draw-line 630 417 620 435
+    paint/draw-line 620 435 609 452
+    paint/draw-line 609 452 596 468
+    paint/draw-line 596 468 582 482
+    paint/draw-line 582 482 568 496
+    paint/draw-line 568 496 552 509
+    paint/draw-line 552 509 535 520
+    paint/draw-line 535 520 517 530
+    paint/draw-line 517 530 499 538
+    paint/draw-line 499 538 480 545
+    paint/draw-line 480 545 460 551
+    paint/draw-line 460 551 440 555
+    paint/draw-line 440 555 420 557
+]
+do [
+    paint/draw-line 420 557 400 558
+    paint/draw-line 400 558 380 557
+    paint/draw-line 380 557 360 555
+    paint/draw-line 360 555 340 551
+    paint/draw-line 340 551 320 545
+    paint/draw-line 320 545 301 538
+    paint/draw-line 301 538 283 530
+    paint/draw-line 283 530 265 520
+    paint/draw-line 265 520 248 509
+    paint/draw-line 248 509 232 496
+    paint/draw-line 232 496 218 482
+    paint/draw-line 218 482 204 468
+    paint/draw-line 204 468 191 452
+    paint/draw-line 191 452 180 435
+    paint/draw-line 180 435 170 417
+    paint/draw-line 170 417 162 399
+    paint/draw-line 162 399 155 380
+    paint/draw-line 155 380 149 360
+    paint/draw-line 149 360 145 340
+    paint/draw-line 145 340 143 320
+    paint/draw-line 143 320 142 300
+    paint/draw-line 142 300 143 280
+    paint/draw-line 143 280 145 260
+    paint/draw-line 145 260 149 240
+    paint/draw-line 149 240 155 220
+    paint/draw-line 155 220 162 201
+    paint/draw-line 162 201 170 183
+    paint/draw-line 170 183 180 165
+    paint/draw-line 180 165 191 148
+    paint/draw-line 191 148 204 132
+    paint/draw-line 204 132 218 118
+    paint/draw-line 218 118 232 104
+    paint/draw-line 232 104 248 91
+    paint/draw-line 248 91 265 80
+    paint/draw-line 265 80 283 70
+    paint/draw-line 283 70 301 62
+    paint/draw-line 301 62 320 55
+    paint/draw-line 320 55 340 49
+    paint/draw-line 340 49 360 45
+    paint/draw-line 360 45 380 43
+]
+do [
+    paint/draw-line 380 43 400 42
+    paint/draw-line 400 42 420 43
+    paint/draw-line 420 43 440 45
+    paint/draw-line 440 45 460 49
+    paint/draw-line 460 49 480 55
+    paint/draw-line 480 55 499 62
+    paint/draw-line 499 62 517 70
+    paint/draw-line 517 70 535 80
+    paint/draw-line 535 80 552 91
+    paint/draw-line 552 91 568 104
+    paint/draw-line 568 104 582 118
+    paint/draw-line 582 118 596 132
+    paint/draw-line 596 132 609 148
+    paint/draw-line 609 148 620 165
+    paint/draw-line 620 165 630 183
+    paint/draw-line 630 183 638 201
+    paint/draw-line 638 201 645 220
+    paint/draw-line 645 220 651 240
+    paint/draw-line 651 240 655 260
+    paint/draw-line 655 260 657 280
+    paint/draw-line 657 280 658 300
+    paint/set-color 4
+    paint/set-size 2
+    paint/draw-line 648 300 647 324
+    paint/draw-line 647 324 643 348
+    paint/draw-line 643 348 637 372
+    paint/draw-line 637 372 629 395
+    paint/draw-line 629 395 619 417
+    paint/draw-line 619 417 606 438
+    paint/draw-line 606 438 592 457
+    paint/draw-line 592 457 575 475
+    paint/draw-line 575 475 557 492
+    paint/draw-line 557 492 538 506
+    paint/draw-line 538 506 517 519
+    paint/draw-line 517 519 495 529
+    paint/draw-line 495 529 472 537
+    paint/draw-line 472 537 448 543
+    paint/draw-line 448 543 424 547
+    paint/draw-line 424 547 400 548
+    paint/draw-line 400 548 376 547
+]
+do [
+    paint/draw-line 376 547 352 543
+    paint/draw-line 352 543 328 537
+    paint/draw-line 328 537 305 529
+    paint/draw-line 305 529 283 519
+    paint/draw-line 283 519 262 506
+    paint/draw-line 262 506 243 492
+    paint/draw-line 243 492 225 475
+    paint/draw-line 225 475 208 457
+    paint/draw-line 208 457 194 438
+    paint/draw-line 194 438 181 417
+    paint/draw-line 181 417 171 395
+    paint/draw-line 171 395 163 372
+    paint/draw-line 163 372 157 348
+    paint/draw-line 157 348 153 324
+    paint/draw-line 153 324 152 300
+    paint/draw-line 152 300 153 276
+    paint/draw-line 153 276 157 252
+    paint/draw-line 157 252 163 228
+    paint/draw-line 163 228 171 205
+    paint/draw-line 171 205 181 183
+    paint/draw-line 181 183 194 162
+    paint/draw-line 194 162 208 143
+    paint/draw-line 208 143 225 125
+    paint/draw-line 225 125 243 108
+    paint/draw-line 243 108 262 94
+    paint/draw-line 262 94 283 81
+    paint/draw-line 283 81 305 71
+    paint/draw-line 305 71 328 63
+    paint/draw-line 328 63 352 57
+    paint/draw-line 352 57 376 53
+    paint/draw-line 376 53 400 52
+    paint/draw-line 400 52 424 53
+    paint/draw-line 424 53 448 57
+    paint/draw-line 448 57 472 63
+    paint/draw-line 472 63 495 71
+    paint/draw-line 495 71 517 81
+    paint/draw-line 517 81 538 94
+    paint/draw-line 538 94 557 108
+    paint/draw-line 557 108 575 125
+    paint/draw-line 575 125 592 143
+]
+do [
+    paint/draw-line 592 143 606 162
+    paint/draw-line 606 162 619 183
+    paint/draw-line 619 183 629 205
+    paint/draw-line 629 205 637 228
+    paint/draw-line 637 228 643 252
+    paint/draw-line 643 252 647 276
+    paint/draw-line 647 276 648 300
+    paint/set-color 5
+    paint/set-size 2
+    paint/draw-line 464 300 642 300
+    paint/draw-line 459 324 624 393
+    paint/draw-line 445 345 571 471
+    paint/draw-line 424 359 493 524
+    paint/draw-line 400 364 400 542
+    paint/draw-line 376 359 307 524
+    paint/draw-line 355 345 229 471
+    paint/draw-line 341 324 176 393
+    paint/draw-line 336 300 158 300
+    paint/draw-line 341 276 176 207
+    paint/draw-line 355 255 229 129
+    paint/draw-line 376 241 307 76
+    paint/draw-line 400 236 400 58
+    paint/draw-line 424 241 493 76
+    paint/draw-line 445 255 571 129
+    paint/draw-line 459 276 624 207
+    paint/set-color 4
+    paint/set-size 2
+    paint/draw-line 618 300 601 383
+    paint/draw-line 601 383 554 454
+    paint/draw-line 554 454 483 501
+    paint/draw-line 483 501 400 518
+    paint/draw-line 400 518 317 501
+    paint/draw-line 317 501 246 454
+    paint/draw-line 246 454 199 383
+    paint/draw-line 199 383 182 300
+    paint/draw-line 182 300 199 217
+    paint/draw-line 199 217 246 146
+    paint/draw-line 246 146 317 99
+    paint/draw-line 317 99 400 82
+    paint/draw-line 400 82 483 99
+]
+do [
+    paint/draw-line 483 99 554 146
+    paint/draw-line 554 146 601 217
+    paint/draw-line 601 217 618 300
+    paint/set-color 2
+    paint/set-size 2
+    paint/draw-line 602 340 571 414
+    paint/draw-line 571 414 514 471
+    paint/draw-line 514 471 440 502
+    paint/draw-line 440 502 360 502
+    paint/draw-line 360 502 286 471
+    paint/draw-line 286 471 229 414
+    paint/draw-line 229 414 198 340
+    paint/draw-line 198 340 198 260
+    paint/draw-line 198 260 229 186
+    paint/draw-line 229 186 286 129
+    paint/draw-line 286 129 360 98
+    paint/draw-line 360 98 440 98
+    paint/draw-line 440 98 514 129
+    paint/draw-line 514 129 571 186
+    paint/draw-line 571 186 602 260
+    paint/draw-line 602 260 602 340
+    paint/set-color 1
+    paint/set-size 6
+    paint/draw-line 576 300 603 284
+    paint/draw-line 603 284 646 300
+    paint/draw-line 646 300 603 316
+    paint/draw-line 603 316 576 300
+    paint/draw-line 563 367 594 363
+    paint/draw-line 594 363 627 394
+    paint/draw-line 627 394 582 393
+    paint/draw-line 582 393 563 367
+    paint/draw-line 524 424 555 432
+    paint/draw-line 555 432 574 474
+    paint/draw-line 574 474 532 455
+    paint/draw-line 532 455 524 424
+    paint/draw-line 467 463 493 482
+    paint/draw-line 493 482 494 527
+    paint/draw-line 494 527 463 494
+    paint/draw-line 463 494 467 463
+    paint/draw-line 400 476 416 503
+]
+do [
+    paint/draw-line 416 503 400 546
+    paint/draw-line 400 546 384 503
+    paint/draw-line 384 503 400 476
+    paint/draw-line 333 463 337 494
+    paint/draw-line 337 494 306 527
+    paint/draw-line 306 527 307 482
+    paint/draw-line 307 482 333 463
+    paint/draw-line 276 424 268 455
+    paint/draw-line 268 455 226 474
+    paint/draw-line 226 474 245 432
+    paint/draw-line 245 432 276 424
+    paint/draw-line 237 367 218 393
+    paint/draw-line 218 393 173 394
+    paint/draw-line 173 394 206 363
+    paint/draw-line 206 363 237 367
+    paint/draw-line 224 300 197 316
+    paint/draw-line 197 316 154 300
+    paint/draw-line 154 300 197 284
+    paint/draw-line 197 284 224 300
+    paint/draw-line 237 233 206 237
+    paint/draw-line 206 237 173 206
+    paint/draw-line 173 206 218 207
+    paint/draw-line 218 207 237 233
+    paint/draw-line 276 176 245 168
+    paint/draw-line 245 168 226 126
+    paint/draw-line 226 126 268 145
+    paint/draw-line 268 145 276 176
+    paint/draw-line 333 137 307 118
+    paint/draw-line 307 118 306 73
+    paint/draw-line 306 73 337 106
+    paint/draw-line 337 106 333 137
+    paint/draw-line 400 124 384 97
+    paint/draw-line 384 97 400 54
+    paint/draw-line 400 54 416 97
+    paint/draw-line 416 97 400 124
+    paint/draw-line 467 137 463 106
+    paint/draw-line 463 106 494 73
+    paint/draw-line 494 73 493 118
+    paint/draw-line 493 118 467 137
+    paint/draw-line 524 176 532 145
+]
+do [
+    paint/draw-line 532 145 574 126
+    paint/draw-line 574 126 555 168
+    paint/draw-line 555 168 524 176
+    paint/draw-line 563 233 582 207
+    paint/draw-line 582 207 627 206
+    paint/draw-line 627 206 594 237
+    paint/draw-line 594 237 563 233
+    paint/set-color 3
+    paint/set-size 4
+    paint/draw-line 634 273 636 286
+    paint/draw-line 636 286 636 300
+    paint/draw-line 636 300 636 314
+    paint/draw-line 636 314 634 327
+    paint/set-color 3
+    paint/set-size 4
+    paint/draw-line 627 364 623 377
+    paint/draw-line 623 377 618 390
+    paint/draw-line 618 390 612 403
+    paint/draw-line 612 403 606 415
+    paint/set-color 3
+    paint/set-size 4
+    paint/draw-line 585 446 576 457
+    paint/draw-line 576 457 567 467
+    paint/draw-line 567 467 557 476
+    paint/draw-line 557 476 546 485
+    paint/set-color 3
+    paint/set-size 4
+    paint/draw-line 515 506 503 512
+    paint/draw-line 503 512 490 518
+    paint/draw-line 490 518 477 523
+    paint/draw-line 477 523 464 527
+    paint/set-color 3
+    paint/set-size 4
+    paint/draw-line 427 534 414 536
+    paint/draw-line 414 536 400 536
+    paint/draw-line 400 536 386 536
+    paint/draw-line 386 536 373 534
+    paint/set-color 3
+    paint/set-size 4
+    paint/draw-line 336 527 323 523
+]
+do [
+    paint/draw-line 323 523 310 518
+    paint/draw-line 310 518 297 512
+    paint/draw-line 297 512 285 506
+    paint/set-color 3
+    paint/set-size 4
+    paint/draw-line 254 485 243 476
+    paint/draw-line 243 476 233 467
+    paint/draw-line 233 467 224 457
+    paint/draw-line 224 457 215 446
+    paint/set-color 3
+    paint/set-size 4
+    paint/draw-line 194 415 188 403
+    paint/draw-line 188 403 182 390
+    paint/draw-line 182 390 177 377
+    paint/draw-line 177 377 173 364
+    paint/set-color 3
+    paint/set-size 4
+    paint/draw-line 166 327 164 314
+    paint/draw-line 164 314 164 300
+    paint/draw-line 164 300 164 286
+    paint/draw-line 164 286 166 273
+    paint/set-color 3
+    paint/set-size 4
+    paint/draw-line 173 236 177 223
+    paint/draw-line 177 223 182 210
+    paint/draw-line 182 210 188 197
+    paint/draw-line 188 197 194 185
+    paint/set-color 3
+    paint/set-size 4
+    paint/draw-line 215 154 224 143
+    paint/draw-line 224 143 233 133
+    paint/draw-line 233 133 243 124
+    paint/draw-line 243 124 254 115
+    paint/set-color 3
+    paint/set-size 4
+    paint/draw-line 285 94 297 88
+    paint/draw-line 297 88 310 82
+    paint/draw-line 310 82 323 77
+    paint/draw-line 323 77 336 73
+    paint/set-color 3
+]
+do [
+    paint/set-size 4
+    paint/draw-line 373 66 386 64
+    paint/draw-line 386 64 400 64
+    paint/draw-line 400 64 414 64
+    paint/draw-line 414 64 427 66
+    paint/set-color 3
+    paint/set-size 4
+    paint/draw-line 464 73 477 77
+    paint/draw-line 477 77 490 82
+    paint/draw-line 490 82 503 88
+    paint/draw-line 503 88 515 94
+    paint/set-color 3
+    paint/set-size 4
+    paint/draw-line 546 115 557 124
+    paint/draw-line 557 124 567 133
+    paint/draw-line 567 133 576 143
+    paint/draw-line 576 143 585 154
+    paint/set-color 3
+    paint/set-size 4
+    paint/draw-line 606 185 612 197
+    paint/draw-line 612 197 618 210
+    paint/draw-line 618 210 623 223
+    paint/draw-line 623 223 627 236
+    paint/set-color 3
+    paint/set-size 3
+    paint/draw-line 586 300 585 318
+    paint/draw-line 585 318 582 336
+    paint/draw-line 582 336 578 354
+    paint/draw-line 578 354 572 371
+    paint/draw-line 572 371 564 388
+    paint/draw-line 564 388 555 403
+    paint/draw-line 555 403 544 418
+    paint/draw-line 544 418 532 432
+    paint/draw-line 532 432 518 444
+    paint/draw-line 518 444 503 455
+    paint/draw-line 503 455 488 464
+    paint/draw-line 488 464 471 472
+    paint/draw-line 471 472 454 478
+    paint/draw-line 454 478 436 482
+    paint/draw-line 436 482 418 485
+]
+do [
+    paint/draw-line 418 485 400 486
+    paint/draw-line 400 486 382 485
+    paint/draw-line 382 485 364 482
+    paint/draw-line 364 482 346 478
+    paint/draw-line 346 478 329 472
+    paint/draw-line 329 472 312 464
+    paint/draw-line 312 464 297 455
+    paint/draw-line 297 455 282 444
+    paint/draw-line 282 444 268 432
+    paint/draw-line 268 432 256 418
+    paint/draw-line 256 418 245 403
+    paint/draw-line 245 403 236 388
+    paint/draw-line 236 388 228 371
+    paint/draw-line 228 371 222 354
+    paint/draw-line 222 354 218 336
+    paint/draw-line 218 336 215 318
+    paint/draw-line 215 318 214 300
+    paint/draw-line 214 300 215 282
+    paint/draw-line 215 282 218 264
+    paint/draw-line 218 264 222 246
+    paint/draw-line 222 246 228 229
+    paint/draw-line 228 229 236 212
+    paint/draw-line 236 212 245 197
+    paint/draw-line 245 197 256 182
+    paint/draw-line 256 182 268 168
+    paint/draw-line 268 168 282 156
+    paint/draw-line 282 156 297 145
+    paint/draw-line 297 145 312 136
+    paint/draw-line 312 136 329 128
+    paint/draw-line 329 128 346 122
+    paint/draw-line 346 122 364 118
+    paint/draw-line 364 118 382 115
+    paint/draw-line 382 115 400 114
+    paint/draw-line 400 114 418 115
+    paint/draw-line 418 115 436 118
+    paint/draw-line 436 118 454 122
+    paint/draw-line 454 122 471 128
+    paint/draw-line 471 128 488 136
+    paint/draw-line 488 136 503 145
+    paint/draw-line 503 145 518 156
+]
+do [
+    paint/draw-line 518 156 532 168
+    paint/draw-line 532 168 544 182
+    paint/draw-line 544 182 555 197
+    paint/draw-line 555 197 564 212
+    paint/draw-line 564 212 572 229
+    paint/draw-line 572 229 578 246
+    paint/draw-line 578 246 582 264
+    paint/draw-line 582 264 585 282
+    paint/draw-line 585 282 586 300
+    paint/set-color 4
+    paint/set-size 3
+    paint/draw-line 550 300 567 287
+    paint/draw-line 567 287 584 300
+    paint/draw-line 584 300 567 313
+    paint/draw-line 567 313 550 300
+    paint/draw-line 539 357 560 352
+    paint/draw-line 560 352 570 370
+    paint/draw-line 570 370 550 376
+    paint/draw-line 550 376 539 357
+    paint/draw-line 506 406 528 409
+    paint/draw-line 528 409 530 430
+    paint/draw-line 530 430 509 428
+    paint/draw-line 509 428 506 406
+    paint/draw-line 457 439 476 450
+    paint/draw-line 476 450 470 470
+    paint/draw-line 470 470 452 460
+    paint/draw-line 452 460 457 439
+    paint/draw-line 400 450 413 467
+    paint/draw-line 413 467 400 484
+    paint/draw-line 400 484 387 467
+    paint/draw-line 387 467 400 450
+    paint/draw-line 343 439 348 460
+    paint/draw-line 348 460 330 470
+    paint/draw-line 330 470 324 450
+    paint/draw-line 324 450 343 439
+    paint/draw-line 294 406 291 428
+    paint/draw-line 291 428 270 430
+    paint/draw-line 270 430 272 409
+    paint/draw-line 272 409 294 406
+    paint/draw-line 261 357 250 376
+]
+do [
+    paint/draw-line 250 376 230 370
+    paint/draw-line 230 370 240 352
+    paint/draw-line 240 352 261 357
+    paint/draw-line 250 300 233 313
+    paint/draw-line 233 313 216 300
+    paint/draw-line 216 300 233 287
+    paint/draw-line 233 287 250 300
+    paint/draw-line 261 243 240 248
+    paint/draw-line 240 248 230 230
+    paint/draw-line 230 230 250 224
+    paint/draw-line 250 224 261 243
+    paint/draw-line 294 194 272 191
+    paint/draw-line 272 191 270 170
+    paint/draw-line 270 170 291 172
+    paint/draw-line 291 172 294 194
+    paint/draw-line 343 161 324 150
+    paint/draw-line 324 150 330 130
+    paint/draw-line 330 130 348 140
+    paint/draw-line 348 140 343 161
+    paint/draw-line 400 150 387 133
+    paint/draw-line 387 133 400 116
+    paint/draw-line 400 116 413 133
+    paint/draw-line 413 133 400 150
+    paint/draw-line 457 161 452 140
+    paint/draw-line 452 140 470 130
+    paint/draw-line 470 130 476 150
+    paint/draw-line 476 150 457 161
+    paint/draw-line 506 194 509 172
+    paint/draw-line 509 172 530 170
+    paint/draw-line 530 170 528 191
+    paint/draw-line 528 191 506 194
+    paint/draw-line 539 243 550 224
+    paint/draw-line 550 224 570 230
+    paint/draw-line 570 230 560 248
+    paint/draw-line 560 248 539 243
+    paint/set-color 2
+    paint/set-size 4
+    paint/draw-line 542 300 541 319
+    paint/draw-line 541 319 537 337
+    paint/draw-line 537 337 531 354
+]
+do [
+    paint/draw-line 531 354 523 371
+    paint/draw-line 523 371 513 386
+    paint/draw-line 513 386 500 400
+    paint/draw-line 500 400 486 413
+    paint/draw-line 486 413 471 423
+    paint/draw-line 471 423 454 431
+    paint/draw-line 454 431 437 437
+    paint/draw-line 437 437 419 441
+    paint/draw-line 419 441 400 442
+    paint/draw-line 400 442 381 441
+    paint/draw-line 381 441 363 437
+    paint/draw-line 363 437 346 431
+    paint/draw-line 346 431 329 423
+    paint/draw-line 329 423 314 413
+    paint/draw-line 314 413 300 400
+    paint/draw-line 300 400 287 386
+    paint/draw-line 287 386 277 371
+    paint/draw-line 277 371 269 354
+    paint/draw-line 269 354 263 337
+    paint/draw-line 263 337 259 319
+    paint/draw-line 259 319 258 300
+    paint/draw-line 258 300 259 281
+    paint/draw-line 259 281 263 263
+    paint/draw-line 263 263 269 246
+    paint/draw-line 269 246 277 229
+    paint/draw-line 277 229 287 214
+    paint/draw-line 287 214 300 200
+    paint/draw-line 300 200 314 187
+    paint/draw-line 314 187 329 177
+    paint/draw-line 329 177 346 169
+    paint/draw-line 346 169 363 163
+    paint/draw-line 363 163 381 159
+    paint/draw-line 381 159 400 158
+    paint/draw-line 400 158 419 159
+    paint/draw-line 419 159 437 163
+    paint/draw-line 437 163 454 169
+    paint/draw-line 454 169 471 177
+    paint/draw-line 471 177 486 187
+    paint/draw-line 486 187 500 200
+    paint/draw-line 500 200 513 214
+]
+do [
+    paint/draw-line 513 214 523 229
+    paint/draw-line 523 229 531 246
+    paint/draw-line 531 246 537 263
+    paint/draw-line 537 263 541 281
+    paint/draw-line 541 281 542 300
+    paint/set-color 2
+    paint/set-size 3
+    paint/draw-line 494 300 517 288
+    paint/draw-line 517 288 536 300
+    paint/draw-line 536 300 517 312
+    paint/draw-line 517 312 494 300
+    paint/draw-line 487 336 513 334
+    paint/draw-line 513 334 526 352
+    paint/draw-line 526 352 504 356
+    paint/draw-line 504 356 487 336
+    paint/draw-line 466 366 491 375
+    paint/draw-line 491 375 496 396
+    paint/draw-line 496 396 475 391
+    paint/draw-line 475 391 466 366
+    paint/draw-line 436 387 456 404
+    paint/draw-line 456 404 452 426
+    paint/draw-line 452 426 434 413
+    paint/draw-line 434 413 436 387
+    paint/draw-line 400 394 412 417
+    paint/draw-line 412 417 400 436
+    paint/draw-line 400 436 388 417
+    paint/draw-line 388 417 400 394
+    paint/draw-line 364 387 366 413
+    paint/draw-line 366 413 348 426
+    paint/draw-line 348 426 344 404
+    paint/draw-line 344 404 364 387
+    paint/draw-line 334 366 325 391
+    paint/draw-line 325 391 304 396
+    paint/draw-line 304 396 309 375
+    paint/draw-line 309 375 334 366
+    paint/draw-line 313 336 296 356
+    paint/draw-line 296 356 274 352
+    paint/draw-line 274 352 287 334
+    paint/draw-line 287 334 313 336
+    paint/draw-line 306 300 283 312
+]
+do [
+    paint/draw-line 283 312 264 300
+    paint/draw-line 264 300 283 288
+    paint/draw-line 283 288 306 300
+    paint/draw-line 313 264 287 266
+    paint/draw-line 287 266 274 248
+    paint/draw-line 274 248 296 244
+    paint/draw-line 296 244 313 264
+    paint/draw-line 334 234 309 225
+    paint/draw-line 309 225 304 204
+    paint/draw-line 304 204 325 209
+    paint/draw-line 325 209 334 234
+    paint/draw-line 364 213 344 196
+    paint/draw-line 344 196 348 174
+    paint/draw-line 348 174 366 187
+    paint/draw-line 366 187 364 213
+    paint/draw-line 400 206 388 183
+    paint/draw-line 388 183 400 164
+    paint/draw-line 400 164 412 183
+    paint/draw-line 412 183 400 206
+    paint/draw-line 436 213 434 187
+    paint/draw-line 434 187 452 174
+    paint/draw-line 452 174 456 196
+    paint/draw-line 456 196 436 213
+    paint/draw-line 466 234 475 209
+    paint/draw-line 475 209 496 204
+    paint/draw-line 496 204 491 225
+    paint/draw-line 491 225 466 234
+    paint/draw-line 487 264 504 244
+    paint/draw-line 504 244 526 248
+    paint/draw-line 526 248 513 266
+    paint/draw-line 513 266 487 264
+    paint/set-color 4
+    paint/set-size 3
+    paint/draw-line 510 300 509 317
+    paint/draw-line 509 317 505 334
+    paint/draw-line 505 334 498 350
+    paint/draw-line 498 350 489 365
+    paint/draw-line 489 365 478 378
+    paint/draw-line 478 378 465 389
+    paint/draw-line 465 389 450 398
+]
+do [
+    paint/draw-line 450 398 434 405
+    paint/draw-line 434 405 417 409
+    paint/draw-line 417 409 400 410
+    paint/draw-line 400 410 383 409
+    paint/draw-line 383 409 366 405
+    paint/draw-line 366 405 350 398
+    paint/draw-line 350 398 335 389
+    paint/draw-line 335 389 322 378
+    paint/draw-line 322 378 311 365
+    paint/draw-line 311 365 302 350
+    paint/draw-line 302 350 295 334
+    paint/draw-line 295 334 291 317
+    paint/draw-line 291 317 290 300
+    paint/draw-line 290 300 291 283
+    paint/draw-line 291 283 295 266
+    paint/draw-line 295 266 302 250
+    paint/draw-line 302 250 311 235
+    paint/draw-line 311 235 322 222
+    paint/draw-line 322 222 335 211
+    paint/draw-line 335 211 350 202
+    paint/draw-line 350 202 366 195
+    paint/draw-line 366 195 383 191
+    paint/draw-line 383 191 400 190
+    paint/draw-line 400 190 417 191
+    paint/draw-line 417 191 434 195
+    paint/draw-line 434 195 450 202
+    paint/draw-line 450 202 465 211
+    paint/draw-line 465 211 478 222
+    paint/draw-line 478 222 489 235
+    paint/draw-line 489 235 498 250
+    paint/draw-line 498 250 505 266
+    paint/draw-line 505 266 509 283
+    paint/draw-line 509 283 510 300
+    paint/set-color 1
+    paint/set-calligraphy-diameter 24
+    paint/set-ink-opacity 225
+    paint/draw-pressure-line 444 300 55 502 300 235
+    paint/draw-pressure-line 441 317 55 494 339 235
+    paint/draw-pressure-line 431 331 55 472 372 235
+    paint/draw-pressure-line 417 341 55 439 394 235
+]
+do [
+    paint/draw-pressure-line 400 344 55 400 402 235
+    paint/draw-pressure-line 383 341 55 361 394 235
+    paint/draw-pressure-line 369 331 55 328 372 235
+    paint/draw-pressure-line 359 317 55 306 339 235
+    paint/draw-pressure-line 356 300 55 298 300 235
+    paint/draw-pressure-line 359 283 55 306 261 235
+    paint/draw-pressure-line 369 269 55 328 228 235
+    paint/draw-pressure-line 383 259 55 361 206 235
+    paint/draw-pressure-line 400 256 55 400 198 235
+    paint/draw-pressure-line 417 259 55 439 206 235
+    paint/draw-pressure-line 431 269 55 472 228 235
+    paint/draw-pressure-line 441 283 55 494 261 235
+    paint/set-color 3
+    paint/set-size 3
+    paint/draw-line 480 300 478 316
+    paint/draw-line 478 316 474 331
+    paint/draw-line 474 331 467 344
+    paint/draw-line 467 344 457 357
+    paint/draw-line 457 357 444 367
+    paint/draw-line 444 367 431 374
+    paint/draw-line 431 374 416 378
+    paint/draw-line 416 378 400 380
+    paint/draw-line 400 380 384 378
+    paint/draw-line 384 378 369 374
+    paint/draw-line 369 374 356 367
+    paint/draw-line 356 367 343 357
+    paint/draw-line 343 357 333 344
+    paint/draw-line 333 344 326 331
+    paint/draw-line 326 331 322 316
+    paint/draw-line 322 316 320 300
+    paint/draw-line 320 300 322 284
+    paint/draw-line 322 284 326 269
+    paint/draw-line 326 269 333 256
+    paint/draw-line 333 256 343 243
+    paint/draw-line 343 243 356 233
+    paint/draw-line 356 233 369 226
+    paint/draw-line 369 226 384 222
+    paint/draw-line 384 222 400 220
+    paint/draw-line 400 220 416 222
+    paint/draw-line 416 222 431 226
+]
+do [
+    paint/draw-line 431 226 444 233
+    paint/draw-line 444 233 457 243
+    paint/draw-line 457 243 467 256
+    paint/draw-line 467 256 474 269
+    paint/draw-line 474 269 478 284
+    paint/draw-line 478 284 480 300
+    paint/set-color 1
+    paint/set-size 4
+    paint/draw-line 418 300 434 296
+    paint/draw-line 434 296 458 300
+    paint/draw-line 458 300 434 304
+    paint/draw-line 416 309 431 314
+    paint/draw-line 431 314 450 329
+    paint/draw-line 450 329 428 320
+    paint/draw-line 409 316 420 328
+    paint/draw-line 420 328 429 350
+    paint/draw-line 429 350 414 331
+    paint/draw-line 400 318 404 334
+    paint/draw-line 404 334 400 358
+    paint/draw-line 400 358 396 334
+    paint/draw-line 391 316 386 331
+    paint/draw-line 386 331 371 350
+    paint/draw-line 371 350 380 328
+    paint/draw-line 384 309 372 320
+    paint/draw-line 372 320 350 329
+    paint/draw-line 350 329 369 314
+    paint/draw-line 382 300 366 304
+    paint/draw-line 366 304 342 300
+    paint/draw-line 342 300 366 296
+    paint/draw-line 384 291 369 286
+    paint/draw-line 369 286 350 271
+    paint/draw-line 350 271 372 280
+    paint/draw-line 391 284 380 272
+    paint/draw-line 380 272 371 250
+    paint/draw-line 371 250 386 269
+    paint/draw-line 400 282 396 266
+    paint/draw-line 396 266 400 242
+    paint/draw-line 400 242 404 266
+    paint/draw-line 409 284 414 269
+    paint/draw-line 414 269 429 250
+]
+do [
+    paint/draw-line 429 250 420 272
+    paint/draw-line 416 291 428 280
+    paint/draw-line 428 280 450 271
+    paint/draw-line 450 271 431 286
+    paint/set-color 2
+    paint/set-size 3
+    paint/draw-line 421 306 446 312
+    paint/draw-line 416 316 434 334
+    paint/draw-line 406 321 412 346
+    paint/draw-line 394 321 388 346
+    paint/draw-line 384 316 366 334
+    paint/draw-line 379 306 354 312
+    paint/draw-line 379 294 354 288
+    paint/draw-line 384 284 366 266
+    paint/draw-line 394 279 388 254
+    paint/draw-line 406 279 412 254
+    paint/draw-line 416 284 434 266
+    paint/draw-line 421 294 446 288
+    paint/set-color 4
+    paint/set-size 2
+    paint/draw-line 466 300 464 317
+    paint/draw-line 464 317 457 333
+    paint/draw-line 457 333 447 347
+    paint/draw-line 447 347 433 357
+    paint/draw-line 433 357 417 364
+    paint/draw-line 417 364 400 366
+    paint/draw-line 400 366 383 364
+    paint/draw-line 383 364 367 357
+    paint/draw-line 367 357 353 347
+    paint/draw-line 353 347 343 333
+    paint/draw-line 343 333 336 317
+    paint/draw-line 336 317 334 300
+    paint/draw-line 334 300 336 283
+    paint/draw-line 336 283 343 267
+    paint/draw-line 343 267 353 253
+    paint/draw-line 353 253 367 243
+    paint/draw-line 367 243 383 236
+    paint/draw-line 383 236 400 234
+    paint/draw-line 400 234 417 236
+    paint/draw-line 417 236 433 243
+]
+do [
+    paint/draw-line 433 243 447 253
+    paint/draw-line 447 253 457 267
+    paint/draw-line 457 267 464 283
+    paint/draw-line 464 283 466 300
+    paint/set-color 5
+    paint/set-size 3
+    paint/draw-line 410 300 428 300
+    paint/draw-line 409 305 424 314
+    paint/draw-line 405 309 414 324
+    paint/draw-line 400 310 400 328
+    paint/draw-line 395 309 386 324
+    paint/draw-line 391 305 376 314
+    paint/draw-line 390 300 372 300
+    paint/draw-line 391 295 376 286
+    paint/draw-line 395 291 386 276
+    paint/draw-line 400 290 400 272
+    paint/draw-line 405 291 414 276
+    paint/draw-line 409 295 424 286
+    paint/set-color 3
+    paint/set-size 8
+    paint/draw-line 626 300 626 300
+    paint/draw-line 609 386 609 386
+    paint/draw-line 560 460 560 460
+    paint/draw-line 486 509 486 509
+    paint/draw-line 400 526 400 526
+    paint/draw-line 314 509 314 509
+    paint/draw-line 240 460 240 460
+    paint/draw-line 191 386 191 386
+    paint/draw-line 174 300 174 300
+    paint/draw-line 191 214 191 214
+    paint/draw-line 240 140 240 140
+    paint/draw-line 314 91 314 91
+    paint/draw-line 400 74 400 74
+    paint/draw-line 486 91 486 91
+    paint/draw-line 560 140 560 140
+    paint/draw-line 609 214 609 214
+    paint/set-color 5
+    paint/set-size 2
+    paint/draw-line 666 300 674 300
+    paint/draw-line 661 352 669 353
+]
+do [
+    paint/draw-line 646 402 653 405
+    paint/draw-line 621 448 628 452
+    paint/draw-line 588 488 594 494
+    paint/draw-line 548 521 552 528
+    paint/draw-line 502 546 505 553
+    paint/draw-line 452 561 453 569
+    paint/draw-line 400 566 400 574
+    paint/draw-line 348 561 347 569
+    paint/draw-line 298 546 295 553
+    paint/draw-line 252 521 248 528
+    paint/draw-line 212 488 206 494
+    paint/draw-line 179 448 172 452
+    paint/draw-line 154 402 147 405
+    paint/draw-line 139 352 131 353
+    paint/draw-line 134 300 126 300
+    paint/draw-line 139 248 131 247
+    paint/draw-line 154 198 147 195
+    paint/draw-line 179 152 172 148
+    paint/draw-line 212 112 206 106
+    paint/draw-line 252 79 248 72
+    paint/draw-line 298 54 295 47
+    paint/draw-line 348 39 347 31
+    paint/draw-line 400 34 400 26
+    paint/draw-line 452 39 453 31
+    paint/draw-line 502 54 505 47
+    paint/draw-line 548 79 552 72
+    paint/draw-line 588 112 594 106
+    paint/draw-line 621 152 628 148
+    paint/draw-line 646 198 653 195
+    paint/draw-line 661 248 669 247
+    paint/set-color 1
+    paint/set-size 5
+    paint/draw-line 414 300 413 305
+    paint/draw-line 413 305 410 310
+    paint/draw-line 410 310 405 313
+    paint/draw-line 405 313 400 314
+    paint/draw-line 400 314 395 313
+    paint/draw-line 395 313 390 310
+    paint/draw-line 390 310 387 305
+    paint/draw-line 387 305 386 300
+]
+do [
+    paint/draw-line 386 300 387 295
+    paint/draw-line 387 295 390 290
+    paint/draw-line 390 290 395 287
+    paint/draw-line 395 287 400 286
+    paint/draw-line 400 286 405 287
+    paint/draw-line 405 287 410 290
+    paint/draw-line 410 290 413 295
+    paint/draw-line 413 295 414 300
+    paint/set-color 5
+    paint/set-size 9
+    paint/draw-line 400 300 400 300
+]
