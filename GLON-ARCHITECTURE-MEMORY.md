@@ -364,20 +364,41 @@ can include boundary pixels, and no bucket preview. No new command letters,
 rasteriser primitives or frozen-S1 changes.
 
 [MEASURED 2026-11-13, `experiments/glon-gui-paint`, mandala script]
-**A single Glon script run exhausts the data stack at about 58 high-level
-drawing calls.** In probes, 50-58 `paint/draw-line` calls in one session run
-succeeded; 60 failed with a machine-level `no SIN!` halt (SP at the 16,384-cell
-limit). Function wrappers and `do` blocks do not remove the per-call stack
-growth; chunked session runs would be needed for much larger scripts. The
-managed string sink also grows through `s/+`, so very large command streams
-face heap pressure. `examples/mandala.glon` is therefore a deliberately compact
-12-fold sunburst: 1,947 bytes on disk (1,770 after comment stripping), 45 replay commands (1 Clear, 38 L, 6 P),
-1,344 command bytes, 58 top-level calls. Measured on WSLg: load about 0.1 ms,
-immediate execution 400-465 ms (including Glon command generation), replay
-preparation 310-356 ms, full smooth replay from pre-playback 305-343 ms;
-immediate and replayed 800x600 RGBA compare equal. `--mandala-demo` captures 25/50/75% replay
-prefixes and final images, checks Pause/Step/Back/Stop/End and repeated
-Load-Clear-Load. No new vocabulary, rasteriser or frozen-S1 change.
+**The practical single-script limit is the managed command sink, not the data
+stack.** `paint/script-add` grows one `paint/script-buf` STRING! with `s/+`,
+allocating a new full-length string per command. `examples/mandala.glon` is
+therefore a deliberately compact 12-fold sunburst: 1,947 bytes on disk (1,770
+after comments), 45 replay commands (1 Clear, 38 L, 6 P), 1,344 command bytes,
+58 top-level calls. Measured on WSLg: load about 0.1 ms, immediate execution
+400-465 ms (including Glon command generation), replay preparation 310-356 ms,
+full smooth replay from pre-playback 305-343 ms; immediate and replayed 800x600
+RGBA compare equal. `--mandala-demo` captures 25/50/75% replay prefixes and
+final images, checks Pause/Step/Back/Stop/End and repeated Load-Clear-Load.
+`--stack-probe` is the headless diagnostic for the sink limit. No new
+vocabulary, rasteriser or frozen-S1 change was made.
+
+[MEASURED 2026-11-13, `experiments/glon-gui-paint`, `--stack-probe`, 64K]
+**Exact sink failure: repeated growing-string allocation triggers a managed
+allocator OOM, not stack exhaustion.** With one ~30-byte `L` command per
+`paint/draw-line` call, `n=60` succeeds (sink 1,800 B) and `n=61` fails with
+`HALT/machine`; the halt IP 4,046 is inside `r_alloc` (starts 3,791, next
+function 4,621) at the emitted `HOST_DUMP; HALT` OOM site. `RV_HALTWHY` stays
+NONE and the stack sentry stays clear. At failure: `HP=40,000` (`GC_HEAP_LIMIT`),
+GC runs 50 times, live cells 3,152, free total 4,080 but the largest free extent
+is only 1,680 cells; the next string needs about 1,846 cells. With ~46-byte
+commands, `n=40` succeeds (sink 1,840 B) and `n=41` fails. Resetting the sink
+every 50 calls permits 200 calls; resetting every 60 eventually fails through
+repeated alloc/free fragmentation. Controls with no growing sink (`+ 1 2`,
+`paint/set-size`, and a four-argument no-op function) complete 200 calls.
+Throughout, data-stack depth stays 2 and return-stack depth stays constant
+(492 for short commands, 876 for long ones); SP/RP in the dump are not near
+their limits. A 1,000-call probe first hits the parser's `too_large` source
+limit, but execution would already fail at 61. The managed heap is
+non-compacting; a larger stack or heap would not correct the fragmentation.
+Proposed remedy (not implemented; needs approval because it changes the host
+binding/vocabulary): a bounded host-backed streaming command sink, or an
+approved chunked sink reset/stream interface. No automatic state reset or
+engine change was made.
 
 **[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
 worklist has a fixed 256 entries (`GC_WORKLIST_CAP`, the cells before `GC_A1`).

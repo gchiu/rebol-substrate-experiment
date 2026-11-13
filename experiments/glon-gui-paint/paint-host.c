@@ -5467,6 +5467,110 @@ static int coalesce_test(void) {
     return 0;
 }
 
+
+static int stack_probe(const char *kind, int n, int interval) {
+    if (n < 1) n = 1;
+    if (interval < 1) interval = 0;
+    size_t cap = SCRIPT_MAX_BYTES + 8192;
+    char *src = malloc(cap);
+    if (!src) return 2;
+    size_t used = 0;
+#define APP(...) do { \
+        int _w = snprintf(src + used, cap - used, __VA_ARGS__); \
+        if (_w < 0 || (size_t)_w >= cap - used) { free(src); return 2; } \
+        used += (size_t)_w; \
+    } while (0)
+    APP("paint/script-reset\n");
+    if (strcmp(kind, "nop4") == 0)
+        APP("probe/nop4: func [a b c d] [ none ]\n");
+    int done = 0;
+    while (done < n) {
+        APP("do [\n");
+        for (int j = 0; j < 20 && done < n; j++, done++) {
+            if (strcmp(kind, "arith") == 0) {
+                APP("    + 1 2\n");
+            } else if (strcmp(kind, "setsize") == 0) {
+                APP("    paint/set-size 4\n");
+            } else if (strcmp(kind, "nop4") == 0) {
+                APP("    probe/nop4 1 2 3 4\n");
+            } else {
+                if (strcmp(kind, "drawlong") == 0)
+                    APP("    paint/draw-line %d %d %d %d\n",
+                        1000000 + done, 1000001, 1000002 + done, 1000003);
+                else
+                    APP("    paint/draw-line %d 100 %d 101\n",
+                        100 + done % 500, 101 + done % 500);
+                if (interval > 0 && ((done + 1) % interval) == 0)
+                    APP("    paint/script-reset\n");
+            }
+        }
+        APP("]\n");
+    }
+#undef APP
+    cell loader0 = M[GC_LOADER_HP];
+    r0_s1_outcome oc;
+    int rc = r0_s1_session_run(src, (unsigned)used, &oc);
+    long free_total = 0, free_blocks = 0, largest_free = 0, live_objs = 0;
+    {
+        cell hp = M[REG_HP];
+        for (cell p = GC_HEAP_BASE; p < hp; ) {
+            cell sz = M[p];
+            if (sz <= 0 || p + sz > hp) break;
+            cell flags = M[p + GC_HDR_FLAGS];
+            if (flags == 0) {
+                free_total += sz;
+                free_blocks++;
+                if (sz > largest_free) largest_free = sz;
+            } else {
+                live_objs++;
+            }
+            p += sz;
+        }
+    }
+    cell sp_start = r0_s1_sp_start(), sp_end = r0_s1_sp_end();
+    cell sp_min = r0_s1_sp_min();
+    cell rp_start = r0_s1_rp_start(), rp_end = r0_s1_rp_end();
+    cell rp_min = r0_s1_rp_min();
+    long cmd_len = -1;
+    if (rc == R0S1_OUT_OK) {
+        char *cmds = malloc(SCRIPT_CMD_BYTES);
+        if (cmds) {
+            if (glon_call("paint/script-result", cmds, SCRIPT_CMD_BYTES) == 0)
+                cmd_len = (long)strlen(cmds);
+            free(cmds);
+        }
+    }
+    if (rc != R0S1_OUT_OK) {
+        fprintf(stderr, "stack-probe code around IP %ld:", (long)r0_s1_ip_end());
+        cell ip = r0_s1_ip_end();
+        for (cell a = ip - 12; a <= ip + 8; a++)
+            fprintf(stderr, " %ld:%ld", (long)a, (long)M[a]);
+        fprintf(stderr, "\n");
+    }
+    printf("stack-probe kind=%s n=%d interval=%d rc=%d status=%s detail=%s "
+           "halt=%d sentry=%d sp=%ld..%ld min=%ld depth=%ld "
+           "rp=%ld..%ld min=%ld depth=%ld host_calls=%ld code=%ld "
+           "heap_high=%ld gc=%ld live_cells=%ld free_total=%ld free_blocks=%ld "
+           "largest_free=%ld live_objs=%ld loader=%ld cmd_bytes=%ld src_bytes=%zu "
+           "alloc=%ld collect=%ld lookup=%ld\n",
+           kind, n, interval, rc,
+           r0_s1_outcome_status_name(oc.status),
+           r0_s1_outcome_detail_name(oc.detail),
+           r0_s1_halt_reason(), r0_s1_stack_sentry_fired(),
+           (long)sp_start, (long)sp_end, (long)sp_min,
+           (long)(sp_start - sp_min),
+           (long)rp_start, (long)rp_end, (long)rp_min,
+           (long)(rp_min - rp_start),
+           (long)r0_s1_host_calls(), (long)r0_s1_code_size(),
+           r0_s1_heap_high(), r0_s1_gc_count(), r0_s1_gc_live_cells(),
+           free_total, free_blocks, largest_free, live_objs,
+           (long)(M[GC_LOADER_HP] - loader0), cmd_len, used,
+           (long)r0_s1_alloc_addr(), (long)r0_s1_gc_collect_addr(),
+           (long)r0_s1_lookup_addr());
+    free(src);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     const char *root = getenv("PAINT_ROOT");
     if (!root) root = PAINT_ROOT_DEFAULT;
@@ -5478,6 +5582,9 @@ int main(int argc, char **argv) {
                            "demo/shop/strings-ext.glon",
                            "experiments/glon-gui-paint/paint.glon", NULL };
     for (int i = 0; libs[i]; i++) if (load_source(root, libs[i]) != 0) return 2;
+    if (argc > 3 && strcmp(argv[1], "--stack-probe") == 0)
+        return stack_probe(argv[2], atoi(argv[3]),
+                           argc > 4 ? atoi(argv[4]) : 0);
     if (argc > 1 && strcmp(argv[1], "--ui-test") == 0) {
         if (sdl_init(1) != 0) return 2;
         if (ui_init() != 0) return 2;

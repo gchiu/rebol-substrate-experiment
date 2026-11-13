@@ -320,12 +320,15 @@ canvas 305-343 ms.
 The final and replay images are pixel-identical; the stage frames show the
 progressive build.
 
-The current single-run Glon session data stack caps a Paint script at roughly
-58 high-level drawing calls (about 60 fails); the managed command-buffer string
-adds further pressure for very large command sets. The mandala is deliberately
-kept within that budget. It is therefore a compact geometric design rather than
-a dense filigree mandala; larger generated scripts would need a separate,
-approved chunked execution design.
+The practical limit is the script sink, not the data or return stack. Each
+`paint/draw-*` call appends to one managed `paint/script-buf` STRING! through
+`s/+`, which allocates a new full-length string every time. In the 64K profile
+the non-compacting managed heap eventually has no contiguous extent for the next
+buffer version: about 60 short `L` calls (a ~1.8 KB sink) succeed and the 61st
+fails; longer command text fails earlier. The data stack stays at depth 2 and
+the return stack at a constant depth. The mandala is deliberately kept compact
+for this reason. Larger generated scripts would need an approved streaming or
+chunked sink design, not a larger stack.
 
 ## Writing 永
 
@@ -504,6 +507,25 @@ scripts must use those same words and command interface; there is no C drawing
 language and no script editor. Replay is host-side playback of the bounded
 command sink, not a second Glon execution.
 
+## Script resource diagnostics
+
+For headless measurements without SDL, `--stack-probe` runs a generated script
+in the normal persistent session and prints outcome, data/return stack depths,
+managed heap usage, free extents, loader use and command-buffer size:
+
+```sh
+./build/glon-paint --stack-probe draw 60
+./build/glon-paint --stack-probe draw 61
+./build/glon-paint --stack-probe drawlong 40
+./build/glon-paint --stack-probe nop4 200
+./build/glon-paint --stack-probe draw 200 1   # reset the sink every call
+```
+
+The failure at `draw 61` is an allocator OOM/halt inside `r_alloc`, not a
+data-stack or return-stack overflow. Controls (`arith`, `setsize`, `nop4`) and
+sink-reset runs complete at 200 calls because they do not accumulate a large
+managed string.
+
 ## Checks
 
 ```sh
@@ -570,9 +592,11 @@ these snapshots must not be described as a Glon command log.
 - Bucket fills with more than 4,096 horizontal spans or 1 MiB of commands are
   rejected rather than partially applied. Tolerance may include boundary pixels
   and can visually merge a close-coloured outline.
-- A single Glon script run exhausts the session data stack at roughly 58
-  high-level drawing calls; the mandala is compact for that reason. Dense
-  generated scripts would need an approved chunked-execution design.
+- The Paint script sink grows one managed STRING! through repeated `s/+`.
+  At roughly a 1.8 KB sink the non-compacting managed heap can fail to find a
+  contiguous extent and the allocator OOM-halts; the data and return stacks
+  remain flat. Dense generated scripts need an approved streaming/chunked sink
+  design, not a larger stack.
 - No PDF decoding or script editor; replay is stored-command playback, not
   recording.
 - Smooth animation applies only to pressure-aware `P` commands; ordinary lines,
