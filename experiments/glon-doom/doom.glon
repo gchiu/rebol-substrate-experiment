@@ -131,6 +131,22 @@ doom/hx: 0
 doom/half: 0
 doom/top: 0
 doom/bot: 0
+doom/bu: 0
+doom/shade: 0
+doom/e1dx: 0
+doom/e1dy: 0
+doom/e1dep: 0
+doom/e1side: 0
+doom/e1sx: 0
+doom/e1sy: 0
+doom/e2dx: 0
+doom/e2dy: 0
+doom/e2dep: 0
+doom/e2side: 0
+doom/e2sx: 0
+doom/e2sy: 0
+doom/dvis: 0
+doom/dt: 0
 doom/fw: 0
 doom/st: 0
 doom/sx: 0
@@ -365,6 +381,7 @@ doom/render-column-block: [
     doom/rayy: + doom/diry / * doom/planey - * 2 doom/sx 319 319
     doom/best: 100000
     doom/bcolor: 0
+    doom/bu: 0
     either = doom/rayy 0 [ none ] [
       doom/t: / * - 128 doom/py 64 doom/rayy
       either > doom/t 0 [
@@ -374,6 +391,7 @@ doom/render-column-block: [
             either < doom/t doom/best [
               doom/best: doom/t
               doom/bcolor: 1
+              doom/bu: doom/hx
             ] [ none ]
           ]
         ]
@@ -388,6 +406,7 @@ doom/render-column-block: [
             either < doom/t doom/best [
               doom/best: doom/t
               doom/bcolor: 1
+              doom/bu: doom/hy
             ] [ none ]
           ]
         ]
@@ -402,6 +421,7 @@ doom/render-column-block: [
             either < doom/t doom/best [
               doom/best: doom/t
               doom/bcolor: 2
+              doom/bu: doom/hx
             ] [ none ]
           ]
         ]
@@ -416,6 +436,7 @@ doom/render-column-block: [
             either < doom/t doom/best [
               doom/best: doom/t
               doom/bcolor: 3
+              doom/bu: doom/hy
             ] [ none ]
           ]
         ]
@@ -430,6 +451,7 @@ doom/render-column-block: [
             either < doom/t doom/best [
               doom/best: doom/t
               doom/bcolor: 3
+              doom/bu: doom/hx
             ] [ none ]
           ]
         ]
@@ -444,6 +466,7 @@ doom/render-column-block: [
             either < doom/t doom/best [
               doom/best: doom/t
               doom/bcolor: 3
+              doom/bu: doom/hy
             ] [ none ]
           ]
         ]
@@ -458,6 +481,7 @@ doom/render-column-block: [
             either < doom/t doom/best [
               doom/best: doom/t
               doom/bcolor: 2
+              doom/bu: doom/hx
             ] [ none ]
           ]
         ]
@@ -472,6 +496,7 @@ doom/render-column-block: [
             either < doom/t doom/best [
               doom/best: doom/t
               doom/bcolor: 1
+              doom/bu: doom/hy
             ] [ none ]
           ]
         ]
@@ -486,6 +511,7 @@ doom/render-column-block: [
             either < doom/t doom/best [
               doom/best: doom/t
               doom/bcolor: 1
+              doom/bu: doom/hx
             ] [ none ]
           ]
         ]
@@ -500,6 +526,7 @@ doom/render-column-block: [
             either < doom/t doom/best [
               doom/best: doom/t
               doom/bcolor: 1
+              doom/bu: doom/hy
             ] [ none ]
           ]
         ]
@@ -515,6 +542,7 @@ doom/render-column-block: [
               either < doom/t doom/best [
                 doom/best: doom/t
                 doom/bcolor: 4
+                doom/bu: doom/hy
               ] [ none ]
             ]
           ]
@@ -526,9 +554,16 @@ doom/render-column-block: [
     doom/bot: + doom/horizon doom/half
     either < doom/top 0 [ doom/top: 0 ] [ none ]
     either > doom/bot 199 [ doom/bot: 199 ] [ none ]
+    doom/shade: either < doom/best 256 [ 3 ] [
+        either < doom/best 512 [ 2 ] [
+            either < doom/best 1024 [ 1 ] [ 0 ]
+        ]
+    ]
     print doom/top
     print doom/bot
     print doom/bcolor
+    print doom/bu
+    print doom/shade
 ]
 
 doom/los: func [ax ay] [
@@ -823,6 +858,95 @@ doom/los: func [ax ay] [
       ]
     ]
     ]
+]
+
+doom/detail-line: func [x1 y1 x2 y2 z c] [
+    doom/e1dx: - x1 doom/px
+    doom/e1dy: - y1 doom/py
+    doom/e1dep: / + * doom/e1dx doom/dirx * doom/e1dy doom/diry 64
+    doom/e1side: / + * doom/e1dx doom/planex * doom/e1dy doom/planey 64
+    doom/e2dx: - x2 doom/px
+    doom/e2dy: - y2 doom/py
+    doom/e2dep: / + * doom/e2dx doom/dirx * doom/e2dy doom/diry 64
+    doom/e2side: / + * doom/e2dx doom/planex * doom/e2dy doom/planey 64
+    doom/dvis: 0
+    either > doom/e1dep 0 [
+        either > doom/e2dep 0 [
+            doom/dvis: 1
+        ] [
+            doom/dt: / * - 0 doom/e1dep 1024 - doom/e2dep doom/e1dep
+            doom/e2side: + doom/e1side / * - doom/e2side doom/e1side doom/dt 1024
+            doom/e2dep: 1
+            doom/dvis: 1
+        ]
+    ] [
+        either > doom/e2dep 0 [
+            doom/dt: / * - 0 doom/e2dep 1024 - doom/e1dep doom/e2dep
+            doom/e1side: + doom/e2side / * - doom/e1side doom/e2side doom/dt 1024
+            doom/e1dep: 1
+            doom/dvis: 1
+        ] [ none ]
+    ]
+    either = doom/dvis 1 [
+        doom/e1sx: + 160 / * doom/e1side 160 doom/e1dep
+        doom/e1sy: - doom/horizon / * - z doom/eye doom/projection doom/e1dep
+        doom/e2sx: + 160 / * doom/e2side 160 doom/e2dep
+        doom/e2sy: - doom/horizon / * - z doom/eye doom/projection doom/e2dep
+        print 1
+        print doom/e1sx
+        print doom/e1sy
+        print doom/e2sx
+        print doom/e2sy
+        print c
+    ] [
+        print 0
+        print 0
+        print 0
+        print 0
+        print 0
+        print c
+    ]
+]
+doom/detail-block: [
+    print 38
+    doom/detail-line 256 128 256 640 0 5
+    doom/detail-line 512 128 512 640 0 5
+    doom/detail-line 128 256 768 256 0 5
+    doom/detail-line 128 512 768 512 0 5
+    doom/detail-line 832 256 832 384 0 5
+    doom/detail-line 960 256 960 384 0 5
+    doom/detail-line 1088 256 1088 384 0 5
+    doom/detail-line 1216 256 1216 384 0 5
+    doom/detail-line 1152 448 1280 448 0 5
+    doom/detail-line 1152 576 1280 576 0 5
+    doom/detail-line 1152 704 1280 704 0 5
+    doom/detail-line 1152 832 1280 832 0 5
+    doom/detail-line 1152 960 1280 960 0 5
+    doom/detail-line 800 320 1280 320 0 8
+    doom/detail-line 1216 384 1216 1024 0 8
+    doom/detail-line 768 280 1280 280 0 10
+    doom/detail-line 768 360 1280 360 0 10
+    doom/detail-line 1176 384 1176 1024 0 10
+    doom/detail-line 1256 384 1256 1024 0 10
+    doom/detail-line 256 128 256 640 128 5
+    doom/detail-line 512 128 512 640 128 5
+    doom/detail-line 128 256 768 256 128 5
+    doom/detail-line 128 512 768 512 128 5
+    doom/detail-line 832 256 832 384 128 5
+    doom/detail-line 960 256 960 384 128 5
+    doom/detail-line 1088 256 1088 384 128 5
+    doom/detail-line 1216 256 1216 384 128 5
+    doom/detail-line 1152 448 1280 448 128 5
+    doom/detail-line 1152 576 1280 576 128 5
+    doom/detail-line 1152 704 1280 704 128 5
+    doom/detail-line 1152 832 1280 832 128 5
+    doom/detail-line 1152 960 1280 960 128 5
+    doom/detail-line 896 280 896 360 128 9
+    doom/detail-line 1088 280 1088 360 128 9
+    doom/detail-line 1176 480 1256 480 128 9
+    doom/detail-line 1176 640 1256 640 128 9
+    doom/detail-line 1176 800 1256 800 128 9
+    doom/detail-line 1176 960 1256 960 128 9
 ]
 
 doom/status-block: [

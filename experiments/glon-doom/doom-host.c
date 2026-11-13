@@ -29,12 +29,17 @@
 #define PROJ_SCALE 2
 #define TICK_HZ 60
 #define MAX_CAPTURE (1u << 20)
-#define RENDER_INTS (PROJ_COLS * 3)
+#define RENDER_INTS (PROJ_COLS * 5)
+#define DETAIL_MAX 64
 
 typedef struct {
     int top[PROJ_COLS], bot[PROJ_COLS], color[PROJ_COLS];
+    int u[PROJ_COLS], shade[PROJ_COLS];
     uint32_t hash;
 } Spans;
+
+typedef struct { int visible, x1, y1, x2, y2, color; } DetailLine;
+typedef struct { int n; DetailLine line[DETAIL_MAX]; uint32_t hash; } Detail;
 
 typedef struct {
     int door_open, door_blocked, door_target;
@@ -49,8 +54,9 @@ typedef struct {
 } Metrics;
 
 static const char *root_dir = "../..";
+static int simple_mode = 0;
 static cell reset_block, sector_block, report_block, valid_block, collision_block;
-static cell activate_block, status_block;
+static cell activate_block, status_block, detail_block;
 static cell alien_collision_block, los_wall_block, los_clear_block;
 static cell render_blocks[2];
 static cell tick_blocks[64];
@@ -213,6 +219,7 @@ static void build_blocks(void) {
     valid_block = parse_source("[ doom/valid ]", "valid");
     activate_block = parse_source("[ doom/activate ]", "activate");
     status_block = parse_source("[ do doom/status-block ]", "status");
+    detail_block = parse_source("[ do doom/detail-block ]", "detail");
 
     const char *collision_src =
         "[ "
@@ -303,6 +310,31 @@ static int get_status(Status *st) {
     st->top = v[14]; st->bot = v[15];
     return 0;
 }
+static int get_detail(Detail *d) {
+    Capture c;
+    capture_begin(&c);
+    int rc = run_block(detail_block, "detail");
+    capture_end(&c);
+    if (rc != 0) { free(c.buf); return -1; }
+    char *end;
+    long n = strtol(c.buf, &end, 10);
+    if (end == c.buf || n < 0 || n > DETAIL_MAX) { free(c.buf); return -1; }
+    int vals[1 + DETAIL_MAX * 6];
+    if (parse_ints(&c, vals, 1 + (int)n * 6, "detail") != 0) { free(c.buf); return -1; }
+    d->n = (int)n;
+    for (int i = 0; i < d->n; i++) {
+        d->line[i].visible = vals[1 + i * 6];
+        d->line[i].x1 = vals[2 + i * 6];
+        d->line[i].y1 = vals[3 + i * 6];
+        d->line[i].x2 = vals[4 + i * 6];
+        d->line[i].y2 = vals[5 + i * 6];
+        d->line[i].color = vals[6 + i * 6];
+    }
+    d->hash = fnv1a(&vals[1], (size_t)n * 6 * sizeof(int));
+    free(c.buf);
+    return 0;
+}
+
 static int reset(void) { return run_block(reset_block, "reset"); }
 static int tick(int mask) { return run_block(tick_blocks[mask & 63], "tick"); }
 
@@ -320,9 +352,11 @@ static int render_spans(Spans *s, long *ns) {
     rc = parse_ints(&c, vals, RENDER_INTS, "render");
     if (rc == 0) {
         for (int i = 0; i < PROJ_COLS; i++) {
-            s->top[i] = vals[i * 3];
-            s->bot[i] = vals[i * 3 + 1];
-            s->color[i] = vals[i * 3 + 2];
+            s->top[i] = vals[i * 5];
+            s->bot[i] = vals[i * 5 + 1];
+            s->color[i] = vals[i * 5 + 2];
+            s->u[i] = vals[i * 5 + 3];
+            s->shade[i] = vals[i * 5 + 4];
         }
         s->hash = fnv1a(vals, sizeof vals);
     }
@@ -523,27 +557,59 @@ static int self_test(void) {
     fails += expect_eq("alien clear line of sight", los, 0);
     reset();
 
-    reset(); if (render_spans(&s, &proj_ns) != 0) return 2;
+    Spans sa, sb, sf;
+    Detail da, db, df;
+    reset();
+    if (render_spans(&sa, &proj_ns) != 0 || get_detail(&da) != 0) return 2;
+    reset();
+    if (render_spans(&sb, NULL) != 0 || get_detail(&db) != 0) return 2;
     int bounds = 1;
     for (int i = 0; i < PROJ_COLS; i++)
-        if (s.top[i] < 0 || s.bot[i] > FB_H - 1 || s.top[i] > s.bot[i] ||
-            s.color[i] < 1 || s.color[i] > 4) bounds = 0;
+        if (sa.top[i] < 0 || sa.bot[i] > FB_H - 1 || sa.top[i] > sa.bot[i] ||
+            sa.color[i] < 1 || sa.color[i] > 4 ||
+            sa.shade[i] < 0 || sa.shade[i] > 3 ||
+            sa.u[i] < 0 || sa.u[i] > 2048) bounds = 0;
     fails += expect_eq("framebuffer spans", bounds, 1);
-    fails += expect_eq("edge wall visible", s.color[0], 1);
+    fails += expect_eq("detail line count", da.n, 38);
+    fails += expect_eq("wall panel world anchor", sa.u[PROJ_COLS / 2], 320);
+    fails += expect_eq("wall panel u not screen x", sa.u[PROJ_COLS / 2] != 160, 1);
+    fails += expect_eq("wall shade far/near level", sa.shade[PROJ_COLS / 2], 2);
+    fails += expect_eq("edge wall visible", sa.color[0], 1);
+    fails += expect_eq("identical frame wall hash", sa.hash == sb.hash, 1);
+    fails += expect_eq("identical frame detail hash", da.hash == db.hash, 1);
+    fails += expect_eq("deterministic shading", sa.shade[0] == sb.shade[0] &&
+                       sa.shade[PROJ_COLS / 2] == sb.shade[PROJ_COLS / 2], 1);
+    fails += expect_eq("panel u spans world surface", sa.u[0] != sa.u[PROJ_COLS - 1], 1);
+
+    /* Translation changes floor projections but not the centre door's world u. */
+    reset(); run_ticks(1, 10);
+    if (render_spans(&sf, NULL) != 0 || get_detail(&df) != 0) return 2;
+    fails += expect_eq("floor detail moves on translation", df.hash != da.hash, 1);
+    fails += expect_eq("anchored door panel u under translation", sf.u[PROJ_COLS / 2], 320);
+    fails += expect_eq("nearer door shade increases", sf.shade[PROJ_COLS / 2] >= sa.shade[PROJ_COLS / 2], 1);
+
+    /* Turning changes projected ceiling detail. */
+    reset(); run_ticks(16, 1);
+    if (render_spans(&sf, NULL) != 0 || get_detail(&df) != 0) return 2;
+    fails += expect_eq("ceiling detail responds to turn", df.hash != da.hash, 1);
+    reset(); run_ticks(1, 30);
+    if (render_spans(&sf, NULL) != 0) return 2;
+    fails += expect_eq("distance shading threshold", sf.shade[PROJ_COLS / 2], 3);
+    fails += expect_eq("near shade brighter", sf.shade[PROJ_COLS / 2] > sa.shade[PROJ_COLS / 2], 1);
 
     /* Determinism includes door, Alien and sprite status. */
     reset(); run_ticks(1, 60); run_block(activate_block, "activate");
     run_ticks(0, 12); run_ticks(1, 20);
-    get_state(&x, &y, &a); get_status(&st); render_spans(&s, NULL);
+    get_state(&x, &y, &a); get_status(&st); render_spans(&s, NULL); get_detail(&df);
     int x1=x, y1=y, a1=a, ax1=st.ax, ay1=st.ay, st1=st.state, vis1=st.visible;
-    uint32_t h1=s.hash, sh1=fnv1a(&st, sizeof st);
+    uint32_t h1=s.hash, sh1=fnv1a(&st, sizeof st), dh1=df.hash;
     reset(); run_ticks(1, 60); run_block(activate_block, "activate");
     run_ticks(0, 12); run_ticks(1, 20);
-    get_state(&x, &y, &a); get_status(&st); render_spans(&s, NULL);
+    get_state(&x, &y, &a); get_status(&st); render_spans(&s, NULL); get_detail(&df);
     fails += expect_eq("repeated simulation determinism",
                        x1==x && y1==y && a1==a && ax1==st.ax && ay1==st.ay &&
                        st1==st.state && vis1==st.visible && h1==s.hash &&
-                       sh1==fnv1a(&st, sizeof st), 1);
+                       sh1==fnv1a(&st, sizeof st) && dh1==df.hash, 1);
 
     cell loader0 = M[GC_LOADER_HP];
     for (int i = 0; i < 20; i++) {
@@ -598,27 +664,160 @@ static int scripted_trace(void) {
     return 0;
 }
 
+static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
+                        const Status *st, int floor_c, int ceil_c);
+
+/* ---- Deterministic screenshot walkthrough ------------------------------ */
+
+static int save_ppm(const char *path, const uint32_t *fb) {
+    FILE *f = fopen(path, "wb");
+    if (!f) return -1;
+    fprintf(f, "P6\n%d %d\n255\n", FB_W, FB_H);
+    for (int i = 0; i < FB_W * FB_H; i++) {
+        uint32_t c = fb[i];
+        unsigned char rgb[3] = { (unsigned char)((c >> 16) & 255),
+                                 (unsigned char)((c >> 8) & 255),
+                                 (unsigned char)(c & 255) };
+        if (fwrite(rgb, 1, 3, f) != 3) { fclose(f); return -1; }
+    }
+    fclose(f);
+    return 0;
+}
+
+static int shot_walkthrough(const char *dir) {
+    load_session();
+    build_blocks();
+    int floor_c, ceil_c;
+    if (get_sector(&floor_c, &ceil_c) != 0) return 2;
+    uint32_t *fb = malloc((size_t)FB_W * FB_H * sizeof *fb);
+    if (!fb) fail("out of memory");
+    char path[4096];
+    const char *names[] = { "room", "near-door", "corridor", "alien", "inside", "turn" };
+    int stage = 0;
+    Spans s; Detail d; Status st;
+    for (;;) {
+        if (render_spans(&s, NULL) != 0 || get_detail(&d) != 0 || get_status(&st) != 0) {
+            free(fb); return 2;
+        }
+        draw_buffer(fb, &s, &d, &st, floor_c, ceil_c);
+        snprintf(path, sizeof path, "%s/%s.ppm", dir, names[stage]);
+        if (save_ppm(path, fb) != 0) { free(fb); return 2; }
+        int px, py, pa;
+        get_state(&px, &py, &pa);
+        printf("shot %s: player=%d,%d door=%d/%d alien=%d,%d state=%d vis=%d\n",
+               names[stage], px, py, st.door_open, st.door_blocked,
+               st.ax, st.ay, st.state, st.visible);
+        stage++;
+        if (stage == 1) { if (run_ticks(1, 37) != 0) break; }
+        else if (stage == 2) { if (run_block(activate_block, "activate") != 0) break; if (run_ticks(0, 12) != 0) break; }
+        else if (stage == 3) { if (run_ticks(0, 60) != 0) break; }
+        else if (stage == 4) { if (run_ticks(1, 48) != 0) break; }
+        else if (stage == 5) { if (run_ticks(1, 25) != 0 || run_ticks(16, 64) != 0) break; }
+        else break;
+    }
+    free(fb);
+    return stage == 6 ? 0 : 2;
+}
+
 /* ---- SDL presentation -------------------------------------------------- */
 
 static uint32_t palette(int id) {
     switch (id) {
-    case 1: return 0xff8b3636u;
-    case 2: return 0xff676b73u;
-    case 3: return 0xff3a5a8eu;
-    case 4: return 0xff8a6a3au;
-    case 6: return 0xff5b4a32u;
-    case 7: return 0xff222630u;
+    case 1: return 0xff4a5059u;  /* steel room wall */
+    case 2: return 0xff66707au;  /* lighter corridor steel */
+    case 3: return 0xff3b5570u;  /* blue turn wall */
+    case 4: return 0xffa47b3bu;  /* amber door */
+    case 5: return 0xff4d5963u;  /* floor/ceiling grid */
+    case 6: return 0xff242a2fu;  /* floor base */
+    case 7: return 0xff151d24u;  /* ceiling base */
+    case 8: return 0xffcaa84fu;  /* floor centreline */
+    case 9: return 0xffeaf4dcu;  /* overhead light */
+    case 10: return 0xff3f8b90u; /* edge marking */
     default: return 0xff101010u;
     }
+}
+
+static uint32_t scale_color(uint32_t c, int pct) {
+    int r = (int)((c >> 16) & 255), g = (int)((c >> 8) & 255), b = (int)(c & 255);
+    r = r * pct / 100; g = g * pct / 100; b = b * pct / 100;
+    return 0xff000000u | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+}
+static uint32_t shade_color(uint32_t c, int shade) {
+    static const int pct[4] = { 48, 64, 82, 100 };
+    if (shade < 0) shade = 0;
+    if (shade > 3) shade = 3;
+    return scale_color(c, pct[shade]);
+}
+
+/* Wall pattern: u is Glon's world-space surface coordinate; the vertical
+ * position is the projected span fraction. No screen-space scrolling. */
+static uint32_t wall_pixel(uint32_t base, int color, int u, int shade,
+                           int y, int top, int bot) {
+    int den = bot - top + 1;
+    int rel = den > 0 ? (y - top) * 100 / den : 50;
+    int phase = u % 128;
+    if (phase < 0) phase += 128;
+    int panel = u / 128;
+    if (panel < 0) panel = -panel;
+    uint32_t c = shade_color(base, shade);
+    if (color == 4) {
+        /* Door: framed amber slabs with heavy top/bottom rails. */
+        if (rel < 10 || rel > 90 || phase < 8 || phase > 120)
+            c = scale_color(c, 42);
+    } else {
+        if (rel < 7 || rel > 93 || (rel >= 46 && rel <= 54))
+            c = scale_color(c, 55);
+        if (phase < 6 || phase > 122)
+            c = scale_color(c, 34);
+        if ((panel & 3) == 0 && phase < 20)
+            c = scale_color(c, 42);
+    }
+    return c;
 }
 
 static void plot(uint32_t *fb, int x, int y, uint32_t c) {
     if (x >= 0 && x < FB_W && y >= 0 && y < FB_H) fb[y * FB_W + x] = c;
 }
 
+static void draw_line(uint32_t *fb, int x0, int y0, int x1, int y1, uint32_t c) {
+    double ax = x0, ay = y0, bx = x1, by = y1;
+    double t0 = 0.0, t1 = 1.0, dx = bx - ax, dy = by - ay;
+    double p[4] = { -dx, dx, -dy, dy };
+    double q[4] = { ax, FB_W - 1 - ax, ay, FB_H - 1 - ay };
+    for (int i = 0; i < 4; i++) {
+        if (p[i] == 0.0) {
+            if (q[i] < 0.0) return;
+        } else {
+            double r = q[i] / p[i];
+            if (p[i] < 0.0) { if (r > t1) return; if (r > t0) t0 = r; }
+            else            { if (r < t0) return; if (r < t1) t1 = r; }
+        }
+    }
+    int cx0 = (int)(ax + t0 * dx + 0.5), cy0 = (int)(ay + t0 * dy + 0.5);
+    int cx1 = (int)(ax + t1 * dx + 0.5), cy1 = (int)(ay + t1 * dy + 0.5);
+    int sx = cx0 < cx1 ? 1 : -1, sy = cy0 < cy1 ? 1 : -1;
+    int adx = cx1 > cx0 ? cx1 - cx0 : cx0 - cx1;
+    int ady = cy1 > cy0 ? cy1 - cy0 : cy0 - cy1;
+    int err = adx - ady;
+    for (;;) {
+        plot(fb, cx0, cy0, c);
+        if (cx0 == cx1 && cy0 == cy1) break;
+        int e2 = err * 2;
+        if (e2 > -ady) { err -= ady; cx0 += sx; }
+        if (e2 < adx)  { err += adx; cy0 += sy; }
+    }
+}
+
+static void draw_detail(uint32_t *fb, const Detail *d) {
+    for (int i = 0; i < d->n; i++) {
+        const DetailLine *l = &d->line[i];
+        if (!l->visible) continue;
+        draw_line(fb, l->x1, l->y1, l->x2, l->y2, palette(l->color));
+    }
+}
+
 /* A deliberately simple, original Alien silhouette. Glon supplies visibility
- * and the projected screen rectangle; this function only rasterises those
- * pixels. */
+ * and the projected screen rectangle; this function only rasterises pixels. */
 static void draw_alien_sprite(uint32_t *fb, const Status *st) {
     if (!st->visible) return;
     int l = st->left, r = st->right, t = st->top, b = st->bot;
@@ -631,8 +830,7 @@ static void draw_alien_sprite(uint32_t *fb, const Status *st) {
     uint32_t body = 0xff4f7b48u, dark = 0xff294027u, eye = 0xffdf4d4du;
     int head_h = h * 45 / 100;
     for (int y = t; y <= b; y++) {
-        int yy = y - t;
-        int hw;
+        int yy = y - t, hw;
         if (yy < head_h) {
             int rem = head_h - yy;
             hw = w * (28 + 22 * (yy < head_h / 2 ? yy : rem) / (head_h / 2 + 1)) / 100;
@@ -642,11 +840,9 @@ static void draw_alien_sprite(uint32_t *fb, const Status *st) {
         }
         if (hw < 1) hw = 1;
         for (int x = cx - hw; x <= cx + hw; x++) plot(fb, x, y, body);
-        plot(fb, cx - hw, y, dark);
-        plot(fb, cx + hw, y, dark);
+        plot(fb, cx - hw, y, dark); plot(fb, cx + hw, y, dark);
     }
-    int eye_y = t + h * 22 / 100;
-    int eye_dx = w / 12;
+    int eye_y = t + h * 22 / 100, eye_dx = w / 12;
     for (int dy = 0; dy < 2; dy++)
         for (int dx = 0; dx < 2; dx++) {
             plot(fb, cx - eye_dx + dx, eye_y + dy, eye);
@@ -658,11 +854,9 @@ static void draw_tracker(uint32_t *fb, const Status *st) {
     const int cx = 42, cy = 168, rad = 22;
     for (int y = 142; y < 196; y++)
         for (int x = 6; x < 78; x++) fb[y * FB_W + x] = 0xff0d1117u;
-    /* Door status: green when open, amber when blocked. */
     uint32_t door_c = st->door_blocked ? 0xff9a6b35u : 0xff3eaa58u;
     for (int y = 146; y < 150; y++)
         for (int x = 10; x < 74; x++) fb[y * FB_W + x] = door_c;
-    /* Tracker ring, forward tick and crosshair. */
     for (int y = -rad; y <= rad; y++)
         for (int x = -rad; x <= rad; x++) {
             int d2 = x * x + y * y;
@@ -688,29 +882,34 @@ static void draw_tracker(uint32_t *fb, const Status *st) {
     }
 }
 
-static void draw_buffer(uint32_t *fb, const Spans *s, const Status *st,
-                        int floor_c, int ceil_c) {
+static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
+                        const Status *st, int floor_c, int ceil_c) {
     for (int y = 0; y < FB_H; y++)
         for (int x = 0; x < FB_W; x++)
             fb[y * FB_W + x] = (y < FB_H / 2) ? palette(ceil_c) : palette(floor_c);
+    if (!simple_mode) draw_detail(fb, d);
     for (int i = 0; i < PROJ_COLS; i++) {
         int top = s->top[i], bot = s->bot[i];
         if (top < 0) top = 0;
         if (bot >= FB_H) bot = FB_H - 1;
         if (top > bot) continue;
-        uint32_t c = palette(s->color[i]);
-        for (int y = top; y <= bot; y++)
+        int color = s->color[i], u = s->u[i], shade = s->shade[i];
+        uint32_t base = palette(color);
+        for (int y = top; y <= bot; y++) {
+            uint32_t c = simple_mode ? shade_color(base, shade)
+                                     : wall_pixel(base, color, u, shade, y, top, bot);
             for (int x = i * PROJ_SCALE; x < (i + 1) * PROJ_SCALE; x++)
                 fb[y * FB_W + x] = c;
+        }
     }
     draw_alien_sprite(fb, st);
     draw_tracker(fb, st);
 }
 
 static int sdl_present(SDL_Renderer *ren, SDL_Texture *tex, uint32_t *fb,
-                       const Spans *s, const Status *st, int floor_c, int ceil_c,
-                       double *present_ms) {
-    draw_buffer(fb, s, st, floor_c, ceil_c);
+                       const Spans *s, const Detail *d, const Status *st,
+                       int floor_c, int ceil_c, double *present_ms) {
+    draw_buffer(fb, s, d, st, floor_c, ceil_c);
     long t0 = now_ns();
     if (SDL_UpdateTexture(tex, NULL, fb, FB_W * (int)sizeof(uint32_t)) != 0) return -1;
     SDL_RenderClear(ren);
@@ -751,8 +950,9 @@ static int bench(int frames) {
     int floor_c, ceil_c;
     if (get_sector(&floor_c, &ceil_c) != 0) return 2;
     Spans s;
+    Detail det;
     Status st;
-    if (get_status(&st) != 0) return 2;
+    if (get_status(&st) != 0 || get_detail(&det) != 0) return 2;
     Metrics sum = {0};
     long wall0 = now_ns();
     for (int i = 0; i < frames; i++) {
@@ -761,10 +961,14 @@ static int bench(int frames) {
         long t1 = now_ns();
         long proj_ns;
         if (render_spans(&s, &proj_ns) != 0) return 2;
+        long ds0 = now_ns();
+        if (simple_mode) det.n = 0;
+        else if (get_detail(&det) != 0) return 2;
         if (get_status(&st) != 0) return 2;
         long t2 = now_ns();
         double present_ms;
-        if (sdl_present(ren, tex, fb, &s, &st, floor_c, ceil_c, &present_ms) != 0) return 2;
+        if (sdl_present(ren, tex, fb, &s, &det, &st, floor_c, ceil_c, &present_ms) != 0) return 2;
+        proj_ns += t2 - ds0;
         long t3 = now_ns();
         sum.sim_ms += (double)(t1 - t0) / 1e6;
         sum.proj_ms += (double)(t2 - t1) / 1e6;
@@ -791,7 +995,7 @@ static int bench(int frames) {
 
 static int interactive(void) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return 2;
-    SDL_Window *win = SDL_CreateWindow("Glon AVP G5b | W/S/A/D move  Left/Right turn  E door  Esc quit",
+    SDL_Window *win = SDL_CreateWindow("Glon AVP G5c | W/S/A/D move  arrows turn  E door  R detail  Esc quit",
                                        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                        960, 600, SDL_WINDOW_SHOWN);
     if (!win) fail(SDL_GetError());
@@ -810,8 +1014,9 @@ static int interactive(void) {
     int floor_c, ceil_c;
     if (get_sector(&floor_c, &ceil_c) != 0) return 2;
     Spans s;
+    Detail det;
     Status st;
-    if (get_status(&st) != 0) return 2;
+    if (get_status(&st) != 0 || get_detail(&det) != 0) return 2;
     int running = 1, frames = 0;
     double acc = 0.0, fps_start = (double)now_ns(), sim_ms = 0, proj_ms = 0, present_ms = 0;
     long last = now_ns();
@@ -822,6 +1027,11 @@ static int interactive(void) {
                 (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)) running = 0;
             else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_e && !e.key.repeat)
                 run_block(activate_block, "activate");
+            else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_r && !e.key.repeat) {
+                simple_mode = !simple_mode;
+                printf("render mode: %s\n", simple_mode ? "simple" : "detailed");
+                fflush(stdout);
+            }
         }
         const Uint8 *k = SDL_GetKeyboardState(NULL);
         int mask = (k[SDL_SCANCODE_W] ? 1 : 0) | (k[SDL_SCANCODE_S] ? 2 : 0) |
@@ -844,10 +1054,12 @@ static int interactive(void) {
         long proj_ns;
         if (render_spans(&s, &proj_ns) != 0) break;
         long st0 = now_ns();
+        if (simple_mode) det.n = 0;
+        else if (get_detail(&det) != 0) break;
         if (get_status(&st) != 0) break;
         proj_ms += (double)(proj_ns + now_ns() - st0) / 1e6;
         double pm;
-        if (sdl_present(ren, tex, fb, &s, &st, floor_c, ceil_c, &pm) != 0) break;
+        if (sdl_present(ren, tex, fb, &s, &det, &st, floor_c, ceil_c, &pm) != 0) break;
         present_ms += pm;
         frames++;
         if (frames % 120 == 0) {
@@ -877,6 +1089,11 @@ int main(int argc, char **argv) {
     if (env && *env) root_dir = env;
     if (argc > 1 && strcmp(argv[1], "--self-test") == 0) return self_test();
     if (argc > 1 && strcmp(argv[1], "--trace") == 0) return scripted_trace();
-    if (argc > 2 && strcmp(argv[1], "--bench") == 0) return bench(atoi(argv[2]));
+    if (argc > 2 && strcmp(argv[1], "--shots") == 0) return shot_walkthrough(argv[2]);
+    if (argc > 1 && strcmp(argv[1], "--simple") == 0) simple_mode = 1;
+    if (argc > 2 && strcmp(argv[1], "--bench") == 0) {
+        if (argc > 3 && strcmp(argv[3], "simple") == 0) simple_mode = 1;
+        return bench(atoi(argv[2]));
+    }
     return interactive();
 }

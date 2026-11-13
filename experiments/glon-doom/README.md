@@ -1,15 +1,12 @@
-# Glon Doom — G5b: The Marine and the Alien
+# Glon AvP — G5c: Atmospheric Corridors
 
-This extends G5a's first-person room/corridor into a small encounter:
+G5c keeps the G5b Marine, door, Alien, motion tracker and fixed-tick behaviour,
+while replacing flat surfaces with a recognisable industrial corridor.
 
-- one working door between the room and the corridor;
-- one deterministic Alien that detects and approaches the Marine;
-- a billboard Alien silhouette rendered from Glon-calculated projection data;
-- a Marine motion tracker drawn by the native host;
-- deterministic tests for the door, Alien, tracker and existing G5a world.
-
-No enemies beyond the single Alien, weapons, damage, sound, textures, BSP or
-WAD loading are added.
+The world remains one room, one door and a corridor with a 90-degree turn. The
+new work is visual depth: metallic wall panels, seams, structural bands,
+floor/ceiling detail and distance shading. Player speed, turning speed and
+Alien behaviour are unchanged.
 
 ## Build and run
 
@@ -20,231 +17,226 @@ make
 DOOM_ROOT=../.. ./build/doom
 ```
 
-Or `make run`. Requires a C compiler and SDL2 development files
-(`libsdl2-dev` on Ubuntu). Tested under WSLg / Ubuntu 22.04.
+Requires a C compiler and SDL2 development files (`libsdl2-dev` on Ubuntu).
+Tested under WSLg / Ubuntu 22.04. `make run` is equivalent after building.
+
+Rendering modes:
+
+```sh
+DOOM_ROOT=../.. ./build/doom          # detailed (default); press R to toggle
+DOOM_ROOT=../.. ./build/doom --simple # start with flat shaded walls, no details
+```
 
 Headless tools:
 
 ```sh
 ./build/doom --self-test
 ./build/doom --trace
+./build/doom --shots /tmp/g5c-shots
 DOOM_ROOT=../.. ./build/doom --bench 60
+DOOM_ROOT=../.. ./build/doom --bench 60 simple
 ```
 
-`DOOM_ROOT` defaults to `../..`. The host loads `jupyter/prelude.glon` and
-`experiments/glon-doom/doom.glon`.
+`--shots` writes six deterministic PPM views: room, near-door, corridor,
+alien, inside and turn.
 
 ## Controls
 
 | Key | Action |
 | --- | --- |
-| W | move forward |
-| S | move backward |
-| A | strafe left |
-| D | strafe right |
-| Left arrow | turn left |
-| Right arrow | turn right |
-| E | open/close the door when near it |
+| W / S | move forward / backward |
+| A / D | strafe left / right |
+| Left / Right arrows | turn |
+| E | open/close the door when near |
+| R | toggle detailed/simple rendering |
 | Escape | quit |
 
-The window title repeats the controls. Simulation is fixed at 60 ticks/second
-with catch-up (up to 10 ticks per display frame).
+The controls are repeated in the window title.
 
-## World and door
+## Wall detail
 
-World units use 64 integer subunits per map unit. The one sector has floor z=0,
-ceiling z=128, floor colour 6 and ceiling colour 7.
+Every Glon wall column now reports:
+
+- projected top and bottom;
+- wall material (room steel, corridor steel, blue turn wall, amber door);
+- world-space surface coordinate `u` along the wall;
+- deterministic distance-shade level 0–3.
+
+The native host rasterises those values:
+
+- panel boundaries repeat every 128 world subunits;
+- vertical seams appear at panel boundaries using `u mod 128`;
+- every fourth panel gets a darker support-rib band;
+- horizontal structural bands are fractions of the projected wall span;
+- the door has a darker frame, top/bottom rails and amber panels;
+- distance shading darkens the same material at 0/1/2/3 levels.
+
+Because `u` is the actual wall-intersection coordinate, seams and ribs remain
+anchored to the world when the player moves or turns. No screen-space scrolling
+stripe is used.
+
+## Floor and ceiling detail
+
+Glon projects a bounded set of world-space 3D line segments:
+
+- room and corridor floor-grid divisions;
+- east/north corridor transverse grid lines;
+- gold centreline markings and cyan edge lines;
+- matching ceiling panel divisions;
+- bright overhead light strips.
+
+Each segment is projected with the same camera basis, including a near-plane
+clip so lines crossing behind the camera still contribute their visible part.
+The host rasterises only the projected endpoints. This is a low-resolution
+line-detail pass, not a full texture-mapping engine.
+
+The detail pass emits **38 lines** (a count plus six integers per line), even
+when a line is off-screen. Wall projection emits **5 integers × 160 columns**;
+status emits 16 integers. All are fixed, bounded command shapes.
+
+## Distance shading
+
+Glon chooses a shade level from the wall intersection distance:
 
 ```text
-                      north corridor
-                      x=1152..1280
-                      y=384..1024
-                            |
- room x=128..768      east corridor x=768..1280
- y=128..640           y=256..384
-       door at x=768, y=256..384
+distance < 256 subunits  -> shade 3
+distance < 512 subunits  -> shade 2
+distance < 1024 subunits -> shade 1
+otherwise                -> shade 0
 ```
 
-Ten solid boundary linedefs form the room/corridor union. The door is one
-dynamic vertical segment across the room/corridor opening:
-
-- starts closed (`door-open=0`, `door-blocked=1`, `door-target=0`);
-- E within 160 subunits of the door centre toggles the target;
-- opens/closes in 4-subunit steps, fully open at 64;
-- becomes passable/transparent at `door-open >= 32`;
-- is collision-solid and visible as colour 4 while blocked;
-- appears as the same wall segment to player collision, Alien collision and
-  line-of-sight tests.
-
-The door is toggled manually; there is no automatic close or door-use animation.
-Visibility switches at the collision threshold and remains consistent with it.
-
-## Alien
-
-The Alien's conceptual Linda-style tuple is:
-
-```text
-(enemy 1 alien x y health state)
-```
-
-Its fields are maintained in Glon globals so fixed ticks need no mutation
-opcode or VM primitive.
-
-Initial values:
-
-```text
-x=1120  y=320  health=100  state=0
-```
-
-States are `0` idle, `1` detected/approaching or blocked by the door, and `2`
-attack/stop in range. Detection range is 700 subunits; attack range is 96
-subunits. The Alien moves at 2 subunits/tick with axis-separated circle/wall
-collision (radius 16). It waits behind a closed door rather than crossing or
-attacking through it. Once the door is sufficiently open it approaches and
-stops at attack range. There is no damage, death or enemy animation in G5b.
-
-## Rendering the Alien
-
-Glon calculates:
-
-- relative vector, forward depth and side offset;
-- whether the Alien is in front of the camera and inside the horizontal FOV;
-- line of sight through every wall and the closed door;
-- projected screen rectangle and visibility.
-
-Only when Glon reports visible does the host rasterise a simple original
-silhouette inside that rectangle (green body/head outline, red eyes). The host
-does not calculate the Alien's position, depth, occlusion or screen rectangle.
-This is a billboard sprite, not a general 3D model renderer.
-
-## Motion tracker
-
-Glon reports door state, Alien position/state/health, detection, squared
-distance (`td2`), relative side (`tside`) and forward depth (`tdepth`), plus
-sprite visibility. The native host draws the tracker ring in the lower-left:
-
-- forward tick at the top;
-- door-status bar (green open, amber blocked);
-- Alien blip positioned from `tside`/`tdepth`, green when approaching and red
-  in attack range;
-- a dim centre mark when not detected.
-
-The tracker updates from the same fixed-tick state as the game.
+The host maps these to deterministic brightness levels (100/82/64/48 percent)
+while keeping the amber door and green Alien readable. Shading is computed in
+Glon and contains no time-dependent component.
 
 ## Division of labour
 
-Glon (`doom.glon`) owns:
+Glon owns:
 
-- vertices/linedefs/sector data;
-- player state, fixed-tick movement, strafing/turning and collision;
-- door state, transitions, activation and collision/visibility gating;
-- Alien state, detection, approach, wall/door collision and attack state;
-- line-of-sight checks;
-- sprite relative position, screen rectangle and visibility;
-- motion-tracker relative direction/distance/detection values;
-- projection of wall spans.
+- camera, ray, world geometry and occlusion;
+- wall intersections and world-surface coordinate `u`;
+- distance-shade decisions;
+- 3D floor/ceiling line endpoints and near-plane clipping;
+- door, Alien, line-of-sight, sprite rectangle and tracker calculations;
+- all movement and collision.
 
-The native host (`doom-host.c`) owns only:
+The native host only:
 
-- SDL window, input/timing and E-key event delivery;
-- running pre-parsed Glon tick/column/status blocks;
-- parsing bounded `HOST_PRINT` output;
-- rasterising Glon wall spans and the Glon-provided Alien rectangle;
-- drawing the motion-tracker HUD from Glon values;
-- SDL presentation and measurements.
+- supplies SDL input/timing/presentation;
+- runs pre-parsed Glon blocks;
+- parses bounded integer streams;
+- rasterises wall spans using Glon `u`/shade/material;
+- rasterises the Glon-projected floor/ceiling line segments;
+- draws the Alien rectangle supplied by Glon and the tracker HUD;
+- measures performance.
 
-The host does not simulate player, door or Alien behaviour.
+No raycasting, wall intersection, surface coordinate or perspective calculation
+was moved into C.
 
-## Projection
+## Rendering modes and performance
 
-The logical framebuffer remains 320x200. Projection is sampled at 160 columns
-(2 framebuffer pixels each) and expanded by the host. Renderer performance was
-not optimised in G5b. Flat colours, fixed horizon, no textures, no BSP and no
-floor casting remain.
+Detailed mode adds the wall pattern and floor/ceiling line pass. Simple mode
+skips the detail block and wall patterns, retaining flat shaded walls, the door,
+Alien and tracker.
+
+G5b baseline, measured again before G5c changes:
+
+- FPS **7.9**
+- simulation **2.00 ms/tick**
+- projection **115.07 ms/frame**
+- presentation **8.80 ms/frame**
+- total frame **125.98 ms**
+
+G5c detailed mode (final run):
+
+- FPS **6.9**
+- simulation **2.05 ms/tick**
+- wall + detail + status projection **134.24 ms/frame**
+- native presentation **8.65 ms/frame**
+- total frame **145.04 ms**
+
+G5c simple mode (final run):
+
+- FPS **8.1**
+- simulation **1.92 ms/tick**
+- projection **113.21 ms/frame**
+- presentation **8.57 ms/frame**
+- total frame **123.77 ms**
+
+Managed heap high-water: **33,440 cells**. No GC cycles in measured frames
+(`gc=0`, `live=0`). The loader frontier was **54,146 cells** and identical
+across three fresh sessions.
+
+Detailed mode is slower than G5b but remains playable for evaluating movement
+and space; simple mode is available when interactivity matters more than
+surface detail. No general VM or renderer optimisation was attempted.
 
 ## Tests
 
-`make test` runs the preserved G5a checks plus G5b coverage:
+`make test` preserves all G5a/G5b tests and adds:
 
-- player start/direction, forward/backward, strafing, turning;
-- collision against all ten linedefs and room/corridor corners;
-- closed-door collision and open-door passage;
-- door open/close transitions, state, visibility and Alien occlusion;
-- Alien initial tuple state;
-- detection range;
-- Alien waiting behind a closed door;
-- Alien approach after opening;
-- Alien walls/door collision, with direct collision probes for all ten linedefs;
-- Alien/player proximity and attack state;
-- Alien line-of-sight blocked by a wall and clear through an open doorway;
-- sprite projection bounds and door occlusion;
-- tracker detection, direction and distance;
-- repeated simulation determinism including status;
-- framebuffer span bounds;
-- repeated frames/fresh sessions without loader growth;
-- frozen-S1 compliance.
+1. world-anchored wall panel coordinates (`u` is world surface, not screen x);
+2. stable panel anchoring under forward translation;
+3. projected seam distribution across wall surfaces;
+4. floor detail hash changes with camera translation;
+5. ceiling detail hash changes with turning;
+6. deterministic shade levels and frame hashes;
+7. door collision/visibility remains consistent;
+8. Alien occlusion and line-of-sight remain correct;
+9. motion tracker direction/distance/detection remain functional;
+10. framebuffer and command-shape bounds, including 38 detail lines and
+    5×160 wall fields;
+11. identical world state produces identical wall/detail hashes;
+12. repeated sessions have no loader growth;
+13. frozen-S1 compliance.
 
-The scripted trace is input-independent:
+Also preserved: all ten linedef collision probes for player and Alien, corridor
+traversal, Alien waiting/approach/attack and repeated simulation determinism.
 
-```text
-approach-closed-door x=744 y=320 door=0/1 alien=1120,320 vis=0
-activate-door        x=744 y=320 door=48/0 alien=1110,320 vis=1
-observe-alien        x=744 y=320 door=64/0 alien=990,320 vis=1
-enter-corridor       x=904 y=320 door=64/0 alien=960,320 state=2
-```
+## Verification screenshots
 
-## Measured performance and memory
+Deterministic WSLg-path outputs from `--shots /tmp/g5c-shots`:
 
-Measured on WSLg with the SDL Wayland backend, 960x600 window:
+- `/tmp/g5c-shots/room.png`
+- `/tmp/g5c-shots/near-door.png`
+- `/tmp/g5c-shots/corridor.png`
+- `/tmp/g5c-shots/alien.png`
+- `/tmp/g5c-shots/inside.png`
+- `/tmp/g5c-shots/turn.png`
 
-`DOOM_ROOT=../.. ./build/doom --bench 60`:
-
-- simulation: **1.79 ms/tick**
-- wall + status projection: **99.04 ms/frame**
-- native presentation: **7.17 ms/frame**
-- total frame: **108.09 ms**
-- measured FPS: **9.2** (frame metric 9.3)
-
-Interactive runs with door/Alien/tracker active:
-
-- **9.6–9.7 FPS**
-- simulation: **9.0 ms/frame** (multiple 60 Hz ticks catch up)
-- projection/status: **88 ms/frame**
-- presentation: **6 ms/frame**
-- total frame: **103 ms**
-
-Managed heap high-water: **33,408 cells**. No GC cycles occurred in measured
-frames (`gc=0`, `live=0`); the frame/status path allocates no managed objects.
-Loader frontier was **53,410 cells** and identical across three fresh sessions.
+Contact sheet: `/tmp/g5c-contact-final5.png`.
 
 ## Doom relationship
 
-G5b still does not load WAD files or claim Doom map compatibility. The useful
-correspondences are:
+G5c remains a precursor, not a WAD-compatible Doom renderer. It now has:
 
-- vertices/linedefs/sectors and a door segment;
-- a player camera, wall span projection and billboard sprite depth rectangle;
-- fixed-tick deterministic entity state (Alien) independent of the player;
-- line-of-sight and collision against the same map geometry.
+- Doom-like vertex/linedef/sector geometry and a door segment;
+- material IDs and world surface coordinates suitable for later texture UVs;
+- bounded floor/ceiling detail projected through the same camera;
+- deterministic distance shading and fixed-tick entity state.
 
-Temporary G5b choices include axis-aligned wall tests, a manually toggled door,
-range-based detection, simple axis-step Alien movement, a flat-colour renderer
-and a HUD-style tracker. Future work may add WAD/BSP/blockmap traversal,
-textures, doors with real sector movement, sprite animation, damage and
-Linda-style enemy tuple spaces.
+Still temporary:
+
+- low-resolution line detail instead of texture mapping;
+- 160 sampled columns expanded to 320 pixels;
+- axis-aligned wall tests;
+- flat floor/ceiling base;
+- manually toggled door threshold;
+- simple billboard and tracker rendering.
 
 No Doom source or assets are copied here.
 
 ## Known limitations
 
-- 160 sampled columns produce 2-pixel blocky vertical strips.
-- Flat colours, fixed horizon and no floor/ceiling detail.
-- No renderer optimisation in this milestone; FPS is under 10.
-- Door is a binary visibility/collision threshold at 50% travel, not a
-  textured sliding animation.
-- Alien movement is simple axis-separated stepping; no pathfinding; it may
-  stop at corners in future maps.
-- Alien detection is range-based and does not include a hearing/FOV model.
-  Attack is a state only; there is no damage or death.
-- No mouse look, weapons, sound, inventory, multiple enemies, BSP, WAD,
-  textures, networking, menus or level editor.
+- Detailed rendering runs at about **6.9 FPS**; simple mode about **8.1 FPS**.
+- Wall panels are low-resolution 2-pixel strips; seams/ribs can alias at grazing
+  angles.
+- Floor/ceiling detail is line work, not textured floor casting; grid coverage
+  is deliberately sparse.
+- Near-plane clipping can extend projected lines toward the screen edges.
+- Simple mode still computes Glon projection/surface data but skips detail
+  rasterisation.
+- Door is a manual binary threshold; Alien is range-based with no damage,
+  death, animation or pathfinding.
+- No BSP, WAD, textures, sprites beyond the single Alien, weapons, sound,
+  inventory, networking, menus or editor.
