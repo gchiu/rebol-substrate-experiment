@@ -16,6 +16,7 @@ $(TARGET): doom-host.c textures.h $(ROOT)/r0_s1.h $(ROOT)/m1_layout.h $(ROOT)/s1
 test: $(TARGET)
 	python3 tests/check-textures.py
 	./$(TARGET) --self-test
+	./$(TARGET) --projection-test
 	./$(TARGET) --trace
 	cd $(ROOT) && ./check-frozen-s1.sh
 

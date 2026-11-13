@@ -883,89 +883,40 @@ doom/los: func [ax ay] [
     ]
 ]
 
-doom/detail-line: func [x1 y1 x2 y2 z c] [
-    doom/e1dx: - x1 doom/px
-    doom/e1dy: - y1 doom/py
-    doom/e1dep: / + * doom/e1dx doom/dirx * doom/e1dy doom/diry 64
-    doom/e1side: / - * doom/e1dx doom/diry * doom/e1dy doom/dirx 64
-    doom/e2dx: - x2 doom/px
-    doom/e2dy: - y2 doom/py
-    doom/e2dep: / + * doom/e2dx doom/dirx * doom/e2dy doom/diry 64
-    doom/e2side: / - * doom/e2dx doom/diry * doom/e2dy doom/dirx 64
-    doom/dvis: 0
-    either > doom/e1dep 0 [
-        either > doom/e2dep 0 [
-            doom/dvis: 1
-        ] [
-            doom/dt: / * - 0 doom/e1dep 1024 - doom/e2dep doom/e1dep
-            doom/e2side: + doom/e1side / * - doom/e2side doom/e1side doom/dt 1024
-            doom/e2dep: 1
-            doom/dvis: 1
-        ]
-    ] [
-        either > doom/e2dep 0 [
-            doom/dt: / * - 0 doom/e2dep 1024 - doom/e1dep doom/e2dep
-            doom/e1side: + doom/e2side / * - doom/e1side doom/e2side doom/dt 1024
-            doom/e1dep: 1
-            doom/dvis: 1
-        ] [ none ]
-    ]
-    either = doom/dvis 1 [
-        doom/e1sx: + 160 / * doom/e1side doom/focal-h doom/e1dep
-        doom/e1sy: - doom/horizon / * - z doom/eye doom/projection doom/e1dep
-        doom/e2sx: + 160 / * doom/e2side doom/focal-h doom/e2dep
-        doom/e2sy: - doom/horizon / * - z doom/eye doom/projection doom/e2dep
-        print 1
-        print doom/e1sx
-        print doom/e1sy
-        print doom/e2sx
-        print doom/e2sy
-        print c
-    ] [
-        print 0
-        print 0
-        print 0
-        print 0
-        print 0
-        print c
-    ]
-]
-doom/detail-block: [
-    print 8
-    doom/detail-line 256 128 256 640 0 5
-    doom/detail-line 128 512 768 512 0 5
-    doom/detail-line 832 256 832 384 0 5
-    doom/detail-line 1152 704 1280 704 0 5
-    doom/detail-line 800 320 1280 320 0 8
-    doom/detail-line 768 280 1280 280 0 10
-    doom/detail-line 896 280 896 360 128 9
-    doom/detail-line 1176 640 1256 640 128 9
+doom/rowdist: [
+    16121856 8060928 5373952 4030464 3224371 2686976 2303122 2015232 1791317 1612186
+    1465623 1343488 1240143 1151561 1074790 1007616 948344 895659 848519 806093
+    767707 732812 700950 671744 644874 620071 597106 575781 555926 537395
+    520060 503808 488541 474172 460624 447829 435726 424259 413381 403046
+    393216 383854 374927 366406 358263 350475 343018 335872 329017 322437
+    316115 310036 304186 298553 293125 287890 282840 277963 273252 268698
+    264293 260030 255902 251904 248029 244271 240625 237086 233650 230312
+    227068 223915 220847 217863 214958 212130 209375 206690 204074 201523
+    199035 196608 194239 191927 189669 187463 185309 183203 181144 179132
+    177163 175238 173353 171509 169704 167936 166205 164509 162847 161219
 ]
 
-doom/tex-row: func [y] [
-    doom/trdy: - y doom/horizon
-    doom/trvalid: 0
-    doom/trbx: 0
-    doom/trby: 0
-    doom/trsx: 0
-    doom/trsy: 0
-    doom/trshade: 0
-    either = doom/trdy 0 [ none ] [
-        doom/trad: either < doom/trdy 0 [ - 0 doom/trdy ] [ doom/trdy ]
-        doom/trdist: / * doom/projection 65536 doom/trad
-        doom/trbx: + * doom/px 65536 * doom/trdist - doom/dirx doom/planex
-        doom/trsx: / * * doom/trdist doom/planex 2 319
-        doom/trby: + * doom/py 65536 * doom/trdist - doom/diry doom/planey
-        doom/trsy: / * * doom/trdist doom/planey 2 319
-        doom/trshade: either < doom/trdist 262144 [ 3 ] [
-            either < doom/trdist 524288 [ 2 ] [
-                either < doom/trdist 1048576 [ 1 ] [ 0 ]
-            ]
+doom/tex-row-mirror: func [y] [
+    doom/trdy: - doom/horizon y
+    doom/trdist: block-at doom/rowdist - 99 y
+    doom/trbx: + * doom/px 65536 * doom/trdist - doom/dirx doom/planex
+    doom/trsx: / * * doom/trdist doom/planex 2 319
+    doom/trby: + * doom/py 65536 * doom/trdist - doom/diry doom/planey
+    doom/trsy: / * * doom/trdist doom/planey 2 319
+    doom/trshade: either < doom/trdist 262144 [ 3 ] [
+        either < doom/trdist 524288 [ 2 ] [
+            either < doom/trdist 1048576 [ 1 ] [ 0 ]
         ]
-        doom/trvalid: 1
     ]
     print y
-    print doom/trvalid
+    print 1
+    print doom/trbx
+    print doom/trby
+    print doom/trsx
+    print doom/trsy
+    print doom/trshade
+    print - 200 y
+    print 1
     print doom/trbx
     print doom/trby
     print doom/trsx
@@ -973,113 +924,108 @@ doom/tex-row: func [y] [
     print doom/trshade
 ]
 
-doom/tex-row-pair: func [i] [
-    doom/tex-row i
-    doom/tex-row + i 100
-]
-
 doom/texrows-block: [
     print 200
-    doom/tex-row-pair 0
-    doom/tex-row-pair 1
-    doom/tex-row-pair 2
-    doom/tex-row-pair 3
-    doom/tex-row-pair 4
-    doom/tex-row-pair 5
-    doom/tex-row-pair 6
-    doom/tex-row-pair 7
-    doom/tex-row-pair 8
-    doom/tex-row-pair 9
-    doom/tex-row-pair 10
-    doom/tex-row-pair 11
-    doom/tex-row-pair 12
-    doom/tex-row-pair 13
-    doom/tex-row-pair 14
-    doom/tex-row-pair 15
-    doom/tex-row-pair 16
-    doom/tex-row-pair 17
-    doom/tex-row-pair 18
-    doom/tex-row-pair 19
-    doom/tex-row-pair 20
-    doom/tex-row-pair 21
-    doom/tex-row-pair 22
-    doom/tex-row-pair 23
-    doom/tex-row-pair 24
-    doom/tex-row-pair 25
-    doom/tex-row-pair 26
-    doom/tex-row-pair 27
-    doom/tex-row-pair 28
-    doom/tex-row-pair 29
-    doom/tex-row-pair 30
-    doom/tex-row-pair 31
-    doom/tex-row-pair 32
-    doom/tex-row-pair 33
-    doom/tex-row-pair 34
-    doom/tex-row-pair 35
-    doom/tex-row-pair 36
-    doom/tex-row-pair 37
-    doom/tex-row-pair 38
-    doom/tex-row-pair 39
-    doom/tex-row-pair 40
-    doom/tex-row-pair 41
-    doom/tex-row-pair 42
-    doom/tex-row-pair 43
-    doom/tex-row-pair 44
-    doom/tex-row-pair 45
-    doom/tex-row-pair 46
-    doom/tex-row-pair 47
-    doom/tex-row-pair 48
-    doom/tex-row-pair 49
-    doom/tex-row-pair 50
-    doom/tex-row-pair 51
-    doom/tex-row-pair 52
-    doom/tex-row-pair 53
-    doom/tex-row-pair 54
-    doom/tex-row-pair 55
-    doom/tex-row-pair 56
-    doom/tex-row-pair 57
-    doom/tex-row-pair 58
-    doom/tex-row-pair 59
-    doom/tex-row-pair 60
-    doom/tex-row-pair 61
-    doom/tex-row-pair 62
-    doom/tex-row-pair 63
-    doom/tex-row-pair 64
-    doom/tex-row-pair 65
-    doom/tex-row-pair 66
-    doom/tex-row-pair 67
-    doom/tex-row-pair 68
-    doom/tex-row-pair 69
-    doom/tex-row-pair 70
-    doom/tex-row-pair 71
-    doom/tex-row-pair 72
-    doom/tex-row-pair 73
-    doom/tex-row-pair 74
-    doom/tex-row-pair 75
-    doom/tex-row-pair 76
-    doom/tex-row-pair 77
-    doom/tex-row-pair 78
-    doom/tex-row-pair 79
-    doom/tex-row-pair 80
-    doom/tex-row-pair 81
-    doom/tex-row-pair 82
-    doom/tex-row-pair 83
-    doom/tex-row-pair 84
-    doom/tex-row-pair 85
-    doom/tex-row-pair 86
-    doom/tex-row-pair 87
-    doom/tex-row-pair 88
-    doom/tex-row-pair 89
-    doom/tex-row-pair 90
-    doom/tex-row-pair 91
-    doom/tex-row-pair 92
-    doom/tex-row-pair 93
-    doom/tex-row-pair 94
-    doom/tex-row-pair 95
-    doom/tex-row-pair 96
-    doom/tex-row-pair 97
-    doom/tex-row-pair 98
-    doom/tex-row-pair 99
+    doom/tex-row-mirror 0
+    doom/tex-row-mirror 1
+    doom/tex-row-mirror 2
+    doom/tex-row-mirror 3
+    doom/tex-row-mirror 4
+    doom/tex-row-mirror 5
+    doom/tex-row-mirror 6
+    doom/tex-row-mirror 7
+    doom/tex-row-mirror 8
+    doom/tex-row-mirror 9
+    doom/tex-row-mirror 10
+    doom/tex-row-mirror 11
+    doom/tex-row-mirror 12
+    doom/tex-row-mirror 13
+    doom/tex-row-mirror 14
+    doom/tex-row-mirror 15
+    doom/tex-row-mirror 16
+    doom/tex-row-mirror 17
+    doom/tex-row-mirror 18
+    doom/tex-row-mirror 19
+    doom/tex-row-mirror 20
+    doom/tex-row-mirror 21
+    doom/tex-row-mirror 22
+    doom/tex-row-mirror 23
+    doom/tex-row-mirror 24
+    doom/tex-row-mirror 25
+    doom/tex-row-mirror 26
+    doom/tex-row-mirror 27
+    doom/tex-row-mirror 28
+    doom/tex-row-mirror 29
+    doom/tex-row-mirror 30
+    doom/tex-row-mirror 31
+    doom/tex-row-mirror 32
+    doom/tex-row-mirror 33
+    doom/tex-row-mirror 34
+    doom/tex-row-mirror 35
+    doom/tex-row-mirror 36
+    doom/tex-row-mirror 37
+    doom/tex-row-mirror 38
+    doom/tex-row-mirror 39
+    doom/tex-row-mirror 40
+    doom/tex-row-mirror 41
+    doom/tex-row-mirror 42
+    doom/tex-row-mirror 43
+    doom/tex-row-mirror 44
+    doom/tex-row-mirror 45
+    doom/tex-row-mirror 46
+    doom/tex-row-mirror 47
+    doom/tex-row-mirror 48
+    doom/tex-row-mirror 49
+    doom/tex-row-mirror 50
+    doom/tex-row-mirror 51
+    doom/tex-row-mirror 52
+    doom/tex-row-mirror 53
+    doom/tex-row-mirror 54
+    doom/tex-row-mirror 55
+    doom/tex-row-mirror 56
+    doom/tex-row-mirror 57
+    doom/tex-row-mirror 58
+    doom/tex-row-mirror 59
+    doom/tex-row-mirror 60
+    doom/tex-row-mirror 61
+    doom/tex-row-mirror 62
+    doom/tex-row-mirror 63
+    doom/tex-row-mirror 64
+    doom/tex-row-mirror 65
+    doom/tex-row-mirror 66
+    doom/tex-row-mirror 67
+    doom/tex-row-mirror 68
+    doom/tex-row-mirror 69
+    doom/tex-row-mirror 70
+    doom/tex-row-mirror 71
+    doom/tex-row-mirror 72
+    doom/tex-row-mirror 73
+    doom/tex-row-mirror 74
+    doom/tex-row-mirror 75
+    doom/tex-row-mirror 76
+    doom/tex-row-mirror 77
+    doom/tex-row-mirror 78
+    doom/tex-row-mirror 79
+    doom/tex-row-mirror 80
+    doom/tex-row-mirror 81
+    doom/tex-row-mirror 82
+    doom/tex-row-mirror 83
+    doom/tex-row-mirror 84
+    doom/tex-row-mirror 85
+    doom/tex-row-mirror 86
+    doom/tex-row-mirror 87
+    doom/tex-row-mirror 88
+    doom/tex-row-mirror 89
+    doom/tex-row-mirror 90
+    doom/tex-row-mirror 91
+    doom/tex-row-mirror 92
+    doom/tex-row-mirror 93
+    doom/tex-row-mirror 94
+    doom/tex-row-mirror 95
+    doom/tex-row-mirror 96
+    doom/tex-row-mirror 97
+    doom/tex-row-mirror 98
+    doom/tex-row-mirror 99
 ]
 
 doom/status-block: [

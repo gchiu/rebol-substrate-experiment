@@ -1,0 +1,57 @@
+;; Test-only G5c projection diagnostics.
+[
+doom/detail-line: func [x1 y1 x2 y2 z c] [
+    doom/e1dx: - x1 doom/px
+    doom/e1dy: - y1 doom/py
+    doom/e1dep: / + * doom/e1dx doom/dirx * doom/e1dy doom/diry 64
+    doom/e1side: / - * doom/e1dx doom/diry * doom/e1dy doom/dirx 64
+    doom/e2dx: - x2 doom/px
+    doom/e2dy: - y2 doom/py
+    doom/e2dep: / + * doom/e2dx doom/dirx * doom/e2dy doom/diry 64
+    doom/e2side: / - * doom/e2dx doom/diry * doom/e2dy doom/dirx 64
+    doom/dvis: 0
+    either > doom/e1dep 0 [
+        either > doom/e2dep 0 [
+            doom/dvis: 1
+        ] [
+            doom/dt: / * - 0 doom/e1dep 1024 - doom/e2dep doom/e1dep
+            doom/e2side: + doom/e1side / * - doom/e2side doom/e1side doom/dt 1024
+            doom/e2dep: 1
+            doom/dvis: 1
+        ]
+    ] [
+        either > doom/e2dep 0 [
+            doom/dt: / * - 0 doom/e2dep 1024 - doom/e1dep doom/e2dep
+            doom/e1side: + doom/e2side / * - doom/e1side doom/e2side doom/dt 1024
+            doom/e1dep: 1
+            doom/dvis: 1
+        ] [ none ]
+    ]
+    either = doom/dvis 1 [
+        doom/e1sx: + 160 / * doom/e1side doom/focal-h doom/e1dep
+        doom/e1sy: - doom/horizon / * - z doom/eye doom/projection doom/e1dep
+        doom/e2sx: + 160 / * doom/e2side doom/focal-h doom/e2dep
+        doom/e2sy: - doom/horizon / * - z doom/eye doom/projection doom/e2dep
+        print 1
+        print doom/e1sx
+        print doom/e1sy
+        print doom/e2sx
+        print doom/e2sy
+        print c
+    ] [
+        print 0
+        print 0
+        print 0
+        print 0
+        print 0
+        print c
+    ]
+]
+doom/detail-block: [
+    print 4
+    doom/detail-line 256 128 256 640 0 5
+    doom/detail-line 128 512 768 512 0 5
+    doom/detail-line 800 320 1280 320 0 8
+    doom/detail-line 896 280 896 360 128 9
+]
+]

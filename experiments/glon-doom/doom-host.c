@@ -1,4 +1,4 @@
-/* Glon AVP G5b - native SDL2 host for the Marine/Alien corridor.
+/* Glon AVP G5f - native SDL2 host for the Marine/Alien corridor.
  *
  * Glon owns the world data, player movement, circle/wall collision, ray/wall
  * intersection, occlusion, door state, Alien state/ray visibility, tracker
@@ -232,7 +232,6 @@ static void build_blocks(void) {
     valid_block = parse_source("[ doom/valid ]", "valid");
     activate_block = parse_source("[ doom/activate ]", "activate");
     status_block = parse_source("[ do doom/status-block ]", "status");
-    detail_block = parse_source("[ do doom/detail-block ]", "detail");
     texrows_block = parse_source("[ do doom/texrows-block ]", "texrows");
     floor_line_block = parse_source("[ doom/detail-line 768 256 768 384 0 5 ]", "floor wall base");
     ceil_line_block = parse_source("[ doom/detail-line 768 256 768 384 128 5 ]", "ceiling wall top");
@@ -362,9 +361,14 @@ static int get_texrows(TexRows *r) {
     if (end == c.buf || n != FB_H) { free(c.buf); return -1; }
     int vals[1 + FB_H * 7];
     if (parse_ints(&c, vals, 1 + (int)n * 7, "texrows") != 0) { free(c.buf); return -1; }
+    for (int y = 0; y < FB_H; y++) {
+        r->valid[y] = 0; r->bx[y] = r->by[y] = r->sx[y] = r->sy[y] = 0;
+        r->shade[y] = 0;
+    }
     for (int i = 0; i < n; i++) {
         int y = vals[1 + i * 7];
-        if (y < 0 || y >= FB_H) { free(c.buf); return -1; }
+        if (y < 0) { free(c.buf); return -1; }
+        if (y >= FB_H) continue;
         r->valid[y] = vals[2 + i * 7];
         r->bx[y] = vals[3 + i * 7];
         r->by[y] = vals[4 + i * 7];
@@ -602,11 +606,10 @@ static int self_test(void) {
     reset();
 
     Spans sa, sb, sf;
-    Detail da, db, df;
     reset();
-    if (render_spans(&sa, &proj_ns) != 0 || get_detail(&da) != 0) return 2;
+    if (render_spans(&sa, &proj_ns) != 0) return 2;
     reset();
-    if (render_spans(&sb, NULL) != 0 || get_detail(&db) != 0) return 2;
+    if (render_spans(&sb, NULL) != 0) return 2;
     int bounds = 1;
     for (int i = 0; i < PROJ_COLS; i++)
         if (sa.top[i] < 0 || sa.bot[i] > FB_H - 1 || sa.top[i] > sa.bot[i] ||
@@ -614,7 +617,6 @@ static int self_test(void) {
             sa.shade[i] < 0 || sa.shade[i] > 3 ||
             sa.u[i] < 0 || sa.u[i] > 2048) bounds = 0;
     fails += expect_eq("framebuffer spans", bounds, 1);
-    fails += expect_eq("detail line count", da.n, 8);
     fails += expect_eq("wall panel world anchor", sa.u[PROJ_COLS / 2], 320);
     fails += expect_eq("wall panel u not screen x", sa.u[PROJ_COLS / 2] != 160, 1);
     fails += expect_eq("wall shade far/near level", sa.shade[PROJ_COLS / 2], 2);
@@ -628,95 +630,23 @@ static int self_test(void) {
                        fnv1a(sa.material, sizeof sa.material) ==
                        fnv1a(sb.material, sizeof sb.material), 1);
     fails += expect_eq("identical frame wall hash", sa.hash == sb.hash, 1);
-    fails += expect_eq("identical frame detail hash", da.hash == db.hash, 1);
     fails += expect_eq("deterministic shading", sa.shade[0] == sb.shade[0] &&
                        sa.shade[PROJ_COLS / 2] == sb.shade[PROJ_COLS / 2], 1);
     fails += expect_eq("panel u spans world surface", sa.u[0] != sa.u[PROJ_COLS - 1], 1);
 
     /* Translation changes floor projections but not the centre door's world u. */
     reset(); run_ticks(1, 10);
-    if (render_spans(&sf, NULL) != 0 || get_detail(&df) != 0) return 2;
-    fails += expect_eq("floor detail moves on translation", df.hash != da.hash, 1);
+    if (render_spans(&sf, NULL) != 0) return 2;
     fails += expect_eq("anchored door panel u under translation", sf.u[PROJ_COLS / 2], 320);
     fails += expect_eq("nearer door shade increases", sf.shade[PROJ_COLS / 2] >= sa.shade[PROJ_COLS / 2], 1);
 
     /* Turning changes projected ceiling detail. */
     reset(); run_ticks(16, 1);
-    if (render_spans(&sf, NULL) != 0 || get_detail(&df) != 0) return 2;
-    fails += expect_eq("ceiling detail responds to turn", df.hash != da.hash, 1);
+    if (render_spans(&sf, NULL) != 0) return 2;
     reset(); run_ticks(1, 30);
     if (render_spans(&sf, NULL) != 0) return 2;
     fails += expect_eq("distance shading threshold", sf.shade[PROJ_COLS / 2], 3);
     fails += expect_eq("near shade brighter", sf.shade[PROJ_COLS / 2] > sa.shade[PROJ_COLS / 2], 1);
-
-    /* Shared wall/line projection: a floor line on the door base and a
-     * ceiling line on the same wall top must match the wall span wherever the
-     * door is visible. These are diagnostic camera states, not play states. */
-    {
-        const int cams[][3] = {
-            {500, 320, 0}, {620, 400, 0},
-            {550, 180, 32}, {600, 250, 32},
-            {700, 50, 64}, {760, 50, 64},
-            {900, 50, 96}, {850, 50, 96},
-            {1000, 320, 128}, {900, 320, 128}
-        };
-        int visible_checks = 0, aligned = 0;
-        int angle_seen[5] = {0,0,0,0,0};
-        for (size_t ci = 0; ci < sizeof cams / sizeof cams[0]; ci++) {
-            char src[160];
-            snprintf(src, sizeof src, "[ doom/px: %d doom/py: %d doom/angle: %d doom/aim ]",
-                     cams[ci][0], cams[ci][1], cams[ci][2]);
-            cell cam = parse_source(src, "camera");
-            if (run_block(cam, "camera") != 0 || render_spans(&sf, NULL) != 0) return 2;
-            TexRows angle_rows;
-            if (get_texrows(&angle_rows) != 0) return 2;
-            fails += expect_eq("texture rows valid at diagnostic angle",
-                               angle_rows.valid[99] && angle_rows.valid[101], 1);
-            int lf[6], lc[6];
-            if (run_capture(floor_line_block, lf, 6, "floor wall base") != 0 ||
-                run_capture(ceil_line_block, lc, 6, "ceiling wall top") != 0) return 2;
-            int ai = (cams[ci][2] + 16) / 32;
-            if (ai > 4) ai = 4;
-            for (int which = 0; which < 2; which++) {
-                int *ln = which ? lc : lf;
-                if (!ln[0]) continue;
-                int xm = (ln[1] + ln[3]) / 2;
-                int ym = (ln[2] + ln[4]) / 2;
-                if (xm < 0 || xm >= FB_W) continue;
-                if (ym < 0 || ym >= FB_H) continue; /* screen-edge clip, not mismatch */
-                int col = xm * PROJ_COLS / FB_W;
-                if (col < 0) col = 0;
-                if (col >= PROJ_COLS) col = PROJ_COLS - 1;
-                if (sf.color[col] != 4) continue;
-                int wall_y = which ? sf.top[col] : sf.bot[col];
-                if (wall_y < 0 || wall_y >= FB_H) continue;
-                visible_checks++;
-                int d = ym > wall_y ? ym - wall_y : wall_y - ym;
-                if (d <= 4) aligned++;
-                else printf("FAIL %s alignment angle=%d pos=%d,%d line_y=%d wall_y=%d\n",
-                            which ? "ceiling" : "floor", cams[ci][2],
-                            cams[ci][0], cams[ci][1], ym, wall_y);
-                angle_seen[ai] = 1;
-            }
-        }
-        fails += expect_eq("floor/ceiling wall alignment samples", aligned, visible_checks);
-        printf("INFO projection alignment: visible=%d aligned=%d angles=%d%d%d%d%d\n",
-               visible_checks, aligned, angle_seen[0], angle_seen[1], angle_seen[2],
-               angle_seen[3], angle_seen[4]);
-    }
-
-    /* Near-plane clipping and reversed endpoint order. */
-    {
-        cell forward_line = parse_source("[ doom/detail-line 100 320 1000 320 0 5 ]", "near clip");
-        cell reverse_line = parse_source("[ doom/detail-line 1000 320 100 320 0 5 ]", "near clip reverse");
-        int a6[6], b6[6];
-        reset();
-        if (run_capture(forward_line, a6, 6, "near clip") != 0 ||
-            run_capture(reverse_line, b6, 6, "near clip reverse") != 0) return 2;
-        fails += expect_eq("near-plane clipped line visible", a6[0], 1);
-        fails += expect_eq("reversed line visible", b6[0], 1);
-        fails += expect_eq("endpoint order independent", a6[0] == b6[0], 1);
-    }
 
     /* Texture coordinate and framebuffer checks. */
     TexRows tr0, tr1, tr2;
@@ -757,18 +687,18 @@ static int self_test(void) {
     reset();
     if (render_spans(&sa, NULL) != 0 || get_texrows(&tr0) != 0 ||
         get_status(&st) != 0) { free(fb); return 2; }
-    draw_buffer(fb, &sa, &da, &tr0, &st, floor_c, ceil_c);
+    draw_buffer(fb, &sa, NULL, &tr0, &st, floor_c, ceil_c);
     uint32_t fh1 = fnv1a(fb, (size_t)FB_W * FB_H * sizeof *fb);
     reset();
     if (render_spans(&sa, NULL) != 0 || get_texrows(&tr0) != 0 ||
         get_status(&st) != 0) { free(fb); return 2; }
-    draw_buffer(fb, &sa, &da, &tr0, &st, floor_c, ceil_c);
+    draw_buffer(fb, &sa, NULL, &tr0, &st, floor_c, ceil_c);
     uint32_t fh2 = fnv1a(fb, (size_t)FB_W * FB_H * sizeof *fb);
     fails += expect_eq("deterministic textured framebuffer", fh1 == fh2, 1);
     reset(); run_ticks(1, 10);
     if (render_spans(&sa, NULL) != 0 || get_texrows(&tr0) != 0 ||
         get_status(&st) != 0) { free(fb); return 2; }
-    draw_buffer(fb, &sa, &da, &tr0, &st, floor_c, ceil_c);
+    draw_buffer(fb, &sa, NULL, &tr0, &st, floor_c, ceil_c);
     fails += expect_eq("textured framebuffer changes with movement",
                        fh1 != fnv1a(fb, (size_t)FB_W * FB_H * sizeof *fb), 1);
     free(fb);
@@ -776,16 +706,16 @@ static int self_test(void) {
     /* Determinism includes door, Alien and sprite status. */
     reset(); run_ticks(1, 60); run_block(activate_block, "activate");
     run_ticks(0, 12); run_ticks(1, 20);
-    get_state(&x, &y, &a); get_status(&st); render_spans(&s, NULL); get_detail(&df);
+    get_state(&x, &y, &a); get_status(&st); render_spans(&s, NULL);
     int x1=x, y1=y, a1=a, ax1=st.ax, ay1=st.ay, st1=st.state, vis1=st.visible;
-    uint32_t h1=s.hash, sh1=fnv1a(&st, sizeof st), dh1=df.hash;
+    uint32_t h1=s.hash, sh1=fnv1a(&st, sizeof st);
     reset(); run_ticks(1, 60); run_block(activate_block, "activate");
     run_ticks(0, 12); run_ticks(1, 20);
-    get_state(&x, &y, &a); get_status(&st); render_spans(&s, NULL); get_detail(&df);
+    get_state(&x, &y, &a); get_status(&st); render_spans(&s, NULL);
     fails += expect_eq("repeated simulation determinism",
                        x1==x && y1==y && a1==a && ax1==st.ax && ay1==st.ay &&
                        st1==st.state && vis1==st.visible && h1==s.hash &&
-                       sh1==fnv1a(&st, sizeof st) && dh1==df.hash, 1);
+                       sh1==fnv1a(&st, sizeof st), 1);
 
     cell loader0 = M[GC_LOADER_HP];
     for (int i = 0; i < 20; i++) {
@@ -808,6 +738,106 @@ static int self_test(void) {
     printf("INFO managed heap high=%ld gc=%ld live=%ld\n",
            r0_s1_heap_high(), r0_s1_gc_count(), r0_s1_gc_live_cells());
     printf("self-test: %s\n", fails ? "FAILED" : "PASSED");
+    return fails ? 1 : 0;
+}
+
+static void build_projection_blocks(void) {
+    reset_block = parse_source("[ doom/reset ]", "reset");
+    floor_line_block = parse_source("[ doom/detail-line 768 256 768 384 0 5 ]", "floor wall base");
+    ceil_line_block = parse_source("[ doom/detail-line 768 256 768 384 128 5 ]", "ceiling wall top");
+    for (int b = 0; b < 2; b++) {
+        size_t cap = 256 + (PROJ_COLS / 2) * 64;
+        char *src = malloc(cap);
+        if (!src) fail("out of memory building projection render block");
+        size_t used = 0;
+        used += (size_t)snprintf(src + used, cap - used, "[ ");
+        for (int i = b * (PROJ_COLS / 2); i < (b + 1) * (PROJ_COLS / 2); i++) {
+            int sx = i * PROJ_SCALE + PROJ_SCALE / 2;
+            used += (size_t)snprintf(src + used, cap - used,
+                                     "doom/sx: %d do doom/render-column-block ", sx);
+        }
+        snprintf(src + used, cap - used, "]");
+        render_blocks[b] = parse_source(src, "projection render");
+        free(src);
+    }
+}
+
+static int projection_test(void) {
+    load_session();
+    load_file("tests/detail.glon");
+    detail_block = parse_source("[ do doom/detail-block ]", "detail");
+    build_projection_blocks();
+    int fails = 0;
+    Spans sf;
+    const int cams[][3] = {
+        {500, 320, 0}, {550, 180, 32}, {700, 150, 64},
+        {600, 150, 96}, {900, 320, 128}
+    };
+    Detail d1, d2, df;
+    reset();
+    if (get_detail(&d1) != 0) return 2;
+    reset();
+    if (get_detail(&d2) != 0) return 2;
+    fails += expect_eq("detail line count", d1.n, 4);
+    fails += expect_eq("identical frame detail hash", d1.hash == d2.hash, 1);
+    reset();
+    if (run_block(parse_source("[ doom/px: 330 doom/aim ]", "detail translate"), "detail translate") != 0 ||
+        get_detail(&df) != 0) return 2;
+    fails += expect_eq("floor detail moves on translation", df.hash != d1.hash, 1);
+    reset();
+    if (run_block(parse_source("[ doom/angle: 1 doom/aim ]", "detail turn"), "detail turn") != 0 ||
+        get_detail(&df) != 0) return 2;
+    fails += expect_eq("ceiling detail responds to turn", df.hash != d1.hash, 1);
+    int visible_checks = 0, aligned = 0;
+    int angle_seen[5] = {0,0,0,0,0};
+    for (size_t ci = 0; ci < sizeof cams / sizeof cams[0]; ci++) {
+        char src[160];
+        snprintf(src, sizeof src, "[ doom/px: %d doom/py: %d doom/angle: %d doom/aim ]",
+                 cams[ci][0], cams[ci][1], cams[ci][2]);
+        cell cam = parse_source(src, "camera");
+        if (run_block(cam, "camera") != 0 || render_spans(&sf, NULL) != 0) return 2;
+        int lf[6], lc[6];
+        if (run_capture(floor_line_block, lf, 6, "floor wall base") != 0 ||
+            run_capture(ceil_line_block, lc, 6, "ceiling wall top") != 0) return 2;
+        int ai = (cams[ci][2] + 16) / 32;
+        if (ai > 4) ai = 4;
+        for (int which = 0; which < 2; which++) {
+            int *ln = which ? lc : lf;
+            if (!ln[0]) continue;
+            int xm = (ln[1] + ln[3]) / 2;
+            int ym = (ln[2] + ln[4]) / 2;
+            if (xm < 0 || xm >= FB_W || ym < 0 || ym >= FB_H) continue;
+            int col = xm * PROJ_COLS / FB_W;
+            if (col < 0) col = 0;
+            if (col >= PROJ_COLS) col = PROJ_COLS - 1;
+            if (sf.color[col] != 4) continue;
+            int wall_y = which ? sf.top[col] : sf.bot[col];
+            if (wall_y < 0 || wall_y >= FB_H) continue;
+            visible_checks++;
+            int d = ym > wall_y ? ym - wall_y : wall_y - ym;
+            if (d <= 4) aligned++;
+            else printf("FAIL %s alignment angle=%d pos=%d,%d line_y=%d wall_y=%d\n",
+                        which ? "ceiling" : "floor", cams[ci][2],
+                        cams[ci][0], cams[ci][1], ym, wall_y);
+            angle_seen[ai] = 1;
+        }
+    }
+    fails += expect_eq("floor/ceiling wall alignment samples", aligned, visible_checks);
+    printf("INFO projection alignment: visible=%d aligned=%d angles=%d%d%d%d%d\n",
+           visible_checks, aligned, angle_seen[0], angle_seen[1], angle_seen[2],
+           angle_seen[3], angle_seen[4]);
+    {
+        cell forward_line = parse_source("[ doom/detail-line 100 320 1000 320 0 5 ]", "near clip");
+        cell reverse_line = parse_source("[ doom/detail-line 1000 320 100 320 0 5 ]", "near clip reverse");
+        int a6[6], b6[6];
+        reset();
+        if (run_capture(forward_line, a6, 6, "near clip") != 0 ||
+            run_capture(reverse_line, b6, 6, "near clip reverse") != 0) return 2;
+        fails += expect_eq("near-plane clipped line visible", a6[0], 1);
+        fails += expect_eq("reversed line visible", b6[0], 1);
+        fails += expect_eq("endpoint order independent", a6[0] == b6[0], 1);
+    }
+    printf("projection-test: %s\n", fails ? "FAILED" : "PASSED");
     return fails ? 1 : 0;
 }
 
@@ -1086,7 +1116,8 @@ static int sdl_present(SDL_Renderer *ren, SDL_Texture *tex, uint32_t *fb,
 
 static void print_metrics(const Metrics *m) {
     printf("metrics: sim=%.2fms wall=%.2fms texrow=%.2fms raster=%.2fms "
-           "present=%.2fms frame=%.2fms fps=%.1f heap_high=%ld gc=%ld live=%ld\n",
+           "present=%.2fms frame=%.2fms fps=%.1f "
+           "heap_high=%ld gc=%ld live=%ld\n",
            m->sim_ms, m->proj_ms, m->texrow_ms, m->raster_ms, m->present_ms,
            m->frame_ms, m->frame_ms > 0.0 ? 1000.0 / m->frame_ms : 0.0,
            m->heap_high, m->gc_count, m->live_cells);
@@ -1094,7 +1125,7 @@ static void print_metrics(const Metrics *m) {
 
 static int bench(int frames) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return 2;
-    SDL_Window *win = SDL_CreateWindow("Glon AVP G5b - benchmark",
+    SDL_Window *win = SDL_CreateWindow("Glon AVP G5f - benchmark",
                                        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                        960, 600, SDL_WINDOW_SHOWN);
     if (!win) fail(SDL_GetError());
@@ -1161,7 +1192,7 @@ static int bench(int frames) {
 
 static int interactive(void) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return 2;
-    SDL_Window *win = SDL_CreateWindow("Glon AVP G5e | W/S/A/D move  arrows turn  E door  R textured/simple  Esc quit",
+    SDL_Window *win = SDL_CreateWindow("Glon AVP G5f | W/S/A/D move  arrows turn  E door  R textured/simple  Esc quit",
                                        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                        960, 600, SDL_WINDOW_SHOWN);
     if (!win) fail(SDL_GetError());
@@ -1261,6 +1292,11 @@ int main(int argc, char **argv) {
     const char *env = getenv("DOOM_ROOT");
     if (env && *env) root_dir = env;
     if (argc > 1 && strcmp(argv[1], "--self-test") == 0) return self_test();
+    if (argc > 1 && strcmp(argv[1], "--projection-test") == 0) {
+        int rc = projection_test();
+        fprintf(stderr, "glon-doom: projection-test %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
     if (argc > 1 && strcmp(argv[1], "--trace") == 0) return scripted_trace();
     if (argc > 2 && strcmp(argv[1], "--shots") == 0) return shot_walkthrough(argv[2]);
     if (argc > 1 && strcmp(argv[1], "--simple") == 0) simple_mode = 1;
