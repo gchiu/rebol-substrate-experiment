@@ -57,6 +57,7 @@ static const char *root_dir = "../..";
 static int simple_mode = 0;
 static cell reset_block, sector_block, report_block, valid_block, collision_block;
 static cell activate_block, status_block, detail_block;
+static cell floor_line_block, ceil_line_block;
 static cell alien_collision_block, los_wall_block, los_clear_block;
 static cell render_blocks[2];
 static cell tick_blocks[64];
@@ -220,6 +221,8 @@ static void build_blocks(void) {
     activate_block = parse_source("[ doom/activate ]", "activate");
     status_block = parse_source("[ do doom/status-block ]", "status");
     detail_block = parse_source("[ do doom/detail-block ]", "detail");
+    floor_line_block = parse_source("[ doom/detail-line 768 256 768 384 0 5 ]", "floor wall base");
+    ceil_line_block = parse_source("[ doom/detail-line 768 256 768 384 128 5 ]", "ceiling wall top");
 
     const char *collision_src =
         "[ "
@@ -596,6 +599,71 @@ static int self_test(void) {
     if (render_spans(&sf, NULL) != 0) return 2;
     fails += expect_eq("distance shading threshold", sf.shade[PROJ_COLS / 2], 3);
     fails += expect_eq("near shade brighter", sf.shade[PROJ_COLS / 2] > sa.shade[PROJ_COLS / 2], 1);
+
+    /* Shared wall/line projection: a floor line on the door base and a
+     * ceiling line on the same wall top must match the wall span wherever the
+     * door is visible. These are diagnostic camera states, not play states. */
+    {
+        const int cams[][3] = {
+            {500, 320, 0}, {620, 400, 0},
+            {550, 180, 32}, {600, 250, 32},
+            {700, 50, 64}, {760, 50, 64},
+            {900, 50, 96}, {850, 50, 96},
+            {1000, 320, 128}, {900, 320, 128}
+        };
+        int visible_checks = 0, aligned = 0;
+        int angle_seen[5] = {0,0,0,0,0};
+        for (size_t ci = 0; ci < sizeof cams / sizeof cams[0]; ci++) {
+            char src[160];
+            snprintf(src, sizeof src, "[ doom/px: %d doom/py: %d doom/angle: %d doom/aim ]",
+                     cams[ci][0], cams[ci][1], cams[ci][2]);
+            cell cam = parse_source(src, "camera");
+            if (run_block(cam, "camera") != 0 || render_spans(&sf, NULL) != 0) return 2;
+            int lf[6], lc[6];
+            if (run_capture(floor_line_block, lf, 6, "floor wall base") != 0 ||
+                run_capture(ceil_line_block, lc, 6, "ceiling wall top") != 0) return 2;
+            int ai = (cams[ci][2] + 16) / 32;
+            if (ai > 4) ai = 4;
+            for (int which = 0; which < 2; which++) {
+                int *ln = which ? lc : lf;
+                if (!ln[0]) continue;
+                int xm = (ln[1] + ln[3]) / 2;
+                int ym = (ln[2] + ln[4]) / 2;
+                if (xm < 0 || xm >= FB_W) continue;
+                if (ym < 0 || ym >= FB_H) continue; /* screen-edge clip, not mismatch */
+                int col = xm * PROJ_COLS / FB_W;
+                if (col < 0) col = 0;
+                if (col >= PROJ_COLS) col = PROJ_COLS - 1;
+                if (sf.color[col] != 4) continue;
+                int wall_y = which ? sf.top[col] : sf.bot[col];
+                if (wall_y < 0 || wall_y >= FB_H) continue;
+                visible_checks++;
+                int d = ym > wall_y ? ym - wall_y : wall_y - ym;
+                if (d <= 4) aligned++;
+                else printf("FAIL %s alignment angle=%d pos=%d,%d line_y=%d wall_y=%d\n",
+                            which ? "ceiling" : "floor", cams[ci][2],
+                            cams[ci][0], cams[ci][1], ym, wall_y);
+                angle_seen[ai] = 1;
+            }
+        }
+        fails += expect_eq("floor/ceiling wall alignment samples", aligned, visible_checks);
+        printf("INFO projection alignment: visible=%d aligned=%d angles=%d%d%d%d%d\n",
+               visible_checks, aligned, angle_seen[0], angle_seen[1], angle_seen[2],
+               angle_seen[3], angle_seen[4]);
+    }
+
+    /* Near-plane clipping and reversed endpoint order. */
+    {
+        cell forward_line = parse_source("[ doom/detail-line 100 320 1000 320 0 5 ]", "near clip");
+        cell reverse_line = parse_source("[ doom/detail-line 1000 320 100 320 0 5 ]", "near clip reverse");
+        int a6[6], b6[6];
+        reset();
+        if (run_capture(forward_line, a6, 6, "near clip") != 0 ||
+            run_capture(reverse_line, b6, 6, "near clip reverse") != 0) return 2;
+        fails += expect_eq("near-plane clipped line visible", a6[0], 1);
+        fails += expect_eq("reversed line visible", b6[0], 1);
+        fails += expect_eq("endpoint order independent", a6[0] == b6[0], 1);
+    }
 
     /* Determinism includes door, Alien and sprite status. */
     reset(); run_ticks(1, 60); run_block(activate_block, "activate");

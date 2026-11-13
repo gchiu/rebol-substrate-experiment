@@ -94,6 +94,56 @@ The detail pass emits **38 lines** (a count plus six integers per line), even
 when a line is off-screen. Wall projection emits **5 integers × 160 columns**;
 status emits 16 integers. All are fixed, bounded command shapes.
 
+## Projection alignment fix
+
+The floor/ceiling line pass and wall raycaster originally used different
+horizontal camera scaling.
+
+Wall rays use the camera plane `(diry, -dirx) * 42/64`. A wall point with
+subunit depth `D` and perpendicular right offset `s` projected at:
+
+```text
+x_wall = 160 + (160 * 64 / 42) * (s / D)  ~= 160 + 243 * (s / D)
+```
+
+The detail-line projector instead used the plane-scaled side value with a
+factor of 160, effectively:
+
+```text
+x_line = 160 + 160 * (42 * s) / (64 * D) ~= 160 + 105 * (s / D)
+```
+
+Vertical projection (`z` and distance) already matched. The horizontal scale
+was therefore compressed by roughly 2.3×, so floor and ceiling lines slid
+against wall boundaries as the camera turned.
+
+The common fix is in Glon's `doom/detail-line`:
+
+- compute the right-side coordinate from the unit right vector
+  `(diry, -dirx)`;
+- use a horizontal focal length of 243, derived from the same 42/64 camera
+  plane;
+- keep the existing vertical projection 246 and near-plane clipping;
+- use the corrected side units consistently for both endpoints.
+
+This changes one shared camera transformation, not cosmetic line placement.
+Wall geometry, collision, player movement speed, door/Alien behaviour and the
+motion tracker are untouched.
+
+Diagnostic alignment tests place a floor line on the door's base and a ceiling
+line on the same wall's top, then compare against the rendered wall boundary
+at multiple camera positions and angles. Six on-screen, unobstructed cases
+(angles 0°, 45° and 180°) align within four framebuffer pixels. The tested
+90°/135° door views are occluded or off-screen at the chosen positions, so they
+are reported as skipped rather than forced. Near-plane clipping and reversed
+endpoint ordering are also tested.
+
+Before/after views use identical camera states:
+
+- `/tmp/g5c-before-fix/`
+- `/tmp/g5c-after-fix/`
+- comparison: `/tmp/g5c-before-after.png`
+
 ## Distance shading
 
 Glon chooses a shade level from the wall intersection distance:
@@ -147,21 +197,24 @@ G5b baseline, measured again before G5c changes:
 - presentation **8.80 ms/frame**
 - total frame **125.98 ms**
 
-G5c detailed mode (final run):
+Pre-fix G5c detailed/simple were **6.9/8.1 FPS**. After the shared projection
+correction:
 
-- FPS **6.9**
-- simulation **2.05 ms/tick**
-- wall + detail + status projection **134.24 ms/frame**
-- native presentation **8.65 ms/frame**
-- total frame **145.04 ms**
+G5c detailed mode (final):
 
-G5c simple mode (final run):
+- FPS **7.6**
+- simulation **1.83 ms/tick**
+- wall + detail + status projection **122.64 ms/frame**
+- native presentation **7.03 ms/frame**
+- total frame **131.59 ms**
 
-- FPS **8.1**
-- simulation **1.92 ms/tick**
-- projection **113.21 ms/frame**
-- presentation **8.57 ms/frame**
-- total frame **123.77 ms**
+G5c simple mode (final):
+
+- FPS **8.4**
+- simulation **1.79 ms/tick**
+- projection **110.63 ms/frame**
+- presentation **6.88 ms/frame**
+- total frame **119.37 ms**
 
 Managed heap high-water: **33,440 cells**. No GC cycles in measured frames
 (`gc=0`, `live=0`). The loader frontier was **54,146 cells** and identical
@@ -187,8 +240,11 @@ surface detail. No general VM or renderer optimisation was attempted.
 10. framebuffer and command-shape bounds, including 38 detail lines and
     5×160 wall fields;
 11. identical world state produces identical wall/detail hashes;
-12. repeated sessions have no loader growth;
-13. frozen-S1 compliance.
+12. floor line on a wall base and ceiling line on the same wall top align
+    with the rendered wall boundary wherever visible/unobstructed;
+13. near-plane clipping and reversed endpoint ordering;
+14. repeated sessions have no loader growth;
+15. frozen-S1 compliance.
 
 Also preserved: all ten linedef collision probes for player and Alien, corridor
 traversal, Alien waiting/approach/attack and repeated simulation determinism.
@@ -228,7 +284,7 @@ No Doom source or assets are copied here.
 
 ## Known limitations
 
-- Detailed rendering runs at about **6.9 FPS**; simple mode about **8.1 FPS**.
+- Detailed rendering runs at about **7.6 FPS**; simple mode about **8.4 FPS**.
 - Wall panels are low-resolution 2-pixel strips; seams/ribs can alias at grazing
   angles.
 - Floor/ceiling detail is line work, not textured floor casting; grid coverage

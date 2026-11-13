@@ -15,6 +15,7 @@ doom/eye: 64
 doom/wall-height: 128
 doom/horizon: 100
 doom/projection: 246
+doom/focal-h: 243
 doom/screen-w: 320
 doom/screen-h: 200
 doom/line-count: 10
@@ -864,11 +865,11 @@ doom/detail-line: func [x1 y1 x2 y2 z c] [
     doom/e1dx: - x1 doom/px
     doom/e1dy: - y1 doom/py
     doom/e1dep: / + * doom/e1dx doom/dirx * doom/e1dy doom/diry 64
-    doom/e1side: / + * doom/e1dx doom/planex * doom/e1dy doom/planey 64
+    doom/e1side: / - * doom/e1dx doom/diry * doom/e1dy doom/dirx 64
     doom/e2dx: - x2 doom/px
     doom/e2dy: - y2 doom/py
     doom/e2dep: / + * doom/e2dx doom/dirx * doom/e2dy doom/diry 64
-    doom/e2side: / + * doom/e2dx doom/planex * doom/e2dy doom/planey 64
+    doom/e2side: / - * doom/e2dx doom/diry * doom/e2dy doom/dirx 64
     doom/dvis: 0
     either > doom/e1dep 0 [
         either > doom/e2dep 0 [
@@ -888,9 +889,9 @@ doom/detail-line: func [x1 y1 x2 y2 z c] [
         ] [ none ]
     ]
     either = doom/dvis 1 [
-        doom/e1sx: + 160 / * doom/e1side 160 doom/e1dep
+        doom/e1sx: + 160 / * doom/e1side doom/focal-h doom/e1dep
         doom/e1sy: - doom/horizon / * - z doom/eye doom/projection doom/e1dep
-        doom/e2sx: + 160 / * doom/e2side 160 doom/e2dep
+        doom/e2sx: + 160 / * doom/e2side doom/focal-h doom/e2dep
         doom/e2sy: - doom/horizon / * - z doom/eye doom/projection doom/e2dep
         print 1
         print doom/e1sx
