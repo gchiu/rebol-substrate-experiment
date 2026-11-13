@@ -430,6 +430,32 @@ Not yet run in WASM. Details are in `experiments/glon-iter/GLON-ITER-V001.md`.
   edges but blurs texels; it is optional (`--filter linear`), not default.
   Environmental resolution/tiling is deferred to G5j; G5d artwork unchanged.
 
+### G5j AvP wall tiling diagnosis [MEASURED]
+
+[MEASURED 2026-11-14, `experiments/glon-avp-g5j`, native 64K, GCC 11.4.0
+`-O2`, WSL2 AMD Ryzen 5 7535U]
+
+- **Root cause of the Tetris walls:** the G5d wall textures are non-tileable
+  contact-sheet crops. Opposite-edge RGB differences are 160–414 for old wall
+  assets versus 0.4–7.7 for two new original seamless 64×64 textures. The UV
+  checker found no hidden wall-strip gaps; repeated 64×64 tiling creates hard
+  seams. Low 320×200 resolution, 2-pixel rays and four shade levels amplify the
+  pattern but are secondary.
+- **Configuration A** (320×200, 160 rays) remains the supported practical
+  configuration. 320 rays are blocked by the loader cost of four hosted
+  ray-block sources (478 cells free); 640×400 requires parallel Glon
+  projection/texrow work because the wall U formula, horizon and 200-row
+  texrow data are hardcoded. No ray/block duplication was used.
+- **New textures:** `panel_v2` and `service_v2`, original seamless assets;
+  32,768 compiled bytes, no Glon loader/managed allocation. New textures
+  visually restore continuous panels. Median performance: new textures 19.6
+  FPS (wall 17.73 ms), smooth shading 21.4 FPS, new+smooth 21.6 FPS vs 21.7
+  baseline; all above 15 FPS. Smooth shading is host-only and leaves Glon
+  S1/HOST counts unchanged.
+- **Preserved:** G5h raw wall (4,555,404 S1 ops, 846,833 HOST/frame), G5i Alien
+  sprites, 64K map, loader 14,322/478 free, code 14,828/16,128, managed 33,472,
+  GC 0.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

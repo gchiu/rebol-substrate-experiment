@@ -560,6 +560,20 @@ found no wall-strip gaps; the remaining blockiness is low internal resolution,
 scaling is optional and does not replace the deferred G5j environmental review.
 Full report: `experiments/glon-doom/G5I-INVESTIGATION.md`.
 
+## 10d. AvP G5j wall tiling diagnosis (2026-11-14)
+
+G5j traced the Tetris-like walls to non-tileable 64x64 G5d contact-sheet crops,
+not primarily to ray count or resolution. Opposite-edge RGB differences were
+160–414 for the old wall textures versus 0.4–7.7 for two new original seamless
+textures. The UV checker showed no hidden strip gaps. New textures remove the
+repeated hard seams; smooth shading removes some banding.
+
+Configuration A (320x200, 160 rays) remains supported. 320 rays is blocked by
+the loader cost of four hosted ray source blocks (478 free); 640x400 requires
+parallel Glon projection/texrow work. Textured performance remains 19.6–21.7
+FPS across new/smooth variants, above 15 FPS. Raw wall and Alien paths are
+preserved. Full report: `experiments/glon-doom/G5J-INVESTIGATION.md`.
+
 ## 11. Detailed documents
 
 - `README.md` — project intro.

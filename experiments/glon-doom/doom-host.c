@@ -17,6 +17,7 @@
 #include "m1_layout.h"
 #include "textures.h"
 #include "alien_sprites.h"
+#include "g5j_textures.h"
 #ifdef DOOM_S1_PROFILE
 #include "s1_prof.h"
 #endif
@@ -104,6 +105,8 @@ static int stationary_enabled = 0;
 static int raw_wall_mode = 0;
 static int checker_walls = 0;
 static int linear_filter = 0;
+static int new_textures = 0;
+static int smooth_shading = 0;
 static uint32_t sim_tick = 0;
 static double last_sprite_ms = 0.0;
 static cell reset_block, sector_block, report_block, valid_block, collision_block;
@@ -529,6 +532,10 @@ static int open_door_near(void) {
 static int self_test(void) {
     int fails = 0, x, y, a;
     Status st;
+    fails += expect_eq("framebuffer width", FB_W, 320);
+    fails += expect_eq("framebuffer height", FB_H, 200);
+    fails += expect_eq("wall ray count", PROJ_COLS, 160);
+    fails += expect_eq("pixels per wall ray", PROJ_SCALE, 2);
     load_session();
     build_blocks();
     int floor_c, ceil_c;
@@ -1065,6 +1072,10 @@ static void plot(uint32_t *fb, int x, int y, uint32_t c) {
 }
 
 static const uint32_t *wall_texture(int material) {
+    if (new_textures) {
+        if (material == 0 || material == 2 || material == 4) return tex_panel_v2;
+        if (material == 1 || material == 3) return tex_service_v2;
+    }
     switch (material) {
     case 0: return tex_wall_panel;
     case 1: return tex_wall_service;
@@ -1085,12 +1096,28 @@ static int wall_tex_v(int y, int top, int bot) {
     return v;
 }
 
+static int smooth_wall_pct(int top, int bot, int shade) {
+    int h = bot - top + 1;
+    int pct;
+    if (h >= 123) pct = 100;
+    else if (h >= 61) pct = 82 + (h - 61) * 18 / 62;
+    else if (h >= 31) pct = 64 + (h - 31) * 18 / 30;
+    else pct = 48 + h * 16 / 31;
+    (void)shade;
+    return pct;
+}
+
 static uint32_t checker_tex(int u, int v) {
     int cell = ((u >> 3) + (v >> 3)) & 1;
-    int grid = ((u & 7) == 0 || (v & 7) == 0);
-    if (grid) return 0xffd8d0b0u;
-    if ((u >> 5) == (v >> 5)) return cell ? 0xff2d6c72u : 0xff667b62u;
-    return cell ? 0xffa34c42u : 0xff3e4d5cau;
+    int minor = ((u & 7) == 0 || (v & 7) == 0);
+    int major = ((u & 31) == 0 || (v & 31) == 0);
+    int grad = ((u + v) * 19) & 31;
+    if (major) return 0xfffff0c0u;
+    if (minor) return 0xffd8d0b0u;
+    int r = 40 + grad, g = 58 + grad, b = 66 + grad;
+    if (cell) { r = 150 - grad; g = 65 + grad / 2; b = 52; }
+    else { r = 35; g = 74 + grad; b = 82 + grad; }
+    return 0xff000000u | ((uint32_t)r<<16) | ((uint32_t)g<<8) | (uint32_t)b;
 }
 
 static uint32_t sample_wall_tex(int material, int u, int y, int top, int bot, int shade) {
@@ -1104,7 +1131,9 @@ static uint32_t sample_wall_tex(int material, int u, int y, int top, int bot, in
     if (tu < 0) tu = 0;
     if (tu > 63) tu = 63;
     int v = wall_tex_v(y, top, bot);
-    return shade_color(tex[v * 64 + tu], shade);
+    uint32_t base = tex[v * 64 + tu];
+    if (smooth_shading) return scale_color(base, smooth_wall_pct(top, bot, shade));
+    return shade_color(base, shade);
 }
 
 static void draw_tex_planes(uint32_t *fb, const TexRows *r) {
@@ -1930,6 +1959,8 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--raw-wall") == 0) raw_wall_mode = 1;
         if (strcmp(argv[i], "--checker") == 0) checker_walls = 1;
+        if (strcmp(argv[i], "--new-textures") == 0) new_textures = 1;
+        if (strcmp(argv[i], "--smooth-shading") == 0) smooth_shading = 1;
         if (strcmp(argv[i], "--filter") == 0 && i + 1 < argc &&
             strcmp(argv[i + 1], "linear") == 0) linear_filter = 1;
     }

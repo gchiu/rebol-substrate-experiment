@@ -217,3 +217,27 @@ Wall diagnosis: `--checker` preserves geometry/materials and shows repeated
 64x64 tiles without strip gaps. `--filter linear` is an optional final
 framebuffer softening, not a default and not a substitute for fixing texture
 density/tiling. See `G5I-INVESTIGATION.md`.
+
+## G5j wall tiling and shading diagnosis
+
+The Tetris-like environment was traced primarily to **non-tileable G5d texture
+crops**: opposite-edge RGB differences were 160–414 for the old wall assets,
+versus 0.4–7.7 for the new original seamless textures. The UV grid found no
+wall-strip gaps; low resolution, 2-pixel rays and four shading levels amplify
+the seams but are not the primary defect.
+
+Experimental flags:
+
+```sh
+./build/doom --raw-wall --bench 120 --new-textures
+./build/doom --raw-wall --bench 120 --smooth-shading
+./build/doom --raw-wall --bench 120 --new-textures --smooth-shading
+./build/doom --shots /tmp/g5j-new --new-textures
+./build/doom --shots /tmp/g5j-checker --checker
+```
+
+The new textures are
+`sprites/textures_g5j/panel_v2.png` and `service_v2.png`. Recommended
+configuration remains 320×200/160 rays with the prepared-masm wall path.
+320-ray and 640×400 variants are blocked by loader and Glon projection/texrow
+coupling, respectively; see `G5J-INVESTIGATION.md`.
