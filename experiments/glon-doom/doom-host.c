@@ -15,6 +15,7 @@
 #define _GNU_SOURCE
 #include "r0_s1.h"
 #include "m1_layout.h"
+#include "textures.h"
 #include <SDL2/SDL.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -42,6 +43,12 @@ typedef struct { int visible, x1, y1, x2, y2, color; } DetailLine;
 typedef struct { int n; DetailLine line[DETAIL_MAX]; uint32_t hash; } Detail;
 
 typedef struct {
+    int valid[FB_H];
+    int bx[FB_H], by[FB_H], sx[FB_H], sy[FB_H], shade[FB_H];
+    uint32_t hash;
+} TexRows;
+
+typedef struct {
     int door_open, door_blocked, door_target;
     int ax, ay, health, state, detected;
     int td2, tside, tdepth;
@@ -49,18 +56,23 @@ typedef struct {
 } Status;
 
 typedef struct {
-    double sim_ms, proj_ms, present_ms, frame_ms;
+    double sim_ms, proj_ms, texrow_ms, raster_ms, present_ms, frame_ms;
     long heap_high, gc_count, live_cells;
 } Metrics;
 
 static const char *root_dir = "../..";
 static int simple_mode = 0;
 static cell reset_block, sector_block, report_block, valid_block, collision_block;
-static cell activate_block, status_block, detail_block;
+static cell activate_block, status_block, detail_block, texrows_block;
 static cell floor_line_block, ceil_line_block;
 static cell alien_collision_block, los_wall_block, los_clear_block;
 static cell render_blocks[2];
 static cell tick_blocks[64];
+
+static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
+                        const TexRows *tr, const Status *st,
+                        int floor_c, int ceil_c);
+static int wall_tex_v(int y, int top, int bot);
 
 static long now_ns(void) {
     struct timespec ts;
@@ -221,6 +233,7 @@ static void build_blocks(void) {
     activate_block = parse_source("[ doom/activate ]", "activate");
     status_block = parse_source("[ do doom/status-block ]", "status");
     detail_block = parse_source("[ do doom/detail-block ]", "detail");
+    texrows_block = parse_source("[ do doom/texrows-block ]", "texrows");
     floor_line_block = parse_source("[ doom/detail-line 768 256 768 384 0 5 ]", "floor wall base");
     ceil_line_block = parse_source("[ doom/detail-line 768 256 768 384 128 5 ]", "ceiling wall top");
 
@@ -334,6 +347,32 @@ static int get_detail(Detail *d) {
         d->line[i].color = vals[6 + i * 6];
     }
     d->hash = fnv1a(&vals[1], (size_t)n * 6 * sizeof(int));
+    free(c.buf);
+    return 0;
+}
+
+static int get_texrows(TexRows *r) {
+    Capture c;
+    capture_begin(&c);
+    int rc = run_block(texrows_block, "texrows");
+    capture_end(&c);
+    if (rc != 0) { free(c.buf); return -1; }
+    char *end;
+    long n = strtol(c.buf, &end, 10);
+    if (end == c.buf || n != FB_H) { free(c.buf); return -1; }
+    int vals[1 + FB_H * 7];
+    if (parse_ints(&c, vals, 1 + (int)n * 7, "texrows") != 0) { free(c.buf); return -1; }
+    for (int i = 0; i < n; i++) {
+        int y = vals[1 + i * 7];
+        if (y < 0 || y >= FB_H) { free(c.buf); return -1; }
+        r->valid[y] = vals[2 + i * 7];
+        r->bx[y] = vals[3 + i * 7];
+        r->by[y] = vals[4 + i * 7];
+        r->sx[y] = vals[5 + i * 7];
+        r->sy[y] = vals[6 + i * 7];
+        r->shade[y] = vals[7 + i * 7];
+    }
+    r->hash = fnv1a(&vals[1], (size_t)n * 7 * sizeof(int));
     free(c.buf);
     return 0;
 }
@@ -573,7 +612,7 @@ static int self_test(void) {
             sa.shade[i] < 0 || sa.shade[i] > 3 ||
             sa.u[i] < 0 || sa.u[i] > 2048) bounds = 0;
     fails += expect_eq("framebuffer spans", bounds, 1);
-    fails += expect_eq("detail line count", da.n, 38);
+    fails += expect_eq("detail line count", da.n, 8);
     fails += expect_eq("wall panel world anchor", sa.u[PROJ_COLS / 2], 320);
     fails += expect_eq("wall panel u not screen x", sa.u[PROJ_COLS / 2] != 160, 1);
     fails += expect_eq("wall shade far/near level", sa.shade[PROJ_COLS / 2], 2);
@@ -619,6 +658,10 @@ static int self_test(void) {
                      cams[ci][0], cams[ci][1], cams[ci][2]);
             cell cam = parse_source(src, "camera");
             if (run_block(cam, "camera") != 0 || render_spans(&sf, NULL) != 0) return 2;
+            TexRows angle_rows;
+            if (get_texrows(&angle_rows) != 0) return 2;
+            fails += expect_eq("texture rows valid at diagnostic angle",
+                               angle_rows.valid[99] && angle_rows.valid[101], 1);
             int lf[6], lc[6];
             if (run_capture(floor_line_block, lf, 6, "floor wall base") != 0 ||
                 run_capture(ceil_line_block, lc, 6, "ceiling wall top") != 0) return 2;
@@ -664,6 +707,61 @@ static int self_test(void) {
         fails += expect_eq("reversed line visible", b6[0], 1);
         fails += expect_eq("endpoint order independent", a6[0] == b6[0], 1);
     }
+
+    /* Texture coordinate and framebuffer checks. */
+    TexRows tr0, tr1, tr2;
+    reset();
+    if (render_spans(&sa, NULL) != 0 || get_texrows(&tr0) != 0 ||
+        get_texrows(&tr1) != 0 || get_status(&st) != 0) return 2;
+    fails += expect_eq("texture row count/valid", tr0.valid[99] && !tr0.valid[100] &&
+                       tr0.valid[101], 1);
+    fails += expect_eq("texture rows deterministic", tr0.hash == tr1.hash, 1);
+    int row_shade_ok = 1;
+    for (int y = 0; y < FB_H; y++)
+        if (tr0.shade[y] < 0 || tr0.shade[y] > 3) row_shade_ok = 0;
+    fails += expect_eq("texture row shade bounds", row_shade_ok, 1);
+    fails += expect_eq("wall texture v top", wall_tex_v(10, 10, 20), 0);
+    fails += expect_eq("wall texture v bottom", wall_tex_v(20, 10, 20), 63);
+    fails += expect_eq("wall texture v midpoint", wall_tex_v(15, 10, 20), 32);
+
+    int wall_base = sa.bot[PROJ_COLS / 2];
+    int wall_top = sa.top[PROJ_COLS / 2];
+    int centre_sx = (PROJ_COLS / 2) * PROJ_SCALE + PROJ_SCALE - 1;
+    int64_t fwx = (int64_t)tr0.bx[wall_base] + (int64_t)tr0.sx[wall_base] * centre_sx;
+    int64_t fwy = (int64_t)tr0.by[wall_base] + (int64_t)tr0.sy[wall_base] * centre_sx;
+    int64_t cwx = (int64_t)tr0.bx[wall_top] + (int64_t)tr0.sx[wall_top] * centre_sx;
+    int64_t cwy = (int64_t)tr0.by[wall_top] + (int64_t)tr0.sy[wall_top] * centre_sx;
+    fails += expect_near("floor/wall base world x", (int)(fwx >> 16), 768, 24);
+    fails += expect_near("floor/wall base world y", (int)(fwy >> 16), 320, 24);
+    fails += expect_near("ceiling/wall top world x", (int)(cwx >> 16), 768, 24);
+    fails += expect_near("ceiling/wall top world y", (int)(cwy >> 16), 320, 24);
+
+    reset(); run_ticks(1, 10); get_texrows(&tr2);
+    fails += expect_eq("floor/ceiling rows move with translation", tr2.hash != tr0.hash, 1);
+    reset(); run_ticks(16, 1); get_texrows(&tr2);
+    fails += expect_eq("floor/ceiling rows respond to turn", tr2.hash != tr0.hash, 1);
+
+    /* Native textured rasterisation hashes. */
+    uint32_t *fb = malloc((size_t)FB_W * FB_H * sizeof *fb);
+    if (!fb) return 2;
+    reset();
+    if (render_spans(&sa, NULL) != 0 || get_texrows(&tr0) != 0 ||
+        get_status(&st) != 0) { free(fb); return 2; }
+    draw_buffer(fb, &sa, &da, &tr0, &st, floor_c, ceil_c);
+    uint32_t fh1 = fnv1a(fb, (size_t)FB_W * FB_H * sizeof *fb);
+    reset();
+    if (render_spans(&sa, NULL) != 0 || get_texrows(&tr0) != 0 ||
+        get_status(&st) != 0) { free(fb); return 2; }
+    draw_buffer(fb, &sa, &da, &tr0, &st, floor_c, ceil_c);
+    uint32_t fh2 = fnv1a(fb, (size_t)FB_W * FB_H * sizeof *fb);
+    fails += expect_eq("deterministic textured framebuffer", fh1 == fh2, 1);
+    reset(); run_ticks(1, 10);
+    if (render_spans(&sa, NULL) != 0 || get_texrows(&tr0) != 0 ||
+        get_status(&st) != 0) { free(fb); return 2; }
+    draw_buffer(fb, &sa, &da, &tr0, &st, floor_c, ceil_c);
+    fails += expect_eq("textured framebuffer changes with movement",
+                       fh1 != fnv1a(fb, (size_t)FB_W * FB_H * sizeof *fb), 1);
+    free(fb);
 
     /* Determinism includes door, Alien and sprite status. */
     reset(); run_ticks(1, 60); run_block(activate_block, "activate");
@@ -733,7 +831,8 @@ static int scripted_trace(void) {
 }
 
 static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
-                        const Status *st, int floor_c, int ceil_c);
+                        const TexRows *tr, const Status *st,
+                        int floor_c, int ceil_c);
 
 /* ---- Deterministic screenshot walkthrough ------------------------------ */
 
@@ -762,12 +861,12 @@ static int shot_walkthrough(const char *dir) {
     char path[4096];
     const char *names[] = { "room", "near-door", "corridor", "alien", "inside", "turn" };
     int stage = 0;
-    Spans s; Detail d; Status st;
+    Spans s; Detail d; TexRows tr; Status st;
     for (;;) {
-        if (render_spans(&s, NULL) != 0 || get_detail(&d) != 0 || get_status(&st) != 0) {
+        if (render_spans(&s, NULL) != 0 || get_texrows(&tr) != 0 || get_status(&st) != 0) {
             free(fb); return 2;
         }
-        draw_buffer(fb, &s, &d, &st, floor_c, ceil_c);
+        draw_buffer(fb, &s, &d, &tr, &st, floor_c, ceil_c);
         snprintf(path, sizeof path, "%s/%s.ppm", dir, names[stage]);
         if (save_ppm(path, fb) != 0) { free(fb); return 2; }
         int px, py, pa;
@@ -817,75 +916,61 @@ static uint32_t shade_color(uint32_t c, int shade) {
     return scale_color(c, pct[shade]);
 }
 
-/* Wall pattern: u is Glon's world-space surface coordinate; the vertical
- * position is the projected span fraction. No screen-space scrolling. */
-static uint32_t wall_pixel(uint32_t base, int color, int u, int shade,
-                           int y, int top, int bot) {
-    int den = bot - top + 1;
-    int rel = den > 0 ? (y - top) * 100 / den : 50;
-    int phase = u % 128;
-    if (phase < 0) phase += 128;
-    int panel = u / 128;
-    if (panel < 0) panel = -panel;
-    uint32_t c = shade_color(base, shade);
-    if (color == 4) {
-        /* Door: framed amber slabs with heavy top/bottom rails. */
-        if (rel < 10 || rel > 90 || phase < 8 || phase > 120)
-            c = scale_color(c, 42);
-    } else {
-        if (rel < 7 || rel > 93 || (rel >= 46 && rel <= 54))
-            c = scale_color(c, 55);
-        if (phase < 6 || phase > 122)
-            c = scale_color(c, 34);
-        if ((panel & 3) == 0 && phase < 20)
-            c = scale_color(c, 42);
-    }
-    return c;
-}
-
 static void plot(uint32_t *fb, int x, int y, uint32_t c) {
     if (x >= 0 && x < FB_W && y >= 0 && y < FB_H) fb[y * FB_W + x] = c;
 }
 
-static void draw_line(uint32_t *fb, int x0, int y0, int x1, int y1, uint32_t c) {
-    double ax = x0, ay = y0, bx = x1, by = y1;
-    double t0 = 0.0, t1 = 1.0, dx = bx - ax, dy = by - ay;
-    double p[4] = { -dx, dx, -dy, dy };
-    double q[4] = { ax, FB_W - 1 - ax, ay, FB_H - 1 - ay };
-    for (int i = 0; i < 4; i++) {
-        if (p[i] == 0.0) {
-            if (q[i] < 0.0) return;
-        } else {
-            double r = q[i] / p[i];
-            if (p[i] < 0.0) { if (r > t1) return; if (r > t0) t0 = r; }
-            else            { if (r < t0) return; if (r < t1) t1 = r; }
+static int clamp255(int v) { return v < 0 ? 0 : v > 255 ? 255 : v; }
+static uint32_t tint_wall(uint32_t c, int color) {
+    int r = (int)((c >> 16) & 255), g = (int)((c >> 8) & 255), b = (int)(c & 255);
+    if (color == 1) { r = r * 108 / 100; g = g * 99 / 100; b = b * 94 / 100; }
+    else if (color == 2) { r = r * 92 / 100; g = g * 100 / 100; b = b * 110 / 100; }
+    else if (color == 3) { r = r * 78 / 100; g = g * 98 / 100; b = b * 130 / 100; }
+    return 0xff000000u | ((uint32_t)clamp255(r) << 16) |
+           ((uint32_t)clamp255(g) << 8) | (uint32_t)clamp255(b);
+}
+
+static int wall_tex_v(int y, int top, int bot) {
+    int den = bot - top;
+    if (den <= 0) return 0;
+    int v = (y - top) * 64 / den;
+    if (v < 0) v = 0;
+    if (v > 63) v = 63;
+    return v;
+}
+
+static uint32_t sample_wall_tex(int color, int u, int y, int top, int bot, int shade) {
+    const uint32_t *tex = (color == 4) ? tex_door : tex_wall;
+    int tu;
+    if (color == 4) {
+        tu = (u - 256) * 64 / 128;
+    } else {
+        tu = (u >> 2) & 63;
+    }
+    if (tu < 0) tu = 0;
+    if (tu > 63) tu = 63;
+    int v = wall_tex_v(y, top, bot);
+    uint32_t c = tex[v * 64 + tu];
+    if (color != 4) c = tint_wall(c, color);
+    return shade_color(c, shade);
+}
+
+static void draw_tex_planes(uint32_t *fb, const TexRows *r) {
+    for (int y = 0; y < FB_H; y++) {
+        if (!r->valid[y]) continue;
+        const uint32_t *tex = (y > FB_H / 2) ? tex_floor : tex_ceiling;
+        int shade = r->shade[y];
+        for (int x = 0; x < FB_W; x++) {
+            int64_t wx = (int64_t)r->bx[y] + (int64_t)r->sx[y] * x;
+            int64_t wy = (int64_t)r->by[y] + (int64_t)r->sy[y] * x;
+            int tx = (int)((wx >> 16) >> 2) & 63;
+            int ty = (int)((wy >> 16) >> 2) & 63;
+            uint32_t c = tex[ty * 64 + tx];
+            fb[y * FB_W + x] = shade_color(c, shade);
         }
     }
-    int cx0 = (int)(ax + t0 * dx + 0.5), cy0 = (int)(ay + t0 * dy + 0.5);
-    int cx1 = (int)(ax + t1 * dx + 0.5), cy1 = (int)(ay + t1 * dy + 0.5);
-    int sx = cx0 < cx1 ? 1 : -1, sy = cy0 < cy1 ? 1 : -1;
-    int adx = cx1 > cx0 ? cx1 - cx0 : cx0 - cx1;
-    int ady = cy1 > cy0 ? cy1 - cy0 : cy0 - cy1;
-    int err = adx - ady;
-    for (;;) {
-        plot(fb, cx0, cy0, c);
-        if (cx0 == cx1 && cy0 == cy1) break;
-        int e2 = err * 2;
-        if (e2 > -ady) { err -= ady; cx0 += sx; }
-        if (e2 < adx)  { err += adx; cy0 += sy; }
-    }
 }
 
-static void draw_detail(uint32_t *fb, const Detail *d) {
-    for (int i = 0; i < d->n; i++) {
-        const DetailLine *l = &d->line[i];
-        if (!l->visible) continue;
-        draw_line(fb, l->x1, l->y1, l->x2, l->y2, palette(l->color));
-    }
-}
-
-/* A deliberately simple, original Alien silhouette. Glon supplies visibility
- * and the projected screen rectangle; this function only rasterises pixels. */
 static void draw_alien_sprite(uint32_t *fb, const Status *st) {
     if (!st->visible) return;
     int l = st->left, r = st->right, t = st->top, b = st->bot;
@@ -951,21 +1036,23 @@ static void draw_tracker(uint32_t *fb, const Status *st) {
 }
 
 static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
-                        const Status *st, int floor_c, int ceil_c) {
+                        const TexRows *tr, const Status *st,
+                        int floor_c, int ceil_c) {
+    (void)d;
     for (int y = 0; y < FB_H; y++)
         for (int x = 0; x < FB_W; x++)
             fb[y * FB_W + x] = (y < FB_H / 2) ? palette(ceil_c) : palette(floor_c);
-    if (!simple_mode) draw_detail(fb, d);
+    if (!simple_mode && tr) draw_tex_planes(fb, tr);
     for (int i = 0; i < PROJ_COLS; i++) {
         int top = s->top[i], bot = s->bot[i];
         if (top < 0) top = 0;
         if (bot >= FB_H) bot = FB_H - 1;
         if (top > bot) continue;
         int color = s->color[i], u = s->u[i], shade = s->shade[i];
-        uint32_t base = palette(color);
+        uint32_t flat = palette(color);
         for (int y = top; y <= bot; y++) {
-            uint32_t c = simple_mode ? shade_color(base, shade)
-                                     : wall_pixel(base, color, u, shade, y, top, bot);
+            uint32_t c = simple_mode ? shade_color(flat, shade)
+                                     : sample_wall_tex(color, u, y, top, bot, shade);
             for (int x = i * PROJ_SCALE; x < (i + 1) * PROJ_SCALE; x++)
                 fb[y * FB_W + x] = c;
         }
@@ -975,24 +1062,27 @@ static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
 }
 
 static int sdl_present(SDL_Renderer *ren, SDL_Texture *tex, uint32_t *fb,
-                       const Spans *s, const Detail *d, const Status *st,
-                       int floor_c, int ceil_c, double *present_ms) {
-    draw_buffer(fb, s, d, st, floor_c, ceil_c);
-    long t0 = now_ns();
+                       const Spans *s, const Detail *d, const TexRows *tr,
+                       const Status *st, int floor_c, int ceil_c,
+                       double *raster_ms, double *present_ms) {
+    long r0 = now_ns();
+    draw_buffer(fb, s, d, tr, st, floor_c, ceil_c);
+    long r1 = now_ns();
+    if (raster_ms) *raster_ms = (double)(r1 - r0) / 1e6;
     if (SDL_UpdateTexture(tex, NULL, fb, FB_W * (int)sizeof(uint32_t)) != 0) return -1;
     SDL_RenderClear(ren);
     SDL_RenderCopy(ren, tex, NULL, NULL);
     SDL_RenderPresent(ren);
     long t1 = now_ns();
-    if (present_ms) *present_ms = (double)(t1 - t0) / 1e6;
+    if (present_ms) *present_ms = (double)(t1 - r1) / 1e6;
     return 0;
 }
 
 static void print_metrics(const Metrics *m) {
-    printf("metrics: sim=%.2fms proj=%.2fms present=%.2fms frame=%.2fms fps=%.1f "
-           "heap_high=%ld gc=%ld live=%ld\n",
-           m->sim_ms, m->proj_ms, m->present_ms, m->frame_ms,
-           m->frame_ms > 0.0 ? 1000.0 / m->frame_ms : 0.0,
+    printf("metrics: sim=%.2fms wall=%.2fms texrow=%.2fms raster=%.2fms "
+           "present=%.2fms frame=%.2fms fps=%.1f heap_high=%ld gc=%ld live=%ld\n",
+           m->sim_ms, m->proj_ms, m->texrow_ms, m->raster_ms, m->present_ms,
+           m->frame_ms, m->frame_ms > 0.0 ? 1000.0 / m->frame_ms : 0.0,
            m->heap_high, m->gc_count, m->live_cells);
 }
 
@@ -1019,8 +1109,10 @@ static int bench(int frames) {
     if (get_sector(&floor_c, &ceil_c) != 0) return 2;
     Spans s;
     Detail det;
+    TexRows tr;
     Status st;
-    if (get_status(&st) != 0 || get_detail(&det) != 0) return 2;
+    if (get_status(&st) != 0) return 2;
+    if (!simple_mode && get_texrows(&tr) != 0) return 2;
     Metrics sum = {0};
     long wall0 = now_ns();
     for (int i = 0; i < frames; i++) {
@@ -1029,17 +1121,17 @@ static int bench(int frames) {
         long t1 = now_ns();
         long proj_ns;
         if (render_spans(&s, &proj_ns) != 0) return 2;
-        long ds0 = now_ns();
-        if (simple_mode) det.n = 0;
-        else if (get_detail(&det) != 0) return 2;
+        if (!simple_mode && get_texrows(&tr) != 0) return 2;
         if (get_status(&st) != 0) return 2;
         long t2 = now_ns();
-        double present_ms;
-        if (sdl_present(ren, tex, fb, &s, &det, &st, floor_c, ceil_c, &present_ms) != 0) return 2;
-        proj_ns += t2 - ds0;
+        double raster_ms, present_ms;
+        if (sdl_present(ren, tex, fb, &s, &det, simple_mode ? NULL : &tr, &st,
+                        floor_c, ceil_c, &raster_ms, &present_ms) != 0) return 2;
         long t3 = now_ns();
         sum.sim_ms += (double)(t1 - t0) / 1e6;
-        sum.proj_ms += (double)(t2 - t1) / 1e6;
+        sum.proj_ms += (double)proj_ns / 1e6;
+        sum.texrow_ms += (double)(t2 - t1 - proj_ns) / 1e6;
+        sum.raster_ms += raster_ms;
         sum.present_ms += present_ms;
         sum.frame_ms += (double)(t3 - t0) / 1e6;
         SDL_PumpEvents();
@@ -1047,8 +1139,8 @@ static int bench(int frames) {
         while (SDL_PollEvent(&e)) if (e.type == SDL_QUIT) { i = frames; break; }
     }
     long wall1 = now_ns();
-    sum.sim_ms /= frames; sum.proj_ms /= frames; sum.present_ms /= frames;
-    sum.frame_ms /= frames;
+    sum.sim_ms /= frames; sum.proj_ms /= frames; sum.texrow_ms /= frames;
+    sum.raster_ms /= frames; sum.present_ms /= frames; sum.frame_ms /= frames;
     sum.heap_high = r0_s1_heap_high();
     sum.gc_count = r0_s1_gc_count();
     sum.live_cells = r0_s1_gc_live_cells();
@@ -1063,7 +1155,7 @@ static int bench(int frames) {
 
 static int interactive(void) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return 2;
-    SDL_Window *win = SDL_CreateWindow("Glon AVP G5c | W/S/A/D move  arrows turn  E door  R detail  Esc quit",
+    SDL_Window *win = SDL_CreateWindow("Glon AVP G5d | W/S/A/D move  arrows turn  E door  R textured/simple  Esc quit",
                                        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                        960, 600, SDL_WINDOW_SHOWN);
     if (!win) fail(SDL_GetError());
@@ -1083,10 +1175,13 @@ static int interactive(void) {
     if (get_sector(&floor_c, &ceil_c) != 0) return 2;
     Spans s;
     Detail det;
+    TexRows tr;
     Status st;
-    if (get_status(&st) != 0 || get_detail(&det) != 0) return 2;
+    if (get_status(&st) != 0) return 2;
+    if (!simple_mode && get_texrows(&tr) != 0) return 2;
     int running = 1, frames = 0;
-    double acc = 0.0, fps_start = (double)now_ns(), sim_ms = 0, proj_ms = 0, present_ms = 0;
+    double acc = 0.0, fps_start = (double)now_ns(), sim_ms = 0, proj_ms = 0;
+    double texrow_ms = 0, raster_ms = 0, present_ms = 0;
     long last = now_ns();
     while (running) {
         SDL_Event e;
@@ -1122,17 +1217,21 @@ static int interactive(void) {
         long proj_ns;
         if (render_spans(&s, &proj_ns) != 0) break;
         long st0 = now_ns();
-        if (simple_mode) det.n = 0;
-        else if (get_detail(&det) != 0) break;
+        if (!simple_mode && get_texrows(&tr) != 0) break;
         if (get_status(&st) != 0) break;
-        proj_ms += (double)(proj_ns + now_ns() - st0) / 1e6;
-        double pm;
-        if (sdl_present(ren, tex, fb, &s, &det, &st, floor_c, ceil_c, &pm) != 0) break;
+        long st1 = now_ns();
+        proj_ms += (double)proj_ns / 1e6;
+        texrow_ms += (double)(st1 - st0 - proj_ns) / 1e6;
+        double rm, pm;
+        if (sdl_present(ren, tex, fb, &s, &det, simple_mode ? NULL : &tr, &st,
+                        floor_c, ceil_c, &rm, &pm) != 0) break;
+        raster_ms += rm;
         present_ms += pm;
         frames++;
         if (frames % 120 == 0) {
             double secs = ((double)now_ns() - fps_start) / 1e9;
-            Metrics m = { sim_ms / 120, proj_ms / 120, present_ms / 120,
+            Metrics m = { sim_ms / 120, proj_ms / 120, texrow_ms / 120,
+                          raster_ms / 120, present_ms / 120,
                           secs * 1000.0 / 120, r0_s1_heap_high(),
                           r0_s1_gc_count(), r0_s1_gc_live_cells() };
             printf("frame %d: ", frames); print_metrics(&m);
@@ -1142,7 +1241,7 @@ static int interactive(void) {
                        sx, sy, sa, ds.door_open, ds.door_blocked, ds.ax, ds.ay,
                        ds.state, ds.detected, ds.visible);
             fflush(stdout);
-            sim_ms = proj_ms = present_ms = 0;
+            sim_ms = proj_ms = texrow_ms = raster_ms = present_ms = 0;
             fps_start = (double)now_ns();
         }
     }
