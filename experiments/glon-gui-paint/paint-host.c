@@ -4970,6 +4970,114 @@ static int yong_demo(void) {
     return smooth_demo_path("examples/yong.glon", "glon-yong");
 }
 
+
+static int mandala_demo(void) {
+    int saved = 0;
+    if (app_init() != 0) return 2;
+    clear_canvas(); history_free(); replay_forget(); unsaved = 0;
+    Uint32 *initial = snapshot_canvas();
+    if (!initial) return 3;
+
+    Uint64 t0 = SDL_GetPerformanceCounter();
+    if (load_script_file("examples/mandala.glon") != 0) return 4;
+    Uint64 t1 = SDL_GetPerformanceCounter();
+    double load_ms = (double)(t1 - t0) * 1000.0 /
+                     (double)SDL_GetPerformanceFrequency();
+    size_t script_bytes = script_source_len;
+
+    t0 = SDL_GetPerformanceCounter();
+    if (run_script() != 0) return 5;
+    t1 = SDL_GetPerformanceCounter();
+    double immediate_ms = (double)(t1 - t0) * 1000.0 /
+                          (double)SDL_GetPerformanceFrequency();
+    Uint32 *immediate = snapshot_canvas();
+    if (!immediate) return 6;
+    if (save_png("glon-mandala-final.png") != 0) return 7;
+
+    /* Prepare replay and count its command stream. */
+    restore_canvas(initial); history_free(); replay_forget();
+    if (load_script_file("examples/mandala.glon") != 0) return 8;
+    t0 = SDL_GetPerformanceCounter();
+    if (replay_prepare() != 0) return 9;
+    t1 = SDL_GetPerformanceCounter();
+    double prepare_ms = (double)(t1 - t0) * 1000.0 /
+                        (double)SDL_GetPerformanceFrequency();
+    int commands = replay_count;
+    size_t command_bytes = 0;
+    for (int i = 0; i < replay_count; i++) command_bytes += replay_lengths[i] + 1;
+
+    /* Pause, step/back and stop return to the pre-playback canvas. */
+    if (replay_play() != 0) return 10;
+    replay_pause();
+    if (replay_state != REPLAY_PAUSED) return 11;
+    int before = replay_pos;
+    if (replay_step_forward() != 1 || replay_pos != before + 1) return 12;
+    if (replay_step_back() != 1 || replay_pos != before) return 13;
+    replay_stop();
+    Uint32 *stopped = snapshot_canvas();
+    if (!stopped || !replay_snapshots_equal(initial, stopped)) return 14;
+    free(stopped);
+
+    /* Capture 25/50/75% replay prefixes for visual inspection. */
+    if (replay_prepare() != 0 || replay_play() != 0) return 15;
+    int targets[3] = { replay_count / 4, replay_count / 2, replay_count * 3 / 4 };
+    const char *names[3] = { "glon-mandala-25.png", "glon-mandala-50.png",
+                             "glon-mandala-75.png" };
+    for (int i = 0; i < 3; i++) {
+        if (replay_reconstruct(targets[i]) != 0) return 16;
+        if (save_png(names[i]) != 0) return 17;
+    }
+
+    /* Full smooth replay from the pre-playback canvas. */
+    if (replay_reconstruct(0) != 0) return 18;
+    t0 = SDL_GetPerformanceCounter();
+    if (replay_finish_smooth(4) != 0) return 18;
+    t1 = SDL_GetPerformanceCounter();
+    double replay_ms = (double)(t1 - t0) * 1000.0 /
+                       (double)SDL_GetPerformanceFrequency();
+    Uint32 *replayed = snapshot_canvas();
+    if (save_png("glon-mandala-replay-final.png") != 0) return 20;
+    if (!replayed || !replay_snapshots_equal(immediate, replayed)) {
+        free(replayed);
+        return 19;
+    }
+    free(replayed);
+
+    /* End commits the completed replay as one document action. */
+    replay_end();
+    if (replay_nav_available()) return 21;
+    if (history_undo() != 1) return 22;
+    Uint32 *undone = snapshot_canvas();
+    if (!undone || !replay_snapshots_equal(initial, undone)) return 23;
+    free(undone);
+    if (history_redo() != 1) return 24;
+    Uint32 *redone = snapshot_canvas();
+    if (!redone || !replay_snapshots_equal(immediate, redone)) return 25;
+    free(redone);
+
+    /* Repeated Load -> Clear -> Load. */
+    restore_canvas(initial); history_free(); replay_forget();
+    if (load_script_file("examples/mandala.glon") != 0 || run_script() != 0)
+        return 26;
+    document_clear();
+    if (load_script_file("examples/mandala.glon") != 0 || run_script() != 0)
+        return 27;
+    Uint32 *again = snapshot_canvas();
+    if (!again || !replay_snapshots_equal(immediate, again)) return 28;
+    free(again);
+
+    printf("mandala-demo: source_bytes_stripped=%zu commands=%d command_bytes=%zu "
+           "load_ms=%.2f immediate_ms=%.2f prepare_ms=%.2f "
+           "smooth_replay_ms=%.2f final_equal=1 lifecycle=ok result=ok\n",
+           script_bytes, commands, command_bytes, load_ms, immediate_ms,
+           prepare_ms, replay_ms);
+    free(immediate);
+    free(initial);
+    history_free(); replay_forget();
+    (void)saved;
+    return 0;
+}
+
 static int replay_test(void) {
     int saved = 0;
     if (app_init() != 0) return 2;
@@ -5404,6 +5512,15 @@ int main(int argc, char **argv) {
         SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
         SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
         fprintf(stderr, "glon-paint: script-test %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--mandala-demo") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = mandala_demo();
+        history_free(); replay_forget(); free(script_source);
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        fprintf(stderr, "glon-paint: mandala-demo %s\n", rc == 0 ? "passed" : "failed");
         return rc;
     }
     if (argc > 1 && strcmp(argv[1], "--replay-test") == 0) {

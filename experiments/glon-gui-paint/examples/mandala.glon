@@ -1,0 +1,61 @@
+;; Procedural 12-fold sunburst mandala, 800x600.
+;; Self-contained: ordinary Glon drawing commands only.
+;; Compact because one Glon session's data stack bounds script call count.
+paint/draw-clear
+paint/set-color 1
+paint/set-size 12
+paint/draw-line 424 300 646 300
+paint/draw-line 421 312 613 423
+paint/draw-line 412 321 523 513
+paint/draw-line 400 324 400 546
+paint/draw-line 388 321 277 513
+paint/draw-line 379 312 187 423
+paint/draw-line 376 300 154 300
+paint/draw-line 379 288 187 177
+paint/draw-line 388 279 277 87
+paint/draw-line 400 276 400 54
+paint/draw-line 412 279 523 87
+paint/draw-line 421 288 613 177
+paint/set-color 2
+paint/set-calligraphy-diameter 18
+paint/set-ink-opacity 220
+paint/draw-pressure-line 477 321 220 598 353 30
+paint/draw-pressure-line 421 377 220 453 498 30
+paint/draw-pressure-line 343 357 220 255 445 30
+paint/draw-pressure-line 323 279 220 202 247 30
+paint/draw-pressure-line 379 223 220 347 102 30
+paint/draw-pressure-line 457 243 220 545 155 30
+paint/set-color 5
+paint/set-size 5
+paint/draw-line 658 300 638 399
+paint/draw-line 638 399 582 482
+paint/draw-line 582 482 499 538
+paint/draw-line 499 538 400 558
+paint/draw-line 400 558 301 538
+paint/draw-line 301 538 218 482
+paint/draw-line 218 482 162 399
+paint/draw-line 162 399 142 300
+paint/draw-line 142 300 162 201
+paint/draw-line 162 201 218 118
+paint/draw-line 218 118 301 62
+paint/draw-line 301 62 400 42
+paint/draw-line 400 42 499 62
+paint/draw-line 499 62 582 118
+paint/draw-line 582 118 638 201
+paint/draw-line 638 201 658 300
+paint/set-color 4
+paint/set-size 4
+paint/draw-line 516 300 482 382
+paint/draw-line 482 382 400 416
+paint/draw-line 400 416 318 382
+paint/draw-line 318 382 284 300
+paint/draw-line 284 300 318 218
+paint/draw-line 318 218 400 184
+paint/draw-line 400 184 482 218
+paint/draw-line 482 218 516 300
+paint/set-color 3
+paint/set-size 16
+paint/draw-line 400 300 400 300
+paint/set-color 5
+paint/set-size 7
+paint/draw-line 400 300 400 300

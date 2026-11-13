@@ -186,6 +186,7 @@ examples/rectangle.glon
 examples/landscape.glon
 examples/calligraphy.glon
 examples/yong.glon
+examples/mandala.glon
 examples/replay-demo.glon
 ```
 
@@ -299,6 +300,32 @@ Measured on WSLg: 200x150 rectangle interior 145 commands / 4,350 B; full
 12-38 ms for the 200x150 region and 15-26 ms for the full canvas across runs;
 literal-command replay took about 8-13 ms. These are CPU/flood and
 command-application timings, not a display FPS claim.
+
+## Mandala demo
+
+`examples/mandala.glon` is a self-contained 12-fold sunburst mandala built only
+from ordinary `paint/draw-line`, `paint/draw-pressure-line`, palette and size
+commands. It has a 16-sided outer frame, red radial rays, six tapered blue
+pressure petals, a yellow inner ring and a green/black centre. The script is
+1,947 bytes on disk (1,770 after comments) and produces 45 replay commands (one Clear, 38 lines, six pressure
+segments), 1,344 command bytes.
+
+`./build/glon-paint --mandala-demo` renders it immediately, saves
+`glon-mandala-final.png`, captures replay prefixes at 25/50/75%, completes a
+full smooth replay, compares it to the immediate render by `memcmp`, checks
+Pause/Step/Back/Stop/End and repeated Load→Clear→Load, and prints timings.
+Measured on WSLg: load about 0.1 ms, immediate script execution 400-465 ms,
+replay preparation 310-356 ms and full smooth replay from the pre-playback
+canvas 305-343 ms.
+The final and replay images are pixel-identical; the stage frames show the
+progressive build.
+
+The current single-run Glon session data stack caps a Paint script at roughly
+58 high-level drawing calls (about 60 fails); the managed command-buffer string
+adds further pressure for very large command sets. The mandala is deliberately
+kept within that budget. It is therefore a compact geometric design rather than
+a dense filigree mandala; larger generated scripts would need a separate,
+approved chunked execution design.
 
 ## Writing 永
 
@@ -485,7 +512,7 @@ command sink, not a second Glon execution.
   demo/shop/strings-ext.glon experiments/glon-gui-paint/paint.glon \
   experiments/glon-gui-paint/tests/paint-tests.glon
 
-# SDL/Nuklear UI, image, script lifecycle, geometric and bucket tools,
+# SDL/Nuklear UI, image, script lifecycle, geometric/bucket tools, mandala,
 # calligraphy, replay, smooth animation, 永, undo, resize, PNG and 10,000-move tests
 make test
 
@@ -496,6 +523,9 @@ make test
 
 # Write one frame after each completed 永 stroke.
 ./build/glon-paint --yong-frames
+
+# Render the mandala, save replay stages and verify immediate/replay equality.
+./build/glon-paint --mandala-demo
 ```
 
 The calligraphy and replay tests compare complete 800x600 drawing-layer
@@ -540,6 +570,9 @@ these snapshots must not be described as a Glon command log.
 - Bucket fills with more than 4,096 horizontal spans or 1 MiB of commands are
   rejected rather than partially applied. Tolerance may include boundary pixels
   and can visually merge a close-coloured outline.
+- A single Glon script run exhausts the session data stack at roughly 58
+  high-level drawing calls; the mandala is compact for that reason. Dense
+  generated scripts would need an approved chunked-execution design.
 - No PDF decoding or script editor; replay is stored-command playback, not
   recording.
 - Smooth animation applies only to pressure-aware `P` commands; ordinary lines,
