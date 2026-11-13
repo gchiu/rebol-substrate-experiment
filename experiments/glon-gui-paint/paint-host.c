@@ -483,7 +483,9 @@ static Uint32 *snapshot_canvas(void) {
     return px;
 }
 static int restore_canvas(const Uint32 *px) {
-    begin_canvas();
+    /* UpdateTexture must not run while the canvas is bound as the render
+     * target; WSLg's GL renderer otherwise leaves stale readback data. */
+    SDL_SetRenderTarget(ren, NULL);
     if (SDL_UpdateTexture(canvas, NULL, px, PAINT_W * sizeof(Uint32)) != 0) return -1;
     dirty = 1;
     return 0;
@@ -664,6 +666,8 @@ static void history_free(void) {
  * the image is aspect-fit over white and the drawing layer is reset only after
  * decoding and scaling succeed. Invalid files leave the current document as-is. */
 static void replay_forget(void);
+static void replay_stop(void);
+static void replay_cancel_for_lifecycle(void);
 static int load_image_file(const char *path) {
     if (replay_locked()) return -1;
     if (!path || !*path) {
@@ -822,7 +826,6 @@ static void request_open(void) {
     }
 }
 static void request_open_script(void) {
-    if (replay_locked()) return;
     script_error[0] = 0;
     show_script_chooser();
 }
@@ -852,7 +855,6 @@ static int read_script_file(const char *path, char **out, size_t *out_len) {
     return 0;
 }
 static int load_script_file(const char *path) {
-    if (replay_locked()) return -1;
     if (!path || !*path) { snprintf(script_error, sizeof script_error, "Enter a .glon path."); return -1; }
     char *src = NULL; size_t len = 0;
     if (read_script_file(path, &src, &len) != 0) return -1;
@@ -870,6 +872,9 @@ static int load_script_file(const char *path) {
         return -1;
     }
     M[GC_LOADER_HP] = save_lhp;
+    /* Loading a document is a lifecycle action: leave any replay/animation
+     * state and restore the pre-playback drawing before installing script B. */
+    replay_cancel_for_lifecycle();
     free(script_source);
     script_source = src;
     script_source_len = len;
@@ -1376,16 +1381,25 @@ static void replay_end(void) {
 }
 
 static void replay_stop(void) {
-    if (!replay_nav_available()) return;
+    if (!replay_active && !replay_pre && !replay_nav_available() &&
+        !replay_animating) return;
     replay_anim_free();
     if (replay_pre) restore_canvas(replay_pre);
     free(replay_pre);
     replay_pre = NULL;
     replay_active = 0;
-    replay_pos = 0;
+    replay_prepared = 0;
+    replay_count = replay_pos = 0;
     replay_state = REPLAY_READY;
+    replay_accum_ns = 0;
+    replay_last_tick = 0;
     unsaved = replay_unsaved;
+    replay_error[0] = 0;
     dirty = 1;
+}
+static void replay_cancel_for_lifecycle(void) {
+    if (replay_active || replay_pre || replay_animating || replay_nav_available())
+        replay_stop();
 }
 
 static int replay_pump(void) {
@@ -1536,7 +1550,10 @@ static int map_key(SDL_Keycode k, Uint16 mod) {
 }
 
 static int event_key(SDL_Keycode sym, Uint16 mod, int *saved) {
-    if (replay_locked()) return 0;
+    if (replay_locked()) {
+        if (map_key(sym, mod) == 'c') replay_cancel_for_lifecycle();
+        else return 0;
+    }
     char src[128], cmdbuf[2048];
     snprintf(src, sizeof src, "paint/key %d", map_key(sym, mod));
     if (glon_call(src, cmdbuf, sizeof cmdbuf) != 0) return -1;
@@ -1578,6 +1595,12 @@ static int app_key_code(int code) {
     char src[64];
     snprintf(src, sizeof src, "paint/key %d", code);
     return app_call(src);
+}
+/* Clear is a document lifecycle action: cancel replay/animation first, then
+ * let Glon emit and the host execute the ordinary Clear command. */
+static void document_clear(void) {
+    replay_cancel_for_lifecycle();
+    app_key_code(99);
 }
 static int app_set_color(int c) {
     char src[64];
@@ -1798,17 +1821,16 @@ static void ui_menus(void) {
         nk_layout_row_static(nk, 22, 64, 4);
         if (nk_menu_begin_label(nk, "File", NK_TEXT_LEFT, nk_vec2(190, 240))) {
             nk_layout_row_dynamic(nk, 24, 1);
+            if (nk_menu_item_label(nk, "New / Clear", NK_TEXT_LEFT)) document_clear();
             if (!replay_locked()) {
-                if (nk_menu_item_label(nk, "New / Clear", NK_TEXT_LEFT)) app_key_code(99);
                 if (nk_menu_item_label(nk, "Open Image...", NK_TEXT_LEFT)) request_open();
-                if (nk_menu_item_label(nk, "Open Script...", NK_TEXT_LEFT)) request_open_script();
             } else {
                 nk_widget_disable_begin(nk);
-                nk_menu_item_label(nk, "New / Clear", NK_TEXT_LEFT);
                 nk_menu_item_label(nk, "Open Image...", NK_TEXT_LEFT);
-                nk_menu_item_label(nk, "Open Script...", NK_TEXT_LEFT);
                 nk_widget_disable_end(nk);
             }
+            /* Loading a script cancels replay on success. */
+            if (nk_menu_item_label(nk, "Open Script...", NK_TEXT_LEFT)) request_open_script();
             if (nk_menu_item_label(nk, "Save PNG", NK_TEXT_LEFT)) app_key_code(115);
             if (script_loaded && !replay_locked()) {
                 if (nk_menu_item_label(nk, "Run Script", NK_TEXT_LEFT)) run_script();
@@ -1825,13 +1847,7 @@ static void ui_menus(void) {
         }
         if (nk_menu_begin_label(nk, "Edit", NK_TEXT_LEFT, nk_vec2(170, 170))) {
             nk_layout_row_dynamic(nk, 24, 1);
-            if (!replay_locked()) {
-                if (nk_menu_item_label(nk, "Clear Canvas", NK_TEXT_LEFT)) app_key_code(99);
-            } else {
-                nk_widget_disable_begin(nk);
-                nk_menu_item_label(nk, "Clear Canvas", NK_TEXT_LEFT);
-                nk_widget_disable_end(nk);
-            }
+            if (nk_menu_item_label(nk, "Clear Canvas", NK_TEXT_LEFT)) document_clear();
             if (replay_nav_available()) {
                 if (replay_pos > 0) {
                     if (nk_menu_item_label(nk, "Replay Step Back  Ctrl+Z", NK_TEXT_LEFT))
@@ -3487,6 +3503,193 @@ static int yong_frames(void) {
     return 0;
 }
 
+
+static int lifecycle_test(void) {
+    int saved = 0;
+    if (app_init() != 0) return 2;
+    clear_canvas();
+    history_free();
+    replay_forget();
+    unsaved = 0;
+    if (app_set_tool(1) != 0 || app_set_color(2) != 0 || app_set_size(12) != 0)
+        return 3;
+    if (test_stroke(80, 80, 250, 160, 5) != 0) return 4;
+    history_free();
+    Uint32 *initial = snapshot_canvas();
+    if (!initial) return 5;
+
+    /* Run A, then Clear through the keyboard path used by the UI. */
+    restore_canvas(initial);
+    history_free(); replay_forget();
+    if (load_script_file("examples/yong.glon") != 0) return 6;
+    if (run_script() != 0) return 7;
+    if (replay_locked() || replay_state != REPLAY_READY ||
+        replay_prepared || replay_pre) return 8;
+    Uint32 *yong_run = snapshot_canvas();
+    if (!yong_run) return 9;
+    if (event_key(SDLK_c, 0, &saved) != 0) return 10;
+    Uint8 r = 0, g = 0, b = 0;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 11;
+    if (history_undo() != 1) return 12;
+    Uint32 *undo_clear = snapshot_canvas();
+    if (!undo_clear || !replay_snapshots_equal(yong_run, undo_clear)) return 13;
+    free(undo_clear); free(yong_run);
+
+    /* Load B after Clear, then Clear, then load A again. */
+    if (load_script_file("examples/calligraphy.glon") != 0) return 14;
+    if (run_script() != 0) return 15;
+    if (event_key(SDLK_c, 0, &saved) != 0) return 16;
+    if (load_script_file("examples/yong.glon") != 0) return 17;
+    if (run_script() != 0) return 18;
+    /* Load B without an intervening Clear. */
+    if (load_script_file("examples/rectangle.glon") != 0) return 19;
+    if (run_script() != 0) return 20;
+
+    /* Clear while replay is actively Playing. */
+    restore_canvas(initial);
+    history_free(); replay_forget();
+    if (load_script_file("examples/yong.glon") != 0 ||
+        replay_prepare() != 0 || replay_play() != 0) return 64;
+    if (replay_state != REPLAY_PLAYING || !replay_locked()) return 65;
+    if (event_key(SDLK_c, 0, &saved) != 0) return 66;
+    if (replay_locked() || replay_state != REPLAY_READY || replay_animating)
+        return 67;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 68;
+
+    /* Clear from a paused replay: cancel replay, restore the pre-playback
+     * document, then execute the ordinary Clear command. */
+    restore_canvas(initial);
+    history_free(); replay_forget();
+    if (load_script_file("examples/yong.glon") != 0 ||
+        replay_prepare() != 0 || replay_play() != 0) return 21;
+    replay_pause();
+    if (!replay_locked() || !replay_nav_available()) return 22;
+    document_clear();
+    if (replay_locked() || replay_state != REPLAY_READY ||
+        replay_animating || replay_pre) return 23;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 24;
+    if (history_undo() != 1) return 25;
+    Uint32 *undo_paused_clear = snapshot_canvas();
+    if (!undo_paused_clear || !replay_snapshots_equal(initial, undo_paused_clear))
+        return 26;
+    free(undo_paused_clear);
+
+    /* Clear from Complete through the keyboard path. */
+    restore_canvas(initial);
+    history_free(); replay_forget();
+    if (load_script_file("examples/yong.glon") != 0 ||
+        replay_prepare() != 0 || replay_play() != 0) return 27;
+    if (replay_finish_smooth(4) != 0 || replay_state != REPLAY_COMPLETE) return 28;
+    if (event_key(SDLK_c, 0, &saved) != 0) return 29;
+    if (replay_locked() || replay_state != REPLAY_READY || replay_animating)
+        return 30;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 31;
+
+    /* Load B while paused: replay is cancelled, pre-playback canvas is
+     * restored, and loading does not add a document history entry. */
+    restore_canvas(initial);
+    history_free(); replay_forget();
+    if (load_script_file("examples/yong.glon") != 0 ||
+        replay_prepare() != 0 || replay_play() != 0) return 32;
+    replay_pause();
+    if (load_script_file("examples/calligraphy.glon") != 0) return 33;
+    if (replay_locked() || replay_state != REPLAY_READY ||
+        replay_prepared || replay_pre || replay_animating) return 34;
+    if (undo_stack.count != 0 || redo_stack.count != 0) return 63;
+    if (strcmp(script_path, "examples/calligraphy.glon") != 0) return 35;
+    Uint32 *after_load = snapshot_canvas();
+    if (!after_load || !replay_snapshots_equal(initial, after_load)) return 36;
+    free(after_load);
+    if (run_script() != 0) return 37;
+
+    /* Stop then Clear. */
+    restore_canvas(initial);
+    history_free(); replay_forget();
+    if (load_script_file("examples/yong.glon") != 0 ||
+        replay_prepare() != 0 || replay_play() != 0) return 38;
+    replay_pause();
+    replay_stop();
+    if (event_key(SDLK_c, 0, &saved) != 0) return 39;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 40;
+
+    /* End then Clear: End commits the replay prefix; Clear adds one ordinary
+     * document entry, and undo returns to the ended prefix. */
+    restore_canvas(initial);
+    history_free(); replay_forget();
+    if (load_script_file("examples/yong.glon") != 0 ||
+        replay_prepare() != 0 || replay_play() != 0) return 41;
+    if (replay_finish_smooth(4) != 0) return 42;
+    replay_end();
+    if (replay_nav_available()) return 43;
+    int undo_after_end = undo_stack.count;
+    Uint32 *ended = snapshot_canvas();
+    if (!ended) return 44;
+    if (event_key(SDLK_c, 0, &saved) != 0) return 45;
+    if (undo_stack.count != undo_after_end + 1) return 46;
+    if (history_undo() != 1) return 47;
+    Uint32 *undo_ended_clear = snapshot_canvas();
+    if (!undo_ended_clear || !replay_snapshots_equal(ended, undo_ended_clear))
+        return 48;
+    free(undo_ended_clear); free(ended);
+    if (history_undo() != 1) return 49;
+    Uint32 *undo_end = snapshot_canvas();
+    if (!undo_end || !replay_snapshots_equal(initial, undo_end)) return 50;
+    free(undo_end);
+
+    /* Clear during a partial smooth stroke. */
+    restore_canvas(initial);
+    history_free(); replay_forget();
+    int first = 0;
+    if (smooth_prepare_first_path("examples/yong.glon", initial, &first) != 0 ||
+        first < 1) return 51;
+    if (replay_anim_begin() != 1 || replay_anim_render_at(500) != 0) return 52;
+    document_clear();
+    if (replay_locked() || replay_state != REPLAY_READY ||
+        replay_animating || replay_anim_memory_bytes() != 0) return 53;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 54;
+
+    /* A failed load leaves the UI usable: Clear still cancels replay, and a
+     * subsequent valid load/run succeeds. */
+    restore_canvas(initial);
+    history_free(); replay_forget();
+    if (load_script_file("examples/yong.glon") != 0 ||
+        replay_prepare() != 0 || replay_play() != 0) return 55;
+    replay_pause();
+    if (load_script_file("/tmp/no-such-glon-lifecycle.glon") == 0) return 56;
+    document_clear();
+    if (replay_locked() || replay_state != REPLAY_READY) return 57;
+    if (load_script_file("examples/calligraphy.glon") != 0) return 58;
+    if (run_script() != 0) return 59;
+
+    /* Repeated load/run/clear/load cycles keep the loader bounded. */
+    clear_canvas();
+    history_free(); replay_forget();
+    long loader0 = loader_used();
+    for (int rep = 0; rep < 3; rep++) {
+        if (load_script_file("examples/yong.glon") != 0 ||
+            run_script() != 0) return 60;
+        document_clear();
+        if (load_script_file("examples/calligraphy.glon") != 0 ||
+            run_script() != 0) return 61;
+        document_clear();
+    }
+    if (loader_used() != loader0) return 62;
+
+    printf("lifecycle-test: run_clear=ok load_a_load_b=ok "
+           "load_a_clear_load_b=ok paused_clear=ok complete_clear=ok "
+           "paused_load_b=ok stop_clear=ok end_clear=ok partial_clear=ok "
+           "failed_load_recovery=ok loader=%ld result=ok\n", loader_used());
+    free(initial);
+    history_free(); replay_forget();
+    return 0;
+}
+
 static int yong_test(void) {
     int saved = 0;
     if (app_init() != 0) return 2;
@@ -4150,6 +4353,15 @@ int main(int argc, char **argv) {
         SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
         SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
         fprintf(stderr, "glon-paint: smooth-demo %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--lifecycle-test") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = lifecycle_test();
+        history_free(); replay_forget(); free(script_source);
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        fprintf(stderr, "glon-paint: lifecycle-test %s\n", rc == 0 ? "passed" : "failed");
         return rc;
     }
     if (argc > 1 && strcmp(argv[1], "--yong-test") == 0) {

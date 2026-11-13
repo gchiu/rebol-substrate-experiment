@@ -305,6 +305,25 @@ brushwork. The circular hard-edged brush leaves a blob-like dot, a small hook
 termination and a geometric right-sweep turn; no renderer or rasterisation
 change was made. Existing calligraphy/replay/smooth tests and frozen S1 pass.
 
+[FIX 2026-11-13, `experiments/glon-gui-paint`, script lifecycle]
+**Replay navigation state blocked Clear and Open Script.** `replay_locked()`
+is true while replay is Playing, Paused or Complete. Pause/Complete therefore
+disabled Clear in both menus and keyboard handling; Open Script was disabled
+too. The ordinary Run Script path itself was not the cause (run→clear→load
+worked in isolation). Clear and script loading are now lifecycle actions:
+`replay_cancel_for_lifecycle()` stops replay, discards partial animation and
+restores the pre-playback drawing first. The Clear key/menu path and successful
+script loads use it; failed loads leave the current script/canvas usable.
+`replay_stop` now also cleans up error/partial states and resets prepared/count
+state. A second defect found by the regression: `restore_canvas` called
+`SDL_UpdateTexture` while the canvas was still bound as the render target, which
+could leave stale readback pixels after repeated restores. It now unbinds the
+target first. `--lifecycle-test` covers run→Clear, Load A→Load B, Load A→Clear→
+Load B, Clear from Paused/Complete/Stop/End/partial animation, loading B while
+paused, failed-load recovery, undo/redo consistency, animation-buffer release
+and bounded loader use. No Glon vocabulary, rasteriser, replay command format
+or frozen S1 change was made.
+
 **[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
 worklist has a fixed 256 entries (`GC_WORKLIST_CAP`, the cells before `GC_A1`).
 - **It cannot overflow in the 64K configuration.** Each object is pushed at

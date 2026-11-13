@@ -149,7 +149,12 @@ A script starts with the current drawing layer; the bundled examples explicitly
 call `paint/draw-clear` first. Running the same script twice repeats its
 drawing. A successful script is one undoable operation. Parse/runtime/limit
 failures show an error, apply no drawing commands, and leave the current canvas
-and undo/redo history unchanged. Loading a script never touches the canvas.
+and undo/redo history unchanged. Loading a script does not execute it. If a
+replay or stroke animation is active, a successful load first cancels replay and
+restores the pre-playback drawing, then installs the new script; otherwise
+loading leaves the canvas unchanged. A failed load leaves the current script,
+canvas and history usable. Clear and Open Script are therefore never blocked by
+Pause, Complete or End.
 
 The exact script vocabulary is:
 
@@ -364,9 +369,11 @@ total command counts, and the current speed. The inspector scrolls when the
 window is too short; the canvas remains an 800x600 aspect-correct document.
 
 Preparation and playback are atomic with respect to failure and Stop. While
-replay navigation is active, painting, script execution, image replacement,
-Clear and document Undo/Redo are disabled; Save remains available. Window
-resizing does not affect playback or canvas coordinates.
+replay navigation is active, painting, script execution, image replacement and
+document Undo/Redo are disabled; Save remains available. Clear and Open Script
+remain available as lifecycle actions: each cancels replay, restores the
+pre-playback drawing and resets animation state before clearing or loading.
+Window resizing does not affect playback or canvas coordinates.
 
 Timing uses monotonic `SDL_GetTicks64`. Non-animated command scheduling applies
 at most two commands per pump; animated progress is bounded to 250 ms of
@@ -416,8 +423,8 @@ command sink, not a second Glon execution.
   demo/shop/strings-ext.glon experiments/glon-gui-paint/paint.glon \
   experiments/glon-gui-paint/tests/paint-tests.glon
 
-# SDL/Nuklear UI, image, script, calligraphy, replay, smooth animation, 永,
-# undo, resize, PNG and 10,000-move loader tests
+# SDL/Nuklear UI, image, script lifecycle, calligraphy, replay, smooth
+# animation, 永, undo, resize, PNG and 10,000-move loader tests
 make test
 
 # Write start/25/50/75%/final PNG frames for the first stroke of a script and
