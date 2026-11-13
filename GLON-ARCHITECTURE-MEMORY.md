@@ -344,6 +344,25 @@ test clicks the new tool buttons. The main limitation is ellipse polygonal
 fidelity and fill command expansion (up to one command per canvas row). No
 rasteriser or command-letter change was made.
 
+[DESIGN 2026-11-13, `experiments/glon-gui-paint`, bucket]
+**Flood fill is encoded as existing `L` spans; the mask is never uploaded
+directly.** The Bucket tool runs an iterative scanline flood-fill over an ARGB
+canvas snapshot. Tolerance 0 is exact ARGB equality; greater tolerance uses the
+maximum per-channel difference including alpha. Each filled horizontal span is
+emitted as an `L x1 y x2 y 1 r g b` command through the normal dispatcher, then
+the ordinary history snapshot groups the whole fill as one undo action. Exact
+target matching does not overwrite an outline; open regions fill to canvas
+edges. A target already matching the replacement colour is a no-op. The span
+stream is bounded to 4,096 commands / 1 MiB and aborts without changing the
+canvas if exceeded. Measured WSLg: 200x150 rectangle interior 145 commands /
+4,350 B (about 12-38 ms flood+apply); full 800x600 600 commands / 16,580 B
+(about 15-26 ms); literal command replay of the full fill about 8-13 ms. `--bucket-test` covers rectangle, circle,
+irregular freehand, colours, tolerance, open edges, no-op, large fill,
+undo/redo, literal replay equality and Load→Fill→Clear→Load; UI test clicks the
+Bucket button. Limits: command expansion for highly fragmented masks, tolerance
+can include boundary pixels, and no bucket preview. No new command letters,
+rasteriser primitives or frozen-S1 changes.
+
 **[MEASURED] GC worklist (investigated and guarded 2026-11-06).** The mark
 worklist has a fixed 256 entries (`GC_WORKLIST_CAP`, the cells before `GC_A1`).
 - **It cannot overflow in the 64K configuration.** Each object is pushed at

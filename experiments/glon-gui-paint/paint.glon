@@ -30,7 +30,9 @@ paint/tool-name: func [] [
         either = paint/tool 2 [ "eraser" ] [
             either = paint/tool 3 [ "calligraphy" ] [
                 either = paint/tool 4 [ "line" ] [
-                    either = paint/tool 5 [ "rectangle" ] [ "ellipse" ]
+                    either = paint/tool 5 [ "rectangle" ] [
+                        either = paint/tool 6 [ "ellipse" ] [ "bucket" ]
+                    ]
                 ]
             ]
         ]
@@ -95,7 +97,9 @@ paint/set-size: func [n] [
 ]
 paint/set-tool: func [n] [
     paint/tool: either = n 2 [ 2 ] [ either = n 3 [ 3 ] [
-        either = n 4 [ 4 ] [ either = n 5 [ 5 ] [ either = n 6 [ 6 ] [ 1 ] ] ]
+        either = n 4 [ 4 ] [ either = n 5 [ 5 ] [
+            either = n 6 [ 6 ] [ either = n 7 [ 7 ] [ 1 ] ]
+        ] ]
     ] ]
     paint/title
 ]
@@ -242,8 +246,9 @@ paint/key: func [k] [
     either = k 108 [ paint/tool: 4  paint/title ] [
     either = k 114 [ paint/tool: 5  paint/title ] [
     either = k 111 [ paint/tool: 6  paint/title ] [
+    either = k 103 [ paint/tool: 7  paint/title ] [
     either = k 99 [ s/+ "C" mk-string [ 10 ] ] [
     either = k 115 [ s/+ "S glon-paint.png" mk-string [ 10 ] ] [
     either = k 27 [ s/+ "Q" mk-string [ 10 ] ] [ "" ]
-    ] ] ] ] ] ] ] ] ] ] ] ] ] ]
+    ] ] ] ] ] ] ] ] ] ] ] ] ] ] ]
 ]

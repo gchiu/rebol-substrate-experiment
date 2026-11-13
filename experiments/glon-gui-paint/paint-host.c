@@ -81,6 +81,11 @@ static int ui_smooth_strokes = 1;
 static int ui_show_brush_tip = 1;
 static int ui_stroke_duration_index = 2;  /* 600 ms */
 static int ui_fill_shapes = 0;
+static int ui_bucket_tolerance = 0;
+static int bucket_last_commands = 0;
+static size_t bucket_last_bytes = 0;
+static char bucket_last_text[SCRIPT_CMD_BYTES];
+static char bucket_message[160] = "";
 static int shape_active = 0;
 static int shape_tool = 0;
 static int shape_start_x = 0, shape_start_y = 0;
@@ -153,6 +158,7 @@ static char last_script_dir[1024] = "";
 #endif
 static SDL_Rect ui_brush_bounds, ui_eraser_bounds, ui_calligraphy_bounds;
 static SDL_Rect ui_line_bounds, ui_rect_bounds, ui_ellipse_bounds;
+static SDL_Rect ui_bucket_bounds, ui_bucket_tol_bounds;
 static SDL_Rect ui_color_bounds[4];
 static SDL_Rect ui_size_bounds;
 
@@ -1280,6 +1286,150 @@ static int shape_finish_gesture(void) {
     return count;
 }
 
+typedef struct { int x, y; } BucketSeed;
+static int bucket_color_match(Uint32 a, Uint32 b, int tolerance) {
+    if (tolerance <= 0) return a == b;
+    int da = shape_abs((int)((a >> 24) & 255) - (int)((b >> 24) & 255));
+    int dr = shape_abs((int)((a >> 16) & 255) - (int)((b >> 16) & 255));
+    int dg = shape_abs((int)((a >> 8) & 255) - (int)((b >> 8) & 255));
+    int db = shape_abs((int)(a & 255) - (int)(b & 255));
+    return da <= tolerance && dr <= tolerance &&
+           dg <= tolerance && db <= tolerance;
+}
+/* Iterative scanline flood fill. The mask is accumulated as contiguous
+ * horizontal spans and emitted only as ordinary L commands. */
+static int bucket_fill(int sx, int sy, int tolerance) {
+    bucket_last_commands = 0;
+    bucket_last_bytes = 0;
+    bucket_last_text[0] = 0;
+    bucket_message[0] = 0;
+    if (sx < 0 || sx >= PAINT_W || sy < 0 || sy >= PAINT_H) {
+        snprintf(bucket_message, sizeof bucket_message, "Fill point is outside the canvas.");
+        return -1;
+    }
+    if (tolerance < 0) tolerance = 0;
+    if (tolerance > 255) tolerance = 255;
+    int r = 0, g = 0, b = 0;
+    palette_rgb(ui_color, &r, &g, &b);
+    Uint32 replacement = ((Uint32)255 << 24) | ((Uint32)r << 16) |
+                         ((Uint32)g << 8) | (Uint32)b;
+    Uint32 *px = snapshot_canvas();
+    if (!px) {
+        snprintf(bucket_message, sizeof bucket_message, "Cannot read drawing layer.");
+        return -1;
+    }
+    size_t pixels = (size_t)PAINT_W * PAINT_H;
+    Uint32 target = px[(size_t)sy * PAINT_W + sx];
+    if (target == replacement) {
+        free(px);
+        snprintf(bucket_message, sizeof bucket_message,
+                 "No change: target already matches the selected colour.");
+        return 0;
+    }
+    Uint8 *visited = calloc(pixels, 1);
+    size_t cap = 1024, top = 0;
+    BucketSeed *stack = cap ? malloc(cap * sizeof *stack) : NULL;
+    if (!visited || !stack) {
+        free(visited); free(stack); free(px);
+        snprintf(bucket_message, sizeof bucket_message, "Cannot allocate fill workspace.");
+        return -1;
+    }
+    size_t used = 0;
+    int failed = 0;
+    stack[top++] = (BucketSeed){ sx, sy };
+    while (top > 0 && !failed) {
+        BucketSeed seed = stack[--top];
+        int x = seed.x, y = seed.y;
+        size_t row = (size_t)y * PAINT_W;
+        if (visited[row + (size_t)x] ||
+            !bucket_color_match(px[row + (size_t)x], target, tolerance))
+            continue;
+        int x1 = x, x2 = x;
+        while (x1 > 0 && !visited[row + (size_t)(x1 - 1)] &&
+               bucket_color_match(px[row + (size_t)(x1 - 1)], target, tolerance))
+            x1--;
+        while (x2 + 1 < PAINT_W && !visited[row + (size_t)(x2 + 1)] &&
+               bucket_color_match(px[row + (size_t)(x2 + 1)], target, tolerance))
+            x2++;
+        for (int xi = x1; xi <= x2; xi++) {
+            px[row + (size_t)xi] = replacement;
+            visited[row + (size_t)xi] = 1;
+        }
+        if (bucket_last_commands >= REPLAY_MAX_COMMANDS ||
+            shape_append_cmd(bucket_last_text, sizeof bucket_last_text, &used,
+                             &bucket_last_commands, x1, y, x2, y, 1,
+                             r, g, b) != 0) {
+            failed = 1;
+            break;
+        }
+        for (int dy = -1; dy <= 1 && !failed; dy += 2) {
+            int yy = y + dy;
+            if (yy < 0 || yy >= PAINT_H) continue;
+            size_t row2 = (size_t)yy * PAINT_W;
+            int xi = x1;
+            while (xi <= x2) {
+                if (!visited[row2 + (size_t)xi] &&
+                    bucket_color_match(px[row2 + (size_t)xi], target, tolerance)) {
+                    int start = xi;
+                    while (xi <= x2 && !visited[row2 + (size_t)xi] &&
+                           bucket_color_match(px[row2 + (size_t)xi], target, tolerance))
+                        xi++;
+                    if (top == cap) {
+                        size_t ncap = cap < pixels ? cap * 2 : pixels;
+                        if (ncap <= cap) { failed = 1; break; }
+                        BucketSeed *next = realloc(stack, ncap * sizeof *stack);
+                        if (!next) { failed = 1; break; }
+                        stack = next;
+                        cap = ncap;
+                    }
+                    stack[top++] = (BucketSeed){ start, yy };
+                } else {
+                    xi++;
+                }
+            }
+        }
+    }
+    free(visited); free(stack);
+    if (failed) {
+        free(px);
+        bucket_last_commands = 0;
+        bucket_last_bytes = 0;
+        bucket_last_text[0] = 0;
+        snprintf(bucket_message, sizeof bucket_message,
+                 "Fill is too complex to encode within the command limit.");
+        return -1;
+    }
+    bucket_last_bytes = used;
+    if (bucket_last_commands <= 0) {
+        free(px);
+        snprintf(bucket_message, sizeof bucket_message, "No pixels matched the fill point.");
+        return 0;
+    }
+    if (history_begin_stroke() != 0) {
+        free(px);
+        bucket_last_commands = 0;
+        bucket_last_bytes = 0;
+        bucket_last_text[0] = 0;
+        snprintf(bucket_message, sizeof bucket_message, "Cannot snapshot drawing layer.");
+        return -1;
+    }
+    int saved = 0;
+    char *p = bucket_last_text;
+    while (*p) {
+        char *nl = strchr(p, '\n');
+        if (nl) *nl = 0;
+        if (*p) command(p, &saved);
+        if (nl) *nl = '\n';
+        if (!nl) break;
+        p = nl + 1;
+    }
+    history_commit_stroke();
+    unsaved = 1;
+    dirty = 1;
+    free(px);
+    return bucket_last_commands;
+}
+
 static int app_call(const char *src);
 static int prepare_script_commands(char *out, size_t cap, int *count,
                                    int *offsets, int *lengths) {
@@ -2020,6 +2170,7 @@ static const char *tool_name(int t) {
     case 4: return "Line";
     case 5: return "Rectangle";
     case 6: return "Ellipse";
+    case 7: return "Bucket";
     default: return "Brush";
     }
 }
@@ -2319,6 +2470,10 @@ static void ui_toolbar(void) {
         struct nk_rect elb = nk_widget_bounds(nk);
         ui_ellipse_bounds = (SDL_Rect){ (int)elb.x, (int)elb.y, (int)elb.w, (int)elb.h };
         if (nk_option_label(nk, "Ellipse", ui_tool == 6)) app_set_tool(6);
+        nk_layout_row_dynamic(nk, 34, 1);
+        struct nk_rect bk = nk_widget_bounds(nk);
+        ui_bucket_bounds = (SDL_Rect){ (int)bk.x, (int)bk.y, (int)bk.w, (int)bk.h };
+        if (nk_option_label(nk, "Bucket", ui_tool == 7)) app_set_tool(7);
         nk_layout_row_dynamic(nk, 18, 1);
         nk_label(nk, "size", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 24, 1);
@@ -2407,6 +2562,15 @@ static void ui_right_panel(void) {
                      "Hardness 100% (fixed)", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 24, 1);
         nk_checkbox_label(nk, "Fill shapes", &ui_fill_shapes);
+        nk_layout_row_dynamic(nk, 20, 1);
+        char bt[48];
+        snprintf(bt, sizeof bt, "Bucket tolerance %d", ui_bucket_tolerance);
+        nk_label(nk, bt, NK_TEXT_LEFT);
+        nk_layout_row_dynamic(nk, 26, 1);
+        struct nk_rect tb = nk_widget_bounds(nk);
+        ui_bucket_tol_bounds = (SDL_Rect){ (int)tb.x, (int)tb.y, (int)tb.w, (int)tb.h };
+        nk_slider_int(nk, 0, &ui_bucket_tolerance, 255, 1);
+        if (bucket_message[0]) nk_label_wrap(nk, bucket_message);
         nk_layout_row_dynamic(nk, 20, 1);
         nk_label(nk, "SCRIPT", NK_TEXT_LEFT);
         nk_layout_row_dynamic(nk, 28, 1);
@@ -3014,7 +3178,8 @@ static int ui_test(void) {
     if (ui_calligraphy_bounds.w <= 0) return 90;
     ui_click_at(ui_calligraphy_bounds);
     if (ui_tool != 3) return 91;
-    if (ui_line_bounds.w <= 0 || ui_rect_bounds.w <= 0 || ui_ellipse_bounds.w <= 0)
+    if (ui_line_bounds.w <= 0 || ui_rect_bounds.w <= 0 || ui_ellipse_bounds.w <= 0 ||
+        ui_bucket_bounds.w <= 0 || ui_bucket_tol_bounds.w <= 0)
         return 97;
     ui_click_at(ui_line_bounds);
     if (ui_tool != 4) return 98;
@@ -3022,6 +3187,8 @@ static int ui_test(void) {
     if (ui_tool != 5) return 99;
     ui_click_at(ui_ellipse_bounds);
     if (ui_tool != 6) return 100;
+    ui_click_at(ui_bucket_bounds);
+    if (ui_tool != 7) return 101;
     if (app_set_tool(1) != 0) return 92;
     if (app_set_calligraphy_diameter(40) != 0 || ui_call_diameter != 40) return 93;
     if (app_set_pressure(99) != 0 || ui_pressure != 99) return 94;
@@ -3146,7 +3313,13 @@ static void run_app_ui(void) {
             int down_inside = !down_ui && !point_in_ui(dx, dy) &&
                               point_in_rect(&layout.image, dx, dy);
             if (down_inside) {
-                if (ui_tool >= 4) {
+                if (ui_tool == 7) {
+                    int cx = 0, cy = 0, ww = 0, wh = 0;
+                    SDL_GetWindowSize(win, &ww, &wh);
+                    map_window_to_canvas_clamped(ww, wh, dx, dy, &cx, &cy);
+                    bucket_fill(cx, cy, ui_bucket_tolerance);
+                    dragging = 0; last_wx = dx; last_wy = dy;
+                } else if (ui_tool >= 4) {
                     int cx = 0, cy = 0, ww = 0, wh = 0;
                     SDL_GetWindowSize(win, &ww, &wh);
                     map_window_to_canvas_clamped(ww, wh, dx, dy, &cx, &cy);
@@ -4191,6 +4364,224 @@ static int geometry_test(void) {
     return 0;
 }
 
+
+static int bucket_do(int x, int y, int tolerance) {
+    return bucket_fill(x, y, tolerance);
+}
+static int bucket_test(void) {
+    int saved = 0;
+    if (app_init() != 0) return 2;
+    if (event_key(SDLK_g, 0, &saved) != 0 || ui_tool != 7) return 69;
+
+    /* Fill inside a closed rectangle outline. */
+    clear_canvas(); history_free(); replay_forget(); unsaved = 0;
+    if (app_set_tool(5) != 0 || app_set_color(2) != 0 || app_set_size(4) != 0)
+        return 3;
+    ui_fill_shapes = 0;
+    if (geometry_do(5, 100, 100, 300, 250, 0) != 4) return 4;
+    history_free();
+    Uint32 *rect_pre = snapshot_canvas();
+    if (!rect_pre) return 5;
+    if (app_set_color(1) != 0) return 6;
+    Uint64 t0 = SDL_GetPerformanceCounter();
+    int n = bucket_do(200, 175, 0);
+    Uint64 t1 = SDL_GetPerformanceCounter();
+    if (n < 100 || n > 200 || bucket_last_bytes == 0 ||
+        bucket_last_bytes >= SCRIPT_CMD_BYTES) return 7;
+    int rect_cmds = n;
+    size_t rect_bytes = bucket_last_bytes;
+    double rect_ms = (double)(t1 - t0) * 1000.0 /
+                     (double)SDL_GetPerformanceFrequency();
+    Uint8 r = 0, g = 0, b = 0;
+    if (read_canvas_pixel(200, 175, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,220,60,60)) return 8;
+    if (read_canvas_pixel(200, 100, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,40,120,220)) return 9;
+    if (read_canvas_pixel(50, 50, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 10;
+    Uint32 *rect_post = snapshot_canvas();
+    if (!rect_post) return 11;
+    if (history_undo() != 1) return 12;
+    Uint32 *rect_undo = snapshot_canvas();
+    if (!rect_undo || !replay_snapshots_equal(rect_pre, rect_undo)) return 13;
+    free(rect_undo);
+    if (history_redo() != 1) return 14;
+    Uint32 *rect_redo = snapshot_canvas();
+    if (!rect_redo || !replay_snapshots_equal(rect_post, rect_redo)) return 15;
+    free(rect_redo); free(rect_post); free(rect_pre);
+
+    /* Fill inside an ellipse outline. */
+    clear_canvas(); history_free();
+    if (app_set_color(2) != 0 || app_set_size(4) != 0) return 16;
+    ui_fill_shapes = 0;
+    if (geometry_do(6, 350, 100, 550, 300, 0) < 48) return 17;
+    history_free();
+    if (app_set_color(3) != 0) return 18;
+    n = bucket_do(450, 200, 0);
+    if (n <= 0) return 19;
+    if (read_canvas_pixel(450, 200, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,40,160,80)) return 20;
+    if (read_canvas_pixel(450, 100, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,40,120,220)) return 21;
+    if (read_canvas_pixel(360, 110, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 22;
+
+    /* Fill inside an irregular closed freehand outline. */
+    clear_canvas(); history_free();
+    if (app_set_tool(1) != 0 || app_set_color(2) != 0 || app_set_size(8) != 0)
+        return 23;
+    if (test_stroke(150, 150, 250, 120, 5) != 0 ||
+        test_stroke(250, 120, 300, 220, 5) != 0 ||
+        test_stroke(300, 220, 230, 300, 5) != 0 ||
+        test_stroke(230, 300, 140, 260, 5) != 0 ||
+        test_stroke(140, 260, 150, 150, 5) != 0) return 24;
+    history_free();
+    if (app_set_color(1) != 0) return 25;
+    n = bucket_do(220, 200, 0);
+    if (n <= 0) return 26;
+    if (read_canvas_pixel(220, 200, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,220,60,60)) return 27;
+    if (read_canvas_pixel(150, 150, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,40,120,220)) return 28;
+    if (read_canvas_pixel(110, 110, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 29;
+
+    /* Tolerance: two adjacent semi-transparent bands, 10 alpha apart. */
+    for (int pass = 0; pass < 2; pass++) {
+        clear_canvas(); history_free();
+        int saved_local = 0;
+        command("L 300 300 500 300 20 220 60 60 255", &saved_local);
+        command("L 300 320 500 320 20 230 70 70 255", &saved_local);
+        Uint32 *tol_pre = snapshot_canvas();
+        if (!tol_pre) return 30;
+        if (app_set_color(2) != 0) return 31;
+        int tol = pass == 0 ? 0 : 15;
+        n = bucket_do(400, 300, tol);
+        if (n <= 0) { free(tol_pre); return 32; }
+        Uint32 *tol_post = snapshot_canvas();
+        if (!tol_post) { free(tol_pre); return 33; }
+        Uint32 a = tol_post[(size_t)300 * PAINT_W + 400];
+        Uint32 c = tol_post[(size_t)325 * PAINT_W + 400];
+        if (pass == 0) {
+            if ((a & 0xffffff) != 0x2878dc) {
+                free(tol_pre); free(tol_post); return 34;
+            }
+            if ((c & 0xffffff) != 0xe64646) {
+                free(tol_pre); free(tol_post); return 35;
+            }
+        } else {
+            if ((a & 0xffffff) != 0x2878dc ||
+                (c & 0xffffff) != 0x2878dc) {
+                free(tol_pre); free(tol_post); return 36;
+            }
+        }
+        free(tol_pre); free(tol_post);
+    }
+
+    /* Black fill uses the script-only palette entry. */
+    clear_canvas(); history_free();
+    if (app_set_color(5) != 0) return 37;
+    n = bucket_do(400, 300, 0);
+    if (n != 600) return 38;
+    if (read_canvas_pixel(0, 0, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,0,0,0)) return 39;
+    if (read_canvas_pixel(799, 599, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,0,0,0)) return 40;
+
+    /* Already matching target is a no-op and adds no history. */
+    clear_canvas(); history_free();
+    if (app_set_color(1) != 0) return 41;
+    if (bucket_do(400, 300, 0) != 600) return 42;
+    history_free();
+    int undo_before = undo_stack.count;
+    Uint32 *noop_pre = snapshot_canvas();
+    if (!noop_pre) return 43;
+    n = bucket_do(400, 300, 0);
+    if (n != 0 || undo_stack.count != undo_before) return 44;
+    Uint32 *noop_post = snapshot_canvas();
+    if (!noop_post || !replay_snapshots_equal(noop_pre, noop_post)) return 45;
+    free(noop_pre); free(noop_post);
+
+    /* Open boundary reaching the canvas edges. */
+    clear_canvas(); history_free();
+    if (app_set_color(2) != 0 || app_set_size(4) != 0) return 46;
+    ui_fill_shapes = 0;
+    if (geometry_do(4, 400, 0, 400, 599, 0) != 1) return 47;
+    history_free();
+    if (app_set_color(1) != 0) return 48;
+    n = bucket_do(100, 300, 0);
+    if (n < 500 || n > 600) return 49;
+    if (read_canvas_pixel(0, 300, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,220,60,60)) return 50;
+    if (read_canvas_pixel(397, 300, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,220,60,60)) return 51;
+    if (read_canvas_pixel(400, 300, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,40,120,220)) return 51;
+    if (read_canvas_pixel(403, 300, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 52;
+    if (read_canvas_pixel(799, 300, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,255,255,255)) return 53;
+
+    /* Large 800x600 fill: bounded command stream and execution. */
+    clear_canvas(); history_free();
+    if (app_set_color(3) != 0) return 54;
+    Uint64 large0 = SDL_GetPerformanceCounter();
+    n = bucket_do(400, 300, 0);
+    Uint64 large1 = SDL_GetPerformanceCounter();
+    if (n != 600 || bucket_last_bytes == 0 ||
+        bucket_last_bytes >= SCRIPT_CMD_BYTES ||
+        bucket_last_commands > REPLAY_MAX_COMMANDS) return 55;
+    int large_cmds = n;
+    size_t large_bytes = bucket_last_bytes;
+    double large_ms = (double)(large1 - large0) * 1000.0 /
+                      (double)SDL_GetPerformanceFrequency();
+    if (read_canvas_pixel(0, 0, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,40,160,80)) return 56;
+    if (read_canvas_pixel(799, 599, &r, &g, &b) != 0 ||
+        !pixel_is(r,g,b,40,160,80)) return 57;
+
+    /* Replay equality for the fill command stream. */
+    clear_canvas(); history_free(); replay_forget();
+    if (app_set_color(2) != 0) return 58;
+    Uint32 *replay_initial = snapshot_canvas();
+    if (!replay_initial) return 59;
+    if (bucket_do(400, 300, 0) != 600) return 60;
+    Uint32 *replay_immediate = snapshot_canvas();
+    if (!replay_immediate) return 61;
+    if (replay_load_command_text(bucket_last_text) != 0) return 62;
+    restore_canvas(replay_initial);
+    Uint64 rep0 = SDL_GetPerformanceCounter();
+    if (replay_play() != 0 || replay_finish_steps() != 0) return 63;
+    Uint64 rep1 = SDL_GetPerformanceCounter();
+    double replay_ms = (double)(rep1 - rep0) * 1000.0 /
+                       (double)SDL_GetPerformanceFrequency();
+    Uint32 *replay_after = snapshot_canvas();
+    if (!replay_after || !replay_snapshots_equal(replay_immediate, replay_after))
+        return 64;
+    replay_stop();
+    free(replay_after); free(replay_immediate); free(replay_initial);
+
+    /* Load -> Fill -> Clear -> Load remains usable. */
+    clear_canvas(); history_free(); replay_forget();
+    if (load_script_file("examples/yong.glon") != 0 || run_script() != 0)
+        return 65;
+    if (app_set_color(1) != 0 || bucket_do(400, 300, 0) <= 0) return 66;
+    document_clear();
+    if (load_script_file("examples/calligraphy.glon") != 0 || run_script() != 0)
+        return 67;
+    if (save_png("glon-paint.png") != 0) return 68;
+
+    printf("bucket-test: rect=ok circle=ok irregular=ok colours=ok tolerance=ok "
+           "noop=ok open_edge=ok large=ok undo=ok redo=ok replay_equal=ok "
+           "lifecycle=ok rect200x150=%d/%zuB/%.3fms full800x600=%d/%zuB/%.3fms "
+           "replay800x600=%.3fms result=ok\n",
+           rect_cmds, rect_bytes, rect_ms, large_cmds, large_bytes, large_ms,
+           replay_ms);
+    history_free(); replay_forget();
+    (void)saved;
+    return 0;
+}
+
 static int lifecycle_test(void) {
     int saved = 0;
     if (app_init() != 0) return 2;
@@ -5040,6 +5431,15 @@ int main(int argc, char **argv) {
         SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
         SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
         fprintf(stderr, "glon-paint: smooth-demo %s\n", rc == 0 ? "passed" : "failed");
+        return rc;
+    }
+    if (argc > 1 && strcmp(argv[1], "--bucket-test") == 0) {
+        if (sdl_init(1) != 0) return 2;
+        int rc = bucket_test();
+        history_free(); replay_forget(); free(script_source);
+        SDL_DestroyTexture(background); SDL_DestroyTexture(canvas); SDL_DestroyTexture(composite);
+        SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); IMG_Quit(); SDL_Quit();
+        fprintf(stderr, "glon-paint: bucket-test %s\n", rc == 0 ? "passed" : "failed");
         return rc;
     }
     if (argc > 1 && strcmp(argv[1], "--geometry-test") == 0) {

@@ -8,7 +8,7 @@ PNG/JPEG files.
 ## Layout
 
 - Menu bar: File, Edit, View, Help.
-- Left toolbar: Brush, Eraser, Calligraphy, Line, Rectangle and Ellipse.
+- Left toolbar: Brush, Eraser, Calligraphy, Line, Rectangle, Ellipse and Bucket.
 - Centre workspace: the fixed 800x600 document, aspect-fit and centred with
   margins; it scales with the window.
 - Right inspector: four colour swatches, brush-size slider, calligraphy
@@ -103,7 +103,7 @@ The default library root is `../..` when launched from this directory. Set
 | `1`-`4` | colour shortcuts |
 | `+` / `-` | brush-size shortcuts |
 | `B` / `E` | Brush / Eraser shortcuts |
-| `L` / `R` / `O` | Line / Rectangle / Ellipse shortcuts |
+| `L` / `R` / `O` / `G` | Line / Rectangle / Ellipse / Bucket shortcuts |
 | `C` | clear the drawing layer |
 | `S` | save the composite as `glon-paint.png` |
 | `Esc` | quit |
@@ -115,6 +115,7 @@ The default library root is `../..` when launched from this directory. Set
 | Inspector Smooth | Smooth strokes On/Off, Brush tip On/Off, stroke duration 0.15/0.3/0.6/1.2 s |
 | Toolbar Line / Rectangle / Ellipse | click-drag geometric tools; Shift constrains line angle, square and circle |
 | Inspector Fill shapes | outline (Off) or filled (On) rectangles/ellipses |
+| Inspector Bucket tolerance | 0 = exact RGBA match; 1-255 = max per-channel/alpha difference |
 | Esc / right-click / focus loss | cancel an in-progress geometric preview without committing |
 
 The document is always 800x600 internally. Window resizing preserves its aspect
@@ -271,6 +272,33 @@ The ellipse is a polygonal approximation, not a true vector rasteriser; large
 outlines show slight faceting. Filled shapes can expand to hundreds of commands,
 so replaying them at 5 ops/s is slow. The preview approximates outline width
 with a one-pixel guide and uses translucent fill.
+
+## Bucket
+
+The Bucket tool performs an iterative scanline flood-fill on the drawing layer.
+Clicking a pixel fills its contiguous region with the selected palette colour.
+Tolerance 0 requires an exact ARGB match; higher values accept pixels whose
+maximum per-channel difference, including alpha, is within the tolerance. This
+suits antialiased boundaries at the cost of potentially including boundary
+pixels.
+
+The fill is computed into a temporary canvas snapshot using an explicit
+scanline stack, not recursion. Each contiguous horizontal span becomes one
+ordinary `L` command with size 1. Those commands are then executed through the
+normal dispatcher, so the committed pixels are reproducible, saveable and
+replayable; the temporary mask is never uploaded directly. Exact matching leaves
+the outline untouched, including irregular freehand outlines. Regions open to
+the canvas edge fill until the edge or an opaque boundary. A target already
+matching the selected colour is a no-op and adds no undo entry. Each fill is one
+undo/redo action.
+
+The fill is bounded to the existing 4,096-command / 1 MiB command budget. A
+pathological mask needing more spans is rejected without changing the canvas.
+Measured on WSLg: 200x150 rectangle interior 145 commands / 4,350 B; full
+800x600 600 commands / 16,580 B. Flood + command application took about
+12-38 ms for the 200x150 region and 15-26 ms for the full canvas across runs;
+literal-command replay took about 8-13 ms. These are CPU/flood and
+command-application timings, not a display FPS claim.
 
 ## Writing 永
 
@@ -457,8 +485,8 @@ command sink, not a second Glon execution.
   demo/shop/strings-ext.glon experiments/glon-gui-paint/paint.glon \
   experiments/glon-gui-paint/tests/paint-tests.glon
 
-# SDL/Nuklear UI, image, script lifecycle, geometric tools, calligraphy,
-# replay, smooth animation, 永, undo, resize, PNG and 10,000-move tests
+# SDL/Nuklear UI, image, script lifecycle, geometric and bucket tools,
+# calligraphy, replay, smooth animation, 永, undo, resize, PNG and 10,000-move tests
 make test
 
 # Write start/25/50/75%/final PNG frames for the first stroke of a script and
@@ -509,6 +537,9 @@ these snapshots must not be described as a Glon command log.
 - Custom Export and grid are disabled.
 - Ellipses are 72-segment polygons; filled shapes emit one L command per row
   (up to 600) rather than a new fill primitive.
+- Bucket fills with more than 4,096 horizontal spans or 1 MiB of commands are
+  rejected rather than partially applied. Tolerance may include boundary pixels
+  and can visually merge a close-coloured outline.
 - No PDF decoding or script editor; replay is stored-command playback, not
   recording.
 - Smooth animation applies only to pressure-aware `P` commands; ordinary lines,
