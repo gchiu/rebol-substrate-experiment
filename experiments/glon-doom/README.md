@@ -349,3 +349,12 @@ kept against the walls. `--placeholder-corridor` remains available. Performance
 at 960×600 is about 32 FPS (G5o was ~51), so further immediate-mode batching is
 still needed. See `G5P-CORRIDOR-REPORT.md`; final seamless floor/ceiling/prop
 artwork is still missing.
+
+## G5p corrective pass
+
+The spawn room, both door faces and all wall/floor/ceiling base surfaces now use
+the existing GL materials instead of flat colours. Normal interactive play no
+longer calls `glFinish` every frame; use `GLON_FINISH=1` when explicit GPU
+synchronisation is required for profiling. A display-list cache was tested and
+rejected because it ran below 1 FPS on WSLg D3D12. See
+`G5P-CORRECTIVE-REPORT.md`.

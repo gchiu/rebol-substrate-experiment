@@ -590,6 +590,22 @@ Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
 - Floor/ceiling/prop artwork remains prototype/placeholder; final seamless deck,
   light insert and prop materials are explicit dependencies.
 
+### G5p corrective: material coverage and performance [FINDING]
+
+[FINDING 2026-11-14, `experiments/glon-avp-g5p`, WSLg D3D12 AMD Radeon]
+
+- Blank spawn/door surfaces were missing material assignments: base floor,
+  ceiling and all `gl_walls` used flat-colour helpers, and the near door had no
+  texture. Existing `gl_wall`/`gl_plane` helpers now cover all room/corridor
+  walls and floor; both door faces use `GT_DOOR`; lower housings use tinted
+  service material. Deliberate dark recesses/ribs/fixtures stay dark.
+- Corridor CPU submission is only 0.5–0.9 ms; static geometry rebuild is not the
+  bottleneck. A display-list cache was rejected because WSLg D3D12 fell below
+  1 FPS. Forced `glFinish` cost 2.3–6 ms and is now opt-in (`GLON_FINISH=1`).
+- Matched clean runs: G5o 53.7 FPS at 960×600 and 34.0 FPS at 2080×1300; G5p
+  corrective 51–62 FPS and 40.7–44.5 FPS respectively. Remaining frame time is
+  Glon tick (~6–9 ms) plus state extraction (~5–6 ms).
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

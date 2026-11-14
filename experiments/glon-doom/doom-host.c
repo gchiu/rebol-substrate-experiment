@@ -124,6 +124,7 @@ static int last_px = 320;
 static int last_py = 320;
 static double st_current_angle = 0;
 static float gl_debug_pitch = 0;
+static double gl_prof_finish_ms = 0;
 static int get_objects(Obj out[6]);
 static int alien_cover = 0;
 static int cover_view = 0;
@@ -2267,7 +2268,7 @@ static void gl_projection(void) {
 static void gl_wall(const GlWall *w, int door) {
     int mat=w->mat; GLuint t = door?GT_DOOR:(mat==1||mat==3?GT_SERVICE:GT_PANEL);
     double dx=w->x2-w->x1, dy=w->y2-w->y1, len=sqrt(dx*dx+dy*dy);
-    glBindTexture(GL_TEXTURE_2D, gl_tex[t]);
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, gl_tex[t]);
     glColor3f(1,1,1);
     glBegin(GL_QUADS);
     glTexCoord2f(0,0); gl_gv(w->x1,w->y1,0);
@@ -2277,12 +2278,21 @@ static void gl_wall(const GlWall *w, int door) {
     glEnd();
 }
 static void gl_plane(double z, GLuint tex, double off) {
-    glBindTexture(GL_TEXTURE_2D, gl_tex[tex]);
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, gl_tex[tex]); glColor3f(1,1,1);
     glBegin(GL_QUADS);
     glTexCoord2f(128/256.0,128/256.0); gl_gv(128,128,z);
     glTexCoord2f(1280/256.0,128/256.0); gl_gv(1280,128,z);
     glTexCoord2f(1280/256.0,1024/256.0); gl_gv(1280,1024,z);
     glTexCoord2f(128/256.0,1024/256.0); gl_gv(128,1024,z);
+    glEnd();
+}
+static void gl_plane_tint(double z, GLuint tex, float tint) {
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, gl_tex[tex]); glColor3f(tint,tint,tint);
+    glBegin(GL_QUADS);
+    glTexCoord2f(128/256.0f,128/256.0f); gl_gv(128,128,z);
+    glTexCoord2f(1280/256.0f,128/256.0f); gl_gv(1280,128,z);
+    glTexCoord2f(1280/256.0f,1024/256.0f); gl_gv(1280,1024,z);
+    glTexCoord2f(128/256.0f,1024/256.0f); gl_gv(128,1024,z);
     glEnd();
 }
 static void gl_billboard(GLuint tex, double x,double y,double wworld,double hworld) {
@@ -2437,12 +2447,13 @@ static void gl_tex_quad_tint(GLuint tex,float x1,float y1,float x2,float y2,floa
     glTexCoord2f(u0,v1); gl_gv(x1,y1,z2);
     glEnd(); glDisable(GL_TEXTURE_2D);
 }
-static void gl_corridor(float light, int door_blocked) {
+static void gl_corridor_static(void) {
     const float wallR=0.36f,wallG=0.33f,wallB=0.29f;
     const float darkR=0.14f,darkG=0.13f,darkB=0.12f;
-    /* base floor + ceiling, solid placeholder materials */
-    gl_solid_plane(0,0.28f,0.27f,0.24f); gl_solid_plane(128,0.16f,0.16f,0.15f);
-    for(int i=0;i<10;i++) gl_solid_wall(&gl_walls[i],wallR,wallG,wallB);
+    /* base floor uses the existing deck material; ceiling stays a deliberately dark plane */
+    gl_plane(0, corridor_art?GT_ART_FLOOR:GT_FLOOR, 0);
+    gl_plane_tint(128, GT_PANEL, 0.30f);
+    for(int i=0;i<10;i++) gl_wall(&gl_walls[i],0);
     /* recessed side panels, ribs and lower service housings */
     for(int x=780;x<1260;x+=80){
         gl_box(x,258,18,x+64,262,108,darkR*1.3f,darkG*1.2f,darkB*1.1f);
@@ -2453,6 +2464,8 @@ static void gl_corridor(float light, int door_blocked) {
             gl_box(x+8,382,z,x+56,383,z+3,0.08f,0.08f,0.07f); }
         gl_box(x,258,4,x+72,266,36,0.28f,0.25f,0.20f);
         gl_box(x,374,4,x+72,382,36,0.28f,0.25f,0.20f);
+        gl_tex_quad_tint(gl_tex[GT_SERVICE],x+2,266.1f,x+70,266.1f,5,35,0,0,2,1,0.55f);
+        gl_tex_quad_tint(gl_tex[GT_SERVICE],x+2,373.9f,x+70,373.9f,5,35,0,0,2,1,0.55f);
         gl_box(x,260,14,x+72,264,18,1.0f,0.46f,0.08f); /* warm floor strip */
         gl_box(x,378,14,x+72,382,18,1.0f,0.46f,0.08f);
     }
@@ -2479,7 +2492,6 @@ static void gl_corridor(float light, int door_blocked) {
         gl_box(x+70,284,123,x+78,356,128,0.12f,0.12f,0.11f);
         gl_box(x+2,284,123,x+78,292,128,0.12f,0.12f,0.11f);
         gl_box(x+2,348,123,x+78,356,128,0.12f,0.12f,0.11f);
-        gl_light_panel(x+13,296,x+67,344,125.7f,light);
         for(int y=306;y<342;y+=14) gl_box(x+13,y,125.35f,x+67,y+1,125.6f,0.09f,0.09f,0.08f);
         for(int z=123;z<126;z+=2) gl_box(x+82,292,z,x+88,346,z+1,0.08f,0.08f,0.07f);
     }
@@ -2519,16 +2531,25 @@ static void gl_corridor(float light, int door_blocked) {
     gl_box(762,384,0,770,396,136,0.10f,0.10f,0.09f);
     gl_box(762,244,128,770,396,136,0.08f,0.08f,0.08f);
     gl_box(762,244,0,770,396,6,0.08f,0.08f,0.08f);
-    if(door_blocked){
-        gl_box(768,256,0,770,384,128,0.25f,0.23f,0.14f);
-        for(int z=12;z<50;z+=10) gl_box(768,264,z,770,376,z+4,0.62f,0.45f,0.10f);
-    }
     /* visual destination bulkhead at the far end (existing wall remains gameplay boundary) */
     gl_box(1272,244,0,1280,256,136,0.10f,0.10f,0.09f);
     gl_box(1272,384,0,1280,396,136,0.10f,0.10f,0.09f);
     gl_box(1272,244,128,1280,396,136,0.08f,0.08f,0.08f);
     gl_box(1274,256,0,1278,384,128,0.28f,0.25f,0.16f);
     for(int z=14;z<60;z+=12) gl_box(1274,264,z,1278,376,z+5,0.55f,0.40f,0.08f);
+}
+static void gl_corridor(float light, int door_blocked) {
+    gl_corridor_static();
+    /* Dynamic lamp lenses (Glon light pulse). */
+    for (int x=820;x<1240;x+=160)
+        gl_light_panel(x+13,296,x+67,344,125.7f,light);
+    /* Dynamic near door panel, textured on both room and corridor faces. */
+    if (door_blocked) {
+        gl_box(768,256,0,770,384,128,0.25f,0.23f,0.14f);
+        gl_tex_quad_tint(gl_tex[GT_DOOR],767.9f,256,767.9f,384,0,128,0,0,1,1,0.50f);
+        gl_tex_quad_tint(gl_tex[GT_DOOR],770.1f,256,770.1f,384,0,128,0,0,1,1,0.50f);
+        for (int z=12;z<50;z+=10) gl_box(768,264,z,770,376,z+4,0.62f,0.45f,0.10f);
+    }
 }
 static void gl_scene(const Status *st, const Obj *objs, int nobj) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -2552,7 +2573,7 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
     }
     glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
     gl_draw_tracker(st);
-    glFinish();
+    if(getenv("GLON_FINISH")){ long _pf=now_ns(); glFinish(); gl_prof_finish_ms=(double)(now_ns()-_pf)/1e6; } else gl_prof_finish_ms=0;
 }
 
 static int gl_bench(int frames, int w, int h) {
@@ -2608,6 +2629,7 @@ static int interactive_gl(int w, int h) {
     load_session(); build_blocks();
     Status st; Obj objs[6]; Spans spans; Detail det; TexRows tr;
     int px,py,pa; double acc=0.0,last=(double)now_ns(),fps_start=(double)now_ns(); int frames=0;
+    double prof_tick=0,prof_state=0,prof_scene=0,prof_swap=0,prof_finish=0;
     int running=1;
     HeldKeys held={0};
     while(running) {
@@ -2631,14 +2653,23 @@ static int interactive_gl(int w, int h) {
         const Uint8 *k=SDL_GetKeyboardState(NULL);
         int mask=held_keys_mask(&held,k);
         double tn=(double)now_ns(); double dt=(tn-last)/1e9; last=tn; if(dt>0.10)dt=0.10; acc+=dt;
+        long pt_tick0=now_ns();
         int ticks=0; while(acc>=1.0/TICK_HZ && ticks<10){ if(tick(mask)!=0){running=0;break;} acc-=1.0/TICK_HZ; ticks++; }
+        long pt_tick1=now_ns();
         if(!running) break;
         if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) break;
+        long pt_scene0=now_ns();
         st_current_angle=pa;
         int nobj=0;
         if(objects_mode && current_objs_valid) { memcpy(objs,current_objs,sizeof objs); nobj=6; }
-        gl_scene(&st,objs,nobj); SDL_GL_SwapWindow(gl_win); frames++;
-        if(frames%120==0){ double secs=((double)now_ns()-fps_start)/1e9; printf("G5m GL frame=%d fps=%.1f player=%d,%d angle=%d door=%d/%d alien=%d,%d state=%d\n",frames,frames/secs,px,py,pa,st.door_open,st.door_blocked,st.ax,st.ay,st.state); fflush(stdout); fps_start=(double)now_ns(); }
+        long pt0=now_ns(); gl_scene(&st,objs,nobj); long pt1=now_ns();
+        SDL_GL_SwapWindow(gl_win); long pt2=now_ns(); frames++;
+        prof_tick += (double)(pt_tick1-pt_tick0)/1e6;
+        prof_state += (double)(pt_scene0-pt_tick1)/1e6;
+        prof_scene += (double)(pt1-pt_scene0)/1e6;
+        prof_swap += (double)(pt2-pt1)/1e6;
+        prof_finish += gl_prof_finish_ms;
+        if(frames%120==0){ double secs=((double)now_ns()-fps_start)/1e9; printf("G5p GL frame=%d fps=%.1f tick=%.2f state=%.2f scene=%.2f finish=%.2f swap=%.2f player=%d,%d angle=%d door=%d/%d alien=%d,%d state=%d\n",frames,frames/secs,prof_tick/120,prof_state/120,prof_scene/120,prof_finish/120,prof_swap/120,px,py,pa,st.door_open,st.door_blocked,st.ax,st.ay,st.state); fflush(stdout); fps_start=(double)now_ns(); prof_tick=prof_state=prof_scene=prof_swap=prof_finish=0; }
         SDL_Delay(1);
     }
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
@@ -2691,7 +2722,10 @@ static int gl_tour(const char *dir,int w,int h) {
       {"08-far-bulkhead",1080,320,0,64,0,990,320,1},
       {"09-floor-detail",900,340,0,64,0,300,320,0,-24.0f},
       {"10-ceiling-lights",900,320,0,64,0,300,320,0,24.0f},
-      {"11-alien-tracker",760,320,0,64,0,990,320,1}
+      {"11-alien-tracker",760,320,0,64,0,990,320,1},
+      {"12-spawn-doorway",320,320,0,0,1,300,320,0,0},
+      {"13-room-turnaround",320,320,128,0,1,1120,320,0,0},
+      {"14-corridor-door-closed",900,320,128,0,1,1120,320,0,0}
     };
     for(size_t i=0;i<sizeof poses/sizeof poses[0];i++){
         gl_debug_pitch=poses[i].pitch;

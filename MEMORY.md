@@ -652,6 +652,17 @@ fell to about 32 FPS at 960×600 from G5o's ~51 FPS due to immediate-mode
 geometry; batching remains future work. Full report:
 `experiments/glon-doom/G5P-CORRIDOR-REPORT.md`.
 
+## 10k. AvP G5p corrective investigation (2026-11-14)
+
+Flat spawn/doorway surfaces were caused by missing material assignments, not
+occlusion; existing textured wall/floor helpers now cover room and corridor
+base surfaces, both door faces, and lower housings. Corridor CPU submission is
+only ~0.5–0.9 ms; a display-list cache was rejected after falling below 1 FPS
+on WSLg D3D12. Forced `glFinish` was removed from normal play (opt-in with
+`GLON_FINISH=1`). Matched 960×600 performance is 51–62 FPS, approximately G5o;
+remaining time is Glon tick and state extraction. Full report:
+`experiments/glon-doom/G5P-CORRECTIVE-REPORT.md`.
+
 ## 11. Detailed documents
 
 - `README.md` — project intro.
