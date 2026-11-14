@@ -1,0 +1,72 @@
+[
+doom/obj-dx: 0 doom/obj-dy: 0 doom/obj-depth: 0 doom/obj-side: 0
+doom/obj-visible: 0 doom/obj-left: 0 doom/obj-right: 0 doom/obj-top: 0 doom/obj-bot: 0
+doom/obj-sx: 0 doom/obj-sh: 0 doom/obj-sw: 0
+doom/odx: 0 doom/ody: 0 doom/ocx: 0 doom/ocy: 0
+doom/objects: [
+    [0 910 272 13 12 62]
+    [0 940 370 13 12 62]
+    [1 860 270 28 19 48]
+    [1 1040 370 30 18 48]
+    [2 980 270 18 12 70]
+    [3 1100 370 36 16 38]
+]
+doom/object-row: func [i] [ block-at doom/objects i ]
+doom/object-project: func [id x y hw hd h] [
+    doom/obj-dx: - x doom/px
+    doom/obj-dy: - y doom/py
+    doom/obj-depth: / + * doom/obj-dx doom/dirx * doom/obj-dy doom/diry 64
+    doom/obj-side: / + * doom/obj-dx doom/planex * doom/obj-dy doom/planey 64
+    doom/obj-visible: 0
+    doom/obj-left: 0
+    doom/obj-right: 0
+    doom/obj-top: 0
+    doom/obj-bot: 0
+    either > doom/obj-depth 0 [
+        doom/obj-sx: + 160 / * doom/obj-side 160 doom/obj-depth
+        doom/obj-sh: / * h doom/projection doom/obj-depth
+        doom/obj-sw: / * * 2 hw doom/projection doom/obj-depth
+        doom/obj-left: - doom/obj-sx / doom/obj-sw 2
+        doom/obj-right: + doom/obj-sx / doom/obj-sw 2
+        doom/obj-top: - doom/horizon / doom/obj-sh 2
+        doom/obj-bot: + doom/horizon / doom/obj-sh 2
+        either >= doom/obj-sx -40 [
+            either <= doom/obj-sx 359 [ doom/obj-visible: 1 ] [ none ]
+        ] [ none ]
+    ] [ none ]
+    print id
+    print doom/obj-depth
+    print doom/obj-left
+    print doom/obj-right
+    print doom/obj-top
+    print doom/obj-bot
+    print doom/obj-visible
+    print x
+    print y
+    print hw
+    print hd
+    print h
+]
+doom/object-reports: func [i] [
+    either < i 6 [
+        doom/object-project block-at block-at doom/objects i 0 block-at block-at doom/objects i 1 block-at block-at doom/objects i 2 block-at block-at doom/objects i 3 block-at block-at doom/objects i 4 block-at block-at doom/objects i 5
+        doom/object-reports + i 1
+    ] [ none ]
+]
+doom/object-report-block: [ doom/object-reports 0 ]
+doom/check-object: func [x y r row] [
+    doom/odx: - x block-at row 1
+    doom/ody: - y block-at row 2
+    doom/ocx: either < doom/odx - 0 block-at row 3 [ - 0 block-at row 3 ] [ either > doom/odx block-at row 3 [ block-at row 3 ] [ doom/odx ] ]
+    doom/ocy: either < doom/ody - 0 block-at row 4 [ - 0 block-at row 4 ] [ either > doom/ody block-at row 4 [ block-at row 4 ] [ doom/ody ] ]
+    doom/odx: - doom/odx doom/ocx
+    doom/ody: - doom/ody doom/ocy
+    either < + * doom/odx doom/odx * doom/ody doom/ody r [ doom/hit: 1 ] [ none ]
+]
+doom/check-objects: func [x y r i] [
+    either < i 6 [
+        doom/check-object x y r block-at doom/objects i
+        doom/check-objects x y r + i 1
+    ] [ none ]
+]
+]

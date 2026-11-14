@@ -6,10 +6,25 @@ SDL_CFLAGS := $(shell $(PKG_CONFIG) --cflags sdl2 2>/dev/null || echo -I/usr/inc
 SDL_LIBS := $(shell $(PKG_CONFIG) --libs sdl2 2>/dev/null || echo -lSDL2)
 BUILD := build
 TARGET := $(BUILD)/doom
+WIN_BUILD := build-win
+WIN_TARGET := $(WIN_BUILD)/doom.exe
+WIN_ROOT := ../..
+WIN_SDL := ../../.deps/SDL2-2.30.9/x86_64-w64-mingw32
+WIN_CC ?= /home/graham/.cache/glon-g6d/zig-linux-x86_64-0.13.0/zig cc -target x86_64-windows-gnu
+WIN_CFLAGS := -std=c17 -O2 -Wall -Wextra -I$(WIN_ROOT) -DSDL_MAIN_HANDLED -I$(WIN_SDL)/include
+WIN_LIBS := -L$(WIN_SDL)/lib $(WIN_SDL)/lib/libSDL2.dll.a -lopengl32 -lwinmm -lole32 -loleaut32 -luuid -limm32 -lversion
 SRCS := doom-host.c $(ROOT)/r0_s1_session.c $(ROOT)/r0_s1_runtime.c $(ROOT)/s1.c
 OPCODE_TARGET := $(BUILD)/doom-opcode
 all: $(TARGET)
+
+$(WIN_TARGET): doom-host.c textures.h weapon_sprites.h alien_sprites_g5s.h $(WIN_ROOT)/r0_s1.h $(WIN_ROOT)/m1_layout.h $(WIN_ROOT)/s1.h | $(WIN_BUILD)
+	$(WIN_CC) $(WIN_CFLAGS) -o $@ doom-host.c $(WIN_ROOT)/r0_s1_session.c $(WIN_ROOT)/r0_s1_runtime.c $(WIN_ROOT)/s1.c $(WIN_LIBS)
+
+windows: $(WIN_TARGET)
 $(BUILD):
+	@mkdir -p $@
+
+$(WIN_BUILD):
 	@mkdir -p $@
 $(TARGET): doom-host.c textures.h weapon_sprites.h alien_sprites_g5s.h $(ROOT)/r0_s1.h $(ROOT)/m1_layout.h $(ROOT)/s1.h | $(BUILD)
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -o $@ $(SRCS) $(SDL_LIBS) -lGL -lm -lpthread
@@ -56,4 +71,4 @@ bench: $(TARGET)
 
 clean:
 	rm -rf $(BUILD)
-.PHONY: all test run bench bench-tools diagnostics clean
+.PHONY: all windows test run bench bench-tools diagnostics clean

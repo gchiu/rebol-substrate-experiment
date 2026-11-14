@@ -25,6 +25,9 @@
 #ifdef DOOM_S1_PROFILE
 #include "s1_prof.h"
 #endif
+#ifdef _WIN32
+#define SDL_MAIN_HANDLED
+#endif
 #include <SDL2/SDL.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -33,7 +36,10 @@
 #include <time.h>
 #include <math.h>
 #include <SDL2/SDL_opengl.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
+#include "platform_win.h"
 
 #define FB_W 320
 #define FB_H 200
@@ -109,7 +115,11 @@ static void prof_collect(ProfAccum *a) {
 }
 #endif
 
+#ifdef _WIN32
+static const char *root_dir = ".";
+#else
 static const char *root_dir = "../..";
+#endif
 static int simple_mode = 0;
 static int stationary_enabled = 0;
 static int raw_wall_mode = 0;
@@ -155,7 +165,7 @@ static const uint32_t *const alien_dir_tex[ALIEN_DIR_COUNT] = {
     alien_dir_side, alien_dir_rear, alien_dir_attack
 };
 
-static long now_ns(void) {
+static int64_t now_ns(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts.tv_sec * 1000000000L + ts.tv_nsec;
@@ -575,7 +585,7 @@ static void audio_mix(int16_t *out,int frames) {
 
 static void audio_callback(void *userdata,Uint8 *stream,int len) {
     (void)userdata;
-    long long t0=now_ns();
+    int64_t t0=now_ns();
     audio_mix((int16_t*)stream,len/(int)(AUDIO_CHANNELS*sizeof(int16_t)));
     if(audio_trace_request_ns){
         int active=0;
@@ -610,7 +620,9 @@ static int audio_start(void) {
     /* Ask PulseAudio/libpulse for a low-latency stream unless the user set a
      * latency explicitly.  The old server-default target added a long
      * input-to-sound delay on WSLg. */
+#ifndef _WIN32
     if(!getenv("PULSE_LATENCY_MSEC")) setenv("PULSE_LATENCY_MSEC","25",1);
+#endif
     if(SDL_InitSubSystem(SDL_INIT_AUDIO)!=0){
         fprintf(stderr,"audio: unavailable (%s); continuing without ambient audio\n",SDL_GetError());
         return 0;
@@ -982,19 +994,41 @@ static int run_block(cell block, const char *label) {
     return 0;
 }
 
-typedef struct { FILE *saved, *stream; char *buf; size_t len; } Capture;
+typedef struct { FILE *saved, *stream; char *buf; size_t len; int saved_fd; } Capture;
 
 static void capture_begin(Capture *c) {
     memset(c, 0, sizeof *c);
     c->saved = stdout;
+#ifdef _WIN32
+    fflush(stdout);
+    c->stream = tmpfile();
+    if (!c->stream) fail("capture stream");
+    c->saved_fd = _dup(_fileno(stdout));
+    if (c->saved_fd < 0) fail("capture dup");
+    if (_dup2(_fileno(c->stream), _fileno(stdout)) < 0) fail("capture dup2");
+#else
     c->stream = open_memstream(&c->buf, &c->len);
-    if (!c->stream) fail("open_memstream failed");
+    if (!c->stream) fail("capture stream");
     stdout = c->stream;
+#endif
 }
 static void capture_end(Capture *c) {
     fflush(stdout);
+#ifdef _WIN32
+    long n = ftell(c->stream);
+    if (n < 0) n = 0;
+    _dup2(c->saved_fd, _fileno(stdout));
+    _close(c->saved_fd);
+    c->buf = malloc((size_t)n + 1);
+    if (!c->buf) fail("capture buffer");
+    rewind(c->stream);
+    c->len = fread(c->buf, 1, (size_t)n, c->stream);
+    c->buf[c->len] = 0;
+    fclose(c->stream);
+#else
     fclose(c->stream);
     stdout = c->saved;
+#endif
 }
 
 static int parse_ints(const Capture *c, int *out, int expected, const char *label) {
@@ -1269,10 +1303,10 @@ static int tick(int mask) {
     return rc;
 }
 
-static int render_spans(Spans *s, long *ns) {
+static int render_spans(Spans *s, int64_t *ns) {
     int vals[RENDER_INTS];
     Capture c;
-    long t0 = now_ns();
+    int64_t t0 = now_ns();
     capture_begin(&c);
 #ifdef DOOM_S1_PROFILE
     prof_begin();
@@ -1287,7 +1321,7 @@ static int render_spans(Spans *s, long *ns) {
     if (rc == 0) prof_collect(&prof_wall);
 #endif
     capture_end(&c);
-    long t1 = now_ns();
+    int64_t t1 = now_ns();
     if (ns) *ns = t1 - t0;
     if (rc != 0) { free(c.buf); return -1; }
     rc = parse_ints(&c, vals, RENDER_INTS, "render");
@@ -1436,7 +1470,7 @@ static int self_test(void) {
 
     /* Door visibility is consistent with collision state. */
     Spans s;
-    long proj_ns;
+    int64_t proj_ns;
     reset(); if (render_spans(&s, &proj_ns) != 0) return 2;
     fails += expect_eq("closed door centre colour", s.color[PROJ_COLS / 2], 4);
     fails += expect_eq("closed door hides alien", (get_status(&st), st.visible), 0);
@@ -2224,7 +2258,7 @@ static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
                 fb[y * FB_W + x] = c;
         }
     }
-    long sp0 = now_ns();
+    int64_t sp0 = now_ns();
     if (objects_mode) {
         if (current_objs_valid) {
             SpriteDraw list[7]; int n = 0;
@@ -2246,7 +2280,7 @@ static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
             for (int i = 0; i < n; i++) draw_sprite_rect(fb, list[i].src, list[i].sw, list[i].sh, list[i].l, list[i].r, list[i].t, list[i].b, list[i].pct, list[i].flip);
         } else draw_alien_sprite(fb, st);
     } else draw_alien_sprite(fb, st);
-    long sp1 = now_ns();
+    int64_t sp1 = now_ns();
     last_sprite_ms = (double)(sp1 - sp0) / 1e6;
     draw_tracker(fb, st);
 }
@@ -2259,15 +2293,15 @@ static int sdl_present(SDL_Renderer *ren, SDL_Texture *tex, uint32_t *fb,
                        const Spans *s, const Detail *d, const TexRows *tr,
                        const Status *st, int floor_c, int ceil_c,
                        double *raster_ms, double *present_ms) {
-    long r0 = now_ns();
+    int64_t r0 = now_ns();
     draw_buffer(fb, s, d, tr, st, floor_c, ceil_c);
-    long r1 = now_ns();
+    int64_t r1 = now_ns();
     if (raster_ms) *raster_ms = (double)(r1 - r0) / 1e6;
     if (SDL_UpdateTexture(tex, NULL, fb, FB_W * (int)sizeof(uint32_t)) != 0) return -1;
     SDL_RenderClear(ren);
     SDL_RenderCopy(ren, tex, NULL, NULL);
     SDL_RenderPresent(ren);
-    long t1 = now_ns();
+    int64_t t1 = now_ns();
     if (present_ms) *present_ms = (double)(t1 - r1) / 1e6;
     return 0;
 }
@@ -2336,9 +2370,9 @@ static int bench_fixed(int frames, int camx, int camy, int cama) {
     if (need_texrows() && get_texrows(&tr) != 0) return 2;
 
     const int warm = 20;
-    long w0 = now_ns();
+    int64_t w0 = now_ns();
     for (int i = 0; i < warm; i++) {
-        long a = now_ns();
+        int64_t a = now_ns();
         if (render_spans(&s, NULL) != 0) return 2;
         if (need_texrows() && get_texrows(&tr) != 0) return 2;
         if (get_status(&st) != 0) return 2;
@@ -2347,19 +2381,19 @@ static int bench_fixed(int frames, int camx, int camy, int cama) {
                         floor_c, ceil_c, &rm, &pm) != 0) return 2;
         (void)a;
     }
-    long w1 = now_ns();
+    int64_t w1 = now_ns();
 
     for (int i = 0; i < frames; i++) {
-        long t0 = now_ns();
+        int64_t t0 = now_ns();
         if (render_spans(&s, NULL) != 0) return 2;
-        long t1 = now_ns();
+        int64_t t1 = now_ns();
         if (need_texrows() && get_texrows(&tr) != 0) return 2;
         if (get_status(&st) != 0) return 2;
-        long t2 = now_ns();
+        int64_t t2 = now_ns();
         double rm, pm;
         if (sdl_present(ren, tex, fb, &s, &det, need_texrows() ? &tr : NULL, &st,
                         floor_c, ceil_c, &rm, &pm) != 0) return 2;
-        long t3 = now_ns();
+        int64_t t3 = now_ns();
         wall[i] = (t1 - t0) / 1e6;
         row[i] = (t2 - t1) / 1e6;
         raster[i] = rm; present[i] = pm;
@@ -2502,16 +2536,16 @@ static int stationary_bench(int frames, int throttle) {
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &cpu0);
     clock_gettime(CLOCK_MONOTONIC, &wall0);
     for (int i = -5; i < frames; i++) {
-        long t0 = now_ns();
+        int64_t t0 = now_ns();
         if (tick(0) != 0) return 2;
         int inject = (i == frames / 2);
         if (inject && tick(32) != 0) return 2;
-        long t1 = now_ns();
+        int64_t t1 = now_ns();
         int miss = cache_frame(&cache, fb, floor_c, ceil_c, 0);
         if (miss < 0) return 2;
-        long t2 = now_ns();
+        int64_t t2 = now_ns();
         if (sdl_present_cached(ren, tex, fb, miss) != 0) return 2;
-        long t3 = now_ns();
+        int64_t t3 = now_ns();
         if (i >= 0) {
             if (miss) { misses++; miss_ms += (double)(t3 - t0) / 1e6; }
             else { hits++; hit_ms += (double)(t3 - t0) / 1e6; }
@@ -2520,8 +2554,8 @@ static int stationary_bench(int frames, int throttle) {
             if (inject) input_ms = (double)(t3 - t0) / 1e6;
         }
         if (throttle) {
-            long spent = t3 - t0;
-            long target = 1000000000L / TICK_HZ;
+            int64_t spent = t3 - t0;
+            int64_t target = 1000000000L / TICK_HZ;
             if (spent < target) SDL_Delay((Uint32)((target - spent + 999999) / 1000000));
         }
     }
@@ -2744,20 +2778,20 @@ static int bench(int frames, int bench_alien) {
     if (get_status(&st) != 0) return 2;
     if (need_texrows() && get_texrows(&tr) != 0) return 2;
     Metrics sum = {0};
-    long wall0 = now_ns();
+    int64_t wall0 = now_ns();
     for (int i = 0; i < frames; i++) {
-        long t0 = now_ns();
+        int64_t t0 = now_ns();
         if (tick(i & 63) != 0) return 2;
-        long t1 = now_ns();
-        long proj_ns;
+        int64_t t1 = now_ns();
+        int64_t proj_ns;
         if (render_spans(&s, &proj_ns) != 0) return 2;
         if (need_texrows() && get_texrows(&tr) != 0) return 2;
         if (get_status(&st) != 0) return 2;
-        long t2 = now_ns();
+        int64_t t2 = now_ns();
         double raster_ms, present_ms;
         if (sdl_present(ren, tex, fb, &s, &det, need_texrows() ? &tr : NULL, &st,
                         floor_c, ceil_c, &raster_ms, &present_ms) != 0) return 2;
-        long t3 = now_ns();
+        int64_t t3 = now_ns();
         sum.sim_ms += (double)(t1 - t0) / 1e6;
         sum.proj_ms += (double)proj_ns / 1e6;
         sum.texrow_ms += (double)(t2 - t1 - proj_ns) / 1e6;
@@ -2769,7 +2803,7 @@ static int bench(int frames, int bench_alien) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) if (e.type == SDL_QUIT) { i = frames; break; }
     }
-    long wall1 = now_ns();
+    int64_t wall1 = now_ns();
     sum.sim_ms /= frames; sum.proj_ms /= frames; sum.texrow_ms /= frames;
     sum.raster_ms /= frames; sum.sprite_ms /= frames; sum.present_ms /= frames; sum.frame_ms /= frames;
     sum.heap_high = r0_s1_heap_high();
@@ -2956,7 +2990,7 @@ static int interactive(void) {
     double texrow_ms = 0, raster_ms = 0, present_ms = 0;
     ViewCache live_cache; memset(&live_cache, 0, sizeof live_cache);
     HeldKeys held = {0};
-    long last = now_ns();
+    int64_t last = now_ns();
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -2993,26 +3027,26 @@ static int interactive(void) {
         }
         const Uint8 *k = SDL_GetKeyboardState(NULL);
         int mask = held_keys_mask(&held, k);
-        long tn = now_ns();
+        int64_t tn = now_ns();
         double dt = (double)(tn - last) / 1e9;
         last = tn;
         if (dt > 0.10) dt = 0.10;
         acc += dt;
-        long ts = now_ns();
+        int64_t ts = now_ns();
         int ticks = 0;
         while (acc >= 1.0 / TICK_HZ && ticks < 10) {
             if (tick(mask) != 0) { running = 0; break; }
             acc -= 1.0 / TICK_HZ;
             ticks++;
         }
-        long te = now_ns();
+        int64_t te = now_ns();
         sim_ms += (double)(te - ts) / 1e6;
         if (stationary_enabled) {
-            long cf0 = now_ns();
+            int64_t cf0 = now_ns();
             int miss = cache_frame(&live_cache, fb, floor_c, ceil_c, 0);
             if (miss < 0) break;
             if (sdl_present_cached(ren, tex, fb, miss) != 0) break;
-            long cf1 = now_ns();
+            int64_t cf1 = now_ns();
             proj_ms += (double)(cf1 - cf0) / 1e6;
             frames++;
             if (frames % 120 == 0) {
@@ -3025,15 +3059,15 @@ static int interactive(void) {
             }
             continue;
         }
-        long proj_ns;
+        int64_t proj_ns;
         if (render_spans(&s, &proj_ns) != 0) break;
-        long st0 = now_ns();
+        int64_t st0 = now_ns();
         if (need_texrows() && get_texrows(&tr) != 0) break;
         if (get_status(&st) != 0) break;
         int apx,apy,apa;
         if (get_state(&apx,&apy,&apa) != 0) break;
         audio_sfx_update(&st,apx,apy,mask,held.fire);
-        long st1 = now_ns();
+        int64_t st1 = now_ns();
         proj_ms += (double)proj_ns / 1e6;
         texrow_ms += (double)(st1 - st0 - proj_ns) / 1e6;
         double rm, pm;
@@ -5113,7 +5147,7 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
     glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
     gl_draw_weapon(st);
     gl_draw_tracker(st);
-    if(getenv("GLON_FINISH")){ long _pf=now_ns(); glFinish(); gl_prof_finish_ms=(double)(now_ns()-_pf)/1e6; } else gl_prof_finish_ms=0;
+    if(getenv("GLON_FINISH")){ int64_t _pf=now_ns(); glFinish(); gl_prof_finish_ms=(double)(now_ns()-_pf)/1e6; } else gl_prof_finish_ms=0;
 }
 
 static int gl_bench(int frames, int w, int h) {
@@ -5123,15 +5157,15 @@ static int gl_bench(int frames, int w, int h) {
     Spans s; Detail det; TexRows tr; Status st; Obj objs[6];
     double sim=0, gpu=0, total=0; int n=0;
     for (int i=0;i<frames;i++) {
-        long t0=now_ns();
+        int64_t t0=now_ns();
         if (tick(i&63)!=0) return 2;
         int px,py,pa; if (get_state(&px,&py,&pa)!=0) return 2; st_current_angle=pa;
         if (get_status(&st)!=0) return 2;
         if (objects_mode) memcpy(objs,current_objs,sizeof current_objs);
-        long t1=now_ns();
+        int64_t t1=now_ns();
         int nobj=objects_mode?6:0;
         gl_scene(&st,objs,nobj);
-        long t2=now_ns(); SDL_GL_SwapWindow(gl_win); long t3=now_ns();
+        int64_t t2=now_ns(); SDL_GL_SwapWindow(gl_win); int64_t t3=now_ns();
         sim+=(t1-t0)/1e6; gpu+=(t2-t1)/1e6; total+=(t3-t0)/1e6; n++;
     }
     printf("gl bench renderer=%s resolution=%dx%d frames=%d sim=%.2fms submit=%.2fms total=%.2fms fps=%.1f loader=%ld heap=%ld\n",
@@ -5232,18 +5266,18 @@ static int interactive_gl(int w, int h) {
         const Uint8 *k=SDL_GetKeyboardState(NULL);
         int mask=held_keys_mask(&held,k);
         double tn=(double)now_ns(); double dt=(tn-last)/1e9; last=tn; if(dt>0.10)dt=0.10; acc+=dt;
-        long pt_tick0=now_ns();
+        int64_t pt_tick0=now_ns();
         int ticks=0; while(acc>=1.0/TICK_HZ && ticks<10){ if(tick(mask)!=0){running=0;break;} acc-=1.0/TICK_HZ; ticks++; }
-        long pt_tick1=now_ns();
+        int64_t pt_tick1=now_ns();
         if(!running) break;
         if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) break;
-        long pt_scene0=now_ns();
+        int64_t pt_scene0=now_ns();
         st_current_angle=pa;
         audio_sfx_update(&st,px,py,mask,held.fire);
         int nobj=0;
         if(objects_mode && current_objs_valid) { memcpy(objs,current_objs,sizeof objs); nobj=6; }
-        long pt0=now_ns(); gl_scene(&st,objs,nobj); long pt1=now_ns();
-        SDL_GL_SwapWindow(gl_win); long pt2=now_ns(); frames++;
+        int64_t pt0=now_ns(); gl_scene(&st,objs,nobj); int64_t pt1=now_ns();
+        SDL_GL_SwapWindow(gl_win); int64_t pt2=now_ns(); frames++;
         if(smoke_frames && frames>=smoke_frames) running=0;
         prof_tick += (double)(pt_tick1-pt_tick0)/1e6;
         prof_state += (double)(pt_scene0-pt_tick1)/1e6;
@@ -5537,13 +5571,13 @@ static int gl_portal_bench(int frames,int w,int h) {
     int px,py,pa; Status st;
     if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
     st_current_angle=pa;
-    long t0=now_ns();
+    int64_t t0=now_ns();
     for(int i=0;i<frames;i++){
         sim_tick=(uint32_t)i;
         gl_scene(&st,NULL,0);
         SDL_GL_SwapWindow(gl_win);
     }
-    long t1=now_ns();
+    int64_t t1=now_ns();
     printf("portal bench renderer=%s resolution=%dx%d frames=%d total=%.2fms fps=%.1f\n",
            glGetString(GL_RENDERER),w,h,frames,(t1-t0)/1e6/frames,1e9*frames/(double)(t1-t0));
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
@@ -5640,7 +5674,7 @@ static int gl_detail_bench(int frames,int w,int h) {
     if(objects_mode){get_objects(objs);nobj=6;}
     double total=0;
     for(int i=0;i<frames;i++){
-        long t0=now_ns(); gl_scene(&st,objs,nobj); SDL_GL_SwapWindow(gl_win); long t1=now_ns();
+        int64_t t0=now_ns(); gl_scene(&st,objs,nobj); SDL_GL_SwapWindow(gl_win); int64_t t1=now_ns();
         total+=(t1-t0)/1e6;
     }
     printf("gl detail bench renderer=%s resolution=%dx%d frames=%d total=%.2fms fps=%.1f"
@@ -5660,7 +5694,7 @@ static int gl_g5z_bench(int pose,int frames,int w,int h) {
     if(objects_mode){get_objects(objs);nobj=6;}
     double total=0;
     for(int i=0;i<frames;i++){
-        long t0=now_ns(); gl_scene(&st,objs,nobj); SDL_GL_SwapWindow(gl_win); long t1=now_ns();
+        int64_t t0=now_ns(); gl_scene(&st,objs,nobj); SDL_GL_SwapWindow(gl_win); int64_t t1=now_ns();
         total+=(t1-t0)/1e6;
     }
     printf("gl g5z bench pose=%d renderer=%s resolution=%dx%d frames=%d total=%.2fms fps=%.1f"

@@ -1,0 +1,29 @@
+G6a ambient source
+==================
+
+Freesound 873687:
+"Alien Spaceship Interior Ambience 04 Sci-Fi Engine Hum & Electronics"
+by Tommaso Motteran
+https://freesound.org/people/TommasoMotteran/sounds/873687/
+Licence: Creative Commons Attribution 4.0 (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+Source file:
+873687__tommasomotteran__alien-spaceship-interior-ambience-04-sci-fi-engine-hum-electronics.wav
+(24-bit stereo PCM, 44,100 Hz, 34.000068 s, 8,997,154 bytes;
+ SHA-256 1280420e42c743f7dd243860a40f91b7324e264b2a3e503bd1893d85d0fd3a1e)
+
+Modifications for Glon AvP:
+- converted to 16-bit mono PCM at 44,100 Hz for the existing mixer;
+- loop crossfade of 1.0 s applied by the runtime, shortening the played loop
+  to 33.000068 s;
+- no other processing, regeneration or additional layers.
+
+The converted runtime file is `ambient_loop.wav`
+(1,499,403 frames, 2,998,920 bytes;
+ SHA-256 679a60117ab498983a70afecabc1e38c5081c0678ee4a58cb05dd7496e9aa811).
+
+The previous synthetic G5y ship/ventilation loops were removed and are not
+layered under this recording.
+
+Credit: Tommaso Motteran, CC BY 4.0. No endorsement is implied.
