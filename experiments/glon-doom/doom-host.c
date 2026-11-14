@@ -16,7 +16,7 @@
 #include "r0_s1.h"
 #include "m1_layout.h"
 #include "textures.h"
-#include "alien_sprites_g5q.h"
+#include "alien_sprites_g5s.h"
 #include "weapon_sprites.h"
 #include "orientation_test.h"
 #include "corridor_textures.h"
@@ -69,7 +69,7 @@ typedef struct {
 } Status;
 
 typedef struct { int id, depth, left, right, top, bot, visible; int x,y,hw,hd,h; } Obj;
-typedef struct { int depth, l, r, t, b, pct; const uint32_t *src; int sw, sh; } SpriteDraw;
+typedef struct { int depth, l, r, t, b, pct, flip; const uint32_t *src; int sw, sh; } SpriteDraw;
 typedef struct {
     double sim_ms, proj_ms, texrow_ms, raster_ms, present_ms, frame_ms;
     double sprite_ms;
@@ -145,7 +145,12 @@ static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
                         int floor_c, int ceil_c);
 static int wall_tex_v(int y, int top, int bot);
 static int alien_frame_index(const Status *st);
+static void alien_view_reset(void);
 static void draw_alien_sprite(uint32_t *fb, const Status *st);
+static const uint32_t *const alien_dir_tex[ALIEN_DIR_COUNT] = {
+    alien_dir_idle, alien_dir_front1, alien_dir_front2, alien_dir_threeq,
+    alien_dir_side, alien_dir_rear, alien_dir_attack
+};
 
 static long now_ns(void) {
     struct timespec ts;
@@ -512,7 +517,10 @@ static int get_texrows(TexRows *r) {
     return 0;
 }
 
-static int reset(void) { return run_block(reset_block, "reset"); }
+static int reset(void) {
+    alien_view_reset();
+    return run_block(reset_block, "reset");
+}
 static int tick(int mask) {
     if (objects_mode && !gl_active) mask &= 15;
 #ifdef DOOM_S1_PROFILE
@@ -708,13 +716,39 @@ static int self_test(void) {
     {
         Status fs = st;
         sim_tick = 0;
-        fs.state = 0; fails += expect_eq("alien idle frame", alien_frame_index(&fs), 0);
-        fs.state = 1; sim_tick = 0; fails += expect_eq("alien walk frame A", alien_frame_index(&fs), 1);
-        sim_tick = 8; fails += expect_eq("alien walk frame B", alien_frame_index(&fs), 2);
-        fs.state = 2; fails += expect_eq("alien attack frame", alien_frame_index(&fs), 3);
+        alien_view_reset();
+        fs.state = 0; fails += expect_eq("alien idle frame", alien_frame_index(&fs), ALIEN_DIR_IDLE);
+        fs.state = 2; fails += expect_eq("alien attack frame", alien_frame_index(&fs), ALIEN_DIR_ATTACK);
+
+        st_current_angle = 0; /* camera forward +x; right is -y */
+        alien_view_reset();
+        fs.state = 1; fs.ax = 1200; fs.ay = 700; fs.tside = 0; fs.tdepth = 600;
+        (void)alien_frame_index(&fs);
+        for (int i = 0; i < 4; i++) { fs.ax -= 2; (void)alien_frame_index(&fs); }
+        int front_idx = alien_frame_index(&fs);
+        fails += expect_eq("alien direct approach is frontal",
+                           front_idx == ALIEN_DIR_FRONT1 || front_idx == ALIEN_DIR_FRONT2, 1);
+
+        alien_view_reset(); fs.ax = 1200; fs.ay = 700; fs.tside = 250; fs.tdepth = 600;
+        (void)alien_frame_index(&fs);
+        for (int i = 0; i < 4; i++) { fs.ax -= 2; fs.ay += 2; (void)alien_frame_index(&fs); }
+        fails += expect_eq("alien diagonal approach is three-quarter",
+                           alien_frame_index(&fs), ALIEN_DIR_THREEQ);
+
+        alien_view_reset(); fs.ax = 1200; fs.ay = 700; fs.tside = 500; fs.tdepth = 600;
+        (void)alien_frame_index(&fs);
+        for (int i = 0; i < 4; i++) { fs.ay += 2; (void)alien_frame_index(&fs); }
+        fails += expect_eq("alien lateral crossing is side", alien_frame_index(&fs), ALIEN_DIR_SIDE);
+
+        alien_view_reset(); fs.ax = 1200; fs.ay = 700; fs.tside = 0; fs.tdepth = 600;
+        (void)alien_frame_index(&fs);
+        for (int i = 0; i < 4; i++) { fs.ax += 2; (void)alien_frame_index(&fs); }
+        fails += expect_eq("alien retreat is rear", alien_frame_index(&fs), ALIEN_DIR_REAR);
+
+        alien_view_reset();
+        fs.state = 0; fs.visible = 1; fs.left = 100; fs.right = 180; fs.top = 30; fs.bot = 150;
         uint32_t *tfb = malloc((size_t)FB_W * FB_H * sizeof *tfb);
         for (int i = 0; i < FB_W * FB_H; i++) tfb[i] = 0xff112233u;
-        fs.visible = 1; fs.left = 100; fs.right = 180; fs.top = 30; fs.bot = 150;
         draw_alien_sprite(tfb, &fs);
         fails += expect_eq("alien sprite transparent corner", tfb[0], 0xff112233u);
         int changed = 0;
@@ -1226,14 +1260,111 @@ static uint32_t shade_argb(uint32_t c, int pct) {
     return ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
 }
 
-static const uint32_t *alien_frame_for(const Status *st) {
-    if (st->state == 2) return alien_attack;
-    if (st->state == 1) {
-        if (st->tside > 600 || st->tside < -600) return alien_side;
-        return ((sim_tick / 8) & 1) ? alien_walk2 : alien_walk1;
+typedef struct { int idx, flip; } AlienFrame;
+
+static int alien_prev_ax = -999999, alien_prev_ay = -999999;
+static double alien_mvx = 0.0, alien_mvy = 0.0;
+static int alien_dir_kind = ALIEN_DIR_IDLE, alien_dir_flip = 0;
+static int alien_dir_pending = -1, alien_dir_pending_n = 0;
+
+static void alien_view_reset(void) {
+    alien_prev_ax = alien_prev_ay = -999999;
+    alien_mvx = alien_mvy = 0.0;
+    alien_dir_kind = ALIEN_DIR_IDLE;
+    alien_dir_flip = 0;
+    alien_dir_pending = -1;
+    alien_dir_pending_n = 0;
+}
+
+/* Select artwork from the Alien's smoothed world movement (approach/retreat)
+ * plus its bearing relative to the camera (front/three-quarter/side). */
+static AlienFrame alien_frame_select(const Status *st) {
+    AlienFrame out = { ALIEN_DIR_IDLE, 0 };
+    if (st->state == 2) {
+        alien_dir_kind = ALIEN_DIR_ATTACK;
+        alien_dir_pending = -1;
+        alien_dir_pending_n = 0;
+        out.idx = ALIEN_DIR_ATTACK;
+        return out;
     }
-    if (st->tside > 700 || st->tside < -700) return alien_side;
-    return alien_idle;
+    if (st->state == 0) {
+        alien_dir_kind = ALIEN_DIR_IDLE;
+        alien_dir_flip = 0;
+        return out;
+    }
+    if (alien_prev_ax == -999999) {
+        alien_prev_ax = st->ax;
+        alien_prev_ay = st->ay;
+        return out;
+    }
+    int dax = st->ax - alien_prev_ax;
+    int day = st->ay - alien_prev_ay;
+    alien_prev_ax = st->ax;
+    alien_prev_ay = st->ay;
+    if (abs(dax) > 24 || abs(day) > 24) {
+        alien_mvx = alien_mvy = 0.0;
+        dax = day = 0;
+    }
+    alien_mvx = alien_mvx * 0.78 + dax * 0.22;
+    alien_mvy = alien_mvy * 0.78 + day * 0.22;
+
+    double ang = st_current_angle * 2.0 * M_PI / 256.0;
+    double fx = cos(ang), fy = sin(ang);
+    double rx = sin(ang), ry = -cos(ang);
+    double fdot = alien_mvx * fx + alien_mvy * fy;
+    double rdot = alien_mvx * rx + alien_mvy * ry;
+    double mag = sqrt(alien_mvx * alien_mvx + alien_mvy * alien_mvy);
+    double sidemag = fabs((double)st->tside) / (fabs((double)st->tdepth) > 1.0 ? fabs((double)st->tdepth) : 1.0);
+    int cand;
+    if (fdot > 0.15) {
+        cand = ALIEN_DIR_REAR;
+    } else if (mag >= 0.35 && fabs(fdot) <= 0.15) {
+        cand = ALIEN_DIR_SIDE;
+    } else if (sidemag > 0.48) {
+        cand = ALIEN_DIR_SIDE;
+    } else if (sidemag > 0.28) {
+        cand = ALIEN_DIR_THREEQ;
+    } else {
+        cand = ALIEN_DIR_FRONT1;
+    }
+    int flip = (rdot < -0.05) ? 1 : (rdot > 0.05 ? 0 : (st->tside > 0));
+    if (cand != alien_dir_kind) {
+        if (cand == alien_dir_pending) alien_dir_pending_n++;
+        else { alien_dir_pending = cand; alien_dir_pending_n = 1; }
+        if (alien_dir_pending_n >= 2) {
+            alien_dir_kind = cand;
+            alien_dir_flip = (cand == ALIEN_DIR_SIDE || cand == ALIEN_DIR_THREEQ) ? flip : 0;
+            alien_dir_pending = -1;
+            alien_dir_pending_n = 0;
+        }
+    } else {
+        alien_dir_pending = -1;
+        alien_dir_pending_n = 0;
+        if (cand == ALIEN_DIR_SIDE || cand == ALIEN_DIR_THREEQ) alien_dir_flip = flip;
+    }
+    out.idx = alien_dir_kind;
+    out.flip = alien_dir_flip;
+    if (out.idx == ALIEN_DIR_FRONT1)
+        out.idx = ((sim_tick / 8) & 1) ? ALIEN_DIR_FRONT2 : ALIEN_DIR_FRONT1;
+    return out;
+}
+
+static int alien_frame_index(const Status *st) {
+    return alien_frame_select(st).idx;
+}
+
+static void alien_sprite_box(const Status *st, AlienFrame af, int *l, int *r, int *t, int *b) {
+    int sw = alien_dir_w[af.idx], sh = alien_dir_h[af.idx];
+    int eh = alien_dir_eff_h[af.idx];
+    int h = (st->bot - st->top + 1) * sh / eh;
+    int w = h * sw / sh;
+    int cx = (st->left + st->right) / 2;
+    int px = alien_dir_pivot_x[af.idx] * h / sh;
+    int anchor = alien_dir_anchor_y[af.idx];
+    *l = cx - px;
+    *r = *l + w - 1;
+    *b = st->bot;
+    *t = *b - (anchor - 1) * h / sh;
 }
 
 static const uint32_t *object_sprite(int id) {
@@ -1242,7 +1373,7 @@ static const uint32_t *object_sprite(int id) {
 }
 
 static void draw_sprite_rect(uint32_t *fb, const uint32_t *src, int sw, int sh,
-                             int l, int r, int t, int b, int pct) {
+                             int l, int r, int t, int b, int pct, int flip) {
     if (l < 0) l = 0;
     if (r >= FB_W) r = FB_W - 1;
     if (t < 0) t = 0;
@@ -1257,6 +1388,7 @@ static void draw_sprite_rect(uint32_t *fb, const uint32_t *src, int sw, int sh,
             int sx = (x - l) * sw / dw;
             if (sx < 0) sx = 0;
             if (sx >= sw) sx = sw - 1;
+            if (flip) sx = sw - 1 - sx;
             uint32_t c = src[sy * sw + sx];
             int a = (int)(c >> 24);
             if (!a) continue;
@@ -1274,20 +1406,14 @@ static void draw_sprite_rect(uint32_t *fb, const uint32_t *src, int sw, int sh,
     }
 }
 
-static int alien_frame_index(const Status *st) {
-    const uint32_t *f = alien_frame_for(st);
-    if (f == alien_idle) return 0;
-    if (f == alien_walk1) return 1;
-    if (f == alien_walk2) return 2;
-    if (f == alien_attack) return 3;
-    return 4;
-}
-
 static void draw_alien_sprite(uint32_t *fb, const Status *st) {
     if (!st->visible) return;
-    const uint32_t *src = alien_frame_for(st);
+    AlienFrame af = alien_frame_select(st);
+    int l, r, t, b;
+    alien_sprite_box(st, af, &l, &r, &t, &b);
     int pct = st->tdepth < 256 ? 112 : st->tdepth < 512 ? 100 : st->tdepth < 1024 ? 86 : 72;
-    draw_sprite_rect(fb, src, ALIEN_W, ALIEN_H, st->left, st->right, st->top, st->bot, pct);
+    draw_sprite_rect(fb, alien_dir_tex[af.idx], alien_dir_w[af.idx], alien_dir_h[af.idx],
+                     l, r, t, b, pct, af.flip);
 }
 
 static int tracker_blip(const Status *st, int *bx, int *by) {
@@ -1370,14 +1496,19 @@ static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
             for (int i = 0; i < 6; i++) if (current_objs[i].visible) {
                 list[n].depth = current_objs[i].depth; list[n].l = current_objs[i].left; list[n].r = current_objs[i].right;
                 list[n].t = current_objs[i].top; list[n].b = current_objs[i].bot; list[n].src = object_sprite(current_objs[i].id);
-                list[n].sw = OBJ_W; list[n].sh = OBJ_H; list[n].pct = current_objs[i].depth < 256 ? 100 : 86; n++;
+                list[n].sw = OBJ_W; list[n].sh = OBJ_H; list[n].pct = current_objs[i].depth < 256 ? 100 : 86;
+                list[n].flip = 0; n++;
             }
-            if (st->visible) { list[n].depth = st->tdepth; list[n].l = st->left; list[n].r = st->right;
-                list[n].t = st->top; list[n].b = st->bot; list[n].src = alien_frame_for(st);
-                list[n].sw = ALIEN_W; list[n].sh = ALIEN_H;
-                list[n].pct = st->tdepth < 256 ? 112 : st->tdepth < 512 ? 100 : 86; n++; }
+            if (st->visible) {
+                AlienFrame af = alien_frame_select(st);
+                alien_sprite_box(st, af, &list[n].l, &list[n].r, &list[n].t, &list[n].b);
+                list[n].depth = st->tdepth; list[n].src = alien_dir_tex[af.idx];
+                list[n].sw = alien_dir_w[af.idx]; list[n].sh = alien_dir_h[af.idx];
+                list[n].pct = st->tdepth < 256 ? 112 : st->tdepth < 512 ? 100 : 86;
+                list[n].flip = af.flip; n++;
+            }
             for (int i = 1; i < n; i++) { int j=i; while (j>0 && list[j-1].depth < list[j].depth) { SpriteDraw z=list[j]; list[j]=list[j-1]; list[j-1]=z; j--; } }
-            for (int i = 0; i < n; i++) draw_sprite_rect(fb, list[i].src, list[i].sw, list[i].sh, list[i].l, list[i].r, list[i].t, list[i].b, list[i].pct);
+            for (int i = 0; i < n; i++) draw_sprite_rect(fb, list[i].src, list[i].sw, list[i].sh, list[i].l, list[i].r, list[i].t, list[i].b, list[i].pct, list[i].flip);
         } else draw_alien_sprite(fb, st);
     } else draw_alien_sprite(fb, st);
     long sp1 = now_ns();
@@ -2170,7 +2301,7 @@ static const GlWall gl_walls[10] = {
 };
 enum { GT_PANEL, GT_SERVICE, GT_FLOOR, GT_CEIL, GT_DOOR,
        GT_DRUM, GT_CRATE, GT_CABINET, GT_CONTAINER, GT_ALIEN0,
-       GT_ORIENT = GT_ALIEN0 + 5, GT_ART_WALL, GT_ART_PANEL, GT_ART_FLOOR,
+       GT_ORIENT = GT_ALIEN0 + ALIEN_DIR_COUNT, GT_ART_WALL, GT_ART_PANEL, GT_ART_FLOOR,
        GT_WEAPON, GT_COUNT = GT_WEAPON + 1 };
 static GLuint gl_tex[GT_COUNT];
 static SDL_Window *gl_win;
@@ -2223,11 +2354,8 @@ static int gl_init(int w, int h, int shown) {
     gl_upload(gl_tex[GT_CRATE], obj_crate,64,96);
     gl_upload(gl_tex[GT_CABINET], obj_cabinet,64,96);
     gl_upload(gl_tex[GT_CONTAINER], obj_container,64,96);
-    gl_upload(gl_tex[GT_ALIEN0+0], alien_idle,ALIEN_W,ALIEN_H);
-    gl_upload(gl_tex[GT_ALIEN0+1], alien_walk1,ALIEN_W,ALIEN_H);
-    gl_upload(gl_tex[GT_ALIEN0+2], alien_walk2,ALIEN_W,ALIEN_H);
-    gl_upload(gl_tex[GT_ALIEN0+3], alien_attack,ALIEN_W,ALIEN_H);
-    gl_upload(gl_tex[GT_ALIEN0+4], alien_side,ALIEN_W,ALIEN_H);
+    for (int i = 0; i < ALIEN_DIR_COUNT; i++)
+        gl_upload(gl_tex[GT_ALIEN0+i], alien_dir_tex[i], alien_dir_w[i], alien_dir_h[i]);
     gl_upload(gl_tex[GT_ORIENT], orient_test,128,192);
     gl_upload(gl_tex[GT_ART_WALL], tex_art_wall_bulkhead_steel,512,512);
     gl_upload(gl_tex[GT_ART_PANEL], tex_art_wall_recess_panel,512,512);
@@ -2299,20 +2427,23 @@ static void gl_plane_tint(double z, GLuint tex, float tint) {
     glTexCoord2f(128/256.0f,1024/256.0f); gl_gv(128,1024,z);
     glEnd();
 }
-static void gl_billboard(GLuint tex, double x,double y,double wworld,double hworld) {
-    double a=0; (void)a;
+static void gl_billboard(GLuint tex, double x,double y,double wworld,double hworld,
+                         double pivot_world, double below_ground,int flip) {
     /* camera-facing axes in world/game coordinates */
     double ca=cos(st_current_angle*2.0*M_PI/256.0), sa=sin(st_current_angle*2.0*M_PI/256.0);
     double rx=sa, ry=-ca; /* right */
-    double cx=x/64.0, cy=y/64.0, cz=hworld/2.0;
+    double cx = x + rx*pivot_world*64.0;
+    double cy = y + ry*pivot_world*64.0;
+    double zb = -below_ground*64.0;
+    double zt = (hworld-below_ground)*64.0;
+    float u0 = flip ? 1.0f : 0.0f, u1 = flip ? 0.0f : 1.0f;
     glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, tex); glColor3f(1,1,1);
     glBegin(GL_QUADS);
-    glTexCoord2f(0,0); gl_gv(x - rx*wworld*32, y - ry*wworld*32, 0);
-    glTexCoord2f(1,0); gl_gv(x + rx*wworld*32, y + ry*wworld*32, 0);
-    glTexCoord2f(1,1); gl_gv(x + rx*wworld*32, y + ry*wworld*32, hworld*64);
-    glTexCoord2f(0,1); gl_gv(x - rx*wworld*32, y - ry*wworld*32, hworld*64);
+    glTexCoord2f(u0,0); gl_gv(cx - rx*wworld*32, cy - ry*wworld*32, zb);
+    glTexCoord2f(u1,0); gl_gv(cx + rx*wworld*32, cy + ry*wworld*32, zb);
+    glTexCoord2f(u1,1); gl_gv(cx + rx*wworld*32, cy + ry*wworld*32, zt);
+    glTexCoord2f(u0,1); gl_gv(cx - rx*wworld*32, cy - ry*wworld*32, zt);
     glEnd();
-    (void)cx;(void)cy;(void)cz;
 }
 static void gl_ammo_seg(float x,float y,float w,float h) {
     glVertex2f(x,y); glVertex2f(x+w,y);
@@ -2623,10 +2754,16 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
         gl_prop_3d(&objs[i]);
     }
     if (st->visible) {
-        const uint32_t *f = alien_frame_for(st);
-        int idx = f==alien_walk1?1:f==alien_walk2?2:f==alien_attack?3:f==alien_side?4:0;
+        AlienFrame af = alien_frame_select(st);
+        int idx = af.idx;
+        double px_scale = 1.5 / alien_dir_eff_h[idx];
+        double wworld = alien_dir_w[idx] * px_scale;
+        double hworld = alien_dir_h[idx] * px_scale;
+        double pivot_world = (alien_dir_pivot_x[idx] - alien_dir_w[idx] * 0.5) * px_scale;
+        double below_ground = (alien_dir_h[idx] - alien_dir_anchor_y[idx]) * px_scale;
         glDepthMask(GL_TRUE);
-        gl_billboard(gl_tex[GT_ALIEN0+idx], st->ax, st->ay, 1.8, 1.5);
+        gl_billboard(gl_tex[GT_ALIEN0+idx], st->ax, st->ay, wworld, hworld,
+                     pivot_world, below_ground, af.flip);
     }
     glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
     gl_draw_weapon(st);
@@ -2799,6 +2936,65 @@ static int gl_tour(const char *dir,int w,int h) {
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
 
+static int gl_capture(const char *dir,const char *name,int w,int h,
+                      const Status *st,const Obj *objs,int nobj) {
+    gl_scene(st,objs,nobj);
+    char path[4096]; snprintf(path,sizeof path,"%s/%s.ppm",dir,name); gl_save_ppm(path,w,h);
+    printf("directional %s %dx%d\n",name,w,h);
+    return 0;
+}
+
+static int gl_directional(const char *dir,int w,int h) {
+    if (gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
+    Obj objs[6]; Status st;
+    int px,py,pa;
+    /* Head-on: player looks down +x while the Alien approaches along -x. */
+    if (gl_apply_pose(320,320,0,64,0,1000,320,1)!=0) return 2;
+    int got_long=0,got_mid=0,got_step2=0,got_close=0,got_attack=0;
+    for (int i=0;i<900;i++) {
+        if (tick(0)!=0 || get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+        st_current_angle=pa; int nobj=0; if(objects_mode){get_objects(objs);nobj=6;}
+        (void)alien_frame_index(&st);
+        if (!got_long && st.tdepth <= 680) { gl_capture(dir,"01-headon-long",w,h,&st,objs,nobj); got_long=1; }
+        if (!got_mid && st.tdepth <= 320) { gl_capture(dir,"02-headon-medium",w,h,&st,objs,nobj); got_mid=1; }
+        if (got_mid && !got_step2 && st.tdepth <= 300) { gl_capture(dir,"02b-headon-medium-step2",w,h,&st,objs,nobj); got_step2=1; }
+        if (!got_close && st.tdepth <= 150) { gl_capture(dir,"03-headon-close",w,h,&st,objs,nobj); got_close=1; }
+        if (!got_attack && st.state==2) { gl_capture(dir,"07-headon-attack",w,h,&st,objs,nobj); got_attack=1; break; }
+    }
+    /* Three-quarter: the Alien is off-centre and approaches diagonally in view. */
+    if (gl_apply_pose(500,320,0,64,0,720,430,1)!=0) return 2;
+    for (int i=0;i<240;i++) {
+        if (tick(0)!=0 || get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+        st_current_angle=pa; int nobj=0; if(objects_mode){get_objects(objs);nobj=6;}
+        int idx = alien_frame_index(&st);
+        if (getenv("G5S_DEBUG") && i%20==0) fprintf(stderr,"diag i=%d ax=%d ay=%d tside=%d tdepth=%d state=%d idx=%d vis=%d\n",i,st.ax,st.ay,st.tside,st.tdepth,st.state,idx,st.visible);
+        if (idx==ALIEN_DIR_THREEQ && st.visible) {
+            gl_capture(dir,"04-diagonal",w,h,&st,objs,nobj); break;
+        }
+    }
+    /* Side: the Alien crosses the view while closing on the player. */
+    if (gl_apply_pose(500,320,0,64,0,700,160,1)!=0) return 2;
+    for (int i=0;i<240;i++) {
+        if (tick(0)!=0 || get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+        st_current_angle=pa; int nobj=0; if(objects_mode){get_objects(objs);nobj=6;}
+        AlienFrame af = alien_frame_select(&st);
+        if (getenv("G5S_DEBUG") && (i<15 || i%20==0)) fprintf(stderr,"side i=%d ax=%d ay=%d tside=%d tdepth=%d state=%d idx=%d vis=%d\n",i,st.ax,st.ay,st.tside,st.tdepth,st.state,af.idx,st.visible);
+        if (af.idx==ALIEN_DIR_SIDE && st.visible && st.tdepth < 500) {
+            gl_capture(dir,"05-crossing",w,h,&st,objs,nobj); break;
+        }
+    }
+    /* Diagnostic still only: the current AI always closes on the player and has
+     * no retreat state, so rear artwork cannot occur in normal gameplay yet. */
+    if (gl_apply_pose(500,320,0,64,0,900,320,1)!=0) return 2;
+    if (get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+    st_current_angle=pa; st.visible=1;
+    alien_view_reset(); (void)alien_frame_index(&st);
+    for (int i=0;i<4;i++) { st.ax += 2; (void)alien_frame_index(&st); }
+    { int nobj=0; if(objects_mode){get_objects(objs);nobj=6;}
+      gl_capture(dir,"06-rear-diagnostic",w,h,&st,objs,nobj); }
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
 static int gl_shots(const char *dir,int w,int h) {
     if (gl_init(w,h,0)!=0) return 2; gl_active = 1; load_session(); build_blocks(); gl_fixed_pose();
     Status st; Obj objs[6]; int px,py,pa; get_state(&px,&py,&pa); st_current_angle=pa; get_status(&st); int nobj=0;
@@ -2907,6 +3103,11 @@ int main(int argc, char **argv) {
         int w=argc>3?atoi(argv[3]):640, h=argc>4?atoi(argv[4]):400;
         for(int i=5;i<argc;i++) if(strcmp(argv[i],"objects")==0) objects_mode=1;
         return gl_tour(argv[2],w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-directional") == 0) {
+        int w=argc>3?atoi(argv[3]):640, h=argc>4?atoi(argv[4]):400;
+        for(int i=5;i<argc;i++) if(strcmp(argv[i],"objects")==0) objects_mode=1;
+        return gl_directional(argv[2],w,h);
     }
     if (argc > 2 && strcmp(argv[1], "--gl-shots") == 0) {
         int w=argc>3?atoi(argv[3]):640, h=argc>4?atoi(argv[4]):400;

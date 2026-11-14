@@ -17,21 +17,22 @@ low-alpha noise across the background. Extraction therefore uses alpha-component
 bounds plus a low-alpha cleanup, not the full sheet or a fixed cell grid.
 
 Pose components were segmented at alpha >64. This produced 40 isolated components
-in sheet A and 26 in sheet B. No chosen pose overlaps another selected pose.
-Some tails run close to neighbouring figures, so every crop below is based on the
-component's own alpha bounds, with only a small antialias margin.
+in sheet A and 26 in sheet B. Bounding boxes alone are not sufficient: the chosen
+side pose's box overlaps the next figure's box by about 5 px. Every export therefore
+keeps only the selected connected component (plus a 1 px antialias fringe), so no
+adjacent figure is included. Background alpha below 40 is cleared.
 
 ## Selected poses
 
-| Role | Sheet | Source rectangle (x0,y0,x1,y1) | Effective pixels (w×h) | Notes |
-|---|---|---:|---:|---|
-| Frontal idle | A | 48, 8, 181, 196 | 133×188 | Neutral frontal stance, closed mouth |
-| Frontal approach A | B | 911, 11, 1047, 234 | 136×223 | Upright, left leg planted; distinct step |
-| Frontal approach B | B | 1234, 13, 1365, 230 | 131×217 | Opposite/raised-leg step; distinct silhouette |
-| Three-quarter approach | B | 287, 255, 504, 469 | 217×214 | Right-facing three-quarter lope |
-| Side movement (right-facing) | B | 288, 501, 542, 690 | 254×189 | Full side run with tail |
-| Rear movement | B | 179, 732, 318, 1000 | 139×268 | Back view, tail down corridor |
-| Frontal attack | B | 1090, 737, 1299, 986 | 209×249 | Open-mouth forward attack |
+| Role | Sheet | Source rectangle (x0,y0,x1,y1) | Effective pixels (w×h) | Output crop | Notes |
+|---|---|---:|---:|---:|---|
+| Frontal idle | A | 48, 8, 181, 196 | 133×188 | 137×192 | Neutral frontal stance, closed mouth |
+| Frontal approach A | B | 911, 11, 1047, 234 | 136×223 | 140×227 | Upright, left leg planted; distinct step |
+| Frontal approach B | B | 1234, 13, 1365, 230 | 131×217 | 135×221 | Opposite/raised-leg step; distinct silhouette |
+| Three-quarter approach | B | 287, 255, 504, 469 | 217×214 | 221×218 | Right-facing three-quarter lope |
+| Side movement (right-facing) | B | 288, 501, 542, 690 | 254×189 | 258×193 | Full side run with tail |
+| Rear movement | B | 179, 732, 318, 1000 | 139×268 | 143×272 | Back view, tail down corridor |
+| Frontal attack | B | 1090, 737, 1299, 986 | 209×249 | 213×253 | Open-mouth forward attack |
 
 The two frontal approach poses are not duplicates. After bottom alignment and
 centre alignment, their alpha silhouettes have IoU **0.643** and mean overlapping
@@ -69,8 +70,9 @@ Approximate displayed heights at 960×600 use the existing projection
 | Frontal attack | 249 | 1.00× | ≈738 px | ≈277 px |
 
 At attack/near range the 188–268 px source is stretched to roughly 600–740 screen
-pixels, i.e. about **2.2–3.9× magnification**. This is expected to remain visibly
-soft. **The close-up resolution gate is not satisfied by the supplied artwork.**
+pixels, i.e. about **2.1–3.9× magnification** depending on the captured distance.
+This is expected to remain visibly soft. **The close-up resolution gate is not
+satisfied by the supplied artwork.**
 Directional acceptance can still be evaluated separately; genuinely sharp close-ups
 require individually rendered 768–1024 px pose sprites.
 

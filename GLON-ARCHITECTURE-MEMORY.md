@@ -639,6 +639,31 @@ Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
 - 960×600 measured 66.0 FPS (sim 7.15 ms, submit 0.77 ms); `make test` and frozen
   S1 pass. Corridor, floor, Alien AI, controls and tracker are unchanged.
 
+### G5s Directional Alien sprites [FINDING]
+
+[FINDING 2026-11-14, `experiments/glon-avp-g5s`, WSLg D3D12 AMD Radeon]
+
+- G5s combines the G5q Alien baseline (`a131440`) with the G5r pulse-rifle work
+  (`7183ae6`) and the G5p orientation report (cherry-picked, not merged). The G5r
+  rifle and live 24-round display remain visible.
+- Seven isolated poses were extracted at native source resolution from two
+  1536×1024 reference sheets: frontal idle, two frontal approach frames,
+  three-quarter, side, rear and frontal attack. Poses are 188–268 source pixels
+  tall; no upscaling or generative detail was used. Component masks prevent
+  adjacent tails from entering a crop.
+- Selection uses the actual Alien movement for approach/retreat plus the
+  camera-relative screen angle for front/three-quarter/side. Frontal approach now
+  alternates the two genuine frontal poses. Attack is always frontal. The side
+  pose is horizontally mirrored only for the opposite crossing direction.
+- Directional acceptance passes in-game: the Alien approaches head-on with a
+  frontal silhouette. Close-up resolution fails: a 188–268 px source is displayed
+  at roughly 600–740 px near attack range. The supplied art is not sufficient for
+  a sharp close-up.
+- 960×600 measured 89.9 FPS (sim 5.57 ms, submit 0.63 ms) without object mode and
+  54.6 FPS (sim 13.13 ms, submit 0.75 ms) with objects; the same G5r baseline
+  measured 93.7/48.5 FPS. Loader 53,337 used/24,463 free; heap 33,440; executable
+  6,074,896 bytes. `make test` and frozen S1 pass.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

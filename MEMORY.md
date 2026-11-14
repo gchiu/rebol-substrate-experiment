@@ -680,6 +680,16 @@ a transparent 768×406 sprite. The baked `60` was removed and Glon now owns
 reload and the other three weapons are not implemented. Full report:
 `experiments/glon-doom/G5R-WEAPON-REPORT.md`.
 
+## 10n. AvP G5s directional Alien integration (2026-11-14)
+
+Seven native-resolution directional Alien poses replace the five side-facing G5q
+frames. Head-on approaches now use frontal walk artwork chosen from actual
+movement and camera-relative direction; three-quarter, side, rear and attack
+paths are wired without changing AI or collision. The G5r pulse rifle and live
+ammunition display remain visible. Directional acceptance passes; close-up
+resolution still fails because the source poses are only 188–268 px tall. Full
+report: `experiments/glon-doom/G5S-ALIEN-REPORT.md`.
+
 ## 11. Detailed documents
 
 - `README.md` — project intro.

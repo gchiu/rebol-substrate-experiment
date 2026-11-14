@@ -374,3 +374,14 @@ rifle/hand was manually masked into a transparent 768×406 sprite, and Glon now
 owns `doom/ammo` (initial 24) with OpenGL drawing the live count in the blanked
 display. The asset is static; firing, reload and the other three weapons are not
 implemented. See `G5R-WEAPON-REPORT.md` and `assets/weapons/README.md`.
+
+## G5s directional Alien integration
+
+Seven native-resolution poses were extracted from two transparent reference
+sheets: front idle, two distinct frontal walk poses, three-quarter, side, rear
+and frontal attack. The Alien now approaches head-on with frontal artwork selected
+from actual movement and camera-relative direction; crossing and rear paths use
+the corresponding directional frames. The G5r pulse rifle and live ammunition
+display remain visible. Directional acceptance passes, but close-up resolution
+still fails because the source poses are only 188–268 pixels tall. See
+`G5S-ASSET-REPORT.md` and `G5S-ALIEN-REPORT.md`.
