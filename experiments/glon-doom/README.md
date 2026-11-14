@@ -301,6 +301,9 @@ Normal launch now uses OpenGL at 640x400 with the six G5k objects; CPU remains
 available with `--renderer cpu`. `--renderer gl`, `--gl-bench`, `--gl-demo` and
 `--gl-shots` are retained.
 
+The circular motion tracker is restored as a depth-disabled 2D GL overlay using
+the same Glon `Status` bearing/distance/detection state as the CPU tracker.
+
 The G5l upside-down sprite was fixed by reversing source rows during GL texture
 upload. The new creature is 128x192 original procedural biomechanical art with
 idle/two walk/attack/side/death frames in `sprites/aliens_g5m/`.

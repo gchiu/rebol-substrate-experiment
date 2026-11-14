@@ -610,7 +610,9 @@ orientation, and replaced the cartoon Alien with a 128x192 original
 biomechanical six-frame creature set. Real WSLg key events verified W movement, one-shot E door opening, Right turn
 and D strafe on both GL and CPU. GL with objects measured 66-67 FPS at 640x400,
 57.7 at 960x600, versus CPU 27.5. The E double-trigger and turn-mask bugs are
-fixed and covered by `--input-test`. The manual procedure and remaining
+fixed and covered by `--input-test`; the missing GL motion tracker is restored
+by a shared Glon-state blip mapping and depth-disabled HUD overlay, covered by
+`--tracker-test`. The manual procedure and remaining
 static-geometry duplication are documented. Full report:
 `experiments/glon-doom/G5M-INVESTIGATION.md`.
 

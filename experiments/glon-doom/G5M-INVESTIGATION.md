@@ -129,6 +129,33 @@ Screenshots (actual WSLg/GL renderer):
 - `/tmp/g5m-contact-sheet.png`, `/tmp/g5m-gameplay-contact.png`
 - CPU reference: `/tmp/g5k-cfinal/corridor.png`
 
+## 4a. Motion tracker restoration
+
+**Root cause:** the CPU `draw_buffer()` called `draw_tracker()`, but the GL
+`gl_scene()` submitted only the 3D world and had no HUD overlay path. The HUD
+was therefore absent only in OpenGL; no separate tracking state was missing.
+
+**Fix:** the original blip mapping is now a shared `tracker_blip()` function
+using the authoritative Glon `Status` fields (`detected`, `tside`, `tdepth`,
+`state`, `door_blocked`). Both CPU and GL use it. `gl_draw_tracker()` draws:
+
+- fixed bottom-left circular HUD panel and ring;
+- green/amber door/range bar;
+- crosshair and ring center marker;
+- green Alien blip (red when attacking) at the same relative bearing/distance;
+- a dark center dot when no Alien is detected.
+
+The HUD is drawn after the 3D scene with an orthographic screen-space projection,
+`GL_DEPTH_TEST` disabled and depth writes off; it scales from the 200-line
+reference at 320×200/640×400/960×600. It remains fixed while the Marine moves or
+turns. No C-side tracking logic was added.
+
+`--tracker-test` verifies ahead, right, left, behind, near and out-of-range
+mapping/clamping. It is part of `make test`. Screenshots:
+`/tmp/g5m-tracker-320.png`, `/tmp/g5m-tracker-fixed.png` (640),
+`/tmp/g5m-tracker-960.png`, actual WSLg: `/tmp/g5m-tracker.png`.
+GL 640×400 still measures ~64.5 FPS with the HUD.
+
 ## 5. Performance
 
 Same GPU, 120 frames, objects/Alien active:

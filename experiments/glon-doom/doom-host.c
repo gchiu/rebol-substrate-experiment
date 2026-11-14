@@ -1283,6 +1283,18 @@ static void draw_alien_sprite(uint32_t *fb, const Status *st) {
     draw_sprite_rect(fb, src, ALIEN_W, ALIEN_H, st->left, st->right, st->top, st->bot, pct);
 }
 
+static int tracker_blip(const Status *st, int *bx, int *by) {
+    const int cx = 42, cy = 168, rad = 22;
+    if (!st->detected) { *bx = cx; *by = cy; return 0; }
+    int x = cx + st->tside * 18 / 700;
+    int y = cy - st->tdepth * 18 / 700;
+    if (x < cx - rad + 3) x = cx - rad + 3;
+    if (x > cx + rad - 3) x = cx + rad - 3;
+    if (y < cy - rad + 3) y = cy - rad + 3;
+    if (y > cy + rad - 3) y = cy + rad - 3;
+    *bx = x; *by = y; return 1;
+}
+
 static void draw_tracker(uint32_t *fb, const Status *st) {
     const int cx = 42, cy = 168, rad = 22;
     for (int y = 142; y < 196; y++)
@@ -1299,13 +1311,8 @@ static void draw_tracker(uint32_t *fb, const Status *st) {
     for (int y = -rad + 3; y <= rad - 3; y++) plot(fb, cx, cy + y, 0xff27322bu);
     for (int x = -rad + 3; x <= rad - 3; x++) plot(fb, cx + x, cy, 0xff27322bu);
     plot(fb, cx, cy - rad + 2, 0xffb8e0a0u);
-    if (st->detected) {
-        int bx = cx + st->tside * 18 / 700;
-        int by = cy - st->tdepth * 18 / 700;
-        if (bx < cx - rad + 3) bx = cx - rad + 3;
-        if (bx > cx + rad - 3) bx = cx + rad - 3;
-        if (by < cy - rad + 3) by = cy - rad + 3;
-        if (by > cy + rad - 3) by = cy + rad - 3;
+    int bx, by;
+    if (tracker_blip(st, &bx, &by)) {
         uint32_t c = st->state == 2 ? 0xffe05050u : 0xff6fe08au;
         for (int y = -2; y <= 2; y++)
             for (int x = -2; x <= 2; x++) plot(fb, bx + x, by + y, c);
@@ -2155,7 +2162,8 @@ static const GlWall gl_walls[10] = {
     {128,640,128,128,1}
 };
 enum { GT_PANEL, GT_SERVICE, GT_FLOOR, GT_CEIL, GT_DOOR,
-       GT_DRUM, GT_CRATE, GT_CABINET, GT_CONTAINER, GT_ALIEN0, GT_ALIEN_N=5, GT_ORIENT, GT_COUNT=GT_ALIEN0+GT_ALIEN_N+1 };
+       GT_DRUM, GT_CRATE, GT_CABINET, GT_CONTAINER, GT_ALIEN0,
+       GT_ORIENT = GT_ALIEN0 + 5, GT_COUNT = GT_ALIEN0 + 6 };
 static GLuint gl_tex[GT_COUNT];
 static SDL_Window *gl_win;
 static SDL_GLContext gl_ctx;
@@ -2268,6 +2276,45 @@ static void gl_billboard(GLuint tex, double x,double y,double wworld,double hwor
     glEnd();
     (void)cx;(void)cy;(void)cz;
 }
+static void gl_draw_tracker(const Status *st) {
+    const float s = gl_h / 200.0f;
+    glDisable(GL_DEPTH_TEST); glDisable(GL_TEXTURE_2D); glDisable(GL_ALPHA_TEST);
+    glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0,gl_w,gl_h,0,-1,1);
+    glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+    glColor4f(0.05f,0.07f,0.09f,0.92f);
+    glBegin(GL_QUADS); glVertex2f(6*s,142*s); glVertex2f(78*s,142*s);
+    glVertex2f(78*s,196*s); glVertex2f(6*s,196*s); glEnd();
+    if (st->door_blocked) glColor4f(0.60f,0.42f,0.21f,1);
+    else glColor4f(0.24f,0.67f,0.35f,1);
+    glBegin(GL_QUADS); glVertex2f(10*s,146*s); glVertex2f(74*s,146*s);
+    glVertex2f(74*s,150*s); glVertex2f(10*s,150*s); glEnd();
+    glColor4f(0.33f,0.39f,0.35f,1);
+    glBegin(GL_LINE_LOOP);
+    for (int i=0;i<48;i++) { float a=(float)i*6.2831853f/48.0f;
+        glVertex2f((42+cosf(a)*20)*s,(168+sinf(a)*20)*s); }
+    glEnd();
+    glColor4f(0.15f,0.20f,0.17f,1);
+    glBegin(GL_LINES);
+    glVertex2f(42*s,147*s); glVertex2f(42*s,189*s);
+    glVertex2f(23*s,168*s); glVertex2f(61*s,168*s); glEnd();
+    glColor4f(0.72f,0.88f,0.63f,1);
+    glBegin(GL_QUADS); glVertex2f(41*s,146*s); glVertex2f(43*s,146*s);
+    glVertex2f(43*s,148*s); glVertex2f(41*s,148*s); glEnd();
+    int bx,by;
+    if (tracker_blip(st,&bx,&by)) {
+        if (st->state==2) glColor4f(0.88f,0.31f,0.31f,1);
+        else glColor4f(0.44f,0.88f,0.54f,1);
+        glBegin(GL_QUADS); glVertex2f((bx-2)*s,(by-2)*s); glVertex2f((bx+3)*s,(by-2)*s);
+        glVertex2f((bx+3)*s,(by+3)*s); glVertex2f((bx-2)*s,(by+3)*s); glEnd();
+    } else {
+        glColor4f(0.30f,0.36f,0.32f,1);
+        glBegin(GL_QUADS); glVertex2f(41*s,167*s); glVertex2f(44*s,167*s);
+        glVertex2f(44*s,170*s); glVertex2f(41*s,170*s); glEnd();
+    }
+    glColor4f(1,1,1,1); glDisable(GL_BLEND); glEnable(GL_DEPTH_TEST);
+}
+
 static void gl_scene(const Status *st, const Obj *objs, int nobj) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     gl_projection(); gl_view(last_px, last_py, st_current_angle);
@@ -2305,6 +2352,7 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
         gl_billboard(gl_tex[GT_ALIEN0+idx], st->ax, st->ay, 1.0, 1.5);
     }
     glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
+    gl_draw_tracker(st);
     glFinish();
 }
 
@@ -2425,6 +2473,24 @@ static int gl_shots(const char *dir,int w,int h) {
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
 
+
+static int tracker_test(void) {
+    int fails=0, bx,by; Status s; memset(&s,0,sizeof s);
+    s.detected=1; s.tside=0; s.tdepth=0;
+    int vis=tracker_blip(&s,&bx,&by);
+    fails+=expect_eq("tracker ahead blip visible",vis,1);
+    fails+=expect_eq("tracker ahead x",bx,42); fails+=expect_eq("tracker ahead y",by,168);
+    s.tside=700; s.tdepth=0; tracker_blip(&s,&bx,&by);
+    fails+=expect_eq("tracker right x",bx,60);
+    s.tside=-700; tracker_blip(&s,&bx,&by); fails+=expect_eq("tracker left x",bx,24);
+    s.tside=0; s.tdepth=-700; tracker_blip(&s,&bx,&by); fails+=expect_eq("tracker behind",by,186);
+    s.tside=0; s.tdepth=700; tracker_blip(&s,&bx,&by); fails+=expect_eq("tracker near y",by,150);
+    s.detected=0; vis=tracker_blip(&s,&bx,&by);
+    fails+=expect_eq("tracker out of range dark",vis,0);
+    printf("tracker-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
+}
+
 int main(int argc, char **argv) {
     const char *env = getenv("DOOM_ROOT");
     if (env && *env) root_dir = env;
@@ -2483,6 +2549,7 @@ int main(int argc, char **argv) {
         return gl_shots(argv[2],w,h);
     }
     if (argc > 1 && strcmp(argv[1], "--input-test") == 0) return input_test();
+    if (argc > 1 && strcmp(argv[1], "--tracker-test") == 0) return tracker_test();
     if (argc > 1 && strcmp(argv[1], "--self-test") == 0) return self_test();
     if (argc > 1 && strcmp(argv[1], "--projection-test") == 0) {
         int rc = projection_test();

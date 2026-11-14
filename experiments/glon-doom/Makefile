@@ -32,6 +32,7 @@ test: $(TARGET)
 	./$(TARGET) --self-test
 	./$(TARGET) --projection-test
 	./$(TARGET) --input-test
+	./$(TARGET) --tracker-test
 	./$(TARGET) --stationary-test
 	./$(TARGET) --flat-surfaces --objects-test
 	./$(TARGET) --self-test --raw-wall

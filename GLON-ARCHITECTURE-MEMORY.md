@@ -516,6 +516,11 @@ AMD Radeon, Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
   66.0–67.4 FPS (sim 9.9–10.2 ms, submit+finish 2.4–2.7 ms), 960x600 57.7 FPS;
   CPU reference 27.5 FPS. Larger creature assets and host changes correlate with
   a lower range than G5l's ~60 FPS; still responsive and faster than CPU.
+- **HUD fix:** GL initially omitted the CPU motion tracker. The shared
+  `tracker_blip()` mapping now drives both CPU and GL from the same Glon
+  `detected/tside/tdepth/state/door_blocked` state; a depth-disabled
+  screen-space GL overlay restores the ring, bar and blip. `--tracker-test`
+  covers ahead/right/left/behind/near/out-of-range.
 - **Orientation fix:** GL texture upload now reverses source rows; the previous
   upside-down Alien was the GL texture-origin mismatch. New 128x192 creature
   frames are upright, transparent and depth-tested.
