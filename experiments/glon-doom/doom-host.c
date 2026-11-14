@@ -2616,9 +2616,25 @@ static void gl_cyl_y_lit(float y1,float y2,float x,float z,float rad,int seg,flo
         glBegin(GL_QUADS); gl_gv(x0,y1,z0); gl_gv(x1,y1,z1); gl_gv(x1,y2,z1); gl_gv(x0,y2,z0); glEnd();
     }
 }
+static void gl_ring_y_tex(GLuint tex,float y,float x,float z,float ri,float ro,int seg,
+                          float tint,float u0,float v0,float u1,float v1)
+{
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex); glColor3f(tint*0.72f,tint*0.86f,tint*1.05f);
+    glBegin(GL_QUADS);
+    for(int i=0;i<seg;i++){
+        float a0=(float)i*6.2831853f/seg,a1=(float)(i+1)*6.2831853f/seg;
+        float c0=cosf(a0),s0=sinf(a0),c1=cosf(a1),s1=sinf(a1);
+        float ua=u0+(u1-u0)*((float)i/seg),ub=u0+(u1-u0)*((float)(i+1)/seg);
+        glTexCoord2f(ua,v0); gl_gv(x+c0*ri,y,z+s0*ri);
+        glTexCoord2f(ua,v1); gl_gv(x+c0*ro,y,z+s0*ro);
+        glTexCoord2f(ub,v1); gl_gv(x+c1*ro,y,z+s1*ro);
+        glTexCoord2f(ub,v0); gl_gv(x+c1*ri,y,z+s1*ri);
+    }
+    glEnd(); glDisable(GL_TEXTURE_2D);
+}
 static void gl_turbine_face(float y,float x,float z,float rad,int seg,float r,float g,float b){
     gl_disc_y(y,x,z,rad,seg,0.055f,0.060f,0.060f);
-    gl_disc_y(y+0.3f,x,z,rad*0.78f,seg,0.16f,0.15f,0.13f);
+    gl_ring_y_tex(gl_tex[GT_ART_FLOOR],y+0.22f,x,z,rad*0.53f,rad*0.995f,seg,0.82f,0.20f,0.20f,0.80f,0.80f);
     gl_disc_y(y+0.6f,x,z,rad*0.53f,seg,r,g,b);
     gl_disc_y(y+0.9f,x,z,rad*0.20f,seg,0.55f,0.15f,0.025f);
     for(int i=0;i<12;i++){
@@ -2813,6 +2829,136 @@ static void gl_cyl_y_tex_flat(GLuint tex,float y1,float y2,float x,float z,float
         glEnd();
     }
     glDisable(GL_TEXTURE_2D);
+}
+/* G5w: smooth, cylindrical UV mapping for real machinery surfaces. */
+static void gl_cyl_x_tex_smooth(GLuint tex,float x1,float x2,float y,float z,float rad,int seg,
+                                float tint,float u0,float v0,float u1,float v1,float urep)
+{
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex);
+    glBegin(GL_QUADS);
+    for(int i=0;i<seg;i++){
+        float a0=(float)i*6.2831853f/seg,a1=(float)(i+1)*6.2831853f/seg;
+        float c0=0.60f+0.40f*(0.55f+0.45f*cosf(a0));
+        float c1=0.60f+0.40f*(0.55f+0.45f*cosf(a1));
+        float y0=y+cosf(a0)*rad,z0=z+sinf(a0)*rad;
+        float y1=y+cosf(a1)*rad,z1=z+sinf(a1)*rad;
+        float t0=(float)i/seg*urep,t1=(float)(i+1)/seg*urep;
+        float ua=u0+(u1-u0)*(t0-floorf(t0));
+        float ub=u0+(u1-u0)*(t1-floorf(t1));
+        float va0=v0+(v1-v0)*((float)i/seg),va1=v0+(v1-v0)*((float)(i+1)/seg);
+        glColor3f(tint*c0,tint*c0,tint*c0); glTexCoord2f(ua,va0); gl_gv(x1,y0,z0);
+        glColor3f(tint*c0,tint*c0,tint*c0); glTexCoord2f(ua,va1); gl_gv(x2,y0,z0);
+        glColor3f(tint*c1,tint*c1,tint*c1); glTexCoord2f(ub,va1); gl_gv(x2,y1,z1);
+        glColor3f(tint*c1,tint*c1,tint*c1); glTexCoord2f(ub,va0); gl_gv(x1,y1,z1);
+    }
+    glEnd(); glDisable(GL_TEXTURE_2D);
+}
+static void gl_cyl_y_tex_smooth(GLuint tex,float y1,float y2,float x,float z,float rad,int seg,
+                                float tint,float u0,float v0,float u1,float v1)
+{
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex);
+    glBegin(GL_QUADS);
+    for(int i=0;i<seg;i++){
+        float a0=(float)i*6.2831853f/seg,a1=(float)(i+1)*6.2831853f/seg;
+        float c0=0.60f+0.40f*(0.55f+0.45f*cosf(a0));
+        float c1=0.60f+0.40f*(0.55f+0.45f*cosf(a1));
+        float x0=x+cosf(a0)*rad,z0=z+sinf(a0)*rad;
+        float x1=x+cosf(a1)*rad,z1=z+sinf(a1)*rad;
+        float ua=u0+(u1-u0)*((float)i/seg),ub=u0+(u1-u0)*((float)(i+1)/seg);
+        glColor3f(tint*c0,tint*c0,tint*c0); glTexCoord2f(ua,v0); gl_gv(x0,y1,z0);
+        glColor3f(tint*c0,tint*c0,tint*c0); glTexCoord2f(ua,v1); gl_gv(x0,y2,z0);
+        glColor3f(tint*c1,tint*c1,tint*c1); glTexCoord2f(ub,v1); gl_gv(x1,y2,z1);
+        glColor3f(tint*c1,tint*c1,tint*c1); glTexCoord2f(ub,v0); gl_gv(x1,y1,z1);
+    }
+    glEnd(); glDisable(GL_TEXTURE_2D);
+}
+static void gl_cyl_z_tex_smooth(GLuint tex,float x,float y,float z1,float z2,float rad,int seg,
+                                float tint,float u0,float v0,float u1,float v1)
+{
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex);
+    glBegin(GL_QUADS);
+    for(int i=0;i<seg;i++){
+        float a0=(float)i*6.2831853f/seg,a1=(float)(i+1)*6.2831853f/seg;
+        float c0=0.60f+0.40f*(0.55f+0.45f*cosf(a0));
+        float c1=0.60f+0.40f*(0.55f+0.45f*cosf(a1));
+        float x0=x+cosf(a0)*rad,y0=y+sinf(a0)*rad;
+        float x1=x+cosf(a1)*rad,y1=y+sinf(a1)*rad;
+        float ua=u0+(u1-u0)*((float)i/seg),ub=u0+(u1-u0)*((float)(i+1)/seg);
+        glColor3f(tint*c0,tint*c0,tint*c0); glTexCoord2f(ua,v0); gl_gv(x0,y0,z1);
+        glColor3f(tint*c0,tint*c0,tint*c0); glTexCoord2f(ub,v0); gl_gv(x1,y1,z1);
+        glColor3f(tint*c1,tint*c1,tint*c1); glTexCoord2f(ub,v1); gl_gv(x1,y1,z2);
+        glColor3f(tint*c1,tint*c1,tint*c1); glTexCoord2f(ua,v1); gl_gv(x0,y0,z2);
+    }
+    glEnd(); glDisable(GL_TEXTURE_2D);
+}
+static void gl_cyl_z_tex_rot(GLuint tex,float x,float y,float z1,float z2,float rad,int seg,
+                             float tint,float u0,float v0,float u1,float v1,float urep,float vrep)
+{
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex);
+    glBegin(GL_QUADS);
+    for(int i=0;i<seg;i++){
+        float a0=(float)i*6.2831853f/seg,a1=(float)(i+1)*6.2831853f/seg;
+        float c0=0.60f+0.40f*(0.55f+0.45f*cosf(a0));
+        float c1=0.60f+0.40f*(0.55f+0.45f*cosf(a1));
+        float x0=x+cosf(a0)*rad,y0=y+sinf(a0)*rad;
+        float x1=x+cosf(a1)*rad,y1=y+sinf(a1)*rad;
+        float ua=u0,ub=u1;
+        float t0=(float)i/seg*vrep,t1=(float)(i+1)/seg*vrep;
+        float va0=v0+(v1-v0)*(t0-floorf(t0)),va1=v0+(v1-v0)*(t1-floorf(t1));
+        glColor3f(tint*c0,tint*c0,tint*c0); glTexCoord2f(ua,va0); gl_gv(x0,y0,z1);
+        glColor3f(tint*c0,tint*c0,tint*c0); glTexCoord2f(ua,va1); gl_gv(x1,y1,z1);
+        glColor3f(tint*c1,tint*c1,tint*c1); glTexCoord2f(ub,va1); gl_gv(x1,y1,z2);
+        glColor3f(tint*c1,tint*c1,tint*c1); glTexCoord2f(ub,va0); gl_gv(x0,y0,z2);
+    }
+    glEnd(); glDisable(GL_TEXTURE_2D);
+}
+static void gl_disc_y_tex_rgb(GLuint tex,float y,float x,float z,float rad,int seg,
+                              float r,float g,float b,float u0,float v0,float u1,float v1)
+{
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex); glColor3f(r,g,b);
+    glBegin(GL_TRIANGLE_FAN);
+    glTexCoord2f((u0+u1)*0.5f,(v0+v1)*0.5f); gl_gv(x,y,z);
+    for(int i=0;i<=seg;i++){ float a=(float)i*6.2831853f/seg;
+        glTexCoord2f(u0+(u1-u0)*(0.5f+0.5f*cosf(a)),v0+(v1-v0)*(0.5f+0.5f*sinf(a)));
+        gl_gv(x+cosf(a)*rad,y,z+sinf(a)*rad);
+    }
+    glEnd(); glDisable(GL_TEXTURE_2D);
+}
+static void gl_disc_x_tex_rgb(GLuint tex,float x,float y,float z,float rad,int seg,
+                              float r,float g,float b,float u0,float v0,float u1,float v1)
+{
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex); glColor3f(r,g,b);
+    glBegin(GL_TRIANGLE_FAN);
+    glTexCoord2f((u0+u1)*0.5f,(v0+v1)*0.5f); gl_gv(x,y,z);
+    for(int i=0;i<=seg;i++){ float a=(float)i*6.2831853f/seg;
+        glTexCoord2f(u0+(u1-u0)*(0.5f+0.5f*cosf(a)),v0+(v1-v0)*(0.5f+0.5f*sinf(a)));
+        gl_gv(x,y+cosf(a)*rad,z+sinf(a)*rad);
+    }
+    glEnd(); glDisable(GL_TEXTURE_2D);
+}
+static void gl_disc_y_tex(GLuint tex,float y,float x,float z,float rad,int seg,
+                          float tint,float u0,float v0,float u1,float v1)
+{
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex); glColor3f(tint,tint,tint);
+    glBegin(GL_TRIANGLE_FAN);
+    glTexCoord2f((u0+u1)*0.5f,(v0+v1)*0.5f); gl_gv(x,y,z);
+    for(int i=0;i<=seg;i++){ float a=(float)i*6.2831853f/seg;
+        glTexCoord2f(u0+(u1-u0)*(0.5f+0.5f*cosf(a)),v0+(v1-v0)*(0.5f+0.5f*sinf(a)));
+        gl_gv(x+cosf(a)*rad,y,z+sinf(a)*rad);
+    }
+    glEnd(); glDisable(GL_TEXTURE_2D);
+}
+static void gl_disc_z_tex(GLuint tex,float z,float x,float y,float rad,int seg,
+                          float tint,float u0,float v0,float u1,float v1)
+{
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex); glColor3f(tint,tint,tint);
+    glBegin(GL_TRIANGLE_FAN);
+    glTexCoord2f((u0+u1)*0.5f,(v0+v1)*0.5f); gl_gv(x,y,z);
+    for(int i=0;i<=seg;i++){ float a=(float)i*6.2831853f/seg;
+        glTexCoord2f(u0+(u1-u0)*(0.5f+0.5f*cosf(a)),v0+(v1-v0)*(0.5f+0.5f*sinf(a)));
+        gl_gv(x+cosf(a)*rad,y+sinf(a)*rad,z);
+    }
+    glEnd(); glDisable(GL_TEXTURE_2D);
 }
 static void gl_cyl_z_band(float x,float y,float z1,float z2,float rad,
                           float a0,float a1,float r,float g,float b)
@@ -3088,9 +3234,17 @@ static void eng_rail_y(float y1,float y2,float x,float z0,float h)
     gl_box(x-2.0f,y1,z0+h-3.0f,x+1.0f,y2,z0+h,0.64f,0.47f,0.06f);
     gl_box(x-1.0f,y1,z0+2.0f,x+1.0f,y2,z0+5.0f,0.065f,0.055f,0.045f);
 }
+static void eng_pipe_x(float x1,float x2,float y,float z,float rad,float r,float g,float b);
+static void eng_pipe_x_tex(float x1,float x2,float y,float z,float rad,float r,float g,float b)
+{
+    eng_pipe_x(x1,x2,y,z,rad,r,g,b);
+}
 static void eng_pipe_x(float x1,float x2,float y,float z,float rad,float r,float g,float b)
 {
-    gl_cyl_x_lit(x1,x2,y,z,rad,12,r*1.12f,g*1.12f,b*1.12f);
+    int rust=(r>g*1.35f);
+    GLuint tex=rust?gl_tex[GT_ART_WALL]:gl_tex[GT_ART_FLOOR];
+    float u0=rust?0.02f:0.30f,v0=rust?0.02f:0.30f,u1=rust?0.14f:0.70f,v1=rust?0.98f:0.70f;
+    gl_cyl_x_tex_smooth(tex,x1,x2,y,z,rad,12,0.68f,u0,v0,u1,v1,rust?3.0f:2.0f);
     for(float x=x1+24.0f;x<x2;x+=80.0f){
         gl_cyl_x(x-2.0f,x+2.0f,y,z,rad+2.0f,12,r*0.72f,g*0.72f,b*0.72f);
         gl_cyl_x(x-1.0f,x+1.0f,y,z,rad+3.2f,12,0.20f,0.18f,0.15f);
@@ -3099,7 +3253,9 @@ static void eng_pipe_x(float x1,float x2,float y,float z,float rad,float r,float
 }
 static void eng_pipe_z(float x,float y,float z1,float z2,float rad,float r,float g,float b)
 {
-    gl_cyl_z_lit(x,y,z1,z2,rad,12,r*1.12f,g*1.12f,b*1.12f);
+    int rust=(r>g*1.35f);
+    float u0=0.02f,u1=0.46f,v0=rust?0.64f:0.02f,v1=rust?0.98f:0.38f;
+    gl_cyl_z_tex_rot(gl_tex[GT_ART_WALL],x,y,z1,z2,rad,12,0.68f,u0,v0,u1,v1,1.0f,2.0f);
     gl_cyl_z(x,y,z1,z1+3.0f,rad+3.0f,12,0.20f,0.18f,0.15f);
     gl_cyl_z(x,y,z2-3.0f,z2,rad+3.0f,12,0.20f,0.18f,0.15f);
 }
@@ -3167,7 +3323,7 @@ static void eng_generator(void)
     gl_box_tex_uv(gl_tex[GT_ART_WALL],150,145,0,500,245,10,1.30f,0.02f,0.02f,0.30f,0.30f);
     gl_box_tex_uv(gl_tex[GT_ART_WALL],160,151,10,490,242,18,1.22f,0.02f,0.02f,0.30f,0.30f);
     /* front-facing turbine drum: axis runs north-south so the room sees the rotor face */
-    gl_cyl_y_lit(154,244,325,64,55,20,0.26f,0.25f,0.23f);
+    gl_cyl_y_tex_smooth(gl_tex[GT_ART_WALL],154,244,325,64,55,20,1.02f,0.02f,0.02f,0.98f,0.38f);
     gl_cyl_y(184,188,325,64,56,20,0.16f,0.11f,0.065f);
     gl_cyl_y(214,218,325,64,56,20,0.18f,0.13f,0.075f);
     for(float y=170;y<244;y+=22) gl_cyl_y(y,y+4,325,64,58,20,0.075f,0.08f,0.08f);
@@ -3175,13 +3331,13 @@ static void eng_generator(void)
     gl_box_tex_uv(gl_tex[GT_ART_WALL],176,232,0,474,246,32,1.10f,0.70f,0.02f,0.98f,0.30f);
     gl_cyl_y(146,156,325,64,58,20,0.10f,0.11f,0.11f);
     gl_cyl_y(242,250,325,64,58,20,0.10f,0.11f,0.11f);
-    gl_disc_y(250.0f,325,64,60,20,0.28f,0.21f,0.14f);
+    gl_disc_y_tex(gl_tex[GT_ART_WALL],250.0f,325,64,60,20,0.92f,0.02f,0.02f,0.46f,0.38f);
     gl_turbine_face(250.5f,325,64,54,20,0.72f,0.24f,0.035f);
     for(int i=0;i<12;i++){
         float aa=(float)i*6.2831853f/12.0f;
         gl_disc_y(251.1f,325+cosf(aa)*56.5f,64+sinf(aa)*56.5f,1.9f,6,0.055f,0.052f,0.045f);
     }
-    gl_glow_disc_y(251.2f,325,64,62,20,1.0f,0.28f,0.02f,0.20f);
+    gl_glow_disc_y(251.2f,325,64,62,20,1.0f,0.24f,0.02f,0.11f);
     gl_glow_quad(225,195,435,285,2.25f,1.0f,0.18f,0.02f,0.10f);
     for(float x=236;x<410;x+=20) gl_box(x,249.5f,25,x+4,251.0f,44,0.035f,0.040f,0.038f);
     gl_box(168,238,0,492,247,8,0.08f,0.08f,0.07f);
@@ -3208,7 +3364,15 @@ static void eng_coolant(void)
     gl_box_tex_uv(gl_tex[GT_ART_WALL],142,330,0,236,522,5,1.14f,0.02f,0.02f,0.30f,0.30f);
     for(int i=0;i<2;i++){
         float y=386.0f+i*86.0f;
-        gl_cyl_z_lit(182,y,4,80,23,20,0.30f,0.31f,0.32f);
+        if(i==0){
+            gl_cyl_z_tex_rot(gl_tex[GT_ART_WALL],182,y,4,80,23,20,1.18f,0.02f,0.64f,0.46f,0.98f,1.0f,1.0f);
+            gl_disc_z_tex(gl_tex[GT_ART_WALL],80.0f,182,y,23,20,1.10f,0.02f,0.64f,0.46f,0.98f);
+            gl_disc_z_tex(gl_tex[GT_ART_WALL],4.0f,182,y,23,20,0.90f,0.02f,0.64f,0.46f,0.98f);
+        } else {
+            gl_cyl_z_tex_rot(gl_tex[GT_ART_WALL],182,y,4,80,23,20,1.02f,0.52f,0.64f,0.98f,0.98f,1.0f,1.0f);
+            gl_disc_z_tex(gl_tex[GT_ART_WALL],80.0f,182,y,23,20,0.98f,0.52f,0.64f,0.98f,0.98f);
+            gl_disc_z_tex(gl_tex[GT_ART_WALL],4.0f,182,y,23,20,0.82f,0.52f,0.64f,0.98f,0.98f);
+        }
         gl_cyl_z(182,y,27,30,23.2f,20,0.21f,0.16f,0.10f);
         gl_cyl_z(182,y,64,67,23.2f,20,0.20f,0.17f,0.12f);
         gl_cyl_z_band(182,y,5,79,23.25f,-0.62f,-0.40f,0.39f,0.38f,0.35f);
@@ -3221,12 +3385,14 @@ static void eng_coolant(void)
         eng_pipe_z(182,y,82,107,6,0.22f,0.15f,0.08f);
         eng_pipe_x(128,182,y,100,4,0.25f,0.18f,0.09f);
         gl_disc_y(y+23.2f,182,55,10,16,0.06f,0.06f,0.055f);
-        gl_disc_y(y+23.6f,182,55,7.5f,16,0.55f,0.10f,0.035f);
+        if(i==0) gl_disc_y_tex_rgb(gl_tex[GT_ART_FLOOR],y+23.6f,182,55,7.5f,16,0.95f,0.28f,0.08f,0.30f,0.30f,0.70f,0.70f);
+        else gl_disc_y(y+23.6f,182,55,7.5f,16,0.55f,0.10f,0.035f);
         gl_disc_y(y+23.9f,182,55,2.2f,12,0.16f,0.15f,0.13f);
         gl_disc_y(y+23.2f,182,70,6,12,0.10f,0.11f,0.10f);
         gl_disc_y(y+23.8f,182,70,4.5f,12,0.78f,0.70f,0.42f);
         gl_disc_x(206.2f,y,55,10,16,0.06f,0.06f,0.055f);
-        gl_disc_x(206.6f,y,55,7.0f,16,0.55f,0.10f,0.035f);
+        if(i==0) gl_disc_x_tex_rgb(gl_tex[GT_ART_FLOOR],206.6f,y,55,7.0f,16,0.95f,0.28f,0.08f,0.30f,0.30f,0.70f,0.70f);
+        else gl_disc_x_tex_rgb(gl_tex[GT_ART_FLOOR],206.6f,y,55,7.0f,16,0.86f,0.22f,0.06f,0.30f,0.30f,0.70f,0.70f);
         gl_disc_x(206.9f,y,55,2.0f,12,0.16f,0.15f,0.13f);
         gl_disc_x(206.2f,y+12,55,5,12,0.80f,0.72f,0.44f);
         gl_box(205.9f,y-12,32,206.4f,y+6,40,0.48f,0.34f,0.04f);
@@ -3335,7 +3501,7 @@ static void eng_overhead(void)
     gl_box(136,620,0,148,632,128,0.10f,0.10f,0.095f);
     gl_box(748,136,0,760,148,128,0.10f,0.10f,0.095f);
     /* longitudinal feeds above the clear central lane */
-    eng_pipe_x(150,750,168,108,8,0.20f,0.19f,0.17f);
+    eng_pipe_x_tex(150,750,168,108,8,0.20f,0.19f,0.17f);
     eng_pipe_x(150,750,206,114,5,0.24f,0.13f,0.06f);
     eng_pipe_x(150,750,352,104,7,0.21f,0.18f,0.13f);
     eng_pipe_x(150,750,372,113,4,0.14f,0.18f,0.22f);

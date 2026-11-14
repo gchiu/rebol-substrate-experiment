@@ -765,3 +765,18 @@ frozen-S1 or VM semantics changed.
 
 Matched 960x600 medians improved from G5u's 84.5/54.9 FPS to 91.2/60.1 FPS
 (no objects/objects). Full report: `experiments/glon-doom/G5V-ROOM-MATERIALS-REPORT.md`.
+
+## 10r. AvP G5w machinery textures (2026-11-14)
+
+The engineering machinery now has actual curved-surface texture coverage. The
+old `gl_cyl_*`, `gl_disc_*`, `gl_turbine_face` and pipe helpers disabled
+texturing, set a flat colour and emitted no texture coordinates. G5w added
+smooth cylindrical UV helpers for X/Y/Z cylinders, annular UVs for the turbine
+housing, planar caps and valve faces, and static safe crops from the existing
+wall/floor art. The turbine drum and ring, both coolant vessels, caps, valves
+and overhead/wall pipe bodies are now genuinely textured. The A-3 corridor
+remains pixel-identical; no frozen S1, gameplay or VM code changed.
+
+Matched 960x600 medians were 91.1/60.4 FPS (no objects/objects), effectively
+level with the verified G5v result. Full report:
+`experiments/glon-doom/G5W-MACHINERY-TEXTURES-REPORT.md`.

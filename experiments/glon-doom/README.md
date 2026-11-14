@@ -446,3 +446,20 @@ shadow pass or new texture pipeline was added.
 
 No new texture assets or per-frame uploads; the A-3 corridor is pixel-identical.
 See `G5V-ROOM-MATERIALS-REPORT.md`.
+
+## G5w machinery textures
+
+Cylinders, discs, turbine rings and pipe runs now use cylindrical/annular UVs
+against the existing corridor textures instead of flat service colours. One
+shared helper binds each material once, generates static UVs and applies smooth
+per-vertex cylinder shading. Texture crops deliberately avoid the A-3 sign.
+Representative turbine, coolant-vessel and overhead-pipe views are in
+`/tmp/g5w-final/compare-*.png`; no new texture assets or texture memory were
+added.
+
+```sh
+./build/doom --gl-rooms /tmp/g5w-room 960 600 objects
+./build/doom --gl-bench 180 960 600 objects
+```
+
+See `G5W-MACHINERY-TEXTURES-REPORT.md`.

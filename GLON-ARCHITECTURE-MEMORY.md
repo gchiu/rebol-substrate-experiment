@@ -781,6 +781,43 @@ Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
   corridor, and the improvement uses opaque albedo/additive shading rather than
   true local illumination.
 
+
+
+### G5w machinery texture mapping [FINDING]
+
+[FINDING 2026-11-14, `experiments/glon-avp-g5w`, WSLg D3D12 AMD Radeon]
+
+- Root cause of the flat machinery: the `gl_cyl_x/y/z`, `gl_disc_x/y`,
+  `gl_turbine_face`, `eng_pipe_x` and `eng_pipe_z` helpers all disabled
+  `GL_TEXTURE_2D`, called `gl_rgb` and emitted no `glTexCoord`. G5v's textured
+  cabinet/panel boxes did not touch those paths. G5v's material-enum vs
+  `gl_tex[...]` bug was already fixed for panels; G5w makes the same binding
+  rule explicit for machinery.
+- G5w adds smooth cylindrical helpers (`gl_cyl_x_tex_smooth`,
+  `gl_cyl_y_tex_smooth`, `gl_cyl_z_tex_rot`), annular turbine mapping
+  (`gl_ring_y_tex`), planar cap/valve mapping (`gl_disc_*_tex`), and static UVs
+  generated per vertex. Each helper binds one existing texture, emits UVs and
+  disables texturing afterwards. Shading is smooth per-vertex `cos(angle)`,
+  avoiding the faceted/dark-band look.
+- Safe crops from the existing 512×512 corridor art avoid the A-3 sign:
+  bulkhead top (`v 0.02–0.38`) and bottom (`v 0.64–0.98`) strips, and the
+  clean upper floor-plate field (`u 0.18–0.82`, `v 0.05–0.42`). No texture
+  uploads, new assets or per-frame image work were added.
+- Surfaces now genuinely textured: turbine drum and front ring, both coolant
+  vessel bodies and caps, both red valve wheels, overhead and wall pipe bodies,
+  plus the G5v cabinet/casing boxes. Small pipe flanges/couplings retain flat
+  steel: texturing 16 tiny flange surfaces added roughly 20% to the matched
+  frame cost, so that cosmetic gain was rejected.
+- Matched 960×600, 180-frame medians: G5v 88.7/59.6 FPS (recorded report
+  91.2/60.1) versus G5w 91.1/60.4 FPS; no measurable regression. Executable
+  6,117,184 bytes (G5v 6,113,024; +4,160). Loader high-water unchanged at
+  53,705/54,569 cells. Texture memory 0 bytes.
+- The existing plate/panel art is not a seamless cylinder material. Reusing it
+  makes pipes read as fine ribbing/knurling at close range rather than a smooth
+  brushed tube; the A-3 wall and floor textures also carry rivet/seam structure
+  that had to be cropped around. A dedicated seamless weathered-steel/pipe
+  texture would improve close-ups, but no new asset/pipeline was introduced.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling
