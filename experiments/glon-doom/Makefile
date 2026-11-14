@@ -33,6 +33,7 @@ test: $(TARGET)
 	python3 tests/check_g5x_door.py
 	python3 tests/check_g5x2_door.py
 	python3 tests/check_g6a_audio.py
+	python3 tests/check_g6b_audio.py
 	./$(TARGET) --self-test
 	./$(TARGET) --projection-test
 	./$(TARGET) --input-test
@@ -43,6 +44,7 @@ test: $(TARGET)
 	./$(TARGET) --self-test --raw-wall
 	./$(TARGET) --trace
 	./$(TARGET) --audio-test
+	./$(TARGET) --sfx-test
 	cd $(ROOT) && ./check-frozen-s1.sh
 
 run: $(TARGET)

@@ -1,0 +1,63 @@
+G6b event sound sources and licences
+====================================
+
+All five recordings are used under the licences shown on their Freesound
+pages. They were converted to the game's mixer format (44.1 kHz, 16-bit mono
+PCM WAV); door/rifle/wall/cargo clips were also trimmed and given short edge
+fades to fit gameplay events. No synthesis was substituted.
+
+1. Blast door: "Lab Door Open and Close Industrial Sci-Fi Games"
+   Creator: kentspublicdomain (Kent)
+   https://freesound.org/people/kentspublicdomain/sounds/799198/
+   Licence: Creative Commons 0 (CC0 1.0), public domain
+   https://creativecommons.org/publicdomain/zero/1.0/
+   Source: 24-bit mono 44.1 kHz, 6.000 s.
+   Modifications: split into open (0.0-2.2 s) and close (2.2-4.4 s)
+   excerpts; 5 ms in / 30 ms out fades; converted to 16-bit 44.1 kHz mono.
+
+2. Alien shriek: "Alien Monster Roaring and Screaming"
+   Creator: Mastersoundboy2005
+   https://freesound.org/people/mastersoundboy2005/sounds/737275/
+   Licence: Creative Commons 0 (CC0 1.0), public domain
+   https://creativecommons.org/publicdomain/zero/1.0/
+   Source: 16-bit stereo 48 kHz, 2.1667 s.
+   Modifications: converted to 16-bit mono 44.1 kHz; short edge fades.
+
+3. Rifle: "Sci-Fi LMG Concept"
+   Creator: Heretic4522
+   https://freesound.org/people/Heretic4522/sounds/850829/
+   Licence: Creative Commons 0 (CC0 1.0), public domain
+   https://creativecommons.org/publicdomain/zero/1.0/
+   Source: 32-bit mono 48 kHz, 1.8047 s, described by the creator as one
+   gunshot for a light machine gun.
+   Modifications: extracted the single-shot 0.65 s attack/early tail with a
+   30 ms fade-out; converted to 16-bit mono 44.1 kHz.
+
+4. Wall impact: "Low Metal Thud 2.wav"
+   Creator: F.M.Audio
+   https://freesound.org/s/620830/
+   Licence: Creative Commons Attribution 4.0 (CC BY 4.0)
+   https://creativecommons.org/licenses/by/4.0/
+   Source: 24-bit mono 96 kHz, 3.9631 s.
+   Modifications: trimmed to 1.2 s with a 50 ms fade-out; converted to
+   16-bit mono 44.1 kHz.
+   Attribution: "Low Metal Thud 2.wav" by F.M.Audio, CC BY 4.0.
+
+5. Cargo impact: "Metal Impact"
+   Creator: Rickplayer
+   https://freesound.org/people/Rickplayer/sounds/530486/
+   Licence: Creative Commons 0 (CC0 1.0), public domain
+   https://creativecommons.org/publicdomain/zero/1.0/
+   Source: MP3 mono 44.1 kHz, 1.790 s.
+   Modifications: decoded, trimmed to 0.9 s with a 40 ms fade-out;
+   converted to 16-bit mono 44.1 kHz.
+
+Continuous ambient recording unchanged in this pass:
+"Alien Spaceship Interior Ambience 04 Sci-Fi Engine Hum & Electronics"
+by Tommaso Motteran, Freesound 873687, CC BY 4.0,
+https://freesound.org/people/TommasoMotteran/sounds/873687/
+Modifications: 24-bit stereo to 16-bit mono 44.1 kHz; 1.0 s loop crossfade.
+See ../SOURCE.txt.
+
+No creator endorses this game. Attribution for F.M.Audio and Tommaso Motteran
+is provided under the respective CC BY 4.0 licences.

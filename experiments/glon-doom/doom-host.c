@@ -171,6 +171,8 @@ static void fail(const char *what) {
     exit(2);
 }
 
+static int expect_eq(const char *name,int got,int want);
+
 /* ---- G6a ambient audio -------------------------------------------------- */
 #define AUDIO_RATE 44100
 #define AUDIO_CHANNELS 2
@@ -194,7 +196,51 @@ static int ambient_volume_pct = 60;
 static int audio_disabled;
 static int smoke_frames;
 
-static int audio_load_loop(const char *name,const char *file,float gain,int fade_frames) {
+#define AUDIO_MAX_VOICES 8
+#define AUDIO_TAG_ALIEN 2
+#define AUDIO_TAG_DOOR 1
+
+enum {
+    SFX_DOOR_OPEN=0, SFX_DOOR_CLOSE, SFX_ALIEN, SFX_RIFLE,
+    SFX_WALL, SFX_CARGO, SFX_COUNT
+};
+
+typedef struct {
+    int16_t *samples;
+    int frames;
+    float gain;
+    const char *name;
+} AudioClip;
+
+typedef struct {
+    const AudioClip *clip;
+    int pos;
+    float gain;
+    int tag;
+    int active;
+    int fade_left;
+    int fade_total;
+    uint64_t order;
+} AudioVoice;
+
+static AudioClip audio_clips[SFX_COUNT];
+static AudioVoice audio_voices[AUDIO_MAX_VOICES];
+static uint64_t audio_voice_order;
+
+static const struct {
+    const char *file;
+    const char *name;
+    float gain;
+} audio_sfx_defs[SFX_COUNT] = {
+    {"sfx/door_open.wav",    "door open",       0.65f},
+    {"sfx/door_close.wav",   "door close",      0.65f},
+    {"sfx/alien_shriek.wav", "alien shriek",    0.70f},
+    {"sfx/rifle_shot.wav",   "rifle shot",      0.45f},
+    {"sfx/wall_thud.wav",    "wall thud",       0.45f},
+    {"sfx/cargo_impact.wav", "cargo impact",    0.50f},
+};
+
+static int audio_decode_mono(const char *file,const char *name,int16_t **out,int *nframes) {
     char path[4096];
     snprintf(path,sizeof path,"%s/experiments/glon-doom/assets/audio/%s",root_dir,file);
     SDL_AudioSpec spec;
@@ -210,7 +256,7 @@ static int audio_load_loop(const char *name,const char *file,float gain,int fade
     int need=SDL_BuildAudioCVT(&cvt,spec.format,spec.channels,spec.freq,
                                AUDIO_S16SYS,1,AUDIO_RATE);
     if(need<0){
-        fprintf(stderr,"audio: cannot convert %s: %s\n",file,SDL_GetError());
+        fprintf(stderr,"audio: cannot convert %s: %s\n",name,SDL_GetError());
         SDL_FreeWAV(wav);
         return -1;
     }
@@ -225,7 +271,7 @@ static int audio_load_loop(const char *name,const char *file,float gain,int fade
         if(!cvt.buf){ SDL_FreeWAV(wav); return -1; }
         memcpy(cvt.buf,wav,wav_len);
         if(SDL_ConvertAudio(&cvt)!=0){
-            fprintf(stderr,"audio: conversion failed for %s: %s\n",file,SDL_GetError());
+            fprintf(stderr,"audio: conversion failed for %s: %s\n",name,SDL_GetError());
             free(cvt.buf); SDL_FreeWAV(wav);
             return -1;
         }
@@ -233,6 +279,15 @@ static int audio_load_loop(const char *name,const char *file,float gain,int fade
         nsamp=(int)(cvt.len_cvt/sizeof(int16_t));
     }
     SDL_FreeWAV(wav);
+    if(nsamp<=0){ free(pcm); return -1; }
+    *out=pcm; *nframes=nsamp;
+    return 0;
+}
+
+static int audio_load_loop(const char *name,const char *file,float gain,int fade_frames) {
+    int16_t *pcm=NULL;
+    int nsamp=0;
+    if(audio_decode_mono(file,name,&pcm,&nsamp)!=0) return -1;
     if(nsamp <= fade_frames+4){
         fprintf(stderr,"audio: %s is too short for a %d-frame crossfade\n",file,fade_frames);
         free(pcm);
@@ -263,6 +318,192 @@ static int audio_load_loop(const char *name,const char *file,float gain,int fade
     return 0;
 }
 
+static int audio_load_sfx(void) {
+    int loaded=0;
+    for(int i=0;i<SFX_COUNT;i++){
+        int16_t *pcm=NULL; int n=0;
+        if(audio_decode_mono(audio_sfx_defs[i].file,audio_sfx_defs[i].name,&pcm,&n)!=0) continue;
+        audio_clips[i].samples=pcm;
+        audio_clips[i].frames=n;
+        audio_clips[i].gain=audio_sfx_defs[i].gain;
+        audio_clips[i].name=audio_sfx_defs[i].name;
+        loaded++;
+        printf("audio: loaded sfx %s %d frames (%.3fs), gain %.2f\n",
+               audio_sfx_defs[i].name,n,(double)n/(double)AUDIO_RATE,audio_sfx_defs[i].gain);
+    }
+    if(loaded!=SFX_COUNT)
+        fprintf(stderr,"audio: %d/%d sound effects loaded; missing effects are silent\n",
+                loaded,SFX_COUNT);
+    return loaded;
+}
+
+static void audio_free_sfx(void) {
+    for(int i=0;i<SFX_COUNT;i++){
+        free(audio_clips[i].samples);
+        audio_clips[i].samples=NULL; audio_clips[i].frames=0;
+    }
+    memset(audio_voices,0,sizeof audio_voices);
+    audio_voice_order=0;
+}
+
+static void audio_voice_stop_tag(int tag) {
+    if(!tag) return;
+    int fade=AUDIO_RATE/8;
+    for(int i=0;i<AUDIO_MAX_VOICES;i++){
+        AudioVoice *v=&audio_voices[i];
+        if(!v->active || v->tag!=tag) continue;
+        int remain=v->clip ? v->clip->frames-v->pos : 0;
+        int f=fade; if(f>remain) f=remain;
+        v->tag=0;
+        if(f<=0){ v->active=0; }
+        else { v->fade_left=f; v->fade_total=f; }
+    }
+}
+
+static int audio_voice_start(int id,float gain,int tag) {
+    if(id<0 || id>=SFX_COUNT || !audio_clips[id].samples) return 0;
+    if(tag) audio_voice_stop_tag(tag);
+    int slot=-1;
+    for(int i=0;i<AUDIO_MAX_VOICES;i++) if(!audio_voices[i].active){ slot=i; break; }
+    if(slot<0){
+        uint64_t oldest=UINT64_MAX;
+        for(int i=0;i<AUDIO_MAX_VOICES;i++)
+            if(audio_voices[i].order<oldest){ oldest=audio_voices[i].order; slot=i; }
+    }
+    AudioVoice *v=&audio_voices[slot];
+    v->clip=&audio_clips[id]; v->pos=0;
+    v->gain=gain*audio_clips[id].gain;
+    v->tag=tag; v->active=1; v->fade_left=0; v->fade_total=0;
+    v->order=++audio_voice_order;
+    return 1;
+}
+
+static void audio_play(int id,float gain,int tag) {
+    if(!audio_ready || !audio_dev) return;
+    SDL_LockAudioDevice(audio_dev);
+    audio_voice_start(id,gain,tag);
+    SDL_UnlockAudioDevice(audio_dev);
+}
+
+static float audio_distance_gain(int x,int y,int px,int py) {
+    double dx=(double)x-px, dy=(double)y-py;
+    double d=sqrt(dx*dx+dy*dy);
+    if(d<=96.0) return 1.0f;
+    if(d>=1200.0) return 0.0f;
+    return (float)(1.0 - (d-96.0)/(1200.0-96.0));
+}
+
+static void audio_play_at(int id,int x,int y,int px,int py,int tag) {
+    float g=audio_distance_gain(x,y,px,py);
+    if(g>0.0f) audio_play(id,g,tag);
+}
+
+/* Event state is main-thread only.  Cooldowns prevent per-frame retriggers. */
+typedef struct {
+    int door_motion;
+    int prev_alien_state, prev_alien_detected;
+    uint64_t last_alien_ms, last_rifle_ms, last_wall_ms, last_cargo_ms;
+    int rifle_seen;
+    int wall_contact, cargo_contact;
+    int prev_px, prev_py, have_prev;
+} SfxEventState;
+
+static SfxEventState sfx_events;
+
+static uint64_t audio_now_ms(void) {
+    return (uint64_t)(now_ns()/1000000L);
+}
+
+static int sfx_door_event(int open,int target,int *motion) {
+    int desired = target>open ? 1 : (target<open ? 2 : 0);
+    int event = 0;
+    if(desired!=*motion){
+        if(desired==1) event=SFX_DOOR_OPEN;
+        else if(desired==2) event=SFX_DOOR_CLOSE;
+        *motion=desired;
+    }
+    return event;
+}
+
+static int sfx_alien_event(int detected,int state,uint64_t now,SfxEventState *s) {
+    int meaningful = (detected && !s->prev_alien_detected) ||
+                     (state==2 && s->prev_alien_state!=2);
+    int event=0;
+    if(meaningful && (s->last_alien_ms==0 || now-s->last_alien_ms>=2200)){
+        event=SFX_ALIEN;
+        s->last_alien_ms=now;
+    }
+    s->prev_alien_detected=detected;
+    s->prev_alien_state=state;
+    return event;
+}
+
+static int sfx_rifle_event(uint64_t now,SfxEventState *s) {
+    if(!s->rifle_seen || now-s->last_rifle_ms>=110){
+        s->rifle_seen=1;
+        s->last_rifle_ms=now;
+        return SFX_RIFLE;
+    }
+    return 0;
+}
+
+static int sfx_collision_event(int blocked,int cargo,int moving,uint64_t now,SfxEventState *s) {
+    int event=0;
+    if(!moving){
+        s->wall_contact=0; s->cargo_contact=0;
+        return 0;
+    }
+    if(!blocked){
+        s->wall_contact=0; s->cargo_contact=0;
+        return 0;
+    }
+    if(cargo){
+        if(!s->cargo_contact && (s->last_cargo_ms==0 || now-s->last_cargo_ms>=350)){
+            event=SFX_CARGO; s->last_cargo_ms=now;
+        }
+        s->cargo_contact=1; s->wall_contact=0;
+    } else {
+        if(!s->wall_contact && (s->last_wall_ms==0 || now-s->last_wall_ms>=350)){
+            event=SFX_WALL; s->last_wall_ms=now;
+        }
+        s->wall_contact=1; s->cargo_contact=0;
+    }
+    return event;
+}
+
+static int sfx_near_cargo(int x,int y,int r) {
+    if(!current_objs_valid || r<=0) return 0;
+    for(int i=0;i<6;i++){
+        const Obj *o=&current_objs[i];
+        if(o->id!=0 && o->id!=1 && o->id!=3) continue;
+        int dx=x-o->x; int cx=dx;
+        if(cx<-o->hw)cx=-o->hw; if(cx>o->hw)cx=o->hw; dx-=cx;
+        int dy=y-o->y; int cy=dy;
+        if(cy<-o->hd)cy=-o->hd; if(cy>o->hd)cy=o->hd; dy-=cy;
+        if(dx*dx+dy*dy < r*r) return 1;
+    }
+    return 0;
+}
+
+static void audio_sfx_update(const Status *st,int px,int py,int mask,int fire_held) {
+    uint64_t now=audio_now_ms();
+    int ev=sfx_door_event(st->door_open,st->door_target,&sfx_events.door_motion);
+    if(ev) audio_play_at(ev,768,320,px,py,AUDIO_TAG_DOOR);
+    ev=sfx_alien_event(st->detected,st->state,now,&sfx_events);
+    if(ev) audio_play_at(ev,st->ax,st->ay,px,py,AUDIO_TAG_ALIEN);
+    int moving=(mask&15)!=0;
+    int blocked=moving && sfx_events.have_prev &&
+                px==sfx_events.prev_px && py==sfx_events.prev_py;
+    int cargo=blocked && sfx_near_cargo(px,py,40);
+    ev=sfx_collision_event(blocked,cargo,moving,now,&sfx_events);
+    if(ev) audio_play(ev,1.0f,0);
+    if(fire_held){
+        ev=sfx_rifle_event(now,&sfx_events);
+        if(ev) audio_play(ev,1.0f,0);
+    }
+    sfx_events.prev_px=px; sfx_events.prev_py=py; sfx_events.have_prev=1;
+}
+
 static void audio_free_layers(void) {
     for(int i=0;i<audio_nlayers;i++){ free(audio_layers[i].samples); audio_layers[i].samples=NULL; audio_layers[i].frames=0; audio_layers[i].pos=0; }
     audio_nlayers=0;
@@ -290,6 +531,17 @@ static void audio_mix(int16_t *out,int frames) {
             if(!L->samples || L->frames<=0) continue;
             mix += (float)L->samples[L->pos]*L->gain;
             if(++L->pos>=L->frames) L->pos=0;
+        }
+        for(int k=0;k<AUDIO_MAX_VOICES;k++){
+            AudioVoice *V=&audio_voices[k];
+            if(!V->active || !V->clip) continue;
+            float g=V->gain;
+            if(V->fade_left>0){
+                g *= (float)V->fade_left/(float)V->fade_total;
+                if(--V->fade_left<=0){ V->active=0; continue; }
+            }
+            mix += (float)V->clip->samples[V->pos]*g;
+            if(++V->pos>=V->clip->frames) V->active=0;
         }
         int s=(int)(mix*master);
         if(s>32767)s=32767;
@@ -333,6 +585,9 @@ static int audio_start(void) {
         SDL_QuitSubSystem(SDL_INIT_AUDIO);
         return 0;
     }
+    audio_load_sfx();
+    memset(audio_voices,0,sizeof audio_voices);
+    audio_voice_order=0;
     SDL_AudioSpec want,have;
     memset(&want,0,sizeof want);
     want.freq=AUDIO_RATE;
@@ -344,6 +599,7 @@ static int audio_start(void) {
     if(!audio_dev){
         fprintf(stderr,"audio: cannot open device (%s); continuing without ambient audio\n",SDL_GetError());
         audio_free_layers();
+        audio_free_sfx();
         SDL_QuitSubSystem(SDL_INIT_AUDIO);
         return 0;
     }
@@ -352,6 +608,7 @@ static int audio_start(void) {
                 have.freq,have.channels);
         SDL_CloseAudioDevice(audio_dev); audio_dev=0;
         audio_free_layers();
+        audio_free_sfx();
         SDL_QuitSubSystem(SDL_INIT_AUDIO);
         return 0;
     }
@@ -372,6 +629,7 @@ static void audio_stop(void) {
         audio_dev=0;
     }
     audio_free_layers();
+    audio_free_sfx();
     if(audio_ready || SDL_WasInit(SDL_INIT_AUDIO)) SDL_QuitSubSystem(SDL_INIT_AUDIO);
     audio_ready=0;
 }
@@ -381,7 +639,9 @@ static int audio_selftest(void) {
         printf("audio-test: FAILED (assets)\n");
         return 1;
     }
+    int nsfx=audio_load_sfx();
     int fails=0;
+    if(nsfx!=SFX_COUNT){ printf("audio-test: FAILED (%d/%d sfx assets)\n",nsfx,SFX_COUNT); fails++; }
     int16_t buf[AUDIO_SAMPLES*AUDIO_CHANNELS];
     SDL_AtomicSet(&audio_volume,60);
     SDL_AtomicSet(&audio_muted,0);
@@ -425,6 +685,7 @@ static int audio_selftest(void) {
            fails?"FAILED":"PASSED",(long long)sqrt((double)sumsq/(AUDIO_SAMPLES*AUDIO_CHANNELS)),
            mix_ms,1000.0*AUDIO_SAMPLES/AUDIO_RATE);
     audio_free_layers();
+    audio_free_sfx();
     return fails?1:0;
 }
 
@@ -440,6 +701,147 @@ static int audio_device_test(void) {
     audio_stop();
     SDL_Quit();
     return 0;
+}
+
+static int active_voice_count(void) {
+    int n=0;
+    for(int i=0;i<AUDIO_MAX_VOICES;i++) if(audio_voices[i].active) n++;
+    return n;
+}
+
+static int audio_sfx_device_test(void) {
+    if(SDL_Init(SDL_INIT_TIMER)!=0) return 2;
+    audio_start();
+    if(audio_ready){
+        const int ids[SFX_COUNT]={SFX_DOOR_OPEN,SFX_DOOR_CLOSE,SFX_ALIEN,
+                                  SFX_RIFLE,SFX_WALL,SFX_CARGO};
+        for(int i=0;i<SFX_COUNT;i++){
+            audio_play(ids[i],1.0f,0);
+            SDL_Delay(350);
+        }
+        printf("sfx-device-test: played %d effects through %s\n",
+               SFX_COUNT,SDL_GetCurrentAudioDriver());
+    } else {
+        printf("sfx-device-test: no audio device; continued gracefully\n");
+    }
+    audio_stop();
+    SDL_Quit();
+    return 0;
+}
+
+static int audio_sfx_test(void) {
+    int fails=0;
+    SfxEventState s;
+    memset(&s,0,sizeof s);
+    int motion=0;
+    fails += expect_eq("door open transition",sfx_door_event(0,64,&motion),SFX_DOOR_OPEN);
+    fails += expect_eq("door opening no retrigger",sfx_door_event(10,64,&motion),0);
+    fails += expect_eq("door reverse to closing",sfx_door_event(10,0,&motion),SFX_DOOR_CLOSE);
+    fails += expect_eq("door closing no retrigger",sfx_door_event(5,0,&motion),0);
+    fails += expect_eq("door stopped",sfx_door_event(0,0,&motion),0);
+
+    memset(&s,0,sizeof s);
+    fails += expect_eq("alien detection event",sfx_alien_event(1,1,1000,&s),SFX_ALIEN);
+    fails += expect_eq("alien detection no retrigger",sfx_alien_event(1,1,1100,&s),0);
+    fails += expect_eq("alien cooldown suppresses attack",sfx_alien_event(1,2,3100,&s),0);
+    sfx_alien_event(0,1,3200,&s);
+    fails += expect_eq("alien attack after cooldown",sfx_alien_event(1,2,3300,&s),SFX_ALIEN);
+
+    memset(&s,0,sizeof s);
+    fails += expect_eq("rifle first shot",sfx_rifle_event(1000,&s),SFX_RIFLE);
+    fails += expect_eq("rifle cadence blocks 50ms",sfx_rifle_event(1050,&s),0);
+    fails += expect_eq("rifle cadence allows 110ms",sfx_rifle_event(1110,&s),SFX_RIFLE);
+
+    memset(&s,0,sizeof s);
+    fails += expect_eq("wall impact",sfx_collision_event(1,0,1,1000,&s),SFX_WALL);
+    fails += expect_eq("wall contact no retrigger",sfx_collision_event(1,0,1,1050,&s),0);
+    fails += expect_eq("wall cooldown doesn't retrigger while held",sfx_collision_event(1,0,1,1400,&s),0);
+    s.wall_contact=0;
+    fails += expect_eq("wall after release",sfx_collision_event(1,0,1,1500,&s),SFX_WALL);
+    s.wall_contact=0; s.last_wall_ms=0;
+    fails += expect_eq("cargo impact",sfx_collision_event(1,1,1,2000,&s),SFX_CARGO);
+    fails += expect_eq("cargo no retrigger",sfx_collision_event(1,1,1,2050,&s),0);
+    fails += expect_eq("cargo priority over wall",sfx_collision_event(1,1,1,2400,&s),0);
+    s.cargo_contact=0; s.last_cargo_ms=0;
+    fails += expect_eq("no movement clears contact",sfx_collision_event(1,1,0,2500,&s),0);
+
+    fails += expect_eq("attenuation at source",(int)(audio_distance_gain(320,320,320,320)*1000),1000);
+    int mid=(int)(audio_distance_gain(320,720,320,320)*1000);
+    int far=(int)(audio_distance_gain(320,1520,320,320)*1000);
+    fails += expect_eq("attenuation decreases",mid<1000 && mid>0,1);
+    fails += expect_eq("attenuation far silent",far,0);
+
+    memset(current_objs,0,sizeof current_objs);
+    current_objs_valid=1;
+    current_objs[0].id=1; current_objs[0].x=860; current_objs[0].y=270;
+    current_objs[0].hw=28; current_objs[0].hd=19;
+    fails += expect_eq("near crate classified cargo",sfx_near_cargo(860,305,40),1);
+    fails += expect_eq("far position not cargo",sfx_near_cargo(320,320,40),0);
+    current_objs_valid=0;
+
+    memset(&sfx_events,0,sizeof sfx_events);
+    Status st; memset(&st,0,sizeof st);
+    st.door_target=64;
+    audio_sfx_update(&st,320,320,0,0);
+    fails += expect_eq("host door open transition",sfx_events.door_motion,1);
+    st.door_open=64; st.door_target=0;
+    audio_sfx_update(&st,320,320,0,0);
+    fails += expect_eq("host door close transition",sfx_events.door_motion,2);
+
+    memset(&sfx_events,0,sizeof sfx_events);
+    memset(&st,0,sizeof st);
+    audio_sfx_update(&st,320,320,1,0);
+    audio_sfx_update(&st,320,320,1,0);
+    fails += expect_eq("host wall contact",sfx_events.wall_contact,1);
+    fails += expect_eq("host wall not cargo",sfx_events.cargo_contact,0);
+
+    memset(&sfx_events,0,sizeof sfx_events);
+    memset(current_objs,0,sizeof current_objs);
+    current_objs_valid=1;
+    current_objs[0].id=1; current_objs[0].x=860; current_objs[0].y=270;
+    current_objs[0].hw=28; current_objs[0].hd=19;
+    audio_sfx_update(&st,860,305,1,0);
+    audio_sfx_update(&st,860,305,1,0);
+    fails += expect_eq("host cargo contact",sfx_events.cargo_contact,1);
+    fails += expect_eq("host cargo not wall",sfx_events.wall_contact,0);
+    current_objs_valid=0;
+
+    if(audio_load_layers()!=0 || audio_load_sfx()!=SFX_COUNT){
+        printf("sfx-test: FAILED (audio assets)\n");
+        audio_free_layers(); audio_free_sfx();
+        return 1;
+    }
+    memset(audio_voices,0,sizeof audio_voices);
+    for(int i=0;i<AUDIO_MAX_VOICES;i++)
+        audio_voice_start(SFX_RIFLE,1.0f,0);
+    fails += expect_eq("voice limit",active_voice_count(),AUDIO_MAX_VOICES);
+    audio_voice_start(SFX_RIFLE,1.0f,0);
+    fails += expect_eq("voice steal keeps limit",active_voice_count(),AUDIO_MAX_VOICES);
+    SDL_AtomicSet(&audio_volume,60); SDL_AtomicSet(&audio_muted,0);
+    int16_t buf[AUDIO_SAMPLES*AUDIO_CHANNELS];
+    audio_mix(buf,AUDIO_SAMPLES);
+    int peak=0; for(int i=0;i<AUDIO_SAMPLES*AUDIO_CHANNELS;i++){int a=buf[i];if(a<0)a=-a;if(a>peak)peak=a;}
+    fails += expect_eq("multiple effects audible",peak>0,1);
+    fails += expect_eq("effects within S16",peak<=32768,1);
+    SDL_AtomicSet(&audio_volume,0);
+    audio_mix(buf,AUDIO_SAMPLES);
+    int nonzero=0; for(int i=0;i<AUDIO_SAMPLES*AUDIO_CHANNELS;i++) if(buf[i]) nonzero=1;
+    fails += expect_eq("volume zero silences effects",nonzero,0);
+    SDL_AtomicSet(&audio_volume,60);
+    SDL_AtomicSet(&audio_muted,1);
+    audio_mix(buf,AUDIO_SAMPLES);
+    nonzero=0; for(int i=0;i<AUDIO_SAMPLES*AUDIO_CHANNELS;i++) if(buf[i]) nonzero=1;
+    fails += expect_eq("mute silences effects",nonzero,0);
+    SDL_AtomicSet(&audio_muted,0);
+    long long mt0=now_ns();
+    for(int k=0;k<1000;k++) audio_mix(buf,AUDIO_SAMPLES);
+    double mix_ms=(double)(now_ns()-mt0)/1e6/1000.0;
+    fails += expect_eq("effect mixer budget",mix_ms<5.0,1);
+    printf("sfx-test: mix=%.4fms/block (budget %.2fms)\n",
+           mix_ms,1000.0*AUDIO_SAMPLES/AUDIO_RATE);
+    audio_free_layers(); audio_free_sfx();
+    printf("sfx-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
 }
 
 /* ---- Glon loading / blocking ------------------------------------------- */
@@ -2321,7 +2723,7 @@ static int bench(int frames, int bench_alien) {
     return 0;
 }
 
-typedef struct { int w,s,a,d,left,right; } HeldKeys;
+typedef struct { int w,s,a,d,left,right,fire; } HeldKeys;
 static void held_keys_apply(HeldKeys *h, const SDL_Event *e) {
     if (e->type != SDL_KEYDOWN && e->type != SDL_KEYUP) return;
     int down = e->type == SDL_KEYDOWN;
@@ -2333,6 +2735,7 @@ static void held_keys_apply(HeldKeys *h, const SDL_Event *e) {
     else if (sc == SDL_SCANCODE_D || sym == SDLK_d) h->d = down;
     else if (sc == SDL_SCANCODE_LEFT || sym == SDLK_LEFT || sc == SDL_SCANCODE_KP_4) h->left = down;
     else if (sc == SDL_SCANCODE_RIGHT || sym == SDLK_RIGHT || sc == SDL_SCANCODE_KP_6) h->right = down;
+    else if (sc == SDL_SCANCODE_F || sym == SDLK_f) h->fire = down;
 }
 static int held_keys_mask(const HeldKeys *h, const Uint8 *k) {
     return (h->w || k[SDL_SCANCODE_W] ? 1 : 0) | (h->s || k[SDL_SCANCODE_S] ? 2 : 0) |
@@ -2357,6 +2760,9 @@ static int input_test(void) {
     e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_W; e.key.keysym.sym=SDLK_w;
     held_keys_apply(&h,&e); fails += expect_eq("W keydown maps forward", held_keys_mask(&h,k), 1);
     e.type=SDL_KEYUP; held_keys_apply(&h,&e);
+    e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_F; e.key.keysym.sym=SDLK_f;
+    held_keys_apply(&h,&e); fails += expect_eq("F keydown maps fire", h.fire, 1);
+    e.type=SDL_KEYUP; held_keys_apply(&h,&e); fails += expect_eq("F keyup clears fire", h.fire, 0);
     printf("input-test: %s\n", fails ? "FAILED" : "PASSED");
     return fails ? 1 : 0;
 }
@@ -2422,6 +2828,10 @@ static int interactive(void) {
                 else if ((sc == SDL_SCANCODE_RIGHTBRACKET || sym == SDLK_RIGHTBRACKET) && down && !e.key.repeat)
                     audio_set_volume(SDL_AtomicGet(&audio_volume) + 5);
             }
+            else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT)
+                held.fire = 1;
+            else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT)
+                held.fire = 0;
         }
         const Uint8 *k = SDL_GetKeyboardState(NULL);
         int mask = held_keys_mask(&held, k);
@@ -2462,6 +2872,9 @@ static int interactive(void) {
         long st0 = now_ns();
         if (need_texrows() && get_texrows(&tr) != 0) break;
         if (get_status(&st) != 0) break;
+        int apx,apy,apa;
+        if (get_state(&apx,&apy,&apa) != 0) break;
+        audio_sfx_update(&st,apx,apy,mask,held.fire);
         long st1 = now_ns();
         proj_ms += (double)proj_ns / 1e6;
         texrow_ms += (double)(st1 - st0 - proj_ns) / 1e6;
@@ -4536,6 +4949,10 @@ static int interactive_gl(int w, int h) {
                 else if((sc==SDL_SCANCODE_LEFTBRACKET||sym==SDLK_LEFTBRACKET) && down && !e.key.repeat) audio_set_volume(SDL_AtomicGet(&audio_volume)-5);
                 else if((sc==SDL_SCANCODE_RIGHTBRACKET||sym==SDLK_RIGHTBRACKET) && down && !e.key.repeat) audio_set_volume(SDL_AtomicGet(&audio_volume)+5);
             }
+            else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT)
+                held.fire = 1;
+            else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT)
+                held.fire = 0;
         }
         gl_update_viewport();
         const Uint8 *k=SDL_GetKeyboardState(NULL);
@@ -4548,6 +4965,7 @@ static int interactive_gl(int w, int h) {
         if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) break;
         long pt_scene0=now_ns();
         st_current_angle=pa;
+        audio_sfx_update(&st,px,py,mask,held.fire);
         int nobj=0;
         if(objects_mode && current_objs_valid) { memcpy(objs,current_objs,sizeof objs); nobj=6; }
         long pt0=now_ns(); gl_scene(&st,objs,nobj); long pt1=now_ns();
@@ -5080,6 +5498,8 @@ int main(int argc, char **argv) {
     }
     if (argc > 1 && strcmp(argv[1], "--audio-test") == 0) return audio_selftest();
     if (argc > 1 && strcmp(argv[1], "--audio-device-test") == 0) return audio_device_test();
+    if (argc > 1 && strcmp(argv[1], "--sfx-test") == 0) return audio_sfx_test();
+    if (argc > 1 && strcmp(argv[1], "--sfx-device-test") == 0) return audio_sfx_device_test();
     if (argc > 1 && strcmp(argv[1], "--input-test") == 0) return input_test();
     if (argc > 1 && strcmp(argv[1], "--tracker-test") == 0) return tracker_test();
     if (argc > 1 && strcmp(argv[1], "--resize-test") == 0) return resize_test();
