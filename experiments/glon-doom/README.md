@@ -531,3 +531,28 @@ before and 120.4 FPS after (-1.9%, within the observed spread); the standard
 960x600 object benchmark showed no regression. Committed before/after evidence
 and montages are under `evidence/g5y/`. See
 `G5Y-ENGINEERING-DETAIL-REPORT.md`.
+
+## G5z GLON CORPORATION industrial equipment
+
+The corridor storage objects are fixed static props from `objects.glon`, not
+movable cargo. Their positions and rectangular collision extents are unchanged.
+G5z replaces the flat boxes/cylinders with textured, reinforced industrial
+drums and crates, and replaces the flat engineering monitors with recessed
+bezel displays, instrument graphics, housed status LEDs and a manufacturer
+plate. All markings use one 512x256 stencil atlas for GLON CORPORATION,
+ENGINEERING DIVISION, inventory and hazard labels.
+
+```sh
+./build/doom --gl-g5z-shots /tmp/g5z-shots 1920 1080 objects
+./build/doom --gl-g5z-bench 0 180 960 600 objects
+./build/doom --gl-g5z-bench 1 180 960 600 objects
+```
+
+The final executable is 6,172,112 bytes (+25,576 vs clean G5y). The atlas adds
+524,288 bytes of GL texture memory. The 960x600 standard object benchmark
+median improves from 42.1 to 45.8 FPS; the container-only diagnostic is
+11.6% lower at 960x600 and 13.1% lower at 1920x1080 (102.2 and 73.4 FPS
+medians) because the newly textured large surfaces are fill-rate bound. Full
+`make test` passes, including frozen S1. Matching before/after captures and
+benchmark logs are under `evidence/g5z/`. See
+`G5Z-GLON-CORPORATION-REPORT.md`.

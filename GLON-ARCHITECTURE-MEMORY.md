@@ -249,6 +249,22 @@ old/new medians: standard 960x600 object benchmark 52.7 -> 54.2 FPS; room-detail
 within the observed spread). Full report:
 `experiments/glon-doom/G5Y-ENGINEERING-DETAIL-REPORT.md`.
 
+**[MEASURED] AvP G5z renderer-only GLON industrial pass (2026-11-15, 64K
+configuration, WSLg D3D12).**
+A visual-only change in `experiments/glon-doom` rebuilt the fixed corridor
+drums/crates and the north-wall engineering control bank. `objects.glon`,
+`doom.glon`, collision extents, movement, AI, the G5x2 door and frozen S1 are
+unchanged. All labels and instrument panels use one generated 512x256 RGBA
+atlas, adding **524,288 bytes** of GL texture memory to **10,419,072 bytes**.
+The final executable is **6,172,112 bytes** (+25,576 from clean G5y; +21,120
+from the diagnostic baseline). Loader/heap are unchanged at 54,601/33,600 in
+the matching corridor captures. Same-session five-run medians: standard
+960x600 object benchmark 42.1 -> 45.8 FPS; control-bank pose 116.3 -> 115.8;
+container-only pose 115.6 -> 102.2 at 960x600 and 84.5 -> 73.4 at 1920x1080.
+The localized container-view cost is textured-surface fill; it stays above
+65 FPS. Full report: `experiments/glon-doom/G5Z-GLON-CORPORATION-REPORT.md`;
+matched evidence under `experiments/glon-doom/evidence/g5z/`.
+
 ## 7. Vocabularies and experiments (status)
 
 | Item | Status | Where |

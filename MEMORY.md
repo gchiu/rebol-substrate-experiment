@@ -850,3 +850,33 @@ unchanged. Interleaved old/new medians: standard 960x600 object benchmark
 within run-to-run spread). Full report:
 `experiments/glon-doom/G5Y-ENGINEERING-DETAIL-REPORT.md`; evidence under
 `experiments/glon-doom/evidence/g5y/`.
+
+## 10v. AvP G5z GLON CORPORATION industrial equipment (2026-11-15)
+
+The corridor storage props are six fixed scenery records in
+`experiments/glon-doom/objects.glon`: two red drums, two olive-green crates, a
+grey cabinet and a low green container. They are not movable cargo. Object-mode
+collision uses their original rectangular extents through `doom/check-objects`;
+`doom/objects-on` defaults off and is enabled only for object mode. G5z changes
+only the OpenGL renderer.
+
+The drums and crates now use textured painted steel, reinforced corners,
+recessed lids/panels, bands, handles, fasteners, rust runs and stencilled GLON
+markings. The engineering control bank replaces flat coloured rectangles with
+recessed screened displays, bezels, screws, instrument graphics, a retained
+six-pair red/green status strip and a GLON manufacturer plate. All labels and
+instrument panels come from one generated 512x256 RGBA atlas (524,288 bytes);
+the displays are decorative and do not track game state.
+
+The G5z worktree is the permanent `/mnt/d/repos/glon-worktrees/glon-avp-g5z`,
+based on G5y `94699eb`; implementation `ff2ea47`. Full `make test` passes,
+including frozen S1 at `f90496c26dc45c7a387d8fc8639cd2781507d3d2`.
+
+The final executable is 6,172,112 bytes (+25,576 from G5y; +21,120 from the
+diagnostic baseline). GL texture memory rises to 10,419,072 bytes. Matching
+same-session medians: standard 960x600 object benchmark 42.1 -> 45.8 FPS;
+control-bank pose 116.3 -> 115.8 FPS; container-only pose 115.6 -> 102.2 FPS at
+960x600 and 84.5 -> 73.4 FPS at 1920x1080, a localized fill-rate cost from the
+new textured surfaces (still above 65 FPS). Full report:
+`experiments/glon-doom/G5Z-GLON-CORPORATION-REPORT.md`; matched evidence under
+`experiments/glon-doom/evidence/g5z/`.
