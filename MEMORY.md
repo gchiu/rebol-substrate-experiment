@@ -780,3 +780,17 @@ remains pixel-identical; no frozen S1, gameplay or VM code changed.
 Matched 960x600 medians were 91.1/60.4 FPS (no objects/objects), effectively
 level with the verified G5v result. Full report:
 `experiments/glon-doom/G5W-MACHINERY-TEXTURES-REPORT.md`.
+
+## 10s. AvP G5x high-resolution blast door (2026-11-14)
+
+The spawn-room door now uses native-resolution leaf crops from the supplied
+concept sheet (450×785 and 410×785), replacing the embedded 64×64 texture. It
+is an 8-unit-thick two-leaf slab in a deep casing with side pockets; leaf travel
+is driven directly by Glon's `door_open`, so partial/opening/fully-open views
+agree with the unchanged collision threshold. The leaf art is loaded once from
+raw RGB assets; the initial embedded-array version was rejected because the
+2.7 MB of static data shifted `.bss` and measurably slowed the benchmark.
+
+Matched 960×600 medians were 82.1/53.4 FPS versus G5w's 81.9/54.0, with loader
+and gameplay semantics unchanged. Full report:
+`experiments/glon-doom/G5X-BLAST-DOOR-REPORT.md`.

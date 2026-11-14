@@ -818,6 +818,36 @@ Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
   that had to be cropped around. A dedicated seamless weathered-steel/pipe
   texture would improve close-ups, but no new asset/pipeline was introduced.
 
+### G5x high-resolution sliding blast door [MEASURED]
+
+[MEASURED 2026-11-14, `experiments/glon-avp-g5x`, WSLg D3D12 AMD Radeon]
+
+- The supplied G5x concept sheet was cropped to two native-resolution leaves:
+  450×785 (left) and 410×785 (right), about 7 texels per world unit. The old
+  OpenGL path used one embedded 64×64 `tex_door` across the whole 128-unit
+  face. No upscaling or procedural replacement is used.
+- The OpenGL door is now two 64×112 leaf slabs, 8 units thick, inside a
+  24-unit-deep casing with side receiving pockets. Its leaf travel is computed
+  directly from Glon's existing `door_open` (0..64): 0 closed, 32 clears the
+  unchanged collision threshold, 64 parks both leaves in the pockets. There is
+  no renderer-side door state machine and no gameplay/VM/frozen-S1 change.
+- The leaves are runtime raw-RGB assets (`assets/doors/*.rgb`), loaded once by
+  `gl_upload_rgb_file()`. A missing asset fails loudly rather than silently
+  reverting to the old 64×64 door. Texture memory adds 2,700,400 bytes.
+- Matched 960×600, 180-frame runs: G5w 81.9/54.0 FPS versus G5x 82.1/53.4 FPS
+  (no objects/objects). Executable 6,090,744 bytes (G5w 6,117,184); loader
+  high-water unchanged at 53,705/54,569 cells; heap 33,440/33,600.
+- [FINDING] Embedding the two leaves as C arrays added 2.7 MB to `.rodata`,
+  shifted `.bss` by 2.7 MB, and consistently slowed the same benchmark
+  (object GL run about 48 FPS versus 57 FPS) with no rendering-code change.
+  Runtime asset loading restored the original layout and performance. Large
+  static art arrays should therefore be treated as a measurable layout risk,
+  not merely as binary size.
+- Native-source limitation: 450/410 pixels per leaf is far better than 64×64
+  but not the 1024×2048-per-leaf ideal; the extreme 24-unit route close-up
+  still shows source softness. Full report:
+  `experiments/glon-doom/G5X-BLAST-DOOR-REPORT.md`.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling
