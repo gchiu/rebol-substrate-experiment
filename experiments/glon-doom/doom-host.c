@@ -2347,8 +2347,10 @@ static int gl_upload_rgb_file(GLuint id,const char *name,int w,int h) {
     glBindTexture(GL_TEXTURE_2D,id);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_REPEAT);
+    /* The leaf quads span exactly 0..1; clamp prevents the inner seam edge
+     * from blending with the outer edge under GL_REPEAT linear filtering. */
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,w,h,0,GL_RGBA,GL_UNSIGNED_BYTE,rgba);
     free(rgb); free(rgba); return 0;
 }
@@ -2374,8 +2376,8 @@ static int gl_init(int w, int h, int shown) {
     gl_upload(gl_tex[GT_SERVICE], tex_service_v2,64,64);
     gl_upload(gl_tex[GT_FLOOR], tex_floor,64,64);
     gl_upload(gl_tex[GT_CEIL], tex_ceiling_light,64,64);
-    if(gl_upload_rgb_file(gl_tex[GT_DOOR_LEFT],"blast-door-left.rgb",450,785)!=0) return -1;
-    if(gl_upload_rgb_file(gl_tex[GT_DOOR_RIGHT],"blast-door-right.rgb",410,785)!=0) return -1;
+    if(gl_upload_rgb_file(gl_tex[GT_DOOR_LEFT],"g5x2-door-left.rgb",840,1470)!=0) return -1;
+    if(gl_upload_rgb_file(gl_tex[GT_DOOR_RIGHT],"g5x2-door-right.rgb",840,1470)!=0) return -1;
     gl_upload(gl_tex[GT_DRUM], obj_drum,64,96);
     gl_upload(gl_tex[GT_CRATE], obj_crate,64,96);
     gl_upload(gl_tex[GT_CABINET], obj_cabinet,64,96);

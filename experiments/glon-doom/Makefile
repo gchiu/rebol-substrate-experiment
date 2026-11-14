@@ -31,6 +31,7 @@ test: $(TARGET)
 	python3 tests/check_g5s_alien.py
 	python3 tests/check_g5j_textures.py
 	python3 tests/check_g5x_door.py
+	python3 tests/check_g5x2_door.py
 	./$(TARGET) --self-test
 	./$(TARGET) --projection-test
 	./$(TARGET) --input-test
