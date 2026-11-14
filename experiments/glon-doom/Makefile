@@ -31,6 +31,7 @@ test: $(TARGET)
 	python3 tests/check_g5j_textures.py
 	./$(TARGET) --self-test
 	./$(TARGET) --projection-test
+	./$(TARGET) --input-test
 	./$(TARGET) --stationary-test
 	./$(TARGET) --flat-surfaces --objects-test
 	./$(TARGET) --self-test --raw-wall

@@ -607,12 +607,11 @@ event interface. Full report: `experiments/glon-doom/G5L-INVESTIGATION.md`.
 G5m connected the OpenGL scene to the normal keyboard/fixed-timestep loop, made
 GL the default with CPU fallback and explicit `--renderer`, fixed GL texture row
 orientation, and replaced the cartoon Alien with a 128x192 original
-biomechanical six-frame creature set. Normal-launch W input was verified moving
-the Glon player from 320 to 744. GL with objects measured ~45.8 FPS at 640x400,
-~41.5 at 960x600, versus CPU 27.5.
-
-External automation of E/arrows was unreliable; the exact manual procedure and
-the remaining static-geometry duplication are documented. Full report:
+biomechanical six-frame creature set. Real WSLg key events verified W movement, one-shot E door opening, Right turn
+and D strafe on both GL and CPU. GL with objects measured 66-67 FPS at 640x400,
+57.7 at 960x600, versus CPU 27.5. The E double-trigger and turn-mask bugs are
+fixed and covered by `--input-test`. The manual procedure and remaining
+static-geometry duplication are documented. Full report:
 `experiments/glon-doom/G5M-INVESTIGATION.md`.
 
 ## 11. Detailed documents

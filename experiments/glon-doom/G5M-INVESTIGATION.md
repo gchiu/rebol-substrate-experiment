@@ -76,39 +76,58 @@ damage/death state; no AI or damage was added.
 
 ## 4. Actual gameplay verification
 
-Automated GUI input through WSLg is unreliable for all keys, but a real W
-key-down held via Windows `keybd_event` moved the authoritative Glon player:
+Input regression fixed:
 
+- **E failed** because it was handled twice per press: the SDL keydown handler
+  and a polling edge both called `activate`, toggling the door target back.
+  E now has one event-driven trigger per press.
+- **Arrows failed** because GL object mode reduced tick source blocks to 16 and
+  masked the tick mask with `& 15`, discarding turn bits 16/32. GL now builds
+  all 64 tick masks; CPU-only render/diagnostic blocks are skipped in GL mode,
+  so the loader still fits.
+- GL and CPU movement now use an event-held key table with scancode/keycode
+  fallbacks (including keypad arrows) plus `SDL_GetKeyboardState`; focus loss
+  clears held keys.
+- `--input-test` verifies right/left, keyup clearing, keypad-right fallback and
+  W mapping. It is part of `make test`.
+
+Real WSLg key-event sequences (not synthetic Glon ticks) verified both:
+
+**OpenGL:**
 ```
-G5m GL frame=240 player=744,320 angle=0 door=0/1 ...
+frame=120 player=608,320 angle=0 door=0/1
+frame=240 player=744,320 angle=0 door=0/1
+frame=360 player=744,320 angle=0 door=64/0   # E opened door once
+frame=480 player=1256,320 angle=0 door=64/0  # walked through
+frame=600 player=1256,320 angle=169 door=64/0 # Right turned
+frame=720 player=1172,500 angle=169 door=64/0 # D strafed
 ```
 
-This verifies that the normal no-argument GL loop is receiving keyboard state
-and feeding the same Glon simulation path. Door/arrow injection from the
-external PowerShell helper was not reliable enough to claim a complete
-automated playthrough. Exact manual procedure:
+**CPU:**
+```
+state: player=872,278 angle=208 door=64/0 alien=946,320 state=2
+```
+after the same W, E, W, Right, D sequence.
+
+Manual procedure remains the final visual check:
 
 1. `./build/doom`
 2. Hold W to approach the door.
-3. Press E; watch the door open.
+3. Press E; door opens once.
 4. Hold W through the doorway.
 5. Press Left/Right to turn and A/D to strafe.
-6. Continue to the crate/objects and observe Alien cover.
+6. Continue to crates/objects and observe Alien cover.
 7. Press Esc.
 
-Screenshots (actual WSLg/GL renderer, not mock-ups):
+Screenshots (actual WSLg/GL renderer):
 
 - `/tmp/g5m-glcorridor.png`
 - `/tmp/g5m-glcover.png`
 - `/tmp/g5m-gldoor.png`
 - `/tmp/g5m-pulseA.png`, `/tmp/g5m-pulseB.png`
-- `/tmp/g5m-orientation.png` — GL TOP/BOTTOM orientation diagnostic
-- `/tmp/g5m-contact-sheet.png`
-- `/tmp/g5m-gameplay-contact.png`
+- `/tmp/g5m-orientation.png`
+- `/tmp/g5m-contact-sheet.png`, `/tmp/g5m-gameplay-contact.png`
 - CPU reference: `/tmp/g5k-cfinal/corridor.png`
-
-The close/renderer screenshots are from the running GL application; they are
-not generated mock-ups.
 
 ## 5. Performance
 
@@ -117,23 +136,21 @@ Same GPU, 120 frames, objects/Alien active:
 | Configuration | FPS | Sim | Submit+finish | Total |
 |---|---:|---:|---:|---:|
 | G5k CPU 320×200 | 27.5 | 5.1 ms | — | 36.4 ms |
-| G5m GL 320×200 | 45.7 | 17.1 ms | 2.27 ms | 21.87 ms |
-| G5m GL 640×400 (median of 3) | 45.8 | 14.9–17.0 ms | 2.31–2.41 ms | 20.2–22.1 ms |
-| G5m GL 960×600 | 41.5 | 18.1 ms | 2.63 ms | 24.11 ms |
+| G5m GL 320×200 | 60.0 | 12.6 ms | 2.08 ms | 16.66 ms |
+| G5m GL 640×400 | **66.0–67.4** | 9.9–10.2 ms | 2.4–2.7 ms | 14.8–15.2 ms |
+| G5m GL 960×600 | 57.7 | 12.4 ms | 2.34 ms | 17.33 ms |
 
-G5l measured ~60 FPS at 640×400 with the smaller sprite set; G5m's larger
-128×192 artwork/host changes correlate with a lower 45–50 FPS range. It remains
-well above the CPU reference and responsive. `glFinish` is included; this is
-completed-frame time, not command submission alone. Remaining CPU cost is
-Glon simulation/status/object projection, not GPU fill.
+After the input/tick-mask correction, GL 640×400 measures **66–67 FPS** with
+the new 128×192 creature and all 64 tick masks. CPU-only render blocks are not
+built in GL mode, keeping loader use within bounds. `glFinish` is included;
+this is completed-frame time, not command submission alone.
 
 ## 6. Memory and size
 
-- Loader: **14,082 used / 718 free**
+- Loader: **14,185 used / 615 free**
 - Managed frontier: **33,600**; GC **0**
 - Code cursor: **13,126 / 16,128**
-- Executable: **1,022,904 bytes** (`text 993,399`), including the high-resolution
-  creature and orientation diagnostic assets.
+- Executable: **1,027,120 bytes** (`text 994,503`)
 - Creature PNGs: 6 frames; compiled arrays 128×192×4×6 ≈ 589,824 bytes
 - GPU textures uploaded once; static walls uploaded once.
 
@@ -164,16 +181,18 @@ creature asset checks. `--gl-bench` smoke succeeds on the verified device.
 
 Limitations:
 
-- External keyboard automation could not reliably exercise E/arrows; W movement
-  was verified. Manual procedure above is required for full interactive proof.
 - Static geometry remains duplicated in the renderer ABI.
+- Manual physical-keyboard verification is still recommended alongside the
+  recorded WSLg key-event sequence.
 - Fixed-function OpenGL 2.1 compatibility, no shaders/mipmaps.
 - Death art not wired because no death state.
 - No audio.
 
 ## 10. Recommendation
 
-G5m is a playable GL milestone if manually verified with the procedure above.
+G5m is a playable GL milestone; both GL and CPU passed the recorded W/E/Right/D
+sequence. Keep the CPU fallback and use the manual procedure for final visual
+verification.
 Next: move static scene data into a compact, versioned Glon scene block; make GL
 the default with CPU fallback; add the event-driven sound bridge. The creature
 is a procedural original design, substantially closer to a biomechanical horror

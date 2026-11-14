@@ -305,9 +305,9 @@ The G5l upside-down sprite was fixed by reversing source rows during GL texture
 upload. The new creature is 128x192 original procedural biomechanical art with
 idle/two walk/attack/side/death frames in `sprites/aliens_g5m/`.
 
-W keyboard input was verified moving the authoritative Glon player from 320 to
-744 in the normal GL loop. External automation of E/arrows was unreliable;
-manual verification steps are in `G5M-INVESTIGATION.md`. Use
+Real WSLg key events verified W movement, one-shot E door opening, Left/Right
+turning and D strafing on both GL and CPU backends. `--input-test` covers the
+key mapping; manual verification steps are in `G5M-INVESTIGATION.md`. Use
 `--gl-orient DIR 640 400` for the asymmetric TOP/BOTTOM upload diagnostic.
 
 Measured GL 640x400 with objects: ~45.8 FPS (sim 14.9-17.0 ms), 960x600:

@@ -509,9 +509,11 @@ AMD Radeon, Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
 - **Playable GL loop:** normal `./build/doom` now runs the same fixed-timestep
   Glon input/simulation loop through `interactive_gl`, with W/S/A/D, arrows, E
   and Esc. CPU remains `--renderer cpu`; GL failures fall back with a diagnostic.
-  A real W key moved the authoritative Glon player from x=320 to x=744.
-- **GL performance** with objects/128x192 Alien: 320x200 45.7 FPS, 640x400
-  45.8 FPS median (sim 14.9–17.0 ms, submit+finish ~2.3 ms), 960x600 41.5 FPS;
+  Real WSLg key events verified W movement, one-shot E door opening, Right turn
+  and D strafe on both GL and CPU. E was double-triggered and GL masked off turn
+  bits 16/32; both are fixed and regression-tested via `--input-test`.
+- **GL performance** with objects/128x192 Alien: 320x200 60.0 FPS, 640x400
+  66.0–67.4 FPS (sim 9.9–10.2 ms, submit+finish 2.4–2.7 ms), 960x600 57.7 FPS;
   CPU reference 27.5 FPS. Larger creature assets and host changes correlate with
   a lower range than G5l's ~60 FPS; still responsive and faster than CPU.
 - **Orientation fix:** GL texture upload now reverses source rows; the previous
@@ -520,9 +522,8 @@ AMD Radeon, Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
 - **Artwork:** original procedural biomechanical creature, 6 states (idle,
   walk1/2, attack, side, death), near-black/eyeless/ribbed/clawed. Death asset
   not wired (no death state). No copyrighted art.
-- **Limits:** external keyboard automation reliably verified W but not E/arrows;
-  manual procedure is documented. Static wall geometry remains a renderer-side
-  ABI copy. Loader 14,082 used/718 free; heap 33,600; code 13,126/16,128;
+- **Limits:** static wall geometry remains a renderer-side ABI copy. Manual
+  physical-keyboard verification remains recommended. Loader 14,185 used/615 free; heap 33,600; code 13,126/16,128;
   executable 924,496 bytes; no frozen-memory or primitive change.
 
 ## 8. Why more memory is a separate scaling experiment

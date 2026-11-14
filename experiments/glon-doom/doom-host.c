@@ -114,6 +114,7 @@ static int linear_filter = 0;
 static int new_textures = 0;
 static int smooth_shading = 0;
 static int flat_surfaces = 0;
+static int gl_active = 0;
 static int objects_mode = 0;
 static Obj current_objs[6];
 static int current_objs_valid = 0;
@@ -315,7 +316,7 @@ static void build_blocks(void) {
     objects_block = parse_source("[ do doom/object-report-block ]", "objects");
     objects_on_block = parse_source("[ doom/objects-on: 1 ]", "objects on");
     texrows_block = parse_source("[ do doom/texrows-block ]", "texrows");
-    if (!objects_mode) {
+    if (!objects_mode && !gl_active) {
     floor_line_block = parse_source("[ doom/detail-line 768 256 768 384 0 5 ]", "floor wall base");
     ceil_line_block = parse_source("[ doom/detail-line 768 256 768 384 128 5 ]", "ceiling wall top");
 
@@ -358,7 +359,7 @@ static void build_blocks(void) {
         "clear los");
     }
 
-    int tick_count = objects_mode ? 16 : 64;
+    int tick_count = (objects_mode && !gl_active) ? 16 : 64;
     for (int m = 0; m < tick_count; m++) {
         char src[128];
         snprintf(src, sizeof src, "[ doom/tick %d %d %d %d %d %d ]",
@@ -366,7 +367,7 @@ static void build_blocks(void) {
         tick_blocks[m] = parse_source(src, "tick");
     }
 
-    for (int b = 0; b < 2; b++) {
+    if (!gl_active) for (int b = 0; b < 2; b++) {
         size_t cap = 256 + (PROJ_COLS / 2) * 64;
         char *src = malloc(cap);
         if (!src) fail("out of memory building render block");
@@ -507,7 +508,7 @@ static int get_texrows(TexRows *r) {
 
 static int reset(void) { return run_block(reset_block, "reset"); }
 static int tick(int mask) {
-    if (objects_mode) mask &= 15;
+    if (objects_mode && !gl_active) mask &= 15;
 #ifdef DOOM_S1_PROFILE
     prof_begin();
 #endif
@@ -911,7 +912,7 @@ static void build_projection_blocks(void) {
     reset_block = parse_source("[ doom/reset ]", "reset");
     floor_line_block = parse_source("[ doom/detail-line 768 256 768 384 0 5 ]", "floor wall base");
     ceil_line_block = parse_source("[ doom/detail-line 768 256 768 384 128 5 ]", "ceiling wall top");
-    for (int b = 0; b < 2; b++) {
+    if (!gl_active) for (int b = 0; b < 2; b++) {
         size_t cap = 256 + (PROJ_COLS / 2) * 64;
         char *src = malloc(cap);
         if (!src) fail("out of memory building projection render block");
@@ -1903,6 +1904,46 @@ static int bench(int frames, int bench_alien) {
     return 0;
 }
 
+typedef struct { int w,s,a,d,left,right; } HeldKeys;
+static void held_keys_apply(HeldKeys *h, const SDL_Event *e) {
+    if (e->type != SDL_KEYDOWN && e->type != SDL_KEYUP) return;
+    int down = e->type == SDL_KEYDOWN;
+    SDL_Scancode sc = e->key.keysym.scancode;
+    SDL_Keycode sym = e->key.keysym.sym;
+    if (sc == SDL_SCANCODE_W || sym == SDLK_w) h->w = down;
+    else if (sc == SDL_SCANCODE_S || sym == SDLK_s) h->s = down;
+    else if (sc == SDL_SCANCODE_A || sym == SDLK_a) h->a = down;
+    else if (sc == SDL_SCANCODE_D || sym == SDLK_d) h->d = down;
+    else if (sc == SDL_SCANCODE_LEFT || sym == SDLK_LEFT || sc == SDL_SCANCODE_KP_4) h->left = down;
+    else if (sc == SDL_SCANCODE_RIGHT || sym == SDLK_RIGHT || sc == SDL_SCANCODE_KP_6) h->right = down;
+}
+static int held_keys_mask(const HeldKeys *h, const Uint8 *k) {
+    return (h->w || k[SDL_SCANCODE_W] ? 1 : 0) | (h->s || k[SDL_SCANCODE_S] ? 2 : 0) |
+           (h->a || k[SDL_SCANCODE_A] ? 4 : 0) | (h->d || k[SDL_SCANCODE_D] ? 8 : 0) |
+           (h->left || k[SDL_SCANCODE_LEFT] ? 16 : 0) |
+           (h->right || k[SDL_SCANCODE_RIGHT] ? 32 : 0);
+}
+static int input_test(void) {
+    int fails = 0;
+    HeldKeys h = {0};
+    SDL_Event e; memset(&e,0,sizeof e);
+    e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_RIGHT; e.key.keysym.sym=SDLK_RIGHT;
+    held_keys_apply(&h,&e); Uint8 k[SDL_NUM_SCANCODES]; memset(k,0,sizeof k);
+    fails += expect_eq("right keydown maps turn-right", held_keys_mask(&h,k), 32);
+    e.type=SDL_KEYUP; held_keys_apply(&h,&e); fails += expect_eq("right keyup clears", held_keys_mask(&h,k), 0);
+    e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_KP_6; e.key.keysym.sym=SDLK_KP_6;
+    held_keys_apply(&h,&e); fails += expect_eq("keypad right fallback", held_keys_mask(&h,k), 32);
+    e.type=SDL_KEYUP; held_keys_apply(&h,&e);
+    e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_LEFT; e.key.keysym.sym=SDLK_LEFT;
+    held_keys_apply(&h,&e); fails += expect_eq("left keydown maps turn-left", held_keys_mask(&h,k), 16);
+    e.type=SDL_KEYUP; held_keys_apply(&h,&e);
+    e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_W; e.key.keysym.sym=SDLK_w;
+    held_keys_apply(&h,&e); fails += expect_eq("W keydown maps forward", held_keys_mask(&h,k), 1);
+    e.type=SDL_KEYUP; held_keys_apply(&h,&e);
+    printf("input-test: %s\n", fails ? "FAILED" : "PASSED");
+    return fails ? 1 : 0;
+}
+
 static int interactive(void) {
     printf("G5m renderer=CPU framebuffer=320x200 interactive=on\n");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return 2;
@@ -1934,25 +1975,32 @@ static int interactive(void) {
     double acc = 0.0, fps_start = (double)now_ns(), sim_ms = 0, proj_ms = 0;
     double texrow_ms = 0, raster_ms = 0, present_ms = 0;
     ViewCache live_cache; memset(&live_cache, 0, sizeof live_cache);
+    HeldKeys held = {0};
     long last = now_ns();
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT ||
-                (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)) running = 0;
-            else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_e && !e.key.repeat)
-                run_block(activate_block, "activate");
-            else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_r && !e.key.repeat) {
-                simple_mode = !simple_mode;
-                live_cache.valid = 0;
-                printf("render mode: %s\n", simple_mode ? "simple" : "detailed");
-                fflush(stdout);
+            if (e.type == SDL_QUIT) running = 0;
+            else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+                memset(&held, 0, sizeof held);
+            else if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
+                held_keys_apply(&held, &e);
+                int down = e.type == SDL_KEYDOWN;
+                SDL_Scancode sc = e.key.keysym.scancode;
+                SDL_Keycode sym = e.key.keysym.sym;
+                if ((sc == SDL_SCANCODE_ESCAPE || sym == SDLK_ESCAPE) && down) running = 0;
+                else if ((sc == SDL_SCANCODE_E || sym == SDLK_e) && down && !e.key.repeat)
+                    run_block(activate_block, "activate");
+                else if ((sc == SDL_SCANCODE_R || sym == SDLK_r) && down && !e.key.repeat) {
+                    simple_mode = !simple_mode;
+                    live_cache.valid = 0;
+                    printf("render mode: %s\n", simple_mode ? "simple" : "detailed");
+                    fflush(stdout);
+                }
             }
         }
         const Uint8 *k = SDL_GetKeyboardState(NULL);
-        int mask = (k[SDL_SCANCODE_W] ? 1 : 0) | (k[SDL_SCANCODE_S] ? 2 : 0) |
-                   (k[SDL_SCANCODE_A] ? 4 : 0) | (k[SDL_SCANCODE_D] ? 8 : 0) |
-                   (k[SDL_SCANCODE_LEFT] ? 16 : 0) | (k[SDL_SCANCODE_RIGHT] ? 32 : 0);
+        int mask = held_keys_mask(&held, k);
         long tn = now_ns();
         double dt = (double)(tn - last) / 1e9;
         last = tn;
@@ -2262,6 +2310,7 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
 
 static int gl_bench(int frames, int w, int h) {
     if (gl_init(w,h,0) != 0) return 2;
+    gl_active = 1;
     load_session(); build_blocks();
     Spans s; Detail det; TexRows tr; Status st; Obj objs[6];
     double sim=0, gpu=0, total=0; int n=0;
@@ -2291,6 +2340,7 @@ static void gl_fixed_pose(void) {
 }
 static int gl_demo(int w,int h) {
     if (gl_init(w,h,1)!=0) return 2;
+    gl_active = 1;
     load_session(); build_blocks();
     if (gl_door_closed) reset(); else gl_fixed_pose();
     Spans s; Detail det; TexRows tr; Status st; Obj objs[6];
@@ -2303,27 +2353,35 @@ static int gl_demo(int w,int h) {
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
 
+
 static int interactive_gl(int w, int h) {
     if (gl_init(w,h,1)!=0) { fprintf(stderr,"gl: falling back to CPU renderer\n"); return -1; }
+    gl_active = 1;
     printf("G5m renderer=OpenGL framebuffer=%dx%d interactive=on\n",w,h);
     load_session(); build_blocks();
     Status st; Obj objs[6]; Spans spans; Detail det; TexRows tr;
     int px,py,pa; double acc=0.0,last=(double)now_ns(),fps_start=(double)now_ns(); int frames=0;
     int running=1;
+    HeldKeys held={0};
     while(running) {
         SDL_Event e;
         while(SDL_PollEvent(&e)) {
-            if(e.type==SDL_QUIT || (e.type==SDL_KEYDOWN && e.key.keysym.sym==SDLK_ESCAPE)) running=0;
-            else if(e.type==SDL_KEYDOWN && e.key.keysym.sym==SDLK_e && !e.key.repeat) run_block(activate_block,"activate");
-            else if(e.type==SDL_KEYDOWN && e.key.keysym.sym==SDLK_r && !e.key.repeat) printf("GL renderer: R debug toggle not used\n");
+            if(e.type==SDL_QUIT) running=0;
+            else if(e.type==SDL_WINDOWEVENT && e.window.event==SDL_WINDOWEVENT_FOCUS_LOST) {
+                memset(&held,0,sizeof held);
+            }
+            else if(e.type==SDL_KEYDOWN || e.type==SDL_KEYUP) {
+                held_keys_apply(&held,&e);
+                int down=e.type==SDL_KEYDOWN;
+                SDL_Scancode sc=e.key.keysym.scancode;
+                SDL_Keycode sym=e.key.keysym.sym;
+                if((sc==SDL_SCANCODE_ESCAPE||sym==SDLK_ESCAPE) && down) running=0;
+                else if((sc==SDL_SCANCODE_E||sym==SDLK_e) && down && !e.key.repeat) run_block(activate_block,"activate");
+                else if((sc==SDL_SCANCODE_R||sym==SDLK_r) && down && !e.key.repeat) printf("GL renderer: R debug toggle not used\n");
+            }
         }
         const Uint8 *k=SDL_GetKeyboardState(NULL);
-        static int e_prev=0;
-        int e_now=k[SDL_SCANCODE_E]?1:0;
-        if(e_now && !e_prev) run_block(activate_block,"activate");
-        e_prev=e_now;
-        int mask=(k[SDL_SCANCODE_W]?1:0)|(k[SDL_SCANCODE_S]?2:0)|(k[SDL_SCANCODE_A]?4:0)|
-                 (k[SDL_SCANCODE_D]?8:0)|(k[SDL_SCANCODE_LEFT]?16:0)|(k[SDL_SCANCODE_RIGHT]?32:0);
+        int mask=held_keys_mask(&held,k);
         double tn=(double)now_ns(); double dt=(tn-last)/1e9; last=tn; if(dt>0.10)dt=0.10; acc+=dt;
         int ticks=0; while(acc>=1.0/TICK_HZ && ticks<10){ if(tick(mask)!=0){running=0;break;} acc-=1.0/TICK_HZ; ticks++; }
         if(!running) break;
@@ -2354,7 +2412,7 @@ static int gl_orient_shot(const char *dir,int w,int h) {
 }
 
 static int gl_shots(const char *dir,int w,int h) {
-    if (gl_init(w,h,0)!=0) return 2; load_session(); build_blocks(); gl_fixed_pose();
+    if (gl_init(w,h,0)!=0) return 2; gl_active = 1; load_session(); build_blocks(); gl_fixed_pose();
     Status st; Obj objs[6]; int px,py,pa; get_state(&px,&py,&pa); st_current_angle=pa; get_status(&st); int nobj=0;
     if(objects_mode){get_objects(objs);nobj=6;}
     gl_scene(&st,objs,nobj);
@@ -2424,6 +2482,7 @@ int main(int argc, char **argv) {
         for(int i=5;i<argc;i++) if(strcmp(argv[i],"objects")==0) objects_mode=1;
         return gl_shots(argv[2],w,h);
     }
+    if (argc > 1 && strcmp(argv[1], "--input-test") == 0) return input_test();
     if (argc > 1 && strcmp(argv[1], "--self-test") == 0) return self_test();
     if (argc > 1 && strcmp(argv[1], "--projection-test") == 0) {
         int rc = projection_test();
