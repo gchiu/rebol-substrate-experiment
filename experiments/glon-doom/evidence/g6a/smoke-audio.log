@@ -1,7 +1,6 @@
 Dropped Escape call with ulEscapeCode : 0x03007703
 G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
 G5p renderer=OpenGL framebuffer=640x400 interactive=on
-audio: loaded ship ambience 1014300 frames (23.000s), 44100-frame crossfade, gain 0.70
-audio: loaded ventilation 507150 frames (11.500s), 22050-frame crossfade, gain 0.35
+audio: loaded Freesound 873687 spaceship interior 1455303 frames (33.000s), 44100-frame crossfade, gain 3.00
 audio: ambient started driver=pulseaudio 44100 Hz 2ch volume=60%
-G5p GL frame=120 fps=24.9 tick=16.04 state=6.92 scene=2.57 finish=0.00 swap=13.44 player=320,320 angle=240 door=0/1 alien=1120,320 state=0
+G5p GL frame=120 fps=36.4 tick=11.39 state=7.11 scene=1.57 finish=0.00 swap=6.28 player=320,320 angle=240 door=0/1 alien=1120,320 state=0

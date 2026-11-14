@@ -915,3 +915,30 @@ down cleanly, and an unavailable driver fell back gracefully. Playback was
 verified programmatically, not by listening. Full report:
 `experiments/glon-doom/G6A-AMBIENT-AUDIO-REPORT.md`; evidence under
 `experiments/glon-doom/evidence/g6a/`.
+
+
+## 10x. G6a ambience replaced with Freesound 873687 (2026-11-15)
+
+The initial G6a synthetic ship/ventilation ambience was replaced after the
+user confirmed it was still the audible bed. The active asset is now a
+converted version of Freesound 873687, "Alien Spaceship Interior Ambience 04
+Sci-Fi Engine Hum & Electronics" by Tommaso Motteran, licensed CC BY 4.0
+(https://creativecommons.org/licenses/by/4.0/). The source is 24-bit stereo
+44.1 kHz, 34.000068 s; it was converted to 16-bit mono 44.1 kHz and is looped
+by the existing runtime crossfade engine (1.0 s), giving a 33.000068 s played
+loop. The old synthetic ship and ventilation files were deleted, so no old
+hiss is layered underneath. Credit and modification details are in
+`experiments/glon-doom/assets/audio/SOURCE.txt`, the README and the report.
+
+Replacement implementation `42230b3`. The mixer, volume/mute controls, device
+fallback and gameplay are unchanged. The runtime asset is 2,998,920 bytes;
+decoded loop memory is 1,455,303 * 2 = 2,910,606 bytes. The executable is
+6,181,632 bytes. Six 360-frame interactive smoke medians were 110.8 FPS with
+audio versus 124.0 FPS without (-10.6%, overlapping 102.0-134.8 vs
+108.5-146.5 ranges); mixer cost remains about 0.004 ms per 23.22 ms block. The
+real PulseAudio device opened and closed cleanly; unavailable and dummy drivers
+also behaved. Full `make test` passes, frozen S1 unchanged at
+`f90496c26dc45c7a387d8fc8639cd2781507d3d2`. Playback was again verified
+programmatically, not by listening. Full report:
+`experiments/glon-doom/G6A-AMBIENT-AUDIO-REPORT.md`; evidence under
+`experiments/glon-doom/evidence/g6a/`.

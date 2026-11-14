@@ -1,21 +1,15 @@
-source pack: /mnt/c/Users/anon_/Downloads/g5y.zip
-archive README: 11 mono PCM WAV, 44100 Hz, 16-bit, original procedural synthesis
-used files:
-== assets/audio/ship_ambience_loop.wav
-63107c5d14759bdebb66c402481d0b1017a650165d6649dd6c0ac03f22e588e4  assets/audio/ship_ambience_loop.wav
+Source: /mnt/c/Users/anon_/Downloads/873687__tommasomotteran__alien-spaceship-interior-ambience-04-sci-fi-engine-hum-electronics.wav
+credit: Tommaso Motteran, Freesound 873687, CC BY 4.0
+source format: PCM s24le, stereo, 44100 Hz, 34.000068 s, 8997154 bytes
+1280420e42c743f7dd243860a40f91b7324e264b2a3e503bd1893d85d0fd3a1e  /mnt/c/Users/anon_/Downloads/873687__tommasomotteran__alien-spaceship-interior-ambience-04-sci-fi-engine-hum-electronics.wav
+converted runtime asset: assets/audio/ambient_loop.wav
+679a60117ab498983a70afecabc1e38c5081c0678ee4a58cb05dd7496e9aa811  assets/audio/ambient_loop.wav
 codec_name=pcm_s16le
+sample_fmt=s16
 sample_rate=44100
 channels=1
 bits_per_sample=16
-duration=24.000000
-size=2116844
-bit_rate=705614
-== assets/audio/ventilation_loop.wav
-158ba4c6c096af9ff28d9f4af10907f3f1c7aa20807f67aaa2ce62ef40c3ba6d  assets/audio/ventilation_loop.wav
-codec_name=pcm_s16le
-sample_rate=44100
-channels=1
-bits_per_sample=16
-duration=12.000000
-size=1058444
-bit_rate=705629
+duration=34.000068
+size=2998920
+bit_rate=705626
+frames=1499403 duration=34.000068027

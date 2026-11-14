@@ -1,4 +1,3 @@
-audio: loaded ship ambience 1014300 frames (23.000s), 44100-frame crossfade, gain 0.70
-audio: loaded ventilation 507150 frames (11.500s), 22050-frame crossfade, gain 0.35
+audio: loaded Freesound 873687 spaceship interior 1455303 frames (33.000s), 44100-frame crossfade, gain 3.00
 audio: ambient started driver=pulseaudio 44100 Hz 2ch volume=60%
 audio-device-test: playback opened; sleeping 300 ms

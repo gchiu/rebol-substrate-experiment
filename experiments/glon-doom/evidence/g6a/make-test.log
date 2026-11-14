@@ -24,7 +24,7 @@ g5x door: OK: reference sheet unchanged, two native-resolution leaves
 python3 tests/check_g5x2_door.py
 g5x2 door: OK: two native 840x1470 seam-preserving leaves
 python3 tests/check_g6a_audio.py
-g6a audio: OK: two unchanged 44100 Hz mono s16le ambience loops
+g6a audio: OK: Freesound 873687 44100 Hz mono s16le ambience loop
 ./build/doom --self-test
 PASS framebuffer width        got=320
 PASS framebuffer height       got=200
@@ -374,14 +374,12 @@ trace enter-corridor       x=904 y=320 angle=0 door=64/0 alien=960,320 state=2 d
 trace turn-left-90         x=904 y=320 angle=64 door=64/0 alien=960,320 state=2 det=1 vis=0
 trace strafe-left          x=784 y=320 angle=64 door=64/0 alien=938,320 state=1 det=1 vis=0
 ./build/doom --audio-test
-audio: loaded ship ambience 1014300 frames (23.000s), 44100-frame crossfade, gain 0.70
-audio: loaded ventilation 507150 frames (11.500s), 22050-frame crossfade, gain 0.35
-audio-test: layer 0 frames=1014300 (23.000s) seam=51 peak=2898
-audio-test: layer 1 frames=507150 (11.500s) seam=229 peak=2898
+audio: loaded Freesound 873687 spaceship interior 1455303 frames (33.000s), 44100-frame crossfade, gain 3.00
+audio-test: layer 0 frames=1455303 (33.000s) seam=11 peak=1788
 audio: ambient volume 42%
 audio: muted
 audio: unmuted
 audio: ambient volume 60%
-audio-test: PASSED rms=1425 mix=0.0049ms/block (budget 23.22ms)
+audio-test: PASSED rms=751 mix=0.0036ms/block (budget 23.22ms)
 cd ../.. && ./check-frozen-s1.sh
 OK: S1 substrate frozen at f90496c26dc45c7a387d8fc8639cd2781507d3d2; all frozen files unchanged.

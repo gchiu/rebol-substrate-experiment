@@ -1,13 +1,20 @@
-G6a continuous spaceship ambient audio
+G6a continuous spaceship ambient audio - Freesound 873687 replacement
 date: 2026-11-15
 base: glon-avp-g5z 6168609
-implementation: 69614a6
-executable: 6181624 bytes
-sha256: 91002f2e20b6f2c5050dac0aeb91b81959990f6537c3f06eb32613ca168a009e
+previous G6a implementation: 69614a6
+replacement implementation: 42230b3
+source: Freesound 873687, Tommaso Motteran, CC BY 4.0
+source file: 873687__tommasomotteran__alien-spaceship-interior-ambience-04-sci-fi-engine-hum-electronics.wav
+source format: 24-bit stereo 44100 Hz PCM, 34.000068 s, 8997154 bytes
+source sha256: 1280420e42c743f7dd243860a40f91b7324e264b2a3e503bd1893d85d0fd3a1e
+runtime asset: assets/audio/ambient_loop.wav
+runtime format: 16-bit mono 44100 Hz PCM, 1499403 frames, 2998920 bytes
+runtime sha256: 679a60117ab498983a70afecabc1e38c5081c0678ee4a58cb05dd7496e9aa811
+loop crossfade: 1.0 s (44100 frames); played loop 1455303 frames (33.000068 s)
+runtime loop memory: 1455303 * 2 = 2910606 bytes
+old synthetic ship/ventilation loops: removed
 default volume: 60% (squared master gain)
-layers: ship_ambience_loop.wav 0.70; ventilation_loop.wav 0.35
-loop crossfade: 1.0 s ship, 0.5 s ventilation (44100 / 22050 frames)
+layer gain: 3.00 (quiet source, safe headroom at volume 100)
 device: 44100 Hz S16 stereo, 1024-frame buffer
-runtime loop memory: (1014300 + 507150) * 2 = 3042900 bytes
-assets on disk: 2116844 + 1058444 = 3175288 bytes
-source audio: unchanged from g5y.zip; see audio-properties.txt
+executable: 6181632 bytes
+executable sha256: f525de382b5c6d03aea650f94d1ba535d3b53b8cdc4aa578b4a8b145b36c361b

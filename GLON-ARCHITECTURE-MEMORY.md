@@ -283,6 +283,21 @@ back gracefully. Playback was not judged by listening. Full report:
 `experiments/glon-doom/G6A-AMBIENT-AUDIO-REPORT.md`; evidence under
 `experiments/glon-doom/evidence/g6a/`.
 
+**[MEASURED] AvP G6a Freesound 873687 ambience replacement (2026-11-15, 64K
+configuration, WSLg D3D12 + PulseAudio).**
+The two synthetic G5y ambience loops were removed and replaced by one converted
+Freesound recording: Tommaso Motteran, sound 873687, CC BY 4.0. The source is
+24-bit stereo 44.1 kHz, 34.000068 s; the runtime asset is 16-bit mono 44.1 kHz,
+1,499,403 frames / 2,998,920 bytes. The existing 1.0 s crossfade loop engine
+plays 1,455,303 frames (33.000068 s), consuming 2,910,606 bytes. The mixer,
+volume/mute, device fallback, Glon semantics and frozen S1 are unchanged. The
+final executable is 6,181,632 bytes. Six 360-frame interactive smoke medians
+were 110.8 FPS with audio and 124.0 FPS without (-10.6%, ranges overlap); mixer
+cost is about 0.004 ms per 23.22 ms block. Real PulseAudio, dummy and unavailable
+drivers all opened/continued and shut down as designed. Playback was not judged
+by listening. Full report: `experiments/glon-doom/G6A-AMBIENT-AUDIO-REPORT.md`;
+evidence under `experiments/glon-doom/evidence/g6a/`.
+
 ## 7. Vocabularies and experiments (status)
 
 | Item | Status | Where |

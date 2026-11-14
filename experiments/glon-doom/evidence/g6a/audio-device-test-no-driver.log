@@ -1,2 +1,1 @@
-audio: unavailable (Audio target 'definitely_not_a_driver' not available); continuing without ambient audio
 audio-device-test: no audio device; continued gracefully
