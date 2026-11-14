@@ -270,8 +270,8 @@ static void audio_free_layers(void) {
 
 static int audio_load_layers(void) {
     audio_free_layers();
-    if(audio_load_loop("ship ambience","ship_ambience_loop.wav",0.70f,AUDIO_RATE)!=0) goto fail;
-    if(audio_load_loop("ventilation","ventilation_loop.wav",0.35f,AUDIO_RATE/2)!=0) goto fail;
+    /* Freesound 873687 by Tommaso Motteran, converted to 16-bit mono. */
+    if(audio_load_loop("Freesound 873687 spaceship interior","ambient_loop.wav",3.0f,AUDIO_RATE)!=0) goto fail;
     return 0;
 fail:
     audio_free_layers();

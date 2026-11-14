@@ -8,15 +8,10 @@ import wave
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 AUDIO = ROOT / "assets" / "audio"
 EXPECTED = {
-    "ship_ambience_loop.wav": {
-        "sha256": "63107c5d14759bdebb66c402481d0b1017a650165d6649dd6c0ac03f22e588e4",
-        "frames": 1058400,
-        "duration": 24.0,
-    },
-    "ventilation_loop.wav": {
-        "sha256": "158ba4c6c096af9ff28d9f4af10907f3f1c7aa20807f67aaa2ce62ef40c3ba6d",
-        "frames": 529200,
-        "duration": 12.0,
+    "ambient_loop.wav": {
+        "sha256": "679a60117ab498983a70afecabc1e38c5081c0678ee4a58cb05dd7496e9aa811",
+        "frames": 1499403,
+        "duration": 1499403 / 44100,
     },
 }
 for name, expected in EXPECTED.items():
@@ -34,4 +29,4 @@ for name, expected in EXPECTED.items():
         duration = w.getnframes() / w.getframerate()
         if abs(duration - expected["duration"]) > 1e-9:
             sys.exit(f"{path}: expected {expected['duration']} s, got {duration}")
-print("g6a audio: OK: two unchanged 44100 Hz mono s16le ambience loops")
+print("g6a audio: OK: Freesound 873687 44100 Hz mono s16le ambience loop")
