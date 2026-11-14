@@ -194,6 +194,8 @@ Radeon). Medians:
 - Room geometry is immediate-mode renderer-side detail. No batching/instancing,
   collision, navmesh or occlusion culling was added; this is the main reason for
   the no-object FPS cost.
+- The room detail is OpenGL-only. The existing CPU fallback retains the previous
+  plain room; no CPU geometry was added.
 - The turbine rotor, valves, indicators and lights are static apart from the
   existing ceiling-light pulse. There is no rotor animation, steam, particle or
   sound pass.
