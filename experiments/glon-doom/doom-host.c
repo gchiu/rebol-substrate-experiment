@@ -121,6 +121,7 @@ static int flat_surfaces = 0;
 static int gl_active = 0;
 static int corridor_art = 1;
 static int engineering_room_enabled = 1;
+static double gl_energy_time = 0.0;
 static int objects_mode = 0;
 static Obj current_objs[6];
 static int current_objs_valid = 0;
@@ -197,6 +198,7 @@ static int ambient_volume_pct = 60;
 static int audio_disabled;
 static int smoke_frames;
 static int sfx_smoke;
+static int portal_smoke;
 static volatile long long audio_trace_request_ns;
 static volatile int audio_trace_id = -1;
 
@@ -3699,11 +3701,96 @@ static void gl_ring_y_tex(GLuint tex,float y,float x,float z,float ri,float ro,i
     }
     glEnd(); glDisable(GL_TEXTURE_2D);
 }
+static void gl_energy_surface(float y,float x,float z,float rad,double t)
+{
+    const int seg=28;
+    glDisable(GL_TEXTURE_2D);
+    glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA,GL_ONE);
+    glDepthMask(GL_FALSE);
+
+    /* Warm liquid-energy bed with a slow angular shimmer. */
+    glBegin(GL_TRIANGLE_FAN);
+    glColor4f(1.00f,0.58f,0.16f,0.72f); gl_gv(x,y,z);
+    for(int i=0;i<=seg;i++){
+        float a=(float)i*6.2831853f/seg;
+        float swirl=0.5f+0.5f*sinf((float)t*2.1f + a*5.0f + sinf((float)t*0.7f)*1.5f);
+        float edge=0.5f+0.5f*sinf((float)t*1.4f - a*3.0f);
+        glColor4f(0.95f,0.34f+0.28f*swirl,0.045f+0.12f*edge,0.30f+0.24f*swirl);
+        gl_gv(x+cosf(a)*rad,y,z+sinf(a)*rad);
+    }
+    glEnd();
+
+    /* Ripples: alternating orange and blue-white luminous rings. */
+    for(int k=0;k<5;k++){
+        float rr=rad*(0.20f+0.135f*k + 0.032f*sinf((float)t*1.3f+k*1.13f));
+        float pulse=0.5f+0.5f*sinf((float)t*2.2f+k*1.7f);
+        float alpha=0.10f+0.15f*pulse;
+        int blue=(k==1 || k==2 || k==3);
+        glBegin(GL_TRIANGLE_STRIP);
+        for(int i=0;i<=seg;i++){
+            float a=(float)i*6.2831853f/seg;
+            float wob=1.0f+0.025f*sinf((float)t*3.1f+a*6.0f+k);
+            float ri=rr*0.92f*wob, ro=rr*1.07f*wob;
+            float yy=y+0.014f*k;
+            if(blue) glColor4f(0.26f+0.30f*pulse,0.72f+0.23f*pulse,1.0f,alpha);
+            else glColor4f(1.0f,0.44f+0.32f*pulse,0.07f+0.12f*pulse,alpha);
+            gl_gv(x+cosf(a)*ri,yy,z+sinf(a)*ri);
+            gl_gv(x+cosf(a)*ro,yy,z+sinf(a)*ro);
+        }
+        glEnd();
+    }
+
+    /* Two rotating shimmer bands. */
+    for(int k=0;k<2;k++){
+        float a0=(float)t*0.42f+k*3.14159f, a1=a0+0.72f;
+        glBegin(GL_QUAD_STRIP);
+        for(int i=0;i<=10;i++){
+            float u=(float)i/10.0f, a=a0+(a1-a0)*u;
+            float ri=rad*(0.30f+0.20f*sinf((float)t*1.1f+k+i*0.2f));
+            float ro=ri+rad*0.045f;
+            float alpha=0.10f+0.13f*(1.0f-u);
+            glColor4f(0.70f,0.90f,1.0f,alpha);
+            gl_gv(x+cosf(a)*ri,y+0.055f,z+sinf(a)*ri);
+            gl_gv(x+cosf(a)*ro,y+0.055f,z+sinf(a)*ro);
+        }
+        glEnd();
+    }
+
+    /* Electrical arcs as thin ribbons, in front of the rotor spokes but inside
+     * the inner ring. */
+    for(int k=0;k<4;k++){
+        float flick=0.5f+0.5f*sinf((float)t*9.5f+k*2.4f+sinf((float)t*3.3f)*1.3f);
+        if(flick<0.18f) continue;
+        float phase=(float)t*1.25f+k*1.57f;
+        float alpha=0.28f+0.58f*flick;
+        int blue=(k==1 || k==3);
+        const float thick=rad*0.018f;
+        glBegin(GL_QUAD_STRIP);
+        for(int i=0;i<=12;i++){
+            float u=(float)i/12.0f;
+            float a=phase+u*1.55f+0.07f*sinf((float)t*14.0f+i*2.7f+k);
+            float r0=rad*(0.16f+0.76f*u);
+            float jag=0.055f*sinf((float)t*9.0f+i*2.3f+k);
+            float rr=r0+rad*jag;
+            float ca=cosf(a), sa=sinf(a);
+            float nx=-sa, nz=ca;
+            float yy=y+1.19f+0.028f*sinf((float)t*8.0f+i*2.1f+k);
+            if(blue) glColor4f(0.34f,0.78f,1.0f,alpha);
+            else glColor4f(1.0f,0.70f,0.26f,alpha);
+            gl_gv(x+ca*(rr-thick)+nx*thick,yy,z+sa*(rr-thick)+nz*thick);
+            gl_gv(x+ca*(rr+thick)+nx*thick,yy,z+sa*(rr+thick)+nz*thick);
+        }
+        glEnd();
+    }
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+}
+
 static void gl_turbine_face(float y,float x,float z,float rad,int seg,float r,float g,float b){
     gl_disc_y(y,x,z,rad,seg,0.055f,0.060f,0.060f);
     gl_ring_y_tex(gl_tex[GT_ART_FLOOR],y+0.22f,x,z,rad*0.53f,rad*0.995f,seg,0.82f,0.20f,0.20f,0.80f,0.80f);
-    gl_disc_y(y+0.6f,x,z,rad*0.53f,seg,r,g,b);
-    gl_disc_y(y+0.9f,x,z,rad*0.20f,seg,0.55f,0.15f,0.025f);
+    gl_energy_surface(y+0.62f,x,z,rad*0.52f,gl_energy_time);
+    gl_disc_y(y+0.90f,x,z,rad*0.20f,seg,0.30f,0.09f,0.025f);
     for(int i=0;i<12;i++){
         float a=(float)i*6.2831853f/12.0f, a1=a+0.11f;
         float ir=rad*0.19f, orr=rad*0.74f;
@@ -4675,7 +4762,7 @@ static void eng_generator(void)
         float aa=(float)i*6.2831853f/12.0f;
         gl_disc_y(251.1f,325+cosf(aa)*56.5f,64+sinf(aa)*56.5f,1.9f,6,0.055f,0.052f,0.045f);
     }
-    gl_glow_disc_y(251.2f,325,64,62,20,1.0f,0.24f,0.02f,0.11f);
+    gl_glow_disc_y(251.2f,325,64,62,20,1.0f,0.24f,0.02f,0.06f);
     gl_glow_quad(225,195,435,285,2.25f,1.0f,0.18f,0.02f,0.10f);
     for(float x=236;x<410;x+=20) gl_box(x,249.5f,25,x+4,251.0f,44,0.035f,0.040f,0.038f);
     gl_box(168,238,0,492,247,8,0.08f,0.08f,0.07f);
@@ -4996,6 +5083,7 @@ static void gl_corridor(float light, int door_open) {
     gl_blast_door(light,door_open);
 }
 static void gl_scene(const Status *st, const Obj *objs, int nobj) {
+    gl_energy_time=(double)sim_tick/(double)TICK_HZ;
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     gl_projection(); gl_view(last_px, last_py, st_current_angle);
     glDisable(GL_TEXTURE_2D); glDisable(GL_BLEND); glDepthMask(GL_TRUE); glEnable(GL_DEPTH_TEST);
@@ -5058,6 +5146,9 @@ static void gl_fixed_pose(void) {
     cell p=parse_source("[ doom/px: 616 doom/py: 320 doom/angle: 0 doom/aim doom/door-open: 48 doom/door-target: 64 doom/door-blocked: 0 doom/alien-x: 990 doom/alien-y: 320 doom/alien-state: 1 doom/alien-health: 100 doom/alien-detected: 1 ]", "gl pose");
     if (run_block(p,"gl pose")!=0) fail("gl pose");
 }
+static int gl_apply_pose(int px,int py,int angle,int door_open,int door_blocked,
+                         int ax,int ay,int astate);
+
 static int gl_demo(int w,int h) {
     if (gl_init(w,h,1)!=0) return 2;
     gl_active = 1;
@@ -5104,6 +5195,7 @@ static int interactive_gl(int w, int h) {
     printf("G5p renderer=OpenGL framebuffer=%dx%d interactive=on\n",w,h);
     load_session(); build_blocks();
     if (run_block(parse_source("[ doom/angle: 240 doom/aim ]", "spawn orientation"), "spawn orientation") != 0) return 2;
+    if (portal_smoke && gl_apply_pose(450,560,176,64,0,1120,320,0)!=0) return 2;
     audio_start();
     Status st; Obj objs[6]; Spans spans; Detail det; TexRows tr;
     int px,py,pa; double acc=0.0,last=(double)now_ns(),fps_start=(double)now_ns(); int frames=0;
@@ -5423,6 +5515,68 @@ static int gl_room_shots(const char *dir,int w,int h,int plain) {
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
 
+static int gl_portal_shots(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
+    if(gl_apply_pose(450,560,176,64,0,1120,320,0)!=0) return 2;
+    int px,py,pa; Status st; Obj objs[6];
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+    st_current_angle=pa;
+    for(int i=0;i<4;i++){
+        sim_tick=(uint32_t)(i*30);
+        gl_scene(&st,objs,0);
+        char path[4096]; snprintf(path,sizeof path,"%s/portal-t%02d.ppm",dir,i*30);
+        gl_save_ppm(path,w,h);
+        printf("portal %d %dx%d\n",i*30,w,h);
+    }
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
+static int gl_portal_bench(int frames,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
+    if(gl_apply_pose(450,560,176,64,0,1120,320,0)!=0) return 2;
+    int px,py,pa; Status st;
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+    st_current_angle=pa;
+    long t0=now_ns();
+    for(int i=0;i<frames;i++){
+        sim_tick=(uint32_t)i;
+        gl_scene(&st,NULL,0);
+        SDL_GL_SwapWindow(gl_win);
+    }
+    long t1=now_ns();
+    printf("portal bench renderer=%s resolution=%dx%d frames=%d total=%.2fms fps=%.1f\n",
+           glGetString(GL_RENDERER),w,h,frames,(t1-t0)/1e6/frames,1e9*frames/(double)(t1-t0));
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
+static int gl_portal_test(void) {
+    if(gl_init(960,600,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
+    if(gl_apply_pose(450,560,176,64,0,1120,320,0)!=0) return 2;
+    int px,py,pa; Status st;
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+    st_current_angle=pa;
+    size_t n=(size_t)gl_w*gl_h*4;
+    unsigned char *a=malloc(n), *b=malloc(n);
+    if(!a || !b){ free(a); free(b); SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 2; }
+    sim_tick=0; gl_scene(&st,NULL,0); glReadPixels(0,0,gl_w,gl_h,GL_RGBA,GL_UNSIGNED_BYTE,a);
+    sim_tick=45; gl_scene(&st,NULL,0); glReadPixels(0,0,gl_w,gl_h,GL_RGBA,GL_UNSIGNED_BYTE,b);
+    int changed=0,minx=gl_w,miny=gl_h,maxx=-1,maxy=-1;
+    for(int y=0;y<gl_h;y++) for(int x=0;x<gl_w;x++){
+        size_t o=((size_t)y*gl_w+x)*4;
+        int d=abs((int)a[o]-b[o])+abs((int)a[o+1]-b[o+1])+abs((int)a[o+2]-b[o+2]);
+        if(d>12){ changed++; if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y; }
+    }
+    int fails=0;
+    fails += expect_eq("portal animation changes pixels",changed>2000,1);
+    fails += expect_eq("portal animation stays in central mask",
+                       minx>180 && maxx<780 && miny>60 && maxy<520,1);
+    printf("portal-test: changed=%d bbox=%d,%d..%d,%d %s\n",changed,minx,miny,maxx,maxy,
+           fails?"FAILED":"PASSED");
+    free(a); free(b);
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
+    return fails?1:0;
+}
+
 static int gl_detail_shots(const char *dir,int w,int h) {
     if(gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
     struct DP { const char *name; int px,py,angle,ax,ay,astate; float pitch; } poses[] = {
@@ -5588,6 +5742,7 @@ int main(int argc, char **argv) {
         if (strcmp(argv[i], "--no-audio") == 0) audio_disabled = 1;
         if (strcmp(argv[i], "--smoke-frames") == 0 && i+1<argc) smoke_frames=atoi(argv[++i]);
         if (strcmp(argv[i], "--sfx-smoke") == 0) sfx_smoke=1;
+        if (strcmp(argv[i], "--portal-smoke") == 0) portal_smoke=1;
         if (strcmp(argv[i], "--objects") == 0) objects_mode = 1;
         if (strcmp(argv[i], "--alien-cover") == 0) { objects_mode = 1; alien_cover = 1; }
         if (strcmp(argv[i], "--demo-partial") == 0) { objects_mode = 1; alien_cover = 1; cover_view = 1; }
@@ -5652,6 +5807,15 @@ int main(int argc, char **argv) {
         for(int i=5;i<argc;i++){ if(strcmp(argv[i],"objects")==0) objects_mode=1;
             if(strcmp(argv[i],"plain")==0) plain=1; }
         return gl_room_shots(argv[2],w,h,plain);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-portal-shots") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return gl_portal_shots(argv[2],w,h);
+    }
+    if (argc > 1 && strcmp(argv[1], "--portal-test") == 0) return gl_portal_test();
+    if (argc > 2 && strcmp(argv[1], "--gl-portal-bench") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return gl_portal_bench(atoi(argv[2]),w,h);
     }
     if (argc > 2 && strcmp(argv[1], "--gl-detail-shots") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;

@@ -12,8 +12,10 @@ fades to fit gameplay events. No synthesis was substituted.
    Licence: Creative Commons 0 (CC0 1.0), public domain
    https://creativecommons.org/publicdomain/zero/1.0/
    Source: 24-bit mono 44.1 kHz, 6.000 s.
-   Modifications: split into open (0.0-2.2 s) and close (2.2-4.4 s)
-   excerpts; 5 ms in / 30 ms out fades; converted to 16-bit 44.1 kHz mono.
+   Modifications: open excerpt 0.0-2.2 s; close excerpt 3.15-4.35 s
+   (keeps the closing motion and the final impact, but removes the long quiet
+   pre-slam section); 5 ms in / 30 ms out fades; converted to 16-bit 44.1 kHz
+   mono.
 
 2. Alien shriek: "Alien Monster Roaring and Screaming"
    Creator: Mastersoundboy2005

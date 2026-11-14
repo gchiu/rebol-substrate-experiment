@@ -19,8 +19,8 @@ SFX = {
         "frames": 97020,
     },
     "door_close.wav": {
-        "sha256": "13a3cfa131214b1a671d404a606594cdb80e0efa067ec77ed87fd0c2a78af1e7",
-        "frames": 97020,
+        "sha256": "0c237a177b1090eacd92b78f84cc8548d33f24e032f6066202b706d9e50ad255",
+        "frames": 52920,
     },
     "alien_shriek.wav": {
         "sha256": "e91e1360ad94121382926bcb1be09c8513527cc0b519fc0a4ff5ab828a5fb7c2",
