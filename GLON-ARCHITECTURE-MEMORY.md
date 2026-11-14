@@ -835,7 +835,7 @@ Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
   `gl_upload_rgb_file()`. A missing asset fails loudly rather than silently
   reverting to the old 64×64 door. Texture memory adds 2,700,400 bytes.
 - Matched 960×600, 180-frame runs: G5w 81.9/54.0 FPS versus G5x 82.1/53.4 FPS
-  (no objects/objects). Executable 6,090,744 bytes (G5w 6,117,184); loader
+  (no objects/objects). Executable 6,121,456 bytes (G5w 6,117,184); loader
   high-water unchanged at 53,705/54,569 cells; heap 33,440/33,600.
 - [FINDING] Embedding the two leaves as C arrays added 2.7 MB to `.rodata`,
   shifted `.bss` by 2.7 MB, and consistently slowed the same benchmark

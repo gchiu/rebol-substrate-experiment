@@ -141,7 +141,7 @@ comparison.
 
 Other measurements:
 
-- Executable: **6,090,744 bytes** (G5w 6,117,184; −26,440).
+- Executable: **6,121,456 bytes** (G5w 6,117,184; +4,272).
 - Loader high-water: **53,705 / 54,569** cells; heap **33,440 / 33,600**.
 - New GPU texture memory: **2,700,400 bytes** for the two leaves, loaded once.
 - No per-frame uploads; no new shaders; no runtime texture generation.
