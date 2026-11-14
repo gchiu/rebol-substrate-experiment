@@ -123,6 +123,7 @@ static int current_objs_valid = 0;
 static int last_px = 320;
 static int last_py = 320;
 static double st_current_angle = 0;
+static float gl_debug_pitch = 0;
 static int get_objects(Obj out[6]);
 static int alien_cover = 0;
 static int cover_view = 0;
@@ -1954,9 +1955,9 @@ static int input_test(void) {
 }
 
 static int interactive(void) {
-    printf("G5m renderer=CPU framebuffer=320x200 interactive=on\n");
+    printf("G5p renderer=CPU framebuffer=320x200 interactive=on\n");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return 2;
-    SDL_Window *win = SDL_CreateWindow("Glon AVP G5m CPU | W/S/A/D move  arrows turn  E door  R textured/simple  Esc quit",
+    SDL_Window *win = SDL_CreateWindow("Glon AVP G5p CPU | W/S/A/D move  arrows turn  E door  R textured/simple  Esc quit",
                                        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                        960, 600, SDL_WINDOW_SHOWN);
     if (!win) fail(SDL_GetError());
@@ -2198,7 +2199,7 @@ static int gl_init(int w, int h, int shown) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-    gl_win = SDL_CreateWindow("Glon AVP G5m OpenGL",
+    gl_win = SDL_CreateWindow("Glon AVP G5p OpenGL",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w, h,
         SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE |
         (shown ? 0 : SDL_WINDOW_HIDDEN));
@@ -2206,7 +2207,7 @@ static int gl_init(int w, int h, int shown) {
     gl_ctx = SDL_GL_CreateContext(gl_win);
     if (!gl_ctx) { fprintf(stderr, "gl: context: %s\n", SDL_GetError()); return -1; }
     SDL_GL_SetSwapInterval(0);
-    printf("G5m renderer=OpenGL renderer=%s vendor=%s version=%s\n",
+    printf("G5p renderer=OpenGL renderer=%s vendor=%s version=%s\n",
            glGetString(GL_RENDERER), glGetString(GL_VENDOR), glGetString(GL_VERSION));
     glGenTextures(GT_COUNT, gl_tex);
     gl_upload(gl_tex[GT_PANEL], tex_panel_v2, 64,64);
@@ -2240,6 +2241,7 @@ static void gl_view(double px,double py,double angle) {
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     glRotatef((float)(90.0 - angle*360.0/256.0), 0, 1, 0);
+    if (gl_debug_pitch != 0.0f) glRotatef(gl_debug_pitch, 1, 0, 0);
     glTranslatef((float)-ex, (float)-ey, (float)-ez);
 }
 static void gl_update_viewport(void) {
@@ -2380,28 +2382,54 @@ static void gl_solid_wall(const GlWall *w,float r,float g,float b){
     gl_gv(w->x2,w->y2,128); gl_gv(w->x1,w->y1,128); glEnd();
 }
 static void gl_light_panel(float x1,float y1,float x2,float y2,float z,float heat){
-    glDisable(GL_TEXTURE_2D); glDisable(GL_DEPTH_TEST); glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA,GL_ONE); gl_rgb(1.0f,0.86f*heat,0.56f*heat);
+    glDisable(GL_TEXTURE_2D); glEnable(GL_DEPTH_TEST); glDepthMask(GL_FALSE); glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA,GL_ONE); gl_rgb(0.92f,0.84f*heat,0.66f*heat);
     glBegin(GL_QUADS); gl_gv(x1,y1,z); gl_gv(x2,y1,z); gl_gv(x2,y2,z); gl_gv(x1,y2,z); glEnd();
-    glDisable(GL_BLEND); glEnable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND); glDepthMask(GL_TRUE);
 }
 static void gl_prop_3d(const Obj *o){
     float x=o->x, y=o->y, hw=o->hw, hd=o->hd, h=o->h;
-    if(o->id==0){ gl_cyl_z(x,y,0,h,hw,10,0.38f,0.10f,0.07f);
-        gl_box(x-hw-1,y-hd-1,4,x+hw+1,y+hd+1,8,0.20f,0.07f,0.05f);
-        gl_box(x-hw-1,y-hd-1,h-10,x+hw+1,y+hd+1,h-5,0.20f,0.07f,0.05f);
-    } else if(o->id==1){ gl_box(x-hw,y-hd,0,x+hw,y+hd,h,0.20f,0.24f,0.22f);
-        gl_box(x-hw-3,y-hd-3,4,x+hw+3,y+hd+3,7,0.10f,0.12f,0.11f);
-        gl_box(x-hw-3,y-hd-3,h-8,x+hw+3,y+hd+3,h-4,0.10f,0.12f,0.11f);
-    } else if(o->id==2){ gl_box(x-hw,y-hd,0,x+hw,y+hd,h,0.16f,0.18f,0.19f);
-        gl_box(x-hw+4,y-hd-2,h*0.65,x+hw-4,y-hd+1,h*0.68,0.03f,0.03f,0.03f);
-    } else { gl_box(x-hw,y-hd,0,x+hw,y+hd,h,0.18f,0.20f,0.19f);
-        gl_box(x-hw+3,y-hd-2,5,x+hw-3,y-hd+2,9,0.08f,0.09f,0.08f);
+    if(o->id==0){ gl_cyl_z(x,y,0,h,hw,12,0.30f,0.10f,0.07f);
+        gl_box(x-hw-1,y-hd-1,4,x+hw+1,y+hd+1,8,0.15f,0.06f,0.04f);
+        gl_box(x-hw-1,y-hd-1,h-10,x+hw+1,y+hd+1,h-5,0.15f,0.06f,0.04f);
+        gl_box(x-hw+2,y-hd-2,20,x+hw-2,y-hd+1,36,0.55f,0.40f,0.08f);
+    } else if(o->id==1){ gl_box(x-hw,y-hd,0,x+hw,y+hd,h,0.24f,0.25f,0.18f);
+        gl_box(x-hw-2,y-hd-2,4,x+hw+2,y+hd+2,7,0.10f,0.11f,0.09f);
+        gl_box(x-hw-2,y-hd-2,h-8,x+hw+2,y+hd+2,h-4,0.10f,0.11f,0.09f);
+        for(int z=9;z<16;z+=3){
+            gl_box(x-hw+3,y-hd-2,z,x+hw-3,y-hd+1,z+1,0.55f,0.42f,0.08f);
+            gl_box(x-hw+3,y+hd-1,z,x+hw-3,y+hd+2,z+1,0.55f,0.42f,0.08f);
+        }
+    } else if(o->id==2){ gl_box(x-hw,y-hd,0,x+hw,y+hd,h,0.15f,0.17f,0.17f);
+        for(int side=0;side<2;side++){
+            float yy = side?y+hd-1:y-hd-3;
+            gl_box(x-hw+2,yy,4,x+hw-2,yy+2,h-4,0.20f,0.22f,0.21f);
+            gl_box(x-1,yy-1,4,x+1,yy+3,h-4,0.08f,0.09f,0.09f);
+            for(int z=14;z<h-15;z+=5) gl_box(x-hw+6,yy-1,z,x+hw-6,yy+1,z+2,0.08f,0.09f,0.09f);
+            gl_box(x-hw+4,yy, h-18,x-hw+6,yy+2,h-12,0.55f,0.42f,0.08f);
+            gl_box(x+hw-6,yy, h-18,x+hw-4,yy+2,h-12,0.55f,0.42f,0.08f);
+        }
+    } else { gl_box(x-hw,y-hd,0,x+hw,y+hd,h,0.18f,0.20f,0.18f);
+        gl_box(x-hw+3,y-hd-2,5,x+hw-3,y+hd+2,9,0.07f,0.08f,0.07f);
+        for(int z=12;z<h-4;z+=12){
+            gl_box(x-hw+5,y-hd-2,z,x+hw-5,y-hd+1,z+2,0.08f,0.09f,0.08f);
+            gl_box(x-hw+5,y+hd-1,z,x+hw-5,y+hd+2,z+2,0.08f,0.09f,0.08f);
+        }
     }
 }
 static void gl_tex_quad(GLuint tex,float x1,float y1,float x2,float y2,float z1,float z2,
                         float u0,float v0,float u1,float v1){
     glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex); glColor3f(1,1,1);
+    glBegin(GL_QUADS);
+    glTexCoord2f(u0,v0); gl_gv(x1,y1,z1);
+    glTexCoord2f(u1,v0); gl_gv(x2,y2,z1);
+    glTexCoord2f(u1,v1); gl_gv(x2,y2,z2);
+    glTexCoord2f(u0,v1); gl_gv(x1,y1,z2);
+    glEnd(); glDisable(GL_TEXTURE_2D);
+}
+static void gl_tex_quad_tint(GLuint tex,float x1,float y1,float x2,float y2,float z1,float z2,
+                              float u0,float v0,float u1,float v1,float tint){
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex); glColor3f(tint,tint,tint);
     glBegin(GL_QUADS);
     glTexCoord2f(u0,v0); gl_gv(x1,y1,z1);
     glTexCoord2f(u1,v0); gl_gv(x2,y2,z1);
@@ -2443,28 +2471,46 @@ static void gl_corridor(float light, int door_blocked) {
         gl_box(x,258,96,x+8,264,112,0.28f,0.12f,0.08f);
         gl_box(x,376,96,x+8,382,112,0.28f,0.12f,0.08f);
     }
-    /* recessed ceiling fixtures */
+    /* recessed grille light fixtures with real housing/frame depth */
     for(int x=820;x<1240;x+=160){
-        gl_box(x,290,124,x+72,350,127,0.10f,0.09f,0.08f);
-        gl_light_panel(x+6,296,x+66,344,126.5f,light);
+        /* dark recess, perimeter frame, lens and protective bars */
+        gl_box(x+6,288,126.0f,x+74,352,128,0.055f,0.055f,0.05f);
+        gl_box(x+2,284,123,x+10,356,128,0.12f,0.12f,0.11f);
+        gl_box(x+70,284,123,x+78,356,128,0.12f,0.12f,0.11f);
+        gl_box(x+2,284,123,x+78,292,128,0.12f,0.12f,0.11f);
+        gl_box(x+2,348,123,x+78,356,128,0.12f,0.12f,0.11f);
+        gl_light_panel(x+13,296,x+67,344,125.7f,light);
+        for(int y=306;y<342;y+=14) gl_box(x+13,y,125.35f,x+67,y+1,125.6f,0.09f,0.09f,0.08f);
+        for(int z=123;z<126;z+=2) gl_box(x+82,292,z,x+88,346,z+1,0.08f,0.08f,0.07f);
     }
-    /* floor plates, grates and drainage channels */
-    for(int x=780;x<1260;x+=40){
-        gl_box(x,270,1,x+36,370,3,0.30f,0.29f,0.26f);
-        if(!corridor_art)
+    /* deck: one world-scaled plate texture plus edge drainage and seams */
+    if(corridor_art){
+        gl_tex_quad_tint(gl_tex[GT_ART_FLOOR],768,260,1280,380,3.1f,3.1f,
+                    0,(260-256)/128.0f,4.0f,(380-256)/128.0f,1.75f);
+        for(int x=896;x<1260;x+=128) gl_box(x-1,270,3.1f,x+1,370,3.6f,0.08f,0.08f,0.07f);
+        gl_box(768,318,3.1f,1280,321,3.5f,0.07f,0.08f,0.08f);
+        for(int x=780;x<1260;x+=16) gl_box(x,318,3.5f,x+8,321,3.8f,0.18f,0.19f,0.18f);
+        /* narrow side drainage grilles, not a black floor grid */
+        for(int x=780;x<1260;x+=12){
+            gl_box(x,260,2,x+8,268,3.5f,0.16f,0.17f,0.16f);
+            gl_box(x,372,2,x+8,380,3.5f,0.16f,0.17f,0.16f);
+        }
+        for(int y=262;y<268;y+=3) gl_box(768,y,3,1280,y+1,3.4f,0.22f,0.23f,0.21f);
+        for(int y=372;y<378;y+=3) gl_box(768,y,3,1280,y+1,3.4f,0.22f,0.23f,0.21f);
+    } else {
+        for(int x=780;x<1260;x+=40){
+            gl_box(x,270,1,x+36,370,3,0.30f,0.29f,0.26f);
             for(int y=282;y<366;y+=18) gl_box(x, y,3, x+36, y+2, 4, 0.07f,0.08f,0.07f);
+        }
+        gl_box(768,260,0.5f,1280,270,2.5f,0.06f,0.07f,0.07f);
+        gl_box(768,370,0.5f,1280,380,2.5f,0.06f,0.07f,0.07f);
     }
-    gl_box(768,260,0.5f,1280,270,2.5f,0.06f,0.07f,0.07f);
-    gl_box(768,370,0.5f,1280,380,2.5f,0.06f,0.07f,0.07f);
     if(corridor_art){
         /* prototype wall-panel material: one image per recessed panel */
         for(int x=780;x<1260;x+=80){
             gl_tex_quad(gl_tex[GT_ART_PANEL],x+3,262.1f,x+61,262.1f,22,104,0,0,1,1);
             gl_tex_quad(gl_tex[GT_ART_PANEL],x+3,377.9f,x+61,377.9f,22,104,0,0,1,1);
         }
-        /* prototype floor plate per deck section */
-        for(int x=780;x<1260;x+=40)
-            gl_tex_quad(gl_tex[GT_ART_FLOOR],x,270,x+36,370,3.1f,3.1f,0,0,1,1);
         /* prototype bulkhead material on far door face */
         gl_tex_quad(gl_tex[GT_ART_WALL],1273.4f,256,1273.4f,384,0,128,1,0,0,1);
     }
@@ -2558,7 +2604,7 @@ static int gl_demo(int w,int h) {
 static int interactive_gl(int w, int h) {
     if (gl_init(w,h,1)!=0) { fprintf(stderr,"gl: falling back to CPU renderer\n"); return -1; }
     gl_active = 1;
-    printf("G5m renderer=OpenGL framebuffer=%dx%d interactive=on\n",w,h);
+    printf("G5p renderer=OpenGL framebuffer=%dx%d interactive=on\n",w,h);
     load_session(); build_blocks();
     Status st; Obj objs[6]; Spans spans; Detail det; TexRows tr;
     int px,py,pa; double acc=0.0,last=(double)now_ns(),fps_start=(double)now_ns(); int frames=0;
@@ -2634,7 +2680,7 @@ static int gl_apply_pose(int px,int py,int angle,int door_open,int door_blocked,
 }
 static int gl_tour(const char *dir,int w,int h) {
     if(gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
-    struct P{const char*n;int px,py,a,open,block,ax,ay,state;} poses[]={
+    struct P{const char*n;int px,py,a,open,block,ax,ay,state;float pitch;} poses[]={
       {"01-entrance",800,320,0,64,0,990,320,1},
       {"02-mid-corridor",1000,320,0,64,0,990,320,1},
       {"03-close-wall",1100,320,64,64,0,990,320,1},
@@ -2642,9 +2688,13 @@ static int gl_tour(const char *dir,int w,int h) {
       {"05-door-closed",620,320,0,0,1,1120,320,0},
       {"06-door-open",620,320,0,64,0,990,320,1},
       {"07-crates-tracker",850,330,0,64,0,990,320,1},
-      {"08-far-bulkhead",1080,320,0,64,0,990,320,1}
+      {"08-far-bulkhead",1080,320,0,64,0,990,320,1},
+      {"09-floor-detail",900,340,0,64,0,300,320,0,-24.0f},
+      {"10-ceiling-lights",900,320,0,64,0,300,320,0,24.0f},
+      {"11-alien-tracker",760,320,0,64,0,990,320,1}
     };
     for(size_t i=0;i<sizeof poses/sizeof poses[0];i++){
+        gl_debug_pitch=poses[i].pitch;
         if(gl_apply_pose(poses[i].px,poses[i].py,poses[i].a,poses[i].open,poses[i].block,poses[i].ax,poses[i].ay,poses[i].state)!=0) return 2;
         int px,py,pa; get_state(&px,&py,&pa); st_current_angle=pa;
         Status st; Obj objs[6]; if(get_status(&st)!=0) return 2; int nobj=0;

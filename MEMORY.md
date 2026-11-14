@@ -642,6 +642,16 @@ Only three of fourteen materials are installed; the artwork gate remains open.
 GL measured 37.6–56.4 FPS at 640×400 and 51.1 FPS at 960×600. Full report:
 `experiments/glon-doom/G5O-ART-PIPELINE-REPORT.md`.
 
+## 10j. AvP G5p corridor composition (2026-11-14)
+
+G5p added recessed framed/grille ceiling fixtures, world-scaled deck plates with
+edge drainage, and smaller wall-mounted props while preserving the centre lane
+and all gameplay state. It is visually closer to the references but not final:
+the floor/ceiling/prop materials remain prototype or placeholder. Performance
+fell to about 32 FPS at 960×600 from G5o's ~51 FPS due to immediate-mode
+geometry; batching remains future work. Full report:
+`experiments/glon-doom/G5P-CORRIDOR-REPORT.md`.
+
 ## 11. Detailed documents
 
 - `README.md` — project intro.

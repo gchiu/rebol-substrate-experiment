@@ -4,12 +4,12 @@ doom/obj-visible: 0 doom/obj-left: 0 doom/obj-right: 0 doom/obj-top: 0 doom/obj-
 doom/obj-sx: 0 doom/obj-sh: 0 doom/obj-sw: 0
 doom/odx: 0 doom/ody: 0 doom/ocx: 0 doom/ocy: 0
 doom/objects: [
-    [0 900 272 20 12 92]
-    [0 940 368 20 12 92]
-    [1 860 268 38 14 76]
-    [1 1040 370 40 14 76]
-    [2 980 270 22 10 104]
-    [3 1100 368 50 14 58]
+    [0 910 272 13 12 62]
+    [0 940 370 13 12 62]
+    [1 860 270 28 19 48]
+    [1 1040 370 30 18 48]
+    [2 980 270 18 12 70]
+    [3 1100 370 36 16 38]
 ]
 doom/object-row: func [i] [ block-at doom/objects i ]
 doom/object-project: func [id x y hw hd h] [

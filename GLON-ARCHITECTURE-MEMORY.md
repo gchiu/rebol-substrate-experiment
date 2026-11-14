@@ -574,6 +574,22 @@ Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
   unchanged (14,185/615, 33,600); executable 4,181,800 bytes. Frozen S1 and
   all controls/gameplay unchanged.
 
+### G5p AvP corridor composition [FINDING]
+
+[FINDING 2026-11-14, `experiments/glon-avp-g5p`, WSLg D3D12 AMD Radeon]
+
+- Replaced flat ceiling panels with framed recessed fixtures, warm lenses and
+  grille geometry; retained the Glon light pulse.
+- Replaced the art-mode black floor grid with a world-scaled deck-texture surface
+  (128-unit plate UVs), plate seams, central drain and narrow edge grilles.
+- Reduced prop records and kept them wall-mounted. Records remain the sole
+  visual/collision source; no separate object state.
+- Measured 960×600 32.2 FPS / 31.01 ms and 640×400 32.8 FPS. This is below the
+  G5o ~51 FPS baseline; immediate-mode geometry submission is the main cost.
+- Loader 14,082 used / 718 free; heap 33,600; executable 4,185,600 bytes.
+- Floor/ceiling/prop artwork remains prototype/placeholder; final seamless deck,
+  light insert and prop materials are explicit dependencies.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

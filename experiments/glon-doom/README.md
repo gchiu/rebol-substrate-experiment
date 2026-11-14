@@ -339,3 +339,13 @@ but low-contrast/stretched and the supplied images are not seamless. See
 `G5O-ART-PIPELINE-REPORT.md`. `--placeholder-corridor` retains the greybox A/B
 comparison. Only the first three textures were installed; the other eleven
 materials remain pending.
+
+
+## G5p corridor composition upgrade
+
+Ceiling fixtures now have recessed frames and grilles; the deck uses world-scaled
+plate UVs with edge drainage and no art-mode black grid; props were reduced and
+kept against the walls. `--placeholder-corridor` remains available. Performance
+at 960×600 is about 32 FPS (G5o was ~51), so further immediate-mode batching is
+still needed. See `G5P-CORRIDOR-REPORT.md`; final seamless floor/ceiling/prop
+artwork is still missing.
