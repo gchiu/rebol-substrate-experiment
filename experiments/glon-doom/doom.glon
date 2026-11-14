@@ -164,6 +164,7 @@ doom/sx: 0
 doom/door-open: 0
 doom/door-target: 0
 doom/door-blocked: 1
+doom/player-hit: 0
 doom/adx: 0
 doom/ady: 0
 ;; Conceptual Linda-style tuple: [enemy 1 alien x y health state].
@@ -269,18 +270,19 @@ doom/check-all: func [x y r] [
 doom/move-x: func [nx] [
     doom/hit: 0
     doom/check-all nx doom/py doom/radius2
-    either = doom/hit 0 [ doom/px: nx ] [ none ]
+    either = doom/hit 0 [ doom/px: nx ] [ doom/player-hit: 1 ]
 ]
 doom/move-y: func [ny] [
     doom/hit: 0
     doom/check-all doom/px ny doom/radius2
-    either = doom/hit 0 [ doom/py: ny ] [ none ]
+    either = doom/hit 0 [ doom/py: ny ] [ doom/player-hit: 1 ]
 ]
 
 doom/tick: func [fw bk lf rt tl tr] [
     doom/angle: + doom/angle - tl tr
     doom/wrap-angle
     doom/aim
+    doom/player-hit: 0
     doom/fw: - fw bk
     doom/st: - rt lf
     doom/mdx: / * + * doom/dirx doom/fw * doom/diry doom/st doom/speed 64
@@ -1078,6 +1080,7 @@ doom/status-block: [
     print doom/alien-bot
     print doom/light-phase
     print doom/ammo
+    print doom/player-hit
 ]
 
 doom/sector-report: does [

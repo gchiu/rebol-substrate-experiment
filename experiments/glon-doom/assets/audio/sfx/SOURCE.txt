@@ -21,7 +21,8 @@ fades to fit gameplay events. No synthesis was substituted.
    Licence: Creative Commons 0 (CC0 1.0), public domain
    https://creativecommons.org/publicdomain/zero/1.0/
    Source: 16-bit stereo 48 kHz, 2.1667 s.
-   Modifications: converted to 16-bit mono 44.1 kHz; short edge fades.
+   Modifications: trimmed 50 ms leading silence, converted to 16-bit mono
+   44.1 kHz; short edge fades.
 
 3. Rifle: "Sci-Fi LMG Concept"
    Creator: Heretic4522
@@ -49,8 +50,8 @@ fades to fit gameplay events. No synthesis was substituted.
    Licence: Creative Commons 0 (CC0 1.0), public domain
    https://creativecommons.org/publicdomain/zero/1.0/
    Source: MP3 mono 44.1 kHz, 1.790 s.
-   Modifications: decoded, trimmed to 0.9 s with a 40 ms fade-out;
-   converted to 16-bit mono 44.1 kHz.
+   Modifications: decoded; 60 ms leading silence trimmed; 0.84 s excerpt
+   with a 40 ms fade-out; converted to 16-bit mono 44.1 kHz.
 
 Continuous ambient recording unchanged in this pass:
 "Alien Spaceship Interior Ambience 04 Sci-Fi Engine Hum & Electronics"

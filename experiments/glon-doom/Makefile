@@ -45,6 +45,7 @@ test: $(TARGET)
 	./$(TARGET) --trace
 	./$(TARGET) --audio-test
 	./$(TARGET) --sfx-test
+	./$(TARGET) --audio-e2e
 	cd $(ROOT) && ./check-frozen-s1.sh
 
 run: $(TARGET)

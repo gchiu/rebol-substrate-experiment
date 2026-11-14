@@ -23,8 +23,8 @@ SFX = {
         "frames": 97020,
     },
     "alien_shriek.wav": {
-        "sha256": "75dad237aab614978dac910c6b608f5c72c8bd7855b7bca21a25d59845c8fc8e",
-        "frames": 95552,
+        "sha256": "e91e1360ad94121382926bcb1be09c8513527cc0b519fc0a4ff5ab828a5fb7c2",
+        "frames": 93347,
     },
     "rifle_shot.wav": {
         "sha256": "b40e41f7abe3bfbe016f5117bc64a6fc20482b0b77c67387c8ab279a8ba74d8f",
@@ -35,8 +35,8 @@ SFX = {
         "frames": 52920,
     },
     "cargo_impact.wav": {
-        "sha256": "ca5856688cde48d0f4d9181faf06c6201ace1a87d68ab8bb94fd93933c7d2774",
-        "frames": 39690,
+        "sha256": "2edafcdcab43834c4c5a341f8b8762c9b33c1932106689f43718912a8de2f274",
+        "frames": 37044,
     },
 }
 
