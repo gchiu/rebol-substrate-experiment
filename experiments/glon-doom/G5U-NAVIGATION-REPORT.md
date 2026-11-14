@@ -221,7 +221,7 @@ AMD Radeon), medians:
 - G5u no-object medians: sim 5.51 ms, submit 1.10 ms, total 11.56 ms.
 - Loader after host blocks: 174 cells free; table probe largest 128. The compact
   fix is close to the 64K loader limit; no large pathfinding framework was added.
-- Loader/heap high-water: 54,569/33,440 without objects, 54,569/33,600 with.
+- Loader/heap high-water: 53,705/33,440 without objects, 54,569/33,600 with.
 - Executable: 6,100,344 bytes.
 
 The cost is the extra Glon avoidance branches on every tick. Direct pursuit
