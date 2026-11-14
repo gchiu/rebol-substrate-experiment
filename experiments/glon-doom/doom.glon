@@ -173,6 +173,7 @@ doom/alien-x: 1120
 doom/alien-y: 320
 doom/alien-health: 100
 doom/alien-state: 0
+doom/ammo: 24
 doom/alien-detected: 0
 doom/door-bars: 0
 doom/alien-dx: 0
@@ -1079,6 +1080,7 @@ doom/status-block: [
     print doom/alien-top
     print doom/alien-bot
     print doom/light-phase
+    print doom/ammo
 ]
 
 doom/sector-report: does [

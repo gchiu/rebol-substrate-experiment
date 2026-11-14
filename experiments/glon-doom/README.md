@@ -366,3 +366,11 @@ Five poses were cropped from the supplied transparent concept sheet using
 Conversion uses a common scale, foot baseline and foot pivot; full turn/hit/death
 sequences remain missing. See `G5Q-ALIEN-REPORT.md` and
 `assets/alien/README.md`.
+
+## G5r pulse-rifle reference integration
+
+The supplied weapon references are full-scene corridor illustrations. The pulse
+rifle/hand was manually masked into a transparent 768×406 sprite, and Glon now
+owns `doom/ammo` (initial 24) with OpenGL drawing the live count in the blanked
+display. The asset is static; firing, reload and the other three weapons are not
+implemented. See `G5R-WEAPON-REPORT.md` and `assets/weapons/README.md`.

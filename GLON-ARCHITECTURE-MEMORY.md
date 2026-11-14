@@ -623,6 +623,22 @@ Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
 - 960×600 measured 51.6 FPS (sim 13.33 ms, submit 0.76 ms); executable
   4,251,192 bytes; loader/heap unchanged. Frozen S1 and all regression tests pass.
 
+### G5r pulse-rifle reference integration [FINDING]
+
+[FINDING 2026-11-14, `experiments/glon-avp-g5r`, WSLg D3D12 AMD Radeon]
+
+- The four supplied weapon references are 1672×941 opaque corridor illustrations,
+  not transparent sprites. The pulse rifle/hand was hand-masked to a 768×406 RGBA
+  asset; corridor background and the baked display digits were removed. The
+  carry-handle opening required a separate silhouette hole.
+- Glon now owns `doom/ammo` (initial 24). OpenGL draws the live value with
+  seven-segment quads in the blanked display; no firing/reload/consumption
+  mechanics were invented.
+- The overlay is static, bottom-right, 60% of drawable width, and independently
+  resizes. Software fallback has no first-person weapon.
+- 960×600 measured 66.0 FPS (sim 7.15 ms, submit 0.77 ms); `make test` and frozen
+  S1 pass. Corridor, floor, Alien AI, controls and tracker are unchanged.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

@@ -17,6 +17,7 @@
 #include "m1_layout.h"
 #include "textures.h"
 #include "alien_sprites_g5q.h"
+#include "weapon_sprites.h"
 #include "orientation_test.h"
 #include "corridor_textures.h"
 #include "g5j_textures.h"
@@ -61,6 +62,7 @@ typedef struct {
 typedef struct {
     int door_open, door_blocked, door_target;
     int ax, ay, health, state, detected;
+    int ammo;
     int td2, tside, tdepth;
     int visible, left, right, top, bot;
     int light;
@@ -415,11 +417,11 @@ static int get_valid(void) {
     return v;
 }
 static int get_status(Status *st) {
-    int v[17];
+    int v[18];
 #ifdef DOOM_S1_PROFILE
     prof_begin();
 #endif
-    int grc = run_capture(status_block, v, 17, "status");
+    int grc = run_capture(status_block, v, 18, "status");
 #ifdef DOOM_S1_PROFILE
     prof_collect(&prof_status);
 #endif
@@ -428,7 +430,7 @@ static int get_status(Status *st) {
     st->ax = v[3]; st->ay = v[4]; st->health = v[5]; st->state = v[6];
     st->detected = v[7]; st->td2 = v[8]; st->tside = v[9]; st->tdepth = v[10];
     st->visible = v[11]; st->left = v[12]; st->right = v[13];
-    st->top = v[14]; st->bot = v[15]; st->light = v[16];
+    st->top = v[14]; st->bot = v[15]; st->light = v[16]; st->ammo = v[17];
     if (objects_mode && get_objects(current_objs) == 0) {
         current_objs_valid = 1;
         if (st->door_blocked && last_px < 768)
@@ -613,6 +615,7 @@ static int self_test(void) {
     fails += expect_eq("alien initial x", st.ax, 1120);
     fails += expect_eq("alien initial y", st.ay, 320);
     fails += expect_eq("alien initial health", st.health, 100);
+    fails += expect_eq("Glon-owned ammunition", st.ammo, 24);
     fails += expect_eq("alien initial state", st.state, 0);
     fails += expect_eq("alien initially undetected", st.detected, 0);
 
@@ -2168,7 +2171,7 @@ static const GlWall gl_walls[10] = {
 enum { GT_PANEL, GT_SERVICE, GT_FLOOR, GT_CEIL, GT_DOOR,
        GT_DRUM, GT_CRATE, GT_CABINET, GT_CONTAINER, GT_ALIEN0,
        GT_ORIENT = GT_ALIEN0 + 5, GT_ART_WALL, GT_ART_PANEL, GT_ART_FLOOR,
-       GT_COUNT = GT_ORIENT + 4 };
+       GT_WEAPON, GT_COUNT = GT_WEAPON + 1 };
 static GLuint gl_tex[GT_COUNT];
 static SDL_Window *gl_win;
 static SDL_GLContext gl_ctx;
@@ -2229,6 +2232,7 @@ static int gl_init(int w, int h, int shown) {
     gl_upload(gl_tex[GT_ART_WALL], tex_art_wall_bulkhead_steel,512,512);
     gl_upload(gl_tex[GT_ART_PANEL], tex_art_wall_recess_panel,512,512);
     gl_upload(gl_tex[GT_ART_FLOOR], tex_art_floor_plate,512,512);
+    gl_upload(gl_tex[GT_WEAPON], weapon_pulse,WEAPON_W,WEAPON_H);
     gl_w=w; gl_h=h; SDL_GL_GetDrawableSize(gl_win,&gl_w,&gl_h);
     if (gl_w<=0 || gl_h<=0) { gl_w=w; gl_h=h; }
     glViewport(0,0,gl_w,gl_h); glClearColor(0.04,0.05,0.06,1); glEnable(GL_DEPTH_TEST);
@@ -2309,6 +2313,59 @@ static void gl_billboard(GLuint tex, double x,double y,double wworld,double hwor
     glTexCoord2f(0,1); gl_gv(x - rx*wworld*32, y - ry*wworld*32, hworld*64);
     glEnd();
     (void)cx;(void)cy;(void)cz;
+}
+static void gl_ammo_seg(float x,float y,float w,float h) {
+    glVertex2f(x,y); glVertex2f(x+w,y);
+    glVertex2f(x+w,y+h); glVertex2f(x,y+h);
+}
+static void gl_ammo_digit(int d, float x, float y, float w, float h) {
+    float t=h*0.14f, g=h*0.06f;
+    float x0=x+g, y0=y+g, x1=x+w-g, y1=y+h-g, ym=y+h*0.5f;
+    glBegin(GL_QUADS);
+    if (d==0||d==2||d==3||d==5||d==6||d==7||d==8||d==9) gl_ammo_seg(x0,y0,x1-x0,t);
+    if (d==0||d==1||d==2||d==3||d==4||d==7||d==8||d==9) gl_ammo_seg(x1-t,y0,t,ym-y0-t);
+    if (d==0||d==1||d==2||d==3||d==4||d==5||d==6||d==7||d==8||d==9) gl_ammo_seg(x1-t,ym+t,t,y1-ym-t);
+    if (d==0||d==2||d==3||d==5||d==6||d==8||d==9) gl_ammo_seg(x0,y1-t,x1-x0,t);
+    if (d==0||d==2||d==6||d==8) gl_ammo_seg(x0,ym+t,t,y1-ym-t);
+    if (d==0||d==4||d==5||d==6||d==8||d==9) gl_ammo_seg(x0,y0+t,t,ym-y0-t);
+    if (d==2||d==3||d==4||d==5||d==6||d==8||d==9) gl_ammo_seg(x0,ym-t*0.5f,x1-x0,t);
+    glEnd();
+}
+static void gl_draw_weapon(const Status *st) {
+    if (st->ammo < 0) return;
+    const float w=gl_w*0.60f, h=w*WEAPON_H/WEAPON_W;
+    const float x1=gl_w*0.99f, y2=gl_h*1.02f;
+    const float x0=x1-w, y0=y2-h;
+    glDisable(GL_DEPTH_TEST); glDisable(GL_ALPHA_TEST);
+    glEnable(GL_TEXTURE_2D); glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0,gl_w,gl_h,0,-1,1);
+    glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+    glBindTexture(GL_TEXTURE_2D,gl_tex[GT_WEAPON]); glColor4f(1,1,1,1);
+    glBegin(GL_QUADS);
+    glTexCoord2f(0,1); glVertex2f(x0,y0);
+    glTexCoord2f(1,1); glVertex2f(x1,y0);
+    glTexCoord2f(1,0); glVertex2f(x1,y2);
+    glTexCoord2f(0,0); glVertex2f(x0,y2);
+    glEnd();
+    glDisable(GL_TEXTURE_2D);
+    /* Live count occupies the blanked display: output-space screen 444,194..519,251. */
+    const float sx0=x0+(WEAPON_SCREEN_X0/(float)WEAPON_W)*w;
+    const float sx1=x0+(WEAPON_SCREEN_X1/(float)WEAPON_W)*w;
+    const float sy0=y0+(WEAPON_SCREEN_Y0/(float)WEAPON_H)*h;
+    const float sy1=y0+(WEAPON_SCREEN_Y1/(float)WEAPON_H)*h;
+    int value=st->ammo; char text[4]; int n=0;
+    if (value > 999) value=999;
+    do { text[n++]=(char)('0'+value%10); value/=10; } while (value && n<3);
+    float padw=(sx1-sx0)*0.08f, pady=(sy1-sy0)*0.18f;
+    float tx0=sx0+padw, tx1=sx1-padw, ty0=sy0+pady, ty1=sy1-pady;
+    float cw=(tx1-tx0)/n;
+    glColor4f(0.35f,1.0f,0.16f,1);
+    for (int i=0;i<n;i++) {
+        int d=text[n-1-i]-'0';
+        gl_ammo_digit(d,tx0+i*cw,ty0,cw,ty1-ty0);
+    }
+    glDisable(GL_BLEND); glEnable(GL_DEPTH_TEST);
 }
 static void gl_draw_tracker(const Status *st) {
     const float s = gl_hud_scale(gl_h);
@@ -2572,6 +2629,7 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
         gl_billboard(gl_tex[GT_ALIEN0+idx], st->ax, st->ay, 1.8, 1.5);
     }
     glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
+    gl_draw_weapon(st);
     gl_draw_tracker(st);
     if(getenv("GLON_FINISH")){ long _pf=now_ns(); glFinish(); gl_prof_finish_ms=(double)(now_ns()-_pf)/1e6; } else gl_prof_finish_ms=0;
 }

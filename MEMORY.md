@@ -672,6 +672,14 @@ attack and side were converted; full turn/hit/death sequences remain missing
 artwork. The concept sheet is not a validated fixed-grid atlas. Full report:
 `experiments/glon-doom/G5Q-ALIEN-REPORT.md`.
 
+## 10m. AvP G5r pulse-rifle reference integration (2026-11-14)
+
+The pulse-rifle/hand was manually masked from an opaque corridor reference into
+a transparent 768×406 sprite. The baked `60` was removed and Glon now owns
+`doom/ammo`, displayed live by OpenGL. This is a static weapon overlay; firing,
+reload and the other three weapons are not implemented. Full report:
+`experiments/glon-doom/G5R-WEAPON-REPORT.md`.
+
 ## 11. Detailed documents
 
 - `README.md` — project intro.
