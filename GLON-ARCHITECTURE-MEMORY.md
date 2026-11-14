@@ -606,6 +606,23 @@ Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
   corrective 51–62 FPS and 40.7–44.5 FPS respectively. Remaining frame time is
   Glon tick (~6–9 ms) plus state extraction (~5–6 ms).
 
+### G5q Alien reference conversion [FINDING]
+
+[FINDING 2026-11-14, `experiments/glon-avp-g5p`, WSLg D3D12 AMD Radeon]
+
+- The supplied 1536×1024 concept sheet has a real alpha channel but is not a
+  validated fixed-grid atlas: labels, an info box, variable spacing and merged
+  silhouettes are present. Five isolated poses were cropped, excluding labels,
+  and converted to 192×144 RGBA frames with one common scale, foot baseline and
+  foot pivot. No procedural creature was generated.
+- The five replacement textures preserve the existing idle/walk1/walk2/attack/
+  side frame selection and timing. Billboard width changed 1.0→1.8 to preserve
+  the new 4:3 silhouette; AI, collision and detection are unchanged.
+- Full idle/walk/turn/hit/death sequences and per-frame pivot metadata remain
+  missing artwork. The sheet must not be described as a validated sprite atlas.
+- 960×600 measured 51.6 FPS (sim 13.33 ms, submit 0.76 ms); executable
+  4,251,192 bytes; loader/heap unchanged. Frozen S1 and all regression tests pass.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

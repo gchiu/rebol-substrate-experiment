@@ -16,7 +16,7 @@
 #include "r0_s1.h"
 #include "m1_layout.h"
 #include "textures.h"
-#include "alien_sprites_g5m.h"
+#include "alien_sprites_g5q.h"
 #include "orientation_test.h"
 #include "corridor_textures.h"
 #include "g5j_textures.h"
@@ -2569,7 +2569,7 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
         const uint32_t *f = alien_frame_for(st);
         int idx = f==alien_walk1?1:f==alien_walk2?2:f==alien_attack?3:f==alien_side?4:0;
         glDepthMask(GL_TRUE);
-        gl_billboard(gl_tex[GT_ALIEN0+idx], st->ax, st->ay, 1.0, 1.5);
+        gl_billboard(gl_tex[GT_ALIEN0+idx], st->ax, st->ay, 1.8, 1.5);
     }
     glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
     gl_draw_tracker(st);
@@ -2725,7 +2725,8 @@ static int gl_tour(const char *dir,int w,int h) {
       {"11-alien-tracker",760,320,0,64,0,990,320,1},
       {"12-spawn-doorway",320,320,0,0,1,300,320,0,0},
       {"13-room-turnaround",320,320,128,0,1,1120,320,0,0},
-      {"14-corridor-door-closed",900,320,128,0,1,1120,320,0,0}
+      {"14-corridor-door-closed",900,320,128,0,1,1120,320,0,0},
+      {"15-alien-attack",850,330,0,64,0,990,320,2,0}
     };
     for(size_t i=0;i<sizeof poses/sizeof poses[0];i++){
         gl_debug_pitch=poses[i].pitch;

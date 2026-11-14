@@ -663,6 +663,15 @@ on WSLg D3D12. Forced `glFinish` was removed from normal play (opt-in with
 remaining time is Glon tick and state extraction. Full report:
 `experiments/glon-doom/G5P-CORRECTIVE-REPORT.md`.
 
+## 10l. AvP G5q Alien reference sprites (2026-11-14)
+
+Five transparent poses from the G5q reference sheet replace the procedural Alien
+textures, with a common scale, foot baseline and foot pivot. Existing AI,
+collision, state selection and timing are unchanged. Only idle, two walk phases,
+attack and side were converted; full turn/hit/death sequences remain missing
+artwork. The concept sheet is not a validated fixed-grid atlas. Full report:
+`experiments/glon-doom/G5Q-ALIEN-REPORT.md`.
+
 ## 11. Detailed documents
 
 - `README.md` — project intro.

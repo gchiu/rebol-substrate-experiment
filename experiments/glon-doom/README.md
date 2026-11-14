@@ -358,3 +358,11 @@ longer calls `glFinish` every frame; use `GLON_FINISH=1` when explicit GPU
 synchronisation is required for profiling. A display-list cache was tested and
 rejected because it ran below 1 FPS on WSLg D3D12. See
 `G5P-CORRECTIVE-REPORT.md`.
+
+## G5q Alien reference sprites
+
+Five poses were cropped from the supplied transparent concept sheet using
+`tools/convert_g5q_alien.py` and replace the previous procedural Alien textures.
+Conversion uses a common scale, foot baseline and foot pivot; full turn/hit/death
+sequences remain missing. See `G5Q-ALIEN-REPORT.md` and
+`assets/alien/README.md`.
