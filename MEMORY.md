@@ -632,6 +632,16 @@ GL performance measured 31–46 FPS at 640x400 and 36.2 FPS at 960x600. Frozen
 S1, the 64K map, controls, doors, collision, tracker/resize behavior and Alien
 state are unchanged. Full report: `experiments/glon-doom/G5N-CORRIDOR-REPORT.md`.
 
+## 10i. AvP G5o corridor artwork pipeline (2026-11-14)
+
+The supplied prototype art pack was installed under `assets/corridor/` with a
+generated runtime-array pipeline. Recessed-wall and far-bulkhead materials
+materially improve the corridor; the floor material is stretched/low-contrast
+and all three source images are non-seamless (edge deltas 45–471 RGB units).
+Only three of fourteen materials are installed; the artwork gate remains open.
+GL measured 37.6–56.4 FPS at 640×400 and 51.1 FPS at 960×600. Full report:
+`experiments/glon-doom/G5O-ART-PIPELINE-REPORT.md`.
+
 ## 11. Detailed documents
 
 - `README.md` — project intro.

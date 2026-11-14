@@ -329,3 +329,13 @@ is still required. See `G5N-CORRIDOR-REPORT.md` and `G5N-ASSETS.md`.
 ./build/doom --gl-tour /tmp/g5n-tour960 960 600 objects
 ./build/doom --gl-bench 120 640 400 objects
 ```
+
+## G5o corridor artwork pipeline
+
+The supplied prototype art pack is installed under `assets/corridor/` and
+converted to runtime arrays by `tools/gen_corridor_textures.py`. Recessed wall
+panels and the far bulkhead are visibly improved; the floor texture is applied
+but low-contrast/stretched and the supplied images are not seamless. See
+`G5O-ART-PIPELINE-REPORT.md`. `--placeholder-corridor` retains the greybox A/B
+comparison. Only the first three textures were installed; the other eleven
+materials remain pending.

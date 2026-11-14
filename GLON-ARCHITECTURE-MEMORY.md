@@ -555,6 +555,25 @@ Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
 - **Preserved:** GL default and CPU fallback, resize drawable viewport, controls,
   doors/collision/Alien state, tracker/HUD, ceiling pulse, frozen S1/64K.
 
+### G5o AvP corridor artwork pipeline [FINDING]
+
+[FINDING 2026-11-14, `experiments/glon-avp-g5n`, WSLg D3D12 AMD Radeon]
+
+- Supplied prototype art pack installed under `assets/corridor/`; replacement
+  manifest installed, original G5n manifest preserved in Git history.
+  `tools/gen_corridor_textures.py` generates 512² runtime arrays from the
+  1024/512 source PNGs, bounding executable growth.
+- Only the first three materials were integrated: recess panel (per panel),
+  bulkhead steel (far door, U corrected so A-3 is upright), floor plate (per
+  deck section). The other eleven materials remain pending.
+- Recess panels and bulkhead materially improve the corridor. Floor material is
+  low-contrast, stretched over 36×100 plates and repeats; source edge metrics
+  (floor 44.9/104.8, panel 67.6/142.6, bulkhead 61.4/471.0 RGB units) confirm
+  the supplied images are not seamless. The visual-quality gate remains open.
+- Performance with art: 640×400 37.6–56.4 FPS; 960×600 51.1 FPS. Loader/heap
+  unchanged (14,185/615, 33,600); executable 4,181,800 bytes. Frozen S1 and
+  all controls/gameplay unchanged.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

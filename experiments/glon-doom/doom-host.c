@@ -18,6 +18,7 @@
 #include "textures.h"
 #include "alien_sprites_g5m.h"
 #include "orientation_test.h"
+#include "corridor_textures.h"
 #include "g5j_textures.h"
 #include "object_sprites.h"
 #ifdef DOOM_S1_PROFILE
@@ -115,6 +116,7 @@ static int new_textures = 0;
 static int smooth_shading = 0;
 static int flat_surfaces = 0;
 static int gl_active = 0;
+static int corridor_art = 1;
 static int objects_mode = 0;
 static Obj current_objs[6];
 static int current_objs_valid = 0;
@@ -2163,7 +2165,8 @@ static const GlWall gl_walls[10] = {
 };
 enum { GT_PANEL, GT_SERVICE, GT_FLOOR, GT_CEIL, GT_DOOR,
        GT_DRUM, GT_CRATE, GT_CABINET, GT_CONTAINER, GT_ALIEN0,
-       GT_ORIENT = GT_ALIEN0 + 5, GT_COUNT = GT_ALIEN0 + 6 };
+       GT_ORIENT = GT_ALIEN0 + 5, GT_ART_WALL, GT_ART_PANEL, GT_ART_FLOOR,
+       GT_COUNT = GT_ORIENT + 4 };
 static GLuint gl_tex[GT_COUNT];
 static SDL_Window *gl_win;
 static SDL_GLContext gl_ctx;
@@ -2221,6 +2224,9 @@ static int gl_init(int w, int h, int shown) {
     gl_upload(gl_tex[GT_ALIEN0+3], alien_attack,ALIEN_W,ALIEN_H);
     gl_upload(gl_tex[GT_ALIEN0+4], alien_side,ALIEN_W,ALIEN_H);
     gl_upload(gl_tex[GT_ORIENT], orient_test,128,192);
+    gl_upload(gl_tex[GT_ART_WALL], tex_art_wall_bulkhead_steel,512,512);
+    gl_upload(gl_tex[GT_ART_PANEL], tex_art_wall_recess_panel,512,512);
+    gl_upload(gl_tex[GT_ART_FLOOR], tex_art_floor_plate,512,512);
     gl_w=w; gl_h=h; SDL_GL_GetDrawableSize(gl_win,&gl_w,&gl_h);
     if (gl_w<=0 || gl_h<=0) { gl_w=w; gl_h=h; }
     glViewport(0,0,gl_w,gl_h); glClearColor(0.04,0.05,0.06,1); glEnable(GL_DEPTH_TEST);
@@ -2393,6 +2399,16 @@ static void gl_prop_3d(const Obj *o){
         gl_box(x-hw+3,y-hd-2,5,x+hw-3,y-hd+2,9,0.08f,0.09f,0.08f);
     }
 }
+static void gl_tex_quad(GLuint tex,float x1,float y1,float x2,float y2,float z1,float z2,
+                        float u0,float v0,float u1,float v1){
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex); glColor3f(1,1,1);
+    glBegin(GL_QUADS);
+    glTexCoord2f(u0,v0); gl_gv(x1,y1,z1);
+    glTexCoord2f(u1,v0); gl_gv(x2,y2,z1);
+    glTexCoord2f(u1,v1); gl_gv(x2,y2,z2);
+    glTexCoord2f(u0,v1); gl_gv(x1,y1,z2);
+    glEnd(); glDisable(GL_TEXTURE_2D);
+}
 static void gl_corridor(float light, int door_blocked) {
     const float wallR=0.36f,wallG=0.33f,wallB=0.29f;
     const float darkR=0.14f,darkG=0.13f,darkB=0.12f;
@@ -2435,10 +2451,23 @@ static void gl_corridor(float light, int door_blocked) {
     /* floor plates, grates and drainage channels */
     for(int x=780;x<1260;x+=40){
         gl_box(x,270,1,x+36,370,3,0.30f,0.29f,0.26f);
-        for(int y=282;y<366;y+=18) gl_box(x, y,3, x+36, y+2, 4, 0.07f,0.08f,0.07f);
+        if(!corridor_art)
+            for(int y=282;y<366;y+=18) gl_box(x, y,3, x+36, y+2, 4, 0.07f,0.08f,0.07f);
     }
     gl_box(768,260,0.5f,1280,270,2.5f,0.06f,0.07f,0.07f);
     gl_box(768,370,0.5f,1280,380,2.5f,0.06f,0.07f,0.07f);
+    if(corridor_art){
+        /* prototype wall-panel material: one image per recessed panel */
+        for(int x=780;x<1260;x+=80){
+            gl_tex_quad(gl_tex[GT_ART_PANEL],x+3,262.1f,x+61,262.1f,22,104,0,0,1,1);
+            gl_tex_quad(gl_tex[GT_ART_PANEL],x+3,377.9f,x+61,377.9f,22,104,0,0,1,1);
+        }
+        /* prototype floor plate per deck section */
+        for(int x=780;x<1260;x+=40)
+            gl_tex_quad(gl_tex[GT_ART_FLOOR],x,270,x+36,370,3.1f,3.1f,0,0,1,1);
+        /* prototype bulkhead material on far door face */
+        gl_tex_quad(gl_tex[GT_ART_WALL],1273.4f,256,1273.4f,384,0,128,1,0,0,1);
+    }
     /* substantial bulkhead frame and door */
     gl_box(762,244,0,770,256,136,0.10f,0.10f,0.09f);
     gl_box(762,384,0,770,396,136,0.10f,0.10f,0.09f);
@@ -2608,7 +2637,7 @@ static int gl_tour(const char *dir,int w,int h) {
     struct P{const char*n;int px,py,a,open,block,ax,ay,state;} poses[]={
       {"01-entrance",800,320,0,64,0,990,320,1},
       {"02-mid-corridor",1000,320,0,64,0,990,320,1},
-      {"03-close-wall",980,320,64,64,0,990,320,1},
+      {"03-close-wall",1100,320,64,64,0,990,320,1},
       {"04-look-back",900,320,128,64,0,990,320,1},
       {"05-door-closed",620,320,0,0,1,1120,320,0},
       {"06-door-open",620,320,0,64,0,990,320,1},
@@ -2687,6 +2716,7 @@ int main(int argc, char **argv) {
         if (strcmp(argv[i], "--new-textures") == 0) new_textures = 1;
         if (strcmp(argv[i], "--smooth-shading") == 0) smooth_shading = 1;
         if (strcmp(argv[i], "--flat-surfaces") == 0) flat_surfaces = 1;
+        if (strcmp(argv[i], "--placeholder-corridor") == 0) corridor_art = 0;
         if (strcmp(argv[i], "--renderer") == 0 && i+1<argc) {
             if (strcmp(argv[i+1],"cpu") == 0) renderer_gl = 0;
             if (strcmp(argv[i+1],"gl") == 0) renderer_gl = 1;

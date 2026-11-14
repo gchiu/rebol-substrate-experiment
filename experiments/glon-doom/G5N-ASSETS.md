@@ -1,29 +1,27 @@
-# G5n corridor asset manifest
+# G5n corridor — replacement art manifest (evaluation pack v0.1)
 
-Reference used as art direction only:
-`/mnt/c/users/anon_/downloads/corridor.png` (approved corridor reference).
-No reference crops are used as textures.
+## Status
+These three images are **art-direction prototypes**, cropped from an AI-generated material presentation sheet. They are **not certified seamless**, physically based, or final game-ready assets. The source sheet also contains visual concepts for the other eleven materials, but these are not supplied as textures. Do not mark the artwork gate passed.
 
-All current materials are **temporary neutral solids** in `gl_corridor()` and
-`gl_prop_3d()`. They are greybox placeholders, not final artwork.
+Approved direction: weathered charcoal-blue steel, restrained oxidisation, industrial panel seams, realistic grime, low-saturation accents, warm recessed lighting, subtle floor detail. Keep original Glon-owned simulation and OpenGL renderer.
 
-| Asset | Purpose | Resolution | UV/tiling | Alpha | Placement |
-|---|---|---|---|---|---|
-| `wall_bulkhead_steel` | main corridor wall panels | 1024×1024 | world-scale U/V, seamless | opaque | side walls, bulkhead |
-| `wall_recess_panel` | recessed panel faces | 512×512 | aligned to panel segments | opaque | side-wall panels |
-| `rib_structural` | projecting structural ribs | 256×1024 | vertical, seamless | opaque | wall/ceiling/floor ribs |
-| `service_housing` | lower-wall utility housings | 1024×512 | horizontal run, seamless | opaque | lower walls |
-| `floor_plate` | deck plates | 1024×1024 | 1 plate per 256 units, seamless | opaque | floor |
-| `floor_grate` | grate bars/drainage | 512×512 | aligned bars, seamless both axes | cutout/alpha | floor strips |
-| `ceiling_panel` | dark ceiling infill | 512×512 | grid-aligned | opaque | ceiling between ribs |
-| `light_lens` | recessed fixture lens | 256×128 | no tiling | emissive | ceiling fixtures |
-| `pipe_metal` | longitudinal pipe runs | 256×256 | U along pipe, seamless | opaque | upper wall corners |
-| `conduit_red` | secondary conduit bands | 128×128 | U along run | opaque | ribs/pipe joints |
-| `bulkhead_door` | near/far bulkhead door | 1024×1024 | centred panel, hazard strip geometry | opaque | door panels |
-| `cargo_crate` | crate faces | 512×512 | per face, seamless edges | opaque | crate cover |
-| `cabinet_metal` | machinery cabinet | 512×1024 | front/side faces | opaque | cabinet |
-| `drum_painted` | drum side/end | 512×512 | cylindrical U/V | opaque | drums |
+## Supplied files
+| File | Size | Role | Acceptance status |
+|---|---|---|---|
+| `textures/wall_bulkhead_steel.png` | 1024×1024 | Main wall test | Prototype: edges not seamless |
+| `textures/wall_recess_panel.png` | 512×512 | Recessed wall test | Prototype: panel-aligned, check UV |
+| `textures/floor_plate.png` | 1024×1024 | Floor test | Prototype: edges not seamless |
 
-Required final artwork must preserve dark weathered metal, recessed panels,
-rib/shadow structure, warm auxiliary lights, floor grates and believable grime.
-No placeholder textures should be promoted as final assets.
+## Remaining materials from original G5N-ASSETS.md
+`rib_structural`, `service_housing`, `floor_grate`, `ceiling_panel`, `light_lens`, `pipe_metal`, `conduit_red`, `bulkhead_door`, `cargo_crate`, `cabinet_metal`, `drum_painted`.
+
+## Integration rules
+1. Preserve original asset identifiers and geometry. These images are **visual candidates only**; do not blindly tile them across a long corridor.
+2. First render a single wall section and one floor section using these files, with screenshot comparison against the approved corridor reference.
+3. Inspect seams, UV orientation, texture stretching, exposure, material scale and in-game readability. If seams are visible, stop and request proper tileable artwork; don't hide the problem by claiming these images seamless.
+4. Don't bake a second set of light sources into textures; preserve existing dynamic ceiling pulse.
+5. Keep the HUD, doors, controls, Alien behaviour, resize fix and frozen S1 intact.
+6. Do not declare a visual-quality pass without user approval of actual in-game screenshots.
+
+## Source
+`material-concepts.png` is an **art-direction board**, not a texture atlas. Text, labels, and the apparent 3D crate/drum images on that board are not UV-ready textures.
