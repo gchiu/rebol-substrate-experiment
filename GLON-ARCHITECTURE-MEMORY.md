@@ -340,6 +340,24 @@ was not reliably measured and needs a user playtest. Full report:
 `experiments/glon-doom/G6B1-SOUND-FIX-REPORT.md`; evidence under
 `experiments/glon-doom/evidence/g6b1/`.
 
+**[MEASURED] AvP G6c portal animation and WSLg audio transport (2026-11-15,
+64K configuration, WSLg D3D12 + PulseAudio).**
+The engineering-room turbine's inner face now uses a procedural additive
+energy surface at the existing rotor coordinates; all layers stay inside 0.52
+of the 54-unit face and the outer machinery is unchanged. A deterministic GL
+test reports 7,018 changed pixels in a central 960x600 mask; portal-only
+180-frame runs measured 171-216 FPS at 960x600 and 109-134 FPS at 1920x1080.
+
+Audio source onsets are immediate; the game request-to-callback path is under
+9 ms. The dominant remaining latency is the WSLg PulseAudio **RDPSink**:
+`pa_sinks` reports 1209.40 ms sink latency (configured 6.26 ms), and the stream
+probe reports 20.32 ms buffer + 628.42 ms sink = 648.74 ms. This is outside
+the game process and cannot be removed without changing the WSLg/Windows
+transport. No artificial offset was added. The door-close source was re-cut
+from 3.15-4.35 s to remove the 1.7 s quiet pre-slam section. Full report:
+`experiments/glon-doom/G6C-PORTAL-AUDIO-REPORT.md`; evidence under
+`experiments/glon-doom/evidence/g6c/`.
+
 ## 7. Vocabularies and experiments (status)
 
 | Item | Status | Where |

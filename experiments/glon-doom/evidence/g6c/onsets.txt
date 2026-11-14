@@ -1,0 +1,6 @@
+assets/audio/sfx/rifle_shot.wav: first_audible_ms=0.023 frames=28665
+assets/audio/sfx/door_open.wav: first_audible_ms=8.957 frames=97020
+assets/audio/sfx/door_close.wav: first_audible_ms=1.043 frames=52920
+assets/audio/sfx/wall_thud.wav: first_audible_ms=0.317 frames=52920
+assets/audio/sfx/cargo_impact.wav: first_audible_ms=14.059 frames=37044
+assets/audio/sfx/alien_shriek.wav: first_audible_ms=14.150 frames=93347

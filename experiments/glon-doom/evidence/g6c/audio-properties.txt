@@ -1,0 +1,50 @@
+G6c source/asset properties
+== assets/audio/ambient_loop.wav
+679a60117ab498983a70afecabc1e38c5081c0678ee4a58cb05dd7496e9aa811  assets/audio/ambient_loop.wav
+sample_rate=44100
+channels=1
+bits_per_sample=16
+duration=34.000068
+size=2998920
+== assets/audio/sfx/alien_shriek.wav
+e91e1360ad94121382926bcb1be09c8513527cc0b519fc0a4ff5ab828a5fb7c2  assets/audio/sfx/alien_shriek.wav
+sample_rate=44100
+channels=1
+bits_per_sample=16
+duration=2.116712
+size=186772
+== assets/audio/sfx/cargo_impact.wav
+2edafcdcab43834c4c5a341f8b8762c9b33c1932106689f43718912a8de2f274  assets/audio/sfx/cargo_impact.wav
+sample_rate=44100
+channels=1
+bits_per_sample=16
+duration=0.840000
+size=74166
+== assets/audio/sfx/door_close.wav
+0c237a177b1090eacd92b78f84cc8548d33f24e032f6066202b706d9e50ad255  assets/audio/sfx/door_close.wav
+sample_rate=44100
+channels=1
+bits_per_sample=16
+duration=1.200000
+size=105938
+== assets/audio/sfx/door_open.wav
+970db0d94206122a2fa7e53bd8d4f16988e17eb4e60aaa2646d5e156e8444b41  assets/audio/sfx/door_open.wav
+sample_rate=44100
+channels=1
+bits_per_sample=16
+duration=2.200000
+size=194138
+== assets/audio/sfx/rifle_shot.wav
+b40e41f7abe3bfbe016f5117bc64a6fc20482b0b77c67387c8ab279a8ba74d8f  assets/audio/sfx/rifle_shot.wav
+sample_rate=44100
+channels=1
+bits_per_sample=16
+duration=0.650000
+size=57408
+== assets/audio/sfx/wall_thud.wav
+a4ca3b8f0eca6503ff6c7b99f044ec7eca9fc6cfe0be091252ec488247e8321e  assets/audio/sfx/wall_thud.wav
+sample_rate=44100
+channels=1
+bits_per_sample=16
+duration=1.200000
+size=105956

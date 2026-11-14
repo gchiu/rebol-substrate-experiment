@@ -1,0 +1,13 @@
+G6c portal animation + audio latency diagnosis
+date: 2026-11-15
+base: glon-avp-g6b1 a9e0a05
+implementation: b0b7c86
+executable: 6203168 bytes
+sha256: 955c9cab90798b42ee1287ffbd61d8f5b8638b3a654778d6ed35ce16b7e7a64c
+portal: procedural gl_energy_surface inside eng_generator turbine face (x=325,z=64,y=250.5)
+portal-test: 7018 changed pixels, bbox 414,238..529,361 (960x600); inside mask
+portal bench: 171-216 FPS 960x600; 109-134 FPS 1920x1080 across runs
+audio: G6b.1 256-frame mixer retained; PULSE_LATENCY_MSEC=25 if unset
+PulseAudio sink: RDPSink (RDP Sink); reported sink latency 1209-1236ms; stream total 632-649ms at queries
+assets: disk 3723298 bytes; runtime decoded 3634438 bytes
+door close excerpt: 3.15-4.35s, 1.04ms audible onset (was 1.7s pre-slam quiet)

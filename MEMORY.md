@@ -1027,3 +1027,31 @@ costs about 0.002 ms per 256-frame block (5.80 ms budget). A graphical
 wall and cargo requests and callbacks. Playback was not subjectively verified.
 Full report: `experiments/glon-doom/G6B1-SOUND-FIX-REPORT.md`; evidence under
 `experiments/glon-doom/evidence/g6b1/`.
+
+## 10aa. AvP G6c portal animation and RDPSink latency diagnosis (2026-11-15)
+
+The engineering-room turbine's flat orange inner face is now a procedural
+liquid-energy surface drawn inside `gl_turbine_face`: a warm plasma bed,
+orange/blue-white ripples, rotating shimmer bands and sparse blue-white/orange
+electrical arcs. All geometry stays inside radius 0.52 of the 54-unit rotor
+face; the outer drum, spokes, hub, railings and room are unchanged. Animation
+uses `sim_tick` time. `--portal-test` verifies 7,018 changed pixels in a
+contained 960x600 mask; portal-only 180-frame runs measured 171–216 FPS at
+960x600 and 109–134 FPS at 1920x1080.
+
+Audio was re-diagnosed. Source onsets are immediate (rifle 0.023 ms, door open
+8.957 ms, door close 1.043 ms after re-cut, wall 0.317 ms, Alien/cargo 14.1
+ms), and the game request-to-callback path is under 9 ms. The remaining delay
+is the WSLg PulseAudio sink: `pa_sinks` reports **RDPSink** with 1209.40 ms
+reported latency (configured 6.26 ms), and the stream probe reports 20.32 ms
+buffer + 628.42 ms sink = 648.74 ms. This matches the user's observed ~1 s and
+cannot be removed from the application. No arbitrary offset was added. The
+door close clip was re-cut from source 3.15–4.35 s to remove 1.7 s of quiet
+pre-slam mechanism, leaving the final impact about 0.75 s into the clip.
+
+The G6c worktree is `/mnt/d/repos/glon-worktrees/glon-avp-g6c`, based on G6b.1
+`a9e0a05`. Full `make test`, `--audio-e2e`, `--portal-test`, graphical
+`--portal-smoke`, PulseAudio and no-device paths pass; frozen S1 unchanged at
+`f90496c26dc45c7a387d8fc8639cd2781507d3d2`. Playback was not subjectively
+judged. Full report: `experiments/glon-doom/G6C-PORTAL-AUDIO-REPORT.md`;
+evidence under `experiments/glon-doom/evidence/g6c/`.

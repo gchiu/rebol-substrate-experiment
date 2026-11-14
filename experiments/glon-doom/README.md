@@ -654,3 +654,44 @@ G6b.1 adds `--audio-e2e` (actual F/E/tick wall/tick cargo paths and nonzero
 PCM), `--sfx-smoke` (real SDL F/E/W events in a graphical loop with audio
 trace), and `--audio-latency-test` (request-to-callback timing). Full
 `make test` includes the E2E test.
+
+## G6c engineering-room portal and audio transport diagnosis
+
+The engineering-room turbine face now has a procedural animated energy surface
+inside the existing rotor ring. It uses no external art: a warm plasma bed,
+expanding/contracting orange and blue-white ripples, rotating shimmer bands and
+sparse electrical arcs over the inner face. The four layers stay within the
+inner ring (radius 0.52 of the turbine face); the outer drum, rotor spokes,
+hub, yellow railings and room are unchanged. Animation is driven from the
+simulation tick, not wall-clock randomness.
+
+```sh
+./build/doom --portal-test              # deterministic t=0 vs t=0.75s check
+./build/doom --gl-portal-shots /tmp/portal 1920 1080
+./build/doom --gl-portal-bench 180 1920 1080
+./build/doom --portal-smoke --smoke-frames 180
+```
+
+Measured portal-only frame rates are about 171–216 FPS at 960x600 and
+109–134 FPS at 1920x1080 on the WSLg D3D12 driver (180-frame runs). The
+portal test checks that animation changes pixels only inside the central
+portal mask.
+
+Audio diagnosis: source onsets are immediate (rifle 0.02 ms, door open 8.96
+ms, wall 0.32 ms, cargo/Alien 14.1 ms), and the app's request-to-callback path
+is under 9 ms. PulseAudio reports the WSLg output as **RDPSink**; at the final
+probe the stream had 20.32 ms buffer + 628.42 ms sink latency = 648.74 ms, while
+the sink reported 1209.40 ms latency (configured 6.26 ms). This is the dominant
+remaining delay and is outside the game process. The close clip was re-cut from
+3.15–4.35 s so the final impact arrives ~0.75 s into the clip rather than after
+1.7 s of quiet mechanism.
+
+Helper probes are in `tools/pa_latency.c` and `tools/pa_sinks.c`; build them
+with:
+
+```sh
+cc -O2 -o /tmp/pa_latency tools/pa_latency.c $(pkg-config --cflags --libs libpulse)
+cc -O2 -o /tmp/pa_sinks tools/pa_sinks.c $(pkg-config --cflags --libs libpulse)
+```
+
+See `G6C-PORTAL-AUDIO-REPORT.md` and `evidence/g6c/`.

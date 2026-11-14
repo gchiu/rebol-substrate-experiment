@@ -1,0 +1,5 @@
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+PASS portal animation changes pixels got=1
+PASS portal animation stays in central mask got=1
+portal-test: changed=7018 bbox=414,238..529,361 PASSED

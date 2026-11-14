@@ -1,0 +1,1 @@
+sink_input index=91 app=doom media=Audio Stream pid=38483 buffer=20.32ms sink=611.99ms total=632.31ms
