@@ -3,14 +3,14 @@
 from PIL import Image
 import pathlib, sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-NAMES = ["idle", "walk1", "walk2", "attack", "side"]
+NAMES = ["idle", "walk1", "walk2", "attack", "side", "death"]
 fail = 0
 for name in NAMES:
-    p = ROOT / "sprites" / "aliens" / f"{name}.png"
+    p = ROOT / "sprites" / "aliens_g5m" / f"{name}.png"
     im = Image.open(p)
-    ok = im.size == (64, 128) and im.mode == "RGBA"
+    ok = im.size == (128, 192) and im.mode == "RGBA"
     a = im.getchannel("A")
-    corners = [a.getpixel(xy) for xy in ((0,0),(63,0),(0,127),(63,127))]
+    corners = [a.getpixel(xy) for xy in ((0,0),(im.width-1,0),(0,im.height-1),(im.width-1,im.height-1))]
     hist = a.histogram()
     opaque = hist[255]
     transparent = hist[0]

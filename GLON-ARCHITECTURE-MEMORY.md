@@ -501,6 +501,30 @@ AMD Radeon integrated, Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
   596,696 bytes. Static geometry should move into a compact Glon scene block
   in G5m; sound remains a proposed event ABI.
 
+### G5m Playable OpenGL AvP and creature replacement [MEASURED]
+
+[MEASURED 2026-11-14, `experiments/glon-avp-g5m`, WSLg, AMD Ryzen 5 7535U,
+AMD Radeon, Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
+
+- **Playable GL loop:** normal `./build/doom` now runs the same fixed-timestep
+  Glon input/simulation loop through `interactive_gl`, with W/S/A/D, arrows, E
+  and Esc. CPU remains `--renderer cpu`; GL failures fall back with a diagnostic.
+  A real W key moved the authoritative Glon player from x=320 to x=744.
+- **GL performance** with objects/128x192 Alien: 320x200 45.7 FPS, 640x400
+  45.8 FPS median (sim 14.9–17.0 ms, submit+finish ~2.3 ms), 960x600 41.5 FPS;
+  CPU reference 27.5 FPS. Larger creature assets and host changes correlate with
+  a lower range than G5l's ~60 FPS; still responsive and faster than CPU.
+- **Orientation fix:** GL texture upload now reverses source rows; the previous
+  upside-down Alien was the GL texture-origin mismatch. New 128x192 creature
+  frames are upright, transparent and depth-tested.
+- **Artwork:** original procedural biomechanical creature, 6 states (idle,
+  walk1/2, attack, side, death), near-black/eyeless/ribbed/clawed. Death asset
+  not wired (no death state). No copyrighted art.
+- **Limits:** external keyboard automation reliably verified W but not E/arrows;
+  manual procedure is documented. Static wall geometry remains a renderer-side
+  ABI copy. Loader 14,082 used/718 free; heap 33,600; code 13,126/16,128;
+  executable 924,496 bytes; no frozen-memory or primitive change.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

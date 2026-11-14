@@ -294,3 +294,22 @@ billboards. Glon still owns camera, movement, collision, door/Alien state,
 object records and light phase. Static geometry is currently a renderer-side
 ABI copy; moving it to a Glon scene block is the next cleanup step. See
 `G5L-INVESTIGATION.md`.
+
+## G5m playable OpenGL and creature replacement
+
+Normal launch now uses OpenGL at 640x400 with the six G5k objects; CPU remains
+available with `--renderer cpu`. `--renderer gl`, `--gl-bench`, `--gl-demo` and
+`--gl-shots` are retained.
+
+The G5l upside-down sprite was fixed by reversing source rows during GL texture
+upload. The new creature is 128x192 original procedural biomechanical art with
+idle/two walk/attack/side/death frames in `sprites/aliens_g5m/`.
+
+W keyboard input was verified moving the authoritative Glon player from 320 to
+744 in the normal GL loop. External automation of E/arrows was unreliable;
+manual verification steps are in `G5M-INVESTIGATION.md`. Use
+`--gl-orient DIR 640 400` for the asymmetric TOP/BOTTOM upload diagnostic.
+
+Measured GL 640x400 with objects: ~45.8 FPS (sim 14.9-17.0 ms), 960x600:
+~41.5 FPS, versus G5k CPU 27.5 FPS. Ceiling lighting, object/Alien depth
+occlusion, door occlusion and CPU fallback remain.

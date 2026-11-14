@@ -16,7 +16,8 @@
 #include "r0_s1.h"
 #include "m1_layout.h"
 #include "textures.h"
-#include "alien_sprites.h"
+#include "alien_sprites_g5m.h"
+#include "orientation_test.h"
 #include "g5j_textures.h"
 #include "object_sprites.h"
 #ifdef DOOM_S1_PROFILE
@@ -1903,8 +1904,9 @@ static int bench(int frames, int bench_alien) {
 }
 
 static int interactive(void) {
+    printf("G5m renderer=CPU framebuffer=320x200 interactive=on\n");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return 2;
-    SDL_Window *win = SDL_CreateWindow("Glon AVP G5i | W/S/A/D move  arrows turn  E door  R textured/simple  Esc quit",
+    SDL_Window *win = SDL_CreateWindow("Glon AVP G5m CPU | W/S/A/D move  arrows turn  E door  R textured/simple  Esc quit",
                                        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                        960, 600, SDL_WINDOW_SHOWN);
     if (!win) fail(SDL_GetError());
@@ -2105,18 +2107,20 @@ static const GlWall gl_walls[10] = {
     {128,640,128,128,1}
 };
 enum { GT_PANEL, GT_SERVICE, GT_FLOOR, GT_CEIL, GT_DOOR,
-       GT_DRUM, GT_CRATE, GT_CABINET, GT_CONTAINER, GT_ALIEN0, GT_ALIEN_N=5, GT_COUNT=GT_ALIEN0+GT_ALIEN_N };
+       GT_DRUM, GT_CRATE, GT_CABINET, GT_CONTAINER, GT_ALIEN0, GT_ALIEN_N=5, GT_ORIENT, GT_COUNT=GT_ALIEN0+GT_ALIEN_N+1 };
 static GLuint gl_tex[GT_COUNT];
 static SDL_Window *gl_win;
 static SDL_GLContext gl_ctx;
 static int gl_w, gl_h;
 static int gl_door_closed = 0;
+static int renderer_gl = 1; /* G5m default: GL when available */
 
 static void gl_upload(GLuint id, const uint32_t *src, int w, int h) {
     uint8_t *rgba = malloc((size_t)w * h * 4);
     if (!rgba) fail("gl texture memory");
-    for (int i = 0; i < w*h; i++) {
-        uint32_t c = src[i];
+    for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+        uint32_t c = src[(h-1-y)*w + x];
+        int i = y*w + x;
         rgba[i*4+0] = (uint8_t)(c >> 16); rgba[i*4+1] = (uint8_t)(c >> 8);
         rgba[i*4+2] = (uint8_t)c; rgba[i*4+3] = (uint8_t)(c >> 24);
     }
@@ -2135,14 +2139,14 @@ static int gl_init(int w, int h, int shown) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-    gl_win = SDL_CreateWindow("Glon AVP G5l OpenGL",
+    gl_win = SDL_CreateWindow("Glon AVP G5m OpenGL",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w, h,
         SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | (shown ? 0 : SDL_WINDOW_HIDDEN));
     if (!gl_win) { fprintf(stderr, "gl: window: %s\n", SDL_GetError()); return -1; }
     gl_ctx = SDL_GL_CreateContext(gl_win);
     if (!gl_ctx) { fprintf(stderr, "gl: context: %s\n", SDL_GetError()); return -1; }
     SDL_GL_SetSwapInterval(0);
-    printf("gl renderer=%s vendor=%s version=%s\n",
+    printf("G5m renderer=OpenGL renderer=%s vendor=%s version=%s\n",
            glGetString(GL_RENDERER), glGetString(GL_VENDOR), glGetString(GL_VERSION));
     glGenTextures(GT_COUNT, gl_tex);
     gl_upload(gl_tex[GT_PANEL], tex_panel_v2, 64,64);
@@ -2154,11 +2158,12 @@ static int gl_init(int w, int h, int shown) {
     gl_upload(gl_tex[GT_CRATE], obj_crate,64,96);
     gl_upload(gl_tex[GT_CABINET], obj_cabinet,64,96);
     gl_upload(gl_tex[GT_CONTAINER], obj_container,64,96);
-    gl_upload(gl_tex[GT_ALIEN0+0], alien_idle,64,128);
-    gl_upload(gl_tex[GT_ALIEN0+1], alien_walk1,64,128);
-    gl_upload(gl_tex[GT_ALIEN0+2], alien_walk2,64,128);
-    gl_upload(gl_tex[GT_ALIEN0+3], alien_attack,64,128);
-    gl_upload(gl_tex[GT_ALIEN0+4], alien_side,64,128);
+    gl_upload(gl_tex[GT_ALIEN0+0], alien_idle,ALIEN_W,ALIEN_H);
+    gl_upload(gl_tex[GT_ALIEN0+1], alien_walk1,ALIEN_W,ALIEN_H);
+    gl_upload(gl_tex[GT_ALIEN0+2], alien_walk2,ALIEN_W,ALIEN_H);
+    gl_upload(gl_tex[GT_ALIEN0+3], alien_attack,ALIEN_W,ALIEN_H);
+    gl_upload(gl_tex[GT_ALIEN0+4], alien_side,ALIEN_W,ALIEN_H);
+    gl_upload(gl_tex[GT_ORIENT], orient_test,128,192);
     gl_w=w; gl_h=h; glViewport(0,0,w,h); glClearColor(0.04,0.05,0.06,1); glEnable(GL_DEPTH_TEST);
     return 0;
 }
@@ -2249,7 +2254,7 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
         const uint32_t *f = alien_frame_for(st);
         int idx = f==alien_walk1?1:f==alien_walk2?2:f==alien_attack?3:f==alien_side?4:0;
         glDepthMask(GL_TRUE);
-        gl_billboard(gl_tex[GT_ALIEN0+idx], st->ax, st->ay, 0.75, 1.5);
+        gl_billboard(gl_tex[GT_ALIEN0+idx], st->ax, st->ay, 1.0, 1.5);
     }
     glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
     glFinish();
@@ -2297,6 +2302,57 @@ static int gl_demo(int w,int h) {
     }
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
+
+static int interactive_gl(int w, int h) {
+    if (gl_init(w,h,1)!=0) { fprintf(stderr,"gl: falling back to CPU renderer\n"); return -1; }
+    printf("G5m renderer=OpenGL framebuffer=%dx%d interactive=on\n",w,h);
+    load_session(); build_blocks();
+    Status st; Obj objs[6]; Spans spans; Detail det; TexRows tr;
+    int px,py,pa; double acc=0.0,last=(double)now_ns(),fps_start=(double)now_ns(); int frames=0;
+    int running=1;
+    while(running) {
+        SDL_Event e;
+        while(SDL_PollEvent(&e)) {
+            if(e.type==SDL_QUIT || (e.type==SDL_KEYDOWN && e.key.keysym.sym==SDLK_ESCAPE)) running=0;
+            else if(e.type==SDL_KEYDOWN && e.key.keysym.sym==SDLK_e && !e.key.repeat) run_block(activate_block,"activate");
+            else if(e.type==SDL_KEYDOWN && e.key.keysym.sym==SDLK_r && !e.key.repeat) printf("GL renderer: R debug toggle not used\n");
+        }
+        const Uint8 *k=SDL_GetKeyboardState(NULL);
+        static int e_prev=0;
+        int e_now=k[SDL_SCANCODE_E]?1:0;
+        if(e_now && !e_prev) run_block(activate_block,"activate");
+        e_prev=e_now;
+        int mask=(k[SDL_SCANCODE_W]?1:0)|(k[SDL_SCANCODE_S]?2:0)|(k[SDL_SCANCODE_A]?4:0)|
+                 (k[SDL_SCANCODE_D]?8:0)|(k[SDL_SCANCODE_LEFT]?16:0)|(k[SDL_SCANCODE_RIGHT]?32:0);
+        double tn=(double)now_ns(); double dt=(tn-last)/1e9; last=tn; if(dt>0.10)dt=0.10; acc+=dt;
+        int ticks=0; while(acc>=1.0/TICK_HZ && ticks<10){ if(tick(mask)!=0){running=0;break;} acc-=1.0/TICK_HZ; ticks++; }
+        if(!running) break;
+        if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) break;
+        st_current_angle=pa;
+        int nobj=0;
+        if(objects_mode && current_objs_valid) { memcpy(objs,current_objs,sizeof objs); nobj=6; }
+        gl_scene(&st,objs,nobj); SDL_GL_SwapWindow(gl_win); frames++;
+        if(frames%120==0){ double secs=((double)now_ns()-fps_start)/1e9; printf("G5m GL frame=%d fps=%.1f player=%d,%d angle=%d door=%d/%d alien=%d,%d state=%d\n",frames,frames/secs,px,py,pa,st.door_open,st.door_blocked,st.ax,st.ay,st.state); fflush(stdout); fps_start=(double)now_ns(); }
+        SDL_Delay(1);
+    }
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
+static int gl_orient_shot(const char *dir,int w,int h) {
+    if (gl_init(w,h,0)!=0) return 2;
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT); glDisable(GL_DEPTH_TEST);
+    glMatrixMode(GL_PROJECTION); glLoadIdentity(); glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,gl_tex[GT_ORIENT]); glColor3f(1,1,1);
+    glBegin(GL_QUADS); glTexCoord2f(0,0); glVertex2f(-1,-1); glTexCoord2f(1,0); glVertex2f(1,-1);
+    glTexCoord2f(1,1); glVertex2f(1,1); glTexCoord2f(0,1); glVertex2f(-1,1); glEnd(); glFinish();
+    uint8_t *buf=malloc((size_t)w*h*4); glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,buf);
+    char path[4096]; snprintf(path,sizeof path,"%s/orientation.ppm",dir); FILE*f=fopen(path,"wb");
+    if(!f)return 2; fprintf(f,"P6\n%d %d\n255\n",w,h);
+    for(int y=h-1;y>=0;y--)for(int x=0;x<w;x++)fwrite(buf+(y*w+x)*4,1,3,f); fclose(f); free(buf);
+    printf("orientation shot %s\n",path);
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
 static int gl_shots(const char *dir,int w,int h) {
     if (gl_init(w,h,0)!=0) return 2; load_session(); build_blocks(); gl_fixed_pose();
     Status st; Obj objs[6]; int px,py,pa; get_state(&px,&py,&pa); st_current_angle=pa; get_status(&st); int nobj=0;
@@ -2320,7 +2376,10 @@ int main(int argc, char **argv) {
         if (strcmp(argv[i], "--new-textures") == 0) new_textures = 1;
         if (strcmp(argv[i], "--smooth-shading") == 0) smooth_shading = 1;
         if (strcmp(argv[i], "--flat-surfaces") == 0) flat_surfaces = 1;
-        if (strcmp(argv[i], "--renderer") == 0 && i+1<argc && strcmp(argv[i+1],"gl")==0) { /* routed below */ }
+        if (strcmp(argv[i], "--renderer") == 0 && i+1<argc) {
+            if (strcmp(argv[i+1],"cpu") == 0) renderer_gl = 0;
+            if (strcmp(argv[i+1],"gl") == 0) renderer_gl = 1;
+        }
         if (strcmp(argv[i], "--objects") == 0) objects_mode = 1;
         if (strcmp(argv[i], "--alien-cover") == 0) { objects_mode = 1; alien_cover = 1; }
         if (strcmp(argv[i], "--demo-partial") == 0) { objects_mode = 1; alien_cover = 1; cover_view = 1; }
@@ -2355,6 +2414,10 @@ int main(int argc, char **argv) {
         int w=argc>2?atoi(argv[2]):640, h=argc>3?atoi(argv[3]):400;
         for(int i=4;i<argc;i++) if(strcmp(argv[i],"objects")==0) objects_mode=1;
         return gl_demo(w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-orient") == 0) {
+        int w=argc>3?atoi(argv[3]):640, h=argc>4?atoi(argv[4]):400;
+        return gl_orient_shot(argv[2],w,h);
     }
     if (argc > 2 && strcmp(argv[1], "--gl-shots") == 0) {
         int w=argc>3?atoi(argv[3]):640, h=argc>4?atoi(argv[4]):400;
@@ -2403,5 +2466,11 @@ int main(int argc, char **argv) {
         return opcode_bench(atoi(argv[2]));
     }
 #endif
+    if (renderer_gl) {
+        objects_mode = 1;
+        int rc=interactive_gl(640,400);
+        if (rc==0) return 0;
+        fprintf(stderr,"gl unavailable; using CPU renderer\n");
+    }
     return interactive();
 }
