@@ -659,10 +659,11 @@ Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
   frontal silhouette. Close-up resolution fails: a 188–268 px source is displayed
   at roughly 600–740 px near attack range. The supplied art is not sufficient for
   a sharp close-up.
-- 960×600 measured 89.9 FPS (sim 5.57 ms, submit 0.63 ms) without object mode and
-  54.6 FPS (sim 13.13 ms, submit 0.75 ms) with objects; the same G5r baseline
-  measured 93.7/48.5 FPS. Loader 53,337 used/24,463 free; heap 33,440; executable
-  6,074,896 bytes. `make test` and frozen S1 pass.
+- 960×600 measured 95.3 FPS (sim 4.56 ms, submit 0.63 ms) without object mode and
+  54.9 FPS (sim 11.61 ms, submit 0.83 ms) with objects; the same G5r baseline
+  measured 93.7/48.5 FPS. Loader 53,337 (54,201 with objects); heap 33,440
+  (33,600 with objects); executable 6,074,896 bytes. `make test` and frozen S1
+  pass.
 
 ## 8. Why more memory is a separate scaling experiment
 
