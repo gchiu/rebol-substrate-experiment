@@ -612,7 +612,10 @@ and D strafe on both GL and CPU. GL with objects measured 66-67 FPS at 640x400,
 57.7 at 960x600, versus CPU 27.5. The E double-trigger and turn-mask bugs are
 fixed and covered by `--input-test`; the missing GL motion tracker is restored
 by a shared Glon-state blip mapping and depth-disabled HUD overlay, covered by
-`--tracker-test`. The manual procedure and remaining
+`--tracker-test`. GL windows now use actual drawable-size viewport/projection
+with a capped circular HUD; maximized/non-16:10 resize was verified. The current
+creature still fails the final art gate; `ALIEN-ART-SPEC.md` records the
+requirement and the need for separately produced artwork. The manual procedure and remaining
 static-geometry duplication are documented. Full report:
 `experiments/glon-doom/G5M-INVESTIGATION.md`.
 

@@ -516,6 +516,10 @@ AMD Radeon, Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
   66.0–67.4 FPS (sim 9.9–10.2 ms, submit+finish 2.4–2.7 ms), 960x600 57.7 FPS;
   CPU reference 27.5 FPS. Larger creature assets and host changes correlate with
   a lower range than G5l's ~60 FPS; still responsive and faster than CPU.
+- **Resize fix:** GL windows are resizable; viewport/projection/HUD use the
+  actual drawable size every frame, with vertical FOV preserved, full-window
+  aspect-fill, HUD circularity and a scale cap. Maximized and non-16:10 windows
+  were verified; `--resize-test` covers 640x400–1600x900.
 - **HUD fix:** GL initially omitted the CPU motion tracker. The shared
   `tracker_blip()` mapping now drives both CPU and GL from the same Glon
   `detected/tside/tdepth/state/door_blocked` state; a depth-disabled

@@ -156,6 +156,45 @@ mapping/clamping. It is part of `make test`. Screenshots:
 `/tmp/g5m-tracker-960.png`, actual WSLg: `/tmp/g5m-tracker.png`.
 GL 640×400 still measures ~64.5 FPS with the HUD.
 
+## 4b. Responsive window resizing and art gate
+
+**Resize root cause:** the GL window was created without `SDL_WINDOW_RESIZABLE`
+and the viewport/projection state was initialized from the fixed launch size.
+When WSLg enlarged/maximized the window, the drawable changed but `glViewport`
+and `gl_w/gl_h` did not. The scene therefore remained in the old 640×400 area,
+anchored bottom-left, with black outside it.
+
+**Correction:**
+
+- Window flags now include `SDL_WINDOW_RESIZABLE`.
+- Each interactive frame calls `gl_update_viewport()`:
+  `SDL_GL_GetDrawableSize()` → update `gl_w/gl_h` → `glViewport(0,0,gl_w,gl_h)`.
+- Projection uses the drawable aspect with the original vertical FOV
+  `2*atan(100/246)`, preserving camera scale and expanding horizontally on wide
+  windows. No letterboxing; the scene fills the drawable.
+- HUD uses `gl_hud_scale(h) = min(h/200, 2.0)`, so it is anchored bottom-left,
+  remains circular, and no longer grows without bound on large windows.
+- HUD remains a depth-disabled orthographic 2D overlay after the 3D scene.
+
+Verified sizes: 640×400, 960×600, 1280×800, 1600×900, 1200×900 (non-16:10),
+and an actual maximized WSLg window. `--resize-test` checks full-drawable
+viewport, origin, dimensions, HUD circularity and the scale cap across those
+sizes. Repeated resize math is invariant; actual maximize/non-16:10 screenshots
+are below.
+
+Screenshots: `/tmp/g5m-max2.png` (maximized, full scene, capped HUD),
+`/tmp/g5m-1200x900-new.png` (non-16:10), `/tmp/g5m-resize-320.png`,
+`/tmp/g5m-resize-640.png`, `/tmp/g5m-resize-960.png`,
+`/tmp/g5m-resize-art-contact.png`.
+
+**Creature art assessment:** the current 128×192 procedural set remains upright,
+transparent, animated and readable, but does **not** pass the requested final
+art gate; it still reads as stylised mechanical geometry rather than a coherent
+biomechanical predator. Per the corrective brief, no new low-quality procedural
+replacement is claimed. The requirements and rejection are recorded in
+`ALIEN-ART-SPEC.md`; the existing functional frames remain temporarily until a
+separately produced artwork pipeline can pass that gate. No AI/gameplay changes.
+
 ## 5. Performance
 
 Same GPU, 120 frames, objects/Alien active:
@@ -167,9 +206,9 @@ Same GPU, 120 frames, objects/Alien active:
 | G5m GL 640×400 | **66.0–67.4** | 9.9–10.2 ms | 2.4–2.7 ms | 14.8–15.2 ms |
 | G5m GL 960×600 | 57.7 | 12.4 ms | 2.34 ms | 17.33 ms |
 
-After the input/tick-mask correction, GL 640×400 measures **66–67 FPS** with
-the new 128×192 creature and all 64 tick masks. CPU-only render blocks are not
-built in GL mode, keeping loader use within bounds. `glFinish` is included;
+GL 640×400 measured **50.6–67.4 FPS** across runs after the input/HUD changes,
+with simulation ~10–14 ms. CPU-only render blocks are not built in GL mode,
+keeping loader use within bounds. `glFinish` is included;
 this is completed-frame time, not command submission alone.
 
 ## 6. Memory and size
@@ -177,7 +216,7 @@ this is completed-frame time, not command submission alone.
 - Loader: **14,185 used / 615 free**
 - Managed frontier: **33,600**; GC **0**
 - Code cursor: **13,126 / 16,128**
-- Executable: **1,027,120 bytes** (`text 994,503`)
+- Executable: **1,027,280 bytes** (`text 998,164`)
 - Creature PNGs: 6 frames; compiled arrays 128×192×4×6 ≈ 589,824 bytes
 - GPU textures uploaded once; static walls uploaded once.
 

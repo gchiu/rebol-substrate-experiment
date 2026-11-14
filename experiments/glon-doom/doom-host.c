@@ -2197,7 +2197,8 @@ static int gl_init(int w, int h, int shown) {
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     gl_win = SDL_CreateWindow("Glon AVP G5m OpenGL",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w, h,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | (shown ? 0 : SDL_WINDOW_HIDDEN));
+        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE |
+        (shown ? 0 : SDL_WINDOW_HIDDEN));
     if (!gl_win) { fprintf(stderr, "gl: window: %s\n", SDL_GetError()); return -1; }
     gl_ctx = SDL_GL_CreateContext(gl_win);
     if (!gl_ctx) { fprintf(stderr, "gl: context: %s\n", SDL_GetError()); return -1; }
@@ -2220,7 +2221,9 @@ static int gl_init(int w, int h, int shown) {
     gl_upload(gl_tex[GT_ALIEN0+3], alien_attack,ALIEN_W,ALIEN_H);
     gl_upload(gl_tex[GT_ALIEN0+4], alien_side,ALIEN_W,ALIEN_H);
     gl_upload(gl_tex[GT_ORIENT], orient_test,128,192);
-    gl_w=w; gl_h=h; glViewport(0,0,w,h); glClearColor(0.04,0.05,0.06,1); glEnable(GL_DEPTH_TEST);
+    gl_w=w; gl_h=h; SDL_GL_GetDrawableSize(gl_win,&gl_w,&gl_h);
+    if (gl_w<=0 || gl_h<=0) { gl_w=w; gl_h=h; }
+    glViewport(0,0,gl_w,gl_h); glClearColor(0.04,0.05,0.06,1); glEnable(GL_DEPTH_TEST);
     return 0;
 }
 
@@ -2233,6 +2236,19 @@ static void gl_view(double px,double py,double angle) {
     glRotatef((float)(90.0 - angle*360.0/256.0), 0, 1, 0);
     glTranslatef((float)-ex, (float)-ey, (float)-ez);
 }
+static void gl_update_viewport(void) {
+    int dw=0, dh=0;
+    SDL_GL_GetDrawableSize(gl_win, &dw, &dh);
+    if (dw > 0 && dh > 0 && (dw != gl_w || dh != gl_h)) {
+        gl_w = dw; gl_h = dh;
+        glViewport(0, 0, gl_w, gl_h);
+    }
+}
+static int gl_viewport_fill(int dw,int dh,int *x,int *y,int *w,int *h) {
+    if (dw <= 0 || dh <= 0) return -1;
+    *x=0; *y=0; *w=dw; *h=dh; return 0;
+}
+static float gl_hud_scale(int dh) { float s = dh > 0 ? dh / 200.0f : 1.0f; return s > 2.0f ? 2.0f : s; }
 static void gl_projection(void) {
     double aspect=(double)gl_w/(double)gl_h;
     double fovy=2.0*atan(100.0/246.0), near=0.05, far=40.0;
@@ -2277,7 +2293,7 @@ static void gl_billboard(GLuint tex, double x,double y,double wworld,double hwor
     (void)cx;(void)cy;(void)cz;
 }
 static void gl_draw_tracker(const Status *st) {
-    const float s = gl_h / 200.0f;
+    const float s = gl_hud_scale(gl_h);
     glDisable(GL_DEPTH_TEST); glDisable(GL_TEXTURE_2D); glDisable(GL_ALPHA_TEST);
     glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
     glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0,gl_w,gl_h,0,-1,1);
@@ -2396,7 +2412,7 @@ static int gl_demo(int w,int h) {
     int running=1;
     while(running){ SDL_Event e; while(SDL_PollEvent(&e)) if(e.type==SDL_QUIT||(e.type==SDL_KEYDOWN&&e.key.keysym.sym==SDLK_ESCAPE))running=0;
         tick(0); get_state(&px,&py,&pa); st_current_angle=pa; get_status(&st); int nobj=0; if(objects_mode) {get_objects(objs);nobj=6;}
-        gl_scene(&st,objs,nobj); SDL_GL_SwapWindow(gl_win); sim_tick++; SDL_Delay(16);
+        gl_update_viewport(); gl_scene(&st,objs,nobj); SDL_GL_SwapWindow(gl_win); sim_tick++; SDL_Delay(16);
     }
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
@@ -2428,6 +2444,7 @@ static int interactive_gl(int w, int h) {
                 else if((sc==SDL_SCANCODE_R||sym==SDLK_r) && down && !e.key.repeat) printf("GL renderer: R debug toggle not used\n");
             }
         }
+        gl_update_viewport();
         const Uint8 *k=SDL_GetKeyboardState(NULL);
         int mask=held_keys_mask(&held,k);
         double tn=(double)now_ns(); double dt=(tn-last)/1e9; last=tn; if(dt>0.10)dt=0.10; acc+=dt;
@@ -2491,6 +2508,25 @@ static int tracker_test(void) {
     return fails?1:0;
 }
 
+
+static int resize_test(void) {
+    int fails=0;
+    int sizes[][2]={{640,400},{960,600},{1280,800},{1600,900},{1200,900}};
+    for (size_t i=0;i<sizeof sizes/sizeof sizes[0];i++) {
+        int x,y,w,h; int rc=gl_viewport_fill(sizes[i][0],sizes[i][1],&x,&y,&w,&h);
+        fails += expect_eq("resize viewport fills drawable",rc,0);
+        fails += expect_eq("resize viewport origin",x==0&&y==0,1);
+        fails += expect_eq("resize viewport dimensions",w==sizes[i][0]&&h==sizes[i][1],1);
+        float s=gl_hud_scale(sizes[i][1]);
+        float rx=20.0f*s, ry=20.0f*s;
+        fails += expect_eq("HUD circular at resize",rx==ry,1);
+    }
+    fails += expect_eq("HUD cap at 1600 high", gl_hud_scale(1600)==2.0f, 1);
+    fails += expect_eq("HUD base at 200 high", gl_hud_scale(200)==1.0f, 1);
+    printf("resize-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
+}
+
 int main(int argc, char **argv) {
     const char *env = getenv("DOOM_ROOT");
     if (env && *env) root_dir = env;
@@ -2550,6 +2586,7 @@ int main(int argc, char **argv) {
     }
     if (argc > 1 && strcmp(argv[1], "--input-test") == 0) return input_test();
     if (argc > 1 && strcmp(argv[1], "--tracker-test") == 0) return tracker_test();
+    if (argc > 1 && strcmp(argv[1], "--resize-test") == 0) return resize_test();
     if (argc > 1 && strcmp(argv[1], "--self-test") == 0) return self_test();
     if (argc > 1 && strcmp(argv[1], "--projection-test") == 0) {
         int rc = projection_test();
