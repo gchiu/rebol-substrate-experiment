@@ -1,0 +1,1 @@
+wasapi mix=48000Hz channels=2 default_period=10.000ms min_period=3.000ms buffer_frames=1056 stream_latency=0.000ms

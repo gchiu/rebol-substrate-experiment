@@ -358,6 +358,23 @@ from 3.15-4.35 s to remove the 1.7 s quiet pre-slam section. Full report:
 `experiments/glon-doom/G6C-PORTAL-AUDIO-REPORT.md`; evidence under
 `experiments/glon-doom/evidence/g6c/`.
 
+**[MEASURED] AvP G6d native Windows x86-64 port (2026-11-15, Windows host via
+WSL interop).**
+The unchanged G6c host/game logic was cross-compiled with Zig 0.13.0 and SDL2
+2.30.9 for `x86_64-windows-gnu`. Platform differences are isolated in
+`platform_win.h` plus conditional host includes/root/capture code; timestamp
+variables were widened to 64 bits because MinGW `long` is 32-bit. The
+distribution uses native Windows OpenGL and **WASAPI**. The PE is 6,546,432
+bytes; the distribution is 22,075,065 bytes. Native Windows self-test, input,
+audio, SFX, E2E, portal-test, portal shots and graphical smoke passed. WASAPI
+reported a 10 ms default period, 3 ms minimum, 1056-frame buffer (~22 ms at
+48 kHz) and 0 ms stream latency; request-to-callback traces were 0.66-9.29 ms,
+versus the WSLg RDPSink 632-649 ms reported in G6c. Acoustic/physical-input
+playtest remains for the user. Linux full `make test` still passes and frozen
+S1 is unchanged. Full report:
+`experiments/glon-doom/G6D-WINDOWS-PORT-REPORT.md`; evidence under
+`experiments/glon-doom/evidence/g6d-win/`.
+
 ## 7. Vocabularies and experiments (status)
 
 | Item | Status | Where |

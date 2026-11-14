@@ -1,0 +1,11 @@
+G5p renderer=OpenGL renderer=AMD Radeon(TM) Graphics vendor=ATI Technologies Inc. version=4.6.0 Compatibility Profile Context 25.10.32.04.251216
+G5p renderer=OpenGL framebuffer=640x400 interactive=on
+audio: loaded Freesound 873687 spaceship interior 1455303 frames (33.000s), 44100-frame crossfade, gain 3.00
+audio: loaded sfx door open 97020 frames (2.200s), gain 1.00
+audio: loaded sfx door close 52920 frames (1.200s), gain 1.00
+audio: loaded sfx alien shriek 93347 frames (2.117s), gain 0.90
+audio: loaded sfx rifle shot 28665 frames (0.650s), gain 0.60
+audio: loaded sfx wall thud 52920 frames (1.200s), gain 0.90
+audio: loaded sfx cargo impact 37044 frames (0.840s), gain 1.00
+audio: ambient started driver=wasapi 44100 Hz 2ch samples=256 volume=60%
+G5p GL frame=120 fps=51.5 tick=6.77 state=8.94 scene=1.70 finish=0.00 swap=0.34 player=450,560 angle=176 door=64/0 alien=1120,320 state=0

@@ -1,0 +1,22 @@
+audio: loaded Freesound 873687 spaceship interior 1455303 frames (33.000s), 44100-frame crossfade, gain 3.00
+audio: loaded sfx door open 97020 frames (2.200s), gain 1.00
+audio: loaded sfx door close 52920 frames (1.200s), gain 1.00
+audio: loaded sfx alien shriek 93347 frames (2.117s), gain 0.90
+audio: loaded sfx rifle shot 28665 frames (0.650s), gain 0.60
+audio: loaded sfx wall thud 52920 frames (1.200s), gain 0.90
+audio: loaded sfx cargo impact 37044 frames (0.840s), gain 1.00
+audio: ambient started driver=dummy 44100 Hz 2ch samples=256 volume=60%
+PASS e2e F requests rifle     got=1
+PASS e2e rifle has PCM        got=1
+PASS e2e E target             got=64
+PASS e2e door open voice      got=1
+PASS e2e door open PCM        got=1
+PASS e2e door close voice     got=1
+PASS e2e door close PCM       got=1
+PASS e2e wall collision flag  got=1
+PASS e2e wall voice           got=1
+PASS e2e wall PCM             got=1
+PASS e2e cargo collision flag got=1
+PASS e2e cargo voice          got=1
+PASS e2e cargo PCM            got=1
+audio-e2e: PASSED

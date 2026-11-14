@@ -1,0 +1,14 @@
+G6d native Windows x86-64 portability experiment
+date: 2026-11-15
+baseline: glon-avp-g6c 82448b8
+implementation: c935fe6
+toolchain: Zig 0.13.0 (standalone, /home/graham/.cache/glon-g6d)
+SDL: SDL2 2.30.9 MinGW x86_64 development package (runtime SDL2.dll)
+Windows target: x86_64-windows-gnu, PE32+ console
+Windows exe: 6546432 bytes
+distribution: 22075065 bytes (exe + SDL2.dll + assets + docs)
+Linux exe: 6203168 bytes
+audio backend: SDL2 WASAPI on Windows; SDL2 PulseAudio on Linux
+WASAPI probe: mix=48000Hz, default period 10.000ms, min 3.000ms, buffer 1056 frames, stream latency 0.000ms
+Windows callback trace: 0.66-9.29ms request-to-callback; ambient driver=wasapi
+No Wine used; Windows PE executed through WSL Windows interop.

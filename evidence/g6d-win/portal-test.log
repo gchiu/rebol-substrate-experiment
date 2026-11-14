@@ -1,0 +1,4 @@
+G5p renderer=OpenGL renderer=AMD Radeon(TM) Graphics vendor=ATI Technologies Inc. version=4.6.0 Compatibility Profile Context 25.10.32.04.251216
+PASS portal animation changes pixels got=1
+PASS portal animation stays in central mask got=1
+portal-test: changed=7018 bbox=414,238..529,361 PASSED

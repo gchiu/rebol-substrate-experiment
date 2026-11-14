@@ -1,0 +1,8 @@
+PASS right keydown maps turn-right got=32
+PASS right keyup clears       got=0
+PASS keypad right fallback    got=32
+PASS left keydown maps turn-left got=16
+PASS W keydown maps forward   got=1
+PASS F keydown maps fire      got=1
+PASS F keyup clears fire      got=0
+input-test: PASSED

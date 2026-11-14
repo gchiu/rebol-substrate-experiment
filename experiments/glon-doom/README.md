@@ -695,3 +695,31 @@ cc -O2 -o /tmp/pa_sinks tools/pa_sinks.c $(pkg-config --cflags --libs libpulse)
 ```
 
 See `G6C-PORTAL-AUDIO-REPORT.md` and `evidence/g6c/`.
+
+## G6d native Windows x86-64 build
+
+The G6c game host now cross-builds to a Windows x86-64 PE using a standalone
+Zig 0.13 toolchain and the SDL2 2.30.9 MinGW package. The only platform source
+is `platform_win.h` (Windows clock, setenv and header cleanup); `doom-host.c`
+also conditionally handles POSIX includes, root paths, stdout capture and
+64-bit timestamps. No Glon semantics, game programs, assets, portal, rifle or
+audio events were changed.
+
+```sh
+./build-windows.sh
+```
+
+The distribution is under `dist/windows/` with `doom.exe`, `SDL2.dll`, the
+runtime `.glon`/asset subset, attribution/licence files and `run-g6d.bat`.
+From Windows:
+
+```bat
+D:
+cd D:\repos\glon-worktrees\glon-avp-g6d-win\dist\windows
+run-g6d.bat
+```
+
+Windows uses SDL2's native WASAPI backend; Linux/PulseAudio is unchanged.
+`tools/wasapi_latency.c` reports the WASAPI device period/buffer and
+`--audio-latency-test` records request-to-callback timing. See
+`G6D-WINDOWS-PORT-REPORT.md` and `evidence/g6d-win/`.

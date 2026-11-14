@@ -1055,3 +1055,31 @@ The G6c worktree is `/mnt/d/repos/glon-worktrees/glon-avp-g6c`, based on G6b.1
 `f90496c26dc45c7a387d8fc8639cd2781507d3d2`. Playback was not subjectively
 judged. Full report: `experiments/glon-doom/G6C-PORTAL-AUDIO-REPORT.md`;
 evidence under `experiments/glon-doom/evidence/g6c/`.
+
+## 10ab. AvP G6d native Windows x86-64 port (2026-11-15)
+
+The G6c game host was cross-compiled to Windows x86-64 with a standalone Zig
+0.13.0 toolchain and SDL2 2.30.9 MinGW libraries; no system-wide SDK install
+was used. The game source, Glon runtime/programs, assets, portal, rifle
+presentation and audio-event behaviour are unchanged. The only new platform
+source is `platform_win.h`: Windows `clock_gettime`, `_putenv_s`/`setenv`,
+header macro cleanup, conditional POSIX includes, Windows root path, a
+`tmpfile`/`_dup` capture backend and 64-bit timestamp variables (MinGW `long`
+is 32-bit). A portable distribution is under `dist/windows/` with
+`doom.exe`, `SDL2.dll`, runtime assets, licences, attribution and
+`run-g6d.bat`.
+
+Toolchain: Zig 0.13.0 under `/home/graham/.cache/glon-g6d`, SDL2 2.30.9
+MinGW package under `.deps/` (ignored). The Windows PE is 6,546,432 bytes;
+the distribution is 22,075,065 bytes. The Linux build remains 6,203,168
+bytes and full `make test` passes, frozen S1 unchanged.
+
+The PE was executed as a native Windows process through WSL Windows interop
+(not Wine). Windows OpenGL/AMD and **WASAPI** initialized; native self-test,
+input, audio, SFX, E2E, portal test, portal shots and graphical portal smoke
+passed. WASAPI reported a 10 ms default period, 3 ms minimum, 1056-frame
+buffer (~22 ms at 48 kHz) and 0 ms stream latency; request-to-callback traces
+were 0.66-9.29 ms. This removes the WSLg RDPSink path for the experiment;
+physical Windows input/acoustic playtest is still unverified. Full report:
+`experiments/glon-doom/G6D-WINDOWS-PORT-REPORT.md`; evidence under
+`experiments/glon-doom/evidence/g6d-win/`.
