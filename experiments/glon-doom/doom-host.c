@@ -2300,7 +2300,7 @@ static const GlWall gl_walls[10] = {
     {1152,384,768,384,2},{768,384,768,640,1},{768,640,128,640,1},
     {128,640,128,128,1}
 };
-enum { GT_PANEL, GT_SERVICE, GT_FLOOR, GT_CEIL, GT_DOOR,
+enum { GT_PANEL, GT_SERVICE, GT_FLOOR, GT_CEIL, GT_DOOR_LEFT, GT_DOOR_RIGHT,
        GT_DRUM, GT_CRATE, GT_CABINET, GT_CONTAINER, GT_ALIEN0,
        GT_ORIENT = GT_ALIEN0 + ALIEN_DIR_COUNT, GT_ART_WALL, GT_ART_PANEL, GT_ART_FLOOR,
        GT_WEAPON, GT_COUNT = GT_WEAPON + 1 };
@@ -2329,6 +2329,30 @@ static void gl_upload(GLuint id, const uint32_t *src, int w, int h) {
     free(rgba);
 }
 
+static int gl_upload_rgb_file(GLuint id,const char *name,int w,int h) {
+    char path[4096];
+    snprintf(path,sizeof path,"%s/experiments/glon-doom/assets/doors/%s",root_dir,name);
+    FILE *f=fopen(path,"rb");
+    if(!f){ fprintf(stderr,"gl: missing door asset: %s\n",path); return -1; }
+    size_t need=(size_t)w*h*3;
+    uint8_t *rgb=malloc(need), *rgba=malloc((size_t)w*h*4);
+    if(!rgb || !rgba){ free(rgb); free(rgba); fclose(f); fail("gl texture memory"); }
+    if(fread(rgb,1,need,f)!=need){ fclose(f); free(rgb); free(rgba);
+        fprintf(stderr,"gl: short door asset: %s\n",path); return -1; }
+    fclose(f);
+    for(int y=0;y<h;y++) for(int x=0;x<w;x++){
+        uint8_t *s0=rgb+((size_t)(h-1-y)*w+x)*3, *d=rgba+((size_t)y*w+x)*4;
+        d[0]=s0[0]; d[1]=s0[1]; d[2]=s0[2]; d[3]=255;
+    }
+    glBindTexture(GL_TEXTURE_2D,id);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_REPEAT);
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,w,h,0,GL_RGBA,GL_UNSIGNED_BYTE,rgba);
+    free(rgb); free(rgba); return 0;
+}
+
 static int gl_init(int w, int h, int shown) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return -1;
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
@@ -2350,7 +2374,8 @@ static int gl_init(int w, int h, int shown) {
     gl_upload(gl_tex[GT_SERVICE], tex_service_v2,64,64);
     gl_upload(gl_tex[GT_FLOOR], tex_floor,64,64);
     gl_upload(gl_tex[GT_CEIL], tex_ceiling_light,64,64);
-    gl_upload(gl_tex[GT_DOOR], tex_door,64,64);
+    if(gl_upload_rgb_file(gl_tex[GT_DOOR_LEFT],"blast-door-left.rgb",450,785)!=0) return -1;
+    if(gl_upload_rgb_file(gl_tex[GT_DOOR_RIGHT],"blast-door-right.rgb",410,785)!=0) return -1;
     gl_upload(gl_tex[GT_DRUM], obj_drum,64,96);
     gl_upload(gl_tex[GT_CRATE], obj_crate,64,96);
     gl_upload(gl_tex[GT_CABINET], obj_cabinet,64,96);
@@ -2399,7 +2424,7 @@ static void gl_projection(void) {
     glFrustum(-right,right,-top,top,near,far);
 }
 static void gl_wall(const GlWall *w, int door) {
-    int mat=w->mat; GLuint t = door?GT_DOOR:(mat==1||mat==3?GT_SERVICE:GT_PANEL);
+    int mat=w->mat; GLuint t = door?GT_DOOR_LEFT:(mat==1||mat==3?GT_SERVICE:GT_PANEL);
     double dx=w->x2-w->x1, dy=w->y2-w->y1, len=sqrt(dx*dx+dy*dy);
     glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, gl_tex[t]);
     glColor3f(1,1,1);
@@ -3185,17 +3210,96 @@ static void gl_corridor_static(void) {
         /* prototype bulkhead material on far door face */
         gl_tex_quad(gl_tex[GT_ART_WALL],1273.4f,256,1273.4f,384,0,128,1,0,0,1);
     }
-    /* substantial bulkhead frame and door */
-    gl_box(762,244,0,770,256,136,0.10f,0.10f,0.09f);
-    gl_box(762,384,0,770,396,136,0.10f,0.10f,0.09f);
-    gl_box(762,244,128,770,396,136,0.08f,0.08f,0.08f);
-    gl_box(762,244,0,770,396,6,0.08f,0.08f,0.08f);
     /* visual destination bulkhead at the far end (existing wall remains gameplay boundary) */
     gl_box(1272,244,0,1280,256,136,0.10f,0.10f,0.09f);
     gl_box(1272,384,0,1280,396,136,0.10f,0.10f,0.09f);
     gl_box(1272,244,128,1280,396,136,0.08f,0.08f,0.08f);
     gl_box(1274,256,0,1278,384,128,0.28f,0.25f,0.16f);
     for(int z=14;z<60;z+=12) gl_box(1274,264,z,1278,376,z+5,0.55f,0.40f,0.08f);
+}
+
+/* ===== G5x high-resolution sliding blast door ===== */
+#define DOOR_X0 768.0f
+#define DOOR_X1 776.0f
+#define DOOR_Z0 8.0f
+#define DOOR_Z1 120.0f
+
+static void gl_door_leaf(GLuint tex,float y1,float y2,float seam,float tint,int flip_u)
+{
+    /* Body is 8 world units thick; the supplied leaf art covers both faces.
+     * West (room) faces need U reversed because screen-right is decreasing Y. */
+    float uw0 = flip_u ? 1.0f : 0.0f, uw1 = flip_u ? 0.0f : 1.0f;
+    float ue0 = flip_u ? 0.0f : 1.0f, ue1 = flip_u ? 1.0f : 0.0f;
+    gl_box(DOOR_X0,y1,DOOR_Z0,DOOR_X1,y2,DOOR_Z1,0.22f,0.17f,0.08f);
+    if(last_px < DOOR_X0)
+        gl_tex_quad_tint(tex,DOOR_X0-0.1f,y1,DOOR_X0-0.1f,y2,DOOR_Z0,DOOR_Z1,
+                         uw0,0,uw1,1,tint);
+    else if(last_px > DOOR_X1)
+        gl_tex_quad_tint(tex,DOOR_X1+0.1f,y1,DOOR_X1+0.1f,y2,DOOR_Z0,DOOR_Z1,
+                         ue0,0,ue1,1,tint*0.86f);
+    /* Painted edge returns, inner interlock and outer hinge edges. */
+    float out = (seam > (y1+y2)*0.5f) ? y1 : y2;
+    gl_box(DOOR_X0-0.4f,y1,DOOR_Z0,DOOR_X1+0.4f,y1+1.0f,DOOR_Z1,0.16f,0.13f,0.075f);
+    gl_box(DOOR_X0-0.4f,y2-1.0f,DOOR_Z0,DOOR_X1+0.4f,y2,DOOR_Z1,0.16f,0.13f,0.075f);
+    if (seam > (y1+y2)*0.5f)
+        gl_box(DOOR_X0-0.5f,y2-1.2f,DOOR_Z0,DOOR_X1+0.5f,y2,DOOR_Z1,0.075f,0.070f,0.060f);
+    else
+        gl_box(DOOR_X0-0.5f,y1,DOOR_Z0,DOOR_X1+0.5f,y1+1.2f,DOOR_Z1,0.075f,0.070f,0.060f);
+    gl_box(DOOR_X0-0.7f,out-2.0f,10,DOOR_X1+0.7f,out+2.0f,DOOR_Z1-2,0.13f,0.11f,0.075f);
+    gl_box(DOOR_X0-0.8f,out-4.0f,14,DOOR_X1+0.8f,out+4.0f,28,0.075f,0.070f,0.058f);
+    gl_box(DOOR_X0-0.8f,out-4.0f,100,DOOR_X1+0.8f,out+4.0f,114,0.075f,0.070f,0.058f);
+    gl_box(DOOR_X0-1.4f,out-3.0f,20,DOOR_X0-0.6f,out+3.0f,25,0.30f,0.25f,0.16f);
+    gl_box(DOOR_X0-1.4f,out-3.0f,103,DOOR_X0-0.6f,out+3.0f,108,0.30f,0.25f,0.16f);
+}
+
+static void gl_blast_door(float light,int door_open)
+{
+    int raw = door_open < 0 ? 0 : (door_open > 64 ? 64 : door_open);
+    float travel = (float)raw; /* two 64-wide leaves; 64 units parks each in its pocket */
+    float ny1 = 256.0f - travel, ny2 = 320.0f - travel;
+    float sy1 = 320.0f + travel, sy2 = 384.0f + travel;
+    float tint = 0.74f + 0.08f*light;
+
+    /* Deep casing: jambs, header, threshold and side receiving pockets. */
+    gl_box(760,244,0,784,256,136,0.10f,0.10f,0.09f);
+    gl_box(760,384,0,784,396,136,0.10f,0.10f,0.09f);
+    gl_box(760,244,120,784,396,136,0.08f,0.08f,0.08f);
+    gl_box(760,244,0,784,396,8,0.075f,0.070f,0.060f);
+    gl_tex_quad_tint(gl_tex[GT_ART_WALL],759.9f,244,759.9f,256,0,136,
+                     0.02f,0.02f,0.16f,0.98f,0.62f);
+    gl_tex_quad_tint(gl_tex[GT_ART_WALL],759.9f,384,759.9f,396,0,136,
+                     0.84f,0.02f,0.98f,0.98f,0.62f);
+    gl_tex_quad_tint(gl_tex[GT_ART_WALL],759.9f,244,759.9f,396,136,120,
+                     0.02f,0.02f,0.98f,0.20f,0.55f);
+    for(int side=0;side<2;side++){
+        float y0=side?384.0f:192.0f, y1=side?448.0f:256.0f;
+        float yc=side?448.0f:192.0f;
+        /* Receiving pocket: rails plus a front cover the leaf slides behind. */
+        gl_box(760,y0,120,784,y1,136,0.075f,0.075f,0.070f);
+        gl_box(760,y0,0,784,y1,8,0.075f,0.075f,0.070f);
+        gl_box(760,side?y1:y0-6,0,784,side?y1+6:y0,136,0.085f,0.080f,0.070f);
+        if(last_px < DOOR_X0)
+            gl_tex_quad_tint(gl_tex[GT_ART_WALL],759.8f,y0,759.8f,y1,8,120,
+                             0.02f,0.30f,0.20f,0.90f,0.44f);
+        gl_box(760,yc-3,124,784,yc+3,132,0.45f,0.10f,0.035f);
+    }
+    /* Header warning lamps and frame fasteners. */
+    for(int i=0;i<2;i++){
+        float y=272.0f+i*80.0f;
+        gl_box(758.8f,y-7,126,760.0f,y+7,134,0.065f,0.060f,0.050f);
+        gl_glow_wall_x(758.7f,y-6,y+6,128,132,1.0f,0.30f,0.04f,0.58f);
+    }
+    /* Leaves move apart with Glon's authoritative door_open, 0..64.
+     * The concept sheet's right/left leaves face the door from the room side. */
+    gl_door_leaf(gl_tex[GT_DOOR_RIGHT],ny1,ny2,ny2,tint,1);
+    gl_door_leaf(gl_tex[GT_DOOR_LEFT],sy1,sy2,sy1,tint,1);
+    /* South leaf lock housing and status indicator. */
+    gl_box(765.0f,sy1+2,34,DOOR_X0-0.2f,sy1+8,52,0.26f,0.24f,0.20f);
+    gl_box(764.8f,sy1+2.5f,35,DOOR_X0-0.1f,sy1+7.5f,50,0.11f,0.11f,0.10f);
+    gl_box(764.6f,sy1+3,37,DOOR_X0-0.1f,sy1+5,45,0.58f,0.50f,0.34f);
+    gl_glow_wall_x(764.5f,sy1+4.0f,sy1+5.0f,39,42,0.20f,0.90f,0.25f,0.72f);
+    gl_glow_wall_x(764.5f,sy1+4.0f,sy1+5.0f,45,48,0.95f,0.12f,0.04f,0.72f);
+    (void)light;
 }
 
 /* ===== G5t engineering room reusable components ===== */
@@ -3545,25 +3649,19 @@ static void gl_engineering_room(float light)
     gl_glow_wall_x(760.0f,130,638,0,128,0.14f,0.20f,0.28f,0.040f);
 }
 
-static void gl_corridor(float light, int door_blocked) {
+static void gl_corridor(float light, int door_open) {
     gl_corridor_static();
     /* Dynamic lamp lenses (Glon light pulse). */
     for (int x=820;x<1240;x+=160)
         gl_light_panel(x+13,296,x+67,344,125.7f,light);
-    /* Dynamic near door panel, textured on both room and corridor faces. */
-    if (door_blocked) {
-        gl_box(768,256,0,770,384,128,0.25f,0.23f,0.14f);
-        gl_tex_quad_tint(gl_tex[GT_DOOR],767.9f,256,767.9f,384,0,128,0,0,1,1,0.50f);
-        gl_tex_quad_tint(gl_tex[GT_DOOR],770.1f,256,770.1f,384,0,128,0,0,1,1,0.50f);
-        for (int z=12;z<50;z+=10) gl_box(768,264,z,770,376,z+4,0.62f,0.45f,0.10f);
-    }
+    gl_blast_door(light,door_open);
 }
 static void gl_scene(const Status *st, const Obj *objs, int nobj) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     gl_projection(); gl_view(last_px, last_py, st_current_angle);
     glDisable(GL_TEXTURE_2D); glDisable(GL_BLEND); glDepthMask(GL_TRUE); glEnable(GL_DEPTH_TEST);
     float l=0.72f + 0.16f*(float)sin((double)st->light*0.09);
-    gl_corridor(l, st->door_blocked);
+    gl_corridor(l, st->door_open);
     gl_engineering_room(l);
     /* depth-tested, alpha-tested billboards */
     glEnable(GL_TEXTURE_2D); glEnable(GL_ALPHA_TEST); glAlphaFunc(GL_GREATER,0.25f);
@@ -3839,6 +3937,31 @@ static int gl_tour(const char *dir,int w,int h) {
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
 
+static int gl_door_shots(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
+    struct DP { const char *name; int px,py,angle,open,blocked; float pitch; } poses[] = {
+        {"01-door-closed",620,320,0,0,1,0},
+        {"02-door-partial-24",620,320,0,24,1,0},
+        {"03-door-opening-40",620,320,0,40,0,0},
+        {"04-door-open-64",620,320,0,64,0,0},
+        {"05-door-oblique-closed",700,252,24,0,1,0},
+        {"06-door-oblique-partial",700,252,24,28,1,0}
+    };
+    for(size_t i=0;i<sizeof poses/sizeof poses[0];i++){
+        gl_debug_pitch=poses[i].pitch;
+        if(gl_apply_pose(poses[i].px,poses[i].py,poses[i].angle,
+                         poses[i].open,poses[i].blocked,1120,320,0)!=0) return 2;
+        int px,py,pa; Status st; Obj objs[6];
+        if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+        st_current_angle=pa; int nobj=0;
+        gl_scene(&st,objs,nobj);
+        char path[4096]; snprintf(path,sizeof path,"%s/%s.ppm",dir,poses[i].name);
+        gl_save_ppm(path,w,h);
+        printf("door %s %dx%d open=%d blocked=%d\n",poses[i].name,w,h,st.door_open,st.door_blocked);
+    }
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
 static int gl_capture(const char *dir,const char *name,int w,int h,
                       const Status *st,const Obj *objs,int nobj) {
     gl_scene(st,objs,nobj);
@@ -4032,6 +4155,10 @@ int main(int argc, char **argv) {
     if (argc > 2 && strcmp(argv[1], "--gl-orient") == 0) {
         int w=argc>3?atoi(argv[3]):640, h=argc>4?atoi(argv[4]):400;
         return gl_orient_shot(argv[2],w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-door-shots") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return gl_door_shots(argv[2],w,h);
     }
     if (argc > 2 && strcmp(argv[1], "--gl-tour") == 0) {
         int w=argc>3?atoi(argv[3]):640, h=argc>4?atoi(argv[4]):400;
