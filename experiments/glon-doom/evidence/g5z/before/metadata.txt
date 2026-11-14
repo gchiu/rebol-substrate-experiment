@@ -1,0 +1,13 @@
+G5z matched baseline = G5y 94699eb visual source + capture/benchmark-only diagnostics
+date: 2026-11-15
+source HEAD: 94699ebf25bf3bf9b411be564afa89eaf3f8227e
+diagnostic baseline executable: 6150992 bytes
+diagnostic baseline sha256: 210822736261b3d8f256e012d01f20a78b2e25d6098b4eb99d56b78925766f63
+clean G5y executable: 6146536 bytes
+clean G5y sha256: 96193903a00b857936bcb89312028268bd4ac35f2277a2691ec105616342a344
+renderer: renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+texture memory: 9894784 bytes (G5y)
+loader/heap: 54601 / 33600 cells (corridor poses)
+poses: 7, matching after captures; 960x600 and 1920x1080
+note: before images were re-captured from the G5y visual source with only the
+      G5z pose/benchmark diagnostics added, so before/after views match.

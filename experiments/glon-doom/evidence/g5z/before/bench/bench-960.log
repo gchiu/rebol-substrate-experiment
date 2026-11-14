@@ -1,0 +1,30 @@
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=0 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 total=9.87ms fps=101.4 loader=54601 heap=33600
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=1 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 total=8.06ms fps=124.1 loader=54601 heap=33600
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=0 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 total=8.55ms fps=117.0 loader=54601 heap=33600
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=1 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 total=8.05ms fps=124.2 loader=54601 heap=33600
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=0 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 total=9.17ms fps=109.0 loader=54601 heap=33600
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=1 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 total=8.38ms fps=119.3 loader=54601 heap=33600
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=0 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 total=8.47ms fps=118.1 loader=54601 heap=33600
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=1 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 total=8.93ms fps=112.0 loader=54601 heap=33600
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=0 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 total=8.91ms fps=112.3 loader=54601 heap=33600
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=1 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 total=8.97ms fps=111.5 loader=54601 heap=33600

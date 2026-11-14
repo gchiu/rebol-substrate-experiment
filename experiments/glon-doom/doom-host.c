@@ -2304,13 +2304,188 @@ enum { GT_PANEL, GT_SERVICE, GT_FLOOR, GT_CEIL, GT_CEIL_PANEL,
        GT_DOOR_LEFT, GT_DOOR_RIGHT,
        GT_DRUM, GT_CRATE, GT_CABINET, GT_CONTAINER, GT_ALIEN0,
        GT_ORIENT = GT_ALIEN0 + ALIEN_DIR_COUNT, GT_ART_WALL, GT_ART_PANEL, GT_ART_FLOOR,
-       GT_WEAPON, GT_COUNT = GT_WEAPON + 1 };
+       GT_WEAPON, GT_G5Z_ATLAS, GT_COUNT = GT_G5Z_ATLAS + 1 };
 static GLuint gl_tex[GT_COUNT];
 static SDL_Window *gl_win;
 static SDL_GLContext gl_ctx;
 static int gl_w, gl_h;
 static int gl_door_closed = 0;
 static int renderer_gl = 1; /* G5m default: GL when available */
+
+#define G5Z_ATLAS_W 512
+#define G5Z_ATLAS_H 256
+static const uint8_t g5z_font[40][7] = {
+    {0x0E,0x11,0x11,0x1F,0x11,0x11,0x11}, {0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E},
+    {0x0F,0x10,0x10,0x10,0x10,0x10,0x0F}, {0x1E,0x11,0x11,0x11,0x11,0x11,0x1E},
+    {0x1F,0x10,0x10,0x1E,0x10,0x10,0x1F}, {0x1F,0x10,0x10,0x1E,0x10,0x10,0x10},
+    {0x0F,0x10,0x10,0x17,0x11,0x11,0x0F}, {0x11,0x11,0x11,0x1F,0x11,0x11,0x11},
+    {0x1F,0x04,0x04,0x04,0x04,0x04,0x1F}, {0x07,0x02,0x02,0x02,0x12,0x12,0x0C},
+    {0x11,0x12,0x14,0x18,0x14,0x12,0x11}, {0x10,0x10,0x10,0x10,0x10,0x10,0x1F},
+    {0x11,0x1B,0x15,0x15,0x11,0x11,0x11}, {0x11,0x19,0x15,0x13,0x11,0x11,0x11},
+    {0x0E,0x11,0x11,0x11,0x11,0x11,0x0E}, {0x1E,0x11,0x11,0x1E,0x10,0x10,0x10},
+    {0x0E,0x11,0x11,0x11,0x15,0x12,0x0D}, {0x1E,0x11,0x11,0x1E,0x14,0x12,0x11},
+    {0x0F,0x10,0x10,0x0E,0x01,0x01,0x1E}, {0x1F,0x04,0x04,0x04,0x04,0x04,0x04},
+    {0x11,0x11,0x11,0x11,0x11,0x11,0x0E}, {0x11,0x11,0x11,0x11,0x11,0x0A,0x04},
+    {0x11,0x11,0x11,0x15,0x15,0x15,0x0A}, {0x11,0x11,0x0A,0x04,0x0A,0x11,0x11},
+    {0x11,0x11,0x0A,0x04,0x04,0x04,0x04}, {0x1F,0x01,0x02,0x04,0x08,0x10,0x1F},
+    {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E}, {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E},
+    {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F}, {0x1E,0x01,0x01,0x0E,0x01,0x01,0x1E},
+    {0x02,0x06,0x0A,0x12,0x1F,0x02,0x02}, {0x1F,0x10,0x10,0x1E,0x01,0x01,0x1E},
+    {0x0E,0x10,0x10,0x1E,0x11,0x11,0x0E}, {0x1F,0x01,0x02,0x04,0x08,0x08,0x08},
+    {0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E}, {0x0E,0x11,0x11,0x0F,0x01,0x01,0x0E},
+    {0x00,0x00,0x00,0x1F,0x00,0x00,0x00}, {0x00,0x00,0x00,0x00,0x00,0x06,0x06},
+    {0x01,0x02,0x02,0x04,0x08,0x08,0x10}, {0x00,0x06,0x06,0x00,0x06,0x06,0x00}
+};
+typedef struct { float u0,v0,u1,v1; } G5zUV;
+static G5zUV g5z_uv_rect(int x0,int y0,int x1,int y1) {
+    G5zUV r;
+    r.u0=(float)x0/G5Z_ATLAS_W; r.u1=(float)x1/G5Z_ATLAS_W;
+    r.v0=1.0f-(float)y1/G5Z_ATLAS_H; r.v1=1.0f-(float)y0/G5Z_ATLAS_H;
+    return r;
+}
+static int g5z_glyph(char c) {
+    if(c>='A'&&c<='Z') return c-'A';
+    if(c>='0'&&c<='9') return 26+c-'0';
+    if(c=='-') return 36; if(c=='.') return 37; if(c=='/') return 38; if(c==':') return 39;
+    return -1;
+}
+static unsigned g5z_hash(int x,int y) {
+    unsigned h=(unsigned)(x*374761393u+y*668265263u);
+    h=(h^(h>>13))*1274126177u; return h^(h>>16);
+}
+static void g5z_fill(uint32_t *a,int x0,int y0,int x1,int y1,uint32_t c) {
+    if(x0<0)x0=0; if(y0<0)y0=0; if(x1>G5Z_ATLAS_W)x1=G5Z_ATLAS_W; if(y1>G5Z_ATLAS_H)y1=G5Z_ATLAS_H;
+    for(int y=y0;y<y1;y++) for(int x=x0;x<x1;x++) a[y*G5Z_ATLAS_W+x]=c;
+}
+static void g5z_text(uint32_t *a,int x,int y,const char *s,int scale,uint32_t c,int worn) {
+    for(;*s;s++){
+        if(*s==' '){ x+=6*scale; continue; }
+        int g=g5z_glyph(*s); if(g<0){ x+=6*scale; continue; }
+        for(int row=0;row<7;row++) for(int col=0;col<5;col++){
+            if(!(g5z_font[g][row]&(1u<<(4-col)))) continue;
+            int px=x+col*scale, py=y+row*scale;
+            if(worn && (g5z_hash(px,py)&63u)==0) continue;
+            g5z_fill(a,px,py,px+scale,py+scale,c);
+        }
+        x+=6*scale;
+    }
+}
+static void g5z_text_shadow(uint32_t *a,int x,int y,const char *s,int scale,uint32_t c) {
+    g5z_text(a,x+1,y+1,s,scale,0xB0000000,0);
+    g5z_text(a,x,y,s,scale,c,1);
+}
+static void g5z_text_bold(uint32_t *a,int x,int y,const char *s,int scale,uint32_t c) {
+    for(;*s;s++){
+        if(*s==' '){ x+=12*scale; continue; }
+        int g=g5z_glyph(*s); if(g<0){ x+=12*scale; continue; }
+        for(int row=0;row<7;row++) for(int col=0;col<5;col++){
+            if(!(g5z_font[g][row]&(1u<<(4-col)))) continue;
+            int px=x+col*scale*2, py=y+row*scale*2;
+            g5z_fill(a,px,py,px+scale*2,py+scale*2,c);
+        }
+        x+=12*scale;
+    }
+}
+static void g5z_hline(uint32_t *a,int x0,int x1,int y,uint32_t c,int t) {
+    g5z_fill(a,x0,y,x1,y+t,c);
+}
+static void g5z_vline(uint32_t *a,int x,int y0,int y1,uint32_t c,int t) {
+    g5z_fill(a,x,y0,x+t,y1,c);
+}
+static void g5z_line(uint32_t *a,int x0,int y0,int x1,int y1,uint32_t c,int t) {
+    int dx=x1-x0, dy=y1-y0, ax=dx<0?-dx:dx, ay=dy<0?-dy:dy;
+    int n=ax>ay?ax:ay; if(n<1)n=1;
+    for(int i=0;i<=n;i++){
+        int x=x0+dx*i/n, y=y0+dy*i/n;
+        g5z_fill(a,x,y,x+t,y+t,c);
+    }
+}
+static uint32_t *g5z_build_atlas(void) {
+    uint32_t *a=calloc((size_t)G5Z_ATLAS_W*G5Z_ATLAS_H,sizeof(uint32_t));
+    if(!a) fail("gl texture memory");
+    const uint32_t white=0xFFE8E2D0, dim=0xFF9AA79C, cyan=0xFF58D6D0;
+    const uint32_t green=0xFF5AD06A, amber=0xFFE0A030;
+    const uint32_t bg=0xFF071012, border=0xFF263331, grid=0xFF12302E;
+    /* Transparent-background stencil labels. */
+    g5z_text_shadow(a,4,2,"GLON CORPORATION",3,white);
+    g5z_text_shadow(a,4,32,"GLON CORPORATION",2,white);
+    g5z_text_shadow(a,4,52,"ENGINEERING DIVISION",2,dim);
+    g5z_text_shadow(a,4,74,"GC-204",2,white);
+    g5z_text_shadow(a,88,74,"GC-205",2,white);
+    g5z_text_shadow(a,172,74,"GC-206",2,white);
+    g5z_text_shadow(a,4,94,"PROPERTY OF GLON CORPORATION",2,dim);
+    g5z_text_shadow(a,4,112,"AUTHORIZED PERSONNEL ONLY",2,dim);
+    g5z_text_bold(a,324,0,"GLON",2,white);
+    g5z_text_shadow(a,324,30,"CORPORATION",1,dim);
+    g5z_text_shadow(a,324,50,"COOLANT",2,white);
+    g5z_text_shadow(a,324,68,"CAUTION",2,amber);
+    g5z_text_shadow(a,430,50,"GC-207",2,white);
+    g5z_text_shadow(a,430,70,"GC-208",2,white);
+    g5z_text_shadow(a,430,90,"LIFT",2,dim);
+    /* Instrument panel 0: flow waveform. */
+    g5z_fill(a,0,128,128,192,bg); g5z_fill(a,0,128,128,130,border); g5z_fill(a,0,190,128,192,border);
+    for(int x=16;x<128;x+=16) g5z_vline(a,x,132,188,grid,1);
+    for(int y=140;y<188;y+=12) g5z_hline(a,2,126,y,grid,1);
+    g5z_text(a,4,132,"FLOW A",1,cyan,0);
+    g5z_text(a,78,130,"42.7",2,white,0);
+    for(int x=4;x<124;x++){
+        int y=166+(int)(7.0f*sinf(x*0.29f)+3.0f*sinf(x*0.73f+1.2f));
+        g5z_fill(a,x,y,x+2,y+1,cyan);
+    }
+    g5z_text(a,4,176,"NOMINAL",1,green,0);
+    g5z_fill(a,92,178,96,182,green);
+    /* Instrument panel 1: power bus bars. */
+    g5z_fill(a,128,128,256,192,bg); g5z_fill(a,128,128,256,130,border); g5z_fill(a,128,190,256,192,border);
+    g5z_text(a,132,132,"PWR BUS",1,cyan,0);
+    static const int heights[3]={22,30,26};
+    for(int i=0;i<3;i++){
+        int x=136+i*38, h=heights[i];
+        g5z_fill(a,x,176-h,x+20,176,i==1?amber:green);
+        g5z_fill(a,x,176,x+20,178,dim);
+        char lab[2]={(char)('A'+i),0}; g5z_text(a,x+7,180,lab,1,white,0);
+        g5z_text(a,x+5,168,i==0?"78":i==1?"64":"91",1,white,0);
+    }
+    /* Instrument panel 2: coolant schematic. */
+    g5z_fill(a,256,128,384,192,bg); g5z_fill(a,256,128,384,130,border); g5z_fill(a,256,190,384,192,border);
+    g5z_text(a,260,132,"COOLANT LOOP",1,cyan,0);
+    g5z_hline(a,264,368,154,cyan,2);
+    g5z_vline(a,300,154,178,cyan,2);
+    g5z_hline(a,300,356,178,cyan,2);
+    g5z_fill(a,292,146,308,162,border); g5z_fill(a,296,150,304,158,bg);
+    g5z_text(a,294,164,"P1",1,white,0);
+    g5z_line(a,340,146,350,154,amber,2); g5z_line(a,350,154,340,162,amber,2);
+    g5z_line(a,340,162,330,154,amber,2); g5z_line(a,330,154,340,146,amber,2);
+    g5z_text(a,332,166,"V2",1,white,0);
+    g5z_text(a,346,174,"OK",2,green,0);
+    /* Instrument panel 3: system status. */
+    g5z_fill(a,384,128,512,192,bg); g5z_fill(a,384,128,512,130,border); g5z_fill(a,384,190,512,192,border);
+    g5z_text(a,388,132,"SYSTEM STATUS",1,cyan,0);
+    const char *names[4]={"DOOR","GRID","LIGHT","AUX"};
+    const char *vals[4]={"SEALED","ONLINE","STANDBY","OK"};
+    for(int i=0;i<4;i++){
+        int y=144+i*10;
+        g5z_fill(a,390,y,394,y+4,i==2?amber:green);
+        g5z_text(a,398,y,names[i],1,white,0);
+        g5z_text(a,448,y,vals[i],1,i==2?amber:green,0);
+    }
+    /* Auxiliary gauge, 64x32. */
+    g5z_fill(a,0,192,64,224,bg); g5z_fill(a,0,192,64,194,border); g5z_fill(a,0,222,64,224,border);
+    g5z_text(a,3,196,"AUX",1,cyan,0);
+    for(int i=0;i<5;i++){
+        int h=8+i*3, x=8+i*10;
+        g5z_fill(a,x,216-h,x+6,216,i<3?green:amber);
+    }
+    g5z_fill(a,52,196,56,200,green);
+    /* Wide strip and plate. */
+    g5z_fill(a,64,192,384,224,bg); g5z_fill(a,64,192,384,194,border); g5z_fill(a,64,222,384,224,border);
+    g5z_text(a,68,196,"GLON CORPORATION",2,white,0);
+    g5z_text(a,68,214,"ENGINEERING DIVISION",1,dim,0);
+    g5z_fill(a,344,198,348,202,green); g5z_fill(a,352,198,356,202,amber);
+    g5z_fill(a,384,192,512,224,border); g5z_fill(a,386,194,510,222,bg);
+    g5z_text(a,392,198,"GLON",3,white,0);
+    g5z_text(a,392,218,"CORPORATION",1,dim,0);
+    return a;
+}
 
 static void gl_upload(GLuint id, const uint32_t *src, int w, int h) {
     uint8_t *rgba = malloc((size_t)w * h * 4);
@@ -2394,6 +2569,12 @@ static int gl_init(int w, int h, int shown) {
     gl_upload(gl_tex[GT_ART_PANEL], tex_art_wall_recess_panel,512,512);
     gl_upload(gl_tex[GT_ART_FLOOR], tex_art_floor_plate,512,512);
     gl_upload(gl_tex[GT_WEAPON], weapon_pulse,WEAPON_W,WEAPON_H);
+    uint32_t *g5z_atlas=g5z_build_atlas();
+    gl_upload(gl_tex[GT_G5Z_ATLAS],g5z_atlas,G5Z_ATLAS_W,G5Z_ATLAS_H);
+    free(g5z_atlas);
+    glBindTexture(GL_TEXTURE_2D,gl_tex[GT_G5Z_ATLAS]);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
     gl_w=w; gl_h=h; SDL_GL_GetDrawableSize(gl_win,&gl_w,&gl_h);
     if (gl_w<=0 || gl_h<=0) { gl_w=w; gl_h=h; }
     glViewport(0,0,gl_w,gl_h); glClearColor(0.04,0.05,0.06,1); glEnable(GL_DEPTH_TEST);
@@ -2607,10 +2788,11 @@ static void gl_cyl_x_lit(float x1,float x2,float y,float z,float rad,int seg,flo
     }
 }
 static void gl_cyl_z(float x,float y,float z1,float z2,float rad,int seg,float r,float g,float b){
-    glDisable(GL_TEXTURE_2D); gl_rgb(r,g,b);
+    glDisable(GL_TEXTURE_2D); gl_rgb(r,g,b); glBegin(GL_QUADS);
     for(int i=0;i<seg;i++){ float a0=(float)i*6.2831853f/seg,a1=(float)(i+1)*6.2831853f/seg;
         float x0=x+cosf(a0)*rad,y0=y+sinf(a0)*rad,x1=x+cosf(a1)*rad,y1=y+sinf(a1)*rad;
-        glBegin(GL_QUADS); gl_gv(x0,y0,z1); gl_gv(x1,y1,z1); gl_gv(x1,y1,z2); gl_gv(x0,y0,z2); glEnd(); }
+        gl_gv(x0,y0,z1); gl_gv(x1,y1,z1); gl_gv(x1,y1,z2); gl_gv(x0,y0,z2); }
+    glEnd();
 }
 static void gl_cyl_y(float y1,float y2,float x,float z,float rad,int seg,float r,float g,float b){
     glDisable(GL_TEXTURE_2D); gl_rgb(r,g,b);
@@ -2626,6 +2808,11 @@ static void gl_disc_y(float y,float x,float z,float rad,int seg,float r,float g,
 static void gl_disc_x(float x,float y,float z,float rad,int seg,float r,float g,float b){
     glDisable(GL_TEXTURE_2D); gl_rgb(r,g,b); glBegin(GL_TRIANGLE_FAN); gl_gv(x,y,z);
     for(int i=0;i<=seg;i++){ float a=(float)i*6.2831853f/seg; gl_gv(x,y+cosf(a)*rad,z+sinf(a)*rad); }
+    glEnd();
+}
+static void gl_disc_z(float z,float x,float y,float rad,int seg,float r,float g,float b){
+    glDisable(GL_TEXTURE_2D); gl_rgb(r,g,b); glBegin(GL_TRIANGLE_FAN); gl_gv(x,y,z);
+    for(int i=0;i<=seg;i++){ float a=(float)i*6.2831853f/seg; gl_gv(x+cosf(a)*rad,y+sinf(a)*rad,z); }
     glEnd();
 }
 static void gl_cyl_z_lit(float x,float y,float z1,float z2,float rad,int seg,float r,float g,float b){
@@ -2696,20 +2883,162 @@ static void gl_light_panel(float x1,float y1,float x2,float y2,float z,float hea
     glBegin(GL_QUADS); gl_gv(x1,y1,z); gl_gv(x2,y1,z); gl_gv(x2,y2,z); gl_gv(x1,y2,z); glEnd();
     glDisable(GL_BLEND); glDepthMask(GL_TRUE);
 }
+static void gl_tex_quad(GLuint tex,float x1,float y1,float x2,float y2,float z1,float z2,
+                        float u0,float v0,float u1,float v1);
+static void gl_tex_quad_alpha(GLuint tex,float x1,float y1,float x2,float y2,float z1,float z2,
+                              float u0,float v0,float u1,float v1,float tint,float alpha);
+static void gl_box_tex_uv_rgb(GLuint tex,float x1,float y1,float z1,float x2,float y2,float z2,
+                              float r,float g,float b,float u0,float v0,float u1,float v1);
+static void gl_cyl_z_tex_rgb(GLuint tex,float x,float y,float z1,float z2,float rad,int seg,
+                             float r,float g,float b,float urep,float vrep);
+static void gl_cyl_z_band(float x,float y,float z1,float z2,float rad,
+                          float a0,float a1,float r,float g,float b);
+
+static void g5z_label_y(G5zUV uv,float xc,float yface,float zc,float w,float h,int flip) {
+    float x0=xc-w*0.5f,x1=xc+w*0.5f;
+    if(flip){ float t=x0; x0=x1; x1=t; }
+    gl_tex_quad_alpha(gl_tex[GT_G5Z_ATLAS],x0,yface,x1,yface,zc-h*0.5f,zc+h*0.5f,
+                      uv.u0,uv.v0,uv.u1,uv.v1,0.92f,0.94f);
+}
+static void g5z_label_x(G5zUV uv,float xface,float yc,float zc,float w,float h,int flip) {
+    float y0=yc-w*0.5f,y1=yc+w*0.5f;
+    if(flip){ float t=y0; y0=y1; y1=t; }
+    gl_tex_quad_alpha(gl_tex[GT_G5Z_ATLAS],xface,y0,xface,y1,zc-h*0.5f,zc+h*0.5f,
+                      uv.u0,uv.v0,uv.u1,uv.v1,0.92f,0.94f);
+}
+static void g5z_crate(const Obj *o,float br,float bg,float bb,int code,int secondary) {
+    float x=o->x,y=o->y,hw=o->hw,hd=o->hd,h=o->h;
+    float x0=x-hw,x1=x+hw,y0=y-hd,y1=y+hd;
+    gl_box_tex_uv_rgb(gl_tex[GT_ART_FLOOR],x0,y0,0,x1,y1,h,br,bg,bb,0.02f,0.02f,0.34f,0.30f);
+    gl_box(x0+1,y0+1,h-0.2f,x1-1,y0+3.2f,h+1.8f,br*0.70f,bg*0.70f,bb*0.70f);
+    gl_box(x0+1,y1-3.2f,h-0.2f,x1-1,y1-1,h+1.8f,br*0.70f,bg*0.70f,bb*0.70f);
+    gl_box(x0+1,y0+1,h-0.2f,x0+3.2f,y1-1,h+1.8f,br*0.70f,bg*0.70f,bb*0.70f);
+    gl_box(x1-3.2f,y0+1,h-0.2f,x1-1,y1-1,h+1.8f,br*0.70f,bg*0.70f,bb*0.70f);
+    gl_box(x0+5,y0+5,h+0.02f,x1-5,y1-5,h+0.16f,0.025f,0.03f,0.025f);
+    gl_box_tex_uv_rgb(gl_tex[GT_ART_FLOOR],x0+6,y0+6,h+0.16f,x1-6,y1-6,h+0.42f,
+                      br*0.64f,bg*0.64f,bb*0.64f,0.36f,0.36f,0.62f,0.62f);
+    gl_box(x0+8,y-2,h+0.42f,x1-8,y-1,h+0.52f,0.12f,0.13f,0.11f);
+    gl_box(x-4,y-2,h+0.52f,x+4,y+2,h+1.0f,0.30f,0.28f,0.21f);
+    gl_box(x-2,y-1,h+1.0f,x+2,y+1,h+1.3f,0.13f,0.13f,0.11f);
+    for(int sx=0;sx<2;sx++) for(int sy=0;sy<2;sy++){
+        float cx=sx?x1-3.0f:x0, cy=sy?y1-3.0f:y0;
+        gl_box(cx,cy,0,cx+3.0f,cy+3.0f,h,0.20f,0.21f,0.18f);
+        gl_box(cx-0.25f,cy-0.25f,0,cx+3.25f,cy+3.25f,2.2f,0.34f,0.32f,0.25f);
+        gl_box(cx-0.25f,cy-0.25f,h-2.2f,cx+3.25f,cy+3.25f,h,0.34f,0.32f,0.25f);
+        gl_box(cx-0.4f,cy-0.4f,h*0.5f,cx+1.2f,cy+1.2f,h*0.5f+1.1f,0.46f,0.42f,0.32f);
+    }
+    for(int side=0;side<2;side++){
+        float yP0=side?y1+0.04f:y0-0.14f, yP1=side?y1+0.14f:y0-0.04f;
+        float yF0=side?y1+0.20f:y0-0.40f, yF1=side?y1+0.40f:y0-0.20f;
+        float yB0=side?y1+0.16f:y0-0.56f, yB1=side?y1+0.56f:y0-0.16f;
+        gl_box_tex_uv_rgb(gl_tex[GT_ART_FLOOR],x0+5,yP0,7,x1-5,yP1,h-7,
+                          br*0.78f,bg*0.78f,bb*0.78f,0.36f,0.02f,0.66f,0.28f);
+        gl_box(x0+4,yF0,7,x1-4,yF1,8.2f,0.18f,0.18f,0.15f);
+        gl_box(x0+4,yF0,h-8.2f,x1-4,yF1,h-7,0.18f,0.18f,0.15f);
+        gl_box(x0+4,yF0,7,x0+5.2f,yF1,h-7,0.18f,0.18f,0.15f);
+        gl_box(x1-5.2f,yF0,7,x1-4,yF1,h-7,0.18f,0.18f,0.15f);
+        for(int i=0;i<4;i++){
+            float rx=(i&1)?x1-6.0f:x0+4.4f, rz=(i&2)?h-10.0f:7.8f;
+            gl_box(rx,yF1-0.1f,rz,rx+1.4f,yF1+0.3f,rz+1.4f,0.46f,0.42f,0.32f);
+        }
+        gl_box(x0+4.2f,yB0,4,x0+7.2f,yB1,h-4,0.18f,0.19f,0.16f);
+        gl_box(x1-7.2f,yB0,4,x1-4.2f,yB1,h-4,0.18f,0.19f,0.16f);
+        gl_box(x0,yB0,4,x1,yB1,6.2f,0.20f,0.20f,0.16f);
+        gl_box(x0,yB0,h-6.2f,x1,yB1,h-4,0.20f,0.20f,0.16f);
+        float hy=side?y1+0.3f:y0-1.7f;
+        gl_box(x0+7,hy,h-13,x0+9,hy+0.8f,h-6,0.23f,0.22f,0.17f);
+        gl_box(x1-9,hy,h-13,x1-7,hy+0.8f,h-6,0.23f,0.22f,0.17f);
+        gl_box(x0+7,hy+0.2f,h-8,x1-7,hy+0.9f,h-6,0.28f,0.26f,0.20f);
+        gl_box(x0+5.5f,hy+0.3f,h*0.08f,x0+14.5f,hy+0.7f,h*0.17f,0.62f,0.44f,0.05f);
+        for(int i=0;i<3;i++)
+            gl_box(x0+6.4f+i*2.8f,hy+0.7f,h*0.09f,x0+7.4f+i*2.8f,hy+0.9f,h*0.16f,0.07f,0.06f,0.04f);
+        gl_box(x0+3.2f,yB1+0.05f,10,x0+4.2f,yB1+0.25f,h*0.55f,0.20f,0.09f,0.035f);
+        gl_box(x1-4.2f,yB1+0.05f,h*0.42f,x1-3.2f,yB1+0.25f,h-10,0.19f,0.08f,0.03f);
+    }
+    G5zUV corp=g5z_uv_rect(0,0,300,26);
+    G5zUV eng=g5z_uv_rect(0,50,248,68);
+    G5zUV prop=g5z_uv_rect(0,92,344,108);
+    G5zUV auth=g5z_uv_rect(0,110,308,126);
+    G5zUV gc=(code==204)?g5z_uv_rect(0,72,80,88):(code==205)?g5z_uv_rect(84,72,164,88):g5z_uv_rect(168,72,248,88);
+    float lw=(x1-x0)*0.54f; if(lw>40.0f) lw=40.0f;
+    float lh=lw*26.0f/300.0f;
+    float zc=h*0.66f;
+    g5z_label_y(corp,x,y1+0.62f,zc,lw,lh,1);
+    g5z_label_y(corp,x,y0-0.62f,zc,lw,lh,0);
+    float cw=14.0f,ch=cw*16.0f/80.0f,codz=h*0.40f;
+    g5z_label_y(gc,x,y1+0.62f,codz,cw,ch,1);
+    g5z_label_y(gc,x,y0-0.62f,codz,cw,ch,0);
+    G5zUV sec=(secondary==0)?eng:(secondary==1)?auth:prop;
+    float sw=(secondary==0)?30.0f:(secondary==1)?33.0f:37.0f;
+    float sh=(secondary==0)?sw*18.0f/248.0f:(secondary==1)?sw*16.0f/308.0f:sw*16.0f/344.0f;
+    float secz=h*0.26f;
+    g5z_label_y(sec,x,y1+0.62f,secz,sw,sh,1);
+    g5z_label_y(sec,x,y0-0.62f,secz,sw,sh,0);
+    G5zUV corp_sm=g5z_uv_rect(0,28,200,48);
+    g5z_label_x(corp_sm,x0-0.62f,y,h*0.64f,19.0f,19.0f*20.0f/200.0f,1);
+    g5z_label_x(corp_sm,x1+0.62f,y,h*0.64f,19.0f,19.0f*20.0f/200.0f,0);
+    g5z_label_x(gc,x0-0.62f,y,h*0.46f,11.0f,11.0f*16.0f/80.0f,1);
+    g5z_label_x(gc,x1+0.62f,y,h*0.46f,11.0f,11.0f*16.0f/80.0f,0);
+}
+static void g5z_drum(const Obj *o) {
+    float x=o->x,y=o->y,hw=o->hw,hd=o->hd,h=o->h;
+    gl_cyl_z_tex_rgb(gl_tex[GT_ART_WALL],x,y,0,h,hw,20,0.74f,0.11f,0.08f,1.25f,0.40f);
+    gl_disc_z(0,x,y,hw,20,0.14f,0.035f,0.03f);
+    gl_disc_z(h,x,y,hw,20,0.48f,0.11f,0.08f);
+    gl_cyl_z(x,y,h,h+1.2f,hw-2.0f,20,0.36f,0.09f,0.07f);
+    gl_disc_z(h+1.2f,x,y,hw-2.0f,20,0.36f,0.09f,0.07f);
+    gl_cyl_z(x,y,h+1.2f,h+2.2f,4.0f,12,0.20f,0.06f,0.045f);
+    for(int i=0;i<4;i++){
+        float z=(i==0)?2.0f:(i==1)?18.0f:(i==2)?42.0f:h-5.0f;
+        gl_cyl_z(x,y,z,z+2.2f,hw+0.85f,20,0.24f,0.22f,0.18f);
+        gl_cyl_z(x,y,z+2.2f,z+2.8f,hw+0.9f,20,0.40f,0.35f,0.26f);
+    }
+    glDisable(GL_TEXTURE_2D);
+    glBegin(GL_QUADS);
+    for(int i=0;i<20;i++){
+        float a0=(float)i*6.2831853f/20.0f,a1=(float)(i+1)*6.2831853f/20.0f;
+        float ax0=x+cosf(a0)*(hw+0.15f),ay0=y+sinf(a0)*(hw+0.15f);
+        float ax1=x+cosf(a1)*(hw+0.15f),ay1=y+sinf(a1)*(hw+0.15f);
+        gl_rgb((i&1)?0.66f:0.05f,(i&1)?0.47f:0.045f,0.035f);
+        gl_gv(ax0,ay0,47.0f); gl_gv(ax1,ay1,47.0f);
+        gl_gv(ax1,ay1,52.0f); gl_gv(ax0,ay0,52.0f);
+    }
+    glEnd();
+    for(int side=0;side<2;side++){
+        float xx=side?x+hw-0.2f:x-hw-1.1f;
+        gl_box(xx,y-7,25,xx+0.9f,y-5,39,0.21f,0.20f,0.17f);
+        gl_box(xx,y+5,25,xx+0.9f,y+7,39,0.21f,0.20f,0.17f);
+        gl_box(xx+0.2f,y-7,37,xx+0.9f,y+7,39,0.29f,0.27f,0.21f);
+    }
+    G5zUV logo=g5z_uv_rect(320,0,420,38);
+    G5zUV gc=(o->x<920)?g5z_uv_rect(430,50,502,66):g5z_uv_rect(430,70,502,86);
+    for(int side=0;side<2;side++){
+        float yp=side?y+hd-0.1f:y-hd-1.1f;
+        gl_box(x-10.0f,yp,20.5f,x+10.0f,yp+1.2f,36.0f,0.10f,0.11f,0.10f);
+        gl_box(x-10.0f,yp+1.2f,20.5f,x+10.0f,yp+1.5f,21.7f,0.34f,0.31f,0.24f);
+        gl_box(x-10.0f,yp+1.2f,34.8f,x+10.0f,yp+1.5f,36.0f,0.26f,0.24f,0.18f);
+        gl_box(x-10.0f,yp+1.2f,21.7f,x-8.7f,yp+1.5f,34.8f,0.26f,0.24f,0.18f);
+        gl_box(x+8.7f,yp+1.2f,21.7f,x+10.0f,yp+1.5f,34.8f,0.26f,0.24f,0.18f);
+        for(int sx=0;sx<2;sx++) for(int sz=0;sz<2;sz++)
+            gl_box(sx?x+9.0f:x-9.8f,yp+1.2f,sz?33.6f:22.2f,
+                   sx?x+9.8f:x-9.0f,yp+1.7f,sz?34.6f:23.2f,0.46f,0.42f,0.32f);
+        for(int sx=0;sx<2;sx++) for(int sz=0;sz<2;sz++)
+            gl_box(sx?x+5.0f:x-6.0f,yp-1.0f,sz?31.0f:24.0f,
+                   sx?x+6.0f:x-5.0f,yp+0.1f,sz?33.0f:26.0f,0.25f,0.23f,0.18f);
+        g5z_label_y(logo,x,side?yp+1.55f:yp-0.05f,28.6f,17.5f,17.5f*38.0f/100.0f,side?1:0);
+        g5z_label_y(gc,x,side?yp+1.55f:yp-0.05f,23.5f,9.5f,9.5f*16.0f/72.0f,side?1:0);
+        gl_box(x-3.0f,yp+(side?0.0f:1.2f),9,x-2.2f,yp+(side?1.2f:0.0f),16,0.22f,0.10f,0.04f);
+        gl_box(x+2.2f,yp+(side?0.0f:1.2f),33,x+3.0f,yp+(side?1.2f:0.0f),43,0.20f,0.09f,0.035f);
+    }
+}
 static void gl_prop_3d(const Obj *o){
     float x=o->x, y=o->y, hw=o->hw, hd=o->hd, h=o->h;
-    if(o->id==0){ gl_cyl_z(x,y,0,h,hw,12,0.30f,0.10f,0.07f);
-        gl_box(x-hw-1,y-hd-1,4,x+hw+1,y+hd+1,8,0.15f,0.06f,0.04f);
-        gl_box(x-hw-1,y-hd-1,h-10,x+hw+1,y+hd+1,h-5,0.15f,0.06f,0.04f);
-        gl_box(x-hw+2,y-hd-2,20,x+hw-2,y-hd+1,36,0.55f,0.40f,0.08f);
-    } else if(o->id==1){ gl_box(x-hw,y-hd,0,x+hw,y+hd,h,0.24f,0.25f,0.18f);
-        gl_box(x-hw-2,y-hd-2,4,x+hw+2,y+hd+2,7,0.10f,0.11f,0.09f);
-        gl_box(x-hw-2,y-hd-2,h-8,x+hw+2,y+hd+2,h-4,0.10f,0.11f,0.09f);
-        for(int z=9;z<16;z+=3){
-            gl_box(x-hw+3,y-hd-2,z,x+hw-3,y-hd+1,z+1,0.55f,0.42f,0.08f);
-            gl_box(x-hw+3,y+hd-1,z,x+hw-3,y+hd+2,z+1,0.55f,0.42f,0.08f);
-        }
-    } else if(o->id==2){ gl_box(x-hw,y-hd,0,x+hw,y+hd,h,0.15f,0.17f,0.17f);
+    if(o->id==0){
+        g5z_drum(o);
+    } else if(o->id==1){
+        g5z_crate(o,0.66f,0.68f,0.34f,o->x<950?204:205,0);
+    } else if(o->id==2){
+        gl_box(x-hw,y-hd,0,x+hw,y+hd,h,0.15f,0.17f,0.17f);
         for(int side=0;side<2;side++){
             float yy = side?y+hd-1:y-hd-3;
             gl_box(x-hw+2,yy,4,x+hw-2,yy+2,h-4,0.20f,0.22f,0.21f);
@@ -2718,14 +3047,11 @@ static void gl_prop_3d(const Obj *o){
             gl_box(x-hw+4,yy, h-18,x-hw+6,yy+2,h-12,0.55f,0.42f,0.08f);
             gl_box(x+hw-6,yy, h-18,x+hw-4,yy+2,h-12,0.55f,0.42f,0.08f);
         }
-    } else { gl_box(x-hw,y-hd,0,x+hw,y+hd,h,0.18f,0.20f,0.18f);
-        gl_box(x-hw+3,y-hd-2,5,x+hw-3,y+hd+2,9,0.07f,0.08f,0.07f);
-        for(int z=12;z<h-4;z+=12){
-            gl_box(x-hw+5,y-hd-2,z,x+hw-5,y-hd+1,z+2,0.08f,0.09f,0.08f);
-            gl_box(x-hw+5,y+hd-1,z,x+hw-5,y+hd+2,z+2,0.08f,0.09f,0.08f);
-        }
+    } else {
+        g5z_crate(o,0.20f,0.44f,0.25f,208,1);
     }
 }
+
 static void gl_tex_quad(GLuint tex,float x1,float y1,float x2,float y2,float z1,float z2,
                         float u0,float v0,float u1,float v1){
     glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex); glColor3f(1,1,1);
@@ -2858,6 +3184,30 @@ static void gl_box_tex_uv(GLuint tex,float x1,float y1,float z1,float x2,float y
     glTexCoord2f(u1,v1); gl_gv(x2,y2,z1); glTexCoord2f(u0,v1); gl_gv(x1,y2,z1);
     glEnd(); glDisable(GL_TEXTURE_2D);
 }
+static void gl_box_tex_uv_rgb(GLuint tex,float x1,float y1,float z1,float x2,float y2,float z2,
+                              float r,float g,float b,float u0,float v0,float u1,float v1)
+{
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex);
+    const float sr[6]={1.08f,0.88f,0.78f,0.96f,0.70f,0.50f};
+    const float sg[6]={1.06f,0.88f,0.78f,0.94f,0.70f,0.50f};
+    const float sb[6]={1.02f,0.86f,0.76f,0.90f,0.68f,0.48f};
+    glBegin(GL_QUADS);
+    for(int f=0;f<6;f++){
+        glColor3f(r*sr[f],g*sg[f],b*sb[f]);
+        for(int v=0;v<4;v++){
+            int ix,iy; float zz;
+            if(f==0){ ix=v==0||v==3?0:1; iy=v<2?0:1; zz=z2; }
+            else if(f==1){ ix=0; iy=v==0||v==3?0:1; zz=v<2?z1:z2; }
+            else if(f==2){ ix=1; iy=v==0||v==3?0:1; zz=v<2?z1:z2; }
+            else if(f==3){ ix=v==0||v==3?0:1; iy=0; zz=v<2?z1:z2; }
+            else if(f==4){ ix=v==0||v==3?0:1; iy=1; zz=v<2?z1:z2; }
+            else { ix=v==0||v==3?0:1; iy=v<2?0:1; zz=z1; }
+            glTexCoord2f(ix?u1:u0, iy?v1:v0);
+            gl_gv(ix?x2:x1, iy?y2:y1, zz);
+        }
+    }
+    glEnd(); glDisable(GL_TEXTURE_2D);
+}
 static void gl_cyl_y_tex_flat(GLuint tex,float y1,float y2,float x,float z,float rad,int seg,
                              float tint,float u0,float v0,float u1,float v1)
 {
@@ -2932,6 +3282,23 @@ static void gl_cyl_z_tex_smooth(GLuint tex,float x,float y,float z1,float z2,flo
         glColor3f(tint*c0,tint*c0,tint*c0); glTexCoord2f(ub,v0); gl_gv(x1,y1,z1);
         glColor3f(tint*c1,tint*c1,tint*c1); glTexCoord2f(ub,v1); gl_gv(x1,y1,z2);
         glColor3f(tint*c1,tint*c1,tint*c1); glTexCoord2f(ua,v1); gl_gv(x0,y0,z2);
+    }
+    glEnd(); glDisable(GL_TEXTURE_2D);
+}
+static void gl_cyl_z_tex_rgb(GLuint tex,float x,float y,float z1,float z2,float rad,int seg,
+                             float r,float g,float b,float urep,float vrep)
+{
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex);
+    glBegin(GL_QUADS);
+    for(int i=0;i<seg;i++){
+        float a0=(float)i*6.2831853f/seg,a1=(float)(i+1)*6.2831853f/seg,am=(a0+a1)*0.5f;
+        float sh=0.52f+0.48f*(0.55f+0.45f*cosf(am));
+        glColor3f(r*sh,g*sh,b*sh);
+        float x0=x+cosf(a0)*rad,y0=y+sinf(a0)*rad,x1=x+cosf(a1)*rad,y1=y+sinf(a1)*rad;
+        glTexCoord2f(0,0); gl_gv(x0,y0,z1);
+        glTexCoord2f(urep,0); gl_gv(x1,y1,z1);
+        glTexCoord2f(urep,vrep); gl_gv(x1,y1,z2);
+        glTexCoord2f(0,vrep); gl_gv(x0,y0,z2);
     }
     glEnd(); glDisable(GL_TEXTURE_2D);
 }
@@ -3585,6 +3952,34 @@ static void eng_cabinet_x(float y1,float y2,float x,float z1,float z2)
     gl_box(x-1.0f,y1+10,z1+8,x+2.0f,y1+13,z1+12,0.045f,0.04f,0.03f);
     eng_indicator(x-0.3f,y1+20,z2-17,5,0.95f,0.12f,0.04f);
 }
+static void g5z_screw(float x,float y,float z) {
+    gl_box(x,y,z,x+1.3f,y+0.30f,z+1.3f,0.44f,0.41f,0.32f);
+    gl_box(x+0.35f,y+0.30f,z+0.35f,x+0.95f,y+0.42f,z+0.95f,0.10f,0.10f,0.09f);
+}
+static void g5z_led(float x,float y,float z,float s,float r,float g,float b) {
+    gl_box(x-1.1f,y-0.2f,z-0.8f,x+s+1.1f,y+0.22f,z+s+0.8f,0.065f,0.075f,0.065f);
+    gl_box(x,y+0.18f,z,x+s,y+0.60f,z+s,r,g,b);
+    gl_box(x+s*0.25f,y+0.60f,z+s*0.25f,x+s*0.75f,y+0.76f,z+s*0.75f,
+           r*1.15f,g*1.15f,b*1.15f);
+}
+static void g5z_display(float x1,float x2,float z1,float z2,G5zUV uv,int small) {
+    float y=204.35f;
+    gl_box(x1-1.1f,y-0.1f,z1-1.1f,x2+1.1f,y+0.08f,z2+1.1f,0.035f,0.040f,0.038f);
+    gl_tex_quad(gl_tex[GT_G5Z_ATLAS],x2,y+0.16f,x1,y+0.16f,z1,z2,uv.u0,uv.v0,uv.u1,uv.v1);
+    float b=small?1.7f:2.4f;
+    gl_box(x1-b,y,z2,x2+b,y+0.55f,z2+b,0.14f,0.15f,0.14f);
+    gl_box(x1-b,y,z1-b,x2+b,y+0.55f,z1,0.14f,0.15f,0.14f);
+    gl_box(x1-b,y,z1,x1,y+0.55f,z2,0.14f,0.15f,0.14f);
+    gl_box(x2,y,z1,x2+b,y+0.55f,z2,0.14f,0.15f,0.14f);
+    gl_box(x1-b,y+0.50f,z2,x2+b,y+0.64f,z2+b,0.33f,0.31f,0.26f);
+    gl_box(x1-b,y+0.50f,z1-b,x2+b,y+0.64f,z1,0.22f,0.22f,0.19f);
+    gl_box(x1-b,y+0.50f,z1,x1-0.3f,y+0.64f,z2,0.31f,0.29f,0.24f);
+    gl_box(x2+0.3f,y+0.50f,z1,x2+b,y+0.64f,z2,0.23f,0.23f,0.20f);
+    g5z_screw(x1-b-1.1f,y+0.64f,z2+b-1.2f);
+    g5z_screw(x2+b-0.2f,y+0.64f,z2+b-1.2f);
+    g5z_screw(x1-b-1.1f,y+0.64f,z1-0.3f);
+    g5z_screw(x2+b-0.2f,y+0.64f,z1-0.3f);
+}
 static void eng_walls(void)
 {
     /* North wall: service bays, vent stack and control bank. */
@@ -3600,15 +3995,31 @@ static void eng_walls(void)
     gl_box_tex(gl_tex[GT_ART_FLOOR],550,136,0,736,204,84,0.76f,2.2f,1.5f);
     gl_box(550,136,84,736,204,88,0.17f,0.15f,0.12f);
     gl_tex_quad_tint_add(gl_tex[GT_ART_PANEL],560,203.9f,724,203.9f,16,78,0,0,1.4f,1.2f,0.22f);
-    for(float x=560;x<728;x+=28){
-        gl_box(x,135,92,x+20,137,112,0.07f,0.08f,0.08f);
-        eng_indicator(x+4,204.1f,62,5,0.95f,0.20f,0.04f);
-        eng_indicator(x+12,204.1f,62,5,0.20f,0.80f,0.16f);
-    }
+    for(float x=560;x<728;x+=28) gl_box(x,135,92,x+20,137,112,0.07f,0.08f,0.08f);
     for(float z=16;z<76;z+=12) gl_box(562,203.9f,z,724,204.1f,z+4,0.08f,0.09f,0.08f);
-    gl_box(572,203.8f,54,632,204.3f,76,0.05f,0.42f,0.34f);
-    gl_box(646,203.8f,54,706,204.3f,76,0.50f,0.24f,0.04f);
-    gl_box(660,203.8f,26,700,204.3f,44,0.08f,0.30f,0.22f);
+    G5zUV wave=g5z_uv_rect(0,128,128,192);
+    G5zUV bars=g5z_uv_rect(128,128,256,192);
+    G5zUV gauge=g5z_uv_rect(0,192,64,224);
+    g5z_display(572,632,54,76,wave,0);
+    g5z_display(646,706,54,76,bars,0);
+    g5z_display(660,700,26,44,gauge,1);
+    /* status strip: the existing red/green indicator pairs, now housed and clear of the screens */
+    gl_box(556,203.9f,78,740,204.68f,84,0.09f,0.10f,0.09f);
+    gl_box(556,204.55f,78,740,204.72f,79,0.27f,0.26f,0.21f);
+    for(float x=560;x<728;x+=28){
+        gl_box(x-1,204.4f,79.3f,x+16,204.82f,83,0.065f,0.075f,0.065f);
+        g5z_led(x+2.2f,204.78f,80.4f,2.4f,0.95f,0.20f,0.04f);
+        g5z_led(x+7.2f,204.78f,80.4f,2.4f,0.20f,0.80f,0.16f);
+    }
+    /* GLON CORPORATION manufacturer/service plate */
+    gl_box(556,204.1f,15,700,204.55f,25,0.09f,0.10f,0.09f);
+    gl_box(556,204.50f,15,700,204.64f,25,0.24f,0.23f,0.19f);
+    G5zUV corp=g5z_uv_rect(0,28,200,48);
+    G5zUV eng=g5z_uv_rect(0,50,248,68);
+    gl_tex_quad_alpha(gl_tex[GT_G5Z_ATLAS],696,204.68f,656,204.68f,18,23,
+                      corp.u0,corp.v0,corp.u1,corp.v1,0.92f,0.95f);
+    gl_tex_quad_alpha(gl_tex[GT_G5Z_ATLAS],652,204.68f,560,204.68f,18,22,
+                      eng.u0,eng.v0,eng.u1,eng.v1,0.88f,0.95f);
     /* Cool work lamps between the upper bays; baked glow, no dynamic lights. */
     for(float x=158;x<720;x+=128){
         gl_box(x,136,96,x+20,138,101,0.46f,0.64f,0.82f);
@@ -4154,6 +4565,33 @@ static int gl_detail_shots(const char *dir,int w,int h) {
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
 
+static int gl_g5z_shots(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
+    struct ZP { const char *name; int px,py,angle,ax,ay,astate; float pitch; } poses[] = {
+        {"01-containers-normal",800,320,0,1120,320,0,0},
+        {"02-container-crate-close",820,340,200,990,320,0,-22},
+        {"03-container-drum-close",900,340,186,990,320,0,-25},
+        {"04-control-bank",650,320,192,1120,320,0,0},
+        {"05-control-bank-close",650,290,192,1120,320,0,0},
+        {"06-room-wide",700,600,160,1120,320,0,8},
+        {"07-corridor-wide",1200,320,128,990,320,0,0}
+    };
+    for(size_t i=0;i<sizeof poses/sizeof poses[0];i++){
+        gl_debug_pitch=poses[i].pitch;
+        if(gl_apply_pose(poses[i].px,poses[i].py,poses[i].angle,64,0,
+                         poses[i].ax,poses[i].ay,poses[i].astate)!=0) return 2;
+        int px,py,pa; Status st; Obj objs[6];
+        if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+        st_current_angle=pa; int nobj=0;
+        if(objects_mode){get_objects(objs);nobj=6;}
+        gl_scene(&st,objs,nobj);
+        char path[4096]; snprintf(path,sizeof path,"%s/%s.ppm",dir,poses[i].name);
+        gl_save_ppm(path,w,h);
+        printf("g5z %s %dx%d\n",poses[i].name,w,h);
+    }
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
 static int gl_detail_bench(int frames,int w,int h) {
     if(gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
     gl_apply_pose(650,520,128,64,0,1120,320,0); gl_debug_pitch=28;
@@ -4168,6 +4606,26 @@ static int gl_detail_bench(int frames,int w,int h) {
     }
     printf("gl detail bench renderer=%s resolution=%dx%d frames=%d total=%.2fms fps=%.1f"
            " loader=%ld heap=%ld\n",glGetString(GL_RENDERER),w,h,frames,total/frames,
+           1000.0/(total/frames),(long)M[GC_LOADER_HP],r0_s1_heap_high());
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
+static int gl_g5z_bench(int pose,int frames,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
+    if(pose==1) { gl_apply_pose(650,320,192,64,0,1120,320,0); gl_debug_pitch=0; }
+    else if(pose==2) { gl_apply_pose(700,600,160,64,0,1120,320,0); gl_debug_pitch=8; }
+    else { gl_apply_pose(800,320,0,64,0,1120,320,0); gl_debug_pitch=0; }
+    int px,py,pa; Status st; Obj objs[6];
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+    st_current_angle=pa; int nobj=0;
+    if(objects_mode){get_objects(objs);nobj=6;}
+    double total=0;
+    for(int i=0;i<frames;i++){
+        long t0=now_ns(); gl_scene(&st,objs,nobj); SDL_GL_SwapWindow(gl_win); long t1=now_ns();
+        total+=(t1-t0)/1e6;
+    }
+    printf("gl g5z bench pose=%d renderer=%s resolution=%dx%d frames=%d total=%.2fms fps=%.1f"
+           " loader=%ld heap=%ld\n",pose,glGetString(GL_RENDERER),w,h,frames,total/frames,
            1000.0/(total/frames),(long)M[GC_LOADER_HP],r0_s1_heap_high());
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
@@ -4306,6 +4764,17 @@ int main(int argc, char **argv) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
         for(int i=5;i<argc;i++) if(strcmp(argv[i],"objects")==0) objects_mode=1;
         return gl_detail_shots(argv[2],w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-g5z-bench") == 0) {
+        int pose=atoi(argv[2]), w=argc>4?atoi(argv[4]):960, h=argc>5?atoi(argv[5]):600;
+        int frames=argc>3?atoi(argv[3]):120;
+        for(int i=6;i<argc;i++) if(strcmp(argv[i],"objects")==0) objects_mode=1;
+        return gl_g5z_bench(pose,frames,w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-g5z-shots") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        for(int i=5;i<argc;i++) if(strcmp(argv[i],"objects")==0) objects_mode=1;
+        return gl_g5z_shots(argv[2],w,h);
     }
     if (argc > 2 && strcmp(argv[1], "--gl-detail-bench") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;

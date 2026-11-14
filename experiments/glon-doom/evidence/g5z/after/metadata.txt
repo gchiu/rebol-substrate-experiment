@@ -1,0 +1,11 @@
+G5z implementation = G5y 94699eb + GLON CORPORATION industrial pass
+date: 2026-11-15
+source base HEAD: 94699ebf25bf3bf9b411be564afa89eaf3f8227e
+executable: 6172112 bytes
+sha256: 9eb0bbe26e79067786c0aff8af53d66040be60e2be58c5b744aefb3bd4f1ff37
+delta vs clean G5y: +25576 bytes
+delta vs diagnostic baseline: +21120 bytes
+renderer: renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+texture memory: 10419072 bytes (9894784 + 524288 for GT_G5Z_ATLAS 512x256 RGBA)
+loader/heap: 54601 / 33600 cells (corridor poses)
+poses: 7, matching before captures; 960x600 and 1920x1080

@@ -1,0 +1,9 @@
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+g5z 01-containers-normal 1920x1080
+g5z 02-container-crate-close 1920x1080
+g5z 03-container-drum-close 1920x1080
+g5z 04-control-bank 1920x1080
+g5z 05-control-bank-close 1920x1080
+g5z 06-room-wide 1920x1080
+g5z 07-corridor-wide 1920x1080

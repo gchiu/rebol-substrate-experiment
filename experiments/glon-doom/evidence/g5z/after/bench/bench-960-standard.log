@@ -1,0 +1,5 @@
+gl bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 sim=9.74ms submit=1.64ms total=22.53ms fps=44.4 loader=54569 heap=33600
+gl bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 sim=9.71ms submit=1.67ms total=21.99ms fps=45.5 loader=54569 heap=33600
+gl bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 sim=9.29ms submit=1.63ms total=21.07ms fps=47.5 loader=54569 heap=33600
+gl bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 sim=9.50ms submit=1.61ms total=21.84ms fps=45.8 loader=54569 heap=33600
+gl bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 sim=9.51ms submit=1.65ms total=21.33ms fps=46.9 loader=54569 heap=33600

@@ -1,0 +1,18 @@
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=0 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=13.72ms fps=72.9 loader=54601 heap=33600
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=1 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=15.16ms fps=65.9 loader=54601 heap=33600
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=0 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=12.62ms fps=79.2 loader=54601 heap=33600
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=1 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=12.89ms fps=77.6 loader=54601 heap=33600
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=0 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=13.46ms fps=74.3 loader=54601 heap=33600
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl g5z bench pose=1 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=12.75ms fps=78.5 loader=54601 heap=33600

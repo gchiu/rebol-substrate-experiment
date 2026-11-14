@@ -1,0 +1,5 @@
+gl g5z bench pose=1 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=180 total=11.91ms fps=84.0 loader=54601 heap=33600
+gl g5z bench pose=1 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=180 total=11.81ms fps=84.7 loader=54601 heap=33600
+gl g5z bench pose=1 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=180 total=11.27ms fps=88.7 loader=54601 heap=33600
+gl g5z bench pose=1 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=180 total=11.91ms fps=84.0 loader=54601 heap=33600
+gl g5z bench pose=1 renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=180 total=11.30ms fps=88.5 loader=54601 heap=33600
