@@ -794,3 +794,27 @@ raw RGB assets; the initial embedded-array version was rejected because the
 Matched 960×600 medians were 82.1/53.4 FPS versus G5w's 81.9/54.0, with loader
 and gameplay semantics unchanged. Full report:
 `experiments/glon-doom/G5X-BLAST-DOOR-REPORT.md`.
+
+## 10t. AvP G5x2 native-resolution blast-door leaves (2026-11-15)
+
+The G5x leaves are replaced by the two supplied 1070×1470 industrial door
+images. The runtime art keeps the 64×112 face aspect by trimming 230 pixels
+from each outer edge, yielding two 840×1470 leaves with the inner seam edges
+retained; no stretching, mirroring or upscaling is used. Texel density rises
+from about 7.0 to 13.125 per world unit. Geometry, leaf travel, collision,
+casing, pockets, locker housing, Alien navigation and frozen S1 are unchanged.
+The worktree is the permanent `/mnt/d/repos/glon-worktrees/glon-avp-g5x2`.
+
+Sampling remains the renderer's `GL_LINEAR` path, now with `GL_CLAMP_TO_EDGE`
+so the seam edges cannot bleed into the opposite edge. Mipmapping was measured
+and rejected: it raised object-mode tick time from about 8.9 to 11.5 ms and
+dropped median FPS to roughly 55–59 on the WSLg D3D12 driver.
+
+Randomized interleaved 180-frame A/B at 960×600: object mode 67.0 → 65.2 FPS
+median, within the observed spread and about 2.7% lower; no-object mode
+98.2 → 106.9 FPS in the same session but highly variable. Tick time was
+effectively unchanged. The executable remains 6,121,456 bytes; loader/heap
+remain 53,705/54,569 and 33,440/33,600. GPU texture memory rises by 7,178,000
+bytes to 9,878,400. Full report:
+`experiments/glon-doom/G5X2-DOOR-TEXTURE-REPORT.md`; before/after evidence is
+under `experiments/glon-doom/evidence/g5x2/`.

@@ -1,0 +1,38 @@
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+g5u start player=320,320 angle=240 alien=1120,320 state=0 door=0/1
+g5u map room=[128,128..768,640] corridor=[768,256..1280,384] spawn=(320,320,0)
+g5u object 0 id=0 center=910,272 hw=13 hd=12 h=62
+g5u object 1 id=0 center=940,370 hw=13 hd=12 h=62
+g5u object 2 id=1 center=860,270 hw=28 hd=19 h=48
+g5u object 3 id=1 center=1040,370 hw=30 hd=18 h=48
+g5u object 4 id=2 center=980,270 hw=18 hd=12 h=70
+g5u object 5 id=3 center=1100,370 hw=36 hd=16 h=38
+g5u capture 00-normal-start player=320,320 angle=240 alien=1120,320 state=0 door=0/1
+g5u capture 01-route-facing-door player=320,320 angle=0 alien=1120,320 state=0 door=0/1
+g5u capture 02-route-at-closed-door player=744,320 angle=0 alien=1120,320 state=1 door=0/1
+g5u capture 03-route-door-open player=744,320 angle=0 alien=1110,320 state=1 door=48/0
+g5u capture 04-route-in-corridor player=904,320 angle=0 alien=1070,320 state=1 door=64/0
+g5u capture 05-route-back-in-room player=152,320 angle=0 alien=502,320 state=1 door=64/0
+g5u capture 06-barrel-start player=760,350 angle=0 alien=970,368 state=1 door=64/0
+g5u tick=000 player=760,350 alien=970,368 target=-210,-18 intended=-2,-2 state=1 det=1 bars=0
+g5u actual tick=001 alien=970,366 moved=0,-2 reject_x=1 reject_y=0
+g5u tick=001 player=760,350 alien=970,366 target=-210,-16 intended=-2,-2 state=1 det=1 bars=0
+g5u actual tick=002 alien=970,364 moved=0,-2 reject_x=1 reject_y=0
+g5u tick=002 player=760,350 alien=970,364 target=-210,-14 intended=-2,-2 state=1 det=1 bars=0
+g5u actual tick=003 alien=970,362 moved=0,-2 reject_x=1 reject_y=0
+g5u tick=015 player=760,350 alien=966,346 target=-206,4 intended=-2,2 state=1 det=1 bars=0
+g5u actual tick=016 alien=964,346 moved=-2,0 reject_x=0 reject_y=1
+g5u capture 07-barrel-30 player=760,350 angle=0 alien=944,342 state=1 door=64/0
+g5u tick=030 player=760,350 alien=944,342 target=-184,8 intended=-2,2 state=1 det=1 bars=0
+g5u actual tick=031 alien=942,342 moved=-2,0 reject_x=0 reject_y=1
+g5u capture 08-barrel-60 player=760,350 angle=0 alien=884,348 state=1 door=64/0
+g5u tick=060 player=760,350 alien=884,348 target=-124,2 intended=-2,0 state=1 det=1 bars=0
+g5u actual tick=061 alien=882,348 moved=-2,0 reject_x=0 reject_y=0
+g5u capture 09-barrel-120 player=760,350 angle=0 alien=854,348 state=2 door=64/0
+g5u tick=120 player=760,350 alien=854,348 target=-94,2 intended=-2,0 state=2 det=1 bars=0
+g5u actual tick=121 alien=854,348 moved=0,0 reject_x=1 reject_y=0
+g5u tick=180 player=760,350 alien=854,348 target=-94,2 intended=-2,0 state=2 det=1 bars=0
+g5u actual tick=181 alien=854,348 moved=0,0 reject_x=1 reject_y=0
+g5u tick=239 player=760,350 alien=854,348 target=-94,2 intended=-2,0 state=2 det=1 bars=0
+g5u actual tick=240 alien=854,348 moved=0,0 reject_x=1 reject_y=0
+g5u capture 10-barrel-240 player=760,350 angle=0 alien=854,348 state=2 door=64/0

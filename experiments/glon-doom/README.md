@@ -463,3 +463,43 @@ added.
 ```
 
 See `G5W-MACHINERY-TEXTURES-REPORT.md`.
+
+## G5x high-resolution sliding blast door
+
+The spawn-room door became an 8-unit-thick two-leaf slab in a deep casing with
+side receiving pockets, driven directly by Glon's `door_open`. The first G5x
+pass used native crops from the supplied concept sheet (450×785 and 410×785,
+about 7 texels/world-unit). G5x2 supersedes those leaves with the supplied
+1070×1470 artwork.
+
+```sh
+./build/doom --gl-door-shots /tmp/g5x-door 960 600
+./build/doom --gl-door-shots /tmp/g5x-door-max 1920 1080
+```
+
+See `G5X-BLAST-DOOR-REPORT.md`.
+
+## G5x2 native-resolution door leaves
+
+The door leaves now use the two supplied 1070×1470 industrial door images.
+Keeping the face aspect (64×112) requires an outer-edge crop to 840×1470; the
+inner seam edge is retained, so there is no stretching, mirroring or upscale.
+Texel density rises from about 7.0 to 13.125 per world-unit. Sampling stays on
+the renderer's existing `GL_LINEAR` path with `GL_CLAMP_TO_EDGE`; mipmapping was
+tested and rejected because it measurably raised per-frame cost on the WSLg
+D3D12 path.
+
+Door geometry, leaf travel, collision thresholds, casing, pockets, locker
+housing, Alien navigation and frozen S1 semantics are unchanged. The
+executable remains 6,121,456 bytes; GPU texture memory rises by 7,178,000
+bytes.
+
+```sh
+./build/doom --gl-door-shots /tmp/g5x2-door 960 600
+./build/doom --gl-door-shots /tmp/g5x2-door-max 1920 1080
+./build/doom --g5u-nav /tmp/g5x2-nav 1920 1080
+python3 tools/convert_g5x2_door.py
+```
+
+Committed before/after evidence, montages and the randomized old-vs-new
+benchmark are under `evidence/g5x2/`. See `G5X2-DOOR-TEXTURE-REPORT.md`.

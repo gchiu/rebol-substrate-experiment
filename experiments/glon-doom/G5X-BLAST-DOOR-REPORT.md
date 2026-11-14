@@ -2,12 +2,18 @@
 
 **Status: implemented in OpenGL.**
 
+> G5x2 (`24c5860`) supersedes only the leaf artwork with the supplied
+> 1070×1470 images; the geometry, animation and collision description below
+> remains current. See `G5X2-DOOR-TEXTURE-REPORT.md`.
+
 The closed door now uses native-resolution forged blast-door leaf artwork, an
 8-unit-thick two-leaf slab, a deep casing with side receiving pockets, and an
 opening animation driven directly by Glon's `door_open`. The previous 64×64
 door texture and flat 2-unit box are gone from the OpenGL path.
 
-**Branch/worktree:** `glon-avp-g5x` at `/tmp/opencode/glon-avp-g5x`.
+**Branch/worktree:** continued as `glon-avp-g5x2` at
+`/mnt/d/repos/glon-worktrees/glon-avp-g5x2` (the original G5x worktree was in
+the deleted `/tmp/opencode` area).
 **Starting point:** G5w report `53044b610fff2eb4eb507c1afba181701a2f2045`.
 **G5x implementation:** `6800f5fd4c1b0ebcf3a2f32b7e4ae0c77fa61da7`.
 **G5x report commit:** this commit.

@@ -1,0 +1,12 @@
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 sim=3.62ms submit=1.11ms total=9.21ms fps=108.6 loader=53705 heap=33440
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 sim=3.70ms submit=1.11ms total=11.12ms fps=89.9 loader=53705 heap=33440
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 sim=3.80ms submit=1.13ms total=11.20ms fps=89.3 loader=53705 heap=33440
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 sim=8.96ms submit=1.30ms total=16.13ms fps=62.0 loader=54569 heap=33600
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 sim=8.86ms submit=1.19ms total=15.01ms fps=66.6 loader=54569 heap=33600
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+gl bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=960x600 frames=180 sim=8.85ms submit=1.18ms total=15.48ms fps=64.6 loader=54569 heap=33600

@@ -848,6 +848,40 @@ Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
   still shows source softness. Full report:
   `experiments/glon-doom/G5X-BLAST-DOOR-REPORT.md`.
 
+### G5x2 native-resolution blast-door leaves [MEASURED]
+
+[MEASURED 2026-11-15, `experiments/glon-avp-g5x2`,
+WSLg D3D12 AMD Radeon(TM) Graphics]
+
+- The supplied G5x2 artwork is two independent 1070×1470 front views. The
+  64×112 leaf face cannot use that aspect without stretching, so the converter
+  keeps the full height and trims 230 pixels from each **outer** edge: two
+  840×1470 leaves (13.125 texels per world unit, versus about 7.0 in G5x).
+  The inner seam edges are retained; no upscaling, mirroring or procedural
+  reconstruction is used. Source checksums and the crop are enforced by
+  `tests/check_g5x2_door.py`.
+- Geometry, casing, side pockets, leaf travel, `door_open` thresholds,
+  collision, Alien navigation and frozen S1 are unchanged. The executable is
+  still 6,121,456 bytes; loader high-water/heap stay 53,705/54,569 and
+  33,440/33,600. GPU texture memory rises from 2,700,400 to 9,878,400 bytes
+  (+7,178,000).
+- Sampling stays on the renderer's `GL_LINEAR` path, with `GL_CLAMP_TO_EDGE`
+  for the leaf quads (they span exactly 0..1, so repeat filtering could blend
+  the seam edge with the opposite edge).
+- [FINDING] Mipmapping these textures is a measurable loss on this driver.
+  Both `GL_LINEAR_MIPMAP_LINEAR` and `GL_LINEAR_MIPMAP_NEAREST` raised
+  object-mode tick time from about 8.9 to 11.5 ms and reduced median FPS to
+  about 55–59. The GL_LINEAR no-mipmap path keeps tick time level (median
+  8.86 → 9.04 ms) and object-mode median 67.0 → 65.2 FPS (-2.7%, within run
+  spread); no-object mode was 98.2 → 106.9 FPS in the same randomized session.
+  Mipmapping large leaf textures should not be re-enabled without a fresh
+  driver measurement.
+- Native-source limitation: at 1920 the 24-unit close-up still shows some
+  source softness because 840 source pixels cover roughly 1500 screen pixels.
+  The outer-edge crop also removes the left vent and the right baked control
+  strip (the latter is not functional). Full report:
+  `experiments/glon-doom/G5X2-DOOR-TEXTURE-REPORT.md`.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

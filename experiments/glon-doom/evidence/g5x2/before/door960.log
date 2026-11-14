@@ -1,0 +1,7 @@
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+door 01-door-closed 960x600 open=0 blocked=1
+door 02-door-partial-24 960x600 open=24 blocked=1
+door 03-door-opening-40 960x600 open=40 blocked=0
+door 04-door-open-64 960x600 open=64 blocked=0
+door 05-door-oblique-closed 960x600 open=0 blocked=1
+door 06-door-oblique-partial 960x600 open=28 blocked=1

@@ -2345,6 +2345,9 @@ static int gl_upload_rgb_file(GLuint id,const char *name,int w,int h) {
         d[0]=s0[0]; d[1]=s0[1]; d[2]=s0[2]; d[3]=255;
     }
     glBindTexture(GL_TEXTURE_2D,id);
+    /* Native-resolution leaves use the renderer's established GL_LINEAR
+     * sampling. Mipmapped sampling measurably raised per-frame driver cost on
+     * the WSLg D3D12 path, so it is deliberately not used here. */
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
     /* The leaf quads span exactly 0..1; clamp prevents the inner seam edge

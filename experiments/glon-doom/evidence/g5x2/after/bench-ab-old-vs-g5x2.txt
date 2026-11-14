@@ -1,0 +1,32 @@
+noobj    new fps=  98.2 sim= 3.77 total=10.19
+noobj    old fps= 103.5 sim= 3.67 total= 9.67
+noobj    old fps=  92.8 sim= 3.69 total=10.78
+noobj    old fps=  84.8 sim= 3.72 total=11.79
+noobj    new fps=  85.0 sim= 3.85 total=11.77
+noobj    new fps= 106.9 sim= 3.68 total= 9.35
+noobj    new fps= 107.6 sim= 3.74 total= 9.29
+noobj    new fps= 108.1 sim= 3.69 total= 9.25
+noobj    old fps= 108.6 sim= 3.59 total= 9.21
+noobj    new fps= 106.9 sim= 3.74 total= 9.36
+noobj    old fps=  92.5 sim= 3.66 total=10.82
+noobj    old fps= 107.5 sim= 3.61 total= 9.30
+objects  old fps=  66.6 sim= 9.03 total=15.01
+objects  new fps=  66.4 sim= 8.97 total=15.05
+objects  new fps=  57.9 sim= 9.22 total=17.27
+objects  new fps=  67.2 sim= 8.94 total=14.89
+objects  old fps=  68.1 sim= 8.86 total=14.69
+objects  old fps=  67.5 sim= 8.86 total=14.82
+objects  new fps=  62.2 sim= 9.15 total=16.07
+objects  new fps=  64.0 sim= 9.12 total=15.62
+objects  old fps=  66.4 sim= 8.84 total=15.07
+objects  old fps=  66.4 sim= 8.89 total=15.05
+objects  new fps=  68.2 sim= 8.89 total=14.66
+objects  old fps=  70.2 sim= 8.70 total=14.25
+
+== noobj ==
+old n=6 fps_median=98.2 fps_mean=98.3 fps_range=84.8-108.6 sim_median=3.67 total_median=10.22
+new n=6 fps_median=106.9 fps_mean=102.1 fps_range=85.0-108.1 sim_median=3.74 total_median=9.36
+
+== objects ==
+old n=6 fps_median=67.0 fps_mean=67.5 fps_range=66.4-70.2 sim_median=8.86 total_median=14.91
+new n=6 fps_median=65.2 fps_mean=64.3 fps_range=57.9-68.2 sim_median=9.04 total_median=15.34
