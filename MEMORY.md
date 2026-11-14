@@ -723,3 +723,14 @@ report: `experiments/glon-doom/G5S-ALIEN-REPORT.md`.
   experiment (`it/`, and an `lx/` lexer that matches v004's tokens).
 - `docs/glon-shop-product-spec.md` — Glon Shop (browser/shop application target).
 - `docs/distributed-glon-agents.md` — distributed/federated agent architecture.
+
+## 10o. AvP G5t engineering room (2026-11-14)
+
+One room — the spawn room — is now a distinct engineering compartment. The
+renderer adds a front-facing turbine/generator with an orange rotor, yellow
+guardrails, two coolant vessels with valves, service cabinets, a control bank,
+recessed wall bays, ventilation grilles, overhead pipework/cable trays and
+ceiling fixtures. Corridors, deck material, G5s Alien artwork/AI, G5r rifle and
+ammo, tracker, doors, controls, Glon collision and frozen S1 are unchanged.
+`--gl-rooms DIR W H [objects] [plain]` captures the room and reproduces the
+plain G5s room from the same poses. See `experiments/glon-doom/G5T-ROOMS-REPORT.md`.

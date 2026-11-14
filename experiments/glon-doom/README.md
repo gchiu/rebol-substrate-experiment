@@ -385,3 +385,24 @@ the corresponding directional frames. The G5r pulse rifle and live ammunition
 display remain visible. Directional acceptance passes, but close-up resolution
 still fails because the source poses are only 188–268 pixels tall. See
 `G5S-ASSET-REPORT.md` and `G5S-ALIEN-REPORT.md`.
+
+## G5t engineering room
+
+The spawn room is now a dedicated engineering compartment: a front-facing
+turbine/generator with orange rotor, yellow guardrails, two coolant vessels with
+valve wheels, service cabinets, a control bank, recessed wall bays, overhead
+pipes, cable trays and ceiling fixtures. The corridor, deck material, Alien AI,
+rifle/ammo, tracker, doors and controls are unchanged.
+
+The room detail is renderer-side geometry; Glon's collision map is untouched.
+The central door-to-spawn lane stays clear, and the machinery is placed around
+the perimeter. `plain` reproduces the previous G5s room from identical poses for
+before/after comparison.
+
+```sh
+./build/doom --gl-rooms /tmp/g5t-room 960 600 objects
+./build/doom --gl-rooms /tmp/g5t-room-plain 960 600 objects plain
+./build/doom --gl-rooms /tmp/g5t-room-max 1920 1080 objects
+```
+
+See `G5T-ROOMS-REPORT.md`.

@@ -665,6 +665,46 @@ Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
   (33,600 with objects); executable 6,074,896 bytes. `make test` and frozen S1
   pass.
 
+
+
+### G5t engineering room geometry [FINDING]
+
+[FINDING 2026-11-14, `experiments/glon-avp-g5t`, WSLg D3D12 AMD Radeon]
+
+- The spawn room is converted into one distinct engineering compartment from
+  the two supplied concept references. The corridor, deck material, Alien AI,
+  rifle/ammo, tracker, doors and controls are unchanged. No map, collision,
+  frozen S1, memory-layout or language-semantics change was made.
+- **[DECISION]** The room upgrade is renderer-side geometry placed around the
+  perimeter; Glon collision remains unchanged. A central door-to-spawn lane
+  (roughly `y=256..384`) is kept clear. This preserves the current world and
+  mechanics for this pass; adding machinery collision would be a separate
+  gameplay/navmesh change.
+- Reusable components: `eng_rail_x/y`, `eng_hazard_x`, `eng_pipe_x/z`,
+  `eng_tray_x`, `eng_fixture`, `eng_wall_bay_x/y`, `eng_grille_y`,
+  `eng_cabinet_x/y`, plus `eng_generator`, `eng_coolant`, `eng_walls` and
+  `eng_overhead`. The turbine adds `gl_cyl_y`, `gl_disc_x/y`,
+  `gl_cyl_z_lit/y_lit` and `gl_turbine_face`.
+- Geometry: front-facing turbine drum/rotor, two coolant vessels with valve
+  wheels and manifold, service cabinets, control bank, recessed wall bays,
+  ventilation grilles, structural posts/ceiling beams, four overhead pipe runs,
+  four cable trays, five recessed ceiling fixtures and restrained indicator
+  lights. Existing `GT_SERVICE` panels are tinted for room use; no new bitmap
+  material was added. The art floor remains the existing deck material.
+- Navigation: the player starts at `(320,320)`; the door lane and spawn are
+  clear, and the trace reaches the corridor normally. Large equipment is outside
+  the central lane. Equipment has no new collision, so the player can walk
+  through it if deliberately walked into; this is recorded as a limitation, not
+  a hidden gameplay change.
+- 960×600, 180-frame matched medians: no objects 97.1 FPS (sim 4.56 ms, submit
+  1.06 ms, total 10.30 ms) versus G5s 117.5 FPS (8.51 ms). With objects: 63.1
+  FPS (sim 10.68 ms, submit 1.11 ms, total 15.85 ms) versus G5s 65.7 FPS
+  (15.23 ms). That is about 17% lower without objects and 4% lower with objects;
+  the room remains above 60 FPS at 960×600. Loader 53,337/54,201; heap
+  33,440/33,600; executable 6,092,080 bytes.
+- Directional Alien captures and room captures show depth-tested occlusion
+  around the new geometry. `make test` and frozen S1 pass.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling
