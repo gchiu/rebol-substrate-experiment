@@ -3127,6 +3127,7 @@ static int interactive_gl(int w, int h) {
     gl_active = 1;
     printf("G5p renderer=OpenGL framebuffer=%dx%d interactive=on\n",w,h);
     load_session(); build_blocks();
+    if (run_block(parse_source("[ doom/angle: 240 doom/aim ]", "spawn orientation"), "spawn orientation") != 0) return 2;
     Status st; Obj objs[6]; Spans spans; Detail det; TexRows tr;
     int px,py,pa; double acc=0.0,last=(double)now_ns(),fps_start=(double)now_ns(); int frames=0;
     double prof_tick=0,prof_state=0,prof_scene=0,prof_swap=0,prof_finish=0;
@@ -3172,6 +3173,88 @@ static int interactive_gl(int w, int h) {
         if(frames%120==0){ double secs=((double)now_ns()-fps_start)/1e9; printf("G5p GL frame=%d fps=%.1f tick=%.2f state=%.2f scene=%.2f finish=%.2f swap=%.2f player=%d,%d angle=%d door=%d/%d alien=%d,%d state=%d\n",frames,frames/secs,prof_tick/120,prof_state/120,prof_scene/120,prof_finish/120,prof_swap/120,px,py,pa,st.door_open,st.door_blocked,st.ax,st.ay,st.state); fflush(stdout); fps_start=(double)now_ns(); prof_tick=prof_state=prof_scene=prof_swap=prof_finish=0; }
         SDL_Delay(1);
     }
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
+
+static void gl_save_ppm(const char *path,int w,int h);
+static int g5u_hit_at(int x,int y,int r) {
+    char src[160];
+    snprintf(src,sizeof src,"[ doom/hit: 0 doom/check-all %d %d %d print doom/hit ]",x,y,r);
+    cell b=parse_source(src,"g5u collision probe");
+    int v=-1;
+    if(run_capture(b,&v,1,"g5u collision probe")!=0) return -1;
+    return v;
+}
+static void g5u_capture_scene(const char *dir,const char *name,int w,int h) {
+    int px,py,pa; Status st; Obj objs[6];
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return;
+    st_current_angle=pa; int nobj=0;
+    if(objects_mode){get_objects(objs);nobj=6;}
+    gl_scene(&st,objs,nobj);
+    char path[4096]; snprintf(path,sizeof path,"%s/%s.ppm",dir,name); gl_save_ppm(path,w,h);
+    printf("g5u capture %s player=%d,%d angle=%d alien=%d,%d state=%d door=%d/%d\n",
+           name,px,py,pa,st.ax,st.ay,st.state,st.door_open,st.door_blocked);
+}
+static int g5u_nav(const char *dir,int w,int h,int legacy) {
+    objects_mode=1;
+    if(gl_init(w,h,0)!=0) return 2;
+    gl_active=1; load_session(); build_blocks();
+    reset();
+    if(!legacy) {
+        cell o=parse_source("[ doom/angle: 240 doom/aim ]","g5u spawn orientation");
+        if(run_block(o,"g5u spawn orientation")!=0) return 2;
+    }
+    Status st; int px,py,pa;
+    get_state(&px,&py,&pa); get_status(&st);
+    printf("g5u start player=%d,%d angle=%d alien=%d,%d state=%d door=%d/%d\n",
+           px,py,pa,st.ax,st.ay,st.state,st.door_open,st.door_blocked);
+    printf("g5u map room=[128,128..768,640] corridor=[768,256..1280,384] spawn=(320,320,0)\n");
+    Obj objs[6]; if(get_objects(objs)==0) for(int i=0;i<6;i++)
+        printf("g5u object %d id=%d center=%d,%d hw=%d hd=%d h=%d\n",
+               i,objs[i].id,objs[i].x,objs[i].y,objs[i].hw,objs[i].hd,objs[i].h);
+    g5u_capture_scene(dir,"00-normal-start",w,h);
+    if(!legacy){
+        run_ticks(16,16); g5u_capture_scene(dir,"01-route-facing-door",w,h);
+        run_ticks(1,60); g5u_capture_scene(dir,"02-route-at-closed-door",w,h);
+        run_block(activate_block,"route activate");
+        run_ticks(0,12); g5u_capture_scene(dir,"03-route-door-open",w,h);
+        run_ticks(1,20); g5u_capture_scene(dir,"04-route-in-corridor",w,h);
+        run_ticks(16,128); run_ticks(1,120); run_ticks(32,128); g5u_capture_scene(dir,"05-route-back-in-room",w,h);
+    }
+    /* Reproduce the reported barrel pocket: player just inside the room, Alien
+       at the north side of the corridor behind the (940,370) barrel. */
+    reset();
+    cell b=parse_source("[ doom/px: 760 doom/py: 350 doom/angle: 0 doom/aim "
+        "doom/door-open: 64 doom/door-target: 64 doom/door-blocked: 0 "
+        "doom/alien-x: 970 doom/alien-y: 368 doom/alien-state: 1 "
+        "doom/alien-health: 100 doom/alien-detected: 1 ]","g5u barrel pose");
+    if(run_block(b,"g5u barrel pose")!=0) return 2;
+    cell noavoid=parse_source("[ doom/alien-avoid: 0 ]","g5u legacy ai");
+    int prevax=970,prevay=368;
+    for(int t=0;t<=240;t++){
+        if(t==0 || t==30 || t==60 || t==120 || t==240)
+            g5u_capture_scene(dir,t==0?"06-barrel-start":t==30?"07-barrel-30":
+                t==60?"08-barrel-60":t==120?"09-barrel-120":"10-barrel-240",w,h);
+        if(t==240) break;
+        get_state(&px,&py,&pa); get_status(&st);
+        int ax=st.ax,ay=st.ay; int dx=px-ax,dy=py-ay;
+        int ix=dx>2?2:dx<-2?-2:0, iy=dy>2?2:dy<-2?-2:0;
+        if(t==0 || t==1 || t==2 || t==15 || t==30 || t==60 || t==120 || t==180 || t==239)
+            printf("g5u tick=%03d player=%d,%d alien=%d,%d target=%d,%d intended=%d,%d "
+                   "state=%d det=%d bars=%d\n",
+                   t,px,py,ax,ay,dx,dy,ix,iy,st.state,st.detected,st.door_blocked);
+        if(run_ticks(0,1)!=0) return 2;
+        if(legacy && run_block(noavoid,"g5u legacy ai")!=0) return 2;
+        get_status(&st);
+        int movedx=st.ax-ax, movedy=st.ay-ay;
+        if(t<=2 || t==15 || t==30 || t==60 || t==120 || t==180 || t==239)
+            printf("g5u actual tick=%03d alien=%d,%d moved=%d,%d reject_x=%d reject_y=%d\n",
+                   t+1,st.ax,st.ay,movedx,movedy,
+                   ix!=0 && movedx==0, iy!=0 && movedy==0);
+        prevax=st.ax; prevay=st.ay;
+    }
+    (void)prevax; (void)prevay;
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
 
@@ -3425,6 +3508,11 @@ int main(int argc, char **argv) {
         int w=argc>2?atoi(argv[2]):640, h=argc>3?atoi(argv[3]):400;
         for(int i=4;i<argc;i++) if(strcmp(argv[i],"objects")==0) objects_mode=1;
         return gl_demo(w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--g5u-nav") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        int legacy=0; for(int i=5;i<argc;i++) if(strcmp(argv[i],"legacy")==0) legacy=1;
+        return g5u_nav(argv[2],w,h,legacy);
     }
     if (argc > 2 && strcmp(argv[1], "--gl-orient") == 0) {
         int w=argc>3?atoi(argv[3]):640, h=argc>4?atoi(argv[4]):400;

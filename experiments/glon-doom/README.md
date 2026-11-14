@@ -406,3 +406,24 @@ before/after comparison.
 ```
 
 See `G5T-ROOMS-REPORT.md`.
+
+## G5u Alien obstacle navigation and room accessibility
+
+The normal game still starts in the G5t engineering room: player `(320,320)`,
+Alien `(1120,320)`, closed door. The room is not a second location. Normal GL
+launch now faces the player slightly toward the room (`angle=240`) so the
+machinery and the door are both visible; `doom/start-angle` remains `0` for
+tests, trace and scripted captures.
+
+`doom.glon` now makes one bounded local sidestep when both pursuit axes are
+blocked: it continues around the barrel/crate for a short interval, always
+using the existing `check-all` collision checks, then resumes direct pursuit.
+No pathfinding, teleport or new collision primitive was added.
+
+```sh
+./build/doom --g5u-nav /tmp/g5u-nav-after 960 600
+./build/doom --g5u-nav /tmp/g5u-nav-before 960 600 legacy
+```
+
+`legacy` suppresses the new sidestep for the before/after reproduction.
+See `G5U-NAVIGATION-REPORT.md`.

@@ -705,6 +705,46 @@ Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
 - Directional Alien captures and room captures show depth-tested occlusion
   around the new geometry. `make test` and frozen S1 pass.
 
+
+
+### G5u Alien obstacle navigation and room accessibility [FINDING]
+
+[FINDING 2026-11-14, `experiments/glon-avp-g5u`, WSLg D3D12 AMD Radeon]
+
+- The G5t engineering room is the actual spawn room (`x=128..768, y=128..640`),
+  not a second room. The normal player state is `(320,320)`, Alien
+  `(1120,320)`, door closed. The normal GL launch now applies a one-time
+  `doom/angle: 240` orientation so the initial view includes both the door and
+  engineering machinery; `doom/start-angle` remains `0`, preserving tests,
+  trace and scripted-capture expectations.
+- Confirmed failure: with the player at `(760,350)`, Alien at `(970,368)` and
+  the `(940,370)` barrel present, the Alien attempts x but is rejected by the
+  barrel; y reaches the target alignment and stops. It remains at `(968,352)`
+  for at least 240 ticks. This is a real AI limitation, not a rendering freeze
+  or a player misunderstanding.
+- Fix: `doom/update-alien` performs the original direct x/y pursuit first. If
+  no position change occurs and the target is beyond attack range, it sets a
+  signed 14-tick sidestep on the perpendicular axis. The side is chosen from
+  the corridor side (`y>320` or `x>768`), and every step still calls
+  `doom/check-all` (walls, doors and objects). The primary axis is retried each
+  avoid tick; once it moves, direct pursuit resumes. No teleport, pathfinding,
+  new collision primitive or frozen-S1 change was made.
+- `doom-host.c` also has `--g5u-nav DIR W H [legacy]` for deterministic
+  before/after movement traces and GL screenshots. `legacy` suppresses the
+  sidestep. The ordinary interactive executable was launched at 640x400 and
+  logged the new spawn orientation and unchanged Alien/rifle state.
+- Performance at 960×600, 180-frame matched medians: no-object 86.5 FPS
+  (sim 5.51 ms, submit 1.10 ms, total 11.56 ms) versus G5t 104.3 FPS (9.59 ms);
+  with objects 51.4 FPS (sim 13.24 ms, submit 1.20 ms, total 19.46 ms) versus
+  G5t 60.2 FPS (16.62 ms). The added Glon avoidance checks cost about 17% in
+  no-object mode and 15% with objects; the game remains above 50 FPS with
+  objects. Loader after host blocks: 174 cells free; table probe largest 128,
+  so the compact fix is near the 64K loader limit. Executable 6,100,344 bytes.
+- `make test`, G5s directional capture and frozen S1 pass. Room/machinery
+  collision remains visual-only from G5t; the player can walk through equipment,
+  and the local sidestep is a bounded corridor/obstacle heuristic, not a general
+  navmesh.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

@@ -179,6 +179,7 @@ doom/door-bars: 0
 doom/alien-dx: 0
 doom/alien-dy: 0
 doom/alien-d2: 0
+doom/alien-avoid: 0
 doom/tdepth: 0
 doom/tside: 0
 doom/td2: 0
@@ -318,7 +319,6 @@ doom/move-alien-y: func [ny] [
     doom/check-all doom/alien-x ny doom/alien-radius2
     either = doom/hit 0 [ doom/alien-y: ny ] [ none ]
 ]
-
 doom/update-alien: func [] [
     doom/alien-dx: - doom/px doom/alien-x
     doom/alien-dy: - doom/py doom/alien-y
@@ -327,48 +327,44 @@ doom/update-alien: func [] [
         doom/alien-detected: 1
         doom/door-bars: 0
         either = doom/door-blocked 1 [
-            either < doom/py 256 [ none ] [
-                either > doom/py 384 [ none ] [
-                    either < doom/alien-y 256 [ none ] [
-                        either > doom/alien-y 384 [ none ] [
-                            either < doom/px 768 [
-                                either > doom/alien-x 768 [ doom/door-bars: 1 ] [ none ]
-                            ] [
-                                either < doom/alien-x 768 [ doom/door-bars: 1 ] [ none ]
-                            ]
-                        ]
-                    ]
-                ]
-            ]
+            either < doom/py 256 [ none ] [ either > doom/py 384 [ none ] [ either < doom/alien-y 256 [ none ] [ either > doom/alien-y 384 [ none ] [ either < doom/px 768 [ either > doom/alien-x 768 [ doom/door-bars: 1 ] [ none ] ] [ either < doom/alien-x 768 [ doom/door-bars: 1 ] [ none ] ] ] ] ] ]
         ] [ none ]
         either < doom/alien-d2 doom/alien-attack2 [
             either = doom/door-bars 0 [ doom/alien-state: 2 ] [ doom/alien-state: 1 ]
         ] [ doom/alien-state: 1 ]
         either = doom/alien-state 1 [
-          either = doom/door-bars 0 [
-            either > doom/alien-dx doom/alien-speed [
-                doom/move-alien-x + doom/alien-x doom/alien-speed
-            ] [
-                either < doom/alien-dx - 0 doom/alien-speed [
-                    doom/move-alien-x - doom/alien-x doom/alien-speed
-                ] [ none ]
-            ]
-            either > doom/alien-dy doom/alien-speed [
-                doom/move-alien-y + doom/alien-y doom/alien-speed
-            ] [
-                either < doom/alien-dy - 0 doom/alien-speed [
-                    doom/move-alien-y - doom/alien-y doom/alien-speed
-                ] [ none ]
-            ]
-          ] [ none ]
+            either = doom/door-bars 0 [
+                doom/adx: doom/alien-x
+                doom/ady: doom/alien-y
+                either > doom/alien-dx doom/alien-speed [ doom/move-alien-x + doom/alien-x doom/alien-speed ] [ either < doom/alien-dx - 0 doom/alien-speed [ doom/move-alien-x - doom/alien-x doom/alien-speed ] [ none ] ]
+                either = doom/alien-avoid 0 [
+                    either > doom/alien-dy doom/alien-speed [ doom/move-alien-y + doom/alien-y doom/alien-speed ] [ either < doom/alien-dy - 0 doom/alien-speed [ doom/move-alien-y - doom/alien-y doom/alien-speed ] [ none ] ]
+                    either = doom/alien-x doom/adx [
+                        either = doom/alien-y doom/ady [
+                            either > doom/alien-d2 doom/alien-attack2 [
+                                either > * doom/alien-dx doom/alien-dx * doom/alien-dy doom/alien-dy [
+                                    doom/alien-avoid: either > doom/alien-y 320 [ -14 ] [ 14 ]
+                                ] [
+                                    doom/alien-avoid: either > doom/alien-x 768 [ -14 ] [ 14 ]
+                                ]
+                            ] [ none ]
+                        ] [ none ]
+                    ] [ none ]
+                ] [
+                    either = doom/alien-x doom/adx [
+                        either > doom/alien-avoid 0 [ doom/move-alien-y + doom/alien-y doom/alien-speed ] [ doom/move-alien-y - doom/alien-y doom/alien-speed ]
+                        either = doom/alien-y doom/ady [ doom/alien-avoid: 0 ] [ doom/alien-avoid: either < doom/alien-avoid 0 [ + doom/alien-avoid 1 ] [ - doom/alien-avoid 1 ] ]
+                    ] [ doom/alien-avoid: 0 ]
+                ]
+            ] [ none ]
         ] [ none ]
     ] [
         doom/alien-detected: 0
         doom/alien-state: 0
         doom/door-bars: 0
+        doom/alien-avoid: 0
     ]
 ]
-
 doom/reset: does [
     doom/px: doom/start-x
     doom/py: doom/start-y
@@ -385,6 +381,7 @@ doom/reset: does [
     doom/alien-state: 0
     doom/alien-detected: 0
     doom/door-bars: 0
+    doom/alien-avoid: 0
     doom/occluded: 0
     doom/alien-visible: 0
     doom/light-phase: 0

@@ -734,3 +734,19 @@ ceiling fixtures. Corridors, deck material, G5s Alien artwork/AI, G5r rifle and
 ammo, tracker, doors, controls, Glon collision and frozen S1 are unchanged.
 `--gl-rooms DIR W H [objects] [plain]` captures the room and reproduces the
 plain G5s room from the same poses. See `experiments/glon-doom/G5T-ROOMS-REPORT.md`.
+
+## 10p. AvP G5u Alien navigation and room accessibility (2026-11-14)
+
+The G5t engineering room is the normal spawn room, not a separate location:
+normal player start `(320,320)`, Alien `(1120,320)`, closed door. The original
+normal camera faced the closed door and showed only side detail; G5u makes the
+ordinary GL launch face `angle=240` so the room and door are both visible.
+`doom/start-angle` remains 0 for tests, trace and scripted captures.
+
+The reported barrel incident reproduced deterministically: with the player just
+inside the room and the Alien behind the `(940,370)` barrel, x movement was
+rejected and y movement became zero once aligned, leaving the Alien stationary
+at `(968,352)` for hundreds of ticks. `doom.glon` now adds a compact bounded
+sidestep that uses existing collision checks and resumes pursuit after clearing
+the obstacle. Glon remains authoritative; no map, collider, AI state enum or frozen
+S1 change was made. Full report: `experiments/glon-doom/G5U-NAVIGATION-REPORT.md`.
