@@ -1,0 +1,6 @@
+rifle_shot.wav: first_audible_ms=0.023 frames=28665
+door_open.wav: first_audible_ms=8.957 frames=97020
+door_close.wav: first_audible_ms=0.862 frames=97020
+wall_thud.wav: first_audible_ms=0.317 frames=52920
+cargo_impact.wav: first_audible_ms=14.059 frames=37044
+alien_shriek.wav: first_audible_ms=14.150 frames=93347

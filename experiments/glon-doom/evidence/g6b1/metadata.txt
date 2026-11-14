@@ -1,0 +1,12 @@
+G6b.1 interactive sound latency and missing-effect fixes
+date: 2026-11-15
+base: glon-avp-g6b b37f66e
+implementation: 88bdc6f
+executable: 6198952 bytes
+sha256: 2d8defda450f9f0e579a479f628bdc4cb99bcaffee586b6e2d090b6871f275b0
+audio callback: 256-frame buffer, 44100 Hz stereo; PULSE_LATENCY_MSEC=25 if unset
+assets disk: 3811498 bytes; runtime decoded: 3722638 bytes
+callback request->submission measured: 0.07-8.76 ms (pre-fix run) / 0.07-8.37 ms (post-fix run)
+GUI event smoke: F, E open/close, wall, cargo all produced audio requests and callbacks
+perf: 6 x 360-frame; median 132.0 FPS audio vs 139.2 no-audio (-5.2%); ranges 111.3-136.1 vs 132.9-161.1
+mixer: 0.0016-0.0019 ms per 256-frame block (5.80 ms budget)

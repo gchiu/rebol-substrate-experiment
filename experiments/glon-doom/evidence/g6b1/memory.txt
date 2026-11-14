@@ -1,0 +1,8 @@
+assets/audio/ambient_loop.wav: played_loop_frames=1455303 runtime_bytes=2910606 disk_bytes=2998920
+assets/audio/sfx/alien_shriek.wav: frames=93347 runtime_bytes=186694 disk_bytes=186772
+assets/audio/sfx/cargo_impact.wav: frames=37044 runtime_bytes=74088 disk_bytes=74166
+assets/audio/sfx/door_close.wav: frames=97020 runtime_bytes=194040 disk_bytes=194138
+assets/audio/sfx/door_open.wav: frames=97020 runtime_bytes=194040 disk_bytes=194138
+assets/audio/sfx/rifle_shot.wav: frames=28665 runtime_bytes=57330 disk_bytes=57408
+assets/audio/sfx/wall_thud.wav: frames=52920 runtime_bytes=105840 disk_bytes=105956
+total_runtime_decoded_bytes=3722638

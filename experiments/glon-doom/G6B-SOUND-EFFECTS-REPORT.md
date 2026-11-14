@@ -1,6 +1,8 @@
 # G6b — Event-Driven Sound Effects
 
-Status: implemented, tested and locally committed.
+Status: implemented and committed; interactive latency, door-opening and
+collision fixes are superseded by `G6B1-SOUND-FIX-REPORT.md` (branch
+`glon-avp-g6b1`, implementation `88bdc6f`).
 
 - Base: G6a `f816ab5`
 - Branch/worktree: `glon-avp-g6b` at

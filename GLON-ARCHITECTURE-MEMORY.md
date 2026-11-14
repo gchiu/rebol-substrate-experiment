@@ -319,6 +319,27 @@ unavailable driver paths all behaved; playback was not judged by listening.
 Full report: `experiments/glon-doom/G6B-SOUND-EFFECTS-REPORT.md`; evidence under
 `experiments/glon-doom/evidence/g6b/`.
 
+**[MEASURED] AvP G6b.1 interactive sound fixes (2026-11-15, 64K configuration,
+WSLg D3D12 + PulseAudio).**
+The G6b playtest exposed a zero-valued door-open enum being discarded by
+`if (ev)`, wall collisions requiring both axes to be stationary, and quiet /
+leading-silent effect clips. G6b.1 adds an explicit `SFX_NONE=0` sentinel, a
+report-only `doom/player-hit` flag from the existing movement resolver,
+trims Alien/cargo leading silence (64/79 ms -> about 14 ms), rebalances gains,
+uses a 256-frame callback buffer and requests `PULSE_LATENCY_MSEC=25` when
+unset. No movement, collision, AI, rendering or Glon semantics changed.
+
+The executable is 6,198,952 bytes (+8,488 from G6b); assets are 3,811,498 bytes
+on disk and 3,722,638 bytes decoded. Six 360-frame graphical smoke medians were
+132.0 FPS with audio and 139.2 without (-5.2%, overlapping ranges); the
+ambient-plus-8-voice mixer costs about 0.002 ms per 5.80 ms block. A graphical
+F/E/W smoke produced door-open, door-close, wall and cargo requests and
+callbacks; E2E tests produced nonzero PCM. The software request-to-callback
+path was 0.1-19 ms before and 0.07-8.37 ms after; speaker/server output latency
+was not reliably measured and needs a user playtest. Full report:
+`experiments/glon-doom/G6B1-SOUND-FIX-REPORT.md`; evidence under
+`experiments/glon-doom/evidence/g6b1/`.
+
 ## 7. Vocabularies and experiments (status)
 
 | Item | Status | Where |

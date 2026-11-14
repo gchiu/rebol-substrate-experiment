@@ -605,9 +605,9 @@ impact) to the existing SDL2 mixer:
   previous door voice with a short fade.
 - Alien shrieks trigger on detection or attack transitions with a 2.2 s
   cooldown and distance attenuation.
-- Wall/cargo impacts are inferred from actual blocked movement (input present,
-  resolved position unchanged) and classified with the existing object
-  extents; there is a 350 ms cooldown and no duplicate wall+cargo sound.
+- Wall/cargo impacts are reported by the Glon movement resolver through a
+  per-tick player-hit flag, then classified with the existing object extents;
+  there is a 350 ms cooldown and no duplicate wall+cargo sound.
 - Rifle cadence uses a 110 ms cooldown and an 8-voice pool. **G5r has no
   implemented firing behaviour**, so `F` or left mouse is a presentation-only
   shot preview: it does not spend ammo, damage the Alien, or alter combat.
@@ -629,3 +629,28 @@ The ambient 873687 credit remains Tommaso Motteran, CC BY 4.0.
 
 Full `make test` includes `tests/check_g6b_audio.py`, `--audio-test` and
 `--sfx-test`. See `G6B-SOUND-EFFECTS-REPORT.md` and `evidence/g6b/`.
+
+
+## G6b.1 interactive sound fixes
+
+The G6b playtest exposed three issues; G6b.1 fixes them:
+
+- Door **opening** was silent because `SFX_DOOR_OPEN` was enum value zero and
+  the event dispatch used `if (ev)`. The event enum now has an explicit
+  `SFX_NONE=0` sentinel, so both opening and closing are submitted.
+- Wall/cargo collisions now use `doom/player-hit`, set by the existing
+  `move-x`/`move-y` resolvers whenever either axis is blocked. The host no
+  longer requires the whole position to be unchanged, so diagonal/one-axis
+  impacts are detected. Wall and cargo gains were raised.
+- Alien and cargo leading silence was trimmed (about 50/60 ms), so their
+  audible onset is now about 14 ms instead of 64/79 ms.
+- SDL's buffer is 256 frames and `PULSE_LATENCY_MSEC=25` is requested when the
+  environment does not set it. This targets the PulseAudio output queue that
+  remained after the already-immediate input/request path. The user must
+  confirm the perceived latency by playtest.
+- The rifle remains the documented presentation-only `F`/left-mouse preview.
+
+G6b.1 adds `--audio-e2e` (actual F/E/tick wall/tick cargo paths and nonzero
+PCM), `--sfx-smoke` (real SDL F/E/W events in a graphical loop with audio
+trace), and `--audio-latency-test` (request-to-callback timing). Full
+`make test` includes the E2E test.

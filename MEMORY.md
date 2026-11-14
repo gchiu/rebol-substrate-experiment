@@ -983,3 +983,47 @@ the unavailable-driver path continued gracefully. Playback was verified
 programmatically, not by listening. Full report:
 `experiments/glon-doom/G6B-SOUND-EFFECTS-REPORT.md`; evidence under
 `experiments/glon-doom/evidence/g6b/`.
+
+## 10z. AvP G6b.1 interactive sound fixes (2026-11-15)
+
+G6b automated tests passed but the user playtest found a ~1 s rifle delay and
+missing door-opening/wall sounds. Diagnosis found three concrete defects:
+
+- `SFX_DOOR_OPEN` was enum value zero and the dispatch used `if (ev)`, so the
+  opening request was discarded. The enum now has an explicit `SFX_NONE=0`
+  sentinel; opening and closing both reach the mixer.
+- Wall/cargo detection required the entire position to be unchanged. The Glon
+  movement resolver now reports a per-tick `doom/player-hit` flag when either
+  axis is blocked, so diagonal/one-axis impacts are detected. The flag is
+  reporting-only; movement, collision extents and AI are unchanged.
+- Cargo and Alien clips had 79/64 ms of leading silence and low effect gains.
+  They were trimmed to about 14 ms onset; door/Alien/rifle/wall/cargo gains
+  were rebalanced upward.
+
+The software input→request→callback path was already on the frame of input and
+0.1–19 ms in the trace; the user-observed ~1 s was therefore downstream. G6b.1
+reduces the SDL callback buffer from 1024 to 256 frames and requests
+`PULSE_LATENCY_MSEC=25` when unset. This is a measured software-path change;
+speaker/server latency was not captured reliably and requires a new user
+playtest.
+
+Interrupted/reversed door motion still replaces the exclusive door voice with
+a 125 ms fade. The rifle remains a presentation-only F/LMB preview because G5r
+has no actual firing mechanic.
+
+The G6b.1 worktree is the permanent
+`/mnt/d/repos/glon-worktrees/glon-avp-g6b1`, based on G6b `b37f66e`;
+implementation `88bdc6f`. Full `make test` passes, including the new
+`--audio-e2e` test that exercises F input, E activation, tick-into-wall and
+tick-into-cargo with nonzero PCM, plus frozen S1 at
+`f90496c26dc45c7a387d8fc8639cd2781507d3d2`.
+
+The executable is 6,198,952 bytes (+8,488 from G6b). Audio assets are
+3,811,498 bytes on disk; runtime decoded audio is 3,722,638 bytes. Six
+360-frame graphical smoke medians were 132.0 FPS with audio and 139.2 without
+(-5.2%, overlapping 111.3–136.1 vs 132.9–161.1). The ambient-plus-8-voice mixer
+costs about 0.002 ms per 256-frame block (5.80 ms budget). A graphical
+`--sfx-smoke` run with real F/E/W events produced F, door-open, door-close,
+wall and cargo requests and callbacks. Playback was not subjectively verified.
+Full report: `experiments/glon-doom/G6B1-SOUND-FIX-REPORT.md`; evidence under
+`experiments/glon-doom/evidence/g6b1/`.

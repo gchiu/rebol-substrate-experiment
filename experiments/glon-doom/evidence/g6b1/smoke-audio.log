@@ -1,0 +1,12 @@
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+G5p renderer=OpenGL framebuffer=640x400 interactive=on
+audio: loaded Freesound 873687 spaceship interior 1455303 frames (33.000s), 44100-frame crossfade, gain 3.00
+audio: loaded sfx door open 97020 frames (2.200s), gain 1.00
+audio: loaded sfx door close 97020 frames (2.200s), gain 1.00
+audio: loaded sfx alien shriek 93347 frames (2.117s), gain 0.90
+audio: loaded sfx rifle shot 28665 frames (0.650s), gain 0.60
+audio: loaded sfx wall thud 52920 frames (1.200s), gain 0.90
+audio: loaded sfx cargo impact 37044 frames (0.840s), gain 1.00
+audio: ambient started driver=pulseaudio 44100 Hz 2ch samples=256 volume=60%
+G5p GL frame=120 fps=40.5 tick=8.71 state=6.09 scene=1.64 finish=0.00 swap=7.09 player=320,320 angle=240 door=0/1 alien=1120,320 state=0

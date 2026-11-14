@@ -1,0 +1,103 @@
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+G5p renderer=OpenGL framebuffer=640x400 interactive=on
+audio: loaded Freesound 873687 spaceship interior 1455303 frames (33.000s), 44100-frame crossfade, gain 3.00
+audio: loaded sfx door open 97020 frames (2.200s), gain 0.65
+audio: loaded sfx door close 97020 frames (2.200s), gain 0.65
+audio: loaded sfx alien shriek 95552 frames (2.167s), gain 0.70
+audio: loaded sfx rifle shot 28665 frames (0.650s), gain 0.45
+audio: loaded sfx wall thud 52920 frames (1.200s), gain 0.45
+audio: loaded sfx cargo impact 39690 frames (0.900s), gain 0.50
+audio: ambient started driver=pulseaudio 44100 Hz 2ch samples=1024 volume=60%
+audio trace: F fire down
+audio trace: request id=3 gain=1.000 tag=0
+audio trace: callback after 10.65ms id=3 bytes=4096 active=1
+audio trace: request id=3 gain=1.000 tag=0
+audio trace: callback after 14.08ms id=3 bytes=4096 active=2
+audio trace: request id=2 gain=0.707 tag=2
+audio trace: callback after 14.24ms id=2 bytes=4096 active=1
+audio trace: door event=1 open=56 target=0 player=700,320
+audio trace: request id=1 gain=1.000 tag=1
+audio trace: callback after 17.48ms id=1 bytes=4096 active=2
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: collision event=4 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: request id=4 gain=1.000 tag=0
+audio trace: callback after 5.98ms id=4 bytes=4096 active=3
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+G5p GL frame=120 fps=34.7 tick=12.90 state=6.44 scene=1.76 finish=0.00 swap=6.54 player=152,320 angle=128 door=0/1 alien=964,320 state=0
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=152,320 prev=152,320
+audio trace: request id=2 gain=0.994 tag=2
+audio trace: callback after 13.65ms id=2 bytes=4096 active=3
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: collision event=4 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: request id=4 gain=1.000 tag=0
+audio trace: callback after 7.00ms id=4 bytes=4096 active=4
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+audio trace: blocked=1 cargo=0 moving=1 wall_contact=1 cargo_contact=0 player=860,358 prev=860,358
+G5p GL frame=240 fps=92.9 tick=8.32 state=5.34 scene=1.29 finish=0.00 swap=5.43 player=860,358 angle=64 door=0/1 alien=948,326 state=2
