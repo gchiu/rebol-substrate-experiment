@@ -316,3 +316,16 @@ key mapping; manual verification steps are in `G5M-INVESTIGATION.md`. Use
 Measured GL 640x400 with objects: ~45.8 FPS (sim 14.9-17.0 ms), 960x600:
 ~41.5 FPS, versus G5k CPU 27.5 FPS. Ceiling lighting, object/Alien depth
 occlusion, door occlusion and CPU fallback remain.
+
+## G5n industrial corridor greybox
+
+The GL corridor now has real 3D structure: recessed wall panels, ribs, ceiling
+fixtures, pipes, floor plates/drains, service housings, a framed bulkhead and
+3D props. All materials are explicitly temporary neutral solids; final artwork
+is still required. See `G5N-CORRIDOR-REPORT.md` and `G5N-ASSETS.md`.
+
+```sh
+./build/doom --gl-tour /tmp/g5n-tour 640 400 objects
+./build/doom --gl-tour /tmp/g5n-tour960 960 600 objects
+./build/doom --gl-bench 120 640 400 objects
+```

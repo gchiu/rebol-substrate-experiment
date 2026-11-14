@@ -2283,7 +2283,7 @@ static void gl_billboard(GLuint tex, double x,double y,double wworld,double hwor
     double ca=cos(st_current_angle*2.0*M_PI/256.0), sa=sin(st_current_angle*2.0*M_PI/256.0);
     double rx=sa, ry=-ca; /* right */
     double cx=x/64.0, cy=y/64.0, cz=hworld/2.0;
-    glBindTexture(GL_TEXTURE_2D, tex); glColor3f(1,1,1);
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, tex); glColor3f(1,1,1);
     glBegin(GL_QUADS);
     glTexCoord2f(0,0); gl_gv(x - rx*wworld*32, y - ry*wworld*32, 0);
     glTexCoord2f(1,0); gl_gv(x + rx*wworld*32, y + ry*wworld*32, 0);
@@ -2331,35 +2331,143 @@ static void gl_draw_tracker(const Status *st) {
     glColor4f(1,1,1,1); glDisable(GL_BLEND); glEnable(GL_DEPTH_TEST);
 }
 
+
+static void gl_rgb(float r,float g,float b) { glColor3f(r,g,b); }
+static void gl_box(float x1,float y1,float z1,float x2,float y2,float z2,
+                   float r,float g,float b) {
+    glDisable(GL_TEXTURE_2D);
+    /* shaded faces: top/side/front vary slightly for readable massing */
+    gl_rgb(r*1.12f,g*1.12f,b*1.12f); glBegin(GL_QUADS);
+    gl_gv(x1,y1,z2); gl_gv(x2,y1,z2); gl_gv(x2,y2,z2); gl_gv(x1,y2,z2); glEnd();
+    gl_rgb(r*0.68f,g*0.68f,b*0.68f); glBegin(GL_QUADS);
+    gl_gv(x1,y1,z1); gl_gv(x1,y2,z1); gl_gv(x1,y2,z2); gl_gv(x1,y1,z2); glEnd();
+    gl_rgb(r*0.82f,g*0.82f,b*0.82f); glBegin(GL_QUADS);
+    gl_gv(x2,y1,z1); gl_gv(x2,y2,z1); gl_gv(x2,y2,z2); gl_gv(x2,y1,z2); glEnd();
+    gl_rgb(r*0.90f,g*0.90f,b*0.90f); glBegin(GL_QUADS);
+    gl_gv(x1,y1,z1); gl_gv(x2,y1,z1); gl_gv(x2,y1,z2); gl_gv(x1,y1,z2); glEnd();
+    gl_rgb(r*0.74f,g*0.74f,b*0.74f); glBegin(GL_QUADS);
+    gl_gv(x1,y2,z1); gl_gv(x2,y2,z1); gl_gv(x2,y2,z2); gl_gv(x1,y2,z2); glEnd();
+    gl_rgb(r*0.52f,g*0.52f,b*0.52f); glBegin(GL_QUADS);
+    gl_gv(x1,y1,z1); gl_gv(x2,y1,z1); gl_gv(x2,y2,z1); gl_gv(x1,y2,z1); glEnd();
+}
+static void gl_cyl_x(float x1,float x2,float y,float z,float rad,int seg,
+                     float r,float g,float b) {
+    glDisable(GL_TEXTURE_2D); gl_rgb(r,g,b);
+    for(int i=0;i<seg;i++){ float a0=(float)i*6.2831853f/seg,a1=(float)(i+1)*6.2831853f/seg;
+        float y0=y+cosf(a0)*rad,z0=z+sinf(a0)*rad,y1=y+cosf(a1)*rad,z1=z+sinf(a1)*rad;
+        glBegin(GL_QUADS); gl_gv(x1,y0,z0); gl_gv(x2,y0,z0); gl_gv(x2,y1,z1); gl_gv(x1,y1,z1); glEnd(); }
+}
+static void gl_cyl_z(float x,float y,float z1,float z2,float rad,int seg,float r,float g,float b){
+    glDisable(GL_TEXTURE_2D); gl_rgb(r,g,b);
+    for(int i=0;i<seg;i++){ float a0=(float)i*6.2831853f/seg,a1=(float)(i+1)*6.2831853f/seg;
+        float x0=x+cosf(a0)*rad,y0=y+sinf(a0)*rad,x1=x+cosf(a1)*rad,y1=y+sinf(a1)*rad;
+        glBegin(GL_QUADS); gl_gv(x0,y0,z1); gl_gv(x1,y1,z1); gl_gv(x1,y1,z2); gl_gv(x0,y0,z2); glEnd(); }
+}
+static void gl_solid_plane(float z,float r,float g,float b){
+    glDisable(GL_TEXTURE_2D); gl_rgb(r,g,b); glBegin(GL_QUADS);
+    gl_gv(128,128,z); gl_gv(1280,128,z); gl_gv(1280,1024,z); gl_gv(128,1024,z); glEnd();
+}
+static void gl_solid_wall(const GlWall *w,float r,float g,float b){
+    double dx=w->x2-w->x1,dy=w->y2-w->y1;
+    glDisable(GL_TEXTURE_2D); gl_rgb(r,g,b); glBegin(GL_QUADS);
+    gl_gv(w->x1,w->y1,0); gl_gv(w->x2,w->y2,0);
+    gl_gv(w->x2,w->y2,128); gl_gv(w->x1,w->y1,128); glEnd();
+}
+static void gl_light_panel(float x1,float y1,float x2,float y2,float z,float heat){
+    glDisable(GL_TEXTURE_2D); glDisable(GL_DEPTH_TEST); glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA,GL_ONE); gl_rgb(1.0f,0.86f*heat,0.56f*heat);
+    glBegin(GL_QUADS); gl_gv(x1,y1,z); gl_gv(x2,y1,z); gl_gv(x2,y2,z); gl_gv(x1,y2,z); glEnd();
+    glDisable(GL_BLEND); glEnable(GL_DEPTH_TEST);
+}
+static void gl_prop_3d(const Obj *o){
+    float x=o->x, y=o->y, hw=o->hw, hd=o->hd, h=o->h;
+    if(o->id==0){ gl_cyl_z(x,y,0,h,hw,10,0.38f,0.10f,0.07f);
+        gl_box(x-hw-1,y-hd-1,4,x+hw+1,y+hd+1,8,0.20f,0.07f,0.05f);
+        gl_box(x-hw-1,y-hd-1,h-10,x+hw+1,y+hd+1,h-5,0.20f,0.07f,0.05f);
+    } else if(o->id==1){ gl_box(x-hw,y-hd,0,x+hw,y+hd,h,0.20f,0.24f,0.22f);
+        gl_box(x-hw-3,y-hd-3,4,x+hw+3,y+hd+3,7,0.10f,0.12f,0.11f);
+        gl_box(x-hw-3,y-hd-3,h-8,x+hw+3,y+hd+3,h-4,0.10f,0.12f,0.11f);
+    } else if(o->id==2){ gl_box(x-hw,y-hd,0,x+hw,y+hd,h,0.16f,0.18f,0.19f);
+        gl_box(x-hw+4,y-hd-2,h*0.65,x+hw-4,y-hd+1,h*0.68,0.03f,0.03f,0.03f);
+    } else { gl_box(x-hw,y-hd,0,x+hw,y+hd,h,0.18f,0.20f,0.19f);
+        gl_box(x-hw+3,y-hd-2,5,x+hw-3,y-hd+2,9,0.08f,0.09f,0.08f);
+    }
+}
+static void gl_corridor(float light, int door_blocked) {
+    const float wallR=0.36f,wallG=0.33f,wallB=0.29f;
+    const float darkR=0.14f,darkG=0.13f,darkB=0.12f;
+    /* base floor + ceiling, solid placeholder materials */
+    gl_solid_plane(0,0.28f,0.27f,0.24f); gl_solid_plane(128,0.16f,0.16f,0.15f);
+    for(int i=0;i<10;i++) gl_solid_wall(&gl_walls[i],wallR,wallG,wallB);
+    /* recessed side panels, ribs and lower service housings */
+    for(int x=780;x<1260;x+=80){
+        gl_box(x,258,18,x+64,262,108,darkR*1.3f,darkG*1.2f,darkB*1.1f);
+        gl_box(x,378,18,x+64,382,108,darkR*1.3f,darkG*1.2f,darkB*1.1f);
+        gl_box(x+3,257,22,x+61,258,104,0.16f,0.15f,0.13f);
+        gl_box(x+3,382,22,x+61,383,104,0.16f,0.15f,0.13f);
+        for(int z=28;z<100;z+=14){ gl_box(x+8,257,z,x+56,258,z+3,0.08f,0.08f,0.07f);
+            gl_box(x+8,382,z,x+56,383,z+3,0.08f,0.08f,0.07f); }
+        gl_box(x,258,4,x+72,266,36,0.28f,0.25f,0.20f);
+        gl_box(x,374,4,x+72,382,36,0.28f,0.25f,0.20f);
+        gl_box(x,260,14,x+72,264,18,1.0f,0.46f,0.08f); /* warm floor strip */
+        gl_box(x,378,14,x+72,382,18,1.0f,0.46f,0.08f);
+    }
+    for(int x=768;x<=1280;x+=80){
+        gl_box(x,250,0,x+8,262,128,darkR,darkG,darkB);
+        gl_box(x,378,0,x+8,390,128,darkR,darkG,darkB);
+        gl_box(x,256,120,x+8,384,128,darkR,darkG,darkB); /* ceiling rib */
+        gl_box(x,256,0,x+8,384,4,darkR,darkG,darkB); /* floor rib */
+    }
+    /* longitudinal pipes and conduit runs */
+    for(int y=264;y<=376;y+=112){
+        gl_cyl_x(768,1280,y,112,5,10,0.20f,0.20f,0.19f);
+        gl_cyl_x(768,1280,y+8,118,3,8,0.14f,0.10f,0.08f);
+    }
+    for(int x=840;x<1240;x+=160){
+        gl_box(x,258,96,x+8,264,112,0.28f,0.12f,0.08f);
+        gl_box(x,376,96,x+8,382,112,0.28f,0.12f,0.08f);
+    }
+    /* recessed ceiling fixtures */
+    for(int x=820;x<1240;x+=160){
+        gl_box(x,290,124,x+72,350,127,0.10f,0.09f,0.08f);
+        gl_light_panel(x+6,296,x+66,344,126.5f,light);
+    }
+    /* floor plates, grates and drainage channels */
+    for(int x=780;x<1260;x+=40){
+        gl_box(x,270,1,x+36,370,3,0.30f,0.29f,0.26f);
+        for(int y=282;y<366;y+=18) gl_box(x, y,3, x+36, y+2, 4, 0.07f,0.08f,0.07f);
+    }
+    gl_box(768,260,0.5f,1280,270,2.5f,0.06f,0.07f,0.07f);
+    gl_box(768,370,0.5f,1280,380,2.5f,0.06f,0.07f,0.07f);
+    /* substantial bulkhead frame and door */
+    gl_box(762,244,0,770,256,136,0.10f,0.10f,0.09f);
+    gl_box(762,384,0,770,396,136,0.10f,0.10f,0.09f);
+    gl_box(762,244,128,770,396,136,0.08f,0.08f,0.08f);
+    gl_box(762,244,0,770,396,6,0.08f,0.08f,0.08f);
+    if(door_blocked){
+        gl_box(768,256,0,770,384,128,0.25f,0.23f,0.14f);
+        for(int z=12;z<50;z+=10) gl_box(768,264,z,770,376,z+4,0.62f,0.45f,0.10f);
+    }
+    /* visual destination bulkhead at the far end (existing wall remains gameplay boundary) */
+    gl_box(1272,244,0,1280,256,136,0.10f,0.10f,0.09f);
+    gl_box(1272,384,0,1280,396,136,0.10f,0.10f,0.09f);
+    gl_box(1272,244,128,1280,396,136,0.08f,0.08f,0.08f);
+    gl_box(1274,256,0,1278,384,128,0.28f,0.25f,0.16f);
+    for(int z=14;z<60;z+=12) gl_box(1274,264,z,1278,376,z+5,0.55f,0.40f,0.08f);
+}
 static void gl_scene(const Status *st, const Obj *objs, int nobj) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     gl_projection(); gl_view(last_px, last_py, st_current_angle);
-    glEnable(GL_TEXTURE_2D); glDisable(GL_BLEND); glDepthMask(GL_TRUE); glEnable(GL_DEPTH_TEST);
-    gl_plane(0,GT_FLOOR,0);
-    float l=0.70f + 0.16f*(float)sin((double)st->light*0.09);
-    glColor3f(l,l,l); gl_plane(128,GT_CEIL,0); glColor3f(1,1,1);
-    for (int i=0;i<10;i++) gl_wall(&gl_walls[i],0);
-    if (st->door_blocked) {
-        GlWall d={768,256,768,384,5}; gl_wall(&d,1);
-    }
-    /* localized illuminated ceiling strips; Glon supplies light phase */
-    glDisable(GL_TEXTURE_2D); glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA,GL_ONE);
-    glDepthMask(GL_FALSE);
-    float pulse=0.08f+0.08f*(float)((sin((double)st->light*0.09)+1.0)*0.5);
-    glColor4f(1.0f,0.82f,0.52f,pulse);
-    for (int i=0;i<4;i++) {
-        double x=400+i*220;
-        glBegin(GL_QUADS); gl_gv(x-40,300,127); gl_gv(x+40,300,127); gl_gv(x+40,360,127); gl_gv(x-40,360,127); glEnd();
-    }
-    glColor4f(1,1,1,1); glDisable(GL_BLEND); glDepthMask(GL_TRUE);
+    glDisable(GL_TEXTURE_2D); glDisable(GL_BLEND); glDepthMask(GL_TRUE); glEnable(GL_DEPTH_TEST);
+    float l=0.72f + 0.16f*(float)sin((double)st->light*0.09);
+    gl_corridor(l, st->door_blocked);
     /* depth-tested, alpha-tested billboards */
     glEnable(GL_TEXTURE_2D); glEnable(GL_ALPHA_TEST); glAlphaFunc(GL_GREATER,0.25f);
     glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
     for (int i=0;i<nobj;i++) {
         if (!objs[i].visible) continue;
-        GLuint t = GT_DRUM + (objs[i].id == 0 ? 0 : objs[i].id == 1 ? 1 : objs[i].id == 2 ? 2 : 3);
         glDepthMask(GL_TRUE);
-        gl_billboard(t, objs[i].x, objs[i].y, objs[i].hw*2.0/64.0, objs[i].h/64.0);
+        gl_prop_3d(&objs[i]);
     }
     if (st->visible) {
         const uint32_t *f = alien_frame_for(st);
@@ -2476,6 +2584,49 @@ static int gl_orient_shot(const char *dir,int w,int h) {
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
 
+
+static void gl_save_ppm(const char *path,int w,int h) {
+    uint8_t *buf=malloc((size_t)w*h*4); if(!buf) return;
+    glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,buf);
+    FILE *f=fopen(path,"wb"); if(!f){free(buf);return;}
+    fprintf(f,"P6\n%d %d\n255\n",w,h);
+    for(int y=h-1;y>=0;y--) for(int x=0;x<w;x++) fwrite(buf+(y*w+x)*4,1,3,f);
+    fclose(f); free(buf);
+}
+static int gl_apply_pose(int px,int py,int angle,int door_open,int door_blocked,int ax,int ay,int astate){
+    reset(); char src[320];
+    snprintf(src,sizeof src,
+      "[ doom/px: %d doom/py: %d doom/angle: %d doom/aim "
+      "doom/door-open: %d doom/door-target: %d doom/door-blocked: %d "
+      "doom/alien-x: %d doom/alien-y: %d doom/alien-state: %d "
+      "doom/alien-health: 100 doom/alien-detected: 1 ]",
+      px,py,angle,door_open,door_open,door_blocked,ax,ay,astate);
+    cell b=parse_source(src,"gl tour pose"); return run_block(b,"gl tour pose");
+}
+static int gl_tour(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
+    struct P{const char*n;int px,py,a,open,block,ax,ay,state;} poses[]={
+      {"01-entrance",800,320,0,64,0,990,320,1},
+      {"02-mid-corridor",1000,320,0,64,0,990,320,1},
+      {"03-close-wall",980,320,64,64,0,990,320,1},
+      {"04-look-back",900,320,128,64,0,990,320,1},
+      {"05-door-closed",620,320,0,0,1,1120,320,0},
+      {"06-door-open",620,320,0,64,0,990,320,1},
+      {"07-crates-tracker",850,330,0,64,0,990,320,1},
+      {"08-far-bulkhead",1080,320,0,64,0,990,320,1}
+    };
+    for(size_t i=0;i<sizeof poses/sizeof poses[0];i++){
+        if(gl_apply_pose(poses[i].px,poses[i].py,poses[i].a,poses[i].open,poses[i].block,poses[i].ax,poses[i].ay,poses[i].state)!=0) return 2;
+        int px,py,pa; get_state(&px,&py,&pa); st_current_angle=pa;
+        Status st; Obj objs[6]; if(get_status(&st)!=0) return 2; int nobj=0;
+        if(objects_mode){get_objects(objs);nobj=6;}
+        gl_scene(&st,objs,nobj);
+        char path[4096]; snprintf(path,sizeof path,"%s/%s.ppm",dir,poses[i].n); gl_save_ppm(path,w,h);
+        printf("tour %s %dx%d\n",poses[i].n,w,h);
+    }
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
 static int gl_shots(const char *dir,int w,int h) {
     if (gl_init(w,h,0)!=0) return 2; gl_active = 1; load_session(); build_blocks(); gl_fixed_pose();
     Status st; Obj objs[6]; int px,py,pa; get_state(&px,&py,&pa); st_current_angle=pa; get_status(&st); int nobj=0;
@@ -2578,6 +2729,11 @@ int main(int argc, char **argv) {
     if (argc > 2 && strcmp(argv[1], "--gl-orient") == 0) {
         int w=argc>3?atoi(argv[3]):640, h=argc>4?atoi(argv[4]):400;
         return gl_orient_shot(argv[2],w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-tour") == 0) {
+        int w=argc>3?atoi(argv[3]):640, h=argc>4?atoi(argv[4]):400;
+        for(int i=5;i<argc;i++) if(strcmp(argv[i],"objects")==0) objects_mode=1;
+        return gl_tour(argv[2],w,h);
     }
     if (argc > 2 && strcmp(argv[1], "--gl-shots") == 0) {
         int w=argc>3?atoi(argv[3]):640, h=argc>4?atoi(argv[4]):400;

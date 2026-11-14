@@ -535,6 +535,26 @@ AMD Radeon, Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
   physical-keyboard verification remains recommended. Loader 14,185 used/615 free; heap 33,600; code 13,126/16,128;
   executable 924,496 bytes; no frozen-memory or primitive change.
 
+### G5n AvP industrial corridor greybox [MEASURED]
+
+[MEASURED 2026-11-14, `experiments/glon-avp-g5n`, WSLg D3D12 AMD Radeon,
+Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
+
+- **Implemented:** real 3D corridor architecture in the existing GL backend:
+  bulkhead walls, recessed wall panels/trim, projecting wall/ceiling/floor ribs,
+  lower service housings, pipes/conduits, recessed ceiling fixtures, floor
+  plates/grates/drains, framed near/far bulkheads and 3D object masses.
+- **Artwork gate open:** all materials are temporary flat solids. The approved
+  reference at `/mnt/c/users/anon_/downloads/corridor.png` was used only as art
+  direction; no crops or new low-quality procedural textures are claimed as
+  final. `G5N-ASSETS.md` specifies required final assets. Alien remains pending
+  separate artwork.
+- **Performance:** 640x400 measured 31–46 FPS (simulation 19–20 ms); 960x600
+  36.2 FPS. Immediate-mode geometry adds draw cost; still interactive but below
+  G5m. Loader 14,082 used/718 free; heap 33,600; GC 0; executable 1,035,848.
+- **Preserved:** GL default and CPU fallback, resize drawable viewport, controls,
+  doors/collision/Alien state, tracker/HUD, ceiling pulse, frozen S1/64K.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

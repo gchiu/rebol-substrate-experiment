@@ -619,6 +619,19 @@ requirement and the need for separately produced artwork. The manual procedure a
 static-geometry duplication are documented. Full report:
 `experiments/glon-doom/G5M-INVESTIGATION.md`.
 
+## 10h. AvP G5n industrial corridor greybox (2026-11-14)
+
+G5n replaced the flat GL corridor with real 3D architectural geometry:
+recessed wall panels, structural ribs, service housings, pipes, ceiling light
+fixtures, floor plates/grates/drains, framed bulkheads and 3D props. The
+approved corridor reference was used only as art direction; all current
+materials are explicitly temporary flat solids and the visual-quality gate
+remains open. Final material assets are specified in `G5N-ASSETS.md`.
+
+GL performance measured 31–46 FPS at 640x400 and 36.2 FPS at 960x600. Frozen
+S1, the 64K map, controls, doors, collision, tracker/resize behavior and Alien
+state are unchanged. Full report: `experiments/glon-doom/G5N-CORRIDOR-REPORT.md`.
+
 ## 11. Detailed documents
 
 - `README.md` — project intro.
