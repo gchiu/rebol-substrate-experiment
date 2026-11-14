@@ -1,0 +1,9 @@
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+detail 01-south-cabinets 960x600
+detail 02-south-cabinet-closeup 960x600
+detail 03-east-cabinets 960x600
+detail 04-east-cabinet-closeup 960x600
+detail 05-room-ceiling 960x600
+detail 06-room-ceiling-wide 960x600
+detail 07-room-wide 960x600

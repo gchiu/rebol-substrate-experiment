@@ -818,3 +818,35 @@ remain 53,705/54,569 and 33,440/33,600. GPU texture memory rises by 7,178,000
 bytes to 9,878,400. Full report:
 `experiments/glon-doom/G5X2-DOOR-TEXTURE-REPORT.md`; before/after evidence is
 under `experiments/glon-doom/evidence/g5x2/`.
+
+## 10u. AvP G5y engineering-room cabinet and ceiling detail (2026-11-15)
+
+The engineering-room cabinet fronts had a full-height near-black strip at 48%
+of each south cabinet's width. It was an intentional double-door centre stile
+with almost no metallic detail; it also ran through the centred vent of the
+reused panel overlay, so it read as unfinished geometry. The cabinets now use a
+single-door read with steel jambs, top/bottom rails, three hinges and an edge
+pull clear of the vent. The east cabinets' panel overlay was buried inside the
+cabinet body at `x+0.1`; it now sits in front at `x-0.1`, and the east pull was
+moved to the latch edge. Cabinet positions and collision are unchanged.
+
+The room ceiling now reuses the existing 64x64 `tex_ceiling_panel` as a
+room-only 6x4 recessed panel layer at `z=127.35`, with 1.3-unit seams exposing
+the original dark plane, a perimeter ledge, two ventilation grilles and a
+subtle cool bounce. The base world ceiling, structural beams, pipes, trays and
+light housings are unchanged; no floor texture was copied and no collision
+changed.
+
+The G5y worktree is the permanent `/mnt/d/repos/glon-worktrees/glon-avp-g5y`,
+based on G5x2 `133d5b0`; implementation `5c0ef85`. Full `make test` passes,
+including frozen S1 at `f90496c26dc45c7a387d8fc8639cd2781507d3d2`.
+
+The final executable is 6,146,536 bytes (+25,080 from G5x2; +20,648 from the
+capture-only diagnostic baseline). GL texture memory rises by exactly 16,384
+bytes to 9,894,784 for one 64x64 RGBA ceiling texture. Loader/heap are
+unchanged. Interleaved old/new medians: standard 960x600 object benchmark
+52.7 -> 54.2 FPS; room-detail 960x600 209.4 -> 218.5 FPS; room-detail
+1920x1080 122.8 -> 120.4 FPS (-1.9%, ranges 101.3-134.1 vs 104.5-133.2, so
+within run-to-run spread). Full report:
+`experiments/glon-doom/G5Y-ENGINEERING-DETAIL-REPORT.md`; evidence under
+`experiments/glon-doom/evidence/g5y/`.

@@ -1,0 +1,10 @@
+G5y evidence metadata (2026-11-15)
+Branch: glon-avp-g5y, based on glon-avp-g5x2 @ 133d5b0
+Baseline is the G5x2 renderer plus capture-only diagnostic commands.
+G5x2 executable: 6,121,456 bytes
+Baseline-with-diagnostics executable: 6,125,888 bytes
+Final G5y executable: 6,146,536 bytes
+G5x2 GL texture memory: 9,878,400 bytes
+New GT_CEIL_PANEL 64x64 RGBA: 16,384 bytes
+Final GL texture memory: 9,894,784 bytes
+No other texture assets were added; blast-door textures unchanged.

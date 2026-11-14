@@ -503,3 +503,31 @@ python3 tools/convert_g5x2_door.py
 
 Committed before/after evidence, montages and the randomized old-vs-new
 benchmark are under `evidence/g5x2/`. See `G5X2-DOOR-TEXTURE-REPORT.md`.
+
+## G5y engineering-room cabinet and ceiling detail
+
+The full-height black strips on the south cabinets were an intentional
+double-door centre stile, but they crossed the centred vent of the reused panel
+overlay and read as unfinished geometry. The cabinets now render as single-door
+units with steel jambs, top/bottom rails, hinges and edge pulls; the vent stays
+clear and cabinet positions/collision are unchanged. The east-cabinet overlay
+was also moved in front of the cabinet face instead of inside the body.
+
+The room ceiling reuses the existing 64x64 `tex_ceiling_panel` as a room-only
+6x4 recessed panel layer below the world plane, with dark seams, a perimeter
+support ledge, two ventilation grilles and a subtle cool bounce. The original
+beams, pipes, trays and light housings remain; no floor texture was copied.
+
+```sh
+./build/doom --gl-detail-shots /tmp/g5y-detail 960 600
+./build/doom --gl-detail-shots /tmp/g5y-detail-max 1920 1080
+./build/doom --gl-rooms /tmp/g5y-rooms 960 600
+./build/doom --gl-detail-bench 180 960 600 objects
+```
+
+The final executable is 6,146,536 bytes; GL texture memory rises by 16,384
+bytes for `GT_CEIL_PANEL`. The room-heavy 1920 benchmark median was 122.8 FPS
+before and 120.4 FPS after (-1.9%, within the observed spread); the standard
+960x600 object benchmark showed no regression. Committed before/after evidence
+and montages are under `evidence/g5y/`. See
+`G5Y-ENGINEERING-DETAIL-REPORT.md`.

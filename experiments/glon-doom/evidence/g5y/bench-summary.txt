@@ -1,0 +1,6 @@
+GL bench 960x600 objects baseline: n=3 median=52.7 fps values=[50.5, 52.7, 54.6]
+GL bench 960x600 objects g5y: n=3 median=54.2 fps values=[54.2, 54.2, 51.8]
+detail bench 960x600 objects baseline: n=5 median=209.4 fps values=[207.8, 210.0, 229.0, 209.4, 203.9]
+detail bench 960x600 objects g5y: n=5 median=218.5 fps values=[219.1, 229.7, 217.6, 218.5, 190.5]
+detail bench 1920x1080 objects baseline: n=12 median=122.8 fps
+detail bench 1920x1080 objects g5y: n=12 median=120.4 fps

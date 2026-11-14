@@ -1,0 +1,10 @@
+baseline run1 gl detail bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=7.62ms fps=131.2 loader=54601 heap=33600
+g5y     run1 gl detail bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=9.57ms fps=104.5 loader=54601 heap=33600
+baseline run2 gl detail bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=7.68ms fps=130.2 loader=54601 heap=33600
+g5y     run2 gl detail bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=8.26ms fps=121.1 loader=54601 heap=33600
+baseline run3 gl detail bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=7.46ms fps=134.1 loader=54601 heap=33600
+g5y     run3 gl detail bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=7.64ms fps=131.0 loader=54601 heap=33600
+baseline run4 gl detail bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=8.96ms fps=111.6 loader=54601 heap=33600
+g5y     run4 gl detail bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=7.90ms fps=126.6 loader=54601 heap=33600
+baseline run5 gl detail bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=7.81ms fps=128.1 loader=54601 heap=33600
+g5y     run5 gl detail bench renderer=D3D12 (AMD Radeon(TM) Graphics) resolution=1920x1080 frames=120 total=8.54ms fps=117.1 loader=54601 heap=33600

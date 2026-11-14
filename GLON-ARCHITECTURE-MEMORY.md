@@ -238,6 +238,17 @@ runtime and exhausted its heap after 6 operator terms in the Pratt parser,
 where native and CI-built WASM handle 25. **Test WASM behaviour against a
 build of the current sources.**
 
+**[MEASURED] AvP G5y renderer-only room detail (2026-11-15, 64K configuration, WSLg D3D12).**
+A visual-only change in `experiments/glon-doom` added a room-specific OpenGL
+ceiling layer and cabinet hardware. It does not touch S1, parser semantics,
+collision, navigation or the G5x2 door. The final executable is 6,146,536
+bytes (+25,080 from G5x2); GL texture memory rises by 16,384 bytes to
+9,894,784 for one 64x64 RGBA texture. Loader/heap are unchanged. Interleaved
+old/new medians: standard 960x600 object benchmark 52.7 -> 54.2 FPS; room-detail
+960x600 209.4 -> 218.5 FPS; room-detail 1920x1080 122.8 -> 120.4 FPS (-1.9%,
+within the observed spread). Full report:
+`experiments/glon-doom/G5Y-ENGINEERING-DETAIL-REPORT.md`.
+
 ## 7. Vocabularies and experiments (status)
 
 | Item | Status | Where |
