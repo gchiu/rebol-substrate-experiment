@@ -2300,7 +2300,8 @@ static const GlWall gl_walls[10] = {
     {1152,384,768,384,2},{768,384,768,640,1},{768,640,128,640,1},
     {128,640,128,128,1}
 };
-enum { GT_PANEL, GT_SERVICE, GT_FLOOR, GT_CEIL, GT_DOOR_LEFT, GT_DOOR_RIGHT,
+enum { GT_PANEL, GT_SERVICE, GT_FLOOR, GT_CEIL, GT_CEIL_PANEL,
+       GT_DOOR_LEFT, GT_DOOR_RIGHT,
        GT_DRUM, GT_CRATE, GT_CABINET, GT_CONTAINER, GT_ALIEN0,
        GT_ORIENT = GT_ALIEN0 + ALIEN_DIR_COUNT, GT_ART_WALL, GT_ART_PANEL, GT_ART_FLOOR,
        GT_WEAPON, GT_COUNT = GT_WEAPON + 1 };
@@ -2379,6 +2380,7 @@ static int gl_init(int w, int h, int shown) {
     gl_upload(gl_tex[GT_SERVICE], tex_service_v2,64,64);
     gl_upload(gl_tex[GT_FLOOR], tex_floor,64,64);
     gl_upload(gl_tex[GT_CEIL], tex_ceiling_light,64,64);
+    gl_upload(gl_tex[GT_CEIL_PANEL], tex_ceiling_panel,64,64);
     if(gl_upload_rgb_file(gl_tex[GT_DOOR_LEFT],"g5x2-door-left.rgb",840,1470)!=0) return -1;
     if(gl_upload_rgb_file(gl_tex[GT_DOOR_RIGHT],"g5x2-door-right.rgb",840,1470)!=0) return -1;
     gl_upload(gl_tex[GT_DRUM], obj_drum,64,96);
@@ -2758,6 +2760,18 @@ static void gl_tex_quad_tint_add(GLuint tex,float x1,float y1,float x2,float y2,
     glEnd(); glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_MODULATE);
     glDisable(GL_TEXTURE_2D);
 }
+static void gl_tex_plane(GLuint tex,float x1,float y1,float x2,float y2,float z,
+                         float u0,float v0,float u1,float v1,float tint)
+{
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,tex);
+    glColor3f(tint,tint,tint); glBegin(GL_QUADS);
+    glTexCoord2f(u0,v0); gl_gv(x1,y1,z);
+    glTexCoord2f(u1,v0); gl_gv(x2,y1,z);
+    glTexCoord2f(u1,v1); gl_gv(x2,y2,z);
+    glTexCoord2f(u0,v1); gl_gv(x1,y2,z);
+    glEnd(); glDisable(GL_TEXTURE_2D);
+}
+
 static void gl_box_tex(GLuint tex,float x1,float y1,float z1,float x2,float y2,float z2,
                        float tint,float us,float vs)
 {
@@ -3522,11 +3536,26 @@ static void eng_cabinet_y(float x1,float x2,float y,float z1,float z2)
     gl_box_tex_uv(gl_tex[GT_ART_WALL],x1,y-26,z1,x2,y,z2,1.18f,0.02f,0.02f,0.30f,0.30f);
     gl_tex_quad_tint_add(gl_tex[GT_ART_PANEL],x1+3,y-26.1f,x2-3,y-26.1f,z1+4,z2-4,0,0,1,1,0.22f);
     gl_glow_wall_y(y-26.16f,x1+3,x2-3,z1+4,z2-4,0.38f,0.37f,0.34f,0.15f);
-    gl_box(x1,y-29,z1,x2,y-26,z1+5,0.18f,0.16f,0.13f);
-    gl_box(x1,y-29,z2-5,x2,y-26,z2,0.18f,0.16f,0.13f);
-    gl_box(x1+(x2-x1)*0.48f,y-28,z1+6,x1+(x2-x1)*0.48f+3,y-26,z2-6,0.06f,0.07f,0.07f);
-    gl_box(x1+7,y-30,z2-18,x1+10,y-27,z2-12,0.06f,0.065f,0.06f);
-    gl_box(x1+7,y-30,z1+9,x1+10,y-27,z1+15,0.06f,0.065f,0.06f);
+    /* G5y: the old near-black strip was a double-door centre stile, but it
+     * crossed the reused panel's centred vent. Treat each cabinet as a single
+     * door instead: steel jambs, top/bottom rails, hinges and an edge pull. */
+    gl_box(x1,y-29,z1,x2,y-26,z1+4,0.22f,0.20f,0.17f);
+    gl_box(x1,y-29,z2-4,x2,y-26,z2,0.22f,0.20f,0.17f);
+    gl_box(x1,y-29,z1,x1+4,y-26,z2,0.21f,0.19f,0.16f);
+    gl_box(x2-4,y-29,z1,x2,y-26,z2,0.21f,0.19f,0.16f);
+    gl_box(x1+4,y-29.5f,z1+0.7f,x2-4,y-29,z1+1.9f,0.36f,0.32f,0.25f);
+    gl_box(x1+4,y-29.5f,z2-1.9f,x2-4,y-29,z2-0.7f,0.32f,0.29f,0.23f);
+    gl_box(x1+0.5f,y-29.5f,z1+5,x1+2.0f,y-29,z2-5,0.38f,0.33f,0.26f);
+    gl_box(x2-2.0f,y-29.5f,z1+5,x2-0.5f,y-29,z2-5,0.33f,0.30f,0.24f);
+    for(int k=0;k<3;k++){
+        gl_box(x1+1,y-30,z1+12+k*30,x1+5,y-29,z1+19+k*30,0.24f,0.22f,0.18f);
+        gl_box(x1+1.6f,y-30.4f,z1+13+k*30,x1+4.4f,y-30,z1+14.2f+k*30,0.42f,0.36f,0.27f);
+        gl_box(x1+2.7f,y-30.5f,z1+15.5f+k*30,x1+3.3f,y-30.3f,z1+16.5f+k*30,0.10f,0.10f,0.09f);
+    }
+    float zm=0.5f*(z1+z2);
+    gl_box(x2-11,y-30,zm-3,x2-7,y-29,zm+9,0.25f,0.23f,0.19f);
+    gl_box(x2-10,y-30.6f,zm-2,x2-8,y-30,zm+8,0.08f,0.08f,0.07f);
+    gl_box(x2-9.2f,y-30.8f,zm-1,x2-8.8f,y-30.6f,zm+7,0.44f,0.38f,0.28f);
     gl_box(x1+8,y-31,z1+7,x1+18,y-28,z1+11,0.45f,0.32f,0.04f);
     gl_box(x1+11,y-31,z1+7,x1+14,y-28,z1+11,0.045f,0.04f,0.03f);
     eng_indicator(x1+12,y-30,z2-16,5,0.20f,0.85f,0.16f);
@@ -3535,15 +3564,26 @@ static void eng_cabinet_y(float x1,float x2,float y,float z1,float z2)
 static void eng_cabinet_x(float y1,float y2,float x,float z1,float z2)
 {
     gl_box_tex_uv(gl_tex[GT_ART_WALL],x,y1,z1,x+24,y2,z2,1.18f,0.02f,0.02f,0.30f,0.30f);
-    gl_tex_quad_tint_add(gl_tex[GT_ART_PANEL],x+0.1f,y1+3,x+0.1f,y2-3,z1+4,z2-4,0,0,1,1,0.22f);
-    gl_glow_wall_x(x+0.04f,y1+3,y2-3,z1+4,z2-4,0.38f,0.37f,0.34f,0.14f);
-    gl_box(x,y1,z1,x+4,y2,z1+5,0.18f,0.16f,0.13f);
-    gl_box(x,y1,z2-5,x+4,y2,z2,0.18f,0.16f,0.13f);
-    gl_box(x+2,y1+8,z1+7,x+4,y1+12,z1+13,0.06f,0.065f,0.06f);
-    gl_box(x+2,y2-12,z1+7,x+4,y2-8,z1+13,0.06f,0.065f,0.06f);
-    gl_box(x+1,y1+7,z1+8,x+3,y1+17,z1+12,0.45f,0.32f,0.04f);
-    gl_box(x+1,y1+10,z1+8,x+3,y1+13,z1+12,0.045f,0.04f,0.03f);
-    eng_indicator(x+0.1f,y1+20,z2-17,5,0.95f,0.12f,0.04f);
+    gl_tex_quad_tint_add(gl_tex[GT_ART_PANEL],x-0.1f,y1+3,x-0.1f,y2-3,z1+4,z2-4,0,0,1,1,0.22f);
+    gl_glow_wall_x(x-0.04f,y1+3,y2-3,z1+4,z2-4,0.38f,0.37f,0.34f,0.14f);
+    gl_box(x-1.0f,y1,z1,x+4,y2,z1+4,0.21f,0.19f,0.16f);
+    gl_box(x-1.0f,y1,z2-4,x+4,y2,z2,0.21f,0.19f,0.16f);
+    gl_box(x-1.0f,y1,z1,x+4,y1+4,z2,0.21f,0.19f,0.16f);
+    gl_box(x-1.0f,y2-4,z1,x+4,y2,z2,0.21f,0.19f,0.16f);
+    gl_box(x-1.4f,y1+4,z1+0.7f,x+4,y2-4,z1+1.9f,0.34f,0.31f,0.25f);
+    gl_box(x-1.4f,y1+4,z2-1.9f,x+4,y2-4,z2-0.7f,0.31f,0.28f,0.23f);
+    for(int k=0;k<3;k++){
+        gl_box(x-1.2f,y1+7,z1+12+k*30,x+2.0f,y1+11,z1+19+k*30,0.24f,0.22f,0.18f);
+        gl_box(x-1.5f,y1+7.6f,z1+13+k*30,x-1.2f,y1+10.4f,z1+14.2f+k*30,0.42f,0.36f,0.27f);
+    }
+    float zm=0.5f*(z1+z2);
+    /* edge pull, kept clear of the centred vent */
+    gl_box(x-2.0f,y2-13,zm-2,x+0.5f,y2-10,zm+9,0.25f,0.23f,0.19f);
+    gl_box(x-2.6f,y2-12,zm-1,x-2.0f,y2-11,zm+8,0.12f,0.11f,0.10f);
+    gl_box(x-2.8f,y2-11.6f,zm,x-2.6f,y2-11.4f,zm+7,0.44f,0.38f,0.28f);
+    gl_box(x-1.0f,y1+7,z1+8,x+2.0f,y1+17,z1+12,0.45f,0.32f,0.04f);
+    gl_box(x-1.0f,y1+10,z1+8,x+2.0f,y1+13,z1+12,0.045f,0.04f,0.03f);
+    eng_indicator(x-0.3f,y1+20,z2-17,5,0.95f,0.12f,0.04f);
 }
 static void eng_walls(void)
 {
@@ -3601,8 +3641,43 @@ static void eng_walls(void)
     gl_tex_quad_tint_add(gl_tex[GT_ART_PANEL],759.8f,416,759.8f,614,8,24,0,0,1,1,0.16f);
     eng_pipe_z(744,460,20,112,4,0.24f,0.16f,0.07f);
 }
+static void eng_ceiling_vent(float x1,float y1,float x2,float y2)
+{
+    gl_box(x1,y1,126.85f,x2,y2,127.55f,0.045f,0.048f,0.045f);
+    gl_box(x1-2,y1-2,126.7f,x2+2,y1,127.65f,0.16f,0.17f,0.17f);
+    gl_box(x1-2,y2,126.7f,x2+2,y2+2,127.65f,0.16f,0.17f,0.17f);
+    gl_box(x1-2,y1,126.7f,x1,y2,127.65f,0.16f,0.17f,0.17f);
+    gl_box(x2,y1,126.7f,x2+2,y2,127.65f,0.16f,0.17f,0.17f);
+    for(float yy=y1+4;yy<y2-3;yy+=5)
+        gl_box(x1+3,yy,126.55f,x2-3,yy+2,126.75f,0.14f,0.15f,0.15f);
+}
+
+static void eng_ceiling(void)
+{
+    /* Room-only recessed panel layer below the world ceiling plane. */
+    const float z=127.35f;
+    const float x0=136.0f,x1=760.0f,y0=136.0f,y1=632.0f;
+    const int cols=6,rows=4;
+    const float pw=(x1-x0)/cols,pd=(y1-y0)/rows;
+    for(int iy=0;iy<rows;iy++) for(int ix=0;ix<cols;ix++){
+        float xa=x0+ix*pw+1.3f,xb=x0+(ix+1)*pw-1.3f;
+        float ya=y0+iy*pd+1.3f,yb=y0+(iy+1)*pd-1.3f;
+        float tint=0.60f+0.035f*((ix*3+iy*5)%3)-0.02f*(iy%2);
+        gl_tex_plane(gl_tex[GT_CEIL_PANEL],xa,ya,xb,yb,z,0,0,1,1,tint);
+    }
+    /* perimeter support ledge */
+    gl_box(x0-2,y0-2,z-0.5f,x1+2,y0+1,z+0.7f,0.13f,0.14f,0.14f);
+    gl_box(x0-2,y1-1,z-0.5f,x1+2,y1+2,z+0.7f,0.13f,0.14f,0.14f);
+    gl_box(x0-2,y0+1,z-0.5f,x0+1,y1-1,z+0.7f,0.13f,0.14f,0.14f);
+    gl_box(x1-1,y0+1,z-0.5f,x1+2,y1-1,z+0.7f,0.13f,0.14f,0.14f);
+    gl_glow_quad(x0+4,y0+4,x1-4,y1-4,z-0.15f,0.18f,0.26f,0.36f,0.05f);
+    eng_ceiling_vent(360,220,470,268);
+    eng_ceiling_vent(360,400,470,448);
+}
+
 static void eng_overhead(void)
 {
+    eng_ceiling();
     /* structural ceiling beams and corner posts */
     for(float y=190;y<620;y+=150) gl_box(128,y-4,118,768,y+4,128,0.075f,0.075f,0.070f);
     gl_box(136,136,0,148,148,128,0.10f,0.10f,0.095f);
@@ -4052,6 +4127,51 @@ static int gl_room_shots(const char *dir,int w,int h,int plain) {
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
 
+static int gl_detail_shots(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
+    struct DP { const char *name; int px,py,angle,ax,ay,astate; float pitch; } poses[] = {
+        {"01-south-cabinets",450,430,64,1120,320,0,0},
+        {"02-south-cabinet-closeup",450,555,64,1120,320,0,2},
+        {"03-east-cabinets",620,520,0,1120,320,0,0},
+        {"04-east-cabinet-closeup",670,520,0,1120,320,0,2},
+        {"05-room-ceiling",450,380,64,1120,320,0,34},
+        {"06-room-ceiling-wide",650,520,128,1120,320,0,28},
+        {"07-room-wide",700,600,160,1120,320,0,8}
+    };
+    for(size_t i=0;i<sizeof poses/sizeof poses[0];i++){
+        gl_debug_pitch=poses[i].pitch;
+        if(gl_apply_pose(poses[i].px,poses[i].py,poses[i].angle,64,0,
+                         poses[i].ax,poses[i].ay,poses[i].astate)!=0) return 2;
+        int px,py,pa; Status st; Obj objs[6];
+        if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+        st_current_angle=pa; int nobj=0;
+        if(objects_mode){get_objects(objs);nobj=6;}
+        gl_scene(&st,objs,nobj);
+        char path[4096]; snprintf(path,sizeof path,"%s/%s.ppm",dir,poses[i].name);
+        gl_save_ppm(path,w,h);
+        printf("detail %s %dx%d\n",poses[i].name,w,h);
+    }
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
+static int gl_detail_bench(int frames,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
+    gl_apply_pose(650,520,128,64,0,1120,320,0); gl_debug_pitch=28;
+    int px,py,pa; Status st; Obj objs[6];
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+    st_current_angle=pa; int nobj=0;
+    if(objects_mode){get_objects(objs);nobj=6;}
+    double total=0;
+    for(int i=0;i<frames;i++){
+        long t0=now_ns(); gl_scene(&st,objs,nobj); SDL_GL_SwapWindow(gl_win); long t1=now_ns();
+        total+=(t1-t0)/1e6;
+    }
+    printf("gl detail bench renderer=%s resolution=%dx%d frames=%d total=%.2fms fps=%.1f"
+           " loader=%ld heap=%ld\n",glGetString(GL_RENDERER),w,h,frames,total/frames,
+           1000.0/(total/frames),(long)M[GC_LOADER_HP],r0_s1_heap_high());
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
 static int gl_shots(const char *dir,int w,int h) {
     if (gl_init(w,h,0)!=0) return 2; gl_active = 1; load_session(); build_blocks(); gl_fixed_pose();
     Status st; Obj objs[6]; int px,py,pa; get_state(&px,&py,&pa); st_current_angle=pa; get_status(&st); int nobj=0;
@@ -4181,6 +4301,16 @@ int main(int argc, char **argv) {
         for(int i=5;i<argc;i++){ if(strcmp(argv[i],"objects")==0) objects_mode=1;
             if(strcmp(argv[i],"plain")==0) plain=1; }
         return gl_room_shots(argv[2],w,h,plain);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-detail-shots") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        for(int i=5;i<argc;i++) if(strcmp(argv[i],"objects")==0) objects_mode=1;
+        return gl_detail_shots(argv[2],w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-detail-bench") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        for(int i=5;i<argc;i++) if(strcmp(argv[i],"objects")==0) objects_mode=1;
+        return gl_detail_bench(atoi(argv[2]),w,h);
     }
     if (argc > 2 && strcmp(argv[1], "--gl-shots") == 0) {
         int w=argc>3?atoi(argv[3]):640, h=argc>4?atoi(argv[4]):400;
