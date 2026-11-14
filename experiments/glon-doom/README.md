@@ -593,3 +593,39 @@ format and 1,499,403-frame length. Full provenance is in
 
 If audio is unavailable, the game logs why and continues without ambient
 audio. See `G6A-AMBIENT-AUDIO-REPORT.md` and `evidence/g6a/`.
+
+## G6b event-driven sound effects
+
+The G6a ambient recording remains unchanged. G6b adds six converted clips
+(split door-open/door-close, Alien shriek, rifle shot, wall thud and cargo
+impact) to the existing SDL2 mixer:
+
+- Door opening/closing is detected from `door_open`/`door_target` transitions;
+  the two sections are split from Freesound 799198. Reversals replace the
+  previous door voice with a short fade.
+- Alien shrieks trigger on detection or attack transitions with a 2.2 s
+  cooldown and distance attenuation.
+- Wall/cargo impacts are inferred from actual blocked movement (input present,
+  resolved position unchanged) and classified with the existing object
+  extents; there is a 350 ms cooldown and no duplicate wall+cargo sound.
+- Rifle cadence uses a 110 ms cooldown and an 8-voice pool. **G5r has no
+  implemented firing behaviour**, so `F` or left mouse is a presentation-only
+  shot preview: it does not spend ammo, damage the Alien, or alter combat.
+  Future real firing should call the same event function.
+- `M` still mutes all audio; `[` / `]` adjust master volume; the ambient loop
+  and device fallback are retained.
+
+Licences are in `assets/audio/sfx/SOURCE.txt`: Freesound 799198 (CC0),
+737275 (CC0), 850829 (CC0), 530486 (CC0) and 620830 (F.M.Audio, CC BY 4.0).
+The ambient 873687 credit remains Tommaso Motteran, CC BY 4.0.
+
+```sh
+./build/doom                         # normal game; F/LMB fire preview
+./build/doom --sfx-test              # deterministic event/mixer checks
+./build/doom --sfx-device-test       # play all effects through the device
+./build/doom --audio-device-test     # ambient/device lifecycle check
+./build/doom --smoke-frames 180      # graphical loop with PulseAudio
+```
+
+Full `make test` includes `tests/check_g6b_audio.py`, `--audio-test` and
+`--sfx-test`. See `G6B-SOUND-EFFECTS-REPORT.md` and `evidence/g6b/`.

@@ -1,0 +1,443 @@
+python3 tests/check-textures.py
+textures: OK: 9 assets, 64x64, sheet unchanged
+python3 tests/check_aliens.py
+OK idle: (128, 192) RGBA opaque=5049 transparent=15643 corners=[0, 0, 0, 0]
+OK walk1: (128, 192) RGBA opaque=5057 transparent=15723 corners=[0, 0, 0, 0]
+OK walk2: (128, 192) RGBA opaque=4938 transparent=16009 corners=[0, 0, 0, 0]
+OK attack: (128, 192) RGBA opaque=5150 transparent=15853 corners=[0, 0, 0, 0]
+OK side: (128, 192) RGBA opaque=5293 transparent=15843 corners=[0, 0, 0, 0]
+OK death: (128, 192) RGBA opaque=2828 transparent=20732 corners=[0, 0, 0, 0]
+python3 tests/check_g5s_alien.py
+OK idle: (137, 192) RGBA lit_alpha=10882 low_alpha=0 corners=[0, 0, 0, 0]
+OK front1: (140, 227) RGBA lit_alpha=15443 low_alpha=0 corners=[0, 0, 0, 0]
+OK front2: (135, 221) RGBA lit_alpha=14771 low_alpha=0 corners=[0, 0, 0, 0]
+OK threeq: (221, 218) RGBA lit_alpha=21554 low_alpha=0 corners=[0, 0, 0, 0]
+OK side: (258, 193) RGBA lit_alpha=18744 low_alpha=0 corners=[0, 0, 0, 0]
+OK rear: (143, 272) RGBA lit_alpha=17376 low_alpha=0 corners=[0, 0, 0, 0]
+OK attack: (213, 253) RGBA lit_alpha=20446 low_alpha=0 corners=[0, 0, 0, 0]
+OK header source rectangles: 7
+python3 tests/check_g5j_textures.py
+OK panel_v2: (64, 64) edge_lr=3.50 edge_tb=0.44
+OK service_v2: (64, 64) edge_lr=0.47 edge_tb=7.73
+python3 tests/check_g5x_door.py
+g5x door: OK: reference sheet unchanged, two native-resolution leaves
+python3 tests/check_g5x2_door.py
+g5x2 door: OK: two native 840x1470 seam-preserving leaves
+python3 tests/check_g6a_audio.py
+g6a audio: OK: Freesound 873687 44100 Hz mono s16le ambience loop
+python3 tests/check_g6b_audio.py
+g6b audio: OK: ambience retained, six converted SFX assets, licences recorded
+./build/doom --self-test
+PASS framebuffer width        got=320
+PASS framebuffer height       got=200
+PASS wall ray count           got=160
+PASS pixels per wall ray      got=2
+PASS start x                  got=320
+PASS start y                  got=320
+PASS start angle              got=0
+PASS door initially closed progress got=0
+PASS door initially blocked   got=1
+PASS door initially target    got=0
+PASS alien initial x          got=1120
+PASS alien initial y          got=320
+PASS alien initial health     got=100
+PASS Glon-owned ammunition    got=24
+PASS alien initial state      got=0
+PASS alien initially undetected got=0
+PASS forward x                got=400
+PASS forward y                got=320
+PASS backward x               got=240
+PASS strafe right y           got=240
+PASS strafe left y            got=400
+PASS turn left angle          got=1
+PASS turn right angle         got=0
+PASS west wall                got=152
+PASS west wall valid          got=1
+PASS south wall               got=152
+PASS north wall               got=616
+PASS room east wall           got=744
+PASS room east wall valid     got=1
+PASS corner x                 got=744
+PASS corner y                 got=152
+PASS corner valid             got=1
+PASS closed door collision    got=744
+PASS closed door player valid got=1
+PASS closed door status       got=1
+PASS far activation target    got=0
+PASS door open progress       got=48
+PASS door open target         got=64
+PASS door open unblocked      got=0
+PASS through open door x      got=904
+PASS through open door valid  got=1
+PASS corridor end             got=1256
+PASS corridor traversal x > door got=1
+PASS corridor north end y     got=1000
+PASS corridor angle           got=64
+PASS corridor valid           got=1
+PASS door closed target       got=0
+PASS door closed blocked      got=1
+PASS closed door centre colour got=4
+PASS closed door hides alien  got=0
+PASS open door centre colour  got=3
+PASS open door shows alien sprite got=1
+PASS open wall occlusion hierarchy got=1
+PASS alien sprite rect bounds got=1
+PASS alien idle frame         got=0
+PASS alien attack frame       got=6
+PASS alien direct approach is frontal got=1
+PASS alien diagonal approach is three-quarter got=3
+PASS alien lateral crossing is side got=4
+PASS alien retreat is rear    got=5
+PASS alien sprite transparent corner got=-15654349
+PASS alien sprite draws pixels got=1
+PASS alien detected near door got=1
+PASS alien detects in range state got=1
+PASS alien waits behind closed door got=1120
+PASS alien blocked state not attack got=1
+PASS open door reveals alien  got=1
+PASS alien approaches after opening got=1
+PASS alien proximity attack state got=2
+PASS alien proximity within attack range got=1
+PASS alien/player valid after proximity got=1
+PASS tracker detected         got=1
+PASS tracker direction non-zero got=1
+PASS tracker distance non-zero got=1
+PASS linedef 0 collision      got=1
+PASS linedef 1 collision      got=1
+PASS linedef 2 collision      got=1
+PASS linedef 3 collision      got=1
+PASS linedef 4 collision      got=1
+PASS linedef 5 collision      got=1
+PASS linedef 6 collision      got=1
+PASS linedef 7 collision      got=1
+PASS linedef 8 collision      got=1
+PASS linedef 9 collision      got=1
+PASS clear space              got=0
+PASS alien linedef 0 collision got=1
+PASS alien linedef 1 collision got=1
+PASS alien linedef 2 collision got=1
+PASS alien linedef 3 collision got=1
+PASS alien linedef 4 collision got=1
+PASS alien linedef 5 collision got=1
+PASS alien linedef 6 collision got=1
+PASS alien linedef 7 collision got=1
+PASS alien linedef 8 collision got=1
+PASS alien linedef 9 collision got=1
+PASS alien clear space        got=0
+PASS alien wall occlusion     got=1
+PASS alien clear line of sight got=0
+PASS framebuffer spans        got=1
+PASS wall panel world anchor  got=320
+PASS wall panel u not screen x got=1
+PASS wall shade far/near level got=2
+PASS edge wall visible        got=1
+PASS door material selected   got=5
+PASS wall material bounds     got=1
+PASS wall material deterministic got=1
+PASS identical frame wall hash got=1
+PASS deterministic shading    got=1
+PASS panel u spans world surface got=1
+PASS anchored door panel u under translation got=320
+PASS nearer door shade increases got=1
+PASS distance shading threshold got=3
+PASS near shade brighter      got=1
+PASS texture row count/valid  got=1
+PASS texture rows deterministic got=1
+PASS texture row shade bounds got=1
+PASS wall texture v top       got=0
+PASS wall texture v bottom    got=63
+PASS wall texture v midpoint  got=32
+PASS floor/wall base world x  got=769
+PASS floor/wall base world y  got=317
+PASS ceiling/wall top world x got=769
+PASS ceiling/wall top world y got=317
+PASS floor/ceiling rows move with translation got=1
+PASS floor/ceiling rows respond to turn got=1
+PASS deterministic textured framebuffer got=1
+PASS textured framebuffer changes with movement got=1
+PASS repeated simulation determinism got=1
+PASS repeated frames loader growth got=0
+INFO floor/ceiling colours: 6/7; loader cells: 54626
+PASS repeated session loader  got=1
+INFO managed heap high=33440 gc=0 live=0
+self-test: PASSED
+./build/doom --projection-test
+glon-doom: projection-test passed
+PASS detail line count        got=4
+PASS identical frame detail hash got=1
+PASS floor detail moves on translation got=1
+PASS ceiling detail responds to turn got=1
+PASS floor/ceiling wall alignment samples got=4
+INFO projection alignment: visible=4 aligned=4 angles=11000
+PASS near-plane clipped line visible got=1
+PASS reversed line visible    got=1
+PASS endpoint order independent got=1
+projection-test: PASSED
+./build/doom --input-test
+PASS right keydown maps turn-right got=32
+PASS right keyup clears       got=0
+PASS keypad right fallback    got=32
+PASS left keydown maps turn-left got=16
+PASS W keydown maps forward   got=1
+PASS F keydown maps fire      got=1
+PASS F keyup clears fire      got=0
+input-test: PASSED
+./build/doom --tracker-test
+PASS tracker ahead blip visible got=1
+PASS tracker ahead x          got=42
+PASS tracker ahead y          got=168
+PASS tracker right x          got=60
+PASS tracker left x           got=24
+PASS tracker behind           got=186
+PASS tracker near y           got=150
+PASS tracker out of range dark got=0
+tracker-test: PASSED
+./build/doom --resize-test
+PASS resize viewport fills drawable got=0
+PASS resize viewport origin   got=1
+PASS resize viewport dimensions got=1
+PASS HUD circular at resize   got=1
+PASS resize viewport fills drawable got=0
+PASS resize viewport origin   got=1
+PASS resize viewport dimensions got=1
+PASS HUD circular at resize   got=1
+PASS resize viewport fills drawable got=0
+PASS resize viewport origin   got=1
+PASS resize viewport dimensions got=1
+PASS HUD circular at resize   got=1
+PASS resize viewport fills drawable got=0
+PASS resize viewport origin   got=1
+PASS resize viewport dimensions got=1
+PASS HUD circular at resize   got=1
+PASS resize viewport fills drawable got=0
+PASS resize viewport origin   got=1
+PASS resize viewport dimensions got=1
+PASS HUD circular at resize   got=1
+PASS HUD cap at 1600 high     got=1
+PASS HUD base at 200 high     got=1
+resize-test: PASSED
+./build/doom --stationary-test
+PASS stationary first frame is a miss got=1
+PASS stationary unchanged frame is a hit got=0
+PASS stationary cached pixels identical got=-2127918676
+PASS stationary cache does not alter player got=1
+PASS stationary cache does not alter status got=1
+PASS camera turn invalidates cache got=1
+PASS camera turn changes pixels got=1
+PASS door state invalidates cache got=1
+PASS door change alters pixels got=1
+PASS forced uncached frame matches cached path got=1347947121
+stationary-test: PASSED
+./build/doom --flat-surfaces --objects-test
+PASS object record count      got=6
+PASS object records deterministic got=1
+PASS player object collision  got=1
+PASS player clear of object   got=0
+PASS alien object collision   got=1
+objects-test: PASSED
+./build/doom --self-test --raw-wall
+PASS framebuffer width        got=320
+PASS framebuffer height       got=200
+PASS wall ray count           got=160
+PASS pixels per wall ray      got=2
+PASS start x                  got=320
+PASS start y                  got=320
+PASS start angle              got=0
+PASS door initially closed progress got=0
+PASS door initially blocked   got=1
+PASS door initially target    got=0
+PASS alien initial x          got=1120
+PASS alien initial y          got=320
+PASS alien initial health     got=100
+PASS Glon-owned ammunition    got=24
+PASS alien initial state      got=0
+PASS alien initially undetected got=0
+PASS forward x                got=400
+PASS forward y                got=320
+PASS backward x               got=240
+PASS strafe right y           got=240
+PASS strafe left y            got=400
+PASS turn left angle          got=1
+PASS turn right angle         got=0
+PASS west wall                got=152
+PASS west wall valid          got=1
+PASS south wall               got=152
+PASS north wall               got=616
+PASS room east wall           got=744
+PASS room east wall valid     got=1
+PASS corner x                 got=744
+PASS corner y                 got=152
+PASS corner valid             got=1
+PASS closed door collision    got=744
+PASS closed door player valid got=1
+PASS closed door status       got=1
+PASS far activation target    got=0
+PASS door open progress       got=48
+PASS door open target         got=64
+PASS door open unblocked      got=0
+PASS through open door x      got=904
+PASS through open door valid  got=1
+PASS corridor end             got=1256
+PASS corridor traversal x > door got=1
+PASS corridor north end y     got=1000
+PASS corridor angle           got=64
+PASS corridor valid           got=1
+PASS door closed target       got=0
+PASS door closed blocked      got=1
+PASS closed door centre colour got=4
+PASS closed door hides alien  got=0
+PASS open door centre colour  got=3
+PASS open door shows alien sprite got=1
+PASS open wall occlusion hierarchy got=1
+PASS alien sprite rect bounds got=1
+PASS alien idle frame         got=0
+PASS alien attack frame       got=6
+PASS alien direct approach is frontal got=1
+PASS alien diagonal approach is three-quarter got=3
+PASS alien lateral crossing is side got=4
+PASS alien retreat is rear    got=5
+PASS alien sprite transparent corner got=-15654349
+PASS alien sprite draws pixels got=1
+PASS alien detected near door got=1
+PASS alien detects in range state got=1
+PASS alien waits behind closed door got=1120
+PASS alien blocked state not attack got=1
+PASS open door reveals alien  got=1
+PASS alien approaches after opening got=1
+PASS alien proximity attack state got=2
+PASS alien proximity within attack range got=1
+PASS alien/player valid after proximity got=1
+PASS tracker detected         got=1
+PASS tracker direction non-zero got=1
+PASS tracker distance non-zero got=1
+PASS linedef 0 collision      got=1
+PASS linedef 1 collision      got=1
+PASS linedef 2 collision      got=1
+PASS linedef 3 collision      got=1
+PASS linedef 4 collision      got=1
+PASS linedef 5 collision      got=1
+PASS linedef 6 collision      got=1
+PASS linedef 7 collision      got=1
+PASS linedef 8 collision      got=1
+PASS linedef 9 collision      got=1
+PASS clear space              got=0
+PASS alien linedef 0 collision got=1
+PASS alien linedef 1 collision got=1
+PASS alien linedef 2 collision got=1
+PASS alien linedef 3 collision got=1
+PASS alien linedef 4 collision got=1
+PASS alien linedef 5 collision got=1
+PASS alien linedef 6 collision got=1
+PASS alien linedef 7 collision got=1
+PASS alien linedef 8 collision got=1
+PASS alien linedef 9 collision got=1
+PASS alien clear space        got=0
+PASS alien wall occlusion     got=1
+PASS alien clear line of sight got=0
+PASS framebuffer spans        got=1
+PASS wall panel world anchor  got=320
+PASS wall panel u not screen x got=1
+PASS wall shade far/near level got=2
+PASS edge wall visible        got=1
+PASS door material selected   got=5
+PASS wall material bounds     got=1
+PASS wall material deterministic got=1
+PASS identical frame wall hash got=1
+PASS deterministic shading    got=1
+PASS panel u spans world surface got=1
+PASS anchored door panel u under translation got=320
+PASS nearer door shade increases got=1
+PASS distance shading threshold got=3
+PASS near shade brighter      got=1
+PASS texture row count/valid  got=1
+PASS texture rows deterministic got=1
+PASS texture row shade bounds got=1
+PASS wall texture v top       got=0
+PASS wall texture v bottom    got=63
+PASS wall texture v midpoint  got=32
+PASS floor/wall base world x  got=769
+PASS floor/wall base world y  got=317
+PASS ceiling/wall top world x got=769
+PASS ceiling/wall top world y got=317
+PASS floor/ceiling rows move with translation got=1
+PASS floor/ceiling rows respond to turn got=1
+PASS deterministic textured framebuffer got=1
+PASS textured framebuffer changes with movement got=1
+PASS repeated simulation determinism got=1
+PASS repeated frames loader growth got=0
+INFO floor/ceiling colours: 6/7; loader cells: 54786
+PASS repeated session loader  got=1
+INFO managed heap high=33472 gc=0 live=0
+self-test: PASSED
+./build/doom --trace
+trace start: x=320 y=320 angle=0
+trace approach-closed-door x=744 y=320 angle=0 door=0/1 alien=1120,320 state=1 det=1 vis=0
+trace activate-door        x=744 y=320 angle=0 door=48/0 alien=1110,320 state=1 det=1 vis=1
+trace observe-alien        x=744 y=320 angle=0 door=64/0 alien=990,320 state=1 det=1 vis=1
+trace enter-corridor       x=904 y=320 angle=0 door=64/0 alien=960,320 state=2 det=1 vis=1
+trace turn-left-90         x=904 y=320 angle=64 door=64/0 alien=960,320 state=2 det=1 vis=0
+trace strafe-left          x=784 y=320 angle=64 door=64/0 alien=938,320 state=1 det=1 vis=0
+./build/doom --audio-test
+audio: loaded Freesound 873687 spaceship interior 1455303 frames (33.000s), 44100-frame crossfade, gain 3.00
+audio: loaded sfx door open 97020 frames (2.200s), gain 0.65
+audio: loaded sfx door close 97020 frames (2.200s), gain 0.65
+audio: loaded sfx alien shriek 95552 frames (2.167s), gain 0.70
+audio: loaded sfx rifle shot 28665 frames (0.650s), gain 0.45
+audio: loaded sfx wall thud 52920 frames (1.200s), gain 0.45
+audio: loaded sfx cargo impact 39690 frames (0.900s), gain 0.50
+audio-test: layer 0 frames=1455303 (33.000s) seam=11 peak=1788
+audio: ambient volume 42%
+audio: muted
+audio: unmuted
+audio: ambient volume 60%
+audio-test: PASSED rms=751 mix=0.0066ms/block (budget 23.22ms)
+./build/doom --sfx-test
+PASS door open transition     got=0
+PASS door opening no retrigger got=0
+PASS door reverse to closing  got=1
+PASS door closing no retrigger got=0
+PASS door stopped             got=0
+PASS alien detection event    got=2
+PASS alien detection no retrigger got=0
+PASS alien cooldown suppresses attack got=0
+PASS alien attack after cooldown got=2
+PASS rifle first shot         got=3
+PASS rifle cadence blocks 50ms got=0
+PASS rifle cadence allows 110ms got=3
+PASS wall impact              got=4
+PASS wall contact no retrigger got=0
+PASS wall cooldown doesn't retrigger while held got=0
+PASS wall after release       got=4
+PASS cargo impact             got=5
+PASS cargo no retrigger       got=0
+PASS cargo priority over wall got=0
+PASS no movement clears contact got=0
+PASS attenuation at source    got=1000
+PASS attenuation decreases    got=1
+PASS attenuation far silent   got=0
+PASS near crate classified cargo got=1
+PASS far position not cargo   got=0
+PASS host door open transition got=1
+PASS host door close transition got=2
+PASS host wall contact        got=1
+PASS host wall not cargo      got=0
+PASS host cargo contact       got=1
+PASS host cargo not wall      got=0
+audio: loaded Freesound 873687 spaceship interior 1455303 frames (33.000s), 44100-frame crossfade, gain 3.00
+audio: loaded sfx door open 97020 frames (2.200s), gain 0.65
+audio: loaded sfx door close 97020 frames (2.200s), gain 0.65
+audio: loaded sfx alien shriek 95552 frames (2.167s), gain 0.70
+audio: loaded sfx rifle shot 28665 frames (0.650s), gain 0.45
+audio: loaded sfx wall thud 52920 frames (1.200s), gain 0.45
+audio: loaded sfx cargo impact 39690 frames (0.900s), gain 0.50
+PASS voice limit              got=8
+PASS voice steal keeps limit  got=8
+PASS multiple effects audible got=1
+PASS effects within S16       got=1
+PASS volume zero silences effects got=0
+PASS mute silences effects    got=0
+PASS effect mixer budget      got=1
+sfx-test: mix=0.0083ms/block (budget 23.22ms)
+sfx-test: PASSED
+cd ../.. && ./check-frozen-s1.sh
+OK: S1 substrate frozen at f90496c26dc45c7a387d8fc8639cd2781507d3d2; all frozen files unchanged.

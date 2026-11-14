@@ -298,6 +298,27 @@ drivers all opened/continued and shut down as designed. Playback was not judged
 by listening. Full report: `experiments/glon-doom/G6A-AMBIENT-AUDIO-REPORT.md`;
 evidence under `experiments/glon-doom/evidence/g6a/`.
 
+**[MEASURED] AvP G6b event-driven sound effects (2026-11-15, 64K configuration,
+WSLg D3D12 + PulseAudio).**
+A host-only audio change in `experiments/glon-doom` retains the G6a 873687
+ambient loop and adds six converted event clips to one SDL2 mixer: door
+open/close, Alien shriek, rifle shot, wall thud and cargo impact. The mixer has
+8 voices; door/Alien voices are exclusive with a 125 ms replacement fade;
+door/Alien use distance attenuation; wall/cargo use blocked-position resolution
+plus existing object extents, a 350 ms cooldown and no gameplay physics. The
+G5r weapon is static, so the rifle effect has an explicitly presentation-only
+F/LMB preview and does not change ammo, damage, AI, collision or Glon
+semantics.
+
+Assets are 3,821,200 bytes on disk; decoded runtime audio is 3,732,340 bytes
+(ambient loop 2,910,606 + SFX 821,734). The executable is 6,190,464 bytes
+(+8,832 from G6a). Six 360-frame graphical smoke medians were 172.1 FPS with
+audio and 180.9 without (-4.9%, ranges overlap); the ambient-plus-8-voice mixer
+cost is about 0.007-0.009 ms per 23.22 ms block. Real PulseAudio, dummy and
+unavailable driver paths all behaved; playback was not judged by listening.
+Full report: `experiments/glon-doom/G6B-SOUND-EFFECTS-REPORT.md`; evidence under
+`experiments/glon-doom/evidence/g6b/`.
+
 ## 7. Vocabularies and experiments (status)
 
 | Item | Status | Where |

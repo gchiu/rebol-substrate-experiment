@@ -942,3 +942,44 @@ also behaved. Full `make test` passes, frozen S1 unchanged at
 programmatically, not by listening. Full report:
 `experiments/glon-doom/G6A-AMBIENT-AUDIO-REPORT.md`; evidence under
 `experiments/glon-doom/evidence/g6a/`.
+
+
+## 10y. AvP G6b event-driven sound effects (2026-11-15)
+
+G6a's Freesound 873687 ambient loop is retained unchanged. G6b extends the
+single SDL2 mixer with six event clips, an 8-voice pool, exclusive door/Alien
+voices with a 125 ms replacement fade, master mute/volume and graceful
+no-device handling. Sources and licences are recorded in
+`experiments/glon-doom/assets/audio/sfx/SOURCE.txt`:
+
+- 799198 kentspublicdomain, lab door open/close, CC0; split into two 2.2 s
+  sections.
+- 737275 Mastersoundboy2005, alien roar/scream, CC0.
+- 850829 Heretic4522, sci-fi LMG shot, CC0; 0.65 s single-shot excerpt.
+- 620830 F.M.Audio, low metal thud, CC BY 4.0; 1.2 s excerpt.
+- 530486 Rickplayer, metal impact, CC0; 0.9 s excerpt.
+
+All are now 16-bit mono 44.1 kHz WAVs. Door sounds start on actual
+`door_open`/`door_target` motion transitions and reverse without stacking.
+Alien shrieks use detection/attack transitions, a 2.2 s cooldown and distance
+attenuation. Wall/cargo collisions use input plus resolved-position blocking;
+cargo is classified with the existing object extents, with a 350 ms cooldown
+and cargo priority to avoid duplicate sounds. The G5r weapon has no gameplay
+firing, so `F`/left mouse is an explicitly documented presentation-only rifle
+preview; no ammo, damage, AI, collision or Glon semantics change.
+
+The G6b worktree is the permanent `/mnt/d/repos/glon-worktrees/glon-avp-g6b`,
+based on G6a `f816ab5`; implementation `ea2b670`. Full `make test` passes,
+including `check_g6b_audio.py`, `--audio-test`, `--sfx-test`, the new input
+check and frozen S1 at `f90496c26dc45c7a387d8fc8639cd2781507d3d2`.
+
+The final executable is 6,190,464 bytes (+8,832 from G6a). Assets are
+3,821,200 bytes on disk; runtime decoded audio is 3,732,340 bytes (ambient
+played-loop 2,910,606 + SFX 821,734). Six 360-frame graphical smoke runs gave
+a median 172.1 FPS with audio versus 180.9 without (-4.9%, overlapping
+159.3-178.8 vs 169.1-187.1 ranges); mixer cost with ambient plus 8 voices was
+about 0.007-0.009 ms per 23.22 ms block. PulseAudio played all six effects and
+the unavailable-driver path continued gracefully. Playback was verified
+programmatically, not by listening. Full report:
+`experiments/glon-doom/G6B-SOUND-EFFECTS-REPORT.md`; evidence under
+`experiments/glon-doom/evidence/g6b/`.

@@ -1,0 +1,17 @@
+G6b event-driven sound effects
+date: 2026-11-15
+base: glon-avp-g6a f816ab5
+implementation: ea2b670
+executable: 6190464 bytes
+sha256: 182f96cacee82d00eeef20e48c8bebcd5caf720e8e78cee2412585c3a76e10fb
+asset disk: ambient 2998920 + SFX 822280 = 3821200 bytes
+runtime decoded: ambient 2910606 + SFX 821734 = 3732340 bytes
+voices: 8 maximum; door/alien exclusive with 125 ms fade; rifle 110 ms cadence;
+        wall/cargo 350 ms cooldown; door/alien distance fade 96..1200 world units.
+mixer: 8 voices + ambient; default volume 60%; M mute; [ ] +/-5; --ambient-volume.
+device: 44100 Hz S16 stereo, 1024-frame buffer.
+source licences: assets/audio/sfx/SOURCE.txt (CC0 x4; F.M.Audio CC BY 4.0;
+        ambient Tommaso Motteran CC BY 4.0).
+perf: 6 x 360-frame graphical smoke; median 172.1 FPS with audio vs 180.9 without (-4.9%)
+mixer: about 0.007-0.009 ms per 1024-frame block; SFX test 0.0083 ms
+FPS ranges: audio 159.3-178.8; no-audio 169.1-187.1

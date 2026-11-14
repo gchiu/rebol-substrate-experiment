@@ -1,0 +1,72 @@
+G6b source and converted assets
+date: 2026-11-15
+base: glon-avp-g6a f816ab5
+implementation: ea2b670
+
+license/provenance: assets/audio/sfx/SOURCE.txt
+
+retained ambient:
+679a60117ab498983a70afecabc1e38c5081c0678ee4a58cb05dd7496e9aa811  assets/audio/ambient_loop.wav
+codec_name=pcm_s16le
+sample_rate=44100
+channels=1
+bits_per_sample=16
+duration=34.000068
+size=2998920
+
+converted event assets:
+== assets/audio/sfx/alien_shriek.wav
+75dad237aab614978dac910c6b608f5c72c8bd7855b7bca21a25d59845c8fc8e  assets/audio/sfx/alien_shriek.wav
+codec_name=pcm_s16le
+sample_rate=44100
+channels=1
+bits_per_sample=16
+duration=2.166712
+size=191182
+== assets/audio/sfx/cargo_impact.wav
+ca5856688cde48d0f4d9181faf06c6201ace1a87d68ab8bb94fd93933c7d2774  assets/audio/sfx/cargo_impact.wav
+codec_name=pcm_s16le
+sample_rate=44100
+channels=1
+bits_per_sample=16
+duration=0.900000
+size=79458
+== assets/audio/sfx/door_close.wav
+13a3cfa131214b1a671d404a606594cdb80e0efa067ec77ed87fd0c2a78af1e7  assets/audio/sfx/door_close.wav
+codec_name=pcm_s16le
+sample_rate=44100
+channels=1
+bits_per_sample=16
+duration=2.200000
+size=194138
+== assets/audio/sfx/door_open.wav
+970db0d94206122a2fa7e53bd8d4f16988e17eb4e60aaa2646d5e156e8444b41  assets/audio/sfx/door_open.wav
+codec_name=pcm_s16le
+sample_rate=44100
+channels=1
+bits_per_sample=16
+duration=2.200000
+size=194138
+== assets/audio/sfx/rifle_shot.wav
+b40e41f7abe3bfbe016f5117bc64a6fc20482b0b77c67387c8ab279a8ba74d8f  assets/audio/sfx/rifle_shot.wav
+codec_name=pcm_s16le
+sample_rate=44100
+channels=1
+bits_per_sample=16
+duration=0.650000
+size=57408
+== assets/audio/sfx/wall_thud.wav
+a4ca3b8f0eca6503ff6c7b99f044ec7eca9fc6cfe0be091252ec488247e8321e  assets/audio/sfx/wall_thud.wav
+codec_name=pcm_s16le
+sample_rate=44100
+channels=1
+bits_per_sample=16
+duration=1.200000
+size=105956
+
+source archive files and hashes:
+799198 95af59627047452e06083c0051fee78d94b09b15264a3076e5ef3542134b4531
+737275 f0bf4dc8ac542d0d86a85575d97bfbbf43af43aab636a271e40c77b34f121735
+850829 dca4aac6981d4db9928a8f1379720e708d13176716c16a2b0219c5dce90efbe1
+620830 5d9dd38fe3944d4489a31d569935a00ed5936a00da189e4e09eb9829008a5fd9
+530486 21feb1bef58b8980da6ee04dc75883470c3b4a8554d58ccbd3e2499b197f9d94

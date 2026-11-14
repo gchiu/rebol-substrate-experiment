@@ -1,0 +1,5 @@
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+G5p renderer=OpenGL framebuffer=640x400 interactive=on
+audio: disabled by --no-audio
+G5p GL frame=120 fps=55.4 tick=4.59 state=4.55 scene=1.41 finish=0.00 swap=6.37 player=320,320 angle=240 door=0/1 alien=1120,320 state=0
