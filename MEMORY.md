@@ -750,3 +750,18 @@ at `(968,352)` for hundreds of ticks. `doom.glon` now adds a compact bounded
 sidestep that uses existing collision checks and resumes pursuit after clearing
 the obstacle. Glon remains authoritative; no map, collider, AI state enum or frozen
 S1 change was made. Full report: `experiments/glon-doom/G5U-NAVIGATION-REPORT.md`.
+
+## 10q. AvP G5v engineering-room materials (2026-11-14)
+
+The engineering room now uses the corridor's existing recessed-panel and
+weathered-steel textures through the established texture path, with the room's
+panel faces re-exposed additively to recover their dark albedo. Large machinery
+uses cropped bulkhead steel; pipes use flat-lit metal with couplings and
+hangers; rails carry varied worn paint and dark brackets. The turbine has a
+metal bolt ring, stronger warm core/floor glow, and soot/oil stains. Cool
+overhead rails and baked panel washes replace the previous uniform flat
+lighting. No textures were added, no corridor pixels changed, and no gameplay,
+frozen-S1 or VM semantics changed.
+
+Matched 960x600 medians improved from G5u's 84.5/54.9 FPS to 91.2/60.1 FPS
+(no objects/objects). Full report: `experiments/glon-doom/G5V-ROOM-MATERIALS-REPORT.md`.

@@ -745,6 +745,42 @@ Mesa OpenGL 4.2 compatibility, GCC 11.4.0 `-O2`]
   and the local sidestep is a bounded corridor/obstacle heuristic, not a general
   navmesh.
 
+
+
+### G5v engineering-room materials [FINDING]
+
+[FINDING 2026-11-14, `experiments/glon-avp-g5v`, WSLg D3D12 AMD Radeon]
+
+- The corridor's richer look comes from three existing 512×512 art textures
+  (`GT_ART_WALL` bulkhead/A-3, `GT_ART_PANEL` recessed vent panel,
+  `GT_ART_FLOOR` plate), uploaded with linear filtering and repeat, plus
+  per-face tinted immediate-mode shading. There are no GL lights or dynamic
+  shadows; brightness is baked into face colours and additive `gl_light_panel`
+  quads.
+- Room walls/cabinets previously passed material **enums** to
+  `gl_tex_quad_tint`, which takes a GL texture name. The resulting numeric
+  texture names happened to sample other textures, contributing to the flat
+  room palette. G5v uses `gl_tex[...]` consistently and applies the existing
+  panel texture to room bays/cabinets.
+- Room panel faces use fixed-function `GL_ADD` texture-environment mode to
+  re-expose their dark albedo while retaining texture detail. No second texture
+  pipeline, new texture asset or per-frame upload was added. Large casing
+  surfaces reuse a crop of the bulkhead steel above the A-3 plate; flat-lit
+  cylinders (drum/tanks/pipes) avoid the braided look produced by wrapping the
+  plate texture around small radii.
+- Lighting is baked/emissive: cool overhead rails/lenses and panel washes, warm
+  turbine core/floor glow, darker pipe/casing undersides, soot/oil decals and
+  restrained indicator lights. The A-3 corridor is pixel-identical before/after.
+- Matched 960×600, 180-frame medians: no objects 91.2 FPS (10.97 ms total)
+  versus G5u 84.5 FPS (11.83 ms); with objects 60.1 FPS (16.63 ms) versus G5u
+  54.9 FPS (18.22 ms). Executable 6,113,024 bytes (G5u 6,100,344); loader
+  high-water unchanged at 53,705/54,569 cells; additional texture memory 0.
+- `make test`, frozen S1, normal interactive launch, G5u navigation, directional
+  Alien captures and rifle/ammo checks pass. Room machinery still has no
+  collision (existing G5t limitation), the room remains darker than the
+  corridor, and the improvement uses opaque albedo/additive shading rather than
+  true local illumination.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

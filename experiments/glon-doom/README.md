@@ -427,3 +427,22 @@ No pathfinding, teleport or new collision primitive was added.
 
 `legacy` suppresses the new sidestep for the before/after reproduction.
 See `G5U-NAVIGATION-REPORT.md`.
+
+## G5v engineering-room materials
+
+The room now reuses the corridor's existing recessed-panel and weathered-steel
+art textures instead of flat service colours. Panel faces are re-exposed through
+the fixed-function texture path, machinery casings use cropped weathered steel,
+pipes keep flat-lit metal with couplings/hangers, and the turbine gets a bolt
+ring, warm core glow and soot/oil staining. Lighting is baked: cool overhead
+rails and panel washes, warm turbine pools, and darker undersides; no dynamic
+shadow pass or new texture pipeline was added.
+
+```sh
+./build/doom --gl-rooms /tmp/g5v-room 960 600 objects
+./build/doom --gl-tour /tmp/g5v-corridor 960 600 objects
+./build/doom --g5u-nav /tmp/g5v-nav 960 600
+```
+
+No new texture assets or per-frame uploads; the A-3 corridor is pixel-identical.
+See `G5V-ROOM-MATERIALS-REPORT.md`.
