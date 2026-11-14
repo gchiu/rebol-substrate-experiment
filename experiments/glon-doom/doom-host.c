@@ -171,6 +171,277 @@ static void fail(const char *what) {
     exit(2);
 }
 
+/* ---- G6a ambient audio -------------------------------------------------- */
+#define AUDIO_RATE 44100
+#define AUDIO_CHANNELS 2
+#define AUDIO_SAMPLES 1024
+#define AUDIO_LAYERS 2
+
+typedef struct {
+    int16_t *samples;
+    int frames;
+    int pos;
+    float gain;
+} AudioLayer;
+
+static AudioLayer audio_layers[AUDIO_LAYERS];
+static int audio_nlayers;
+static SDL_AudioDeviceID audio_dev;
+static int audio_ready;
+static SDL_atomic_t audio_volume;
+static SDL_atomic_t audio_muted;
+static int ambient_volume_pct = 60;
+static int audio_disabled;
+static int smoke_frames;
+
+static int audio_load_loop(const char *name,const char *file,float gain,int fade_frames) {
+    char path[4096];
+    snprintf(path,sizeof path,"%s/experiments/glon-doom/assets/audio/%s",root_dir,file);
+    SDL_AudioSpec spec;
+    Uint8 *wav=NULL;
+    Uint32 wav_len=0;
+    if(!SDL_LoadWAV(path,&spec,&wav,&wav_len)){
+        fprintf(stderr,"audio: cannot load %s: %s\n",path,SDL_GetError());
+        return -1;
+    }
+    int16_t *pcm=NULL;
+    int nsamp=0;
+    SDL_AudioCVT cvt;
+    int need=SDL_BuildAudioCVT(&cvt,spec.format,spec.channels,spec.freq,
+                               AUDIO_S16SYS,1,AUDIO_RATE);
+    if(need<0){
+        fprintf(stderr,"audio: cannot convert %s: %s\n",file,SDL_GetError());
+        SDL_FreeWAV(wav);
+        return -1;
+    }
+    if(need==0){
+        pcm=(int16_t*)malloc((size_t)wav_len);
+        if(!pcm){ SDL_FreeWAV(wav); return -1; }
+        memcpy(pcm,wav,wav_len);
+        nsamp=(int)(wav_len/sizeof(int16_t));
+    } else {
+        cvt.len=(int)wav_len;
+        cvt.buf=(Uint8*)malloc((size_t)cvt.len*cvt.len_mult);
+        if(!cvt.buf){ SDL_FreeWAV(wav); return -1; }
+        memcpy(cvt.buf,wav,wav_len);
+        if(SDL_ConvertAudio(&cvt)!=0){
+            fprintf(stderr,"audio: conversion failed for %s: %s\n",file,SDL_GetError());
+            free(cvt.buf); SDL_FreeWAV(wav);
+            return -1;
+        }
+        pcm=(int16_t*)cvt.buf;
+        nsamp=(int)(cvt.len_cvt/sizeof(int16_t));
+    }
+    SDL_FreeWAV(wav);
+    if(nsamp <= fade_frames+4){
+        fprintf(stderr,"audio: %s is too short for a %d-frame crossfade\n",file,fade_frames);
+        free(pcm);
+        return -1;
+    }
+    /* Build a seamless loop by crossfading the tail into the head.  The
+     * resulting buffer is shorter by fade_frames: its first fade region moves
+     * from the source tail to the source head, and the wrap
+     * (tail-1 -> tail) is already continuous in the source. */
+    int loop_frames=nsamp-fade_frames;
+    int16_t *loop=(int16_t*)malloc((size_t)loop_frames*sizeof(int16_t));
+    if(!loop){ free(pcm); return -1; }
+    for(int i=0;i<loop_frames;i++){
+        if(i<fade_frames){
+            float t=((float)i+0.5f)/(float)fade_frames;
+            float a=(float)pcm[nsamp-fade_frames+i];
+            float b=(float)pcm[i];
+            loop[i]=(int16_t)(a*(1.0f-t)+b*t);
+        } else {
+            loop[i]=pcm[i];
+        }
+    }
+    free(pcm);
+    AudioLayer *L=&audio_layers[audio_nlayers++];
+    L->samples=loop; L->frames=loop_frames; L->pos=0; L->gain=gain;
+    printf("audio: loaded %s %d frames (%.3fs), %d-frame crossfade, gain %.2f\n",
+           name,loop_frames,(double)loop_frames/(double)AUDIO_RATE,fade_frames,gain);
+    return 0;
+}
+
+static void audio_free_layers(void) {
+    for(int i=0;i<audio_nlayers;i++){ free(audio_layers[i].samples); audio_layers[i].samples=NULL; audio_layers[i].frames=0; audio_layers[i].pos=0; }
+    audio_nlayers=0;
+}
+
+static int audio_load_layers(void) {
+    audio_free_layers();
+    if(audio_load_loop("ship ambience","ship_ambience_loop.wav",0.70f,AUDIO_RATE)!=0) goto fail;
+    if(audio_load_loop("ventilation","ventilation_loop.wav",0.35f,AUDIO_RATE/2)!=0) goto fail;
+    return 0;
+fail:
+    audio_free_layers();
+    return -1;
+}
+
+static void audio_mix(int16_t *out,int frames) {
+    int v=SDL_AtomicGet(&audio_volume);
+    if(SDL_AtomicGet(&audio_muted)) v=0;
+    if(v<0)v=0; if(v>100)v=100;
+    float master=(v/100.0f)*(v/100.0f);
+    for(int i=0;i<frames;i++){
+        float mix=0.0f;
+        for(int l=0;l<audio_nlayers;l++){
+            AudioLayer *L=&audio_layers[l];
+            if(!L->samples || L->frames<=0) continue;
+            mix += (float)L->samples[L->pos]*L->gain;
+            if(++L->pos>=L->frames) L->pos=0;
+        }
+        int s=(int)(mix*master);
+        if(s>32767)s=32767;
+        if(s<-32768)s=-32768;
+        out[i*2]=(int16_t)s;
+        out[i*2+1]=(int16_t)s;
+    }
+}
+
+static void audio_callback(void *userdata,Uint8 *stream,int len) {
+    (void)userdata;
+    audio_mix((int16_t*)stream,len/(int)(AUDIO_CHANNELS*sizeof(int16_t)));
+}
+
+static void audio_set_volume(int pct) {
+    if(pct<0)pct=0; if(pct>100)pct=100;
+    SDL_AtomicSet(&audio_volume,pct);
+    if(!SDL_AtomicGet(&audio_muted))
+        printf("audio: ambient volume %d%%\n",pct);
+    fflush(stdout);
+}
+
+static void audio_toggle_mute(void) {
+    int m=SDL_AtomicGet(&audio_muted);
+    SDL_AtomicSet(&audio_muted,!m);
+    printf("audio: %s\n",m?"unmuted":"muted");
+    fflush(stdout);
+}
+
+static int audio_start(void) {
+    if(audio_disabled){
+        printf("audio: disabled by --no-audio\n");
+        return 0;
+    }
+    if(SDL_InitSubSystem(SDL_INIT_AUDIO)!=0){
+        fprintf(stderr,"audio: unavailable (%s); continuing without ambient audio\n",SDL_GetError());
+        return 0;
+    }
+    if(audio_load_layers()!=0){
+        fprintf(stderr,"audio: ambient assets unavailable; continuing without audio\n");
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        return 0;
+    }
+    SDL_AudioSpec want,have;
+    memset(&want,0,sizeof want);
+    want.freq=AUDIO_RATE;
+    want.format=AUDIO_S16SYS;
+    want.channels=AUDIO_CHANNELS;
+    want.samples=AUDIO_SAMPLES;
+    want.callback=audio_callback;
+    audio_dev=SDL_OpenAudioDevice(NULL,0,&want,&have,0);
+    if(!audio_dev){
+        fprintf(stderr,"audio: cannot open device (%s); continuing without ambient audio\n",SDL_GetError());
+        audio_free_layers();
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        return 0;
+    }
+    if(have.freq!=AUDIO_RATE || have.format!=AUDIO_S16SYS || have.channels!=AUDIO_CHANNELS){
+        fprintf(stderr,"audio: device format is not 44100 Hz S16 stereo (%d Hz, %d ch); continuing without audio\n",
+                have.freq,have.channels);
+        SDL_CloseAudioDevice(audio_dev); audio_dev=0;
+        audio_free_layers();
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        return 0;
+    }
+    SDL_AtomicSet(&audio_volume,ambient_volume_pct);
+    SDL_AtomicSet(&audio_muted,0);
+    SDL_PauseAudioDevice(audio_dev,0);
+    audio_ready=1;
+    printf("audio: ambient started driver=%s %d Hz %dch volume=%d%%\n",
+           SDL_GetCurrentAudioDriver(),have.freq,have.channels,ambient_volume_pct);
+    fflush(stdout);
+    return 0;
+}
+
+static void audio_stop(void) {
+    if(audio_dev){
+        SDL_PauseAudioDevice(audio_dev,1);
+        SDL_CloseAudioDevice(audio_dev);
+        audio_dev=0;
+    }
+    audio_free_layers();
+    if(audio_ready || SDL_WasInit(SDL_INIT_AUDIO)) SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    audio_ready=0;
+}
+
+static int audio_selftest(void) {
+    if(audio_load_layers()!=0){
+        printf("audio-test: FAILED (assets)\n");
+        return 1;
+    }
+    int fails=0;
+    int16_t buf[AUDIO_SAMPLES*AUDIO_CHANNELS];
+    SDL_AtomicSet(&audio_volume,60);
+    SDL_AtomicSet(&audio_muted,0);
+    audio_mix(buf,AUDIO_SAMPLES);
+    int peak=0;
+    long long sumsq=0;
+    for(int i=0;i<AUDIO_SAMPLES*AUDIO_CHANNELS;i++){
+        int a=buf[i]; if(a<0)a=-a; if(a>peak)peak=a;
+        sumsq += (long long)buf[i]*buf[i];
+    }
+    if(peak<=0){ printf("audio-test: FAILED (silent mix)\n"); fails++; }
+    if(peak>32767){ printf("audio-test: FAILED (mix overflow)\n"); fails++; }
+    for(int l=0;l<audio_nlayers;l++){
+        AudioLayer *L=&audio_layers[l];
+        int seam=L->samples[L->frames-1]-L->samples[0];
+        if(seam<0)seam=-seam;
+        printf("audio-test: layer %d frames=%d (%.3fs) seam=%d peak=%d\n",
+               l,L->frames,(double)L->frames/AUDIO_RATE,seam,peak);
+        if(seam>4096) fails++;
+    }
+    SDL_AtomicSet(&audio_volume,0);
+    audio_mix(buf,AUDIO_SAMPLES);
+    for(int i=0;i<AUDIO_SAMPLES*AUDIO_CHANNELS;i++) if(buf[i]!=0){ printf("audio-test: FAILED (volume 0 not silent)\n"); fails++; break; }
+    SDL_AtomicSet(&audio_volume,60);
+    SDL_AtomicSet(&audio_muted,1);
+    audio_mix(buf,AUDIO_SAMPLES);
+    for(int i=0;i<AUDIO_SAMPLES*AUDIO_CHANNELS;i++) if(buf[i]!=0){ printf("audio-test: FAILED (mute not silent)\n"); fails++; break; }
+    SDL_AtomicSet(&audio_muted,0);
+    audio_set_volume(42);
+    if(SDL_AtomicGet(&audio_volume)!=42){ printf("audio-test: FAILED (volume control)\n"); fails++; }
+    audio_toggle_mute();
+    if(!SDL_AtomicGet(&audio_muted)){ printf("audio-test: FAILED (mute control)\n"); fails++; }
+    audio_toggle_mute();
+    if(SDL_AtomicGet(&audio_muted)){ printf("audio-test: FAILED (unmute control)\n"); fails++; }
+    audio_set_volume(60);
+    long long mt0=now_ns();
+    for(int k=0;k<1000;k++) audio_mix(buf,AUDIO_SAMPLES);
+    double mix_ms=(double)(now_ns()-mt0)/1e6/1000.0;
+    if(mix_ms>2.0){ printf("audio-test: FAILED (mixer too slow)\n"); fails++; }
+    printf("audio-test: %s rms=%lld mix=%.4fms/block (budget %.2fms)\n",
+           fails?"FAILED":"PASSED",(long long)sqrt((double)sumsq/(AUDIO_SAMPLES*AUDIO_CHANNELS)),
+           mix_ms,1000.0*AUDIO_SAMPLES/AUDIO_RATE);
+    audio_free_layers();
+    return fails?1:0;
+}
+
+static int audio_device_test(void) {
+    if(SDL_Init(SDL_INIT_TIMER)!=0) return 2;
+    audio_start();
+    if(audio_ready){
+        printf("audio-device-test: playback opened; sleeping 300 ms\n");
+        SDL_Delay(300);
+    } else {
+        printf("audio-device-test: no audio device; continued gracefully\n");
+    }
+    audio_stop();
+    SDL_Quit();
+    return 0;
+}
+
 /* ---- Glon loading / blocking ------------------------------------------- */
 
 static char *read_source(const char *path, size_t *len) {
@@ -2117,6 +2388,7 @@ static int interactive(void) {
     Status st;
     if (get_status(&st) != 0) return 2;
     if (need_texrows() && get_texrows(&tr) != 0) return 2;
+    audio_start();
     int running = 1, frames = 0;
     double acc = 0.0, fps_start = (double)now_ns(), sim_ms = 0, proj_ms = 0;
     double texrow_ms = 0, raster_ms = 0, present_ms = 0;
@@ -2143,6 +2415,12 @@ static int interactive(void) {
                     printf("render mode: %s\n", simple_mode ? "simple" : "detailed");
                     fflush(stdout);
                 }
+                else if ((sc == SDL_SCANCODE_M || sym == SDLK_m) && down && !e.key.repeat)
+                    audio_toggle_mute();
+                else if ((sc == SDL_SCANCODE_LEFTBRACKET || sym == SDLK_LEFTBRACKET) && down && !e.key.repeat)
+                    audio_set_volume(SDL_AtomicGet(&audio_volume) - 5);
+                else if ((sc == SDL_SCANCODE_RIGHTBRACKET || sym == SDLK_RIGHTBRACKET) && down && !e.key.repeat)
+                    audio_set_volume(SDL_AtomicGet(&audio_volume) + 5);
             }
         }
         const Uint8 *k = SDL_GetKeyboardState(NULL);
@@ -2211,6 +2489,7 @@ static int interactive(void) {
         }
     }
     free(fb);
+    audio_stop();
     SDL_DestroyTexture(tex); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win);
     SDL_Quit();
     return 0;
@@ -4232,6 +4511,7 @@ static int interactive_gl(int w, int h) {
     printf("G5p renderer=OpenGL framebuffer=%dx%d interactive=on\n",w,h);
     load_session(); build_blocks();
     if (run_block(parse_source("[ doom/angle: 240 doom/aim ]", "spawn orientation"), "spawn orientation") != 0) return 2;
+    audio_start();
     Status st; Obj objs[6]; Spans spans; Detail det; TexRows tr;
     int px,py,pa; double acc=0.0,last=(double)now_ns(),fps_start=(double)now_ns(); int frames=0;
     double prof_tick=0,prof_state=0,prof_scene=0,prof_swap=0,prof_finish=0;
@@ -4252,6 +4532,9 @@ static int interactive_gl(int w, int h) {
                 if((sc==SDL_SCANCODE_ESCAPE||sym==SDLK_ESCAPE) && down) running=0;
                 else if((sc==SDL_SCANCODE_E||sym==SDLK_e) && down && !e.key.repeat) run_block(activate_block,"activate");
                 else if((sc==SDL_SCANCODE_R||sym==SDLK_r) && down && !e.key.repeat) printf("GL renderer: R debug toggle not used\n");
+                else if((sc==SDL_SCANCODE_M||sym==SDLK_m) && down && !e.key.repeat) audio_toggle_mute();
+                else if((sc==SDL_SCANCODE_LEFTBRACKET||sym==SDLK_LEFTBRACKET) && down && !e.key.repeat) audio_set_volume(SDL_AtomicGet(&audio_volume)-5);
+                else if((sc==SDL_SCANCODE_RIGHTBRACKET||sym==SDLK_RIGHTBRACKET) && down && !e.key.repeat) audio_set_volume(SDL_AtomicGet(&audio_volume)+5);
             }
         }
         gl_update_viewport();
@@ -4269,6 +4552,7 @@ static int interactive_gl(int w, int h) {
         if(objects_mode && current_objs_valid) { memcpy(objs,current_objs,sizeof objs); nobj=6; }
         long pt0=now_ns(); gl_scene(&st,objs,nobj); long pt1=now_ns();
         SDL_GL_SwapWindow(gl_win); long pt2=now_ns(); frames++;
+        if(smoke_frames && frames>=smoke_frames) running=0;
         prof_tick += (double)(pt_tick1-pt_tick0)/1e6;
         prof_state += (double)(pt_scene0-pt_tick1)/1e6;
         prof_scene += (double)(pt1-pt_scene0)/1e6;
@@ -4277,6 +4561,7 @@ static int interactive_gl(int w, int h) {
         if(frames%120==0){ double secs=((double)now_ns()-fps_start)/1e9; printf("G5p GL frame=%d fps=%.1f tick=%.2f state=%.2f scene=%.2f finish=%.2f swap=%.2f player=%d,%d angle=%d door=%d/%d alien=%d,%d state=%d\n",frames,frames/secs,prof_tick/120,prof_state/120,prof_scene/120,prof_finish/120,prof_swap/120,px,py,pa,st.door_open,st.door_blocked,st.ax,st.ay,st.state); fflush(stdout); fps_start=(double)now_ns(); prof_tick=prof_state=prof_scene=prof_swap=prof_finish=0; }
         SDL_Delay(1);
     }
+    audio_stop();
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
 
@@ -4695,6 +4980,13 @@ int main(int argc, char **argv) {
             if (strcmp(argv[i+1],"cpu") == 0) renderer_gl = 0;
             if (strcmp(argv[i+1],"gl") == 0) renderer_gl = 1;
         }
+        if (strcmp(argv[i], "--ambient-volume") == 0 && i+1<argc) {
+            ambient_volume_pct=atoi(argv[++i]);
+            if(ambient_volume_pct<0)ambient_volume_pct=0;
+            if(ambient_volume_pct>100)ambient_volume_pct=100;
+        }
+        if (strcmp(argv[i], "--no-audio") == 0) audio_disabled = 1;
+        if (strcmp(argv[i], "--smoke-frames") == 0 && i+1<argc) smoke_frames=atoi(argv[++i]);
         if (strcmp(argv[i], "--objects") == 0) objects_mode = 1;
         if (strcmp(argv[i], "--alien-cover") == 0) { objects_mode = 1; alien_cover = 1; }
         if (strcmp(argv[i], "--demo-partial") == 0) { objects_mode = 1; alien_cover = 1; cover_view = 1; }
@@ -4786,6 +5078,8 @@ int main(int argc, char **argv) {
         for(int i=5;i<argc;i++) if(strcmp(argv[i],"objects")==0) objects_mode=1;
         return gl_shots(argv[2],w,h);
     }
+    if (argc > 1 && strcmp(argv[1], "--audio-test") == 0) return audio_selftest();
+    if (argc > 1 && strcmp(argv[1], "--audio-device-test") == 0) return audio_device_test();
     if (argc > 1 && strcmp(argv[1], "--input-test") == 0) return input_test();
     if (argc > 1 && strcmp(argv[1], "--tracker-test") == 0) return tracker_test();
     if (argc > 1 && strcmp(argv[1], "--resize-test") == 0) return resize_test();

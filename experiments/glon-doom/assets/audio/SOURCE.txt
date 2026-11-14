@@ -1,0 +1,10 @@
+Source pack: g5y.zip (original synthetic audio pack, generated for Glon AvP).
+Archive README: 11 mono PCM WAV files, 44,100 Hz, 16-bit, original procedural
+synthesis; no film/game recordings.
+
+G6a uses only the two continuous ambient layers from the pack:
+  ship_ambience_loop.wav   24.000 s, 44,100 Hz, mono, PCM s16le, 2,116,844 B
+  ventilation_loop.wav     12.000 s, 44,100 Hz, mono, PCM s16le, 1,058,444 B
+
+The remaining effects (door, alien, tracker, rifle, impact) are intentionally
+not integrated in G6a. No audio was regenerated or resampled on disk.
