@@ -265,6 +265,24 @@ The localized container-view cost is textured-surface fill; it stays above
 65 FPS. Full report: `experiments/glon-doom/G5Z-GLON-CORPORATION-REPORT.md`;
 matched evidence under `experiments/glon-doom/evidence/g5z/`.
 
+**[MEASURED] AvP G6a continuous ambient audio (2026-11-15, 64K
+configuration, WSLg D3D12 + PulseAudio).**
+A host-only audio change in `experiments/glon-doom` adds two continuous ambient
+layers from the supplied `g5y.zip` pack. No Glon, parser, collision, AI, visual
+or frozen-S1 semantics changed. The 44.1 kHz mono s16le sources are converted
+to S16, crossfaded at the loop boundary (1.0 s ship, 0.5 s ventilation) and
+mixed on SDL's audio thread at 44.1 kHz stereo, 1024 frames. Default volume is
+60%; `M` mutes and `[`/`]` adjust by 5. Decoded loop memory is 3,042,900 bytes;
+the two source WAVs are 3,175,288 bytes on disk. The final executable is
+6,181,624 bytes (+9,512). No new direct library dependency was added (SDL2 was
+already linked; PulseAudio/ALSA remain transitive). The mixer costs about
+0.003-0.005 ms per 23.22 ms block. Ten 360-frame interactive smoke medians were
+82.1 FPS with audio and 86.1 FPS without (-4.6%, ranges overlap); the device
+test opened PulseAudio and shut down cleanly, and an unavailable driver fell
+back gracefully. Playback was not judged by listening. Full report:
+`experiments/glon-doom/G6A-AMBIENT-AUDIO-REPORT.md`; evidence under
+`experiments/glon-doom/evidence/g6a/`.
+
 ## 7. Vocabularies and experiments (status)
 
 | Item | Status | Where |

@@ -880,3 +880,38 @@ control-bank pose 116.3 -> 115.8 FPS; container-only pose 115.6 -> 102.2 FPS at
 new textured surfaces (still above 65 FPS). Full report:
 `experiments/glon-doom/G5Z-GLON-CORPORATION-REPORT.md`; matched evidence under
 `experiments/glon-doom/evidence/g5z/`.
+
+
+## 10w. AvP G6a spaceship ambient audio (2026-11-15)
+
+The user-supplied `g5y.zip` pack contains two continuous ambient WAVs:
+`ship_ambience_loop.wav` (24 s) and `ventilation_loop.wav` (12 s), both mono
+44.1 kHz PCM s16le. G6a copies those files unchanged into
+`experiments/glon-doom/assets/audio/` and uses SDL2 audio, already linked by
+the host, to play them as two mixed layers. No new audio library was added and
+the remaining effects in the pack are intentionally not integrated.
+
+Each source is converted to 44.1 kHz S16 and given a precomputed loop
+crossfade (1.0 s ship, 0.5 s ventilation) so the loop wrap is continuous in
+the sample stream; the resulting loop lengths are 23.0 s and 11.5 s. The SDL
+callback mixes both layers at 44.1 kHz stereo with a 1024-frame buffer. Default
+ambient volume is 60%; `M` toggles mute, `[`/`]` adjust by 5, and
+`--ambient-volume 0..100` / `--no-audio` set the launch defaults. Audio starts
+only in the interactive GL/CPU loops, after session setup, and is closed before
+`SDL_Quit`.
+
+The G6a worktree is the permanent `/mnt/d/repos/glon-worktrees/glon-avp-g6a`,
+based on G5z `6168609`; implementation `69614a6`. Full `make test` passes,
+including the new audio asset check and `--audio-test`, and frozen S1 at
+`f90496c26dc45c7a387d8fc8639cd2781507d3d2`.
+
+The final executable is 6,181,624 bytes (+9,512 from G5z). The two WAV assets
+occupy 3,175,288 bytes on disk; decoded loop memory is 3,042,900 bytes. The
+mixer costs about 0.003-0.005 ms per 1024-frame block (23.22 ms budget). Ten
+360-frame interactive smoke runs gave a median of 82.1 FPS with audio versus
+86.1 FPS without (-4.6%, overlapping 58.1-96.0 vs 66.8-93.9 ranges); no render
+path changed. The audio device test opened the real PulseAudio device and shut
+down cleanly, and an unavailable driver fell back gracefully. Playback was
+verified programmatically, not by listening. Full report:
+`experiments/glon-doom/G6A-AMBIENT-AUDIO-REPORT.md`; evidence under
+`experiments/glon-doom/evidence/g6a/`.

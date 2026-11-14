@@ -1,0 +1,9 @@
+audio: loaded ship ambience 1014300 frames (23.000s), 44100-frame crossfade, gain 0.70
+audio: loaded ventilation 507150 frames (11.500s), 22050-frame crossfade, gain 0.35
+audio-test: layer 0 frames=1014300 (23.000s) seam=51 peak=2898
+audio-test: layer 1 frames=507150 (11.500s) seam=229 peak=2898
+audio: ambient volume 42%
+audio: muted
+audio: unmuted
+audio: ambient volume 60%
+audio-test: PASSED rms=1425 mix=0.0033ms/block (budget 23.22ms)

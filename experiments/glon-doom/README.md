@@ -556,3 +556,28 @@ medians) because the newly textured large surfaces are fill-rate bound. Full
 `make test` passes, including frozen S1. Matching before/after captures and
 benchmark logs are under `evidence/g5z/`. See
 `G5Z-GLON-CORPORATION-REPORT.md`.
+
+## G6a spaceship ambient audio
+
+Normal interactive launch starts two continuous ambient layers from the
+supplied `g5y.zip` pack: a 24 s ship rumble and a 12 s ventilation bed. The
+host uses SDL2 audio (already linked for video/input), converts the mono PCM to
+44.1 kHz S16 stereo, crossfades each loop boundary (1.0 s ship, 0.5 s
+ventilation) and mixes both layers on SDL's audio thread. No Alien, rifle or
+door effects are integrated in G6a.
+
+Assets are under `assets/audio/` and are unchanged from the source archive;
+`tests/check_g6a_audio.py` verifies their hashes, format and lengths.
+
+```sh
+./build/doom                              # ambient on, default volume 60
+./build/doom --ambient-volume 40          # 0..100
+./build/doom --no-audio                   # headless/no-device fallback
+./build/doom --audio-test                 # no device required
+./build/doom --audio-device-test          # opens, plays 300 ms, closes
+./build/doom --smoke-frames 180           # normal interactive loop, auto-quit
+```
+
+In both the GL and CPU game loops, `M` mutes/unmutes and `[` / `]` lower/raise
+ambient volume by 5. If audio is unavailable, the game logs why and continues
+without ambient audio. See `G6A-AMBIENT-AUDIO-REPORT.md` and `evidence/g6a/`.

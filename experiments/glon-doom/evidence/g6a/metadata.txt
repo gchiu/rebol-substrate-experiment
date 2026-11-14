@@ -1,0 +1,13 @@
+G6a continuous spaceship ambient audio
+date: 2026-11-15
+base: glon-avp-g5z 6168609
+implementation: 69614a6
+executable: 6181624 bytes
+sha256: 91002f2e20b6f2c5050dac0aeb91b81959990f6537c3f06eb32613ca168a009e
+default volume: 60% (squared master gain)
+layers: ship_ambience_loop.wav 0.70; ventilation_loop.wav 0.35
+loop crossfade: 1.0 s ship, 0.5 s ventilation (44100 / 22050 frames)
+device: 44100 Hz S16 stereo, 1024-frame buffer
+runtime loop memory: (1014300 + 507150) * 2 = 3042900 bytes
+assets on disk: 2116844 + 1058444 = 3175288 bytes
+source audio: unchanged from g5y.zip; see audio-properties.txt
