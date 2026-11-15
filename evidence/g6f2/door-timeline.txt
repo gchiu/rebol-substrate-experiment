@@ -1,0 +1,8 @@
+Door close timeline (60 Hz, door-step 4 of 64):
+ frame 0, t=0.000 s: open=64, target=0, blocked=0, aperture=128; close event fires; close audio starts.
+ frame 8, t=0.133 s: open=32, blocked=0, aperture=64; corridor visible.
+ frame 9, t=0.150 s: open=28, blocked=1, aperture=56; corridor still visible (binary collision flag changed, render does not close).
+ frame 15, t=0.250 s: open=4, blocked=1, aperture=8; corridor still visible through gap.
+ frame 16, t=0.267 s: open=0, blocked=1, aperture=0; door physically closed.
+ close audio asset impact onset: 680 ms into source; playback offset 410 ms => impact at 270 ms after transition start.
+ opening: event at t=0, source starts at 0 ms; first audible ~10 ms.

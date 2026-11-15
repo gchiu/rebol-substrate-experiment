@@ -1,0 +1,41 @@
+door-trace side=room-close frame=0 open=64 target=0 blocked=0 aperture=128 center=3 event=2
+door-trace side=room-close frame=1 open=60 target=0 blocked=0 aperture=120 center=3 event=0
+door-trace side=room-close frame=2 open=56 target=0 blocked=0 aperture=112 center=3 event=0
+door-trace side=room-close frame=3 open=52 target=0 blocked=0 aperture=104 center=3 event=0
+door-trace side=room-close frame=4 open=48 target=0 blocked=0 aperture=96 center=3 event=0
+door-trace side=room-close frame=5 open=44 target=0 blocked=0 aperture=88 center=3 event=0
+door-trace side=room-close frame=6 open=40 target=0 blocked=0 aperture=80 center=3 event=0
+door-trace side=room-close frame=7 open=36 target=0 blocked=0 aperture=72 center=3 event=0
+door-trace side=room-close frame=8 open=32 target=0 blocked=0 aperture=64 center=3 event=0
+door-trace side=room-close frame=9 open=28 target=0 blocked=1 aperture=56 center=3 event=0
+door-trace side=room-close frame=10 open=24 target=0 blocked=1 aperture=48 center=3 event=0
+door-trace side=room-close frame=11 open=20 target=0 blocked=1 aperture=40 center=3 event=0
+door-trace side=room-close frame=12 open=16 target=0 blocked=1 aperture=32 center=3 event=0
+door-trace side=room-close frame=13 open=12 target=0 blocked=1 aperture=24 center=3 event=0
+door-trace side=room-close frame=14 open=8 target=0 blocked=1 aperture=16 center=3 event=0
+door-trace side=room-close frame=15 open=4 target=0 blocked=1 aperture=8 center=3 event=0
+door-trace side=room-close frame=16 open=0 target=0 blocked=1 aperture=0 center=4 event=0
+door-trace side=corridor-close frame=0 open=64 target=0 blocked=0 aperture=128 center=1 event=2
+door-trace side=corridor-close frame=1 open=60 target=0 blocked=0 aperture=120 center=1 event=0
+door-trace side=corridor-close frame=2 open=56 target=0 blocked=0 aperture=112 center=1 event=0
+door-trace side=corridor-close frame=3 open=52 target=0 blocked=0 aperture=104 center=1 event=0
+door-trace side=corridor-close frame=4 open=48 target=0 blocked=0 aperture=96 center=1 event=0
+door-trace side=corridor-close frame=5 open=44 target=0 blocked=0 aperture=88 center=1 event=0
+door-trace side=corridor-close frame=6 open=40 target=0 blocked=0 aperture=80 center=1 event=0
+door-trace side=corridor-close frame=7 open=36 target=0 blocked=0 aperture=72 center=1 event=0
+door-trace side=corridor-close frame=8 open=32 target=0 blocked=0 aperture=64 center=1 event=0
+door-trace side=corridor-close frame=9 open=28 target=0 blocked=1 aperture=56 center=1 event=0
+door-trace side=corridor-close frame=10 open=24 target=0 blocked=1 aperture=48 center=1 event=0
+door-trace side=corridor-close frame=11 open=20 target=0 blocked=1 aperture=40 center=1 event=0
+door-trace side=corridor-close frame=12 open=16 target=0 blocked=1 aperture=32 center=1 event=0
+door-trace side=corridor-close frame=13 open=12 target=0 blocked=1 aperture=24 center=1 event=0
+door-trace side=corridor-close frame=14 open=8 target=0 blocked=1 aperture=16 center=1 event=0
+door-trace side=corridor-close frame=15 open=4 target=0 blocked=1 aperture=8 center=1 event=0
+door-trace side=corridor-close frame=16 open=0 target=0 blocked=1 aperture=0 center=4 event=0
+PASS door reset open          got=0
+PASS door reset target        got=0
+PASS door close after reset   got=2
+PASS door close repeat suppressed got=0
+PASS door open after reset    got=1
+PASS door open repeat suppressed got=0
+door-sync-test: PASSED

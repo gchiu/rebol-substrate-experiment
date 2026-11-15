@@ -766,3 +766,15 @@ small footprint. A 600-frame stillness test checks state, phase, coordinates
 and corpse-region pixels. Accepted Glon shots now also drive an 80 ms GL muzzle
 flash and small weapon recoil from the same authoritative ammo-decrease event
 used by rifle audio. See `G6F1-CORPSE-STABILITY-REPORT.md`.
+
+### G6f.2 door visibility and audio sync
+
+The CPU renderer no longer uses the binary `door-blocked` collision threshold as
+a full-door visibility switch. Door columns are occluded by the actual
+`door_open` aperture, so the corridor remains visible until the leaves meet.
+The closing event was already at transition start; the existing close asset's
+impact was late relative to the 16-tick animation, so playback starts at the
+measured 410 ms offset, aligning the 680 ms impact with the 267 ms closed state.
+Opening audio starts at the asset beginning. `--door-sync-test`,
+`--door-trace`, `--cpu-door-sequence` and `--gl-door-sequence` cover both sides
+and every closing frame. See `G6F2-DOOR-SYNC-REPORT.md`.

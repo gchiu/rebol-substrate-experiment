@@ -1,0 +1,2 @@
+door_open frames 97020 duration_ms 2200.0 first_audible_ms 10.272108843537415 impact_onset_ms 410 playback_offset_ms 0.0 impact_after_start_ms 410.0
+door_close frames 52920 duration_ms 1200.0 first_audible_ms 2.834467120181406 impact_onset_ms 680 playback_offset_ms 410.0 impact_after_start_ms 270.0

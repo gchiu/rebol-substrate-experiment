@@ -423,6 +423,18 @@ crate, otherwise `wall_thud`; no audio was removed. Full Linux and native
 Windows tests pass. Report:
 `experiments/glon-doom/G6F1-CORPSE-STABILITY-REPORT.md`.
 
+**[MEASURED] AvP G6f.2 door aperture and audio sync (2026-11-15).**
+The CPU door renderer used the binary collision threshold (`door_open<32`) as a
+full-door visibility switch, hiding the corridor while a physical aperture
+remained. It now renders door columns only outside `320±door_open`; GL already
+used geometric leaves. Door close/open events were already at transition start;
+the close asset's impact onset (~680 ms) was late relative to the 267 ms
+animation, so close playback starts at a measured 410 ms offset (impact ~270 ms),
+while opening starts at 0. Events fire once. Unused runtime `doom/lines` data was
+removed for loader headroom; actual level geometry is hard-coded. Full Linux and
+native Windows tests pass. Report:
+`experiments/glon-doom/G6F2-DOOR-SYNC-REPORT.md`.
+
 ## 7. Vocabularies and experiments (status)
 
 | Item | Status | Where |

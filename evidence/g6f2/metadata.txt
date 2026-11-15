@@ -1,0 +1,22 @@
+G6f.2 door visibility and audio synchronisation
+date: 2026-11-15
+baseline G6f.1: 72769fc (glon-avp-g6f1)
+branch: glon-avp-g6f2
+implementation: 9635473
+frozen S1: f90496c26dc45c7a387d8fc8639cd2781507d3d2
+Linux executable: 6224360 bytes
+Linux sha256: d07c8f95b455b2e0f73b76b234503a15854539f6d5a98975be076ac554dd645f
+Windows executable: 6592000 bytes
+Windows sha256: 2b305734c2d7ae58f469dd7e2b802e492aab64bbd27a1014a91ffc5e1114a279
+Windows distribution: 22123020 bytes
+Windows launcher: dist/windows/run-g6f2.bat
+loader after game: used=12990 free=1810 code=12454
+loader after host blocks: used=14498 free=302 globals=186/256
+CPU door: removed binary blocked threshold; render uses door_open aperture.
+Audio: close event at transition start; close clip start offset 410 ms so 680 ms impact aligns at 270 ms; open starts at 0.
+Linux make test: PASSED (RC 0)
+Windows native: self PASSED, combat PASSED, door-sync PASSED, corpse-stability PASSED,
+  audio-e2e PASSED, WASAPI audio/SFX PASSED, run-g6f2.bat --self-test PASSED,
+  native GL door sequence captured.
+Physical Windows playtest: pending user.
+No capacity or frozen S1 changes.

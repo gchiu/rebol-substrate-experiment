@@ -1164,3 +1164,19 @@ near the crate it is `cargo_impact.wav`; away from cargo it is `wall_thud.wav`,
 not gunfire or the door. It was left unchanged. Linux full tests and native
 Windows self/combat/stability/WASAPI tests pass. Report:
 `experiments/glon-doom/G6F1-CORPSE-STABILITY-REPORT.md`.
+
+## 10ag. AvP G6f.2 door visibility and audio sync (2026-11-15)
+
+G6f.2, based on G6f.1 `72769fc`, fixes premature corridor disappearance and
+delayed closing sound. Simulation door state was continuous, but the CPU
+`render-column-block` used the binary `door_blocked` threshold to replace the
+whole doorway with a closed-door column at open<32. It now uses the physical
+aperture `(320-door_open, 320+door_open)` and keeps the corridor visible until
+the leaves meet. GL already used geometric leaves. The closing audio event was
+already at transition start; the existing asset's impact onset is ~680ms while
+the door closes in 267ms, so close playback starts at a measured 410ms offset,
+placing the impact at ~270ms. Opening starts at 0. Events fire once and repeat
+suppression is tested. The unused runtime `doom/lines` legacy table was removed
+to restore loader headroom (free302); level geometry is hard-coded and unchanged.
+Linux full tests and native Windows door-sync/combat/corpse/audio tests pass.
+Report: `experiments/glon-doom/G6F2-DOOR-SYNC-REPORT.md`.
