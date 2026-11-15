@@ -1,0 +1,7 @@
+G5p renderer=OpenGL renderer=AMD Radeon(TM) Graphics vendor=ATI Technologies Inc. version=4.6.0 Compatibility Profile Context 25.10.32.04.251216
+muzzle-anchor 1280x720 weapon=(499.20,328.40 768.00x406.00) anchor_source=(188,96) screen=(687.20,424.40) old=(652.80,551.70)
+muzzle-shot 01-rest 1280x720 phase=0.00
+muzzle-shot 02-first 1280x720 phase=0.95
+muzzle-shot 03-peak 1280x720 phase=1.00
+muzzle-shot 04-recoil 1280x720 phase=0.45
+muzzle-shot 05-return 1280x720 phase=0.00

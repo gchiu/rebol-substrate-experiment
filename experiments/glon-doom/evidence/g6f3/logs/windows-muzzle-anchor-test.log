@@ -1,0 +1,31 @@
+PASS muzzle anchor x 960x600: 515.400
+PASS muzzle anchor y 960x600: 379.500
+PASS muzzle normalized x 960x600: 0.245
+PASS muzzle normalized y 960x600: 0.236
+PASS muzzle anchor inside weapon got=1
+PASS muzzle anchor on opaque sprite got=1
+PASS muzzle anchor in visible barrel ROI got=1
+muzzle-anchor 960x600 old=(489.60,474.98) new=(515.40,379.50) delta=(25.80,-95.48)
+PASS muzzle anchor moved away from hand got=1
+PASS muzzle anchor x 1280x720: 687.200
+PASS muzzle anchor y 1280x720: 424.400
+PASS muzzle normalized x 1280x720: 0.245
+PASS muzzle normalized y 1280x720: 0.236
+PASS muzzle anchor inside weapon got=1
+PASS muzzle anchor on opaque sprite got=1
+PASS muzzle anchor in visible barrel ROI got=1
+muzzle-anchor 1280x720 old=(652.80,551.70) new=(687.20,424.40) delta=(34.40,-127.30)
+PASS muzzle anchor moved away from hand got=1
+PASS muzzle anchor x 1920x1080: 1030.800
+PASS muzzle anchor y 1920x1080: 636.600
+PASS muzzle normalized x 1920x1080: 0.245
+PASS muzzle normalized y 1920x1080: 0.236
+PASS muzzle anchor inside weapon got=1
+PASS muzzle anchor on opaque sprite got=1
+PASS muzzle anchor in visible barrel ROI got=1
+muzzle-anchor 1920x1080 old=(979.20,827.55) new=(1030.80,636.60) delta=(51.60,-190.95)
+PASS muzzle anchor moved away from hand got=1
+PASS recoil offset: 3.000
+PASS recoil anchor x follows weapon: -1.050
+PASS recoil anchor y follows weapon: 3.000
+muzzle-anchor-test: PASSED

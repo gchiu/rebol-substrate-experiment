@@ -1,0 +1,197 @@
+/home/graham/.cache/glon-g6d/zig-linux-x86_64-0.13.0/zig cc -target x86_64-windows-gnu -std=c17 -O2 -Wall -Wextra -I../.. -DSDL_MAIN_HANDLED -I../../.deps/SDL2-2.30.9/x86_64-w64-mingw32/include -o build-win/doom.exe doom-host.c ../../r0_s1_session.c ../../r0_s1_runtime.c ../../s1.c -L../../.deps/SDL2-2.30.9/x86_64-w64-mingw32/lib ../../.deps/SDL2-2.30.9/x86_64-w64-mingw32/lib/libSDL2.dll.a -lopengl32 -lwinmm -lole32 -loleaut32 -luuid -limm32 -lversion
+doom-host.c:29:9: warning: 'SDL_MAIN_HANDLED' macro redefined [-Wmacro-redefined]
+   29 | #define SDL_MAIN_HANDLED
+      |         ^
+<command line>:4:9: note: previous definition is here
+    4 | #define SDL_MAIN_HANDLED 1
+      |         ^
+doom-host.c:554:21: warning: comparison of integers of different signs: 'int64_t' (aka 'long long') and 'uint64_t' (aka 'unsigned long long') [-Wsign-compare]
+  554 |     return now_ns() < sfx_events.muzzle_until_ns;
+      |            ~~~~~~~~ ^ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+doom-host.c:606:13: warning: unused variable 't0' [-Wunused-variable]
+  606 |     int64_t t0=now_ns();
+      |             ^~
+doom-host.c:3930:51: warning: unused parameter 'off' [-Wunused-parameter]
+ 3930 | static void gl_plane(double z, GLuint tex, double off) {
+      |                                                   ^
+doom-host.c:3957:12: warning: unused variable 'zt' [-Wunused-variable]
+ 3957 |     double zt = (hworld-below_ground)*64.0;
+      |            ^~
+doom-host.c:4012:12: warning: comparison of integers of different signs: 'int64_t' (aka 'long long') and 'uint64_t' (aka 'unsigned long long') [-Wsign-compare]
+ 4012 |     if(now < sfx_events.muzzle_until_ns){
+      |        ~~~ ^ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+doom-host.c:4070:11: warning: comparison of integers of different signs: 'int64_t' (aka 'long long') and 'uint64_t' (aka 'unsigned long long') [-Wsign-compare]
+ 4070 |     if(now<sfx_events.muzzle_until_ns){
+      |        ~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~
+doom-host.c:4319:77: warning: unused parameter 'r' [-Wunused-parameter]
+ 4319 | static void gl_turbine_face(float y,float x,float z,float rad,int seg,float r,float g,float b){
+      |                                                                             ^
+doom-host.c:4319:85: warning: unused parameter 'g' [-Wunused-parameter]
+ 4319 | static void gl_turbine_face(float y,float x,float z,float rad,int seg,float r,float g,float b){
+      |                                                                                     ^
+doom-host.c:4319:93: warning: unused parameter 'b' [-Wunused-parameter]
+ 4319 | static void gl_turbine_face(float y,float x,float z,float rad,int seg,float r,float g,float b){
+      |                                                                                             ^
+doom-host.c:4340:12: warning: unused variable 'dx' [-Wunused-variable]
+ 4340 |     double dx=w->x2-w->x1,dy=w->y2-w->y1;
+      |            ^~
+doom-host.c:4340:27: warning: unused variable 'dy' [-Wunused-variable]
+ 4340 |     double dx=w->x2-w->x1,dy=w->y2-w->y1;
+      |                           ^~
+doom-host.c:4771:83: warning: unused parameter 'urep' [-Wunused-parameter]
+ 4771 |                              float tint,float u0,float v0,float u1,float v1,float urep,float vrep)
+      |                                                                                   ^
+doom-host.c:4863:82: warning: unused parameter 'urep' [-Wunused-parameter]
+ 4863 |                             float tint,float u0,float v0,float u1,float v1,float urep,float vrep)
+      |                                                                                  ^
+doom-host.c:4863:93: warning: unused parameter 'vrep' [-Wunused-parameter]
+ 4863 |                             float tint,float u0,float v0,float u1,float v1,float urep,float vrep)
+      |                                                                                             ^
+doom-host.c:4881:82: warning: unused parameter 'urep' [-Wunused-parameter]
+ 4881 |                             float tint,float u0,float v0,float u1,float v1,float urep,float vrep)
+      |                                                                                  ^
+doom-host.c:4881:93: warning: unused parameter 'vrep' [-Wunused-parameter]
+ 4881 |                             float tint,float u0,float v0,float u1,float v1,float urep,float vrep)
+      |                                                                                             ^
+doom-host.c:4899:82: warning: unused parameter 'urep' [-Wunused-parameter]
+ 4899 |                             float tint,float u0,float v0,float u1,float v1,float urep,float vrep)
+      |                                                                                  ^
+doom-host.c:4899:93: warning: unused parameter 'vrep' [-Wunused-parameter]
+ 4899 |                             float tint,float u0,float v0,float u1,float v1,float urep,float vrep)
+      |                                                                                             ^
+doom-host.c:4986:17: warning: unused variable 'wallR' [-Wunused-variable]
+ 4986 |     const float wallR=0.36f,wallG=0.33f,wallB=0.29f;
+      |                 ^~~~~
+doom-host.c:4986:29: warning: unused variable 'wallG' [-Wunused-variable]
+ 4986 |     const float wallR=0.36f,wallG=0.33f,wallB=0.29f;
+      |                             ^~~~~
+doom-host.c:4986:41: warning: unused variable 'wallB' [-Wunused-variable]
+ 4986 |     const float wallR=0.36f,wallG=0.33f,wallB=0.29f;
+      |                                         ^~~~~
+doom-host.c:5221:90: warning: unused parameter 'b' [-Wunused-parameter]
+ 5221 | static void eng_pipe_z(float x,float y,float z1,float z2,float rad,float r,float g,float b)
+      |                                                                                          ^
+doom-host.c:5252:93: warning: unused parameter 'tint' [-Wunused-parameter]
+ 5252 | static void eng_wall_bay_y(float x1,float x2,float y,float z1,float z2,int face_south,float tint)
+      |                                                                                             ^
+doom-host.c:5264:92: warning: unused parameter 'tint' [-Wunused-parameter]
+ 5264 | static void eng_wall_bay_x(float y1,float y2,float x,float z1,float z2,int face_east,float tint)
+      |                                                                                            ^
+doom-host.c:5289:17: warning: unused variable 'sr' [-Wunused-variable]
+ 5289 |     const float sr=0.19f,sg=0.20f,sb=0.20f;
+      |                 ^~
+doom-host.c:5289:26: warning: unused variable 'sg' [-Wunused-variable]
+ 5289 |     const float sr=0.19f,sg=0.20f,sb=0.20f;
+      |                          ^~
+doom-host.c:5289:35: warning: unused variable 'sb' [-Wunused-variable]
+ 5289 |     const float sr=0.19f,sg=0.20f,sb=0.20f;
+      |                                   ^~
+doom-host.c:5605:39: warning: unused parameter 'light' [-Wunused-parameter]
+ 5605 | static void gl_engineering_room(float light)
+      |                                       ^
+doom-host.c:5678:20: warning: unused variable 'pivot_world' [-Wunused-variable]
+ 5678 |             double pivot_world = (alien_dir_pivot_x[idx] - alien_dir_w[idx] * 0.5) * px_scale;
+      |                    ^~~~~~~~~~~
+doom-host.c:5713:11: warning: unused variable 's' [-Wunused-variable]
+ 5713 |     Spans s; Detail det; TexRows tr; Status st; Obj objs[6];
+      |           ^
+doom-host.c:5713:21: warning: unused variable 'det' [-Wunused-variable]
+ 5713 |     Spans s; Detail det; TexRows tr; Status st; Obj objs[6];
+      |                     ^~~
+doom-host.c:5713:34: warning: unused variable 'tr' [-Wunused-variable]
+ 5713 |     Spans s; Detail det; TexRows tr; Status st; Obj objs[6];
+      |                                  ^~
+doom-host.c:5747:11: warning: unused variable 's' [-Wunused-variable]
+ 5747 |     Spans s; Detail det; TexRows tr; Status st; Obj objs[6];
+      |           ^
+doom-host.c:5747:21: warning: unused variable 'det' [-Wunused-variable]
+ 5747 |     Spans s; Detail det; TexRows tr; Status st; Obj objs[6];
+      |                     ^~~
+doom-host.c:5747:34: warning: unused variable 'tr' [-Wunused-variable]
+ 5747 |     Spans s; Detail det; TexRows tr; Status st; Obj objs[6];
+      |                                  ^~
+doom-host.c:5836:17: warning: unused variable 'pt0' [-Wunused-variable]
+ 5836 |         int64_t pt0=now_ns(); gl_scene(&st,objs,nobj); int64_t pt1=now_ns();
+      |                 ^~~
+doom-host.c:5790:35: warning: unused variable 'spans' [-Wunused-variable]
+ 5790 |     Status st; Obj objs[6]; Spans spans; Detail det; TexRows tr;
+      |                                   ^~~~~
+doom-host.c:5790:49: warning: unused variable 'det' [-Wunused-variable]
+ 5790 |     Status st; Obj objs[6]; Spans spans; Detail det; TexRows tr;
+      |                                                 ^~~
+doom-host.c:5790:62: warning: unused variable 'tr' [-Wunused-variable]
+ 5790 |     Status st; Obj objs[6]; Spans spans; Detail det; TexRows tr;
+      |                                                              ^~
+doom-host.c:6072:46: warning: missing field 'pitch' initializer [-Wmissing-field-initializers]
+ 6072 |       {"01-entrance",800,320,0,64,0,990,320,1},
+      |                                              ^
+doom-host.c:6073:51: warning: missing field 'pitch' initializer [-Wmissing-field-initializers]
+ 6073 |       {"02-mid-corridor",1000,320,0,64,0,990,320,1},
+      |                                                   ^
+doom-host.c:6074:50: warning: missing field 'pitch' initializer [-Wmissing-field-initializers]
+ 6074 |       {"03-close-wall",1100,320,64,64,0,990,320,1},
+      |                                                  ^
+doom-host.c:6075:49: warning: missing field 'pitch' initializer [-Wmissing-field-initializers]
+ 6075 |       {"04-look-back",900,320,128,64,0,990,320,1},
+      |                                                 ^
+doom-host.c:6076:49: warning: missing field 'pitch' initializer [-Wmissing-field-initializers]
+ 6076 |       {"05-door-closed",620,320,0,0,1,1120,320,0},
+      |                                                 ^
+doom-host.c:6077:47: warning: missing field 'pitch' initializer [-Wmissing-field-initializers]
+ 6077 |       {"06-door-open",620,320,0,64,0,990,320,1},
+      |                                               ^
+doom-host.c:6078:52: warning: missing field 'pitch' initializer [-Wmissing-field-initializers]
+ 6078 |       {"07-crates-tracker",850,330,0,64,0,990,320,1},
+      |                                                    ^
+doom-host.c:6079:51: warning: missing field 'pitch' initializer [-Wmissing-field-initializers]
+ 6079 |       {"08-far-bulkhead",1080,320,0,64,0,990,320,1},
+      |                                                   ^
+doom-host.c:6082:51: warning: missing field 'pitch' initializer [-Wmissing-field-initializers]
+ 6082 |       {"11-alien-tracker",760,320,0,64,0,990,320,1},
+      |                                                   ^
+doom-host.c:4160:13: warning: unused function 'gl_cyl_x_lit' [-Wunused-function]
+ 4160 | static void gl_cyl_x_lit(float x1,float x2,float y,float z,float rad,int seg,float r,float g,float b){
+      |             ^~~~~~~~~~~~
+doom-host.c:4198:13: warning: unused function 'gl_cyl_z_lit' [-Wunused-function]
+ 4198 | static void gl_cyl_z_lit(float x,float y,float z1,float z2,float rad,int seg,float r,float g,float b){
+      |             ^~~~~~~~~~~~
+doom-host.c:4208:13: warning: unused function 'gl_cyl_y_lit' [-Wunused-function]
+ 4208 | static void gl_cyl_y_lit(float y1,float y2,float x,float z,float rad,int seg,float r,float g,float b){
+      |             ^~~~~~~~~~~~
+doom-host.c:4335:13: warning: unused function 'gl_solid_plane' [-Wunused-function]
+ 4335 | static void gl_solid_plane(float z,float r,float g,float b){
+      |             ^~~~~~~~~~~~~~
+doom-host.c:4339:13: warning: unused function 'gl_solid_wall' [-Wunused-function]
+ 4339 | static void gl_solid_wall(const GlWall *w,float r,float g,float b){
+      |             ^~~~~~~~~~~~~
+doom-host.c:4591:13: warning: unused function 'gl_cyl_x_tex' [-Wunused-function]
+ 4591 | static void gl_cyl_x_tex(GLuint tex,float x1,float x2,float y,float z,float rad,int seg,
+      |             ^~~~~~~~~~~~
+doom-host.c:4609:13: warning: unused function 'gl_cyl_y_tex' [-Wunused-function]
+ 4609 | static void gl_cyl_y_tex(GLuint tex,float y1,float y2,float x,float z,float rad,int seg,
+      |             ^~~~~~~~~~~~
+doom-host.c:4676:13: warning: unused function 'gl_cyl_y_tex_flat' [-Wunused-function]
+ 4676 | static void gl_cyl_y_tex_flat(GLuint tex,float y1,float y2,float x,float z,float rad,int seg,
+      |             ^~~~~~~~~~~~~~~~~
+doom-host.c:4734:13: warning: unused function 'gl_cyl_z_tex_smooth' [-Wunused-function]
+ 4734 | static void gl_cyl_z_tex_smooth(GLuint tex,float x,float y,float z1,float z2,float rad,int seg,
+      |             ^~~~~~~~~~~~~~~~~~~
+doom-host.c:4846:13: warning: unused function 'gl_cyl_z_tex_flat' [-Wunused-function]
+ 4846 | static void gl_cyl_z_tex_flat(GLuint tex,float x,float y,float z1,float z2,float rad,int seg,
+      |             ^~~~~~~~~~~~~~~~~
+doom-host.c:4862:13: warning: unused function 'gl_cyl_x_tex_uv' [-Wunused-function]
+ 4862 | static void gl_cyl_x_tex_uv(GLuint tex,float x1,float x2,float y,float z,float rad,int seg,
+      |             ^~~~~~~~~~~~~~~
+doom-host.c:4880:13: warning: unused function 'gl_cyl_y_tex_uv' [-Wunused-function]
+ 4880 | static void gl_cyl_y_tex_uv(GLuint tex,float y1,float y2,float x,float z,float rad,int seg,
+      |             ^~~~~~~~~~~~~~~
+doom-host.c:4898:13: warning: unused function 'gl_cyl_z_tex_uv' [-Wunused-function]
+ 4898 | static void gl_cyl_z_tex_uv(GLuint tex,float x,float y,float z1,float z2,float rad,int seg,
+      |             ^~~~~~~~~~~~~~~
+doom-host.c:4916:13: warning: unused function 'gl_cyl_z_tex' [-Wunused-function]
+ 4916 | static void gl_cyl_z_tex(GLuint tex,float x,float y,float z1,float z2,float rad,int seg,
+      |             ^~~~~~~~~~~~
+doom-host.c:5853:12: warning: unused function 'g5u_hit_at' [-Wunused-function]
+ 5853 | static int g5u_hit_at(int x,int y,int r) {
+      |            ^~~~~~~~~~
+64 warnings generated.
