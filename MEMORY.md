@@ -1145,3 +1145,22 @@ remain in `make test`. Linux full tests and native Windows self/combat/WASAPI
 tests pass. The collapse is a rigid billboard tip, not a convincing articulated
 death; rendered frames were inspected on Linux and Windows GL. Report:
 `experiments/glon-doom/G6F-DEATH-COLLAPSE-REPORT.md`.
+
+## 10af. AvP G6f.1 corpse stability and rifle feedback (2026-11-15)
+
+G6f.1, based on G6f `42d4156`, fixes apparent corpse movement. Simulation
+coordinates, collision centre and door state were already invariant; the
+visual defect came from state 5 falling through `alien_frame_select()`'s living
+direction logic and from a camera-facing billboard rolled around camera-right.
+State 5 now uses the idle frame. The final corpse is drawn as low fixed
+world-axis planes in GL (centered flattened sprite on CPU), with no
+camera-facing rotation; dying state 4 uses centered shrinking geometry. The
+corpse collision centre remains the death position with radius² 144. A
+600-frame stationary test checks state/phase/coordinates and corpse-region pixel
+hashes. Accepted shots now use the existing ammo-decrease event to start an
+80 ms GL muzzle flash and small recoil; empty shots do not flash. The metallic
+contact sound was traced to generic collision audio: at the reproduced point
+near the crate it is `cargo_impact.wav`; away from cargo it is `wall_thud.wav`,
+not gunfire or the door. It was left unchanged. Linux full tests and native
+Windows self/combat/stability/WASAPI tests pass. Report:
+`experiments/glon-doom/G6F1-CORPSE-STABILITY-REPORT.md`.

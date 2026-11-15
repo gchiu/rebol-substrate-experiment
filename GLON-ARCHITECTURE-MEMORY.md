@@ -410,6 +410,19 @@ self/combat/WASAPI tests pass. The collapse is a rigid sprite tip, not an
 articulated animation; frames were inspected but physical playtest is pending.
 Report: `experiments/glon-doom/G6F-DEATH-COLLAPSE-REPORT.md`.
 
+**[MEASURED] AvP G6f.1 corpse stability and muzzle flash (2026-11-15).**
+The apparent corpse movement was renderer-side: state 5 fell through living
+Alien frame selection, and the corpse billboard was rolled around camera-right;
+world coordinates, collision centre and door state were invariant. State 5 now
+uses idle art and low fixed world-axis planes (GL) or a centered flattened
+sprite (CPU), with no camera-facing corpse rotation. A 600-frame stationary
+test verifies state/phase/coordinates and corpse-region pixel hashes. Accepted
+Glon shots (ammo decrease) drive an 80 ms GL muzzle flash/recoil; rejected shots
+do not. Generic collision audio is the metallic source: `cargo_impact` near the
+crate, otherwise `wall_thud`; no audio was removed. Full Linux and native
+Windows tests pass. Report:
+`experiments/glon-doom/G6F1-CORPSE-STABILITY-REPORT.md`.
+
 ## 7. Vocabularies and experiments (status)
 
 | Item | Status | Where |

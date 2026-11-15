@@ -1,0 +1,4 @@
+G5p renderer=OpenGL renderer=AMD Radeon(TM) Graphics vendor=ATI Technologies Inc. version=4.6.0 Compatibility Profile Context 25.10.32.04.251216
+corpse-shot east-of-corpse player=900,320 angle=0 alien=1120,320
+corpse-shot west-of-corpse player=1270,320 angle=128 alien=1120,320
+corpse-shot before-door player=700,320 angle=0 alien=1120,320

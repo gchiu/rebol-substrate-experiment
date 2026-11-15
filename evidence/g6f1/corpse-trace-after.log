@@ -1,0 +1,26 @@
+corpse-trace view=before-lethal player=900,320 angle=0 alien=1120,320 state=1 phase=0 screen=160 depth=220 side=0 render=camera-billboard world-axis=+x door=64/0/64 collision=1120,320 r2=144
+corpse-trace hit=1 alien=1118,320 health=75 state=3 phase=4
+corpse-trace hit=2 alien=1118,320 health=50 state=3 phase=4
+corpse-trace hit=3 alien=1118,320 health=25 state=3 phase=4
+corpse-trace hit=4 alien=1118,320 health=0 state=4 phase=18
+corpse-trace collapse=1 alien=1118,320 state=4 phase=17
+corpse-trace collapse=2 alien=1118,320 state=4 phase=16
+corpse-trace collapse=3 alien=1118,320 state=4 phase=15
+corpse-trace collapse=4 alien=1118,320 state=4 phase=14
+corpse-trace collapse=5 alien=1118,320 state=4 phase=13
+corpse-trace collapse=6 alien=1118,320 state=4 phase=12
+corpse-trace collapse=7 alien=1118,320 state=4 phase=11
+corpse-trace collapse=8 alien=1118,320 state=4 phase=10
+corpse-trace collapse=9 alien=1118,320 state=4 phase=9
+corpse-trace collapse=10 alien=1118,320 state=4 phase=8
+corpse-trace collapse=11 alien=1118,320 state=4 phase=7
+corpse-trace collapse=12 alien=1118,320 state=4 phase=6
+corpse-trace collapse=13 alien=1118,320 state=4 phase=5
+corpse-trace collapse=14 alien=1118,320 state=4 phase=4
+corpse-trace collapse=15 alien=1118,320 state=4 phase=3
+corpse-trace collapse=16 alien=1118,320 state=4 phase=2
+corpse-trace collapse=17 alien=1118,320 state=4 phase=1
+corpse-trace collapse=18 alien=1118,320 state=5 phase=0
+corpse-trace view=corpse-east player=900,320 angle=0 alien=1118,320 state=5 phase=0 screen=160 depth=218 side=0 render=world-cross-planes world-axis=+x door=64/0/64 collision=1118,320 r2=144
+corpse-trace view=corpse-west player=1200,320 angle=128 alien=1118,320 state=5 phase=0 screen=160 depth=82 side=0 render=world-cross-planes world-axis=+x door=64/0/64 collision=1118,320 r2=144
+corpse-trace view=corpse-before-door player=700,320 angle=0 alien=1118,320 state=5 phase=0 screen=160 depth=418 side=0 render=world-cross-planes world-axis=+x door=64/0/64 collision=1118,320 r2=144

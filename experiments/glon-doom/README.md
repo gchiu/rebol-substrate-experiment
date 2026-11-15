@@ -755,3 +755,14 @@ damaged and reset restores the living alien. Lifecycle state remains in Glon;
 the host only renders the existing sprite with rotation/flash/dim and exposes
 the Glon phase. See `G6F-DEATH-COLLAPSE-REPORT.md` for the renderer limitations
 and the rendered-frame inspection caveat.
+
+### G6f.1 corpse stability and rifle feedback
+
+G6f.1 keeps the corpse at the exact death world position with a fixed world
+orientation. The corpse no longer runs living frame selection and is drawn as
+low world-aligned planes in GL (centered flattened sprite on CPU), not a
+camera-facing rotating billboard. Collision stays at the death centre with a
+small footprint. A 600-frame stillness test checks state, phase, coordinates
+and corpse-region pixels. Accepted Glon shots now also drive an 80 ms GL muzzle
+flash and small weapon recoil from the same authoritative ammo-decrease event
+used by rifle audio. See `G6F1-CORPSE-STABILITY-REPORT.md`.
