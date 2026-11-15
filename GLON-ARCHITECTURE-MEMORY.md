@@ -399,6 +399,17 @@ movement masks and minimal render blocks in non-rendering tests; no capacity or
 frozen S1 change. Full Linux tests, native Windows self/combat/WASAPI tests
 pass. Report: `experiments/glon-doom/G6E-COMBAT-REPORT.md`.
 
+**[MEASURED] AvP G6f death collapse and corpse (2026-11-15).**
+Glon owns states 3 (four-tick hit reaction), 4 (18-tick collapse) and 5
+(terminal corpse); the host receives `state` plus the reused `e2dep` phase and
+only renders an existing-sprite billboard rotation, flash and dim. A shallow
+circular corpse collision (`radius2 144` plus player radius) prevents walking
+through while leaving room around it. Shots cannot damage state 4/5; reset
+restores health/ammo/state. Full Linux tests and native Windows
+self/combat/WASAPI tests pass. The collapse is a rigid sprite tip, not an
+articulated animation; frames were inspected but physical playtest is pending.
+Report: `experiments/glon-doom/G6F-DEATH-COLLAPSE-REPORT.md`.
+
 ## 7. Vocabularies and experiments (status)
 
 | Item | Status | Where |

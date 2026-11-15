@@ -1129,3 +1129,19 @@ render blocks are omitted in non-rendering tests; no capacity or frozen S1
 semantics changed. Linux full tests pass; native Windows self/combat/WASAPI
 tests pass. Report: `experiments/glon-doom/G6E-COMBAT-REPORT.md`; evidence:
 `experiments/glon-doom/evidence/g6e/` and `g6e-win/`.
+
+## 10ae. AvP G6f death collapse and corpse (2026-11-15)
+
+G6f, based on G6e `6c608a1`, adds a Glon-owned lifecycle: hit state 3 (four
+ticks, red flash/recoil), dying state 4 (18-tick collapse), corpse state 5
+(terminal until reset). The host renders the existing Alien sprite rotated
+around its ground pivot using a screen-plane billboard roll (OpenGL) or
+nearest-neighbour sprite rotation (CPU); it does not choose the state. The
+corpse has a small circular collision footprint (`radius2 144` plus player
+radius) and cannot move, attack or be damaged. Reset restores state 0, health
+100 and ammo 24. `--combat-test` verifies phase timing, persistence, collision,
+center/offset clearance, no corpse damage and reset; existing G6e regressions
+remain in `make test`. Linux full tests and native Windows self/combat/WASAPI
+tests pass. The collapse is a rigid billboard tip, not a convincing articulated
+death; rendered frames were inspected on Linux and Windows GL. Report:
+`experiments/glon-doom/G6F-DEATH-COLLAPSE-REPORT.md`.

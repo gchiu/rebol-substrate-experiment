@@ -745,3 +745,13 @@ ammunition value decreases. There is no independent host firing cadence.
 `--combat-test` covers hits, aim/range/wall misses, damage, hit-reaction expiry,
 death, no-ammo rejection, reset, determinism and visible hit/death hashes; it
 runs as part of `make test`. See `G6E-COMBAT-REPORT.md`.
+
+### G6f death collapse and corpse
+
+G6f extends the G6e combat loop: non-lethal hits hold a four-tick red/recoil
+reaction; a lethal hit starts an 18-tick deterministic collapse; the end state
+is a persistent low-collision corpse. The corpse cannot move, attack or be
+damaged and reset restores the living alien. Lifecycle state remains in Glon;
+the host only renders the existing sprite with rotation/flash/dim and exposes
+the Glon phase. See `G6F-DEATH-COLLAPSE-REPORT.md` for the renderer limitations
+and the rendered-frame inspection caveat.

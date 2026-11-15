@@ -1,0 +1,6 @@
+G5p renderer=OpenGL renderer=AMD Radeon(TM) Graphics vendor=ATI Technologies Inc. version=4.6.0 Compatibility Profile Context 25.10.32.04.251216
+combat 01-dying-18 state=4 phase=18
+combat 02-dying-12 state=4 phase=12
+combat 03-dying-06 state=4 phase=6
+combat 04-dying-01 state=4 phase=1
+combat 05-corpse state=5 phase=0
