@@ -1,0 +1,2017 @@
+[
+  {
+    "name": "front_0.png",
+    "animation": "front",
+    "index": 0,
+    "direction": "front",
+    "source": {
+      "x": 344,
+      "y": 82,
+      "w": 141,
+      "h": 60
+    },
+    "source_alpha_bbox": {
+      "x": 364,
+      "y": 88,
+      "w": 102,
+      "h": 54
+    },
+    "output": {
+      "x": 5,
+      "y": 2,
+      "w": 53,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "front_1.png",
+    "animation": "front",
+    "index": 1,
+    "direction": "front",
+    "source": {
+      "x": 492,
+      "y": 82,
+      "w": 140,
+      "h": 60
+    },
+    "source_alpha_bbox": {
+      "x": 512,
+      "y": 83,
+      "w": 102,
+      "h": 59
+    },
+    "output": {
+      "x": 8,
+      "y": 2,
+      "w": 48,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "front_2.png",
+    "animation": "front",
+    "index": 2,
+    "direction": "front",
+    "source": {
+      "x": 639,
+      "y": 82,
+      "w": 142,
+      "h": 60
+    },
+    "source_alpha_bbox": {
+      "x": 660,
+      "y": 88,
+      "w": 100,
+      "h": 54
+    },
+    "output": {
+      "x": 6,
+      "y": 2,
+      "w": 52,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "front_3.png",
+    "animation": "front",
+    "index": 3,
+    "direction": "front",
+    "source": {
+      "x": 788,
+      "y": 82,
+      "w": 142,
+      "h": 60
+    },
+    "source_alpha_bbox": {
+      "x": 811,
+      "y": 88,
+      "w": 119,
+      "h": 54
+    },
+    "output": {
+      "x": 2,
+      "y": 3,
+      "w": 60,
+      "h": 27,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "front_4.png",
+    "animation": "front",
+    "index": 4,
+    "direction": "front",
+    "source": {
+      "x": 937,
+      "y": 82,
+      "w": 142,
+      "h": 60
+    },
+    "source_alpha_bbox": {
+      "x": 960,
+      "y": 88,
+      "w": 100,
+      "h": 54
+    },
+    "output": {
+      "x": 6,
+      "y": 2,
+      "w": 52,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "front_5.png",
+    "animation": "front",
+    "index": 5,
+    "direction": "front",
+    "source": {
+      "x": 1086,
+      "y": 82,
+      "w": 142,
+      "h": 60
+    },
+    "source_alpha_bbox": {
+      "x": 1108,
+      "y": 88,
+      "w": 102,
+      "h": 54
+    },
+    "output": {
+      "x": 5,
+      "y": 2,
+      "w": 53,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "front_6.png",
+    "animation": "front",
+    "index": 6,
+    "direction": "front",
+    "source": {
+      "x": 1235,
+      "y": 82,
+      "w": 143,
+      "h": 60
+    },
+    "source_alpha_bbox": {
+      "x": 1257,
+      "y": 88,
+      "w": 102,
+      "h": 54
+    },
+    "output": {
+      "x": 5,
+      "y": 2,
+      "w": 53,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "front_7.png",
+    "animation": "front",
+    "index": 7,
+    "direction": "front",
+    "source": {
+      "x": 1385,
+      "y": 82,
+      "w": 142,
+      "h": 60
+    },
+    "source_alpha_bbox": {
+      "x": 1406,
+      "y": 88,
+      "w": 102,
+      "h": 54
+    },
+    "output": {
+      "x": 5,
+      "y": 2,
+      "w": 53,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "three_quarter_left_0.png",
+    "animation": "three_quarter_left",
+    "index": 0,
+    "direction": "three_quarter_left",
+    "source": {
+      "x": 344,
+      "y": 149,
+      "w": 141,
+      "h": 58
+    },
+    "source_alpha_bbox": {
+      "x": 369,
+      "y": 155,
+      "w": 96,
+      "h": 52
+    },
+    "output": {
+      "x": 6,
+      "y": 2,
+      "w": 52,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "three_quarter_left_1.png",
+    "animation": "three_quarter_left",
+    "index": 1,
+    "direction": "three_quarter_left",
+    "source": {
+      "x": 492,
+      "y": 149,
+      "w": 140,
+      "h": 58
+    },
+    "source_alpha_bbox": {
+      "x": 517,
+      "y": 154,
+      "w": 96,
+      "h": 53
+    },
+    "output": {
+      "x": 6,
+      "y": 2,
+      "w": 51,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "three_quarter_left_2.png",
+    "animation": "three_quarter_left",
+    "index": 2,
+    "direction": "three_quarter_left",
+    "source": {
+      "x": 639,
+      "y": 149,
+      "w": 142,
+      "h": 58
+    },
+    "source_alpha_bbox": {
+      "x": 664,
+      "y": 153,
+      "w": 97,
+      "h": 54
+    },
+    "output": {
+      "x": 7,
+      "y": 2,
+      "w": 50,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "three_quarter_left_3.png",
+    "animation": "three_quarter_left",
+    "index": 3,
+    "direction": "three_quarter_left",
+    "source": {
+      "x": 788,
+      "y": 149,
+      "w": 142,
+      "h": 58
+    },
+    "source_alpha_bbox": {
+      "x": 811,
+      "y": 153,
+      "w": 98,
+      "h": 54
+    },
+    "output": {
+      "x": 6,
+      "y": 2,
+      "w": 51,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "three_quarter_left_4.png",
+    "animation": "three_quarter_left",
+    "index": 4,
+    "direction": "three_quarter_left",
+    "source": {
+      "x": 937,
+      "y": 149,
+      "w": 142,
+      "h": 58
+    },
+    "source_alpha_bbox": {
+      "x": 963,
+      "y": 153,
+      "w": 95,
+      "h": 54
+    },
+    "output": {
+      "x": 7,
+      "y": 2,
+      "w": 49,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "three_quarter_left_5.png",
+    "animation": "three_quarter_left",
+    "index": 5,
+    "direction": "three_quarter_left",
+    "source": {
+      "x": 1086,
+      "y": 149,
+      "w": 142,
+      "h": 58
+    },
+    "source_alpha_bbox": {
+      "x": 1112,
+      "y": 153,
+      "w": 94,
+      "h": 54
+    },
+    "output": {
+      "x": 7,
+      "y": 2,
+      "w": 49,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "three_quarter_left_6.png",
+    "animation": "three_quarter_left",
+    "index": 6,
+    "direction": "three_quarter_left",
+    "source": {
+      "x": 1235,
+      "y": 149,
+      "w": 143,
+      "h": 58
+    },
+    "source_alpha_bbox": {
+      "x": 1259,
+      "y": 154,
+      "w": 100,
+      "h": 53
+    },
+    "output": {
+      "x": 5,
+      "y": 2,
+      "w": 53,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "three_quarter_left_7.png",
+    "animation": "three_quarter_left",
+    "index": 7,
+    "direction": "three_quarter_left",
+    "source": {
+      "x": 1385,
+      "y": 149,
+      "w": 142,
+      "h": 58
+    },
+    "source_alpha_bbox": {
+      "x": 1408,
+      "y": 158,
+      "w": 102,
+      "h": 49
+    },
+    "output": {
+      "x": 3,
+      "y": 2,
+      "w": 58,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "side_left_0.png",
+    "animation": "side_left",
+    "index": 0,
+    "direction": "side_left",
+    "source": {
+      "x": 344,
+      "y": 214,
+      "w": 141,
+      "h": 55
+    },
+    "source_alpha_bbox": {
+      "x": 366,
+      "y": 219,
+      "w": 113,
+      "h": 50
+    },
+    "output": {
+      "x": 2,
+      "y": 3,
+      "w": 60,
+      "h": 27,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "side_left_1.png",
+    "animation": "side_left",
+    "index": 1,
+    "direction": "side_left",
+    "source": {
+      "x": 492,
+      "y": 214,
+      "w": 140,
+      "h": 55
+    },
+    "source_alpha_bbox": {
+      "x": 516,
+      "y": 218,
+      "w": 111,
+      "h": 51
+    },
+    "output": {
+      "x": 2,
+      "y": 2,
+      "w": 60,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "side_left_2.png",
+    "animation": "side_left",
+    "index": 2,
+    "direction": "side_left",
+    "source": {
+      "x": 639,
+      "y": 214,
+      "w": 142,
+      "h": 55
+    },
+    "source_alpha_bbox": {
+      "x": 663,
+      "y": 219,
+      "w": 112,
+      "h": 50
+    },
+    "output": {
+      "x": 2,
+      "y": 3,
+      "w": 60,
+      "h": 27,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "side_left_3.png",
+    "animation": "side_left",
+    "index": 3,
+    "direction": "side_left",
+    "source": {
+      "x": 788,
+      "y": 214,
+      "w": 142,
+      "h": 55
+    },
+    "source_alpha_bbox": {
+      "x": 813,
+      "y": 220,
+      "w": 110,
+      "h": 49
+    },
+    "output": {
+      "x": 2,
+      "y": 3,
+      "w": 60,
+      "h": 27,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "side_left_4.png",
+    "animation": "side_left",
+    "index": 4,
+    "direction": "side_left",
+    "source": {
+      "x": 937,
+      "y": 214,
+      "w": 142,
+      "h": 55
+    },
+    "source_alpha_bbox": {
+      "x": 962,
+      "y": 220,
+      "w": 112,
+      "h": 49
+    },
+    "output": {
+      "x": 2,
+      "y": 4,
+      "w": 60,
+      "h": 26,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "side_left_5.png",
+    "animation": "side_left",
+    "index": 5,
+    "direction": "side_left",
+    "source": {
+      "x": 1086,
+      "y": 214,
+      "w": 142,
+      "h": 55
+    },
+    "source_alpha_bbox": {
+      "x": 1111,
+      "y": 219,
+      "w": 113,
+      "h": 50
+    },
+    "output": {
+      "x": 2,
+      "y": 3,
+      "w": 60,
+      "h": 27,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "side_left_6.png",
+    "animation": "side_left",
+    "index": 6,
+    "direction": "side_left",
+    "source": {
+      "x": 1235,
+      "y": 214,
+      "w": 143,
+      "h": 55
+    },
+    "source_alpha_bbox": {
+      "x": 1259,
+      "y": 221,
+      "w": 115,
+      "h": 48
+    },
+    "output": {
+      "x": 2,
+      "y": 5,
+      "w": 60,
+      "h": 25,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "side_left_7.png",
+    "animation": "side_left",
+    "index": 7,
+    "direction": "side_left",
+    "source": {
+      "x": 1385,
+      "y": 214,
+      "w": 142,
+      "h": 55
+    },
+    "source_alpha_bbox": {
+      "x": 1406,
+      "y": 222,
+      "w": 118,
+      "h": 47
+    },
+    "output": {
+      "x": 2,
+      "y": 6,
+      "w": 60,
+      "h": 24,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "rear_0.png",
+    "animation": "rear",
+    "index": 0,
+    "direction": "rear",
+    "source": {
+      "x": 344,
+      "y": 276,
+      "w": 141,
+      "h": 56
+    },
+    "source_alpha_bbox": {
+      "x": 365,
+      "y": 280,
+      "w": 100,
+      "h": 52
+    },
+    "output": {
+      "x": 5,
+      "y": 2,
+      "w": 54,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "rear_1.png",
+    "animation": "rear",
+    "index": 1,
+    "direction": "rear",
+    "source": {
+      "x": 492,
+      "y": 276,
+      "w": 140,
+      "h": 56
+    },
+    "source_alpha_bbox": {
+      "x": 513,
+      "y": 279,
+      "w": 101,
+      "h": 53
+    },
+    "output": {
+      "x": 5,
+      "y": 2,
+      "w": 53,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "rear_2.png",
+    "animation": "rear",
+    "index": 2,
+    "direction": "rear",
+    "source": {
+      "x": 639,
+      "y": 276,
+      "w": 142,
+      "h": 56
+    },
+    "source_alpha_bbox": {
+      "x": 661,
+      "y": 276,
+      "w": 99,
+      "h": 56
+    },
+    "output": {
+      "x": 7,
+      "y": 2,
+      "w": 50,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "rear_3.png",
+    "animation": "rear",
+    "index": 3,
+    "direction": "rear",
+    "source": {
+      "x": 788,
+      "y": 276,
+      "w": 142,
+      "h": 56
+    },
+    "source_alpha_bbox": {
+      "x": 811,
+      "y": 279,
+      "w": 99,
+      "h": 53
+    },
+    "output": {
+      "x": 6,
+      "y": 2,
+      "w": 52,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "rear_4.png",
+    "animation": "rear",
+    "index": 4,
+    "direction": "rear",
+    "source": {
+      "x": 937,
+      "y": 276,
+      "w": 142,
+      "h": 56
+    },
+    "source_alpha_bbox": {
+      "x": 959,
+      "y": 276,
+      "w": 102,
+      "h": 56
+    },
+    "output": {
+      "x": 6,
+      "y": 2,
+      "w": 51,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "rear_5.png",
+    "animation": "rear",
+    "index": 5,
+    "direction": "rear",
+    "source": {
+      "x": 1086,
+      "y": 276,
+      "w": 142,
+      "h": 56
+    },
+    "source_alpha_bbox": {
+      "x": 1108,
+      "y": 276,
+      "w": 101,
+      "h": 56
+    },
+    "output": {
+      "x": 7,
+      "y": 2,
+      "w": 50,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "rear_6.png",
+    "animation": "rear",
+    "index": 6,
+    "direction": "rear",
+    "source": {
+      "x": 1235,
+      "y": 276,
+      "w": 143,
+      "h": 56
+    },
+    "source_alpha_bbox": {
+      "x": 1258,
+      "y": 278,
+      "w": 99,
+      "h": 54
+    },
+    "output": {
+      "x": 6,
+      "y": 2,
+      "w": 51,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "rear_7.png",
+    "animation": "rear",
+    "index": 7,
+    "direction": "rear",
+    "source": {
+      "x": 1385,
+      "y": 276,
+      "w": 142,
+      "h": 56
+    },
+    "source_alpha_bbox": {
+      "x": 1407,
+      "y": 278,
+      "w": 99,
+      "h": 54
+    },
+    "output": {
+      "x": 6,
+      "y": 2,
+      "w": 51,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_left_0.png",
+    "animation": "turn_left",
+    "index": 0,
+    "direction": "front",
+    "source": {
+      "x": 259,
+      "y": 349,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 286,
+      "y": 355,
+      "w": 105,
+      "h": 57
+    },
+    "output": {
+      "x": 6,
+      "y": 2,
+      "w": 52,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_left_1.png",
+    "animation": "turn_left",
+    "index": 1,
+    "direction": "front",
+    "source": {
+      "x": 418,
+      "y": 349,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 418,
+      "y": 353,
+      "w": 139,
+      "h": 59
+    },
+    "output": {
+      "x": 2,
+      "y": 5,
+      "w": 60,
+      "h": 25,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_left_2.png",
+    "animation": "turn_left",
+    "index": 2,
+    "direction": "front",
+    "source": {
+      "x": 577,
+      "y": 349,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 581,
+      "y": 353,
+      "w": 137,
+      "h": 59
+    },
+    "output": {
+      "x": 2,
+      "y": 4,
+      "w": 60,
+      "h": 26,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_left_3.png",
+    "animation": "turn_left",
+    "index": 3,
+    "direction": "front",
+    "source": {
+      "x": 736,
+      "y": 349,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 741,
+      "y": 353,
+      "w": 136,
+      "h": 59
+    },
+    "output": {
+      "x": 2,
+      "y": 4,
+      "w": 60,
+      "h": 26,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_left_4.png",
+    "animation": "turn_left",
+    "index": 4,
+    "direction": "front",
+    "source": {
+      "x": 895,
+      "y": 349,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 901,
+      "y": 353,
+      "w": 137,
+      "h": 59
+    },
+    "output": {
+      "x": 2,
+      "y": 4,
+      "w": 60,
+      "h": 26,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_left_5.png",
+    "animation": "turn_left",
+    "index": 5,
+    "direction": "front",
+    "source": {
+      "x": 1054,
+      "y": 349,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 1061,
+      "y": 353,
+      "w": 136,
+      "h": 59
+    },
+    "output": {
+      "x": 2,
+      "y": 4,
+      "w": 60,
+      "h": 26,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_left_6.png",
+    "animation": "turn_left",
+    "index": 6,
+    "direction": "front",
+    "source": {
+      "x": 1213,
+      "y": 349,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 1221,
+      "y": 353,
+      "w": 134,
+      "h": 59
+    },
+    "output": {
+      "x": 2,
+      "y": 4,
+      "w": 60,
+      "h": 26,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_left_7.png",
+    "animation": "turn_left",
+    "index": 7,
+    "direction": "front",
+    "source": {
+      "x": 1372,
+      "y": 349,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 1380,
+      "y": 353,
+      "w": 127,
+      "h": 59
+    },
+    "output": {
+      "x": 2,
+      "y": 2,
+      "w": 60,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_right_0.png",
+    "animation": "turn_right",
+    "index": 0,
+    "direction": "front",
+    "source": {
+      "x": 259,
+      "y": 424,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 286,
+      "y": 425,
+      "w": 105,
+      "h": 62
+    },
+    "output": {
+      "x": 8,
+      "y": 2,
+      "w": 47,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_right_1.png",
+    "animation": "turn_right",
+    "index": 1,
+    "direction": "front",
+    "source": {
+      "x": 418,
+      "y": 424,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 421,
+      "y": 424,
+      "w": 135,
+      "h": 63
+    },
+    "output": {
+      "x": 2,
+      "y": 2,
+      "w": 60,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_right_2.png",
+    "animation": "turn_right",
+    "index": 2,
+    "direction": "front",
+    "source": {
+      "x": 577,
+      "y": 424,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 581,
+      "y": 424,
+      "w": 128,
+      "h": 63
+    },
+    "output": {
+      "x": 3,
+      "y": 2,
+      "w": 57,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_right_3.png",
+    "animation": "turn_right",
+    "index": 3,
+    "direction": "front",
+    "source": {
+      "x": 736,
+      "y": 424,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 741,
+      "y": 424,
+      "w": 127,
+      "h": 63
+    },
+    "output": {
+      "x": 4,
+      "y": 2,
+      "w": 56,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_right_4.png",
+    "animation": "turn_right",
+    "index": 4,
+    "direction": "front",
+    "source": {
+      "x": 895,
+      "y": 424,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 901,
+      "y": 424,
+      "w": 129,
+      "h": 63
+    },
+    "output": {
+      "x": 3,
+      "y": 2,
+      "w": 57,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_right_5.png",
+    "animation": "turn_right",
+    "index": 5,
+    "direction": "front",
+    "source": {
+      "x": 1054,
+      "y": 424,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 1061,
+      "y": 424,
+      "w": 132,
+      "h": 63
+    },
+    "output": {
+      "x": 2,
+      "y": 2,
+      "w": 59,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_right_6.png",
+    "animation": "turn_right",
+    "index": 6,
+    "direction": "front",
+    "source": {
+      "x": 1213,
+      "y": 424,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 1221,
+      "y": 424,
+      "w": 128,
+      "h": 63
+    },
+    "output": {
+      "x": 3,
+      "y": 2,
+      "w": 57,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "turn_right_7.png",
+    "animation": "turn_right",
+    "index": 7,
+    "direction": "front",
+    "source": {
+      "x": 1372,
+      "y": 424,
+      "w": 152,
+      "h": 63
+    },
+    "source_alpha_bbox": {
+      "x": 1380,
+      "y": 424,
+      "w": 129,
+      "h": 63
+    },
+    "output": {
+      "x": 3,
+      "y": 2,
+      "w": 57,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "attack_0.png",
+    "animation": "attack",
+    "index": 0,
+    "direction": "front",
+    "source": {
+      "x": 259,
+      "y": 499,
+      "w": 205,
+      "h": 73
+    },
+    "source_alpha_bbox": {
+      "x": 295,
+      "y": 501,
+      "w": 169,
+      "h": 71
+    },
+    "output": {
+      "x": 2,
+      "y": 5,
+      "w": 60,
+      "h": 25,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "attack_1.png",
+    "animation": "attack",
+    "index": 1,
+    "direction": "front",
+    "source": {
+      "x": 471,
+      "y": 499,
+      "w": 205,
+      "h": 73
+    },
+    "source_alpha_bbox": {
+      "x": 503,
+      "y": 501,
+      "w": 173,
+      "h": 71
+    },
+    "output": {
+      "x": 2,
+      "y": 5,
+      "w": 60,
+      "h": 25,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "attack_2.png",
+    "animation": "attack",
+    "index": 2,
+    "direction": "front",
+    "source": {
+      "x": 683,
+      "y": 499,
+      "w": 205,
+      "h": 73
+    },
+    "source_alpha_bbox": {
+      "x": 712,
+      "y": 501,
+      "w": 141,
+      "h": 71
+    },
+    "output": {
+      "x": 4,
+      "y": 2,
+      "w": 56,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "attack_3.png",
+    "animation": "attack",
+    "index": 3,
+    "direction": "front",
+    "source": {
+      "x": 895,
+      "y": 499,
+      "w": 205,
+      "h": 73
+    },
+    "source_alpha_bbox": {
+      "x": 930,
+      "y": 501,
+      "w": 135,
+      "h": 71
+    },
+    "output": {
+      "x": 5,
+      "y": 2,
+      "w": 53,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "attack_4.png",
+    "animation": "attack",
+    "index": 4,
+    "direction": "front",
+    "source": {
+      "x": 1107,
+      "y": 499,
+      "w": 205,
+      "h": 73
+    },
+    "source_alpha_bbox": {
+      "x": 1144,
+      "y": 504,
+      "w": 133,
+      "h": 68
+    },
+    "output": {
+      "x": 4,
+      "y": 2,
+      "w": 55,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "attack_5.png",
+    "animation": "attack",
+    "index": 5,
+    "direction": "front",
+    "source": {
+      "x": 1319,
+      "y": 499,
+      "w": 205,
+      "h": 73
+    },
+    "source_alpha_bbox": {
+      "x": 1362,
+      "y": 507,
+      "w": 125,
+      "h": 65
+    },
+    "output": {
+      "x": 5,
+      "y": 2,
+      "w": 54,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "hit_0.png",
+    "animation": "hit",
+    "index": 0,
+    "direction": "front",
+    "source": {
+      "x": 259,
+      "y": 584,
+      "w": 305,
+      "h": 73
+    },
+    "source_alpha_bbox": {
+      "x": 344,
+      "y": 586,
+      "w": 141,
+      "h": 71
+    },
+    "output": {
+      "x": 4,
+      "y": 2,
+      "w": 56,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "hit_1.png",
+    "animation": "hit",
+    "index": 1,
+    "direction": "front",
+    "source": {
+      "x": 571,
+      "y": 584,
+      "w": 305,
+      "h": 73
+    },
+    "source_alpha_bbox": {
+      "x": 660,
+      "y": 586,
+      "w": 157,
+      "h": 71
+    },
+    "output": {
+      "x": 2,
+      "y": 3,
+      "w": 60,
+      "h": 27,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "hit_2.png",
+    "animation": "hit",
+    "index": 2,
+    "direction": "front",
+    "source": {
+      "x": 883,
+      "y": 584,
+      "w": 305,
+      "h": 73
+    },
+    "source_alpha_bbox": {
+      "x": 885,
+      "y": 586,
+      "w": 232,
+      "h": 71
+    },
+    "output": {
+      "x": 2,
+      "y": 12,
+      "w": 60,
+      "h": 18,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "hit_3.png",
+    "animation": "hit",
+    "index": 3,
+    "direction": "front",
+    "source": {
+      "x": 1195,
+      "y": 584,
+      "w": 305,
+      "h": 73
+    },
+    "source_alpha_bbox": {
+      "x": 1209,
+      "y": 586,
+      "w": 242,
+      "h": 71
+    },
+    "output": {
+      "x": 2,
+      "y": 12,
+      "w": 60,
+      "h": 18,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "dying_0.png",
+    "animation": "dying",
+    "index": 0,
+    "direction": "front",
+    "source": {
+      "x": 259,
+      "y": 669,
+      "w": 205,
+      "h": 78
+    },
+    "source_alpha_bbox": {
+      "x": 298,
+      "y": 672,
+      "w": 127,
+      "h": 75
+    },
+    "output": {
+      "x": 8,
+      "y": 2,
+      "w": 47,
+      "h": 28,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "dying_1.png",
+    "animation": "dying",
+    "index": 1,
+    "direction": "front",
+    "source": {
+      "x": 471,
+      "y": 669,
+      "w": 205,
+      "h": 78
+    },
+    "source_alpha_bbox": {
+      "x": 502,
+      "y": 672,
+      "w": 174,
+      "h": 75
+    },
+    "output": {
+      "x": 2,
+      "y": 4,
+      "w": 60,
+      "h": 26,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "dying_2.png",
+    "animation": "dying",
+    "index": 2,
+    "direction": "front",
+    "source": {
+      "x": 683,
+      "y": 669,
+      "w": 205,
+      "h": 78
+    },
+    "source_alpha_bbox": {
+      "x": 709,
+      "y": 672,
+      "w": 179,
+      "h": 75
+    },
+    "output": {
+      "x": 2,
+      "y": 5,
+      "w": 60,
+      "h": 25,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "dying_3.png",
+    "animation": "dying",
+    "index": 3,
+    "direction": "front",
+    "source": {
+      "x": 895,
+      "y": 669,
+      "w": 205,
+      "h": 78
+    },
+    "source_alpha_bbox": {
+      "x": 910,
+      "y": 699,
+      "w": 173,
+      "h": 48
+    },
+    "output": {
+      "x": 2,
+      "y": 13,
+      "w": 60,
+      "h": 17,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "dying_4.png",
+    "animation": "dying",
+    "index": 4,
+    "direction": "front",
+    "source": {
+      "x": 1107,
+      "y": 669,
+      "w": 205,
+      "h": 78
+    },
+    "source_alpha_bbox": {
+      "x": 1117,
+      "y": 708,
+      "w": 183,
+      "h": 39
+    },
+    "output": {
+      "x": 2,
+      "y": 17,
+      "w": 60,
+      "h": 13,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "dying_5.png",
+    "animation": "dying",
+    "index": 5,
+    "direction": "front",
+    "source": {
+      "x": 1319,
+      "y": 669,
+      "w": 205,
+      "h": 78
+    },
+    "source_alpha_bbox": {
+      "x": 1330,
+      "y": 711,
+      "w": 181,
+      "h": 36
+    },
+    "output": {
+      "x": 2,
+      "y": 18,
+      "w": 60,
+      "h": 12,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  },
+  {
+    "name": "dead_0.png",
+    "animation": "dead",
+    "index": 0,
+    "direction": "front",
+    "source": {
+      "x": 184,
+      "y": 762,
+      "w": 223,
+      "h": 65
+    },
+    "source_alpha_bbox": {
+      "x": 193,
+      "y": 779,
+      "w": 175,
+      "h": 48
+    },
+    "output": {
+      "x": 2,
+      "y": 14,
+      "w": 60,
+      "h": 16,
+      "frame_w": 64,
+      "frame_h": 32
+    },
+    "anchor": {
+      "x": 32,
+      "y": 30
+    },
+    "alpha": "RGBA; transparent outside extracted creature"
+  }
+]

@@ -1,0 +1,17 @@
+r0_s1: heap exhausted
+r0_s1: heap exhausted
+r0_s1: heap exhausted
+r0_s1: heap exhausted
+r0_s1: heap exhausted
+loader report: base=40000 limit=54800 reserved=14800
+loader after init used=771 free=14029 code=12454
+loader after prelude used=1228 free=13572 code=12454
+loader after game used=13438 free=1362 code=12454
+loader after host blocks used=14738 free=62 code=12454 asm_here=13126 globals=201/256
+code bytes? cells=12454 ip_start=0 ip_end=11984
+loader table probe n=128 refused kind=3 free_before=62
+loader table probe n=256 refused kind=3 free_before=62
+loader table probe n=320 refused kind=3 free_before=62
+loader table probe n=384 refused kind=3 free_before=62
+loader table probe n=448 refused kind=3 free_before=62
+loader table probe largest=0; game has no masm (all loader data, runtime code resident)
