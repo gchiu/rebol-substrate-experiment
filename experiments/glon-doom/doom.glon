@@ -195,10 +195,11 @@ doom/pdx: 0
 doom/pdy: 0
 doom/otop: 0
 doom/oradius2: 0
-doom/s0-x: 980 doom/s0-y: 320 doom/s0-h: 50 doom/s0-state: 0 doom/s0-timer: 6
-doom/s1-x: 1240 doom/s1-y: 600 doom/s1-h: 50 doom/s1-state: 0 doom/s1-timer: 6
-doom/s2-x: 1240 doom/s2-y: 900 doom/s2-h: 50 doom/s2-state: 0 doom/s2-timer: 6
-doom/si: 0 doom/best: 100000 doom/target: -1
+doom/s0-x: 650 doom/s0-y: 360 doom/s0-h: 50 doom/s0-state: 0 doom/s0-timer: 6
+doom/s1-x: 900 doom/s1-y: 280 doom/s1-h: 50 doom/s1-state: 0 doom/s1-timer: 6
+doom/s2-x: 1050 doom/s2-y: 360 doom/s2-h: 50 doom/s2-state: 0 doom/s2-timer: 6
+doom/s-vis: 1
+doom/best: 100000 doom/target: -1
 doom/tdx: 0 doom/tdy: 0 doom/tt: 0 doom/thit: 0
 doom/ssv: 0 doom/stv: 0 doom/shv: 0
 doom/alien-d2: 0
@@ -402,6 +403,13 @@ doom/update-scuttlers: does [
     doom/update-scuttler 0
     doom/update-scuttler 1
     doom/update-scuttler 2
+    doom/s-vis: 0
+    doom/los doom/s0-x doom/s0-y
+    either = doom/occluded 0 [ doom/s-vis: + doom/s-vis 1 ] [ none ]
+    doom/los doom/s1-x doom/s1-y
+    either = doom/occluded 0 [ doom/s-vis: + doom/s-vis 2 ] [ none ]
+    doom/los doom/s2-x doom/s2-y
+    either = doom/occluded 0 [ doom/s-vis: + doom/s-vis 4 ] [ none ]
 ]
 doom/move-x: func [nx] [
     doom/hit: 0
@@ -629,9 +637,10 @@ doom/reset: does [
     doom/grounded: 1
     doom/jump-armed: 1
     doom/jump-input: 0
-    doom/s0-x: 980 doom/s0-y: 320 doom/s0-h: 50 doom/s0-state: 0 doom/s0-timer: 6
-    doom/s1-x: 1240 doom/s1-y: 600 doom/s1-h: 50 doom/s1-state: 0 doom/s1-timer: 6
-    doom/s2-x: 1240 doom/s2-y: 900 doom/s2-h: 50 doom/s2-state: 0 doom/s2-timer: 6
+    doom/s0-x: 650 doom/s0-y: 360 doom/s0-h: 50 doom/s0-state: 0 doom/s0-timer: 6
+    doom/s1-x: 900 doom/s1-y: 280 doom/s1-h: 50 doom/s1-state: 0 doom/s1-timer: 6
+    doom/s2-x: 1050 doom/s2-y: 360 doom/s2-h: 50 doom/s2-state: 0 doom/s2-timer: 6
+    doom/s-vis: 1
     doom/best: 100000
     doom/target: -1
 ]
@@ -1352,6 +1361,7 @@ doom/status-block: [
     print doom/s2-h
     print doom/s2-state
     print doom/s2-timer
+    print doom/s-vis
 ]
 
 doom/sector-report: does [

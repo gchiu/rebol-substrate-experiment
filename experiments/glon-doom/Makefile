@@ -62,6 +62,7 @@ test: $(TARGET)
 	./$(TARGET) --entrance-test
 	./$(TARGET) --collision-probe-test
 	./$(TARGET) --multi-alien-test
+	./$(TARGET) --gl-scuttler-probe /tmp/glon-g6h1-probe 960 600
 	./$(TARGET) --jump-test
 	./$(TARGET) --alien-collision-test
 	./$(TARGET) --combat-test

@@ -89,7 +89,7 @@ typedef struct {
     int player_hit;
     int phase;
     int jump_z;
-    int s_x[3], s_y[3], s_h[3], s_state[3], s_timer[3];
+    int s_x[3], s_y[3], s_h[3], s_state[3], s_timer[3], s_vis[3];
 } Status;
 
 typedef struct { int id, depth, left, right, top, bot, visible; int x,y,hw,hd,h; } Obj;
@@ -155,6 +155,9 @@ static int objects_mode = 0;
 static int combat_minimal = 0;
 static int lazy_ticks = 0;
 static int isolate_scuttlers = 0;
+static int g6h1_hide_scuttlers = 0;
+static int g6h1_marker = 0;
+static long g6h1_scuttler_draw_calls = 0;
 static Obj current_objs[6];
 static int current_objs_valid = 0;
 static int last_px = 320;
@@ -1143,7 +1146,7 @@ static void build_blocks(void) {
     scuttler_clear_block = parse_source(
       "[ doom/s0-x: 0 doom/s0-y: 0 doom/s0-state: 5 "
       "doom/s1-x: 0 doom/s1-y: 0 doom/s1-state: 5 "
-      "doom/s2-x: 0 doom/s2-y: 0 doom/s2-state: 5 ]",
+      "doom/s2-x: 0 doom/s2-y: 0 doom/s2-state: 5 doom/s-vis: 0 ]",
       "scuttler isolation");
 
     if (!gl_active && !combat_minimal) for (int b = 0; b < 2; b++) {
@@ -1190,11 +1193,11 @@ static int get_valid(void) {
     return v;
 }
 static int get_status(Status *st) {
-    int v[36];
+    int v[37];
 #ifdef DOOM_S1_PROFILE
     prof_begin();
 #endif
-    int grc = run_capture(status_block, v, 36, "status");
+    int grc = run_capture(status_block, v, 37, "status");
 #ifdef DOOM_S1_PROFILE
     prof_collect(&prof_status);
 #endif
@@ -1210,6 +1213,7 @@ static int get_status(Status *st) {
         st->s_x[i] = v[21+i*5]; st->s_y[i] = v[22+i*5];
         st->s_h[i] = v[23+i*5]; st->s_state[i] = v[24+i*5];
         st->s_timer[i] = v[25+i*5];
+        st->s_vis[i] = (v[36]>>i)&1;
     }
     if (objects_mode && get_objects(current_objs) == 0) {
         current_objs_valid = 1;
@@ -3408,7 +3412,7 @@ static int multi_scene(int px,int py,int angle,int ax,int ay,int astate,int door
       "doom/alien-state: %d doom/alien-detected: 0 "
       "doom/s0-x: %d doom/s0-y: %d doom/s0-h: 50 doom/s0-state: %d doom/s0-timer: %d "
       "doom/s1-x: %d doom/s1-y: %d doom/s1-h: 50 doom/s1-state: %d doom/s1-timer: %d "
-      "doom/s2-x: %d doom/s2-y: %d doom/s2-h: 50 doom/s2-state: %d doom/s2-timer: %d ]",
+      "doom/s2-x: %d doom/s2-y: %d doom/s2-h: 50 doom/s2-state: %d doom/s2-timer: %d doom/s-vis: 7 ]",
       px,py,angle,door?0:64,door?0:64,door?1:0,ax,ay,astate,
       s0x,s0y,s0state,s0timer,s1x,s1y,s1state,s1timer,s2x,s2y,s2state,s2timer);
     cell b=parse_source(src,"multi scene");
@@ -3423,9 +3427,10 @@ static int multi_alien_test(void) {
     if(get_status(&st)!=0) return 2;
     fails += expect_eq("multi adult spawn health",st.health,100);
     fails += expect_eq("multi scuttler count health",st.s_h[0]+st.s_h[1]+st.s_h[2],150);
-    fails += expect_eq("multi spawn s0",st.s_x[0]==980&&st.s_y[0]==320,1);
-    fails += expect_eq("multi spawn s1",st.s_x[1]==1240&&st.s_y[1]==600,1);
-    fails += expect_eq("multi spawn s2",st.s_x[2]==1240&&st.s_y[2]==900,1);
+    fails += expect_eq("multi spawn s0",st.s_x[0]==650&&st.s_y[0]==360,1);
+    fails += expect_eq("multi spawn visibility",st.s_vis[0]==1&&st.s_vis[1]==0&&st.s_vis[2]==0,1);
+    fails += expect_eq("multi spawn s1",st.s_x[1]==900&&st.s_y[1]==280,1);
+    fails += expect_eq("multi spawn s2",st.s_x[2]==1050&&st.s_y[2]==360,1);
     /* Target selection: nearest scuttler, not adult or the other scuttlers. */
     if(multi_scene(900,320,0,1120,320,0,0,
                    1000,320,1,100,1250,600,0,100,1250,900,0,100)!=0) return 2;
@@ -3495,7 +3500,7 @@ static int multi_alien_test(void) {
         fails += expect_eq("multi reset s0 hp",st.s_h[0],50);
         fails += expect_eq("multi reset s1 hp",st.s_h[1],50);
         fails += expect_eq("multi reset s2 hp",st.s_h[2],50);
-        fails += expect_eq("multi reset positions",st.s_x[0]==980&&st.s_y[0]==320&&st.s_x[1]==1240&&st.s_y[1]==600&&st.s_x[2]==1240&&st.s_y[2]==900,1);
+        fails += expect_eq("multi reset positions",st.s_x[0]==650&&st.s_y[0]==360&&st.s_x[1]==900&&st.s_y[1]==280&&st.s_x[2]==1050&&st.s_y[2]==360,1);
     }
     /* Sprite frames: actual alpha corners and directional selection. */
     for(int f=0;f<SCUTTLER_FRAME_COUNT;f++){
@@ -6116,6 +6121,8 @@ static int scuttler_frame(const Status *st,int i,int *flip) {
     return base + ((sim_tick/4 + i*2) & 7);
 }
 static void gl_draw_scuttlers(const Status *st) {
+    g6h1_scuttler_draw_calls++;
+    if (g6h1_hide_scuttlers) return;
     /* Scuttlers are tiny and were not surviving the world-billboard alpha/depth
      * path on the AMD GL driver. Use the same perspective values as the world
      * sprites, but rasterise the tiny directional frames in a screen-space
@@ -6129,15 +6136,21 @@ static void gl_draw_scuttlers(const Status *st) {
     glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0,gl_w,gl_h,0,-1,1);
     glMatrixMode(GL_MODELVIEW); glLoadIdentity();
     for(int i=0;i<3;i++){
+        if(!st->s_vis[i]) continue;
         int flip=0, frame=scuttler_frame(st,i,&flip);
         double dx=st->s_x[i]-last_px, dy=st->s_y[i]-last_py;
         double depth=dx*fx+dy*fy, side=dx*rx+dy*ry;
         if(depth<=1.0) continue;
-        double h=(14.0)*246.0/depth*scale;
+        double h=(20.0)*246.0/depth*scale;
         double w=h*2.0;
         double cx=gl_w*0.5+(side*gl_w*0.5)/depth;
         double bottom=gl_h*(100.0/200.0)+(64.0*246.0/depth)*scale;
         double x0=cx-w*0.5,x1=cx+w*0.5,y0=bottom-h,y1=bottom;
+        if(g6h1_marker){
+            glDisable(GL_TEXTURE_2D); glColor4f(1,0,1,1);
+            glBegin(GL_QUADS); glVertex2f(x0,y0); glVertex2f(x1,y0); glVertex2f(x1,y1); glVertex2f(x0,y1); glEnd();
+            glEnable(GL_TEXTURE_2D);
+        }
         glBindTexture(GL_TEXTURE_2D,gl_tex[GT_SCUTTLER0+frame]);
         glColor4f(1,1,1,st->s_state[i]==5?0.65f:1.0f);
         glBegin(GL_QUADS);
@@ -6200,8 +6213,8 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
         }
     }
     glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
-    gl_draw_scuttlers(st);
     gl_draw_weapon(st);
+    gl_draw_scuttlers(st);
     gl_draw_tracker(st);
     if(getenv("GLON_FINISH")){ int64_t _pf=now_ns(); glFinish(); gl_prof_finish_ms=(double)(now_ns()-_pf)/1e6; } else gl_prof_finish_ms=0;
 }
@@ -6553,6 +6566,74 @@ static int gl_jump_shots(const char *dir,int w,int h) {
     return 0;
 }
 
+static void g6h1_log_scuttlers(const char *tag,const Status *st,int px,int py,int pa) {
+    double a=pa*2.0*M_PI/256.0, fx=cos(a), fy=sin(a), rx=sin(a), ry=-cos(a);
+    printf("G6H1 %s player=%d,%d angle=%d draw_calls=%ld adult=%d,%d/%d visible=%d vismask=%d\n",
+           tag,px,py,pa,g6h1_scuttler_draw_calls,st->ax,st->ay,st->state,st->visible,
+           st->s_vis[0]|(st->s_vis[1]<<1)|(st->s_vis[2]<<2));
+    for(int i=0;i<3;i++){
+        double dx=st->s_x[i]-px,dy=st->s_y[i]-py;
+        double depth=dx*fx+dy*fy,side=dx*rx+dy*ry;
+        double h=(14.0)*246.0/(depth>1?depth:1)*(gl_h/200.0);
+        double w=h*2.0, cx=gl_w*0.5+(side*gl_w*0.5)/(depth>1?depth:1);
+        double bottom=gl_h*(100.0/200.0)+(64.0*246.0/(depth>1?depth:1))*(gl_h/200.0);
+        printf("G6H1   s%d x=%d y=%d hp=%d state=%d timer=%d depth=%.1f side=%.1f box=%.1f,%.1f %.1fx%.1f\n",
+               i,st->s_x[i],st->s_y[i],st->s_h[i],st->s_state[i],st->s_timer[i],depth,side,
+               cx-w*0.5,bottom-h,w,h);
+    }
+}
+static int g6h1_count_diff(const uint32_t *a,const uint32_t *b,int n) {
+    int c=0; for(int i=0;i<n;i++) if(a[i]!=b[i]) c++; return c;
+}
+static int g6h1_gl_probe(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2;
+    gl_active=1; load_session(); build_blocks();
+    uint32_t *fb=malloc((size_t)w*h*sizeof *fb);
+    if(!fb) return 2;
+    reset();
+    Status st; int px,py,pa;
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+    g6h1_log_scuttlers("spawn", &st,px,py,pa);
+    printf("G6H1 spawn states: s0=%d s1=%d s2=%d all_active=%d\n",st.s_state[0],st.s_state[1],st.s_state[2],
+           st.s_state[0]<5&&st.s_state[1]<5&&st.s_state[2]<5);
+    st_current_angle=pa; gl_scene(&st,NULL,0);
+    char path[4096]; snprintf(path,sizeof path,"%s/01-live-start.ppm",dir); gl_save_ppm(path,w,h);
+    glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,fb);
+    g6h1_hide_scuttlers=1; gl_scene(&st,NULL,0);
+    snprintf(path,sizeof path,"%s/02-live-start-control.ppm",dir); gl_save_ppm(path,w,h);
+    uint32_t *ctl=malloc((size_t)w*h*sizeof *ctl);
+    glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,ctl);
+    int start_diff=g6h1_count_diff(fb,ctl,w*h);
+    g6h1_hide_scuttlers=0;
+    printf("G6H1 start visible pixel diff=%d\n",start_diff);
+    /* Door-open corridor: actual ticks, normal renderer, weapon visible. */
+    const char *scene="[ doom/px: 700 doom/py: 320 doom/angle: 0 doom/aim doom/door-open: 64 doom/door-target: 64 doom/door-blocked: 0 ]";
+    cell b=parse_source(scene,"g6h1 corridor scene");
+    if(run_block(b,"g6h1 corridor scene")!=0) return 2;
+    for(int i=0;i<20;i++) if(tick(0)!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+    g6h1_log_scuttlers("corridor20", &st,px,py,pa);
+    st_current_angle=pa; gl_scene(&st,NULL,0);
+    snprintf(path,sizeof path,"%s/03-live-corridor.ppm",dir); gl_save_ppm(path,w,h);
+    glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,fb);
+    g6h1_hide_scuttlers=1; gl_scene(&st,NULL,0);
+    snprintf(path,sizeof path,"%s/04-live-corridor-control.ppm",dir); gl_save_ppm(path,w,h);
+    glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,ctl);
+    int corridor_diff=g6h1_count_diff(fb,ctl,w*h);
+    g6h1_hide_scuttlers=0;
+    printf("G6H1 corridor visible pixel diff=%d\n",corridor_diff);
+    /* Diagnostic markers at the projected boxes, drawn after the weapon. */
+    g6h1_marker=1;
+    st_current_angle=pa; gl_scene(&st,NULL,0);
+    snprintf(path,sizeof path,"%s/05-live-marker.ppm",dir); gl_save_ppm(path,w,h);
+    g6h1_marker=0;
+    printf("G6H1 probe: start_diff=%d corridor_diff=%d draw_calls=%ld\n",start_diff,corridor_diff,g6h1_scuttler_draw_calls);
+    int pass = start_diff>=200 && corridor_diff>=200 && g6h1_scuttler_draw_calls>0;
+    printf("G6H1 visibility: %s (threshold 200 actual differing pixels)\n",pass?"PASSED":"FAILED");
+    free(ctl); free(fb);
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
+    return pass?0:1;
+}
 static int gl_scuttler_shots(const char *dir,int w,int h) {
     if(gl_init(w,h,0)!=0) return 2;
     gl_active=1; gl_hide_weapon=1; load_session(); build_blocks();
@@ -6573,7 +6654,7 @@ static int gl_scuttler_shots(const char *dir,int w,int h) {
           "doom/alien-x: 1120 doom/alien-y: 320 doom/alien-health: 100 doom/alien-state: 0 doom/alien-detected: 0 "
           "doom/s0-x: %d doom/s0-y: %d doom/s0-state: %d doom/s0-timer: %d "
           "doom/s1-x: %d doom/s1-y: %d doom/s1-state: %d doom/s1-timer: %d "
-          "doom/s2-x: %d doom/s2-y: %d doom/s2-state: %d doom/s2-timer: %d ]",
+          "doom/s2-x: %d doom/s2-y: %d doom/s2-state: %d doom/s2-timer: %d doom/s-vis: 7 ]",
           poses[i].s0x,poses[i].s0y,poses[i].s0state,poses[i].s0timer,
           poses[i].s1x,poses[i].s1y,poses[i].s1state,poses[i].s1timer,
           poses[i].s2x,poses[i].s2y,poses[i].s2state,poses[i].s2timer);
@@ -7204,6 +7285,10 @@ int main(int argc, char **argv) {
     if (argc > 2 && strcmp(argv[1], "--gl-muzzle-shots") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
         return gl_muzzle_shots(argv[2],w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-scuttler-probe") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return g6h1_gl_probe(argv[2],w,h);
     }
     if (argc > 2 && strcmp(argv[1], "--gl-scuttler-shots") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
