@@ -18,6 +18,7 @@
 #include "textures.h"
 #include "alien_sprites_g5s.h"
 #include "weapon_sprites.h"
+#include "credits.h"
 #include "scuttler_sprites_g6h.h"
 #include "orientation_test.h"
 #include "corridor_textures.h"
@@ -6233,6 +6234,99 @@ static void gl_draw_scuttlers(const Status *st) {
         glEnd();
     }
 }
+typedef struct {
+    long machine_cells;
+    long loader_base, loader_limit, loader_reserved, loader_used, loader_free;
+    long globals_used, globals_cap, heap_high;
+    int gfx_ready, audio_ready, audio_disabled;
+    int width, height;
+} G6iTitleMetrics;
+
+typedef enum { G6I_TITLE = 0, G6I_PLAYING = 1, G6I_QUIT = 2 } G6iState;
+static G6iState g6i_state = G6I_TITLE;
+
+static void g6i_collect_metrics(G6iTitleMetrics *m) {
+    memset(m,0,sizeof *m);
+    m->machine_cells=65536L;
+    m->loader_base=R0S1_HEAP_BASE;
+    m->loader_limit=R0S1_HEAP_LIMIT;
+    m->loader_reserved=R0S1_HEAP_LIMIT-R0S1_HEAP_BASE;
+    m->loader_used=(long)M[GC_LOADER_HP]-R0S1_HEAP_BASE;
+    m->loader_free=R0S1_HEAP_LIMIT-(long)M[GC_LOADER_HP];
+    cell gc=0,cap=0; r0_s1_global_usage(&gc,&cap);
+    m->globals_used=(long)gc; m->globals_cap=(long)cap;
+    m->heap_high=r0_s1_heap_high();
+    m->gfx_ready=gl_active?1:0;
+    m->audio_ready=audio_ready?1:0;
+    m->audio_disabled=audio_disabled?1:0;
+    m->width=gl_w; m->height=gl_h;
+}
+static int g6i_title_key(int sym) {
+    if(sym==SDLK_ESCAPE){ g6i_state=G6I_QUIT; return -1; }
+    if(sym==SDLK_RETURN || sym==SDLK_KP_ENTER){ g6i_state=G6I_PLAYING; return 1; }
+    return 0;
+}
+static void g6i_text(float x,float y,const char *s,float scale,float r,float g,float b) {
+    float u=fminf(gl_w/320.0f,gl_h/200.0f);
+    float ox=(gl_w-320.0f*u)*0.5f, oy=(gl_h-200.0f*u)*0.5f;
+    glColor3f(r,g,b);
+    glBegin(GL_QUADS);
+    for(;*s;s++){
+        char ch=*s; if(ch>='a'&&ch<='z') ch=(char)(ch-'a'+'A');
+        if(ch==' '){ x+=6.0f*scale; continue; }
+        int gi=g5z_glyph(ch); if(gi<0){ x+=6.0f*scale; continue; }
+        for(int row=0;row<7;row++) for(int col=0;col<5;col++){
+            if(!(g5z_font[gi][row]&(1u<<(4-col)))) continue;
+            float px=ox+(x+col*scale)*u, py=oy+(y+row*scale)*u;
+            float q=scale*u;
+            glVertex2f(px,py); glVertex2f(px+q,py);
+            glVertex2f(px+q,py+q); glVertex2f(px,py+q);
+        }
+        x+=6.0f*scale;
+    }
+    glEnd();
+}
+static void g6i_text_center(float y,const char *s,float scale,float r,float g,float b){
+    float w=(float)strlen(s)*6.0f*scale;
+    g6i_text((320.0f-w)*0.5f,y,s,scale,r,g,b);
+}
+static void g6i_title_render(const G6iTitleMetrics *m,double elapsed) {
+    glViewport(0,0,gl_w,gl_h);
+    glDisable(GL_DEPTH_TEST); glDisable(GL_TEXTURE_2D); glDisable(GL_ALPHA_TEST);
+    glDisable(GL_BLEND);
+    glClearColor(0.010f,0.022f,0.014f,1.0f);
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0,gl_w,gl_h,0,-1,1);
+    glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+    /* restrained terminal scanlines */
+    glColor4f(0.0f,0.06f,0.02f,0.20f); glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    for(int y=0;y<200;y+=4){ float u=fminf(gl_w/320.0f,gl_h/200.0f); float ox=(gl_w-320*u)*0.5f, oy=(gl_h-200*u)*0.5f;
+        glBegin(GL_QUADS); glVertex2f(ox,oy+y*u); glVertex2f(ox+320*u,oy+y*u); glVertex2f(ox+320*u,oy+(y+1)*u); glVertex2f(ox,oy+(y+1)*u); glEnd(); }
+    glDisable(GL_BLEND);
+    g6i_text_center(5,"GLON CORPORATION // SYSTEM BIOS",1.0f,0.28f,0.95f,0.42f);
+    g6i_text_center(13,"GLON VS ALIEN",3.0f,1.0f,0.72f,0.20f);
+    g6i_text_center(34,"INFESTATION PROTOCOL",1.0f,0.55f,0.95f,0.58f);
+    glColor4f(0.16f,0.55f,0.26f,1); glBegin(GL_QUADS);
+    glVertex2f(45,43); glVertex2f(275,43); glVertex2f(275,44); glVertex2f(45,44); glEnd();
+    char line[96];
+    g6i_text_center(50,"VM SPACE 65536 CELLS CAPACITY",1.0f,0.35f,0.85f,0.48f);
+    snprintf(line,sizeof line,"LOADER %ld RESERVED %ld USED",m->loader_reserved,m->loader_used);
+    g6i_text_center(58,line,1.0f,0.35f,0.85f,0.48f);
+    snprintf(line,sizeof line,"LOADER FREE %ld CELLS",m->loader_free);
+    g6i_text_center(66,line,1.0f,0.35f,0.85f,0.48f);
+    snprintf(line,sizeof line,"GLOBALS %ld OF %ld",m->globals_used,m->globals_cap);
+    g6i_text_center(74,line,1.0f,0.35f,0.85f,0.48f);
+    snprintf(line,sizeof line,"HEAP HIGH %ld OBSERVED",m->heap_high);
+    g6i_text_center(82,line,1.0f,0.35f,0.85f,0.48f);
+    snprintf(line,sizeof line,"VIDEO OPENGL READY %dX%d",m->width,m->height);
+    g6i_text_center(90,line,1.0f,0.35f,0.85f,0.48f);
+    g6i_text_center(98,m->audio_ready?"AUDIO READY":m->audio_disabled?"AUDIO DISABLED":"AUDIO UNAVAILABLE",1.0f,0.35f,0.85f,0.48f);
+    g6i_text_center(106,"CREDITS",1.0f,0.85f,0.72f,0.28f);
+    for(int i=0;i<G6I_CREDIT_COUNT;i++)
+        g6i_text_center((float)(115+i*8),g6i_credits[i],1.0f,0.62f,0.78f,0.50f);
+    float blink=fmodf((float)elapsed,1.0f)<0.65f?1.0f:0.45f;
+    g6i_text_center(184,"PRESS ENTER TO START    ESC TO QUIT",1.0f,blink,blink,blink*0.65f);
+}
 static void gl_scene(const Status *st, const Obj *objs, int nobj) {
     gl_energy_time=(double)sim_tick/(double)TICK_HZ;
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -6368,15 +6462,40 @@ static int interactive_gl(int w, int h) {
     gl_active = 1;
     printf("G5p renderer=OpenGL framebuffer=%dx%d interactive=on\n",w,h);
     load_session(); build_blocks();
-    if (run_block(parse_source("[ doom/angle: 240 doom/aim ]", "spawn orientation"), "spawn orientation") != 0) return 2;
+    cell spawn_orientation_block=parse_source("[ doom/angle: 240 doom/aim ]", "spawn orientation");
+    if (run_block(spawn_orientation_block, "spawn orientation") != 0) return 2;
     if (portal_smoke && gl_apply_pose(450,560,176,64,0,1120,320,0)!=0) return 2;
     audio_start();
+    G6iTitleMetrics title_metrics; g6i_collect_metrics(&title_metrics);
+    g6i_state = (smoke_frames>0 || portal_smoke) ? G6I_PLAYING : G6I_TITLE;
+    double title_t0=(double)now_ns();
     Status st; Obj objs[6]; Spans spans; Detail det; TexRows tr;
     int px,py,pa; double acc=0.0,last=(double)now_ns(),fps_start=(double)now_ns(); int frames=0;
     double prof_tick=0,prof_state=0,prof_scene=0,prof_swap=0,prof_finish=0;
     int running=1;
     HeldKeys held={0};
     while(running) {
+        if(g6i_state==G6I_TITLE){
+            SDL_Event te;
+            while(SDL_PollEvent(&te)){
+                if(te.type==SDL_QUIT) running=0;
+                else if(te.type==SDL_KEYDOWN){
+                    int tr=g6i_title_key(te.key.keysym.sym);
+                    if(tr<0) running=0;
+                    else if(tr>0){
+                        if(reset()!=0) {running=0;break;}
+                        if(run_block(spawn_orientation_block,"spawn orientation")!=0){running=0;break;}
+                        acc=0.0; last=(double)now_ns();
+                    }
+                }
+            }
+            if(!running) break;
+            gl_update_viewport();
+            title_metrics.width=gl_w; title_metrics.height=gl_h;
+            g6i_title_render(&title_metrics,((double)now_ns()-title_t0)/1e9);
+            SDL_GL_SwapWindow(gl_win); frames++; SDL_Delay(1);
+            continue;
+        }
         sfx_smoke_step(frames);
         SDL_Event e;
         while(SDL_PollEvent(&e)) {
@@ -7327,6 +7446,53 @@ static int muzzle_anchor_test(void) {
     printf("muzzle-anchor-test: %s\n",fails?"FAILED":"PASSED");
     return fails?1:0;
 }
+static int title_test(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2;
+    gl_active=1; objects_mode=1; load_session(); build_blocks();
+    audio_start();
+    G6iTitleMetrics m; g6i_collect_metrics(&m);
+    cell gc=0,cap=0; r0_s1_global_usage(&gc,&cap);
+    long actual_used=(long)M[GC_LOADER_HP]-R0S1_HEAP_BASE;
+    long actual_free=R0S1_HEAP_LIMIT-(long)M[GC_LOADER_HP];
+    int fails=0;
+    fails+=expect_eq("title machine cells",m.machine_cells,65536);
+    fails+=expect_eq("title loader capacity",m.loader_reserved,R0S1_HEAP_LIMIT-R0S1_HEAP_BASE);
+    fails+=expect_eq("title loader used actual",m.loader_used,actual_used);
+    fails+=expect_eq("title loader free actual",m.loader_free,actual_free);
+    fails+=expect_eq("title globals actual",m.globals_used,(long)gc);
+    fails+=expect_eq("title globals cap actual",m.globals_cap,(long)cap);
+    fails+=expect_eq("title heap high actual",m.heap_high,r0_s1_heap_high());
+    fails+=expect_eq("title credits present",G6I_CREDIT_COUNT>0,1);
+    printf("G6I title metrics machine=%ld loader=%ld used=%ld free=%ld globals=%ld/%ld heap_high=%ld gfx=%d audio=%d/%d\n",
+           m.machine_cells,m.loader_reserved,m.loader_used,m.loader_free,m.globals_used,m.globals_cap,m.heap_high,m.gfx_ready,m.audio_ready,m.audio_disabled);
+    Status before,after; if(get_status(&before)!=0) return 2;
+    g6i_state=G6I_TITLE;
+    char path[4096]; snprintf(path,sizeof path,"%s/01-title.ppm",dir);
+    g6i_title_render(&m,0.1); gl_save_ppm(path,w,h);
+    for(int i=0;i<3;i++){ g6i_title_render(&m,0.1+i*0.1); }
+    if(get_status(&after)!=0) return 2;
+    fails+=expect_eq("title pauses enemy AI",before.s_x[0]==after.s_x[0]&&before.s_y[0]==after.s_y[0]&&before.s_state[0]==after.s_state[0]&&before.ax==after.ax,1);
+    fails+=expect_eq("title starts in title state",g6i_state,G6I_TITLE);
+    int enter=g6i_title_key(SDLK_RETURN);
+    fails+=expect_eq("title Enter starts",enter>0&&g6i_state==G6I_PLAYING,1);
+    if(reset()!=0) return 2;
+    if(get_status(&after)!=0) return 2;
+    snprintf(path,sizeof path,"%s/02-gameplay.ppm",dir);
+    st_current_angle=0; gl_scene(&after,NULL,0); gl_save_ppm(path,w,h);
+    g6i_state=G6I_TITLE;
+    int esc=g6i_title_key(SDLK_ESCAPE);
+    fails+=expect_eq("title Escape quits",esc<0&&g6i_state==G6I_QUIT,1);
+    long loader0=(long)M[GC_LOADER_HP];
+    for(int i=0;i<4;i++){
+        g6i_state=G6I_TITLE; g6i_title_render(&m,0.2);
+        g6i_title_key(SDLK_RETURN); if(reset()!=0) return 2;
+    }
+    long loader1=(long)M[GC_LOADER_HP];
+    fails+=expect_eq("title restart cycles no loader leak",loader0,loader1);
+    printf("title-test: %s\n",fails?"FAILED":"PASSED");
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
+    return fails?1:0;
+}
 int main(int argc, char **argv) {
     const char *env = getenv("DOOM_ROOT");
     if (env && *env) root_dir = env;
@@ -7520,6 +7686,10 @@ int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "--trace") == 0) return scripted_trace();
     if (argc > 2 && strcmp(argv[1], "--shots") == 0) return shot_walkthrough(argv[2]);
     if (argc > 1 && strcmp(argv[1], "--stationary-test") == 0) return stationary_test();
+    if (argc > 2 && strcmp(argv[1], "--title-test") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return title_test(argv[2],w,h);
+    }
     if (argc > 1 && strcmp(argv[1], "--loader-report") == 0) return loader_report();
     if (argc > 1 && strcmp(argv[1], "--simple") == 0) simple_mode = 1;
     if (argc > 1 && strcmp(argv[1], "--stationary") == 0) stationary_enabled = 1;
