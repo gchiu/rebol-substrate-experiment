@@ -2,7 +2,8 @@
 
 Branch: `glon-avp-g6i2`, based on G6i.1 `abe524e`  
 Status: **implemented, packaged and verified; unaccepted pending physical Windows testing**
-Source commit: `98c69b1a945e847f153facc9f5f18ff7d630a079`  
+Source commit: `98c69b1a945e847f153facc9f5f18ff7d630a079`
+Package/evidence commit: `e9dd7428fd821d16eb853ec02b50a045165ca622`  
 Windows executable: `dist/windows/doom.exe`  
 SHA-256: `6070d95943d2c96df7b3f9091dbdca0ba965a169b7ada77571c8eebbd1f65404`  
 Launcher: `dist/windows/run-g6i2.bat`
