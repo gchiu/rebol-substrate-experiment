@@ -2,6 +2,10 @@ ROOT := ../..
 CC ?= cc
 PKG_CONFIG ?= pkg-config
 CFLAGS ?= -std=c17 -O2 -Wall -Wextra -I$(ROOT)
+# G6h authorized AVP loader expansion: use the otherwise-unused M1 task arena
+# as loader space. M1 multi-tasking is not used by this game; frozen S1 is
+# untouched. 65000 is the task-table base; the loader remains exclusive of it.
+GAME_CPPFLAGS := -DR0S1_HEAP_LIMIT=65000L -DGLON_AVP_G6H=1
 SDL_CFLAGS := $(shell $(PKG_CONFIG) --cflags sdl2 2>/dev/null || echo -I/usr/include/SDL2)
 SDL_LIBS := $(shell $(PKG_CONFIG) --libs sdl2 2>/dev/null || echo -lSDL2)
 BUILD := build
@@ -18,7 +22,7 @@ OPCODE_TARGET := $(BUILD)/doom-opcode
 all: $(TARGET)
 
 $(WIN_TARGET): doom-host.c textures.h weapon_sprites.h alien_sprites_g5s.h $(WIN_ROOT)/r0_s1.h $(WIN_ROOT)/m1_layout.h $(WIN_ROOT)/s1.h | $(WIN_BUILD)
-	$(WIN_CC) $(WIN_CFLAGS) -o $@ doom-host.c $(WIN_ROOT)/r0_s1_session.c $(WIN_ROOT)/r0_s1_runtime.c $(WIN_ROOT)/s1.c $(WIN_LIBS)
+	$(WIN_CC) $(WIN_CFLAGS) $(GAME_CPPFLAGS) -o $@ doom-host.c $(WIN_ROOT)/r0_s1_session.c $(WIN_ROOT)/r0_s1_runtime.c $(WIN_ROOT)/s1.c $(WIN_LIBS)
 
 windows: $(WIN_TARGET)
 $(BUILD):
@@ -27,13 +31,13 @@ $(BUILD):
 $(WIN_BUILD):
 	@mkdir -p $@
 $(TARGET): doom-host.c textures.h weapon_sprites.h alien_sprites_g5s.h $(ROOT)/r0_s1.h $(ROOT)/m1_layout.h $(ROOT)/s1.h | $(BUILD)
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) -o $@ $(SRCS) $(SDL_LIBS) -lGL -lm -lpthread
+	$(CC) $(CFLAGS) $(GAME_CPPFLAGS) $(SDL_CFLAGS) -o $@ $(SRCS) $(SDL_LIBS) -lGL -lm -lpthread
 
 # Diagnostic build: instrumented COPY of frozen S1 (s1_prof.c), for event counts only.
 # The production binary above still links the frozen s1.c. This target is not
 # part of the game default and changes no production semantics.
 $(OPCODE_TARGET): doom-host.c textures.h weapon_sprites.h alien_sprites_g5s.h $(ROOT)/r0_s1.h $(ROOT)/m1_layout.h $(ROOT)/s1.h $(ROOT)/s1_prof.h $(ROOT)/s1_prof.c | $(BUILD)
-	$(CC) $(CFLAGS) -DDOOM_S1_PROFILE $(SDL_CFLAGS) -o $@ doom-host.c $(ROOT)/r0_s1_session.c $(ROOT)/r0_s1_runtime.c $(ROOT)/s1_prof.c $(SDL_LIBS) -lm -lpthread
+	$(CC) $(CFLAGS) $(GAME_CPPFLAGS) -DDOOM_S1_PROFILE $(SDL_CFLAGS) -o $@ doom-host.c $(ROOT)/r0_s1_session.c $(ROOT)/r0_s1_runtime.c $(ROOT)/s1_prof.c $(SDL_LIBS) -lm -lpthread
 
 bench-tools:
 	$(MAKE) -C bench
@@ -57,6 +61,7 @@ test: $(TARGET)
 	./$(TARGET) --stationary-test
 	./$(TARGET) --entrance-test
 	./$(TARGET) --collision-probe-test
+	./$(TARGET) --multi-alien-test
 	./$(TARGET) --jump-test
 	./$(TARGET) --alien-collision-test
 	./$(TARGET) --combat-test

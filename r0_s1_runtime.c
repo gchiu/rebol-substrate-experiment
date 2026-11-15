@@ -11,6 +11,17 @@
  * S1 is FROZEN. See R0-S1-PHASE1.md.
  */
 #include "r0_s1.h"
+
+/* Hash slots are encoded as word_id * CTX_HASH_STRIDE + slot. The G6h AVP
+ * host uses a 512-binding global context (authorized capacity expansion), so
+ * the stride must cover slots up to 511. Default/M1 builds keep 256. */
+#ifdef GLON_AVP_G6H
+#define CTX_HASH_STRIDE 512
+#define R0S1_GLOBAL_CAP 512
+#else
+#define CTX_HASH_STRIDE 256
+#define R0S1_GLOBAL_CAP 256
+#endif
 #include "m1_layout.h"
 #include <stdio.h>
 #include <string.h>
@@ -109,7 +120,7 @@ static void bind(cell ctx, cell word, cell value) {
         for (cell k = 0; k < cap; k++) {
             cell idx = (h + k) % cap;
             cell e = M[p + ho + idx];
-            if (e == HASH_EMPTY || e / 256 == id) { M[p + ho + idx] = id * 256 + n; break; }
+            if (e == HASH_EMPTY || e / CTX_HASH_STRIDE == id) { M[p + ho + idx] = id * CTX_HASH_STRIDE + n; break; }
         }
     }
 }
@@ -1739,10 +1750,10 @@ static void emit_lookup(void) {
 #endif
     cell fw_miss = asm_branch_fwd();
     asm_patch_here(j_notempty);
-    asm_dup(); asm_lit(256); asm_host(HOST_DIV);                                /* [ctx, e, key] */
+    asm_dup(); asm_lit(CTX_HASH_STRIDE); asm_host(HOST_DIV);                    /* [ctx, e, key] */
     e_cell(RV_T4); asm_host(HOST_EQ);                                           /* [ctx, e, key==id] */
     cell j_hcollide = asm_zbranch_fwd();
-    asm_lit(256); asm_host(HOST_MOD);                                           /* [ctx, slot] (slot = e % 256) */
+    asm_lit(CTX_HASH_STRIDE); asm_host(HOST_MOD);                              /* [ctx, slot] */
     e_setc(RV_T5);                                                              /* [ctx] */
 #ifdef R0_S1_PROFILE
     pf_incr(PF_HASH_HITS);
@@ -1939,7 +1950,7 @@ static void emit_hash_insert(void) {
     asm_dup(); asm_lit(HASH_EMPTY); asm_host(HOST_EQ);                                /* [e, empty?] */
     cell j_notempty = asm_zbranch_fwd();
     asm_drop();                                                                       /* [] */
-    e_cell(RV_T5); asm_lit(256); asm_host(HOST_MUL); e_cell(RV_T3); asm_host(HOST_ADD); /* id*256+slot */
+    e_cell(RV_T5); asm_lit(CTX_HASH_STRIDE); asm_host(HOST_MUL); e_cell(RV_T3); asm_host(HOST_ADD);
     e_cell(RV_T2); asm_lit(CTX_DATA); asm_host(HOST_ADD);
     e_cell(RV_T1); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);
     e_cell(RV_T6); asm_host(HOST_ADD); asm_store();                                   /* M[ho+idx] = entry */
@@ -3462,12 +3473,10 @@ cell r0_s1_init(void) {
     intern("func");
     intern("return");
     intern("raw");
-    /* G1E + STRING! integration: the global context holds every top-level
-     * definition (natives, view vocabulary atoms, application state/views/
-     * routes, and the hoisted str-N string bindings). The regenerated shop
-     * bundle has 129 top-level set-words + 13 natives = 142 bindings, so the
-     * cap must exceed 142. */
-    global_ctx = make_context(R0_NONE, 256);
+    /* G1E + STRING! integration plus the G6h AVP multi-entity globals. The
+     * global context holds all top-level definitions; AVP's expanded loader
+     * authorization requires 512 bindings rather than the default 256. */
+    global_ctx = make_context(R0_NONE, R0S1_GLOBAL_CAP);
     if (global_ctx == R0_NONE) {             /* a fresh loader heap always fits it */
         fprintf(stderr, "r0_s1: no room for the global context\n");
         abort();

@@ -18,6 +18,7 @@
 #include "textures.h"
 #include "alien_sprites_g5s.h"
 #include "weapon_sprites.h"
+#include "scuttler_sprites_g6h.h"
 #include "orientation_test.h"
 #include "corridor_textures.h"
 #include "g5j_textures.h"
@@ -88,6 +89,7 @@ typedef struct {
     int player_hit;
     int phase;
     int jump_z;
+    int s_x[3], s_y[3], s_h[3], s_state[3], s_timer[3];
 } Status;
 
 typedef struct { int id, depth, left, right, top, bot, visible; int x,y,hw,hd,h; } Obj;
@@ -152,6 +154,7 @@ static double gl_energy_time = 0.0;
 static int objects_mode = 0;
 static int combat_minimal = 0;
 static int lazy_ticks = 0;
+static int isolate_scuttlers = 0;
 static Obj current_objs[6];
 static int current_objs_valid = 0;
 static int last_px = 320;
@@ -171,7 +174,7 @@ static cell floor_line_block, ceil_line_block, objects_block, objects_on_block;
 static cell alien_collision_block, los_wall_block, los_clear_block;
 static cell render_blocks[2];
 static cell tick_blocks[128];
-static cell jump_request_block;
+static cell jump_request_block, scuttler_clear_block;
 
 static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
                         const TexRows *tr, const Status *st,
@@ -1137,6 +1140,11 @@ static void build_blocks(void) {
         tick_blocks[64] = parse_source("[ doom/tick 0 0 0 0 0 0 1 ]", "fire tick");
     }
     jump_request_block = parse_source("[ doom/jump-input: 1 ]", "jump input");
+    scuttler_clear_block = parse_source(
+      "[ doom/s0-x: 0 doom/s0-y: 0 doom/s0-state: 5 "
+      "doom/s1-x: 0 doom/s1-y: 0 doom/s1-state: 5 "
+      "doom/s2-x: 0 doom/s2-y: 0 doom/s2-state: 5 ]",
+      "scuttler isolation");
 
     if (!gl_active && !combat_minimal) for (int b = 0; b < 2; b++) {
         size_t cap = 256 + (PROJ_COLS / 2) * 64;
@@ -1182,11 +1190,11 @@ static int get_valid(void) {
     return v;
 }
 static int get_status(Status *st) {
-    int v[21];
+    int v[36];
 #ifdef DOOM_S1_PROFILE
     prof_begin();
 #endif
-    int grc = run_capture(status_block, v, 21, "status");
+    int grc = run_capture(status_block, v, 36, "status");
 #ifdef DOOM_S1_PROFILE
     prof_collect(&prof_status);
 #endif
@@ -1198,6 +1206,11 @@ static int get_status(Status *st) {
     st->top = v[14]; st->bot = v[15]; st->light = v[16]; st->ammo = v[17];
     st->player_hit = v[18]; st->phase = v[19];
     st->jump_z = v[20];
+    for (int i = 0; i < 3; i++) {
+        st->s_x[i] = v[21+i*5]; st->s_y[i] = v[22+i*5];
+        st->s_h[i] = v[23+i*5]; st->s_state[i] = v[24+i*5];
+        st->s_timer[i] = v[25+i*5];
+    }
     if (objects_mode && get_objects(current_objs) == 0) {
         current_objs_valid = 1;
         if (st->door_blocked && last_px < 768)
@@ -1281,7 +1294,9 @@ static int get_texrows(TexRows *r) {
 
 static int reset(void) {
     alien_view_reset();
-    return run_block(reset_block, "reset");
+    int rc=run_block(reset_block, "reset");
+    if (rc==0 && isolate_scuttlers && scuttler_clear_block) rc=run_block(scuttler_clear_block,"scuttler isolation");
+    return rc;
 }
 static int ensure_tick_block(int idx) {
     if (tick_blocks[idx]) return 0;
@@ -1383,6 +1398,7 @@ static int open_door_near(void) {
 }
 
 static int self_test(void) {
+    isolate_scuttlers = 1;
     int fails = 0, x, y, a;
     Status st;
     fails += expect_eq("framebuffer width", FB_W, 320);
@@ -1737,6 +1753,7 @@ static void build_projection_blocks(void) {
 }
 
 static int projection_test(void) {
+    isolate_scuttlers = 1;
     load_session();
     load_file("tests/detail.glon");
     detail_block = parse_source("[ do doom/detail-block ]", "detail");
@@ -1818,6 +1835,7 @@ static int projection_test(void) {
 /* ---- Scripted trace ---------------------------------------------------- */
 
 static int scripted_trace(void) {
+    isolate_scuttlers = 1;
     load_session();
     build_blocks();
     Status st;
@@ -2461,6 +2479,7 @@ static int cache_frame(ViewCache *c, uint32_t *fb, int floor_c, int ceil_c, int 
 }
 
 static int stationary_test(void) {
+    isolate_scuttlers = 1;
     uint32_t *fb = malloc((size_t)FB_W * FB_H * sizeof *fb);
     if (!fb) return 2;
     load_session();
@@ -2925,6 +2944,7 @@ static int mix_peak_without_ambient(void) {
 }
 
 static int audio_e2e_test(void) {
+    isolate_scuttlers = 1;
     setenv("SDL_AUDIODRIVER","dummy",1);
     if(SDL_Init(SDL_INIT_TIMER)!=0) return 2;
     audio_start();
@@ -3106,6 +3126,8 @@ static int alien_trace_scene(const char *name,cell scene,int state) {
     return 0;
 }
 static int alien_collision_trace(void) {
+    isolate_scuttlers = 1;
+    if (scuttler_clear_block) run_block(scuttler_clear_block,"scuttler isolation");
     combat_minimal=1;
     load_session(); build_blocks();
     cell living=alien_scene_block(3,1000);
@@ -3117,6 +3139,8 @@ static int alien_collision_trace(void) {
     return 0;
 }
 static int alien_collision_test(void) {
+    isolate_scuttlers = 1;
+    if (scuttler_clear_block) run_block(scuttler_clear_block,"scuttler isolation");
     combat_minimal=1;
     int fails=0;
     load_session(); build_blocks();
@@ -3250,6 +3274,7 @@ static int collision_probe_test(void) {
     return fails?1:0;
 }
 static int jump_test(void) {
+    isolate_scuttlers = 1;
     int fails=0; Status st; int px,py,pa;
     combat_minimal=1;
     load_session(); build_blocks();
@@ -3369,7 +3394,130 @@ static int jump_test(void) {
     printf("jump-test: %s\n",fails?"FAILED":"PASSED");
     return fails?1:0;
 }
+static int scuttler_view_dir(const Status *st,int i,int *flip);
+static int multi_scene(int px,int py,int angle,int ax,int ay,int astate,int door,
+                       int s0x,int s0y,int s0state,int s0timer,
+                       int s1x,int s1y,int s1state,int s1timer,
+                       int s2x,int s2y,int s2state,int s2timer) {
+    reset();
+    char src[1024];
+    snprintf(src,sizeof src,
+      "[ doom/px: %d doom/py: %d doom/angle: %d doom/aim "
+      "doom/door-open: %d doom/door-target: %d doom/door-blocked: %d "
+      "doom/alien-x: %d doom/alien-y: %d doom/alien-health: 100 "
+      "doom/alien-state: %d doom/alien-detected: 0 "
+      "doom/s0-x: %d doom/s0-y: %d doom/s0-h: 50 doom/s0-state: %d doom/s0-timer: %d "
+      "doom/s1-x: %d doom/s1-y: %d doom/s1-h: 50 doom/s1-state: %d doom/s1-timer: %d "
+      "doom/s2-x: %d doom/s2-y: %d doom/s2-h: 50 doom/s2-state: %d doom/s2-timer: %d ]",
+      px,py,angle,door?0:64,door?0:64,door?1:0,ax,ay,astate,
+      s0x,s0y,s0state,s0timer,s1x,s1y,s1state,s1timer,s2x,s2y,s2state,s2timer);
+    cell b=parse_source(src,"multi scene");
+    return run_block(b,"multi scene");
+}
+static int multi_alien_test(void) {
+    int fails=0; Status st; int px,py,pa;
+    combat_minimal=1;
+    load_session(); build_blocks();
+    /* Four spawn entities and three distinct scuttler positions. */
+    reset();
+    if(get_status(&st)!=0) return 2;
+    fails += expect_eq("multi adult spawn health",st.health,100);
+    fails += expect_eq("multi scuttler count health",st.s_h[0]+st.s_h[1]+st.s_h[2],150);
+    fails += expect_eq("multi spawn s0",st.s_x[0]==980&&st.s_y[0]==320,1);
+    fails += expect_eq("multi spawn s1",st.s_x[1]==1240&&st.s_y[1]==600,1);
+    fails += expect_eq("multi spawn s2",st.s_x[2]==1240&&st.s_y[2]==900,1);
+    /* Target selection: nearest scuttler, not adult or the other scuttlers. */
+    if(multi_scene(900,320,0,1120,320,0,0,
+                   1000,320,1,100,1250,600,0,100,1250,900,0,100)!=0) return 2;
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    printf("multi target shot1 s0=%d/%d adult=%d s1=%d s2=%d ammo=%d\n",
+           st.s_h[0],st.s_state[0],st.health,st.s_h[1],st.s_h[2],st.ammo);
+    fails += expect_eq("multi shot selects s0",st.s_h[0],25);
+    fails += expect_eq("multi shot s0 flinch",st.s_state[0],3);
+    fails += expect_eq("multi shot adult untouched",st.health,100);
+    fails += expect_eq("multi shot s1 untouched",st.s_h[1],50);
+    fails += expect_eq("multi shot s2 untouched",st.s_h[2],50);
+    fails += expect_eq("multi shot ammo",st.ammo,23);
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("multi second hit kills s0",st.s_h[0],0);
+    fails += expect_eq("multi s0 dying",st.s_state[0],4);
+    fails += expect_eq("multi s1 survives s0 death",st.s_h[1],50);
+    fails += expect_eq("multi s2 survives s0 death",st.s_h[2],50);
+    fails += expect_eq("multi adult survives scuttler kill",st.health,100);
+    /* Dead scuttler does not stop the others' independent AI. */
+    if(multi_scene(900,320,0,1200,320,0,0,
+                   1000,320,5,0,1250,600,1,100,1250,900,1,100)!=0) return 2;
+    int a1x,a1y,a2x,a2y;
+    if(get_status(&st)!=0) return 2; a1x=st.s_x[1]; a1y=st.s_y[1]; a2x=st.s_x[2]; a2y=st.s_y[2];
+    for(int i=0;i<12;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails += expect_eq("multi s1 independent pursuit",st.s_x[1]!=a1x||st.s_y[1]!=a1y,1);
+    fails += expect_eq("multi s2 independent pursuit",st.s_x[2]!=a2x||st.s_y[2]!=a2y,1);
+    /* Closed door/LOS prevents selecting and damaging a scuttler. */
+    if(multi_scene(700,320,0,1120,320,0,1,
+                   900,320,0,100,1240,600,0,100,1240,900,0,100)!=0) return 2;
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("multi closed door scuttler hp",st.s_h[0],50);
+    fails += expect_eq("multi closed door ammo spent",st.ammo,23);
+    /* Scuttler cannot cross a closed door. */
+    if(multi_scene(800,320,0,1200,320,0,1,
+                   740,320,1,100,1240,600,0,100,1240,900,0,100)!=0) return 2;
+    for(int i=0;i<30;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails += expect_eq("multi scuttler blocked by door",st.s_x[0]<768,1);
+    /* Jump over a low living scuttler. */
+    if(multi_scene(1000,320,0,1200,500,0,0,
+                   1120,320,0,100,1240,600,0,100,1240,900,0,100)!=0) return 2;
+    for(int i=0;i<20;i++) if(tick(1)!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0) return 2;
+    fails += expect_eq("multi grounded scuttler blocks",px<1120,1);
+    if(multi_scene(1000,320,0,1200,500,0,0,
+                   1120,320,0,100,1240,600,0,100,1240,900,0,100)!=0) return 2;
+    if(tick_jump(1,1)!=0) return 2;
+    for(int i=0;i<38;i++) if(tick_jump(1,0)!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("multi jump clears low scuttler",px>1120,1);
+    fails += expect_eq("multi jump lands",st.jump_z,0);
+    /* Stable dead scuttler. */
+    if(multi_scene(700,320,0,1200,500,0,0,
+                   900,320,5,0,1240,600,0,100,1240,900,0,100)!=0) return 2;
+    int dx,dy; if(get_status(&st)!=0) return 2; dx=st.s_x[0]; dy=st.s_y[0];
+    for(int i=0;i<20;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails += expect_eq("multi dead scuttler stable",st.s_x[0]==dx&&st.s_y[0]==dy,1);
+    /* Reset restores all four, including after a death/restart cycle. */
+    for(int cycle=0;cycle<3;cycle++){
+        if(multi_scene(900,320,0,1200,500,0,0,
+                       1000,320,4,1,1240,600,5,0,1240,900,3,1)!=0) return 2;
+        for(int i=0;i<8;i++) if(tick(0)!=0) return 2;
+        if(reset()!=0 || get_status(&st)!=0) return 2;
+        fails += expect_eq("multi reset adult",st.health,100);
+        fails += expect_eq("multi reset s0 hp",st.s_h[0],50);
+        fails += expect_eq("multi reset s1 hp",st.s_h[1],50);
+        fails += expect_eq("multi reset s2 hp",st.s_h[2],50);
+        fails += expect_eq("multi reset positions",st.s_x[0]==980&&st.s_y[0]==320&&st.s_x[1]==1240&&st.s_y[1]==600&&st.s_x[2]==1240&&st.s_y[2]==900,1);
+    }
+    /* Sprite frames: actual alpha corners and directional selection. */
+    for(int f=0;f<SCUTTLER_FRAME_COUNT;f++){
+        int opaque=0;
+        for(int k=0;k<SCUTTLER_FRAME_W*SCUTTLER_FRAME_H;k++) if((scuttler_pixels[f][k]>>24)>0) opaque=1;
+        if(!opaque){ printf("multi frame empty %d\n",f); fails++; }
+        int c0=scuttler_pixels[f][0]>>24, c1=scuttler_pixels[f][SCUTTLER_FRAME_W-1]>>24;
+        int c2=scuttler_pixels[f][SCUTTLER_FRAME_W*(SCUTTLER_FRAME_H-1)]>>24;
+        int c3=scuttler_pixels[f][SCUTTLER_FRAME_W*SCUTTLER_FRAME_H-1]>>24;
+        if(c0||c1||c2||c3){ printf("multi frame corner opaque %d\n",f); fails++; }
+    }
+    Status dirs; memset(&dirs,0,sizeof dirs); st_current_angle=0; last_px=0; last_py=0;
+    int flip;
+    dirs.s_x[0]=100; dirs.s_y[0]=0; fails+=expect_eq("multi direction front",scuttler_view_dir(&dirs,0,&flip),0);
+    dirs.s_x[0]=100; dirs.s_y[0]=40; fails+=expect_eq("multi direction threeq",scuttler_view_dir(&dirs,0,&flip),1);
+    dirs.s_x[0]=0; dirs.s_y[0]=100; fails+=expect_eq("multi direction side",scuttler_view_dir(&dirs,0,&flip),2);
+    dirs.s_x[0]=-100; dirs.s_y[0]=0; fails+=expect_eq("multi direction rear",scuttler_view_dir(&dirs,0,&flip),3);
+    printf("multi-alien-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
+}
 static int combat_test(void) {
+    isolate_scuttlers = 1;
     int fails=0; Status st;
     combat_minimal=1;
     load_session(); build_blocks();
@@ -3554,6 +3702,7 @@ static uint32_t hash_rect(const uint32_t *fb,int l,int r,int t,int b) {
 }
 
 static int corpse_stability_test(const char *dir) {
+    isolate_scuttlers = 1;
     load_session(); build_blocks();
     if(combat_scene(900,320,0,1120,320,0,0,5,0)!=0) return 2;
     int floor_c,ceil_c; if(get_sector(&floor_c,&ceil_c)!=0) return 2;
@@ -3631,6 +3780,7 @@ static int door_side_run(const char *tag,int px,int py,int angle,int open,int ta
 }
 
 static int door_sync_test(int trace) {
+    isolate_scuttlers = 1;
     lazy_ticks=1;
     load_session(); build_blocks();
     int close=0,open=0,fails=0,motion=-1; Status st;
@@ -3895,7 +4045,8 @@ enum { GT_PANEL, GT_SERVICE, GT_FLOOR, GT_CEIL, GT_CEIL_PANEL,
        GT_DOOR_LEFT, GT_DOOR_RIGHT,
        GT_DRUM, GT_CRATE, GT_CABINET, GT_CONTAINER, GT_ALIEN0,
        GT_ORIENT = GT_ALIEN0 + ALIEN_DIR_COUNT, GT_ART_WALL, GT_ART_PANEL, GT_ART_FLOOR,
-       GT_WEAPON, GT_G5Z_ATLAS, GT_COUNT = GT_G5Z_ATLAS + 1 };
+       GT_WEAPON, GT_SCUTTLER0, GT_SCUTTLER_LAST = GT_SCUTTLER0 + SCUTTLER_FRAME_COUNT - 1,
+       GT_G5Z_ATLAS = GT_SCUTTLER_LAST + 1, GT_COUNT = GT_G5Z_ATLAS + 1 };
 static GLuint gl_tex[GT_COUNT];
 static SDL_Window *gl_win;
 static SDL_GLContext gl_ctx;
@@ -4160,6 +4311,8 @@ static int gl_init(int w, int h, int shown) {
     gl_upload(gl_tex[GT_ART_PANEL], tex_art_wall_recess_panel,512,512);
     gl_upload(gl_tex[GT_ART_FLOOR], tex_art_floor_plate,512,512);
     gl_upload(gl_tex[GT_WEAPON], weapon_pulse,WEAPON_W,WEAPON_H);
+    for (int i = 0; i < SCUTTLER_FRAME_COUNT; i++)
+        gl_upload(gl_tex[GT_SCUTTLER0+i], scuttler_pixels[i], SCUTTLER_FRAME_W, SCUTTLER_FRAME_H);
     uint32_t *g5z_atlas=g5z_build_atlas();
     gl_upload(gl_tex[GT_G5Z_ATLAS],g5z_atlas,G5Z_ATLAS_W,G5Z_ATLAS_H);
     free(g5z_atlas);
@@ -5938,6 +6091,64 @@ static void gl_corpse_planes(const Status *st,float alpha,float height) {
     glColor4f(1,1,1,1); glDisable(GL_BLEND);
 }
 
+static int scuttler_view_dir(const Status *st,int i,int *flip) {
+    double a=st_current_angle*2.0*M_PI/256.0;
+    double fx=cos(a), fy=sin(a);
+    double rx=sin(a), ry=-cos(a);
+    double dx=st->s_x[i]-last_px, dy=st->s_y[i]-last_py;
+    double depth=dx*fx+dy*fy, side=dx*rx+dy*ry;
+    double ratio=fabs(side)/(fabs(depth)>1.0?fabs(depth):1.0);
+    *flip = side<0.0;
+    if (depth < -8.0) return 3;       /* rear */
+    if (ratio < 0.35) return 0;       /* front */
+    if (ratio < 0.95) return 1;       /* three-quarter */
+    return 2;                          /* side */
+}
+static int scuttler_frame(const Status *st,int i,int *flip) {
+    int state=st->s_state[i], timer=st->s_timer[i];
+    int dir=scuttler_view_dir(st,i,flip);
+    if(state==5) return SCUTTLER_DEAD_FRAME;
+    if(state==4){ int k=6-timer; if(k<0)k=0; if(k>5)k=5; return SCUTTLER_DYING_BASE+k; }
+    if(state==3){ int k=4-timer; if(k<0)k=0; if(k>3)k=3; return SCUTTLER_HIT_BASE+k; }
+    if(state==2){ int k=6-timer; if(k<0)k=0; if(k>5)k=5; return SCUTTLER_ATTACK_BASE+k; }
+    if(state==0) return (dir==0?SCUTTLER_FRONT_BASE:dir==1?SCUTTLER_THREEQ_BASE:dir==2?SCUTTLER_SIDE_BASE:SCUTTLER_REAR_BASE);
+    int base=(dir==0?SCUTTLER_FRONT_BASE:dir==1?SCUTTLER_THREEQ_BASE:dir==2?SCUTTLER_SIDE_BASE:SCUTTLER_REAR_BASE);
+    return base + ((sim_tick/4 + i*2) & 7);
+}
+static void gl_draw_scuttlers(const Status *st) {
+    /* Scuttlers are tiny and were not surviving the world-billboard alpha/depth
+     * path on the AMD GL driver. Use the same perspective values as the world
+     * sprites, but rasterise the tiny directional frames in a screen-space
+     * overlay after the adult. */
+    double a=st_current_angle*2.0*M_PI/256.0;
+    double fx=cos(a), fy=sin(a), rx=sin(a), ry=-cos(a);
+    double scale=gl_h/200.0;
+    glDisable(GL_DEPTH_TEST); glEnable(GL_TEXTURE_2D); glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_ALPHA_TEST);
+    glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0,gl_w,gl_h,0,-1,1);
+    glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+    for(int i=0;i<3;i++){
+        int flip=0, frame=scuttler_frame(st,i,&flip);
+        double dx=st->s_x[i]-last_px, dy=st->s_y[i]-last_py;
+        double depth=dx*fx+dy*fy, side=dx*rx+dy*ry;
+        if(depth<=1.0) continue;
+        double h=(14.0)*246.0/depth*scale;
+        double w=h*2.0;
+        double cx=gl_w*0.5+(side*gl_w*0.5)/depth;
+        double bottom=gl_h*(100.0/200.0)+(64.0*246.0/depth)*scale;
+        double x0=cx-w*0.5,x1=cx+w*0.5,y0=bottom-h,y1=bottom;
+        glBindTexture(GL_TEXTURE_2D,gl_tex[GT_SCUTTLER0+frame]);
+        glColor4f(1,1,1,st->s_state[i]==5?0.65f:1.0f);
+        glBegin(GL_QUADS);
+        glTexCoord2f(flip?1:0,1); glVertex2f(x0,y0);
+        glTexCoord2f(flip?0:1,1); glVertex2f(x1,y0);
+        glTexCoord2f(flip?0:1,0); glVertex2f(x1,y1);
+        glTexCoord2f(flip?1:0,0); glVertex2f(x0,y1);
+        glEnd();
+    }
+    glEnable(GL_ALPHA_TEST); glDisable(GL_BLEND); glEnable(GL_DEPTH_TEST);
+}
 static void gl_scene(const Status *st, const Obj *objs, int nobj) {
     gl_energy_time=(double)sim_tick/(double)TICK_HZ;
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -5989,6 +6200,7 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
         }
     }
     glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
+    gl_draw_scuttlers(st);
     gl_draw_weapon(st);
     gl_draw_tracker(st);
     if(getenv("GLON_FINISH")){ int64_t _pf=now_ns(); glFinish(); gl_prof_finish_ms=(double)(now_ns()-_pf)/1e6; } else gl_prof_finish_ms=0;
@@ -6341,6 +6553,42 @@ static int gl_jump_shots(const char *dir,int w,int h) {
     return 0;
 }
 
+static int gl_scuttler_shots(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2;
+    gl_active=1; gl_hide_weapon=1; load_session(); build_blocks();
+    struct SP {const char *name; int s0x,s0y,s0state,s0timer,s1x,s1y,s1state,s1timer,s2x,s2y,s2state,s2timer;};
+    struct SP poses[]={
+      {"01-head-on",980,320,1,80,0,0,5,0,0,0,5,0},
+      {"02-side",980,280,1,80,0,0,5,0,0,0,5,0},
+      {"03-two-visible",980,320,1,80,1050,300,1,80,0,0,5,0},
+      {"04-attack",980,320,2,4,0,0,5,0,0,0,5,0},
+      {"05-dead",700,320,5,0,0,0,5,0,0,0,5,0},
+      {"06-adult-intact",0,0,5,0,0,0,5,0,0,0,5,0}
+    };
+    for(size_t i=0;i<sizeof poses/sizeof poses[0];i++){
+        reset(); char src[1024];
+        snprintf(src,sizeof src,
+          "[ doom/px: 500 doom/py: 320 doom/angle: 0 doom/aim "
+          "doom/door-open: 64 doom/door-target: 64 doom/door-blocked: 0 "
+          "doom/alien-x: 1120 doom/alien-y: 320 doom/alien-health: 100 doom/alien-state: 0 doom/alien-detected: 0 "
+          "doom/s0-x: %d doom/s0-y: %d doom/s0-state: %d doom/s0-timer: %d "
+          "doom/s1-x: %d doom/s1-y: %d doom/s1-state: %d doom/s1-timer: %d "
+          "doom/s2-x: %d doom/s2-y: %d doom/s2-state: %d doom/s2-timer: %d ]",
+          poses[i].s0x,poses[i].s0y,poses[i].s0state,poses[i].s0timer,
+          poses[i].s1x,poses[i].s1y,poses[i].s1state,poses[i].s1timer,
+          poses[i].s2x,poses[i].s2y,poses[i].s2state,poses[i].s2timer);
+        cell b=parse_source(src,"scuttler shot pose");
+        if(run_block(b,"scuttler shot pose")!=0) return 2;
+        int px,py,pa; Status st;
+        if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+        st_current_angle=pa;
+        gl_scene(&st,NULL,0);
+        char path[4096]; snprintf(path,sizeof path,"%s/%s.ppm",dir,poses[i].name); gl_save_ppm(path,w,h);
+        printf("scuttler-shot %s %dx%d s0=%d,%d/%d adult=%d\n",poses[i].name,w,h,st.s_x[0],st.s_y[0],st.s_state[0],st.health);
+    }
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
+    return 0;
+}
 static int gl_corpse_shots(const char *dir,int w,int h) {
     if(gl_init(w,h,0)!=0) return 2;
     gl_active=1; gl_hide_weapon=1; load_session(); build_blocks();
@@ -6943,6 +7191,7 @@ int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "--muzzle-anchor-test") == 0) return muzzle_anchor_test();
     if (argc > 1 && strcmp(argv[1], "--entrance-test") == 0) return entrance_test();
     if (argc > 1 && strcmp(argv[1], "--collision-probe-test") == 0) return collision_probe_test();
+    if (argc > 1 && strcmp(argv[1], "--multi-alien-test") == 0) return multi_alien_test();
     if (argc > 1 && strcmp(argv[1], "--jump-test") == 0) return jump_test();
     if (argc > 1 && strcmp(argv[1], "--alien-collision-trace") == 0) return alien_collision_trace();
     if (argc > 1 && strcmp(argv[1], "--alien-collision-test") == 0) return alien_collision_test();
@@ -6955,6 +7204,10 @@ int main(int argc, char **argv) {
     if (argc > 2 && strcmp(argv[1], "--gl-muzzle-shots") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
         return gl_muzzle_shots(argv[2],w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-scuttler-shots") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return gl_scuttler_shots(argv[2],w,h);
     }
     if (argc > 2 && strcmp(argv[1], "--gl-jump-shots") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
