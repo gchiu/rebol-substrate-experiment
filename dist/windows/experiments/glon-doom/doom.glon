@@ -201,6 +201,9 @@ doom/s2-x: 1050 doom/s2-y: 360 doom/s2-h: 50 doom/s2-state: 0 doom/s2-timer: 6
 doom/s-vis: 1
 doom/best: 100000 doom/target: -1
 doom/tdx: 0 doom/tdy: 0 doom/tt: 0 doom/thit: 0
+doom/aim-slope: 0
+doom/aimz: 0
+doom/vd: 0
 doom/ssv: 0 doom/stv: 0 doom/shv: 0
 doom/alien-d2: 0
 doom/alien-avoid: 0
@@ -430,14 +433,17 @@ doom/move-y: func [ny] [
     either = doom/hit 0 [ doom/py: ny ] [ doom/player-hit: 1 ]
 ]
 
-doom/consider: func [ax ay health target tol] [
+doom/consider: func [ax ay health target tol tz th] [
     doom/tdx: - ax doom/px
     doom/tdy: - ay doom/py
     doom/td2: + * doom/tdx doom/tdx * doom/tdy doom/tdy
     doom/td: / + * doom/tdx doom/dirx * doom/tdy doom/diry 64
     doom/tt: - * doom/tdx doom/diry * doom/tdy doom/dirx
+    doom/aimz: - doom/eye / * doom/aim-slope doom/td 64
+    doom/vd: - doom/aimz tz
+    either < doom/vd 0 [ doom/vd: - 0 doom/vd ] [ none ]
     doom/los ax ay
-    doom/thit: * * * > doom/td 0 < doom/td2 409600 < * doom/tt doom/tt tol = doom/occluded 0
+    doom/thit: * * * * > doom/td 0 < doom/td2 409600 < * doom/tt doom/tt tol < doom/vd th = doom/occluded 0
     either = 1 doom/thit [
         either > health 0 [
             either < doom/td doom/best [
@@ -458,7 +464,8 @@ doom/damage-scuttler: func [i] [
         doom/stm! i 4
     ]
 ]
-doom/tick: func [fw bk lf rt tl tr fire] [
+doom/tick: func [fw bk lf rt tl tr fire aimslope] [
+    doom/aim-slope: aimslope
     doom/angle: + doom/angle - tl tr
     doom/wrap-angle
     doom/aim
@@ -519,10 +526,10 @@ doom/tick: func [fw bk lf rt tl tr fire] [
             doom/ammo: - doom/ammo 1
             doom/best: 100000
             doom/target: -1
-            doom/consider doom/alien-x doom/alien-y doom/alien-health 0 1048576
-            doom/consider doom/s0-x doom/s0-y doom/s0-h 1 4194304
-            doom/consider doom/s1-x doom/s1-y doom/s1-h 2 4194304
-            doom/consider doom/s2-x doom/s2-y doom/s2-h 3 4194304
+            doom/consider doom/alien-x doom/alien-y doom/alien-health 0 1048576 64 64
+            doom/consider doom/s0-x doom/s0-y doom/s0-h 1 4194304 15 16
+            doom/consider doom/s1-x doom/s1-y doom/s1-h 2 4194304 15 16
+            doom/consider doom/s2-x doom/s2-y doom/s2-h 3 4194304 15 16
             either = doom/target 0 [
                 doom/alien-health: - doom/alien-health 25
                 either < doom/alien-health 1 [
@@ -637,6 +644,7 @@ doom/reset: does [
     doom/grounded: 1
     doom/jump-armed: 1
     doom/jump-input: 0
+    doom/aim-slope: 0
     doom/s0-x: 650 doom/s0-y: 360 doom/s0-h: 50 doom/s0-state: 0 doom/s0-timer: 6
     doom/s1-x: 900 doom/s1-y: 280 doom/s1-h: 50 doom/s1-state: 0 doom/s1-timer: 6
     doom/s2-x: 1050 doom/s2-y: 360 doom/s2-h: 50 doom/s2-state: 0 doom/s2-timer: 6
