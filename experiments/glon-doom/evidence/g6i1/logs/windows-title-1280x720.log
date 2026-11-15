@@ -16,7 +16,7 @@ PASS title globals cap actual got=512
 PASS title heap high actual   got=34240
 PASS title credits present    got=1
 G6I title metrics machine=65536 loader=25000 used=17910 free=7090 globals=277/512 heap_high=34240 gfx=1 audio=1/0
-G6I live process available=1 working=96014336 peak=98156544 private=115994624
+G6I live process available=1 working=96256000 peak=98394112 private=118243328
 PASS G6I main plan fits all resolutions got=1
 PASS G6I main layout no overlap/clipping got=1
 PASS G6I credits layout no overlap/clipping got=1

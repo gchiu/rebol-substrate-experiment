@@ -4,7 +4,7 @@ Worktree: `/mnt/d/repos/glon-worktrees/glon-avp-g6i1`
 Branch: `glon-avp-g6i1`, based on G6i `a780639`  
 Status: **implemented, packaged and verified; unaccepted pending physical Windows testing**  
 Windows executable: `dist/windows/doom.exe`, **7,026,688 bytes**  
-SHA-256: `c8f524fd2b3456217c48982dca70e64f68b033ef8e2bbcf4d68a56e71c02bf34`  
+SHA-256: `7a5be766f9687b9a2ecef0798f75a2c799a2eca647ed75f13f7f5cb284b71d73`  
 Launcher: `dist/windows/run-g6i1.bat`
 
 G6h.2, G6i and the G6i.0 audit worktree/distributions were preserved. No merge,
@@ -57,8 +57,8 @@ hard-coded or presented as live. At the measured G6i.1 title state:
 - globals: **277 / 512**
 - managed heap observed high-water: **34,240**
 - Windows live title-state working set: about **95.9–96.3 MB**
-- Windows live peak working set at that point: about **97.6–98.4 MB**
-- Windows live private committed: about **113.5–116.0 MB**
+- Windows live peak working set at that point: about **97.9–98.4 MB**
+- Windows live private committed: about **113.0–118.2 MB**
 
 These are live `GetProcessMemoryInfo` values printed on the title and recorded
 in the title-test logs. The historical G6i.0 packaged gameplay figures
@@ -158,6 +158,7 @@ a scuttler behind a closed door remains safe; the adult remains shootable.
   - horizontal feet scuttler miss, downward feet hit, front hit, closed-door
     safe, adult shootable
   - restart restores enemy state and pitch
+  - simultaneous movement + jump + fire keeps ammo, airborne jump and displacement
 
 Evidence: `experiments/glon-doom/evidence/g6i1/` (also copied under
 `dist/windows/evidence/g6i1/`). Logs include exact live process values.
@@ -168,7 +169,7 @@ Measured with the existing methodology, not as a comparative claim:
 
 - Linux `--bench 60`: `sim=8.51 ms`, `frame=145.82 ms` (`fps=6.9`), current
   environment.
-- Native Windows `--bench 60`: `sim=9.26 ms`, `frame=159.03 ms` (`fps=6.3`),
+- Native Windows `--bench 60`: `sim=9.61 ms`, `frame=166.54 ms` (`fps=6.0`),
   current environment.
 
 No performance improvement is claimed; these are different environments and
@@ -192,14 +193,13 @@ attempted.
 
 - Windows distribution: `dist/windows` (`run-g6i1.bat`)
 - Executable SHA-256:
-  `c8f524fd2b3456217c48982dca70e64f68b033ef8e2bbcf4d68a56e71c02bf34`
+  `7a5be766f9687b9a2ecef0798f75a2c799a2eca647ed75f13f7f5cb284b71d73`
 - SDL2.dll SHA-256:
   `b67bca20a0a35c0e0689495f9f3095526aa6575543c2678646c1593107410800`
 - Runtime `doom.glon` SHA-256:
   `4f14c9b6b8ccb7f0472e9fe49a2a35a98b84027c6da53f7b850f4d5a64e6d1ca`
-- Source commit: `eea1c178ad85fb55c829be50cd6287a2d2886e94`
-- Package/evidence commit: `86ef3c9d28f890b8d3aefb008aa578c4495da640`
-- Final documentation/cleanup commit: recorded in the final repository log for
-  branch `glon-avp-g6i1`.
+- Source commit: `e7ebf8589cfc82ee42c22aa67f80a9b870d91ac4`
+- Package/evidence and final documentation commits: recorded in the final
+  repository log for branch `glon-avp-g6i1`.
 - Evidence screenshots (PNG) and logs: `evidence/g6i1/` in both the worktree and
   the Windows distribution.
