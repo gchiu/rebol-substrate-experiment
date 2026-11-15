@@ -199,7 +199,8 @@ attempted.
 - Runtime `doom.glon` SHA-256:
   `4f14c9b6b8ccb7f0472e9fe49a2a35a98b84027c6da53f7b850f4d5a64e6d1ca`
 - Source commit: `e7ebf8589cfc82ee42c22aa67f80a9b870d91ac4`
-- Package/evidence and final documentation commits: recorded in the final
-  repository log for branch `glon-avp-g6i1`.
+- Package/evidence commit: `3eb689a1f89076d5d9fe1bddade0f75153100e02`
+- Final documentation commit: recorded in the final repository log for branch
+  `glon-avp-g6i1`.
 - Evidence screenshots (PNG) and logs: `evidence/g6i1/` in both the worktree and
   the Windows distribution.
