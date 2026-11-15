@@ -50,6 +50,16 @@
 #define RENDER_INTS (PROJ_COLS * 5)
 #define DETAIL_MAX 64
 
+#define SIDE_ENTRANCE_X0 1152.0f
+#define SIDE_ENTRANCE_X1 1280.0f
+
+/* Actual x span of the south-wall decorative panel at a loop position. */
+static void corridor_south_panel_span(float x,float *x0,float *x1) {
+    *x0=x+3.0f;
+    *x1=x+61.0f;
+    if(*x1>SIDE_ENTRANCE_X0) *x1=SIDE_ENTRANCE_X0;
+}
+
 typedef struct {
     int top[PROJ_COLS], bot[PROJ_COLS], color[PROJ_COLS];
     int u[PROJ_COLS], shade[PROJ_COLS], material[PROJ_COLS];
@@ -2957,6 +2967,24 @@ static int audio_e2e_test(void) {
     return fails?1:0;
 }
 
+static int entrance_test(void) {
+    int fails=0;
+    for(float x=780.0f;x<1260.0f;x+=80.0f){
+        float x0,x1; corridor_south_panel_span(x,&x0,&x1);
+        fails += expect_eq("south wall panel clear of side opening",
+                           x1<=SIDE_ENTRANCE_X0 || x0>=SIDE_ENTRANCE_X1, 1);
+    }
+    load_session(); build_blocks();
+    cell a=parse_source("[ doom/hit: 0 doom/check-all 1200 384 20 print doom/hit ]","side entrance");
+    cell b=parse_source("[ doom/hit: 0 doom/check-all 1200 500 20 print doom/hit ]","side corridor");
+    int va=-1,vb=-1;
+    if(run_capture(a,&va,1,"side entrance")!=0 || run_capture(b,&vb,1,"side corridor")!=0) return 2;
+    fails += expect_eq("side entrance traversable",va,0);
+    fails += expect_eq("side corridor traversable",vb,0);
+    printf("entrance-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
+}
+
 static int interactive(void) {
     printf("G5p renderer=CPU framebuffer=320x200 interactive=on\n");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return 2;
@@ -4496,32 +4524,40 @@ static void gl_corridor_static(void) {
     /* recessed side panels, ribs and lower service housings */
     for(int x=780;x<1260;x+=80){
         gl_box(x,258,18,x+64,262,108,darkR*1.3f,darkG*1.2f,darkB*1.1f);
-        gl_box(x,378,18,x+64,382,108,darkR*1.3f,darkG*1.2f,darkB*1.1f);
         gl_box(x+3,257,22,x+61,258,104,0.16f,0.15f,0.13f);
-        gl_box(x+3,382,22,x+61,383,104,0.16f,0.15f,0.13f);
-        for(int z=28;z<100;z+=14){ gl_box(x+8,257,z,x+56,258,z+3,0.08f,0.08f,0.07f);
-            gl_box(x+8,382,z,x+56,383,z+3,0.08f,0.08f,0.07f); }
         gl_box(x,258,4,x+72,266,36,0.28f,0.25f,0.20f);
-        gl_box(x,374,4,x+72,382,36,0.28f,0.25f,0.20f);
         gl_tex_quad_tint(gl_tex[GT_SERVICE],x+2,266.1f,x+70,266.1f,5,35,0,0,2,1,0.55f);
-        gl_tex_quad_tint(gl_tex[GT_SERVICE],x+2,373.9f,x+70,373.9f,5,35,0,0,2,1,0.55f);
         gl_box(x,260,14,x+72,264,18,1.0f,0.46f,0.08f); /* warm floor strip */
-        gl_box(x,378,14,x+72,382,18,1.0f,0.46f,0.08f);
+        for(int z=28;z<100;z+=14) gl_box(x+8,257,z,x+56,258,z+3,0.08f,0.08f,0.07f);
+        if(x < SIDE_ENTRANCE_X0){
+            float sx1=x+64.0f; if(sx1>SIDE_ENTRANCE_X0)sx1=SIDE_ENTRANCE_X0;
+            float tx0=x+3.0f,tx1=x+61.0f; if(tx1>SIDE_ENTRANCE_X0)tx1=SIDE_ENTRANCE_X0;
+            float fx1=x+72.0f; if(fx1>SIDE_ENTRANCE_X0)fx1=SIDE_ENTRANCE_X0;
+            float bx1=x+56.0f; if(bx1>SIDE_ENTRANCE_X0)bx1=SIDE_ENTRANCE_X0;
+            gl_box(x,378,18,sx1,382,108,darkR*1.3f,darkG*1.2f,darkB*1.1f);
+            gl_box(tx0,382,22,tx1,383,104,0.16f,0.15f,0.13f);
+            for(int z=28;z<100;z+=14) gl_box(x+8,382,z,bx1,383,z+3,0.08f,0.08f,0.07f);
+            gl_box(x,374,4,fx1,382,36,0.28f,0.25f,0.20f);
+            float u1=2.0f*(fx1-(x+2.0f))/68.0f; if(u1<0.0f)u1=0.0f;
+            gl_tex_quad_tint(gl_tex[GT_SERVICE],x+2,373.9f,fx1,373.9f,5,35,0,0,u1,1,0.55f);
+            gl_box(x,378,14,fx1,382,18,1.0f,0.46f,0.08f);
+        }
     }
     for(int x=768;x<=1280;x+=80){
         gl_box(x,250,0,x+8,262,128,darkR,darkG,darkB);
-        gl_box(x,378,0,x+8,390,128,darkR,darkG,darkB);
+        if(x < SIDE_ENTRANCE_X0) gl_box(x,378,0,x+8,390,128,darkR,darkG,darkB);
         gl_box(x,256,120,x+8,384,128,darkR,darkG,darkB); /* ceiling rib */
         gl_box(x,256,0,x+8,384,4,darkR,darkG,darkB); /* floor rib */
     }
     /* longitudinal pipes and conduit runs */
     for(int y=264;y<=376;y+=112){
-        gl_cyl_x(768,1280,y,112,5,10,0.20f,0.20f,0.19f);
-        gl_cyl_x(768,1280,y+8,118,3,8,0.14f,0.10f,0.08f);
+        float x1=y<300?SIDE_ENTRANCE_X1:SIDE_ENTRANCE_X0;
+        gl_cyl_x(768,x1,y,112,5,10,0.20f,0.20f,0.19f);
+        gl_cyl_x(768,x1,y+8,118,3,8,0.14f,0.10f,0.08f);
     }
     for(int x=840;x<1240;x+=160){
         gl_box(x,258,96,x+8,264,112,0.28f,0.12f,0.08f);
-        gl_box(x,376,96,x+8,382,112,0.28f,0.12f,0.08f);
+        if(x < SIDE_ENTRANCE_X0) gl_box(x,376,96,x+8,382,112,0.28f,0.12f,0.08f);
     }
     /* recessed grille light fixtures with real housing/frame depth */
     for(int x=820;x<1240;x+=160){
@@ -4560,7 +4596,11 @@ static void gl_corridor_static(void) {
         /* prototype wall-panel material: one image per recessed panel */
         for(int x=780;x<1260;x+=80){
             gl_tex_quad(gl_tex[GT_ART_PANEL],x+3,262.1f,x+61,262.1f,22,104,0,0,1,1);
-            gl_tex_quad(gl_tex[GT_ART_PANEL],x+3,377.9f,x+61,377.9f,22,104,0,0,1,1);
+            float px0,px1; corridor_south_panel_span(x,&px0,&px1);
+            if(px0<px1){
+                float u1=(px1-px0)/58.0f;
+                gl_tex_quad(gl_tex[GT_ART_PANEL],px0,377.9f,px1,377.9f,22,104,0,0,u1,1);
+            }
         }
         /* prototype bulkhead material on far door face */
         gl_tex_quad(gl_tex[GT_ART_WALL],1273.4f,256,1273.4f,384,0,128,1,0,0,1);
@@ -5407,6 +5447,26 @@ static int gl_apply_pose(int px,int py,int angle,int door_open,int door_blocked,
       px,py,angle,door_open,door_open,door_blocked,ax,ay,astate);
     cell b=parse_source(src,"gl tour pose"); return run_block(b,"gl tour pose");
 }
+static int gl_entrance_shots(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
+    struct EP { const char *name; int px,py,angle; } poses[] = {
+        {"01-side-corridor",1200,500,192},
+        {"02-side-corridor-close",1200,430,192},
+        {"03-a3-toward-side",1200,320,64}
+    };
+    for(size_t i=0;i<sizeof poses/sizeof poses[0];i++){
+        if(gl_apply_pose(poses[i].px,poses[i].py,poses[i].angle,64,0,1120,320,0)!=0) return 2;
+        int px,py,pa; Status st;
+        if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+        st_current_angle=pa;
+        gl_scene(&st,NULL,0);
+        char path[4096]; snprintf(path,sizeof path,"%s/%s.ppm",dir,poses[i].name);
+        gl_save_ppm(path,w,h);
+        printf("entrance %s %dx%d\n",poses[i].name,w,h);
+    }
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
 static int gl_tour(const char *dir,int w,int h) {
     if(gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
     struct P{const char*n;int px,py,a,open,block,ax,ay,state;float pitch;} poses[]={
@@ -5841,6 +5901,11 @@ int main(int argc, char **argv) {
         for(int i=5;i<argc;i++){ if(strcmp(argv[i],"objects")==0) objects_mode=1;
             if(strcmp(argv[i],"plain")==0) plain=1; }
         return gl_room_shots(argv[2],w,h,plain);
+    }
+    if (argc > 1 && strcmp(argv[1], "--entrance-test") == 0) return entrance_test();
+    if (argc > 2 && strcmp(argv[1], "--gl-entrance-shots") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return gl_entrance_shots(argv[2],w,h);
     }
     if (argc > 2 && strcmp(argv[1], "--gl-portal-shots") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;

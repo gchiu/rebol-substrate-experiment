@@ -55,6 +55,7 @@ test: $(TARGET)
 	./$(TARGET) --tracker-test
 	./$(TARGET) --resize-test
 	./$(TARGET) --stationary-test
+	./$(TARGET) --entrance-test
 	./$(TARGET) --flat-surfaces --objects-test
 	./$(TARGET) --self-test --raw-wall
 	./$(TARGET) --trace
