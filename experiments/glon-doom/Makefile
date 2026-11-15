@@ -16,7 +16,7 @@ WIN_ROOT := ../..
 WIN_SDL := ../../.deps/SDL2-2.30.9/x86_64-w64-mingw32
 WIN_CC ?= /home/graham/.cache/glon-g6d/zig-linux-x86_64-0.13.0/zig cc -target x86_64-windows-gnu
 WIN_CFLAGS := -std=c17 -O2 -Wall -Wextra -I$(WIN_ROOT) -DSDL_MAIN_HANDLED -I$(WIN_SDL)/include
-WIN_LIBS := -L$(WIN_SDL)/lib $(WIN_SDL)/lib/libSDL2.dll.a -lopengl32 -lwinmm -lole32 -loleaut32 -luuid -limm32 -lversion
+WIN_LIBS := -L$(WIN_SDL)/lib $(WIN_SDL)/lib/libSDL2.dll.a -lopengl32 -lwinmm -lole32 -loleaut32 -luuid -limm32 -lversion -lpsapi
 SRCS := doom-host.c $(ROOT)/r0_s1_session.c $(ROOT)/r0_s1_runtime.c $(ROOT)/s1.c
 OPCODE_TARGET := $(BUILD)/doom-opcode
 all: $(TARGET)
@@ -56,6 +56,7 @@ test: $(TARGET)
 	./$(TARGET) --self-test
 	./$(TARGET) --projection-test
 	./$(TARGET) --input-test
+	./$(TARGET) --look-test
 	./$(TARGET) --tracker-test
 	./$(TARGET) --resize-test
 	./$(TARGET) --stationary-test

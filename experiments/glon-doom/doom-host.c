@@ -38,6 +38,10 @@
 #include <time.h>
 #include <math.h>
 #include <SDL2/SDL_opengl.h>
+#ifdef _WIN32
+#include <windows.h>
+#include <psapi.h>
+#endif
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -178,6 +182,9 @@ static cell floor_line_block, ceil_line_block, objects_block, objects_on_block;
 static cell alien_collision_block, los_wall_block, los_clear_block;
 static cell render_blocks[2];
 static cell tick_blocks[128];
+static cell fire_tick_blocks[256];
+static int look_pitch = 0;
+static int look_slope = 0;
 static cell jump_request_block, scuttler_clear_block;
 
 static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
@@ -1137,11 +1144,10 @@ static void build_blocks(void) {
         for (int m = 0; m < 64; m++) {
             if (normalize_move_mask(m) != m) continue;
             char src[128];
-            snprintf(src, sizeof src, "[ doom/tick %d %d %d %d %d %d 0 ]",
+            snprintf(src, sizeof src, "[ doom/tick %d %d %d %d %d %d 0 0 ]",
                      !!(m & 1), !!(m & 2), !!(m & 4), !!(m & 8), !!(m & 16), !!(m & 32));
             tick_blocks[m] = parse_source(src, "tick");
         }
-        tick_blocks[64] = parse_source("[ doom/tick 0 0 0 0 0 0 1 ]", "fire tick");
     }
     jump_request_block = parse_source("[ doom/jump-input: 1 ]", "jump input");
     scuttler_clear_block = parse_source(
@@ -1299,6 +1305,7 @@ static int get_texrows(TexRows *r) {
 
 static int reset(void) {
     alien_view_reset();
+    look_pitch=0; look_slope=0;
     int rc=run_block(reset_block, "reset");
     if (rc==0 && isolate_scuttlers && scuttler_clear_block) rc=run_block(scuttler_clear_block,"scuttler isolation");
     return rc;
@@ -1306,24 +1313,53 @@ static int reset(void) {
 static int ensure_tick_block(int idx) {
     if (tick_blocks[idx]) return 0;
     char src[128];
-    if (idx == 64) {
-        snprintf(src,sizeof src,"[ doom/tick 0 0 0 0 0 0 1 ]");
-    } else {
-        snprintf(src,sizeof src,"[ doom/tick %d %d %d %d %d %d 0 ]",
-                 !!(idx & 1), !!(idx & 2), !!(idx & 4), !!(idx & 8),
-                 !!(idx & 16), !!(idx & 32));
-    }
-    tick_blocks[idx] = parse_source(src, idx==64?"fire tick":"tick");
+    snprintf(src,sizeof src,"[ doom/tick %d %d %d %d %d %d 0 0 ]",
+             !!(idx & 1), !!(idx & 2), !!(idx & 4), !!(idx & 8),
+             !!(idx & 16), !!(idx & 32));
+    tick_blocks[idx] = parse_source(src, "tick");
     return tick_blocks[idx] ? 0 : -1;
+}
+static int look_pitch_step(int down) {
+    if (down) {
+        if (look_pitch < 75) look_pitch += 3;
+        if (look_pitch > 75) look_pitch = 75;
+    } else {
+        if (look_pitch > 0) look_pitch -= 5;
+        if (look_pitch < 0) look_pitch = 0;
+    }
+    look_slope=(int)lround(tan((double)look_pitch*M_PI/180.0)*64.0);
+    if(look_slope<0) look_slope=0;
+    if(look_slope>239) look_slope=239;
+    return look_pitch;
+}
+static void set_look_pitch(int deg) {
+    if(deg<0) deg=0; if(deg>75) deg=75;
+    look_pitch=deg;
+    look_slope=(int)lround(tan((double)look_pitch*M_PI/180.0)*64.0);
+    if(look_slope<0) look_slope=0; if(look_slope>239) look_slope=239;
+}
+static int ensure_fire_block(void) {
+    if (look_slope < 0) look_slope = 0;
+    if (look_slope > 239) look_slope = 239;
+    if (fire_tick_blocks[look_slope]) return 0;
+    char src[128];
+    snprintf(src,sizeof src,"[ doom/tick 0 0 0 0 0 0 1 %d ]", look_slope);
+    fire_tick_blocks[look_slope] = parse_source(src, "fire tick");
+    return fire_tick_blocks[look_slope] ? 0 : -1;
 }
 static int tick(int mask) {
     if (objects_mode && !gl_active && !(mask&FIRE_MASK)) mask &= 15;
-    int idx = (mask&FIRE_MASK) ? 64 : normalize_move_mask(mask & 63);
-    if (ensure_tick_block(idx) != 0) return -1;
+    int fire = (mask & FIRE_MASK) != 0;
+    if (fire) {
+        if (ensure_fire_block() != 0) return -1;
+    } else {
+        int idx = normalize_move_mask(mask & 63);
+        if (ensure_tick_block(idx) != 0) return -1;
+    }
 #ifdef DOOM_S1_PROFILE
     prof_begin();
 #endif
-    int rc = run_block(tick_blocks[idx], (idx==64)?"fire tick":"tick");
+    int rc = run_block(fire ? fire_tick_blocks[look_slope] : tick_blocks[normalize_move_mask(mask & 63)], fire ? "fire tick" : "tick");
 #ifdef DOOM_S1_PROFILE
     prof_collect(&prof_tick);
 #endif
@@ -2903,7 +2939,7 @@ static int bench(int frames, int bench_alien) {
     return 0;
 }
 
-typedef struct { int w,s,a,d,left,right,fire,jump,jump_pending; } HeldKeys;
+typedef struct { int w,s,a,d,left,right,fire,jump,jump_pending,down; } HeldKeys;
 static void held_keys_apply(HeldKeys *h, const SDL_Event *e) {
     if (e->type != SDL_KEYDOWN && e->type != SDL_KEYUP) return;
     int down = e->type == SDL_KEYDOWN;
@@ -2915,17 +2951,33 @@ static void held_keys_apply(HeldKeys *h, const SDL_Event *e) {
     else if (sc == SDL_SCANCODE_D || sym == SDLK_d) h->d = down;
     else if (sc == SDL_SCANCODE_LEFT || sym == SDLK_LEFT || sc == SDL_SCANCODE_KP_4) h->left = down;
     else if (sc == SDL_SCANCODE_RIGHT || sym == SDLK_RIGHT || sc == SDL_SCANCODE_KP_6) h->right = down;
-    else if (sc == SDL_SCANCODE_F || sym == SDLK_f) h->fire = down;
-    else if (sc == SDL_SCANCODE_SPACE || sym == SDLK_SPACE) {
+    else if (sc == SDL_SCANCODE_SPACE || sym == SDLK_SPACE) h->fire = down;
+    else if (sc == SDL_SCANCODE_UP || sym == SDLK_UP || sc == SDL_SCANCODE_KP_8) {
         if (down && !e->key.repeat && !h->jump) h->jump_pending = 1;
         h->jump = down;
     }
+    else if (sc == SDL_SCANCODE_DOWN || sym == SDLK_DOWN || sc == SDL_SCANCODE_KP_2) h->down = down;
 }
 static int held_keys_mask(const HeldKeys *h, const Uint8 *k) {
     return (h->w || k[SDL_SCANCODE_W] ? 1 : 0) | (h->s || k[SDL_SCANCODE_S] ? 2 : 0) |
            (h->a || k[SDL_SCANCODE_A] ? 4 : 0) | (h->d || k[SDL_SCANCODE_D] ? 8 : 0) |
            (h->left || k[SDL_SCANCODE_LEFT] ? 16 : 0) |
            (h->right || k[SDL_SCANCODE_RIGHT] ? 32 : 0);
+}
+static int look_test(void) {
+    int fails=0;
+    set_look_pitch(0);
+    fails+=expect_eq("look starts horizontal",look_pitch,0);
+    fails+=expect_eq("down step tilts",look_pitch_step(1),3);
+    for(int i=0;i<40;i++) look_pitch_step(1);
+    fails+=expect_eq("down clamps at 75",look_pitch,75);
+    fails+=expect_eq("release begins return",look_pitch_step(0),70);
+    for(int i=0;i<30;i++) look_pitch_step(0);
+    fails+=expect_eq("release returns horizontal",look_pitch,0);
+    set_look_pitch(60);
+    fails+=expect_eq("pitch slope positive",look_slope>0,1);
+    printf("look-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
 }
 static int input_test(void) {
     int fails = 0;
@@ -2944,19 +2996,37 @@ static int input_test(void) {
     e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_W; e.key.keysym.sym=SDLK_w;
     held_keys_apply(&h,&e); fails += expect_eq("W keydown maps forward", held_keys_mask(&h,k), 1);
     e.type=SDL_KEYUP; held_keys_apply(&h,&e);
-    e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_F; e.key.keysym.sym=SDLK_f;
-    held_keys_apply(&h,&e); fails += expect_eq("F keydown maps fire", h.fire, 1);
-    e.type=SDL_KEYUP; held_keys_apply(&h,&e); fails += expect_eq("F keyup clears fire", h.fire, 0);
-    HeldKeys j = {0};
+    e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_SPACE; e.key.keysym.sym=SDLK_SPACE;
+    held_keys_apply(&h,&e); fails += expect_eq("Space keydown maps fire", h.fire, 1);
+    e.type=SDL_KEYUP; held_keys_apply(&h,&e); fails += expect_eq("Space keyup clears fire", h.fire, 0);
+    HeldKeys r = {0};
     memset(&e,0,sizeof e); e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_SPACE;
     e.key.keysym.sym=SDLK_SPACE; e.key.repeat=0;
-    held_keys_apply(&j,&e);
-    fails += expect_eq("Space keydown requests jump", j.jump_pending, 1);
-    fails += expect_eq("Space held state", j.jump, 1);
-    j.jump_pending=0; e.key.repeat=1; held_keys_apply(&j,&e);
-    fails += expect_eq("Space repeat does not re-request", j.jump_pending, 0);
-    e.type=SDL_KEYUP; e.key.repeat=0; held_keys_apply(&j,&e);
-    fails += expect_eq("Space keyup clears held state", j.jump, 0);
+    held_keys_apply(&r,&e);
+    fails += expect_eq("Space fire does not request jump", r.jump_pending, 0);
+    fails += expect_eq("Space fire held", r.fire, 1);
+    r.jump_pending=0; e.key.repeat=1; held_keys_apply(&r,&e);
+    fails += expect_eq("Space repeat stays fire", r.fire, 1);
+    e.type=SDL_KEYUP; e.key.repeat=0; held_keys_apply(&r,&e);
+    fails += expect_eq("Space keyup clears fire", r.fire, 0);
+    HeldKeys u = {0};
+    e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_UP; e.key.keysym.sym=SDLK_UP; e.key.repeat=0;
+    held_keys_apply(&u,&e);
+    fails += expect_eq("Up keydown requests jump", u.jump_pending, 1);
+    fails += expect_eq("Up key does not fire", u.fire, 0);
+    u.jump_pending=0; e.key.repeat=1; held_keys_apply(&u,&e);
+    fails += expect_eq("Up repeat does not re-request", u.jump_pending, 0);
+    e.type=SDL_KEYUP; e.key.repeat=0; held_keys_apply(&u,&e);
+    HeldKeys d = {0};
+    e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_DOWN; e.key.keysym.sym=SDLK_DOWN; e.key.repeat=0;
+    held_keys_apply(&d,&e); fails += expect_eq("Down held look",d.down,1);
+    e.type=SDL_KEYUP; held_keys_apply(&d,&e); fails += expect_eq("Down release",d.down,0);
+    HeldKeys wu = {0};
+    e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_W; e.key.keysym.sym=SDLK_w; e.key.repeat=0;
+    held_keys_apply(&wu,&e);
+    e.key.keysym.scancode=SDL_SCANCODE_UP; e.key.keysym.sym=SDLK_UP; held_keys_apply(&wu,&e);
+    fails += expect_eq("W plus Up maps forward and jump", held_keys_mask(&wu,k)==1 && wu.jump_pending==1 && wu.fire==0,1);
+    fails += expect_eq("W and Up independent", held_keys_mask(&u,k)==0 && u.jump_pending==0,1);
     printf("input-test: %s\n", fails ? "FAILED" : "PASSED");
     return fails ? 1 : 0;
 }
@@ -3474,6 +3544,7 @@ static int multi_alien_test(void) {
     /* Target selection: nearest scuttler, not adult or the other scuttlers. */
     if(multi_scene(900,320,0,1120,320,0,0,
                    1000,320,1,100,1250,600,0,100,1250,900,0,100)!=0) return 2;
+    set_look_pitch(26);
     if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
     printf("multi target shot1 s0=%d/%d adult=%d s1=%d s2=%d ammo=%d\n",
            st.s_h[0],st.s_state[0],st.health,st.s_h[1],st.s_h[2],st.ammo);
@@ -3491,9 +3562,28 @@ static int multi_alien_test(void) {
     fails += expect_eq("multi adult survives scuttler kill",st.health,100);
     /* Aim tolerance: a 20-world lateral offset still hits the enlarged scuttler. */
     if(multi_scene(700,320,0,0,0,5,0,1000,340,1,100,1200,900,5,0,1200,900,5,0)!=0) return 2;
+    set_look_pitch(10);
     if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
     fails += expect_eq("multi aim tolerance scuttler hit",st.s_h[0],25);
     fails += expect_eq("multi aim tolerance adult untouched",st.health,100);
+    /* G6i.1 height-aware targeting. */
+    if(multi_scene(1000,320,0,0,0,5,0,1030,320,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    set_look_pitch(0);
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("G6I horizontal feet scuttler miss",st.s_h[0],50);
+    if(multi_scene(1000,320,0,0,0,5,0,1030,320,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    set_look_pitch(60);
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("G6I downward feet scuttler hit",st.s_h[0],25);
+    if(multi_scene(700,320,0,0,0,5,0,900,320,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    set_look_pitch(15);
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("G6I front scuttler down-shot",st.s_h[0],25);
+    if(multi_scene(700,320,0,0,0,5,1,900,320,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    set_look_pitch(15);
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("G6I closed door scuttler safe",st.s_h[0],50);
+
 
     /* Dead scuttler does not stop the others' independent AI. */
     if(multi_scene(900,320,0,1200,320,0,0,
@@ -3610,7 +3700,8 @@ static int combat_test(void) {
     if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
     fails += expect_eq("combat shot ammo",st.ammo,23);
     fails += expect_eq("combat shot damage",st.health,75);
-    fails += expect_eq("combat hit reaction state",st.state,3);
+    fails += expect_eq("combat hit reaction state",st.state,3);    fails += expect_eq("combat Space does not jump",st.jump_z,0);
+
     if(run_ticks(0,3)!=0 || get_status(&st)!=0) return 2;
     fails += expect_eq("combat hit reaction holds",st.state,3);
     fails += expect_eq("combat hit recoil phase",st.phase,1);
@@ -3634,7 +3725,14 @@ static int combat_test(void) {
     if(combat_scene(700,320,0,1120,320,1,100,1,1)!=0) return 2;
     if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
     fails += expect_eq("combat door obstruction health",st.health,100);
-    fails += expect_eq("combat door obstruction ammo",st.ammo,23);
+    fails += expect_eq("combat door obstruction ammo",st.ammo,23);    /* Up jumps without firing; reset restores pitch. */
+    if(combat_scene(900,320,0,1120,320,0,100,1,1)!=0) return 2;
+    if(tick_jump(0,1)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat Up jumps",st.jump_z>0,1);
+    fails += expect_eq("combat Up does not fire",st.ammo,24);
+    set_look_pitch(60); reset();
+    fails += expect_eq("combat restart pitch reset",look_pitch,0);
+
 
     /* Four accepted hits kill and enter a deterministic collapse. */
     if(combat_scene(900,320,0,1120,320,0,100,1,1)!=0) return 2;
@@ -3897,7 +3995,7 @@ static int door_sync_test(int trace) {
 static int interactive(void) {
     printf("G5p renderer=CPU framebuffer=320x200 interactive=on\n");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return 2;
-    SDL_Window *win = SDL_CreateWindow("Glon AVP G5p CPU | W/S/A/D move  arrows turn  E door  R textured/simple  Esc quit",
+    SDL_Window *win = SDL_CreateWindow("GLON vs ALIEN (CPU) | W/S/A/D move  arrows turn/look  Up jump  Space fire  E door",
                                        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                        960, 600, SDL_WINDOW_SHOWN);
     if (!win) fail(SDL_GetError());
@@ -3942,7 +4040,7 @@ static int interactive(void) {
                 if ((sc == SDL_SCANCODE_ESCAPE || sym == SDLK_ESCAPE) && down) running = 0;
                 else if ((sc == SDL_SCANCODE_E || sym == SDLK_e) && down && !e.key.repeat)
                     run_block(activate_block, "activate");
-                else if ((sc == SDL_SCANCODE_F || sym == SDLK_f) && down && !e.key.repeat) {
+                else if ((sc == SDL_SCANCODE_SPACE || sym == SDLK_SPACE) && down && !e.key.repeat) {
                     if(tick(FIRE_MASK)!=0){ running=0; break; }
                 }
                 else if ((sc == SDL_SCANCODE_R || sym == SDLK_r) && down && !e.key.repeat) {
@@ -3973,7 +4071,9 @@ static int interactive(void) {
         int64_t ts = now_ns();
         int ticks = 0;
         int jump = held.jump_pending ? 1 : 0;
+        int downheld = held.down || k[SDL_SCANCODE_DOWN];
         while (acc >= 1.0 / TICK_HZ && ticks < 10) {
+            look_pitch_step(downheld);
             if (tick_jump(mask,jump) != 0) { running = 0; break; }
             if (jump) { held.jump_pending = 0; jump = 0; }
             acc -= 1.0 / TICK_HZ;
@@ -4366,7 +4466,7 @@ static int gl_init(int w, int h, int shown) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-    gl_win = SDL_CreateWindow("Glon AVP G5p OpenGL",
+    gl_win = SDL_CreateWindow("GLON vs ALIEN",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w, h,
         SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE |
         (shown ? 0 : SDL_WINDOW_HIDDEN));
@@ -4418,6 +4518,7 @@ static void gl_view(double px,double py,double angle,int jump_z) {
     glLoadIdentity();
     glRotatef((float)(90.0 - angle*360.0/256.0), 0, 1, 0);
     if (gl_debug_pitch != 0.0f) glRotatef(gl_debug_pitch, 1, 0, 0);
+    if (look_pitch != 0) glRotatef(-(float)look_pitch, 1, 0, 0);
     glTranslatef((float)-ex, (float)-ey, (float)-ez);
 }
 static void gl_update_viewport(void) {
@@ -6239,10 +6340,12 @@ typedef struct {
     long loader_base, loader_limit, loader_reserved, loader_used, loader_free;
     long globals_used, globals_cap, heap_high;
     int gfx_ready, audio_ready, audio_disabled;
+    int proc_available;
+    long proc_working, proc_peak_working, proc_private;
     int width, height;
 } G6iTitleMetrics;
 
-typedef enum { G6I_TITLE = 0, G6I_PLAYING = 1, G6I_QUIT = 2 } G6iState;
+typedef enum { G6I_TITLE = 0, G6I_CREDITS = 1, G6I_PLAYING = 2, G6I_QUIT = 3 } G6iState;
 static G6iState g6i_state = G6I_TITLE;
 
 static void g6i_collect_metrics(G6iTitleMetrics *m) {
@@ -6260,12 +6363,29 @@ static void g6i_collect_metrics(G6iTitleMetrics *m) {
     m->audio_ready=audio_ready?1:0;
     m->audio_disabled=audio_disabled?1:0;
     m->width=gl_w; m->height=gl_h;
+#ifdef _WIN32
+    PROCESS_MEMORY_COUNTERS_EX pmc; memset(&pmc,0,sizeof pmc);
+    if(GetProcessMemoryInfo(GetCurrentProcess(),(PROCESS_MEMORY_COUNTERS*)&pmc,sizeof pmc)){
+        m->proc_available=1;
+        m->proc_working=(long)pmc.WorkingSetSize;
+        m->proc_peak_working=(long)pmc.PeakWorkingSetSize;
+        m->proc_private=(long)pmc.PagefileUsage;
+    }
+#endif
 }
 static int g6i_title_key(int sym) {
-    if(sym==SDLK_ESCAPE){ g6i_state=G6I_QUIT; return -1; }
-    if(sym==SDLK_RETURN || sym==SDLK_KP_ENTER){ g6i_state=G6I_PLAYING; return 1; }
+    if(g6i_state==G6I_CREDITS){
+        if(sym==SDLK_ESCAPE){ g6i_state=G6I_TITLE; return 0; }
+        return 0;
+    }
+    if(g6i_state==G6I_TITLE){
+        if(sym==SDLK_ESCAPE){ g6i_state=G6I_QUIT; return -1; }
+        if(sym==SDLK_RETURN || sym==SDLK_KP_ENTER){ g6i_state=G6I_PLAYING; return 1; }
+        if(sym==SDLK_c){ g6i_state=G6I_CREDITS; return 0; }
+    }
     return 0;
 }
+static float g6i_text_width(const char *s,float scale) { return (float)strlen(s)*6.0f*scale; }
 static void g6i_text(float x,float y,const char *s,float scale,float r,float g,float b) {
     float u=fminf(gl_w/320.0f,gl_h/200.0f);
     float ox=(gl_w-320.0f*u)*0.5f, oy=(gl_h-200.0f*u)*0.5f;
@@ -6287,8 +6407,72 @@ static void g6i_text(float x,float y,const char *s,float scale,float r,float g,f
     glEnd();
 }
 static void g6i_text_center(float y,const char *s,float scale,float r,float g,float b){
-    float w=(float)strlen(s)*6.0f*scale;
-    g6i_text((320.0f-w)*0.5f,y,s,scale,r,g,b);
+    g6i_text((320.0f-g6i_text_width(s,scale))*0.5f,y,s,scale,r,g,b);
+}
+typedef struct { char text[96]; float y,scale; int kind; } G6iPlanLine;
+typedef struct { G6iPlanLine lines[24]; int n; float bottom; } G6iPlan;
+static void plan_add(G6iPlan *p,const char *s,float scale,int kind){
+    if(p->n>=24) return;
+    G6iPlanLine *l=&p->lines[p->n++];
+    snprintf(l->text,sizeof l->text,"%s",s); l->scale=scale; l->kind=kind;
+    float cursor=4.0f;
+    if(p->n>1) cursor=(p->lines[p->n-2].y + 7.0f*p->lines[p->n-2].scale + 2.0f);
+    l->y=cursor;
+    p->bottom=cursor+7.0f*scale;
+}
+static void plan_build_main(const G6iTitleMetrics *m,G6iPlan *p){
+    memset(p,0,sizeof *p);
+    char b[96];
+    plan_add(p,"GLON CORPORATION // SYSTEM BIOS",1.0f,0);
+    plan_add(p,"GLON VS ALIEN",3.0f,1);
+    plan_add(p,"INFESTATION PROTOCOL",1.0f,0);
+    plan_add(p,"GLON SUBSTRATE INITIALIZED",1.0f,0);
+    plan_add(p,"VM CAPACITY 65536 CELLS / 524288 B",1.0f,0);
+    snprintf(b,sizeof b,"LOADER %ld RESERVED / %ld USED",m->loader_reserved,m->loader_used);
+    plan_add(p,b,1.0f,0);
+    snprintf(b,sizeof b,"LOADER FREE %ld CELLS",m->loader_free);
+    plan_add(p,b,1.0f,0);
+    snprintf(b,sizeof b,"GLOBALS %ld OF %ld",m->globals_used,m->globals_cap);
+    plan_add(p,b,1.0f,0);
+    snprintf(b,sizeof b,"HEAP HIGH %ld OBSERVED",m->heap_high);
+    plan_add(p,b,1.0f,0);
+    if(m->proc_available){
+        snprintf(b,sizeof b,"WIN RSS %ld MB PEAK %ld MB",m->proc_working/1048576L,m->proc_peak_working/1048576L);
+        plan_add(p,b,1.0f,0);
+        snprintf(b,sizeof b,"WIN PRIVATE %ld MB",m->proc_private/1048576L);
+        plan_add(p,b,1.0f,0);
+    } else {
+        plan_add(p,"WIN PROCESS RAM N/A",1.0f,0);
+    }
+    snprintf(b,sizeof b,"VIDEO OPENGL READY %dX%d",m->width,m->height);
+    plan_add(p,b,1.0f,0);
+    plan_add(p,m->audio_ready?"AUDIO READY":m->audio_disabled?"AUDIO DISABLED":"AUDIO UNAVAILABLE",1.0f,0);
+    plan_add(p,"WASD MOVE  ARROWS TURN/LOOK",1.0f,2);
+    plan_add(p,"UP JUMP  DOWN LOOK  SPACE FIRE  E DOOR",1.0f,2);
+    plan_add(p,"PRESS ENTER TO START",1.0f,2);
+    plan_add(p,"C CREDITS    ESC QUIT",1.0f,2);
+}
+static void plan_build_credits(G6iPlan *p){
+    memset(p,0,sizeof *p);
+    plan_add(p,"CREDITS",2.0f,1);
+    for(int i=0;i<G6I_CREDIT_COUNT;i++) plan_add(p,g6i_credits[i],1.0f,0);
+    plan_add(p,"ASSET SOURCES AND LICENCES IN DIST",1.0f,2);
+    plan_add(p,"ESC RETURN",1.0f,2);
+}
+static int g6i_plan_valid(const G6iPlan *p,int w,int h){
+    if(w<=0||h<=0) return 0;
+    float u=fminf(w/320.0f,h/200.0f);
+    if(u<=0.0f) return 0;
+    float prev=-1.0f;
+    for(int i=0;i<p->n;i++){
+        const G6iPlanLine *l=&p->lines[i];
+        if(l->y<0.0f || l->y+7.0f*l->scale>196.0f) return 0;
+        if(i && l->y<prev-0.001f) return 0;
+        if(g6i_text_width(l->text,l->scale)>300.0f) return 0;
+        if(l->y*u+7.0f*l->scale*u>h) return 0;
+        prev=l->y+7.0f*l->scale;
+    }
+    return p->bottom<=196.0f;
 }
 static void g6i_title_render(const G6iTitleMetrics *m,double elapsed) {
     glViewport(0,0,gl_w,gl_h);
@@ -6298,34 +6482,20 @@ static void g6i_title_render(const G6iTitleMetrics *m,double elapsed) {
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
     glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0,gl_w,gl_h,0,-1,1);
     glMatrixMode(GL_MODELVIEW); glLoadIdentity();
-    /* restrained terminal scanlines */
     glColor4f(0.0f,0.06f,0.02f,0.20f); glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
     for(int y=0;y<200;y+=4){ float u=fminf(gl_w/320.0f,gl_h/200.0f); float ox=(gl_w-320*u)*0.5f, oy=(gl_h-200*u)*0.5f;
         glBegin(GL_QUADS); glVertex2f(ox,oy+y*u); glVertex2f(ox+320*u,oy+y*u); glVertex2f(ox+320*u,oy+(y+1)*u); glVertex2f(ox,oy+(y+1)*u); glEnd(); }
     glDisable(GL_BLEND);
-    g6i_text_center(5,"GLON CORPORATION // SYSTEM BIOS",1.0f,0.28f,0.95f,0.42f);
-    g6i_text_center(13,"GLON VS ALIEN",3.0f,1.0f,0.72f,0.20f);
-    g6i_text_center(34,"INFESTATION PROTOCOL",1.0f,0.55f,0.95f,0.58f);
-    glColor4f(0.16f,0.55f,0.26f,1); glBegin(GL_QUADS);
-    glVertex2f(45,43); glVertex2f(275,43); glVertex2f(275,44); glVertex2f(45,44); glEnd();
-    char line[96];
-    g6i_text_center(50,"VM SPACE 65536 CELLS CAPACITY",1.0f,0.35f,0.85f,0.48f);
-    snprintf(line,sizeof line,"LOADER %ld RESERVED %ld USED",m->loader_reserved,m->loader_used);
-    g6i_text_center(58,line,1.0f,0.35f,0.85f,0.48f);
-    snprintf(line,sizeof line,"LOADER FREE %ld CELLS",m->loader_free);
-    g6i_text_center(66,line,1.0f,0.35f,0.85f,0.48f);
-    snprintf(line,sizeof line,"GLOBALS %ld OF %ld",m->globals_used,m->globals_cap);
-    g6i_text_center(74,line,1.0f,0.35f,0.85f,0.48f);
-    snprintf(line,sizeof line,"HEAP HIGH %ld OBSERVED",m->heap_high);
-    g6i_text_center(82,line,1.0f,0.35f,0.85f,0.48f);
-    snprintf(line,sizeof line,"VIDEO OPENGL READY %dX%d",m->width,m->height);
-    g6i_text_center(90,line,1.0f,0.35f,0.85f,0.48f);
-    g6i_text_center(98,m->audio_ready?"AUDIO READY":m->audio_disabled?"AUDIO DISABLED":"AUDIO UNAVAILABLE",1.0f,0.35f,0.85f,0.48f);
-    g6i_text_center(106,"CREDITS",1.0f,0.85f,0.72f,0.28f);
-    for(int i=0;i<G6I_CREDIT_COUNT;i++)
-        g6i_text_center((float)(115+i*8),g6i_credits[i],1.0f,0.62f,0.78f,0.50f);
-    float blink=fmodf((float)elapsed,1.0f)<0.65f?1.0f:0.45f;
-    g6i_text_center(184,"PRESS ENTER TO START    ESC TO QUIT",1.0f,blink,blink,blink*0.65f);
+    G6iPlan p;
+    if(g6i_state==G6I_CREDITS) plan_build_credits(&p); else plan_build_main(m,&p);
+    for(int i=0;i<p.n;i++){
+        G6iPlanLine *l=&p.lines[i];
+        float r=.35f,g=.85f,b=.48f;
+        if(l->kind==1){r=1;g=.72f;b=.20f;}
+        else if(l->kind==2){r=.72f;g=.88f;b=.63f;}
+        if(l->text[0] && strstr(l->text,"PRESS ENTER")){float bl=fmodf((float)elapsed,1.0f)<.65f?1.0f:.45f;r*=bl;g*=bl;b*=bl;}
+        g6i_text_center(l->y,l->text,l->scale,r,g,b);
+    }
 }
 static void gl_scene(const Status *st, const Obj *objs, int nobj) {
     gl_energy_time=(double)sim_tick/(double)TICK_HZ;
@@ -6442,8 +6612,8 @@ static void sfx_smoke_push_key(SDL_Scancode sc,SDL_Keycode sym,int down) {
 
 static void sfx_smoke_step(int frames) {
     if(!sfx_smoke) return;
-    if(frames==20) sfx_smoke_push_key(SDL_SCANCODE_F,SDLK_f,1);
-    if(frames==25) sfx_smoke_push_key(SDL_SCANCODE_F,SDLK_f,0);
+    if(frames==20) sfx_smoke_push_key(SDL_SCANCODE_SPACE,SDLK_SPACE,1);
+    if(frames==25) sfx_smoke_push_key(SDL_SCANCODE_SPACE,SDLK_SPACE,0);
     if(frames==50) run_block(parse_source("[ doom/px: 700 doom/py: 320 doom/angle: 0 doom/aim ]","sfx smoke door pose"),"sfx smoke door pose");
     if(frames==52) sfx_smoke_push_key(SDL_SCANCODE_E,SDLK_e,1);
     if(frames==53) sfx_smoke_push_key(SDL_SCANCODE_E,SDLK_e,0);
@@ -6511,8 +6681,7 @@ static int interactive_gl(int w, int h) {
                 if((sc==SDL_SCANCODE_ESCAPE||sym==SDLK_ESCAPE) && down) running=0;
                 else if((sc==SDL_SCANCODE_E||sym==SDLK_e) && down && !e.key.repeat) run_block(activate_block,"activate");
                 else if((sc==SDL_SCANCODE_R||sym==SDLK_r) && down && !e.key.repeat) printf("GL renderer: R debug toggle not used\n");
-                else if((sc==SDL_SCANCODE_F||sym==SDLK_f) && down && !e.key.repeat) {
-                    if(getenv("GLON_AUDIO_TRACE")) fprintf(stderr,"audio trace: F fire down\n");
+                else if((sc==SDL_SCANCODE_SPACE||sym==SDLK_SPACE) && down && !e.key.repeat) {
                     if(tick(FIRE_MASK)!=0){ running=0; break; }
                 }
                 else if((sc==SDL_SCANCODE_M||sym==SDLK_m) && down && !e.key.repeat) audio_toggle_mute();
@@ -6528,7 +6697,8 @@ static int interactive_gl(int w, int h) {
         double tn=(double)now_ns(); double dt=(tn-last)/1e9; last=tn; if(dt>0.10)dt=0.10; acc+=dt;
         int64_t pt_tick0=now_ns();
         int ticks=0; int jump=held.jump_pending?1:0;
-        while(acc>=1.0/TICK_HZ && ticks<10){ if(tick_jump(mask,jump)!=0){running=0;break;} if(jump){held.jump_pending=0;jump=0;} acc-=1.0/TICK_HZ; ticks++; }
+        int downheld=held.down || k[SDL_SCANCODE_DOWN];
+        while(acc>=1.0/TICK_HZ && ticks<10){ look_pitch_step(downheld); if(tick_jump(mask,jump)!=0){running=0;break;} if(jump){held.jump_pending=0;jump=0;} acc-=1.0/TICK_HZ; ticks++; }
         int64_t pt_tick1=now_ns();
         if(!running) break;
         if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) break;
@@ -6821,6 +6991,7 @@ static int g6h2_gl_test(const char *dir,int w,int h) {
     fails += expect_eq("G6H2 approaching visible",approach>=200,1);
     /* 6. A shot at the visible scuttler damages it. */
     if(multi_scene(700,320,0,0,0,5,0,900,320,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    set_look_pitch(15);
     if(tick(FIRE_MASK)!=0) return 2;
     Status st; if(get_status(&st)!=0) return 2;
     fails += expect_eq("G6H2 framed shot damages",st.s_h[0],25);
@@ -7465,6 +7636,18 @@ static int title_test(const char *dir,int w,int h) {
     fails+=expect_eq("title credits present",G6I_CREDIT_COUNT>0,1);
     printf("G6I title metrics machine=%ld loader=%ld used=%ld free=%ld globals=%ld/%ld heap_high=%ld gfx=%d audio=%d/%d\n",
            m.machine_cells,m.loader_reserved,m.loader_used,m.loader_free,m.globals_used,m.globals_cap,m.heap_high,m.gfx_ready,m.audio_ready,m.audio_disabled);
+    printf("G6I live process available=%d working=%ld peak=%ld private=%ld\n",m.proc_available,m.proc_working,m.proc_peak_working,m.proc_private);
+    int sizes[][2]={{640,400},{800,600},{960,600},{1280,720}};
+    G6iPlan mainplan, creditplan;
+    plan_build_main(&m,&mainplan); plan_build_credits(&creditplan);
+    fails+=expect_eq("G6I main plan fits all resolutions",1,1);
+    for(size_t i=0;i<sizeof sizes/sizeof sizes[0];i++){
+        fails+=expect_eq("G6I main layout no overlap/clipping",g6i_plan_valid(&mainplan,sizes[i][0],sizes[i][1]),1);
+        fails+=expect_eq("G6I credits layout no overlap/clipping",g6i_plan_valid(&creditplan,sizes[i][0],sizes[i][1]),1);
+    }
+    fails+=expect_eq("G6I title window label",strcmp(SDL_GetWindowTitle(gl_win),"GLON vs ALIEN")==0,1);
+    if(m.proc_available) fails+=expect_eq("G6I live process working set",m.proc_working>0,1);
+
     Status before,after; if(get_status(&before)!=0) return 2;
     g6i_state=G6I_TITLE;
     char path[4096]; snprintf(path,sizeof path,"%s/01-title.ppm",dir);
@@ -7473,11 +7656,16 @@ static int title_test(const char *dir,int w,int h) {
     if(get_status(&after)!=0) return 2;
     fails+=expect_eq("title pauses enemy AI",before.s_x[0]==after.s_x[0]&&before.s_y[0]==after.s_y[0]&&before.s_state[0]==after.s_state[0]&&before.ax==after.ax,1);
     fails+=expect_eq("title starts in title state",g6i_state,G6I_TITLE);
+    int cred=g6i_title_key(SDLK_c);
+    fails+=expect_eq("title C opens credits",cred==0&&g6i_state==G6I_CREDITS,1);
+    snprintf(path,sizeof path,"%s/02-credits.ppm",dir); g6i_title_render(&m,0.1); gl_save_ppm(path,w,h);
+    int back=g6i_title_key(SDLK_ESCAPE);
+    fails+=expect_eq("credits Escape returns",back==0&&g6i_state==G6I_TITLE,1);
     int enter=g6i_title_key(SDLK_RETURN);
     fails+=expect_eq("title Enter starts",enter>0&&g6i_state==G6I_PLAYING,1);
     if(reset()!=0) return 2;
     if(get_status(&after)!=0) return 2;
-    snprintf(path,sizeof path,"%s/02-gameplay.ppm",dir);
+    snprintf(path,sizeof path,"%s/03-gameplay.ppm",dir);
     st_current_angle=0; gl_scene(&after,NULL,0); gl_save_ppm(path,w,h);
     g6i_state=G6I_TITLE;
     int esc=g6i_title_key(SDLK_ESCAPE);
@@ -7492,6 +7680,19 @@ static int title_test(const char *dir,int w,int h) {
     printf("title-test: %s\n",fails?"FAILED":"PASSED");
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
     return fails?1:0;
+}
+static int g6i1_look_shots(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2;
+    gl_active=1; objects_mode=1; load_session(); build_blocks(); reset();
+    cell b=parse_source("[ doom/px: 700 doom/py: 320 doom/angle: 0 doom/aim doom/door-open: 64 doom/door-target: 64 doom/door-blocked: 0 doom/alien-x: 1120 doom/alien-y: 320 doom/alien-state: 0 doom/alien-detected: 0 doom/s0-x: 900 doom/s0-y: 320 doom/s0-state: 1 doom/s0-timer: 100 doom/s1-x: 0 doom/s1-y: 0 doom/s1-state: 5 doom/s2-x: 0 doom/s2-y: 0 doom/s2-state: 5 doom/s-vis: 7 ]","g6i1 look pose");
+    if(run_block(b,"g6i1 look pose")!=0) return 2;
+    Status st; int px,py,pa; if(get_state(&px,&py,&pa)!=0||get_status(&st)!=0) return 2;
+    st_current_angle=pa; set_look_pitch(0); gl_scene(&st,NULL,0);
+    char path[4096]; snprintf(path,sizeof path,"%s/look-horizontal.ppm",dir); gl_save_ppm(path,w,h);
+    set_look_pitch(60); gl_scene(&st,NULL,0);
+    snprintf(path,sizeof path,"%s/look-down.ppm",dir); gl_save_ppm(path,w,h);
+    printf("G6I1 look shots pitch=60\n");
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
 int main(int argc, char **argv) {
     const char *env = getenv("DOOM_ROOT");
@@ -7675,6 +7876,7 @@ int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "--audio-latency-test") == 0) return audio_latency_test();
     if (argc > 1 && strcmp(argv[1], "--audio-e2e") == 0) return audio_e2e_test();
     if (argc > 1 && strcmp(argv[1], "--input-test") == 0) return input_test();
+    if (argc > 1 && strcmp(argv[1], "--look-test") == 0) return look_test();
     if (argc > 1 && strcmp(argv[1], "--tracker-test") == 0) return tracker_test();
     if (argc > 1 && strcmp(argv[1], "--resize-test") == 0) return resize_test();
     if (argc > 1 && strcmp(argv[1], "--self-test") == 0) return self_test();
@@ -7686,6 +7888,10 @@ int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "--trace") == 0) return scripted_trace();
     if (argc > 2 && strcmp(argv[1], "--shots") == 0) return shot_walkthrough(argv[2]);
     if (argc > 1 && strcmp(argv[1], "--stationary-test") == 0) return stationary_test();
+    if (argc > 2 && strcmp(argv[1], "--gl-g6i1-shots") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return g6i1_look_shots(argv[2],w,h);
+    }
     if (argc > 2 && strcmp(argv[1], "--title-test") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
         return title_test(argv[2],w,h);
