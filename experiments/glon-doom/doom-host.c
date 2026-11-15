@@ -4518,16 +4518,43 @@ static int gl_init(int w, int h, int shown) {
 }
 
 static void gl_gv(double x,double y,double z) { glVertex3d(x/64.0, z/64.0, -y/64.0); }
+/* Orthonormal camera basis for the game's yaw and downward pitch.
+   f is forward, r is right, u is up; r x u = -f (OpenGL camera handedness).
+   Pitch is applied about the camera's right vector, so it can never introduce
+   roll: r always remains horizontal for a level yaw. */
+static void g6i_camera_basis(int game_angle,float pitch_deg,
+                             double f[3],double r[3],double u[3]) {
+    double theta=(90.0-game_angle*360.0/256.0)*M_PI/180.0;
+    double p=pitch_deg*M_PI/180.0;
+    double cp=cos(p), sp=sin(p);
+    double f0[3]={sin(theta),0.0,-cos(theta)};
+    double r0[3]={cos(theta),0.0,sin(theta)};
+    double u0[3]={0.0,1.0,0.0};
+    for(int i=0;i<3;i++){
+        f[i]=cp*f0[i]-sp*u0[i];
+        r[i]=r0[i];
+        u[i]=sp*f0[i]+cp*u0[i];
+    }
+}
 static void gl_view(double px,double py,double angle,int jump_z) {
     /* map world (x,y,z) -> GL (x,z,-y), y up; yaw +90 - game angle.
        jump_z is 1/8 world unit, so z/512 is the GL eye-height offset. */
     double ex=px/64.0, ey=1.0+(double)jump_z/512.0, ez=-py/64.0;
+    double f[3],r[3],u[3];
+    float pitch=(float)look_pitch-gl_debug_pitch;
+    if(pitch<-89.0f)pitch=-89.0f; if(pitch>89.0f)pitch=89.0f;
+    g6i_camera_basis((int)angle,pitch,f,r,u);
+    /* Rows of world->camera rotation: right, up, -forward. */
+    float m[16]={
+        (float)r[0],(float)u[0],(float)-f[0],0,
+        (float)r[1],(float)u[1],(float)-f[1],0,
+        (float)r[2],(float)u[2],(float)-f[2],0,
+        0,0,0,1
+    };
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
-    glRotatef((float)(90.0 - angle*360.0/256.0), 0, 1, 0);
-    if (gl_debug_pitch != 0.0f) glRotatef(gl_debug_pitch, 1, 0, 0);
-    if (look_pitch != 0) glRotatef(-(float)look_pitch, 1, 0, 0);
-    glTranslatef((float)-ex, (float)-ey, (float)-ez);
+    glMultMatrixf(m);
+    glTranslatef((float)-ex,(float)-ey,(float)-ez);
 }
 static void gl_update_viewport(void) {
     int dw=0, dh=0;
@@ -6381,17 +6408,32 @@ static void g6i_collect_metrics(G6iTitleMetrics *m) {
     }
 #endif
 }
-static int g6i_title_key(int sym) {
+static int g6i_title_event(const SDL_Event *ev) {
+    if(!ev || ev->type!=SDL_KEYDOWN || ev->key.repeat) return 0;
+    SDL_Scancode sc=ev->key.keysym.scancode;
+    SDL_Keycode sym=ev->key.keysym.sym;
+    int esc=(sc==SDL_SCANCODE_ESCAPE || sym==SDLK_ESCAPE);
+    int enter=(sc==SDL_SCANCODE_RETURN || sc==SDL_SCANCODE_KP_ENTER ||
+               sym==SDLK_RETURN || sym==SDLK_KP_ENTER);
+    int credits=(sc==SDL_SCANCODE_C || sym==SDLK_c);
     if(g6i_state==G6I_CREDITS){
-        if(sym==SDLK_ESCAPE){ g6i_state=G6I_TITLE; return 0; }
+        if(esc){ g6i_state=G6I_TITLE; return 0; }
         return 0;
     }
     if(g6i_state==G6I_TITLE){
-        if(sym==SDLK_ESCAPE){ g6i_state=G6I_QUIT; return -1; }
-        if(sym==SDLK_RETURN || sym==SDLK_KP_ENTER){ g6i_state=G6I_PLAYING; return 1; }
-        if(sym==SDLK_c){ g6i_state=G6I_CREDITS; return 0; }
+        if(esc){ g6i_state=G6I_QUIT; return -1; }
+        if(enter){ g6i_state=G6I_PLAYING; return 1; }
+        if(credits){ g6i_state=G6I_CREDITS; return 0; }
     }
     return 0;
+}
+static int g6i_title_key(int sym) {
+    SDL_Event e; memset(&e,0,sizeof e); e.type=SDL_KEYDOWN; e.key.keysym.sym=sym;
+    if(sym==SDLK_ESCAPE) e.key.keysym.scancode=SDL_SCANCODE_ESCAPE;
+    else if(sym==SDLK_RETURN) e.key.keysym.scancode=SDL_SCANCODE_RETURN;
+    else if(sym==SDLK_KP_ENTER) e.key.keysym.scancode=SDL_SCANCODE_KP_ENTER;
+    else if(sym==SDLK_c) e.key.keysym.scancode=SDL_SCANCODE_C;
+    return g6i_title_event(&e);
 }
 static float g6i_text_width(const char *s,float scale) { return (float)strlen(s)*6.0f*scale; }
 static void g6i_text(float x,float y,const char *s,float scale,float r,float g,float b) {
@@ -6653,12 +6695,12 @@ static int interactive_gl(int w, int h) {
     int running=1;
     HeldKeys held={0};
     while(running) {
-        if(g6i_state==G6I_TITLE){
+        if(g6i_state==G6I_TITLE || g6i_state==G6I_CREDITS){
             SDL_Event te;
             while(SDL_PollEvent(&te)){
                 if(te.type==SDL_QUIT) running=0;
-                else if(te.type==SDL_KEYDOWN){
-                    int tr=g6i_title_key(te.key.keysym.sym);
+                else if(te.type==SDL_KEYDOWN || te.type==SDL_KEYUP){
+                    int tr=g6i_title_event(&te);
                     if(tr<0) running=0;
                     else if(tr>0){
                         if(reset()!=0) {running=0;break;}
@@ -7625,6 +7667,72 @@ static int muzzle_anchor_test(void) {
     printf("muzzle-anchor-test: %s\n",fails?"FAILED":"PASSED");
     return fails?1:0;
 }
+static int camera_test(void){
+    int fails=0;
+    int angles[]={0,64,128,192,255};
+    float pitches[]={0,30,60,75};
+    for(size_t a=0;a<sizeof angles/sizeof angles[0];a++){
+        for(size_t q=0;q<sizeof pitches/sizeof pitches[0];q++){
+            double f[3],r[3],u[3];
+            g6i_camera_basis(angles[a],pitches[q],f,r,u);
+            double nf=sqrt(f[0]*f[0]+f[1]*f[1]+f[2]*f[2]);
+            double nr=sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
+            double nu=sqrt(u[0]*u[0]+u[1]*u[1]+u[2]*u[2]);
+            fails+=expect_float_near("camera forward normalized",nf,1.0);
+            fails+=expect_float_near("camera right normalized",nr,1.0);
+            fails+=expect_float_near("camera up normalized",nu,1.0);
+            fails+=expect_float_near("camera f dot r",f[0]*r[0]+f[1]*r[1]+f[2]*r[2],0.0);
+            fails+=expect_float_near("camera f dot u",f[0]*u[0]+f[1]*u[1]+f[2]*u[2],0.0);
+            fails+=expect_float_near("camera r dot u",r[0]*u[0]+r[1]*u[1]+r[2]*u[2],0.0);
+            double cx=r[1]*u[2]-r[2]*u[1];
+            double cy=r[2]*u[0]-r[0]*u[2];
+            double cz=r[0]*u[1]-r[1]*u[0];
+            fails+=expect_float_near("camera right x up = -forward x",cx,-f[0]);
+            fails+=expect_float_near("camera right x up = -forward y",cy,-f[1]);
+            fails+=expect_float_near("camera right x up = -forward z",cz,-f[2]);
+            fails+=expect_float_near("camera no roll right horizontal",r[1],0.0);
+            fails+=expect_float_near("camera pitch forward y",f[1],-sin(pitches[q]*M_PI/180.0));
+            fails+=expect_float_near("camera pitch up y",u[1],cos(pitches[q]*M_PI/180.0));
+        }
+    }
+    printf("camera-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
+}
+static int g6i2_camera_shots(const char *dir,int w,int h){
+    if(gl_init(w,h,0)!=0) return 2;
+    gl_active=1; objects_mode=1; load_session(); build_blocks(); reset();
+    cell b=parse_source("[ doom/px: 700 doom/py: 320 doom/angle: 0 doom/aim doom/door-open: 64 doom/door-target: 64 doom/door-blocked: 0 doom/alien-x: 1120 doom/alien-y: 320 doom/alien-state: 0 doom/alien-detected: 0 doom/s0-x: 900 doom/s0-y: 320 doom/s0-state: 1 doom/s0-timer: 100 doom/s1-x: 0 doom/s1-y: 0 doom/s1-state: 5 doom/s2-x: 0 doom/s2-y: 0 doom/s2-state: 5 doom/s-vis: 7 ]","camera pose");
+    if(run_block(b,"camera pose")!=0) return 2;
+    Status st; int px,py,pa; if(get_state(&px,&py,&pa)!=0||get_status(&st)!=0) return 2;
+    st_current_angle=pa;
+    int angles[]={0,30,60,75};
+    for(int i=0;i<4;i++){
+        set_look_pitch(angles[i]); gl_scene(&st,NULL,0);
+        char path[4096]; snprintf(path,sizeof path,"%s/camera-%02d.ppm",dir,angles[i]); gl_save_ppm(path,w,h);
+    }
+    set_look_pitch(45);
+    cell f=parse_source("[ doom/px: 700 doom/py: 320 doom/angle: 0 doom/aim doom/s0-x: 740 doom/s0-y: 320 doom/s0-state: 1 doom/s0-timer: 100 doom/s1-state: 5 doom/s2-state: 5 doom/s-vis: 7 ]","feet pose");
+    if(run_block(f,"feet pose")!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0||get_status(&st)!=0) return 2; st_current_angle=pa;
+    gl_scene(&st,NULL,0); char path[4096]; snprintf(path,sizeof path,"%s/camera-feet.ppm",dir); gl_save_ppm(path,w,h);
+    printf("G6I2 camera shots 0/30/60/75\n");
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+static int title_push_key(SDL_Scancode sc,SDL_Keycode sym,int down){
+    SDL_Event e; memset(&e,0,sizeof e);
+    e.type=down?SDL_KEYDOWN:SDL_KEYUP;
+    e.key.keysym.scancode=sc; e.key.keysym.sym=sym; e.key.repeat=0;
+    if(sc!=SDL_SCANCODE_C) return g6i_title_event(&e);
+    SDL_PumpEvents();
+    if(SDL_PushEvent(&e)!=1) return g6i_title_event(&e);
+    SDL_PumpEvents();
+    SDL_Event got;
+    for(int guard=0;guard<64;guard++){
+        if(SDL_PollEvent(&got)!=1) break;
+        if(got.type==SDL_KEYDOWN||got.type==SDL_KEYUP) return g6i_title_event(&got);
+    }
+    return g6i_title_event(&e);
+}
 static int title_test(const char *dir,int w,int h) {
     if(gl_init(w,h,0)!=0) return 2;
     gl_active=1; objects_mode=1; load_session(); build_blocks();
@@ -7664,19 +7772,29 @@ static int title_test(const char *dir,int w,int h) {
     if(get_status(&after)!=0) return 2;
     fails+=expect_eq("title pauses enemy AI",before.s_x[0]==after.s_x[0]&&before.s_y[0]==after.s_y[0]&&before.s_state[0]==after.s_state[0]&&before.ax==after.ax,1);
     fails+=expect_eq("title starts in title state",g6i_state,G6I_TITLE);
-    int cred=g6i_title_key(SDLK_c);
-    fails+=expect_eq("title C opens credits",cred==0&&g6i_state==G6I_CREDITS,1);
+    Status cbefore,cafter;
+    if(get_status(&cbefore)!=0) return 2;
+    int cred=title_push_key(SDL_SCANCODE_C,SDLK_c,1);
+    fails+=expect_eq("title C event opens credits",cred==0&&g6i_state==G6I_CREDITS,1);
+    if(get_status(&cafter)!=0) return 2;
+    fails+=expect_eq("C pauses enemy simulation",cbefore.s_x[0]==cafter.s_x[0]&&cbefore.s_y[0]==cafter.s_y[0]&&cbefore.ax==cafter.ax,1);
     snprintf(path,sizeof path,"%s/02-credits.ppm",dir); g6i_title_render(&m,0.1); gl_save_ppm(path,w,h);
-    int back=g6i_title_key(SDLK_ESCAPE);
+    int wkey=title_push_key(SDL_SCANCODE_W,SDLK_w,1);
+    fails+=expect_eq("credits ignores W",wkey==0&&g6i_state==G6I_CREDITS,1);
+    int cent=title_push_key(SDL_SCANCODE_RETURN,SDLK_RETURN,1);
+    fails+=expect_eq("credits Enter does not start",cent==0&&g6i_state==G6I_CREDITS,1);
+    int back=title_push_key(SDL_SCANCODE_ESCAPE,SDLK_ESCAPE,1);
     fails+=expect_eq("credits Escape returns",back==0&&g6i_state==G6I_TITLE,1);
-    int enter=g6i_title_key(SDLK_RETURN);
+    snprintf(path,sizeof path,"%s/03-title-after-esc.ppm",dir); g6i_title_render(&m,0.2); gl_save_ppm(path,w,h);
+    Status rbefore,rafter; if(get_status(&rbefore)!=0) return 2;
+    int enter=title_push_key(SDL_SCANCODE_RETURN,SDLK_RETURN,1);
     fails+=expect_eq("title Enter starts",enter>0&&g6i_state==G6I_PLAYING,1);
     if(reset()!=0) return 2;
     if(get_status(&after)!=0) return 2;
-    snprintf(path,sizeof path,"%s/03-gameplay.ppm",dir);
+    snprintf(path,sizeof path,"%s/04-gameplay.ppm",dir);
     st_current_angle=0; gl_scene(&after,NULL,0); gl_save_ppm(path,w,h);
     g6i_state=G6I_TITLE;
-    int esc=g6i_title_key(SDLK_ESCAPE);
+    int esc=title_push_key(SDL_SCANCODE_ESCAPE,SDLK_ESCAPE,1);
     fails+=expect_eq("title Escape quits",esc<0&&g6i_state==G6I_QUIT,1);
     long loader0=(long)M[GC_LOADER_HP];
     for(int i=0;i<4;i++){
@@ -7688,6 +7806,155 @@ static int title_test(const char *dir,int w,int h) {
     printf("title-test: %s\n",fails?"FAILED":"PASSED");
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
     return fails?1:0;
+}
+static int game_point_hit(int x,int y,int r){
+    char src[256]; int hit=-1;
+    snprintf(src,sizeof src,"[ doom/hit: 0 doom/check-all %d %d %d print doom/hit ]",x,y,r);
+    cell b=parse_source(src,"geometry probe");
+    if(run_capture(b,&hit,1,"geometry probe")!=0) return -1;
+    return hit;
+}
+static int player_scene(int px,int py,int angle,int door,int objects){
+    (void)objects;
+    return multi_scene(px,py,angle,0,0,5,door,0,0,5,0,0,0,5,0,0,0,5,0);
+}
+static int g6i2_gameplay_test(void){
+    int fails=0; Status st; int px,py,pa;
+    combat_minimal=1; load_session(); build_blocks();
+    /* Cardinal speed remains 8; diagonal is normalized to the same magnitude. */
+    if(player_scene(1000,320,0,0,0)!=0) return 2;
+    int mx0,my0,ma0; get_state(&mx0,&my0,&ma0); tick(1); get_state(&px,&py,&pa);
+    fails+=expect_eq("collision cardinal step",px-mx0,8);
+    if(player_scene(1000,320,0,0,0)!=0) return 2;
+    get_state(&mx0,&my0,&ma0); tick(1|8); get_state(&px,&py,&pa);
+    int ddx=px-mx0, ddy=py-my0;
+    fails+=expect_eq("collision diagonal normalized x",ddx<8,1);
+    fails+=expect_eq("collision diagonal normalized y",ddy<8,1);
+    fails+=expect_eq("collision diagonal bounded speed",ddx*ddx+ddy*ddy<=70,1);
+    /* Wall sliding: diagonal forward+right beside the north corridor wall. */
+    if(player_scene(900,280,0,0,1)!=0) return 2;
+    for(int i=0;i<20;i++) if(tick(1|8)!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0) return 2;
+    fails+=expect_eq("collision diagonal wall x progress",px>900,1);
+    fails+=expect_eq("collision diagonal wall y bounded",py>=276,1);
+    fails+=expect_eq("collision diagonal wall no penetration",game_point_hit(px,py,400)==0,1);
+    /* Back away from cabinet. */
+    if(player_scene(905,350,0,0,1)!=0) return 2;
+    int bx=0; get_state(&bx,&py,&pa);
+    for(int i=0;i<20;i++) if(tick(2)!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0) return 2;
+    fails+=expect_eq("collision retreat cabinet",px<bx,1);
+    fails+=expect_eq("collision retreat clear",game_point_hit(px,py,400)==0,1);
+    /* Strafe along the vertical wall at x=768. */
+    if(player_scene(790,300,0,0,1)!=0) return 2;
+    for(int i=0;i<20;i++) if(tick(8)!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0) return 2;
+    fails+=expect_eq("collision strafe wall x",px>=788,1);
+    fails+=expect_eq("collision strafe wall y",py!=300,1);
+    /* Jump next to wall and continue moving. */
+    if(player_scene(900,280,0,0,1)!=0) return 2;
+    if(tick_jump(1,1)!=0) return 2;
+    for(int i=0;i<45;i++) if(tick(1)!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+    fails+=expect_eq("collision jump wall not wedged",px>900 && st.jump_z==0,1);
+    fails+=expect_eq("collision jump wall clear",game_point_hit(px,py,400)==0,1);
+    /* Alternating inputs near furniture must not lose mobility. */
+    if(player_scene(905,350,0,0,1)!=0) return 2;
+    int masks[]={1,4,2,8,1,8,2,4};
+    for(int i=0;i<64;i++) if(tick(masks[i%8])!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0) return 2;
+    fails+=expect_eq("collision repeated input valid",game_point_hit(px,py,400)==0,1);
+    for(int i=0;i<20;i++) if(tick(2)!=0) return 2;
+    int ex,ey,ea; if(get_state(&ex,&ey,&ea)!=0) return 2;
+    fails+=expect_eq("collision repeated input can retreat",ex!=px||ey!=py,1);
+
+    /* Scuttler navigation: direct pursuit in clear corridor. */
+    if(multi_scene(1000,370,0,0,0,5,0,850,370,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    for(int i=0;i<100;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("nav direct progress",st.s_x[0]>900,1);
+    fails+=expect_eq("nav direct geometry",game_point_hit(st.s_x[0],st.s_y[0],64)==0,1);
+    /* Barrel at 940,370 between scuttler and player. */
+    if(multi_scene(1000,370,0,0,0,5,0,850,370,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    for(int i=0;i<180;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("nav barrel progressed past obstacle",st.s_x[0]>950,1);
+    fails+=expect_eq("nav barrel geometry",game_point_hit(st.s_x[0],st.s_y[0],64)==0,1);
+    if(multi_scene(1000,370,0,0,0,5,0,850,370,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    int lastx=0, flips=0; for(int i=0;i<180;i++){ if(tick(0)!=0) return 2; get_status(&st); int d=st.s_x[0]-lastx; if(lastx!=0 && d!=0 && ((d>0)!=(lastx>0))) flips++; if(d!=0) lastx=d; }
+    fails+=expect_eq("nav barrel no rapid oscillation",flips<20,1);
+    /* Cabinet at 860,270 between scuttler and player. */
+    if(multi_scene(1000,270,0,0,0,5,0,800,270,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    for(int i=0;i<180;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("nav cabinet progressed",st.s_x[0]>860,1);
+    fails+=expect_eq("nav cabinet geometry",game_point_hit(st.s_x[0],st.s_y[0],64)==0,1);
+    /* Three independent scuttlers in the room. */
+    if(multi_scene(1000,370,0,0,0,5,0,800,320,1,100,900,320,1,100,950,420,1,100)!=0) return 2;
+    int ax0,ay0,ax1,ay1,ax2,ay2; if(get_status(&st)!=0) return 2;
+    ax0=st.s_x[0]; ay0=st.s_y[0]; ax1=st.s_x[1]; ay1=st.s_y[1]; ax2=st.s_x[2]; ay2=st.s_y[2];
+    for(int i=0;i<80;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("nav three s0 moved",st.s_x[0]!=ax0||st.s_y[0]!=ay0,1);
+    fails+=expect_eq("nav three s1 moved",st.s_x[1]!=ax1||st.s_y[1]!=ay1,1);
+    fails+=expect_eq("nav three s2 moved",st.s_x[2]!=ax2||st.s_y[2]!=ay2,1);
+    fails+=expect_eq("nav three s0 clear",game_point_hit(st.s_x[0],st.s_y[0],64)==0,1);
+    fails+=expect_eq("nav three s1 clear",game_point_hit(st.s_x[1],st.s_y[1],64)==0,1);
+    fails+=expect_eq("nav three s2 clear",game_point_hit(st.s_x[2],st.s_y[2],64)==0,1);
+    /* Closed door remains solid; scuttler waits outside. */
+    if(multi_scene(900,320,0,1200,320,0,1,620,320,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    for(int i=0;i<60;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("nav closed door solid",st.s_x[0]<768,1);
+    fails+=expect_eq("nav closed door geometry",game_point_hit(st.s_x[0],st.s_y[0],64)==0,1);
+    /* Corner escape: start at the south-east room corner and move out. */
+    if(player_scene(788,276,0,0,1)!=0) return 2;
+    for(int i=0;i<20;i++) if(tick(1)!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0) return 2;
+    fails+=expect_eq("collision corner escape",px>788,1);
+    fails+=expect_eq("collision corner clear",game_point_hit(px,py,400)==0,1);
+    /* Player changes direction mid-pursuit. */
+    if(multi_scene(1000,370,0,0,0,5,0,850,370,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    for(int i=0;i<35;i++) if(tick(0)!=0) return 2;
+    if(run_block(parse_source("[ doom/py: 500 ]","player moved"),"player moved")!=0) return 2;
+    for(int i=0;i<80;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("nav player change responds",st.s_y[0]!=370,1);
+    fails+=expect_eq("nav player change clear",game_point_hit(st.s_x[0],st.s_y[0],64)==0,1);
+    /* Corner pursuit between room and north corridor (bounded reachability). */
+    if(multi_scene(1200,700,0,0,0,5,0,700,320,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    for(int i=0;i<260;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("nav corner progress",st.s_x[0]>900||st.s_y[0]>500,1);
+    fails+=expect_eq("nav corner clear",game_point_hit(st.s_x[0],st.s_y[0],64)==0,1);
+    printf("g6i2-gameplay-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
+}
+static void gl_save_ppm_fmt(const char *dir,const char *name,int w,int h){
+    char path[4096]; snprintf(path,sizeof path,"%s/%s.ppm",dir,name); gl_save_ppm(path,w,h);
+}
+static int g6i2_nav_shots(const char *dir,int w,int h){
+    if(gl_init(w,h,0)!=0) return 2;
+    gl_active=1; objects_mode=1; load_session(); build_blocks(); reset();
+    /* Player beside the south-east cabinet/barrel cluster. */
+    cell a=parse_source("[ doom/px: 905 doom/py: 350 doom/angle: 0 doom/aim doom/door-open: 64 doom/door-target: 64 doom/door-blocked: 0 doom/alien-x: 1120 doom/alien-y: 320 doom/alien-state: 5 doom/alien-detected: 0 doom/s0-x: 0 doom/s0-y: 0 doom/s0-state: 5 doom/s1-x: 0 doom/s1-y: 0 doom/s1-state: 5 doom/s2-x: 0 doom/s2-y: 0 doom/s2-state: 5 doom/s-vis: 0 ]","cabinet pose");
+    if(run_block(a,"cabinet pose")!=0) return 2;
+    Status st; int px,py,pa; if(get_state(&px,&py,&pa)!=0||get_status(&st)!=0) return 2; st_current_angle=pa;
+    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"cabinet",w,h);
+    /* Scripted barrel navigation correction: direct path blocked at 940,370. */
+    if(multi_scene(1000,370,0,0,0,5,0,850,370,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    if(run_block(parse_source("[ doom/objects-on: 1 doom/px: 1000 doom/py: 330 doom/angle: 160 doom/aim doom/e1dep: 0 ]","nav look"),"nav look")!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0||get_status(&st)!=0) return 2; st_current_angle=pa;
+    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"nav-before",w,h);
+    for(int i=0;i<45;i++) tick(0);
+    get_state(&px,&py,&pa); get_status(&st); st_current_angle=pa;
+    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"nav-approach",w,h);
+    for(int i=0;i<260;i++) tick(0);
+    if(run_block(parse_source("[ doom/px: 1000 doom/py: 370 doom/angle: 128 doom/aim ]","nav observe"),"nav observe")!=0) return 2;
+    get_state(&px,&py,&pa); get_status(&st); st_current_angle=pa;
+    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"nav-around",w,h);
+    printf("G6I2 nav script s0=%d,%d\n",st.s_x[0],st.s_y[0]);
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
 static int g6i1_look_shots(const char *dir,int w,int h) {
     if(gl_init(w,h,0)!=0) return 2;
@@ -7900,6 +8167,16 @@ int main(int argc, char **argv) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
         return g6i1_look_shots(argv[2],w,h);
     }
+    if (argc > 2 && strcmp(argv[1], "--gl-g6i2-nav") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return g6i2_nav_shots(argv[2],w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-g6i2-camera") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return g6i2_camera_shots(argv[2],w,h);
+    }
+    if (argc > 1 && strcmp(argv[1], "--camera-test") == 0) return camera_test();
+    if (argc > 1 && strcmp(argv[1], "--g6i2-gameplay-test") == 0) return g6i2_gameplay_test();
     if (argc > 2 && strcmp(argv[1], "--title-test") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
         return title_test(argv[2],w,h);
