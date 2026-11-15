@@ -46,6 +46,15 @@ doom/jump-v0: 19
 doom/jump-gravity: 1
 doom/corpse-z: 176
 doom/corpse-radius2: 1024
+;; G6h bounded multi-entity tuning. Three scuttlers share these rules.
+doom/scuttler-count: 3
+doom/scuttler-speed: 4
+doom/scuttler-radius2: 64
+doom/scuttler-player-radius2: 784
+doom/scuttler-top: 112
+doom/scuttler-attack2: 2304
+doom/scuttler-health: 50
+doom/scuttler-damage: 25
 doom/alien-start-x: 1120
 doom/alien-start-y: 320
 
@@ -186,6 +195,12 @@ doom/pdx: 0
 doom/pdy: 0
 doom/otop: 0
 doom/oradius2: 0
+doom/s0-x: 980 doom/s0-y: 320 doom/s0-h: 50 doom/s0-state: 0 doom/s0-timer: 6
+doom/s1-x: 1240 doom/s1-y: 600 doom/s1-h: 50 doom/s1-state: 0 doom/s1-timer: 6
+doom/s2-x: 1240 doom/s2-y: 900 doom/s2-h: 50 doom/s2-state: 0 doom/s2-timer: 6
+doom/si: 0 doom/best: 100000 doom/target: -1
+doom/tdx: 0 doom/tdy: 0 doom/tt: 0 doom/thit: 0
+doom/ssv: 0 doom/stv: 0 doom/shv: 0
 doom/alien-d2: 0
 doom/alien-avoid: 0
 doom/tdepth: 0
@@ -294,12 +309,107 @@ doom/check-alien: func [ax ay state radius2 cx cy x y] [
     ] [ none ]
 ]
 
+doom/sx: func [i] [ either = i 0 [ doom/s0-x ] [ either = i 1 [ doom/s1-x ] [ doom/s2-x ] ] ]
+doom/sy: func [i] [ either = i 0 [ doom/s0-y ] [ either = i 1 [ doom/s1-y ] [ doom/s2-y ] ] ]
+doom/ss: func [i] [ either = i 0 [ doom/s0-state ] [ either = i 1 [ doom/s1-state ] [ doom/s2-state ] ] ]
+doom/stm: func [i] [ either = i 0 [ doom/s0-timer ] [ either = i 1 [ doom/s1-timer ] [ doom/s2-timer ] ] ]
+doom/sh: func [i] [ either = i 0 [ doom/s0-h ] [ either = i 1 [ doom/s1-h ] [ doom/s2-h ] ] ]
+doom/sx!: func [i v] [ either = i 0 [ doom/s0-x: v ] [ either = i 1 [ doom/s1-x: v ] [ doom/s2-x: v ] ] ]
+doom/sy!: func [i v] [ either = i 0 [ doom/s0-y: v ] [ either = i 1 [ doom/s1-y: v ] [ doom/s2-y: v ] ] ]
+doom/ss!: func [i v] [ either = i 0 [ doom/s0-state: v ] [ either = i 1 [ doom/s1-state: v ] [ doom/s2-state: v ] ] ]
+doom/stm!: func [i v] [ either = i 0 [ doom/s0-timer: v ] [ either = i 1 [ doom/s1-timer: v ] [ doom/s2-timer: v ] ] ]
+doom/sh!: func [i v] [ either = i 0 [ doom/s0-h: v ] [ either = i 1 [ doom/s1-h: v ] [ doom/s2-h: v ] ] ]
+
+;; Shared circle with outward-escape for already-overlapping bodies.
+doom/check-circle: func [ax ay radius2 cx cy x y] [
+    doom/dx: - x ax
+    doom/dy: - y ay
+    either < + * doom/dx doom/dx * doom/dy doom/dy radius2 [
+        doom/pdx: - cx ax
+        doom/pdy: - cy ay
+        either > + * doom/dx doom/dx * doom/dy doom/dy + * doom/pdx doom/pdx * doom/pdy doom/pdy [
+            none
+        ] [ doom/hit: 1 ]
+    ] [ none ]
+]
+;; Scuttler collision is a low circle; all states can be jumped over when feet
+;; are above the 14-world-unit top. Outward escape follows check-circle.
+doom/check-scuttler: func [ax ay x y] [
+    either < doom/jump-z doom/scuttler-top [
+        doom/check-circle ax ay doom/scuttler-player-radius2 doom/px doom/py x y
+    ] [ none ]
+]
+doom/check-scuttlers: func [x y] [
+    doom/check-scuttler doom/s0-x doom/s0-y x y
+    doom/check-scuttler doom/s1-x doom/s1-y x y
+    doom/check-scuttler doom/s2-x doom/s2-y x y
+]
+doom/move-sx: func [i nx] [
+    doom/hit: 0
+    doom/check-all nx doom/sy i doom/scuttler-radius2
+    either = doom/hit 0 [ doom/sx! i nx ] [ none ]
+]
+doom/move-sy: func [i ny] [
+    doom/hit: 0
+    doom/check-all doom/sx i ny doom/scuttler-radius2
+    either = doom/hit 0 [ doom/sy! i ny ] [ none ]
+]
+doom/update-scuttler: func [i] [
+    doom/ssv: doom/ss i
+    either = doom/ssv 5 [ none ] [
+        either = doom/ssv 4 [
+            doom/stv: - doom/stm i 1
+            doom/stm! i doom/stv
+            either = doom/stv 0 [ doom/ss! i 5 ] [ none ]
+        ] [
+            either = doom/ssv 3 [
+                doom/stv: - doom/stm i 1
+                doom/stm! i doom/stv
+                either = doom/stv 0 [ doom/ss! i 1 doom/stm! i 8 ] [ none ]
+            ] [
+                either = doom/ssv 2 [
+                    doom/stv: - doom/stm i 1
+                    doom/stm! i doom/stv
+                    either = doom/stv 0 [ doom/ss! i 0 doom/stm! i 3 ] [ none ]
+                ] [
+                    either = doom/ssv 0 [
+                        doom/stv: - doom/stm i 1
+                        doom/stm! i doom/stv
+                        either = doom/stv 0 [ doom/ss! i 1 doom/stm! i 16 ] [ none ]
+                    ] [
+                        doom/tdx: - doom/px doom/sx i
+                        doom/tdy: - doom/py doom/sy i
+                        doom/td2: + * doom/tdx doom/tdx * doom/tdy doom/tdy
+                        either < doom/td2 doom/scuttler-attack2 [
+                            doom/ss! i 2
+                            doom/stm! i 6
+                        ] [
+                            either > doom/tdx 0 [ doom/move-sx i + doom/sx i doom/scuttler-speed ] [ none ]
+                            either < doom/tdx 0 [ doom/move-sx i - doom/sx i doom/scuttler-speed ] [ none ]
+                            either > doom/tdy 0 [ doom/move-sy i + doom/sy i doom/scuttler-speed ] [ none ]
+                            either < doom/tdy 0 [ doom/move-sy i - doom/sy i doom/scuttler-speed ] [ none ]
+                            doom/stv: - doom/stm i 1
+                            doom/stm! i doom/stv
+                            either = doom/stv 0 [ doom/ss! i 0 doom/stm! i 3 ] [ none ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+]
+doom/update-scuttlers: does [
+    doom/update-scuttler 0
+    doom/update-scuttler 1
+    doom/update-scuttler 2
+]
 doom/move-x: func [nx] [
     doom/hit: 0
     doom/check-all nx doom/py doom/radius2
     either = doom/hit 0 [
         doom/check-alien doom/alien-x doom/alien-y doom/alien-state doom/player-alien-radius2 doom/px doom/py nx doom/py
     ] [ none ]
+    either = doom/hit 0 [ doom/check-scuttlers nx doom/py ] [ none ]
     either = doom/hit 0 [ doom/px: nx ] [ doom/player-hit: 1 ]
 ]
 doom/move-y: func [ny] [
@@ -308,9 +418,38 @@ doom/move-y: func [ny] [
     either = doom/hit 0 [
         doom/check-alien doom/alien-x doom/alien-y doom/alien-state doom/player-alien-radius2 doom/px doom/py doom/px ny
     ] [ none ]
+    either = doom/hit 0 [ doom/check-scuttlers doom/px ny ] [ none ]
     either = doom/hit 0 [ doom/py: ny ] [ doom/player-hit: 1 ]
 ]
 
+doom/consider: func [ax ay health target] [
+    doom/tdx: - ax doom/px
+    doom/tdy: - ay doom/py
+    doom/td2: + * doom/tdx doom/tdx * doom/tdy doom/tdy
+    doom/td: / + * doom/tdx doom/dirx * doom/tdy doom/diry 64
+    doom/tt: - * doom/tdx doom/diry * doom/tdy doom/dirx
+    doom/los ax ay
+    doom/thit: * * * > doom/td 0 < doom/td2 409600 < * doom/tt doom/tt 1048576 = doom/occluded 0
+    either = 1 doom/thit [
+        either > health 0 [
+            either < doom/td doom/best [
+                doom/best: doom/td
+                doom/target: target
+            ] [ none ]
+        ] [ none ]
+    ] [ none ]
+]
+doom/damage-scuttler: func [i] [
+    doom/shv: - doom/sh i doom/scuttler-damage
+    doom/sh! i doom/shv
+    either < doom/shv 1 [
+        doom/ss! i 4
+        doom/stm! i 6
+    ] [
+        doom/ss! i 3
+        doom/stm! i 4
+    ]
+]
 doom/tick: func [fw bk lf rt tl tr fire] [
     doom/angle: + doom/angle - tl tr
     doom/wrap-angle
@@ -366,30 +505,34 @@ doom/tick: func [fw bk lf rt tl tr fire] [
             ] [ doom/update-alien ]
         ]
     ]
+    doom/update-scuttlers
     either = 1 fire [
         either > doom/ammo 0 [
             doom/ammo: - doom/ammo 1
-            doom/alien-dx: - doom/alien-x doom/px
-            doom/alien-dy: - doom/alien-y doom/py
-            doom/alien-d2: + * doom/alien-dx doom/alien-dx * doom/alien-dy doom/alien-dy
-            doom/tdepth: / + * doom/alien-dx doom/dirx * doom/alien-dy doom/diry 64
-            doom/t: - * doom/alien-dx doom/diry * doom/alien-dy doom/dirx
-            doom/los doom/alien-x doom/alien-y
-            doom/hit: * * * > doom/tdepth 0 < doom/alien-d2 409600 < * doom/t doom/t 1048576 = doom/occluded 0
-            either = 1 doom/hit [
-                either > doom/alien-health 0 [
-                    doom/alien-health: - doom/alien-health 25
-                    either < doom/alien-health 1 [
-                        doom/alien-health: 0
-                        doom/alien-state: 4
-                        doom/alien-detected: 0
-                        doom/e2dep: 18
-                    ] [
-                        doom/alien-state: 3
-                        doom/e2dep: 4
+            doom/best: 100000
+            doom/target: -1
+            doom/consider doom/alien-x doom/alien-y doom/alien-health 0
+            doom/consider doom/s0-x doom/s0-y doom/s0-h 1
+            doom/consider doom/s1-x doom/s1-y doom/s1-h 2
+            doom/consider doom/s2-x doom/s2-y doom/s2-h 3
+            either = doom/target 0 [
+                doom/alien-health: - doom/alien-health 25
+                either < doom/alien-health 1 [
+                    doom/alien-health: 0
+                    doom/alien-state: 4
+                    doom/alien-detected: 0
+                    doom/e2dep: 18
+                ] [
+                    doom/alien-state: 3
+                    doom/e2dep: 4
+                ]
+            ] [
+                either = doom/target 1 [ doom/damage-scuttler 0 ] [
+                    either = doom/target 2 [ doom/damage-scuttler 1 ] [
+                        either = doom/target 3 [ doom/damage-scuttler 2 ] [ none ]
                     ]
-                ] [ none ]
-            ] [ none ]
+                ]
+            ]
         ] [ none ]
     ] [ none ]
     doom/light-phase: + doom/light-phase 1
@@ -486,6 +629,11 @@ doom/reset: does [
     doom/grounded: 1
     doom/jump-armed: 1
     doom/jump-input: 0
+    doom/s0-x: 980 doom/s0-y: 320 doom/s0-h: 50 doom/s0-state: 0 doom/s0-timer: 6
+    doom/s1-x: 1240 doom/s1-y: 600 doom/s1-h: 50 doom/s1-state: 0 doom/s1-timer: 6
+    doom/s2-x: 1240 doom/s2-y: 900 doom/s2-h: 50 doom/s2-state: 0 doom/s2-timer: 6
+    doom/best: 100000
+    doom/target: -1
 ]
 
 
@@ -1189,6 +1337,21 @@ doom/status-block: [
     print doom/player-hit
     print doom/e2dep
     print doom/jump-z
+    print doom/s0-x
+    print doom/s0-y
+    print doom/s0-h
+    print doom/s0-state
+    print doom/s0-timer
+    print doom/s1-x
+    print doom/s1-y
+    print doom/s1-h
+    print doom/s1-state
+    print doom/s1-timer
+    print doom/s2-x
+    print doom/s2-y
+    print doom/s2-h
+    print doom/s2-state
+    print doom/s2-timer
 ]
 
 doom/sector-report: does [

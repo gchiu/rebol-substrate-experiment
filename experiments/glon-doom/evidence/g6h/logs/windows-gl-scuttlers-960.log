@@ -1,0 +1,7 @@
+G5p renderer=OpenGL renderer=AMD Radeon(TM) Graphics vendor=ATI Technologies Inc. version=4.6.0 Compatibility Profile Context 25.10.32.04.251216
+scuttler-shot 01-head-on 960x600 s0=980,320/1 adult=100
+scuttler-shot 02-side 960x600 s0=980,280/1 adult=100
+scuttler-shot 03-two-visible 960x600 s0=980,320/1 adult=100
+scuttler-shot 04-attack 960x600 s0=980,320/2 adult=100
+scuttler-shot 05-dead 960x600 s0=700,320/5 adult=100
+scuttler-shot 06-adult-intact 960x600 s0=0,0/5 adult=100

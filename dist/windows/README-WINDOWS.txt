@@ -1,11 +1,11 @@
-Glon AvP — G6g Windows build
+Glon AvP — G6h Windows build
 ============================
 
 Launch from Windows (D: drive):
 
   D:
   cd D:\repos\glon-worktrees\glon-avp-g6f4\dist\windows
-  run-g6g.bat
+  run-g6h.bat
 
 Controls: W/A/S/D move, arrow keys turn, E door, F or left mouse rifle
 fire, Space jump, M mute, [ / ] volume, Esc quit.
@@ -41,3 +41,10 @@ are above its collision top, and cannot bypass walls, closed doors, living or
 dying aliens. Camera rise/fall is presentation-only in OpenGL.
 This build is awaiting physical Windows verification; it is not yet an accepted
 baseline.
+
+G6h adds three independent scuttlers (rug babies) alongside the adult
+Xenomorph, with independent health/AI/death and directional 64x32 sprites.
+Scuttlers are low obstacles; jump over them when feet clear their 14-world-unit
+top. The loader arena is expanded for this game build to 25,000 cells using the
+unused M1 task arena; frozen S1 is unchanged. This build is awaiting physical
+Windows verification and is not an accepted baseline.

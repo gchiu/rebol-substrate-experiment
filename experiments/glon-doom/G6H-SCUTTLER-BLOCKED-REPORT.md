@@ -3,8 +3,9 @@
 Branch/worktree: `glon-avp-g6h`,
 `/mnt/d/repos/glon-worktrees/glon-avp-g6h`  
 Baseline: G6g `57988d2` (G6g physical acceptance still pending)  
-Status: **BLOCKED / NOT IMPLEMENTED.** No game-code change, no G6h Windows
-build, no acceptance, no tag.
+Status: **SUPERSEDED** by the project-owner capacity authorization and the
+completed G6h implementation/report; retained as historical evidence of the
+earlier measured blocker.
 
 ## 1. Decision
 

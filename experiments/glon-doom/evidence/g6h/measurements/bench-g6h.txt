@@ -1,0 +1,10 @@
+Dropped Escape call with ulEscapeCode : 0x03007703
+fixed frames=120 warmup=20 camera=320,320,0 mode=textured
+fixed warmup_wall=179.31ms
+fixed wall min=139.84 med=145.88 mean=146.25 sd=3.42
+fixed texrow min=22.72 med=25.18 mean=25.28 sd=0.97
+fixed raster min=0.39 med=0.43 mean=0.45 sd=0.07
+fixed present min=3.72 med=6.00 mean=6.39 sd=2.05
+fixed total min=169.23 med=177.60 mean=178.37 sd=4.66
+fixed hash spans=7471d718 rows=66eb2481 status=44409360
+fixed loader=58009 used=18009 free=6991 code=12454 heap_high=34080 gc=0
