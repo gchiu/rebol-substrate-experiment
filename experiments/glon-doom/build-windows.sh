@@ -12,7 +12,7 @@ make -C "$HERE" windows \
     WIN_CC="$ZIG cc -target x86_64-windows-gnu" \
     WIN_SDL="$SDL_MINGW"
 DIST="$ROOT/dist/windows"
-rm -f "$DIST/run-g6d.bat" "$DIST/run-g6e.bat"
+rm -f "$DIST/run-g6d.bat" "$DIST/run-g6e.bat" "$DIST/run-g6f.bat"
 mkdir -p "$DIST/experiments/glon-doom/assets/doors" \
          "$DIST/experiments/glon-doom/assets/audio/sfx" "$DIST/jupyter"
 cp "$HERE/build-win/doom.exe" "$DIST/doom.exe"
@@ -27,5 +27,5 @@ cp "$HERE"/assets/audio/sfx/*.wav "$DIST/experiments/glon-doom/assets/audio/sfx/
 cp "$HERE"/assets/audio/SOURCE.txt "$DIST/assets-audio-SOURCE.txt"
 cp "$HERE"/assets/audio/sfx/SOURCE.txt "$DIST/assets-audio-sfx-SOURCE.txt"
 cp "$HERE"/WINDOWS-README.txt "$DIST/README-WINDOWS.txt"
-cp "$HERE"/run-g6f.bat "$DIST/run-g6f.bat"
+cp "$HERE"/run-g6f1.bat "$DIST/run-g6f1.bat"
 echo "Windows distribution: $DIST"

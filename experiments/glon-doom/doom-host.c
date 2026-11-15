@@ -143,6 +143,7 @@ static int new_textures = 0;
 static int smooth_shading = 0;
 static int flat_surfaces = 0;
 static int gl_active = 0;
+static int gl_hide_weapon = 0;
 static int corridor_art = 1;
 static int engineering_room_enabled = 1;
 static double gl_energy_time = 0.0;
@@ -441,6 +442,7 @@ typedef struct {
     int prev_alien_state, prev_alien_detected;
     uint64_t last_alien_ms, last_wall_ms, last_cargo_ms;
     int ammo, have_ammo;
+    uint64_t muzzle_start_ns, muzzle_until_ns;
     int wall_contact, cargo_contact;
     int prev_px, prev_py, have_prev;
 } SfxEventState;
@@ -535,10 +537,17 @@ static void audio_sfx_update(const Status *st,int px,int py,int mask) {
                 ev,sfx_events.wall_contact,sfx_events.cargo_contact,px,py,
                 sfx_events.prev_px,sfx_events.prev_py);
     if(ev) audio_play(ev,1.0f,0);
-    if(sfx_events.have_ammo && st->ammo<sfx_events.ammo)
+    if(sfx_events.have_ammo && st->ammo<sfx_events.ammo){
         audio_play(SFX_RIFLE,1.0f,0);
+        sfx_events.muzzle_start_ns=now_ns();
+        sfx_events.muzzle_until_ns=sfx_events.muzzle_start_ns+80000000ull;
+    }
     sfx_events.ammo=st->ammo; sfx_events.have_ammo=1;
     sfx_events.prev_px=px; sfx_events.prev_py=py; sfx_events.have_prev=1;
+}
+
+static int muzzle_flash_active(void) {
+    return now_ns() < sfx_events.muzzle_until_ns;
 }
 
 static void audio_free_layers(void) {
@@ -2058,7 +2067,7 @@ static void alien_view_reset(void) {
  * plus its bearing relative to the camera (front/three-quarter/side). */
 static AlienFrame alien_frame_select(const Status *st) {
     AlienFrame out = { ALIEN_DIR_IDLE, 0 };
-    if (st->state == 3 || st->state == 4) {
+    if (st->state == 3 || st->state == 4 || st->state == 5) {
         alien_dir_kind = ALIEN_DIR_IDLE;
         alien_dir_flip = 0;
         alien_dir_pending = -1;
@@ -2196,70 +2205,24 @@ static void draw_sprite_rect(uint32_t *fb, const uint32_t *src, int sw, int sh,
     }
 }
 
-static void draw_sprite_rect_rot(uint32_t *fb, const uint32_t *src, int sw, int sh,
-                                 int l, int r, int t, int b, int pct, int flip,
-                                 int flash, float angle) {
-    if (angle < 0.001f) { draw_sprite_rect(fb,src,sw,sh,l,r,t,b,pct,flip,flash); return; }
-    float ca=cosf(angle), sa=sinf(angle);
-    float hw=(r-l)*0.5f, h=(b-t);
-    float cx=(l+r)*0.5f, cy=(float)b;
-    float xs[4]={-hw,hw,hw,-hw}, ys[4]={-h,-h,0,0};
-    float minx=1e9f,maxx=-1e9f,miny=1e9f,maxy=-1e9f;
-    for(int i=0;i<4;i++){
-        float x=cx+xs[i]*ca-ys[i]*sa;
-        float y=cy+xs[i]*sa+ys[i]*ca;
-        if(x<minx)minx=x; if(x>maxx)maxx=x;
-        if(y<miny)miny=y; if(y>maxy)maxy=y;
-    }
-    int x0=(int)floorf(minx),x1=(int)ceilf(maxx);
-    int y0=(int)floorf(miny),y1=(int)ceilf(maxy);
-    if(x0<0)x0=0; if(y0<0)y0=0;
-    if(x1>=FB_W)x1=FB_W-1; if(y1>=FB_H)y1=FB_H-1;
-    for(int y=y0;y<=y1;y++) for(int x=x0;x<=x1;x++){
-        float dx=(float)x-cx, dy=(float)y-cy;
-        float u= dx*ca+dy*sa;
-        float v=-dx*sa+dy*ca;
-        if(u<-hw || u>hw || v<-h || v>0) continue;
-        int sx=(int)((u+hw)*(sw-1)/(2.0f*hw));
-        int sy=(int)((v+h)*(sh-1)/h);
-        if(sx<0)sx=0; if(sx>=sw)sx=sw-1;
-        if(sy<0)sy=0; if(sy>=sh)sy=sh-1;
-        if(flip) sx=sw-1-sx;
-        uint32_t c=src[sy*sw+sx];
-        int a=(int)(c>>24);
-        if(!a) continue;
-        c=shade_argb(c,pct);
-        if(flash){
-            int rr=(int)((c>>16)&255)+96,gg=(int)((c>>8)&255)/3,bb=(int)(c&255)/3;
-            if(rr>255)rr=255;
-            c=0xff000000u|((uint32_t)rr<<16)|((uint32_t)gg<<8)|(uint32_t)bb;
-        }
-        if(a==255){ fb[y*FB_W+x]=c; continue; }
-        int da=255-a;
-        int dr=(int)((fb[y*FB_W+x]>>16)&255),dg=(int)((fb[y*FB_W+x]>>8)&255),db=(int)(fb[y*FB_W+x]&255);
-        int rr=((int)((c>>16)&255)*a+dr*da)/255;
-        int gg=((int)((c>>8)&255)*a+dg*da)/255;
-        int bb=((int)(c&255)*a+db*da)/255;
-        fb[y*FB_W+x]=0xff000000u|((uint32_t)rr<<16)|((uint32_t)gg<<8)|(uint32_t)bb;
-    }
-}
-
 static void draw_alien_sprite(uint32_t *fb, const Status *st) {
     if (!st->visible) return;
     AlienFrame af = alien_frame_select(st);
     int l, r, t, b;
     alien_sprite_box(st, af, &l, &r, &t, &b);
-    int pct = st->state >= 4 ? 30 : st->tdepth < 256 ? 112 : st->tdepth < 512 ? 100 : st->tdepth < 1024 ? 86 : 72;
+    int pct = st->state == 5 ? 30 : st->tdepth < 256 ? 112 : st->tdepth < 512 ? 100 : st->tdepth < 1024 ? 86 : 72;
     int recoil = st->state == 3 ? st->phase*2 : 0;
     if(st->state >= 4){
-        float angle=M_PI_2;
-        if(st->state == 4){
-            int p=st->phase; if(p<0)p=0;
-            angle=(1.0f-(float)p/(float)DEATH_COLLAPSE_TICKS)*M_PI_2;
-            if(angle<0)angle=0; if(angle>M_PI_2)angle=M_PI_2;
-        }
-        draw_sprite_rect_rot(fb, alien_dir_tex[af.idx], alien_dir_w[af.idx], alien_dir_h[af.idx],
-                             l, r, t, b, pct, af.flip, 0, angle);
+        int cx = st->tdepth > 0 ? 160 + st->tside*160/st->tdepth : (l+r)/2;
+        float prog = st->state == 5 ? 1.0f : 1.0f-(float)st->phase/(float)DEATH_COLLAPSE_TICKS;
+        if(prog<0)prog=0; if(prog>1)prog=1;
+        float scale = 1.0f - 0.78f*prog;
+        int ww = (int)((r-l)*(1.0f + 0.30f*prog));
+        int hh = (int)((b-t)*scale);
+        if(ww<1)ww=1; if(hh<1)hh=1;
+        int ll=cx-ww/2, rr=ll+ww, tt=b-hh;
+        draw_sprite_rect(fb, alien_dir_tex[af.idx], alien_dir_w[af.idx], alien_dir_h[af.idx],
+                         ll, rr, tt, b, pct, af.flip, 0);
     } else {
         draw_sprite_rect(fb, alien_dir_tex[af.idx], alien_dir_w[af.idx], alien_dir_h[af.idx],
                          l+recoil, r+recoil, t, b, pct, af.flip, st->state == 3);
@@ -2983,18 +2946,23 @@ static int audio_e2e_test(void) {
     fails += expect_eq("e2e shot ammo",st.ammo,23);
     audio_sfx_update(&st,px,py,0);
     fails += expect_eq("e2e accepted shot requests rifle",voice_active_id(SFX_RIFLE),1);
+    fails += expect_eq("e2e accepted shot muzzle flash",muzzle_flash_active(),1);
+    fails += expect_eq("e2e muzzle flash duration ms",(int)((sfx_events.muzzle_until_ns-sfx_events.muzzle_start_ns)/1000000ull),80);
     fails += expect_eq("e2e rifle has PCM",mix_peak_without_ambient()>0,1);
 
     /* A rejected (empty) shot does not start rifle SFX. */
     memset(audio_voices,0,sizeof audio_voices);
+    sfx_events.muzzle_until_ns=0;
     run_block(parse_source("[ doom/ammo: 0 ]","e2e no ammo"),"e2e no ammo");
     if(get_status(&st)!=0) return 2;
     audio_sfx_update(&st,px,py,0); /* establish empty baseline */
+    sfx_events.muzzle_until_ns=0;
     memset(audio_voices,0,sizeof audio_voices);
     if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
     audio_sfx_update(&st,px,py,0);
     fails += expect_eq("e2e empty shot ammo",st.ammo,0);
     fails += expect_eq("e2e empty shot no rifle SFX",voice_active_id(SFX_RIFLE),0);
+    fails += expect_eq("e2e empty shot no muzzle flash",muzzle_flash_active(),0);
 
     /* Actual E action path. */
     reset(); memset(&sfx_events,0,sizeof sfx_events); memset(audio_voices,0,sizeof audio_voices);
@@ -3032,6 +3000,28 @@ static int audio_e2e_test(void) {
     audio_sfx_update(&st,px,py,1);
     fails += expect_eq("e2e cargo voice",voice_active_id(SFX_CARGO),1);
     fails += expect_eq("e2e cargo PCM",mix_peak_without_ambient()>0,1);
+
+    /* Corpse collision uses the generic wall-contact SFX path. */
+    reset(); memset(&sfx_events,0,sizeof sfx_events); memset(audio_voices,0,sizeof audio_voices);
+    run_block(parse_source("[ doom/alien-x: 1120 doom/alien-y: 320 "
+                           "doom/alien-health: 0 doom/alien-state: 5 doom/alien-detected: 0 "
+                           "doom/px: 1090 doom/py: 320 doom/angle: 0 doom/aim ]",
+                           "e2e corpse contact"),"e2e corpse contact");
+    if(tick(1)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("e2e corpse contact player-hit",st.player_hit,1);
+    int near=current_objs_valid?sfx_near_cargo(1098,320,40):-1;
+    printf("e2e corpse contact near-cargo=%d\n",near);
+    if(near){
+        audio_sfx_update(&st,1098,320,1);
+        fails += expect_eq("e2e corpse contact actual cargo SFX",voice_active_id(SFX_CARGO),1);
+        memset(&sfx_events,0,sizeof sfx_events); memset(audio_voices,0,sizeof audio_voices);
+        current_objs_valid=0; /* isolate the generic wall path from nearby cargo */
+        audio_sfx_update(&st,1098,320,1);
+        fails += expect_eq("e2e corpse contact generic wall SFX",voice_active_id(SFX_WALL),1);
+    } else {
+        audio_sfx_update(&st,1098,320,1);
+        fails += expect_eq("e2e corpse contact wall SFX",voice_active_id(SFX_WALL),1);
+    }
 
     /* Leading-silence check: every event must begin within 50 ms. */
     for(int i=1;i<SFX_COUNT;i++){
@@ -3148,6 +3138,14 @@ static int combat_test(void) {
     if(run_capture(cclear,&cc,1,"corpse clearance")!=0) return 2;
     fails += expect_eq("combat corpse walk around",cc,0);
 
+    /* Corpse stays put while the player crosses the door and views it from both sides. */
+    if(run_block(parse_source("[ doom/px: 700 doom/py: 320 doom/angle: 0 doom/aim ]","corpse door view"),"corpse door view")!=0) return 2;
+    if(run_ticks(0,20)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat corpse persists at door",st.state==5 && st.ax==corpse_x && st.ay==corpse_y,1);
+    if(run_block(parse_source("[ doom/px: 1200 doom/py: 320 doom/angle: 128 doom/aim ]","corpse far view"),"corpse far view")!=0) return 2;
+    if(run_ticks(0,20)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat corpse persists opposite view",st.state==5 && st.ax==corpse_x && st.ay==corpse_y,1);
+
     /* Corpse cannot be damaged or reset by a later shot. */
     if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
     fails += expect_eq("combat corpse shot ammo",st.ammo,19);
@@ -3202,6 +3200,107 @@ static int combat_test(void) {
 
     printf("combat-test: %s\n",fails?"FAILED":"PASSED");
     return fails?1:0;
+}
+
+static void trace_pose(const char *tag,int px,int py,int angle,const Status *st) {
+    int sx=160;
+    if(st->tdepth>0) sx=160+st->tside*160/st->tdepth;
+    const char *render="camera-billboard";
+    if(st->state==4) render="centered-shrink-cross";
+    if(st->state==5) render="world-cross-planes";
+    printf("corpse-trace view=%s player=%d,%d angle=%d alien=%d,%d state=%d phase=%d "
+           "screen=%d depth=%d side=%d render=%s world-axis=+x door=%d/%d/%d collision=%d,%d r2=144\n",
+           tag,px,py,angle,st->ax,st->ay,st->state,st->phase,sx,st->tdepth,st->tside,
+           render,st->door_open,st->door_blocked,st->door_target,st->ax,st->ay);
+}
+
+static int corpse_trace(void) {
+    combat_minimal=1; load_session(); build_blocks();
+    if(combat_scene(900,320,0,1120,320,0,100,1,1)!=0) return 2;
+    Status st; int px,py,pa;
+    get_state(&px,&py,&pa); get_status(&st);
+    trace_pose("before-lethal",px,py,pa,&st);
+    for(int hit=0;hit<4;hit++){
+        if(tick(FIRE_MASK)!=0) return 2;
+        get_state(&px,&py,&pa); get_status(&st);
+        printf("corpse-trace hit=%d alien=%d,%d health=%d state=%d phase=%d\n",
+               hit+1,st.ax,st.ay,st.health,st.state,st.phase);
+    }
+    for(int t=0;t<18;t++){
+        if(tick(0)!=0) return 2;
+        get_state(&px,&py,&pa); get_status(&st);
+        printf("corpse-trace collapse=%d alien=%d,%d state=%d phase=%d\n",
+               t+1,st.ax,st.ay,st.state,st.phase);
+    }
+    get_state(&px,&py,&pa); get_status(&st);
+    trace_pose("corpse-east",px,py,pa,&st);
+    if(run_block(parse_source("[ doom/px: 1200 doom/py: 320 doom/angle: 128 doom/aim ]","trace west"),"trace west")!=0) return 2;
+    get_state(&px,&py,&pa); get_status(&st);
+    trace_pose("corpse-west",px,py,pa,&st);
+    if(run_block(parse_source("[ doom/px: 700 doom/py: 320 doom/angle: 0 doom/aim ]","trace door"),"trace door")!=0) return 2;
+    get_state(&px,&py,&pa); get_status(&st);
+    trace_pose("corpse-before-door",px,py,pa,&st);
+    return 0;
+}
+
+static uint32_t hash_rect(const uint32_t *fb,int l,int r,int t,int b) {
+    uint32_t h=2166136261u;
+    for(int y=t;y<=b;y++) for(int x=l;x<=r;x++){
+        uint32_t c=fb[y*FB_W+x];
+        h^=(uint8_t)(c>>16); h*=16777619u;
+        h^=(uint8_t)(c>>8); h*=16777619u;
+        h^=(uint8_t)c; h*=16777619u;
+    }
+    return h;
+}
+
+static int corpse_stability_test(const char *dir) {
+    load_session(); build_blocks();
+    if(combat_scene(900,320,0,1120,320,0,0,5,0)!=0) return 2;
+    int floor_c,ceil_c; if(get_sector(&floor_c,&ceil_c)!=0) return 2;
+    uint32_t *fb=malloc((size_t)FB_W*FB_H*sizeof *fb);
+    if(!fb) return 2;
+    Spans s; Detail d; TexRows tr; Status st;
+    int x0=-1,y0=-1,l0=0,r0=0,t0=0,b0=0;
+    uint32_t full0=0,region0=0,sprite0=0;
+    for(int frame=0;frame<600;frame++){
+        if(frame && run_ticks(0,1)!=0) { free(fb); return 2; }
+        if(render_spans(&s,NULL)!=0 || (need_texrows() && get_texrows(&tr)!=0) ||
+           get_status(&st)!=0) { free(fb); return 2; }
+        if(st.state!=5 || st.phase!=0) { free(fb); return 2; }
+        if(x0<0){ x0=st.ax; y0=st.ay; }
+        else if(st.ax!=x0 || st.ay!=y0) { free(fb); return 2; }
+        draw_buffer(fb,&s,&d,&tr,&st,floor_c,ceil_c);
+        if(frame==0){
+            int cx=st.tdepth>0?160+st.tside*160/st.tdepth:(st.left+st.right)/2;
+            int ww=(st.right-st.left)*13/10, hh=(st.bot-st.top)*22/100;
+            l0=cx-ww/2; r0=cx+ww/2; t0=st.bot-hh; b0=st.bot;
+            if(l0<0)l0=0; if(r0>=FB_W)r0=FB_W-1; if(t0<0)t0=0; if(b0>=FB_H)b0=FB_H-1;
+            full0=fnv1a(fb,(size_t)FB_W*FB_H*sizeof *fb);
+            region0=hash_rect(fb,l0,r0,t0,b0);
+            if(dir) { char p[4096]; snprintf(p,sizeof p,"%s/corpse-stability-first.ppm",dir); save_ppm(p,fb); }
+            memset(fb,0,(size_t)FB_W*FB_H*sizeof *fb);
+            draw_alien_sprite(fb,&st);
+            sprite0=hash_rect(fb,l0,r0,t0,b0);
+        } else {
+            uint32_t full=fnv1a(fb,(size_t)FB_W*FB_H*sizeof *fb);
+            uint32_t region=hash_rect(fb,l0,r0,t0,b0);
+            if(dir){ char p[4096]; snprintf(p,sizeof p,"%s/corpse-stability-last.ppm",dir); save_ppm(p,fb); }
+            memset(fb,0,(size_t)FB_W*FB_H*sizeof *fb);
+            draw_alien_sprite(fb,&st);
+            uint32_t sprite=hash_rect(fb,l0,r0,t0,b0);
+            if(sprite!=sprite0 || region!=region0){
+                printf("corpse-stability-test: FAIL frame=%d sprite=%08x/%08x region=%08x/%08x full=%08x/%08x state=%d phase=%d ax=%d ay=%d depth=%d side=%d\n",
+                       frame,sprite,sprite0,region,region0,full,full0,st.state,st.phase,st.ax,st.ay,st.tdepth,st.tside);
+                if(dir){ char p[4096]; snprintf(p,sizeof p,"%s/corpse-stability-fail.ppm",dir); save_ppm(p,fb); }
+                free(fb); return 1;
+            }
+        }
+    }
+    free(fb);
+    printf("corpse-stability-test: PASSED alien=%d,%d region=%d,%d..%d,%d frames=600\n",
+           x0,y0,l0,t0,r0,b0);
+    return 0;
 }
 
 static int interactive(void) {
@@ -3815,10 +3914,34 @@ static void gl_ammo_digit(int d, float x, float y, float w, float h) {
     if (d==2||d==3||d==4||d==5||d==6||d==8||d==9) gl_ammo_seg(x0,ym-t*0.5f,x1-x0,t);
     glEnd();
 }
+static void gl_draw_muzzle_flash(float x,float y,float f) {
+    glDisable(GL_TEXTURE_2D); glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA,GL_ONE);
+    glColor4f(1.0f,0.78f+0.20f*f,0.25f,0.65f+0.35f*f);
+    glBegin(GL_TRIANGLES);
+    for(int i=0;i<8;i++){
+        float a=(float)i*(float)M_PI/4.0f;
+        float r=(i&1)?9.0f+10.0f*f:24.0f+12.0f*f;
+        float a1=a-0.16f,a2=a+0.16f;
+        glVertex2f(x,y);
+        glVertex2f(x+cosf(a1)*r,y+sinf(a1)*r);
+        glVertex2f(x+cosf(a2)*r,y+sinf(a2)*r);
+    }
+    glEnd();
+    glColor4f(1,1,1,1); glDisable(GL_BLEND);
+}
 static void gl_draw_weapon(const Status *st) {
-    if (st->ammo < 0) return;
+    if (gl_hide_weapon || st->ammo < 0) return;
     const float w=gl_w*0.60f, h=w*WEAPON_H/WEAPON_W;
-    const float x1=gl_w*0.99f, y2=gl_h*1.02f;
+    float x1=gl_w*0.99f, y2=gl_h*1.02f;
+    float recoil=0.0f;
+    if(now_ns()<sfx_events.muzzle_until_ns){
+        float total=(float)(sfx_events.muzzle_until_ns-sfx_events.muzzle_start_ns);
+        float rem=(float)(sfx_events.muzzle_until_ns-now_ns());
+        recoil=6.0f*(rem/total);
+        if(recoil<0)recoil=0;
+    }
+    x1-=recoil*0.35f; y2+=recoil;
     const float x0=x1-w, y0=y2-h;
     glDisable(GL_DEPTH_TEST); glDisable(GL_ALPHA_TEST);
     glEnable(GL_TEXTURE_2D); glEnable(GL_BLEND);
@@ -3833,6 +3956,13 @@ static void gl_draw_weapon(const Status *st) {
     glTexCoord2f(0,0); glVertex2f(x0,y2);
     glEnd();
     glDisable(GL_TEXTURE_2D);
+    if(now_ns()<sfx_events.muzzle_until_ns){
+        float rem=(float)(sfx_events.muzzle_until_ns-now_ns());
+        float total=(float)(sfx_events.muzzle_until_ns-sfx_events.muzzle_start_ns);
+        float f=rem/total; if(f<0)f=0; if(f>1)f=1;
+        float mx=x0+0.20f*w, my=y0+0.55f*h;
+        gl_draw_muzzle_flash(mx,my,f);
+    }
     /* Live count occupies the blanked display: output-space screen 444,194..519,251. */
     const float sx0=x0+(WEAPON_SCREEN_X0/(float)WEAPON_W)*w;
     const float sx1=x0+(WEAPON_SCREEN_X1/(float)WEAPON_W)*w;
@@ -5383,6 +5513,32 @@ static void gl_corridor(float light, int door_open) {
         gl_light_panel(x+13,296,x+67,344,125.7f,light);
     gl_blast_door(light,door_open);
 }
+static void gl_corpse_planes(const Status *st,float alpha,float height) {
+    /* Two world-aligned low planes, not a camera-facing billboard. The corpse
+     * therefore keeps one world position and one world orientation when the
+     * camera crosses to the other side. */
+    const float len=36.0f, wid=20.0f, z0=0.6f;
+    if(height<4.0f) height=4.0f;
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D,gl_tex[GT_ALIEN0+ALIEN_DIR_IDLE]);
+    glDisable(GL_ALPHA_TEST);
+    glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    glColor4f(0.35f,0.35f,0.35f,alpha);
+    glBegin(GL_QUADS);
+    /* Long axis fixed to world +X. */
+    glTexCoord2f(0,1); gl_gv(st->ax-len*0.5f,st->ay,z0);
+    glTexCoord2f(1,1); gl_gv(st->ax+len*0.5f,st->ay,z0);
+    glTexCoord2f(1,0); gl_gv(st->ax+len*0.5f,st->ay,z0+height);
+    glTexCoord2f(0,0); gl_gv(st->ax-len*0.5f,st->ay,z0+height);
+    /* Cross plane fixed to world Y, so the low shape remains visible from
+     * the opposite direction without rotating toward the camera. */
+    glTexCoord2f(0,1); gl_gv(st->ax,st->ay-wid*0.5f,z0);
+    glTexCoord2f(1,1); gl_gv(st->ax,st->ay+wid*0.5f,z0);
+    glTexCoord2f(1,0); gl_gv(st->ax,st->ay+wid*0.5f,z0+height);
+    glTexCoord2f(0,0); gl_gv(st->ax,st->ay-wid*0.5f,z0+height);
+    glEnd();
+    glColor4f(1,1,1,1); glDisable(GL_BLEND);
+}
+
 static void gl_scene(const Status *st, const Obj *objs, int nobj) {
     gl_energy_time=(double)sim_tick/(double)TICK_HZ;
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -5400,33 +5556,38 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
         gl_prop_3d(&objs[i]);
     }
     if (st->visible) {
-        AlienFrame af = alien_frame_select(st);
-        int idx = af.idx;
-        double px_scale = 1.5 / alien_dir_eff_h[idx];
-        double wworld = alien_dir_w[idx] * px_scale;
-        double hworld = alien_dir_h[idx] * px_scale;
-        double pivot_world = (alien_dir_pivot_x[idx] - alien_dir_w[idx] * 0.5) * px_scale;
-        double below_ground = (alien_dir_h[idx] - alien_dir_anchor_y[idx]) * px_scale;
-        glDepthMask(GL_TRUE);
-        float tr=1.0f,tg=1.0f,tb=1.0f, roll=0.0f;
-        double ox=0.0,oy=0.0;
-        if(st->state==3){
-            tg=0.35f; tb=0.35f;
-            double rightx=sin(st_current_angle*2.0*M_PI/256.0), righty=-cos(st_current_angle*2.0*M_PI/256.0);
-            double recoil=st->phase*1.5;
-            ox=rightx*recoil; oy=righty*recoil;
-        } else if(st->state==4){
-            int p=st->phase; if(p<0)p=0;
-            float prog=1.0f-(float)p/(float)DEATH_COLLAPSE_TICKS;
-            if(prog<0)prog=0; if(prog>1)prog=1;
-            roll=prog*(float)(M_PI_2);
-            tr=tg=tb=0.65f;
-        } else if(st->state==5){
-            roll=(float)(M_PI_2);
-            tr=tg=tb=0.35f;
+        if(st->state==5){
+            gl_corpse_planes(st,1.0f,22.0f);
+        } else {
+            AlienFrame af = alien_frame_select(st);
+            int idx = af.idx;
+            double px_scale = 1.5 / alien_dir_eff_h[idx];
+            double wworld = alien_dir_w[idx] * px_scale;
+            double hworld = alien_dir_h[idx] * px_scale;
+            double pivot_world = (alien_dir_pivot_x[idx] - alien_dir_w[idx] * 0.5) * px_scale;
+            double below_ground = (alien_dir_h[idx] - alien_dir_anchor_y[idx]) * px_scale;
+            glDepthMask(GL_TRUE);
+            float tr=1.0f,tg=1.0f,tb=1.0f;
+            double ox=0.0,oy=0.0;
+            if(st->state==3){
+                tg=0.35f; tb=0.35f;
+                double rightx=sin(st_current_angle*2.0*M_PI/256.0), righty=-cos(st_current_angle*2.0*M_PI/256.0);
+                double recoil=st->phase*1.5;
+                ox=rightx*recoil; oy=righty*recoil;
+            } else if(st->state==4){
+                int p=st->phase; if(p<0)p=0;
+                float prog=1.0f-(float)p/(float)DEATH_COLLAPSE_TICKS;
+                if(prog<0)prog=0; if(prog>1)prog=1;
+                glDepthMask(GL_TRUE);
+                gl_corpse_planes(st,0.35f+0.65f*prog,4.0f+18.0f*prog);
+                gl_billboard(gl_tex[GT_ALIEN0+idx], st->ax+ox, st->ay+oy, wworld,
+                             hworld*(1.0f-0.78f*prog), 0.0, below_ground,
+                             af.flip, 0.65f,0.65f,0.65f,0.0f);
+            } else {
+                gl_billboard(gl_tex[GT_ALIEN0+idx], st->ax+ox, st->ay+oy, wworld, hworld,
+                             0.0, below_ground, af.flip, tr,tg,tb,0.0f);
+            }
         }
-        gl_billboard(gl_tex[GT_ALIEN0+idx], st->ax+ox, st->ay+oy, wworld, hworld,
-                     pivot_world, below_ground, af.flip, tr,tg,tb,roll);
     }
     glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
     gl_draw_weapon(st);
@@ -5710,6 +5871,47 @@ static int gl_combat_shots(const char *dir,int w,int h) {
         char path[4096]; snprintf(path,sizeof path,"%s/%s.ppm",dir,shots[i].name);
         gl_save_ppm(path,w,h);
         printf("combat %s state=%d phase=%d\n",shots[i].name,st.state,st.phase);
+    }
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
+    return 0;
+}
+
+static int gl_muzzle_shots(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2;
+    gl_active=1; load_session(); build_blocks();
+    if(gl_apply_pose(900,320,0,64,0,1120,320,0)!=0) return 2;
+    int px,py,pa; Status st;
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+    st_current_angle=pa;
+    sfx_events.muzzle_start_ns=now_ns();
+    sfx_events.muzzle_until_ns=sfx_events.muzzle_start_ns+80000000ull;
+    gl_scene(&st,NULL,0);
+    char path[4096]; snprintf(path,sizeof path,"%s/muzzle-flash.ppm",dir); gl_save_ppm(path,w,h);
+    sfx_events.muzzle_until_ns=0;
+    gl_scene(&st,NULL,0);
+    snprintf(path,sizeof path,"%s/no-flash.ppm",dir); gl_save_ppm(path,w,h);
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
+    return 0;
+}
+
+static int gl_corpse_shots(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2;
+    gl_active=1; gl_hide_weapon=1; load_session(); build_blocks();
+    struct CP {const char *name; int px,py,angle;} poses[]={
+        {"east-of-corpse",900,320,0},
+        {"west-of-corpse",1270,320,128},
+        {"before-door",700,320,0}
+    };
+    for(size_t i=0;i<sizeof poses/sizeof poses[0];i++){
+        if(gl_apply_pose(poses[i].px,poses[i].py,poses[i].angle,64,0,1120,320,0)!=0) return 2;
+        int px,py,pa; Status st;
+        if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+        st_current_angle=pa;
+        st.visible=1; st.ax=1120; st.ay=320; st.state=5; st.phase=0; st.health=0;
+        gl_scene(&st,NULL,0);
+        char path[4096]; snprintf(path,sizeof path,"%s/%s.ppm",dir,poses[i].name);
+        gl_save_ppm(path,w,h);
+        printf("corpse-shot %s player=%d,%d angle=%d alien=%d,%d\n",poses[i].name,px,py,pa,st.ax,st.ay);
     }
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
     return 0;
@@ -6172,6 +6374,17 @@ int main(int argc, char **argv) {
     }
     if (argc > 1 && strcmp(argv[1], "--entrance-test") == 0) return entrance_test();
     if (argc > 1 && strcmp(argv[1], "--combat-test") == 0) return combat_test();
+    if (argc > 1 && strcmp(argv[1], "--corpse-trace") == 0) return corpse_trace();
+    if (argc > 1 && strcmp(argv[1], "--corpse-stability-test") == 0)
+        return corpse_stability_test(argc>2?argv[2]:NULL);
+    if (argc > 2 && strcmp(argv[1], "--gl-muzzle-shots") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return gl_muzzle_shots(argv[2],w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-corpse-shots") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return gl_corpse_shots(argv[2],w,h);
+    }
     if (argc > 2 && strcmp(argv[1], "--gl-combat-shots") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
         return gl_combat_shots(argv[2],w,h);

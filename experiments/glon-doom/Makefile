@@ -57,6 +57,7 @@ test: $(TARGET)
 	./$(TARGET) --stationary-test
 	./$(TARGET) --entrance-test
 	./$(TARGET) --combat-test
+	./$(TARGET) --corpse-stability-test
 	./$(TARGET) --flat-surfaces --objects-test
 	./$(TARGET) --self-test --raw-wall
 	./$(TARGET) --trace
