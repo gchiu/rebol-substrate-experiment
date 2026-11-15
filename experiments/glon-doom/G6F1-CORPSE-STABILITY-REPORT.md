@@ -153,7 +153,7 @@ Added/updated tests:
   entrance regressions.
 
 Linux executable: **6,220,096 bytes**, SHA-256
-`7db130afd8d915ff335b188aa843b71f60b3f8c65ae987d6168a1c9432583d68`.
+`f9e90c0a972a4c503d95c054ea31fc010a49203d53420934c0ae198332f5a77d`.
 
 ## 7. Native Windows
 

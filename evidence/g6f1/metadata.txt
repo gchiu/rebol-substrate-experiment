@@ -5,7 +5,7 @@ branch: glon-avp-g6f1
 implementation: 7bd5338
 frozen S1: f90496c26dc45c7a387d8fc8639cd2781507d3d2
 Linux executable: 6220096 bytes
-Linux sha256: 7db130afd8d915ff335b188aa843b71f60b3f8c65ae987d6168a1c9432583d68
+Linux sha256: f9e90c0a972a4c503d95c054ea31fc010a49203d53420934c0ae198332f5a77d
 Windows executable: 6582784 bytes
 Windows sha256: 081cd7d06571f108a485327d12ddc871e0dbc05525a4a18e109e6f3a8d2bb2e7
 Windows distribution: 22113748 bytes
