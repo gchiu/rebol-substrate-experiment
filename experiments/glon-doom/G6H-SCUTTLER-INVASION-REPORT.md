@@ -109,8 +109,10 @@ perfect, though their world collision and AI are exact.
 | Windows distribution | 22,151,038 | 22,531,893 |
 
 `--bench-fixed 120` on the available Linux software/GL path: G6g total mean
-134.82 ms/frame; G6h 178.37 ms/frame. This is a measurement of the test path, not
-a claim of optimization. No performance improvement is claimed.
+134.82 ms/frame; G6h 178.37 ms/frame. A separate `--bench 60` run recorded the
+simulation/tick component: G6g **2.74 ms/tick**, G6h **8.43 ms/tick** (full frame
+178.27 vs 212.42 ms). This is the cost of three extra Glon entity updates in the
+software test path; no optimization or performance claim is made.
 
 ## 6. Verification
 

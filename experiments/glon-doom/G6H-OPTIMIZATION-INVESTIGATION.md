@@ -52,6 +52,7 @@ substantial redesign, not a small optimization.
 
 ## Performance note
 
-`--bench-fixed 120` on the available software/GL test path: G6g 134.82 ms/frame,
-G6h 178.37 ms/frame (render path, not a tick-only benchmark). No optimization or
-performance claim is made; this is deferred.
+Tick-only `--bench 60` on the software test path: G6g 2.74 ms/tick, G6h
+8.43 ms/tick; full frame 178.27 vs 212.42 ms. The new entity AI dominates the
+simulation component. No optimization or performance claim is made; this is
+deferred.
