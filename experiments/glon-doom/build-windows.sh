@@ -12,11 +12,13 @@ make -C "$HERE" windows \
     WIN_CC="$ZIG cc -target x86_64-windows-gnu" \
     WIN_SDL="$SDL_MINGW"
 DIST="$ROOT/dist/windows"
+rm -f "$DIST/run-g6d.bat"
 mkdir -p "$DIST/experiments/glon-doom/assets/doors" \
          "$DIST/experiments/glon-doom/assets/audio/sfx" "$DIST/jupyter"
 cp "$HERE/build-win/doom.exe" "$DIST/doom.exe"
 cp "$SDL_MINGW/bin/SDL2.dll" "$DIST/SDL2.dll"
-cp "$ROOT/.deps/SDL2-2.30.9/LICENSE.txt" "$DIST/SDL2-LICENSE.txt"
+SDL_ROOT=$(CDPATH= cd -- "$SDL_MINGW/.." && pwd)
+cp "$SDL_ROOT/LICENSE.txt" "$DIST/SDL2-LICENSE.txt"
 cp "$ROOT/jupyter/prelude.glon" "$DIST/jupyter/prelude.glon"
 cp "$HERE"/doom.glon "$HERE"/objects.glon "$HERE"/raw-wall.glon "$DIST/experiments/glon-doom/"
 cp "$HERE"/assets/doors/*.rgb "$DIST/experiments/glon-doom/assets/doors/"
@@ -25,4 +27,5 @@ cp "$HERE"/assets/audio/sfx/*.wav "$DIST/experiments/glon-doom/assets/audio/sfx/
 cp "$HERE"/assets/audio/SOURCE.txt "$DIST/assets-audio-SOURCE.txt"
 cp "$HERE"/assets/audio/sfx/SOURCE.txt "$DIST/assets-audio-sfx-SOURCE.txt"
 cp "$HERE"/WINDOWS-README.txt "$DIST/README-WINDOWS.txt"
+cp "$HERE"/run-g6e.bat "$DIST/run-g6e.bat"
 echo "Windows distribution: $DIST"

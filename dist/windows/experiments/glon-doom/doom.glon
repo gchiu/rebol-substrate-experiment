@@ -278,7 +278,7 @@ doom/move-y: func [ny] [
     either = doom/hit 0 [ doom/py: ny ] [ doom/player-hit: 1 ]
 ]
 
-doom/tick: func [fw bk lf rt tl tr] [
+doom/tick: func [fw bk lf rt tl tr fire] [
     doom/angle: + doom/angle - tl tr
     doom/wrap-angle
     doom/aim
@@ -299,7 +299,38 @@ doom/tick: func [fw bk lf rt tl tr] [
         ] [ none ]
     ]
     doom/door-blocked: either < doom/door-open 32 [ 1 ] [ 0 ]
-    doom/update-alien
+    either = doom/alien-state 4 [ none ] [
+        either > doom/e2dep 0 [
+            doom/e2dep: - doom/e2dep 1
+            either = doom/e2dep 0 [
+                doom/alien-state: either = doom/alien-detected 1 [ 1 ] [ 0 ]
+            ] [ none ]
+        ] [ doom/update-alien ]
+    ]
+    either = 1 fire [
+        either > doom/ammo 0 [
+            doom/ammo: - doom/ammo 1
+            doom/alien-dx: - doom/alien-x doom/px
+            doom/alien-dy: - doom/alien-y doom/py
+            doom/alien-d2: + * doom/alien-dx doom/alien-dx * doom/alien-dy doom/alien-dy
+            doom/tdepth: / + * doom/alien-dx doom/dirx * doom/alien-dy doom/diry 64
+            doom/t: - * doom/alien-dx doom/diry * doom/alien-dy doom/dirx
+            doom/los doom/alien-x doom/alien-y
+            doom/hit: * * * > doom/tdepth 0 < doom/alien-d2 409600 < * doom/t doom/t 1048576 = doom/occluded 0
+            either = 1 doom/hit [
+                doom/alien-health: - doom/alien-health 25
+                either < doom/alien-health 1 [
+                    doom/alien-health: 0
+                    doom/alien-state: 4
+                    doom/alien-detected: 0
+                    doom/e2dep: 0
+                ] [
+                    doom/alien-state: 3
+                    doom/e2dep: 2
+                ]
+            ] [ none ]
+        ] [ none ]
+    ] [ none ]
     doom/light-phase: + doom/light-phase 1
 ]
 
@@ -382,6 +413,7 @@ doom/reset: does [
     doom/alien-health: 100
     doom/alien-state: 0
     doom/alien-detected: 0
+    doom/ammo: 24
     doom/door-bars: 0
     doom/alien-avoid: 0
     doom/occluded: 0

@@ -46,6 +46,7 @@
 #define PROJ_COLS 160
 #define PROJ_SCALE 2
 #define TICK_HZ 60
+#define FIRE_MASK 64
 #define MAX_CAPTURE (1u << 20)
 #define RENDER_INTS (PROJ_COLS * 5)
 #define DETAIL_MAX 64
@@ -143,6 +144,7 @@ static int corridor_art = 1;
 static int engineering_room_enabled = 1;
 static double gl_energy_time = 0.0;
 static int objects_mode = 0;
+static int combat_minimal = 0;
 static Obj current_objs[6];
 static int current_objs_valid = 0;
 static int last_px = 320;
@@ -161,7 +163,7 @@ static cell activate_block, status_block, detail_block, texrows_block;
 static cell floor_line_block, ceil_line_block, objects_block, objects_on_block;
 static cell alien_collision_block, los_wall_block, los_clear_block;
 static cell render_blocks[2];
-static cell tick_blocks[64];
+static cell tick_blocks[128];
 
 static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
                         const TexRows *tr, const Status *st,
@@ -434,8 +436,8 @@ static void audio_play_at(int id,int x,int y,int px,int py,int tag) {
 typedef struct {
     int door_motion;
     int prev_alien_state, prev_alien_detected;
-    uint64_t last_alien_ms, last_rifle_ms, last_wall_ms, last_cargo_ms;
-    int rifle_seen;
+    uint64_t last_alien_ms, last_wall_ms, last_cargo_ms;
+    int ammo, have_ammo;
     int wall_contact, cargo_contact;
     int prev_px, prev_py, have_prev;
 } SfxEventState;
@@ -468,15 +470,6 @@ static int sfx_alien_event(int detected,int state,uint64_t now,SfxEventState *s)
     s->prev_alien_detected=detected;
     s->prev_alien_state=state;
     return event;
-}
-
-static int sfx_rifle_event(uint64_t now,SfxEventState *s) {
-    if(!s->rifle_seen || now-s->last_rifle_ms>=110){
-        s->rifle_seen=1;
-        s->last_rifle_ms=now;
-        return SFX_RIFLE;
-    }
-    return 0;
 }
 
 static int sfx_collision_event(int blocked,int cargo,int moving,uint64_t now,SfxEventState *s) {
@@ -517,7 +510,7 @@ static int sfx_near_cargo(int x,int y,int r) {
     return 0;
 }
 
-static void audio_sfx_update(const Status *st,int px,int py,int mask,int fire_held) {
+static void audio_sfx_update(const Status *st,int px,int py,int mask) {
     uint64_t now=audio_now_ms();
     int ev=sfx_door_event(st->door_open,st->door_target,&sfx_events.door_motion);
     if(ev && getenv("GLON_AUDIO_TRACE"))
@@ -539,10 +532,9 @@ static void audio_sfx_update(const Status *st,int px,int py,int mask,int fire_he
                 ev,sfx_events.wall_contact,sfx_events.cargo_contact,px,py,
                 sfx_events.prev_px,sfx_events.prev_py);
     if(ev) audio_play(ev,1.0f,0);
-    if(fire_held){
-        ev=sfx_rifle_event(now,&sfx_events);
-        if(ev) audio_play(ev,1.0f,0);
-    }
+    if(sfx_events.have_ammo && st->ammo<sfx_events.ammo)
+        audio_play(SFX_RIFLE,1.0f,0);
+    sfx_events.ammo=st->ammo; sfx_events.have_ammo=1;
     sfx_events.prev_px=px; sfx_events.prev_py=py; sfx_events.have_prev=1;
 }
 
@@ -828,11 +820,6 @@ static int audio_sfx_test(void) {
     fails += expect_eq("alien attack after cooldown",sfx_alien_event(1,2,3300,&s),SFX_ALIEN);
 
     memset(&s,0,sizeof s);
-    fails += expect_eq("rifle first shot",sfx_rifle_event(1000,&s),SFX_RIFLE);
-    fails += expect_eq("rifle cadence blocks 50ms",sfx_rifle_event(1050,&s),0);
-    fails += expect_eq("rifle cadence allows 110ms",sfx_rifle_event(1110,&s),SFX_RIFLE);
-
-    memset(&s,0,sizeof s);
     fails += expect_eq("wall impact",sfx_collision_event(1,0,1,1000,&s),SFX_WALL);
     fails += expect_eq("wall contact no retrigger",sfx_collision_event(1,0,1,1050,&s),0);
     fails += expect_eq("wall cooldown doesn't retrigger while held",sfx_collision_event(1,0,1,1400,&s),0);
@@ -862,17 +849,17 @@ static int audio_sfx_test(void) {
     memset(&sfx_events,0,sizeof sfx_events);
     Status st; memset(&st,0,sizeof st);
     st.door_target=64;
-    audio_sfx_update(&st,320,320,0,0);
+    audio_sfx_update(&st,320,320,0);
     fails += expect_eq("host door open transition",sfx_events.door_motion,1);
     st.door_open=64; st.door_target=0;
-    audio_sfx_update(&st,320,320,0,0);
+    audio_sfx_update(&st,320,320,0);
     fails += expect_eq("host door close transition",sfx_events.door_motion,2);
 
     memset(&sfx_events,0,sizeof sfx_events);
     memset(&st,0,sizeof st);
     st.player_hit=1;
-    audio_sfx_update(&st,320,320,1,0);
-    audio_sfx_update(&st,320,320,1,0);
+    audio_sfx_update(&st,320,320,1);
+    audio_sfx_update(&st,320,320,1);
     fails += expect_eq("host wall contact",sfx_events.wall_contact,1);
     fails += expect_eq("host wall not cargo",sfx_events.cargo_contact,0);
 
@@ -882,8 +869,8 @@ static int audio_sfx_test(void) {
     current_objs[0].id=1; current_objs[0].x=860; current_objs[0].y=270;
     current_objs[0].hw=28; current_objs[0].hd=19;
     st.player_hit=1;
-    audio_sfx_update(&st,860,305,1,0);
-    audio_sfx_update(&st,860,305,1,0);
+    audio_sfx_update(&st,860,305,1);
+    audio_sfx_update(&st,860,305,1);
     fails += expect_eq("host cargo contact",sfx_events.cargo_contact,1);
     fails += expect_eq("host cargo not wall",sfx_events.wall_contact,0);
     current_objs_valid=0;
@@ -1095,6 +1082,13 @@ static void load_session(void) {
     }
 }
 
+static int normalize_move_mask(int m) {
+    if ((m & 1) && (m & 2)) m &= ~3;
+    if ((m & 4) && (m & 8)) m &= ~12;
+    if ((m & 16) && (m & 32)) m &= ~48;
+    return m;
+}
+
 static void build_blocks(void) {
     reset_block = parse_source("[ doom/reset ]", "reset");
     sector_block = parse_source("[ doom/sector-report ]", "sector");
@@ -1148,15 +1142,16 @@ static void build_blocks(void) {
         "clear los");
     }
 
-    int tick_count = (objects_mode && !gl_active) ? 16 : 64;
-    for (int m = 0; m < tick_count; m++) {
+    for (int m = 0; m < 64; m++) {
+        if (normalize_move_mask(m) != m) continue;
         char src[128];
-        snprintf(src, sizeof src, "[ doom/tick %d %d %d %d %d %d ]",
+        snprintf(src, sizeof src, "[ doom/tick %d %d %d %d %d %d 0 ]",
                  !!(m & 1), !!(m & 2), !!(m & 4), !!(m & 8), !!(m & 16), !!(m & 32));
         tick_blocks[m] = parse_source(src, "tick");
     }
+    tick_blocks[64] = parse_source("[ doom/tick 0 0 0 0 0 0 1 ]", "fire tick");
 
-    if (!gl_active) for (int b = 0; b < 2; b++) {
+    if (!gl_active && !combat_minimal) for (int b = 0; b < 2; b++) {
         size_t cap = 256 + (PROJ_COLS / 2) * 64;
         char *src = malloc(cap);
         if (!src) fail("out of memory building render block");
@@ -1301,11 +1296,12 @@ static int reset(void) {
     return run_block(reset_block, "reset");
 }
 static int tick(int mask) {
-    if (objects_mode && !gl_active) mask &= 15;
+    if (objects_mode && !gl_active && !(mask&FIRE_MASK)) mask &= 15;
+    int idx = (mask&FIRE_MASK) ? 64 : normalize_move_mask(mask & 63);
 #ifdef DOOM_S1_PROFILE
     prof_begin();
 #endif
-    int rc = run_block(tick_blocks[mask & 63], "tick");
+    int rc = run_block(tick_blocks[idx], (idx==64)?"fire tick":"tick");
 #ifdef DOOM_S1_PROFILE
     prof_collect(&prof_tick);
 #endif
@@ -2059,6 +2055,13 @@ static void alien_view_reset(void) {
  * plus its bearing relative to the camera (front/three-quarter/side). */
 static AlienFrame alien_frame_select(const Status *st) {
     AlienFrame out = { ALIEN_DIR_IDLE, 0 };
+    if (st->state == 3 || st->state == 4) {
+        alien_dir_kind = ALIEN_DIR_IDLE;
+        alien_dir_flip = 0;
+        alien_dir_pending = -1;
+        alien_dir_pending_n = 0;
+        return out;
+    }
     if (st->state == 2) {
         alien_dir_kind = ALIEN_DIR_ATTACK;
         alien_dir_pending = -1;
@@ -2152,7 +2155,7 @@ static const uint32_t *object_sprite(int id) {
 }
 
 static void draw_sprite_rect(uint32_t *fb, const uint32_t *src, int sw, int sh,
-                             int l, int r, int t, int b, int pct, int flip) {
+                             int l, int r, int t, int b, int pct, int flip, int flash) {
     if (l < 0) l = 0;
     if (r >= FB_W) r = FB_W - 1;
     if (t < 0) t = 0;
@@ -2172,6 +2175,11 @@ static void draw_sprite_rect(uint32_t *fb, const uint32_t *src, int sw, int sh,
             int a = (int)(c >> 24);
             if (!a) continue;
             c = shade_argb(c, pct);
+            if (flash) {
+                int rr=(int)((c>>16)&255)+96, gg=(int)((c>>8)&255)/3, bb=(int)(c&255)/3;
+                if(rr>255) rr=255;
+                c=0xff000000u|((uint32_t)rr<<16)|((uint32_t)gg<<8)|(uint32_t)bb;
+            }
             if (a == 255) { fb[y * FB_W + x] = c; continue; }
             int da = 255 - a;
             int dr = (int)((fb[y*FB_W+x] >> 16) & 255);
@@ -2190,9 +2198,9 @@ static void draw_alien_sprite(uint32_t *fb, const Status *st) {
     AlienFrame af = alien_frame_select(st);
     int l, r, t, b;
     alien_sprite_box(st, af, &l, &r, &t, &b);
-    int pct = st->tdepth < 256 ? 112 : st->tdepth < 512 ? 100 : st->tdepth < 1024 ? 86 : 72;
+    int pct = st->state == 4 ? 30 : st->tdepth < 256 ? 112 : st->tdepth < 512 ? 100 : st->tdepth < 1024 ? 86 : 72;
     draw_sprite_rect(fb, alien_dir_tex[af.idx], alien_dir_w[af.idx], alien_dir_h[af.idx],
-                     l, r, t, b, pct, af.flip);
+                     l, r, t, b, pct, af.flip, st->state == 3);
 }
 
 static int tracker_blip(const Status *st, int *bx, int *by) {
@@ -2287,7 +2295,7 @@ static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
                 list[n].flip = af.flip; n++;
             }
             for (int i = 1; i < n; i++) { int j=i; while (j>0 && list[j-1].depth < list[j].depth) { SpriteDraw z=list[j]; list[j]=list[j-1]; list[j-1]=z; j--; } }
-            for (int i = 0; i < n; i++) draw_sprite_rect(fb, list[i].src, list[i].sw, list[i].sh, list[i].l, list[i].r, list[i].t, list[i].b, list[i].pct, list[i].flip);
+            for (int i = 0; i < n; i++) draw_sprite_rect(fb, list[i].src, list[i].sw, list[i].sh, list[i].l, list[i].r, list[i].t, list[i].b, list[i].pct, list[i].flip, 0);
         } else draw_alien_sprite(fb, st);
     } else draw_alien_sprite(fb, st);
     int64_t sp1 = now_ns();
@@ -2899,20 +2907,30 @@ static int audio_e2e_test(void) {
     audio_start();
     if(!audio_ready){ printf("audio-e2e: FAILED (dummy device)\n"); SDL_Quit(); return 1; }
     int fails=0;
-    objects_mode=1;
+    objects_mode=1; combat_minimal=1;
     load_session(); build_blocks();
     int px,py,pa; Status st;
 
-    /* Same input mapping used by the interactive loop. */
+    /* An accepted Glon shot is the only source of rifle SFX. */
     reset(); memset(&sfx_events,0,sizeof sfx_events); memset(audio_voices,0,sizeof audio_voices);
-    HeldKeys h; memset(&h,0,sizeof h);
-    SDL_Event e; memset(&e,0,sizeof e);
-    e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_F; e.key.keysym.sym=SDLK_f;
-    held_keys_apply(&h,&e);
     if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
-    audio_sfx_update(&st,px,py,0,h.fire);
-    fails += expect_eq("e2e F requests rifle",voice_active_id(SFX_RIFLE),1);
+    audio_sfx_update(&st,px,py,0); /* establish ammo baseline */
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("e2e shot ammo",st.ammo,23);
+    audio_sfx_update(&st,px,py,0);
+    fails += expect_eq("e2e accepted shot requests rifle",voice_active_id(SFX_RIFLE),1);
     fails += expect_eq("e2e rifle has PCM",mix_peak_without_ambient()>0,1);
+
+    /* A rejected (empty) shot does not start rifle SFX. */
+    memset(audio_voices,0,sizeof audio_voices);
+    run_block(parse_source("[ doom/ammo: 0 ]","e2e no ammo"),"e2e no ammo");
+    if(get_status(&st)!=0) return 2;
+    audio_sfx_update(&st,px,py,0); /* establish empty baseline */
+    memset(audio_voices,0,sizeof audio_voices);
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    audio_sfx_update(&st,px,py,0);
+    fails += expect_eq("e2e empty shot ammo",st.ammo,0);
+    fails += expect_eq("e2e empty shot no rifle SFX",voice_active_id(SFX_RIFLE),0);
 
     /* Actual E action path. */
     reset(); memset(&sfx_events,0,sizeof sfx_events); memset(audio_voices,0,sizeof audio_voices);
@@ -2920,14 +2938,14 @@ static int audio_e2e_test(void) {
     run_block(activate_block,"e2e activate");
     if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
     fails += expect_eq("e2e E target",st.door_target,64);
-    audio_sfx_update(&st,px,py,0,0);
+    audio_sfx_update(&st,px,py,0);
     fails += expect_eq("e2e door open voice",voice_active_id(SFX_DOOR_OPEN),1);
     fails += expect_eq("e2e door open PCM",mix_peak_without_ambient()>0,1);
     memset(audio_voices,0,sizeof audio_voices);
     cell close=parse_source("[ doom/door-open: 64 doom/door-target: 0 doom/door-blocked: 0 ]","e2e close");
     run_block(close,"e2e close");
     if(get_status(&st)!=0) return 2;
-    audio_sfx_update(&st,px,py,0,0);
+    audio_sfx_update(&st,px,py,0);
     fails += expect_eq("e2e door close voice",voice_active_id(SFX_DOOR_CLOSE),1);
     fails += expect_eq("e2e door close PCM",mix_peak_without_ambient()>0,1);
 
@@ -2937,7 +2955,7 @@ static int audio_e2e_test(void) {
     tick(1); tick(1);
     if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
     fails += expect_eq("e2e wall collision flag",st.player_hit,1);
-    audio_sfx_update(&st,px,py,1,0);
+    audio_sfx_update(&st,px,py,1);
     fails += expect_eq("e2e wall voice",voice_active_id(SFX_WALL),1);
     fails += expect_eq("e2e wall PCM",mix_peak_without_ambient()>0,1);
 
@@ -2947,7 +2965,7 @@ static int audio_e2e_test(void) {
     tick(1);
     if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
     fails += expect_eq("e2e cargo collision flag",st.player_hit,1);
-    audio_sfx_update(&st,px,py,1,0);
+    audio_sfx_update(&st,px,py,1);
     fails += expect_eq("e2e cargo voice",voice_active_id(SFX_CARGO),1);
     fails += expect_eq("e2e cargo PCM",mix_peak_without_ambient()>0,1);
 
@@ -2982,6 +3000,110 @@ static int entrance_test(void) {
     fails += expect_eq("side entrance traversable",va,0);
     fails += expect_eq("side corridor traversable",vb,0);
     printf("entrance-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
+}
+
+static int combat_scene(int px,int py,int angle,int ax,int ay,int blocked,int health,int state,int detected) {
+    reset();
+    char src[512];
+    snprintf(src,sizeof src,
+             "[ doom/px: %d doom/py: %d doom/angle: %d doom/aim "
+             "doom/door-open: %d doom/door-target: %d doom/door-blocked: %d "
+             "doom/alien-x: %d doom/alien-y: %d doom/alien-health: %d "
+             "doom/alien-state: %d doom/alien-detected: %d ]",
+             px,py,angle,blocked?0:64,blocked?0:64,blocked,ax,ay,health,state,detected);
+    cell b=parse_source(src,"combat scene");
+    return run_block(b,"combat scene");
+}
+
+static int combat_test(void) {
+    int fails=0; Status st;
+    combat_minimal=1;
+    load_session(); build_blocks();
+    /* Direct hit, damage, hit reaction, and one-tick expiry into living state. */
+    if(combat_scene(900,320,0,1120,320,0,100,1,1)!=0) return 2;
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat shot ammo",st.ammo,23);
+    fails += expect_eq("combat shot damage",st.health,75);
+    fails += expect_eq("combat hit reaction state",st.state,3);
+    if(run_ticks(0,1)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat hit reaction holds",st.state,3);
+    if(run_ticks(0,1)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat hit reaction expires alive",st.state,1);
+    fails += expect_eq("combat hit reaction expired health",st.health,75);
+
+    /* Aim miss: target is 80 units to the side. */
+    if(combat_scene(900,320,0,1120,400,0,100,1,1)!=0) return 2;
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat aim miss health",st.health,100);
+    fails += expect_eq("combat aim miss ammo",st.ammo,23);
+
+    /* Range miss: 800 units away, outside the 640-unit rifle range. */
+    if(combat_scene(320,320,0,1120,320,0,100,0,0)!=0) return 2;
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat range miss health",st.health,100);
+    fails += expect_eq("combat range miss ammo",st.ammo,23);
+
+    /* Closed blast door blocks the shot despite distance and aim. */
+    if(combat_scene(700,320,0,1120,320,1,100,1,1)!=0) return 2;
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat door obstruction health",st.health,100);
+    fails += expect_eq("combat door obstruction ammo",st.ammo,23);
+
+    /* Four accepted hits kill; death is terminal and stops attack/movement. */
+    if(combat_scene(900,320,0,1120,320,0,100,1,1)!=0) return 2;
+    for(int hit=0;hit<4;hit++) if(tick(FIRE_MASK)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails += expect_eq("combat kill ammo",st.ammo,20);
+    fails += expect_eq("combat kill health",st.health,0);
+    fails += expect_eq("combat death state",st.state,4);
+    if(run_ticks(0,120)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat death terminal after ticks",st.state,4);
+    fails += expect_eq("combat death terminal health",st.health,0);
+    if(combat_scene(950,320,0,1120,320,0,0,4,0)!=0) return 2; /* dead body near player */
+    if(run_ticks(0,120)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat dead does not attack",st.state,4);
+
+    /* No ammo: no accepted shot and no damage. */
+    if(combat_scene(900,320,0,1120,320,0,100,1,1)!=0) return 2;
+    run_block(parse_source("[ doom/ammo: 0 ]","combat no ammo"),"combat no ammo");
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat empty ammo",st.ammo,0);
+    fails += expect_eq("combat empty no damage",st.health,100);
+
+    /* Reset restores the alien, ammo and combat state. */
+    if(reset()!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat reset health",st.health,100);
+    fails += expect_eq("combat reset state",st.state,0);
+    fails += expect_eq("combat reset ammo",st.ammo,24);
+
+    /* Deterministic replay of the one-shot state machine. */
+    Status a,b;
+    if(combat_scene(900,320,0,1120,320,0,100,1,1)!=0 || tick(FIRE_MASK)!=0 ||
+       get_status(&a)!=0) return 2;
+    if(combat_scene(900,320,0,1120,320,0,100,1,1)!=0 || tick(FIRE_MASK)!=0 ||
+       get_status(&b)!=0) return 2;
+    fails += expect_eq("combat deterministic health",a.health,b.health);
+    fails += expect_eq("combat deterministic state",a.state,b.state);
+    fails += expect_eq("combat deterministic ammo",a.ammo,b.ammo);
+    fails += expect_eq("combat deterministic reaction",a.health==75 && a.state==3,1);
+
+    /* Visible living/hit/dead presentation uses the existing Alien sprite. */
+    Status vis; memset(&vis,0,sizeof vis);
+    vis.visible=1; vis.left=110; vis.right=210; vis.top=35; vis.bot=155; vis.tdepth=300;
+    uint32_t *fb=malloc((size_t)FB_W*FB_H*sizeof *fb);
+    if(!fb) return 2;
+    for(int i=0;i<FB_W*FB_H;i++) fb[i]=0xff112233u;
+    vis.state=1; draw_alien_sprite(fb,&vis); uint32_t live=fnv1a(fb,(size_t)FB_W*FB_H*sizeof *fb);
+    for(int i=0;i<FB_W*FB_H;i++) fb[i]=0xff112233u;
+    vis.state=3; draw_alien_sprite(fb,&vis); uint32_t hit=fnv1a(fb,(size_t)FB_W*FB_H*sizeof *fb);
+    for(int i=0;i<FB_W*FB_H;i++) fb[i]=0xff112233u;
+    vis.state=4; draw_alien_sprite(fb,&vis); uint32_t dead=fnv1a(fb,(size_t)FB_W*FB_H*sizeof *fb);
+    fails += expect_eq("combat hit reaction visible",live!=hit,1);
+    fails += expect_eq("combat death state visible",hit!=dead,1);
+    free(fb);
+
+    printf("combat-test: %s\n",fails?"FAILED":"PASSED");
     return fails?1:0;
 }
 
@@ -3033,6 +3155,9 @@ static int interactive(void) {
                 if ((sc == SDL_SCANCODE_ESCAPE || sym == SDLK_ESCAPE) && down) running = 0;
                 else if ((sc == SDL_SCANCODE_E || sym == SDLK_e) && down && !e.key.repeat)
                     run_block(activate_block, "activate");
+                else if ((sc == SDL_SCANCODE_F || sym == SDLK_f) && down && !e.key.repeat) {
+                    if(tick(FIRE_MASK)!=0){ running=0; break; }
+                }
                 else if ((sc == SDL_SCANCODE_R || sym == SDLK_r) && down && !e.key.repeat) {
                     simple_mode = !simple_mode;
                     live_cache.valid = 0;
@@ -3048,10 +3173,8 @@ static int interactive(void) {
             }
             else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 if(getenv("GLON_AUDIO_TRACE")) fprintf(stderr,"audio trace: mouse fire down\n");
-                held.fire = 1;
+                if(tick(FIRE_MASK)!=0){ running=0; break; }
             }
-            else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT)
-                held.fire = 0;
         }
         const Uint8 *k = SDL_GetKeyboardState(NULL);
         int mask = held_keys_mask(&held, k);
@@ -3094,7 +3217,7 @@ static int interactive(void) {
         if (get_status(&st) != 0) break;
         int apx,apy,apa;
         if (get_state(&apx,&apy,&apa) != 0) break;
-        audio_sfx_update(&st,apx,apy,mask,held.fire);
+        audio_sfx_update(&st,apx,apy,mask);
         int64_t st1 = now_ns();
         proj_ms += (double)proj_ns / 1e6;
         texrow_ms += (double)(st1 - st0 - proj_ns) / 1e6;
@@ -3174,6 +3297,7 @@ static int alien_demo(int state) {
 
 static int objects_test(void) {
     int fails = 0;
+    combat_minimal = 1;
     load_session();
     build_blocks();
     reset();
@@ -3554,7 +3678,8 @@ static void gl_plane_tint(double z, GLuint tex, float tint) {
     glEnd();
 }
 static void gl_billboard(GLuint tex, double x,double y,double wworld,double hworld,
-                         double pivot_world, double below_ground,int flip) {
+                         double pivot_world, double below_ground,int flip,
+                         float tint_r,float tint_g,float tint_b) {
     /* camera-facing axes in world/game coordinates */
     double ca=cos(st_current_angle*2.0*M_PI/256.0), sa=sin(st_current_angle*2.0*M_PI/256.0);
     double rx=sa, ry=-ca; /* right */
@@ -3563,7 +3688,7 @@ static void gl_billboard(GLuint tex, double x,double y,double wworld,double hwor
     double zb = -below_ground*64.0;
     double zt = (hworld-below_ground)*64.0;
     float u0 = flip ? 1.0f : 0.0f, u1 = flip ? 0.0f : 1.0f;
-    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, tex); glColor3f(1,1,1);
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, tex); glColor3f(tint_r,tint_g,tint_b);
     glBegin(GL_QUADS);
     glTexCoord2f(u0,0); gl_gv(cx - rx*wworld*32, cy - ry*wworld*32, zb);
     glTexCoord2f(u1,0); gl_gv(cx + rx*wworld*32, cy + ry*wworld*32, zb);
@@ -5181,8 +5306,11 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
         double pivot_world = (alien_dir_pivot_x[idx] - alien_dir_w[idx] * 0.5) * px_scale;
         double below_ground = (alien_dir_h[idx] - alien_dir_anchor_y[idx]) * px_scale;
         glDepthMask(GL_TRUE);
+        float tr=1.0f,tg=1.0f,tb=1.0f;
+        if(st->state==3){ tg=0.35f; tb=0.35f; }
+        else if(st->state==4){ tr=tg=tb=0.35f; }
         gl_billboard(gl_tex[GT_ALIEN0+idx], st->ax, st->ay, wworld, hworld,
-                     pivot_world, below_ground, af.flip);
+                     pivot_world, below_ground, af.flip, tr,tg,tb);
     }
     glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
     gl_draw_weapon(st);
@@ -5292,15 +5420,16 @@ static int interactive_gl(int w, int h) {
                 if((sc==SDL_SCANCODE_ESCAPE||sym==SDLK_ESCAPE) && down) running=0;
                 else if((sc==SDL_SCANCODE_E||sym==SDLK_e) && down && !e.key.repeat) run_block(activate_block,"activate");
                 else if((sc==SDL_SCANCODE_R||sym==SDLK_r) && down && !e.key.repeat) printf("GL renderer: R debug toggle not used\n");
-                else if((sc==SDL_SCANCODE_F||sym==SDLK_f) && down && !e.key.repeat && getenv("GLON_AUDIO_TRACE")) fprintf(stderr,"audio trace: F fire down\n");
+                else if((sc==SDL_SCANCODE_F||sym==SDLK_f) && down && !e.key.repeat) {
+                    if(getenv("GLON_AUDIO_TRACE")) fprintf(stderr,"audio trace: F fire down\n");
+                    if(tick(FIRE_MASK)!=0){ running=0; break; }
+                }
                 else if((sc==SDL_SCANCODE_M||sym==SDLK_m) && down && !e.key.repeat) audio_toggle_mute();
                 else if((sc==SDL_SCANCODE_LEFTBRACKET||sym==SDLK_LEFTBRACKET) && down && !e.key.repeat) audio_set_volume(SDL_AtomicGet(&audio_volume)-5);
                 else if((sc==SDL_SCANCODE_RIGHTBRACKET||sym==SDLK_RIGHTBRACKET) && down && !e.key.repeat) audio_set_volume(SDL_AtomicGet(&audio_volume)+5);
             }
             else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT)
-                held.fire = 1;
-            else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT)
-                held.fire = 0;
+                if(tick(FIRE_MASK)!=0){ running=0; break; }
         }
         gl_update_viewport();
         const Uint8 *k=SDL_GetKeyboardState(NULL);
@@ -5313,7 +5442,7 @@ static int interactive_gl(int w, int h) {
         if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) break;
         int64_t pt_scene0=now_ns();
         st_current_angle=pa;
-        audio_sfx_update(&st,px,py,mask,held.fire);
+        audio_sfx_update(&st,px,py,mask);
         int nobj=0;
         if(objects_mode && current_objs_valid) { memcpy(objs,current_objs,sizeof objs); nobj=6; }
         int64_t pt0=now_ns(); gl_scene(&st,objs,nobj); int64_t pt1=now_ns();
@@ -5903,6 +6032,7 @@ int main(int argc, char **argv) {
         return gl_room_shots(argv[2],w,h,plain);
     }
     if (argc > 1 && strcmp(argv[1], "--entrance-test") == 0) return entrance_test();
+    if (argc > 1 && strcmp(argv[1], "--combat-test") == 0) return combat_test();
     if (argc > 2 && strcmp(argv[1], "--gl-entrance-shots") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
         return gl_entrance_shots(argv[2],w,h);
