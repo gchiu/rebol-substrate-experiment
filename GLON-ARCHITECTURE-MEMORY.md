@@ -375,6 +375,18 @@ S1 is unchanged. Full report:
 `experiments/glon-doom/G6D-WINDOWS-PORT-REPORT.md`; evidence under
 `experiments/glon-doom/evidence/g6d-win/`.
 
+**[MEASURED] AvP G6d A-3 side-entrance visual regression (2026-11-15).**
+The side-corridor opening at `x=1152..1280, y=384` was crossed by decorative
+south-wall panel geometry drawn at `y≈374..383` for `x=780..1260`. The panels
+were non-collidable, so the opening was traversable while visually obstructed.
+They were introduced by G5p (`a3886fc`); G5o (`98e96ad`) had no such panel.
+Fix `7121aab` clips only south-wall decorations at the opening, leaves
+north-wall geometry and collision untouched, and adds `--entrance-test`
+(panel-span plus traversal checks) to `make test`. Linux full tests and frozen
+S1 pass; the Windows distribution was rebuilt and native Windows
+self/entrance/WASAPI tests pass. Evidence:
+`experiments/glon-doom/evidence/g6d-entrance/`.
+
 ## 7. Vocabularies and experiments (status)
 
 | Item | Status | Where |

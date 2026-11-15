@@ -723,3 +723,12 @@ Windows uses SDL2's native WASAPI backend; Linux/PulseAudio is unchanged.
 `tools/wasapi_latency.c` reports the WASAPI device period/buffer and
 `--audio-latency-test` records request-to-callback timing. See
 `G6D-WINDOWS-PORT-REPORT.md` and `evidence/g6d-win/`.
+
+### A-3 side-entrance regression
+
+The side corridor at the A-3 north turn remains open and visibly unobstructed.
+South-wall decorative panels stop at the opening (`x=1152`) rather than
+floating across it. `--entrance-test` verifies the clipped panel spans and
+traversal through `(1200,384)` and `(1200,500)`; it runs as part of
+`make test`. Before/after captures are under
+`experiments/glon-doom/evidence/g6d-entrance/`.

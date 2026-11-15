@@ -1083,3 +1083,26 @@ were 0.66-9.29 ms. This removes the WSLg RDPSink path for the experiment;
 physical Windows input/acoustic playtest is still unverified. Full report:
 `experiments/glon-doom/G6D-WINDOWS-PORT-REPORT.md`; evidence under
 `experiments/glon-doom/evidence/g6d-win/`.
+
+## 10ac. AvP G6d A-3 side-corridor entrance fix (2026-11-15)
+
+The A-3 side entrance at the corridor's north turn (`x=1152..1280`,
+`y=384`) was visually blocked by a floating south-wall decoration panel.
+`gl_corridor_static()` drew its south-wall backing boxes, service quads and
+`GT_ART_PANEL` vent quads from `x=780..1260` at `y≈374..383`, without stopping
+at the side opening. Panels at `x=1100` and `x=1180` therefore crossed the
+opening while the Glon wall/collision remained open; the player walked through
+non-collidable decoration. The panel was introduced by G5p (`a3886fc`);
+G5o greybox (`98e96ad`) had no such panel. Later material work changed its
+appearance, not its extent.
+
+Fix `7121aab` clips/skips only the south-wall decorations (backing, trims,
+ribs, service quad, warm strip, pipe and accent boxes) at the side opening;
+north-wall panels and all other geometry are unchanged. A new
+`--entrance-test` checks the south panel x-spans stay at/left of `x=1152` and
+that `(1200,384)` and `(1200,500)` are traversable; it is part of `make test`.
+Linux full tests pass, frozen S1 unchanged. The Windows distribution was
+rebuilt; native Windows self-test, entrance-test, WASAPI audio-device and
+sfx-device tests pass. Before/after evidence:
+`experiments/glon-doom/evidence/g6d-entrance/`; report:
+`experiments/glon-doom/G6D-A3-ENTRANCE-FIX-REPORT.md`.

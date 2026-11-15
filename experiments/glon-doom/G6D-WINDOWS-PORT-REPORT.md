@@ -6,7 +6,7 @@ physical Windows playtest remains for the user.
 - Baseline: G6c `82448b8` (`glon-avp-g6c`)
 - Branch/worktree: `glon-avp-g6d-win` at
   `/mnt/d/repos/glon-worktrees/glon-avp-g6d-win`
-- Implementation commit: `c935fe6`
+- Initial port commit: `c935fe6`; A-3 entrance fix: `7121aab`
 - Windows output: `dist/windows/doom.exe`
 - Linux source remains buildable and tested
 
@@ -58,8 +58,10 @@ The final PE is:
 
 ```
 dist/windows/doom.exe: PE32+ executable (console) x86-64, for MS Windows
-size: 6,546,432 bytes
-sha256: 51e3a44444a8a71bdfa2624397e9096655a2d60e7e8a6d3374c1411e49f21ef2
+size: 6,550,528 bytes
+sha256: 79a3ded7f9e9a3ca3f1abc19ccd1a47653c56bd9c66cb1eacb078f2e564a3799
+
+This is the rebuilt executable after the A-3 entrance geometry fix.
 ```
 
 ## 3. Windows implementation
@@ -105,7 +107,7 @@ Distribution path in this worktree:
 D:\repos\glon-worktrees\glon-avp-g6d-win\dist\windows
 ```
 
-It contains 22 files, total **22,075,065 bytes**. Required non-system DLL:
+It contains 22 files, total **22,079,161 bytes**. Required non-system DLL:
 `SDL2.dll` (shipped). System dependencies: `OPENGL32.dll` and Windows UCRT
 `api-ms-win-crt-*` DLLs. No MinGW runtime DLL is imported.
 
@@ -202,7 +204,7 @@ measurements remain in the G6c evidence.
   select a lower-latency Windows endpoint or add WASAPI exclusive mode.
 - No portal, rifle, room, HUD or audio asset was redesigned. The rifle remains
   a presentation-only preview.
-- The Windows binary is 6,546,432 bytes; the distribution is 22,075,065 bytes.
+- The Windows binary is 6,550,528 bytes; the distribution is 22,079,161 bytes.
   The larger size includes SDL2.dll and duplicated runtime assets.
 
 ## 8. Recommended next step
@@ -237,9 +239,12 @@ evidence/g6d-win/
   win-size.txt / win-sha256.txt / distribution-size.txt
   pe.txt / dlls.txt / windows-build.log
   metadata.txt
+
+A-3 entrance fix evidence:
+  evidence/g6d-entrance/
 ```
 
-Implementation commit: `c935fe6`. This report and the project-memory updates
-are committed separately.
+Initial port commit: `c935fe6`; A-3 entrance fix: `7121aab`. This report and
+the project-memory updates are committed separately.
 
 No push, merge, tag or deploy.

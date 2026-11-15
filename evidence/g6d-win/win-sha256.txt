@@ -1,1 +1,1 @@
-51e3a44444a8a71bdfa2624397e9096655a2d60e7e8a6d3374c1411e49f21ef2  dist/windows/doom.exe
+79a3ded7f9e9a3ca3f1abc19ccd1a47653c56bd9c66cb1eacb078f2e564a3799  dist/windows/doom.exe

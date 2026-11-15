@@ -1,12 +1,13 @@
 G6d native Windows x86-64 portability experiment
 date: 2026-11-15
 baseline: glon-avp-g6c 82448b8
-implementation: c935fe6
+initial implementation: c935fe6
+A-3 entrance fix: 7121aab
 toolchain: Zig 0.13.0 (standalone, /home/graham/.cache/glon-g6d)
 SDL: SDL2 2.30.9 MinGW x86_64 development package (runtime SDL2.dll)
 Windows target: x86_64-windows-gnu, PE32+ console
-Windows exe: 6546432 bytes
-distribution: 22075065 bytes (exe + SDL2.dll + assets + docs)
+Windows exe after A-3fix: 6550528 bytes
+distribution after A-3fix: 22079161 bytes (exe + SDL2.dll + assets + docs)
 Linux exe: 6203168 bytes
 audio backend: SDL2 WASAPI on Windows; SDL2 PulseAudio on Linux
 WASAPI probe: mix=48000Hz, default period 10.000ms, min 3.000ms, buffer 1056 frames, stream latency 0.000ms
