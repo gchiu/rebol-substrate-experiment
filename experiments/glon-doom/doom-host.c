@@ -3730,6 +3730,14 @@ static int combat_test(void) {
     if(tick_jump(0,1)!=0 || get_status(&st)!=0) return 2;
     fails += expect_eq("combat Up jumps",st.jump_z>0,1);
     fails += expect_eq("combat Up does not fire",st.ammo,24);
+    /* Movement + jump + fire remain compatible. */
+    if(combat_scene(900,320,0,1120,320,0,100,1,1)!=0) return 2;
+    int bx0,by0,ba0; if(get_state(&bx0,&by0,&ba0)!=0) return 2;
+    if(tick_jump(1,1)!=0 || tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    int bx1,by1,ba1; if(get_state(&bx1,&by1,&ba1)!=0) return 2;
+    fails += expect_eq("combat simultaneous move+jump+fire ammo",st.ammo,23);
+    fails += expect_eq("combat simultaneous jump is airborne",st.jump_z>0,1);
+    fails += expect_eq("combat simultaneous move displaced",bx1!=bx0||by1!=by0,1);
     set_look_pitch(60); reset();
     fails += expect_eq("combat restart pitch reset",look_pitch,0);
 
