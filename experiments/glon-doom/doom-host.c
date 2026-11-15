@@ -2240,6 +2240,38 @@ static int tracker_blip(const Status *st, int *bx, int *by) {
     *bx = x; *by = y; return 1;
 }
 
+typedef struct { int side, depth, kind; } TrackerContact;
+static int tracker_contacts(const Status *st,int px,int py,int pa,TrackerContact out[4]) {
+    int n=0;
+    double a=pa*2.0*M_PI/256.0;
+    double dirx=cos(a)*64.0, diry=sin(a)*64.0;
+    double pxv=diry*42.0/64.0, pyv=-dirx*42.0/64.0;
+    if(st->state<4){
+        double adx=st->ax-px, ady=st->ay-py;
+        if(adx*adx+ady*ady <= 490000.0){
+            out[n].side=(int)llround((adx*pxv+ady*pyv)/64.0);
+            out[n].depth=(int)llround((adx*dirx+ady*diry)/64.0);
+            out[n].kind=0; n++;
+        }
+    }
+    for(int i=0;i<3;i++){
+        if(st->s_h[i]<=0 || st->s_state[i]>=4) continue;
+        double ddx=st->s_x[i]-px, ddy=st->s_y[i]-py;
+        if(ddx*ddx+ddy*ddy > 490000.0) continue;
+        double depth=(ddx*dirx+ddy*diry)/64.0;
+        double side=(ddx*pxv+ddy*pyv)/64.0;
+        out[n].side=(int)llround(side); out[n].depth=(int)llround(depth); out[n].kind=1+i; n++;
+    }
+    return n;
+}
+static void tracker_contact_xy(const TrackerContact *c,int *bx,int *by) {
+    const int cx=42,cy=168,rad=22;
+    int x=cx+c->side*18/700;
+    int y=cy-c->depth*18/700;
+    if(x<cx-rad+3)x=cx-rad+3; if(x>cx+rad-3)x=cx+rad-3;
+    if(y<cy-rad+3)y=cy-rad+3; if(y>cy+rad-3)y=cy+rad-3;
+    *bx=x; *by=y;
+}
 static void draw_tracker(uint32_t *fb, const Status *st) {
     const int cx = 42, cy = 168, rad = 22;
     for (int y = 142; y < 196; y++)
@@ -2256,11 +2288,18 @@ static void draw_tracker(uint32_t *fb, const Status *st) {
     for (int y = -rad + 3; y <= rad - 3; y++) plot(fb, cx, cy + y, 0xff27322bu);
     for (int x = -rad + 3; x <= rad - 3; x++) plot(fb, cx + x, cy, 0xff27322bu);
     plot(fb, cx, cy - rad + 2, 0xffb8e0a0u);
-    int bx, by;
-    if (tracker_blip(st, &bx, &by)) {
-        uint32_t c = st->state == 2 ? 0xffe05050u : 0xff6fe08au;
-        for (int y = -2; y <= 2; y++)
-            for (int x = -2; x <= 2; x++) plot(fb, bx + x, by + y, c);
+    TrackerContact contacts[4]; int nc=tracker_contacts(st, last_px, last_py, st_current_angle, contacts);
+    if(nc){
+        for(int k=0;k<nc;k++){
+            int bx,by; tracker_contact_xy(&contacts[k],&bx,&by);
+            if(contacts[k].kind==0){
+                uint32_t c=st->state==2?0xffe05050u:0xff6fe08au;
+                for(int y=-2;y<=2;y++) for(int x=-2;x<=2;x++) plot(fb,bx+x,by+y,c);
+            } else {
+                uint32_t c=st->s_state[contacts[k].kind-1]==2?0xffe0b050u:0xff73c8e8u;
+                for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++) plot(fb,bx+x,by+y,c);
+            }
+        }
     } else {
         for (int y = -1; y <= 1; y++)
             for (int x = -1; x <= 1; x++) plot(fb, cx + x, cy + y, 0xff4d5c52u);
@@ -3449,6 +3488,12 @@ static int multi_alien_test(void) {
     fails += expect_eq("multi s1 survives s0 death",st.s_h[1],50);
     fails += expect_eq("multi s2 survives s0 death",st.s_h[2],50);
     fails += expect_eq("multi adult survives scuttler kill",st.health,100);
+    /* Aim tolerance: a 20-world lateral offset still hits the enlarged scuttler. */
+    if(multi_scene(700,320,0,0,0,5,0,1000,340,1,100,1200,900,5,0,1200,900,5,0)!=0) return 2;
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("multi aim tolerance scuttler hit",st.s_h[0],25);
+    fails += expect_eq("multi aim tolerance adult untouched",st.health,100);
+
     /* Dead scuttler does not stop the others' independent AI. */
     if(multi_scene(900,320,0,1200,320,0,0,
                    1000,320,5,0,1250,600,1,100,1250,900,1,100)!=0) return 2;
@@ -3519,6 +3564,39 @@ static int multi_alien_test(void) {
     dirs.s_x[0]=0; dirs.s_y[0]=100; fails+=expect_eq("multi direction side",scuttler_view_dir(&dirs,0,&flip),2);
     dirs.s_x[0]=-100; dirs.s_y[0]=0; fails+=expect_eq("multi direction rear",scuttler_view_dir(&dirs,0,&flip),3);
     printf("multi-alien-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
+}
+static int tracker_multi_test(void) {
+    int fails=0; Status st; TrackerContact c[4];
+    combat_minimal=1; load_session(); build_blocks();
+    if(multi_scene(700,320,0,1120,320,0,0,
+                   900,320,1,100,800,280,1,100,1000,360,1,100)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    int n=tracker_contacts(&st,700,320,0,c);
+    fails+=expect_eq("tracker multi contacts",n,4);
+    int kinds=0; for(int i=0;i<n;i++) kinds|=1<<c[i].kind;
+    fails+=expect_eq("tracker multi identifies adult+3",kinds,0x0f);
+    int oldside[4],olddepth[4]; for(int i=0;i<n;i++){oldside[i]=c[i].side;olddepth[i]=c[i].depth;}
+    for(int i=0;i<12;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    n=tracker_contacts(&st,700,320,0,c);
+    fails+=expect_eq("tracker movement keeps four contacts",n,4);
+    int moved=0; for(int i=0;i<n&&i<4;i++) if(c[i].side!=oldside[i]||c[i].depth!=olddepth[i]) moved=1;
+    fails+=expect_eq("tracker movement updates contact",moved,1);
+    cell b=parse_source("[ doom/angle: 64 ]","tracker rotation");
+    if(run_block(b,"tracker rotation")!=0 || get_status(&st)!=0) return 2;
+    n=tracker_contacts(&st,700,320,64,c);
+    fails+=expect_eq("tracker rotation keeps four",n,4);
+    int rotated=0; for(int i=0;i<n&&i<4;i++) if(c[i].side!=oldside[i]||c[i].depth!=olddepth[i]) rotated=1;
+    fails+=expect_eq("tracker rotation updates contact",rotated,1);
+    b=parse_source("[ doom/s0-state: 5 doom/s0-h: 0 ]","tracker death");
+    if(run_block(b,"tracker death")!=0 || get_status(&st)!=0) return 2;
+    n=tracker_contacts(&st,700,320,64,c);
+    fails+=expect_eq("tracker death removes contact",n,3);
+    if(reset()!=0 || get_status(&st)!=0) return 2;
+    n=tracker_contacts(&st,700,320,0,c);
+    fails+=expect_eq("tracker restart restores four",n,4);
+    printf("tracker-multi-test: %s\n",fails?"FAILED":"PASSED");
     return fails?1:0;
 }
 static int combat_test(void) {
@@ -4563,12 +4641,22 @@ static void gl_draw_tracker(const Status *st) {
     glColor4f(0.72f,0.88f,0.63f,1);
     glBegin(GL_QUADS); glVertex2f(41*s,146*s); glVertex2f(43*s,146*s);
     glVertex2f(43*s,148*s); glVertex2f(41*s,148*s); glEnd();
-    int bx,by;
-    if (tracker_blip(st,&bx,&by)) {
-        if (st->state==2) glColor4f(0.88f,0.31f,0.31f,1);
-        else glColor4f(0.44f,0.88f,0.54f,1);
-        glBegin(GL_QUADS); glVertex2f((bx-2)*s,(by-2)*s); glVertex2f((bx+3)*s,(by-2)*s);
-        glVertex2f((bx+3)*s,(by+3)*s); glVertex2f((bx-2)*s,(by+3)*s); glEnd();
+    TrackerContact contacts[4]; int nc=tracker_contacts(st,last_px,last_py,st_current_angle,contacts);
+    if(nc){
+        for(int k=0;k<nc;k++){
+            int bx,by; tracker_contact_xy(&contacts[k],&bx,&by);
+            if(contacts[k].kind==0){
+                if(st->state==2) glColor4f(0.88f,0.31f,0.31f,1);
+                else glColor4f(0.44f,0.88f,0.54f,1);
+                glBegin(GL_QUADS); glVertex2f((bx-2)*s,(by-2)*s); glVertex2f((bx+3)*s,(by-2)*s);
+                glVertex2f((bx+3)*s,(by+3)*s); glVertex2f((bx-2)*s,(by+3)*s); glEnd();
+            } else {
+                if(st->s_state[contacts[k].kind-1]==2) glColor4f(0.88f,0.69f,0.31f,1);
+                else glColor4f(0.45f,0.78f,0.91f,1);
+                glBegin(GL_QUADS); glVertex2f((bx-1)*s,(by-1)*s); glVertex2f((bx+2)*s,(by-1)*s);
+                glVertex2f((bx+2)*s,(by+2)*s); glVertex2f((bx-1)*s,(by+2)*s); glEnd();
+            }
+        }
     } else {
         glColor4f(0.30f,0.36f,0.32f,1);
         glBegin(GL_QUADS); glVertex2f(41*s,167*s); glVertex2f(44*s,167*s);
@@ -6123,44 +6211,27 @@ static int scuttler_frame(const Status *st,int i,int *flip) {
 static void gl_draw_scuttlers(const Status *st) {
     g6h1_scuttler_draw_calls++;
     if (g6h1_hide_scuttlers) return;
-    /* Scuttlers are tiny and were not surviving the world-billboard alpha/depth
-     * path on the AMD GL driver. Use the same perspective values as the world
-     * sprites, but rasterise the tiny directional frames in a screen-space
-     * overlay after the adult. */
-    double a=st_current_angle*2.0*M_PI/256.0;
-    double fx=cos(a), fy=sin(a), rx=sin(a), ry=-cos(a);
-    double scale=gl_h/200.0;
-    glDisable(GL_DEPTH_TEST); glEnable(GL_TEXTURE_2D); glEnable(GL_BLEND);
+    glEnable(GL_TEXTURE_2D); glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-    glDisable(GL_ALPHA_TEST);
-    glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0,gl_w,gl_h,0,-1,1);
-    glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+    glEnable(GL_ALPHA_TEST); glAlphaFunc(GL_GREATER,0.25f);
+    glDepthMask(GL_TRUE);
+    double ca=cos(st_current_angle*2.0*M_PI/256.0), sa=sin(st_current_angle*2.0*M_PI/256.0);
+    double rx=sa, ry=-ca;
     for(int i=0;i<3;i++){
         if(!st->s_vis[i]) continue;
         int flip=0, frame=scuttler_frame(st,i,&flip);
-        double dx=st->s_x[i]-last_px, dy=st->s_y[i]-last_py;
-        double depth=dx*fx+dy*fy, side=dx*rx+dy*ry;
-        if(depth<=1.0) continue;
-        double h=(20.0)*246.0/depth*scale;
-        double w=h*2.0;
-        double cx=gl_w*0.5+(side*gl_w*0.5)/depth;
-        double bottom=gl_h*(100.0/200.0)+(64.0*246.0/depth)*scale;
-        double x0=cx-w*0.5,x1=cx+w*0.5,y0=bottom-h,y1=bottom;
-        if(g6h1_marker){
-            glDisable(GL_TEXTURE_2D); glColor4f(1,0,1,1);
-            glBegin(GL_QUADS); glVertex2f(x0,y0); glVertex2f(x1,y0); glVertex2f(x1,y1); glVertex2f(x0,y1); glEnd();
-            glEnable(GL_TEXTURE_2D);
-        }
+        double hw=30.0;                 /* 60 world wide, 30 tall, 2:1 */
+        double x0=st->s_x[i]-rx*hw, x1=st->s_x[i]+rx*hw;
+        double y0=st->s_y[i]-ry*hw, y1=st->s_y[i]+ry*hw;
         glBindTexture(GL_TEXTURE_2D,gl_tex[GT_SCUTTLER0+frame]);
-        glColor4f(1,1,1,st->s_state[i]==5?0.65f:1.0f);
+        glColor4f(1,1,1,1);
         glBegin(GL_QUADS);
-        glTexCoord2f(flip?1:0,1); glVertex2f(x0,y0);
-        glTexCoord2f(flip?0:1,1); glVertex2f(x1,y0);
-        glTexCoord2f(flip?0:1,0); glVertex2f(x1,y1);
-        glTexCoord2f(flip?1:0,0); glVertex2f(x0,y1);
+        glTexCoord2f(flip?1:0,0); gl_gv(x0,y0,0);
+        glTexCoord2f(flip?0:1,0); gl_gv(x1,y1,0);
+        glTexCoord2f(flip?0:1,1); gl_gv(x1,y1,30);
+        glTexCoord2f(flip?1:0,1); gl_gv(x0,y0,30);
         glEnd();
     }
-    glEnable(GL_ALPHA_TEST); glDisable(GL_BLEND); glEnable(GL_DEPTH_TEST);
 }
 static void gl_scene(const Status *st, const Obj *objs, int nobj) {
     gl_energy_time=(double)sim_tick/(double)TICK_HZ;
@@ -6178,6 +6249,7 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
         glDepthMask(GL_TRUE);
         gl_prop_3d(&objs[i]);
     }
+    gl_draw_scuttlers(st);
     if (st->visible) {
         if(st->state==5){
             gl_corpse_planes(st,1.0f,22.0f);
@@ -6214,7 +6286,6 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
     }
     glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
     gl_draw_weapon(st);
-    gl_draw_scuttlers(st);
     gl_draw_tracker(st);
     if(getenv("GLON_FINISH")){ int64_t _pf=now_ns(); glFinish(); gl_prof_finish_ms=(double)(now_ns()-_pf)/1e6; } else gl_prof_finish_ms=0;
 }
@@ -6584,6 +6655,87 @@ static void g6h1_log_scuttlers(const char *tag,const Status *st,int px,int py,in
 }
 static int g6h1_count_diff(const uint32_t *a,const uint32_t *b,int n) {
     int c=0; for(int i=0;i<n;i++) if(a[i]!=b[i]) c++; return c;
+}
+static int g6h2_capture_diff(const char *dir,const char *name,int w,int h,uint32_t **outfb) {
+    int px,py,pa; Status st;
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return -1;
+    st_current_angle=pa; gl_scene(&st,NULL,0);
+    char path[4096]; snprintf(path,sizeof path,"%s/%s.ppm",dir,name); gl_save_ppm(path,w,h);
+    uint32_t *on=malloc((size_t)w*h*sizeof *on);
+    uint32_t *off=malloc((size_t)w*h*sizeof *off);
+    if(!on||!off){free(on);free(off);return -1;}
+    glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,on);
+    g6h1_hide_scuttlers=1; gl_scene(&st,NULL,0);
+    glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,off);
+    g6h1_hide_scuttlers=0;
+    int d=g6h1_count_diff(on,off,w*h);
+    free(off);
+    if(outfb) *outfb=on; else free(on);
+    printf("G6H2 %s diff=%d\n",name,d);
+    return d;
+}
+static int g6h2_gl_test(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2;
+    gl_active=1; load_session(); build_blocks();
+    int fails=0;
+    /* 1. Unobstructed on floor. */
+    if(multi_scene(500,320,0,0,0,5,0,800,320,0,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    int unobs=g6h2_capture_diff(dir,"01-world-unobstructed",w,h,NULL);
+    fails += expect_eq("G6H2 unobstructed visible",unobs>=200,1);
+    /* 2. Partly behind the east wall/door edge. */
+    if(multi_scene(700,320,0,0,0,5,0,800,380,0,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    int partial=g6h2_capture_diff(dir,"02-partly-wall",w,h,NULL);
+    fails += expect_eq("G6H2 partly wall nonempty",partial>0,1);
+    fails += expect_eq("G6H2 partly wall reduced",partial<unobs,1);
+    /* 3. Fully behind a closed door (visibility forced for depth test). */
+    if(multi_scene(700,320,0,0,0,5,1,900,320,0,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    int closed=g6h2_capture_diff(dir,"03-closed-door",w,h,NULL);
+    fails += expect_eq("G6H2 closed door occludes",closed,0);
+    /* 4. Near the weapon, but world-space and behind its foreground pass. */
+    if(multi_scene(320,320,0,0,0,5,0,650,360,0,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    int nearw=g6h2_capture_diff(dir,"04-near-weapon",w,h,NULL);
+    fails += expect_eq("G6H2 near weapon visible in world",nearw>=200,1);
+    /* 5. Approaching along corridor after actual ticks. */
+    if(multi_scene(700,320,0,1080,320,0,0,900,320,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    for(int i=0;i<8;i++) if(tick(0)!=0) return 2;
+    int approach=g6h2_capture_diff(dir,"05-approaching",w,h,NULL);
+    fails += expect_eq("G6H2 approaching visible",approach>=200,1);
+    /* 6. A shot at the visible scuttler damages it. */
+    if(multi_scene(700,320,0,0,0,5,0,900,320,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    if(tick(FIRE_MASK)!=0) return 2;
+    Status st; if(get_status(&st)!=0) return 2;
+    fails += expect_eq("G6H2 framed shot damages",st.s_h[0],25);
+    g6h2_capture_diff(dir,"06-shot",w,h,NULL);
+    /* 7. Jump over a low living scuttler. */
+    if(multi_scene(1000,320,0,0,0,5,0,1120,320,0,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    g6h2_capture_diff(dir,"07a-jump-before",w,h,NULL);
+    if(tick_jump(1,1)!=0) return 2;
+    for(int i=0;i<38;i++) if(tick_jump(1,0)!=0) return 2;
+    int jx,jy,ja; if(get_state(&jx,&jy,&ja)!=0) return 2;
+    fails += expect_eq("G6H2 jump clears scuttler",jx>1120,1);
+    g6h2_capture_diff(dir,"07-jump",w,h,NULL);
+    /* 8. HUD tracker: all four contacts within the existing 700 range. */
+    if(multi_scene(700,320,0,1120,320,0,0,900,320,1,100,800,80,1,100,1000,560,1,100)!=0) return 2;
+    int hx,hy,ha;
+    if(get_state(&hx,&hy,&ha)!=0 || get_status(&st)!=0) return 2;
+    TrackerContact c[4]; int nc=tracker_contacts(&st,hx,hy,ha,c);
+    printf("G6H2 tracker contacts=%d player=%d,%d angle=%d\n",nc,hx,hy,ha);
+    for(int ci=0;ci<nc;ci++){int bx,by;tracker_contact_xy(&c[ci],&bx,&by);printf("G6H2 contact kind=%d side=%d depth=%d at=%d,%d\n",c[ci].kind,c[ci].side,c[ci].depth,bx,by);}
+    fails += expect_eq("G6H2 HUD four contacts",nc,4);
+    st_current_angle=ha; gl_scene(&st,NULL,0);
+    char path[4096]; snprintf(path,sizeof path,"%s/08-hud-four.ppm",dir); gl_save_ppm(path,w,h);
+    int hud_ok=1;
+    for(int i=0;i<nc;i++){
+        int bx,by; tracker_contact_xy(&c[i],&bx,&by); float hs=gl_hud_scale(gl_h);
+        unsigned char rgba[4]; int sx=(int)(bx*hs), sy=(int)(gl_h-by*hs);
+        if(sx<0||sx>=gl_w||sy<0||sy>=gl_h){hud_ok=0;break;}
+        glReadPixels(sx,sy,1,1,GL_RGBA,GL_UNSIGNED_BYTE,rgba);
+        if(rgba[0]+rgba[1]+rgba[2]<50) hud_ok=0;
+    }
+    fails += expect_eq("G6H2 HUD contact pixels",hud_ok,1);
+    printf("G6H2 visibility/depth test: %s\n",fails?"FAILED":"PASSED");
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
+    return fails?1:0;
 }
 static int g6h1_gl_probe(const char *dir,int w,int h) {
     if(gl_init(w,h,0)!=0) return 2;
@@ -7273,6 +7425,7 @@ int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "--entrance-test") == 0) return entrance_test();
     if (argc > 1 && strcmp(argv[1], "--collision-probe-test") == 0) return collision_probe_test();
     if (argc > 1 && strcmp(argv[1], "--multi-alien-test") == 0) return multi_alien_test();
+    if (argc > 1 && strcmp(argv[1], "--tracker-multi-test") == 0) return tracker_multi_test();
     if (argc > 1 && strcmp(argv[1], "--jump-test") == 0) return jump_test();
     if (argc > 1 && strcmp(argv[1], "--alien-collision-trace") == 0) return alien_collision_trace();
     if (argc > 1 && strcmp(argv[1], "--alien-collision-test") == 0) return alien_collision_test();
@@ -7285,6 +7438,10 @@ int main(int argc, char **argv) {
     if (argc > 2 && strcmp(argv[1], "--gl-muzzle-shots") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
         return gl_muzzle_shots(argv[2],w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-g6h2-test") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return g6h2_gl_test(argv[2],w,h);
     }
     if (argc > 2 && strcmp(argv[1], "--gl-scuttler-probe") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;

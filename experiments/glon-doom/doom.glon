@@ -430,14 +430,14 @@ doom/move-y: func [ny] [
     either = doom/hit 0 [ doom/py: ny ] [ doom/player-hit: 1 ]
 ]
 
-doom/consider: func [ax ay health target] [
+doom/consider: func [ax ay health target tol] [
     doom/tdx: - ax doom/px
     doom/tdy: - ay doom/py
     doom/td2: + * doom/tdx doom/tdx * doom/tdy doom/tdy
     doom/td: / + * doom/tdx doom/dirx * doom/tdy doom/diry 64
     doom/tt: - * doom/tdx doom/diry * doom/tdy doom/dirx
     doom/los ax ay
-    doom/thit: * * * > doom/td 0 < doom/td2 409600 < * doom/tt doom/tt 1048576 = doom/occluded 0
+    doom/thit: * * * > doom/td 0 < doom/td2 409600 < * doom/tt doom/tt tol = doom/occluded 0
     either = 1 doom/thit [
         either > health 0 [
             either < doom/td doom/best [
@@ -519,10 +519,10 @@ doom/tick: func [fw bk lf rt tl tr fire] [
             doom/ammo: - doom/ammo 1
             doom/best: 100000
             doom/target: -1
-            doom/consider doom/alien-x doom/alien-y doom/alien-health 0
-            doom/consider doom/s0-x doom/s0-y doom/s0-h 1
-            doom/consider doom/s1-x doom/s1-y doom/s1-h 2
-            doom/consider doom/s2-x doom/s2-y doom/s2-h 3
+            doom/consider doom/alien-x doom/alien-y doom/alien-health 0 1048576
+            doom/consider doom/s0-x doom/s0-y doom/s0-h 1 4194304
+            doom/consider doom/s1-x doom/s1-y doom/s1-h 2 4194304
+            doom/consider doom/s2-x doom/s2-y doom/s2-h 3 4194304
             either = doom/target 0 [
                 doom/alien-health: - doom/alien-health 25
                 either < doom/alien-health 1 [
