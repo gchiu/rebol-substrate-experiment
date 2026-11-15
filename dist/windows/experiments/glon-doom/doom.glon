@@ -265,6 +265,11 @@ doom/check-all: func [x y r] [
         either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
     ]
     either = doom/objects-on 1 [ doom/check-objects x y r 0 ] [ none ]
+    either = doom/alien-state 5 [
+        doom/dx: - x doom/alien-x
+        doom/dy: - y doom/alien-y
+        either < + * doom/dx doom/dx * doom/dy doom/dy + r 144 [ doom/hit: 1 ] [ none ]
+    ] [ none ]
 ]
 
 doom/move-x: func [nx] [
@@ -299,13 +304,20 @@ doom/tick: func [fw bk lf rt tl tr fire] [
         ] [ none ]
     ]
     doom/door-blocked: either < doom/door-open 32 [ 1 ] [ 0 ]
-    either = doom/alien-state 4 [ none ] [
+    either = doom/alien-state 4 [
         either > doom/e2dep 0 [
             doom/e2dep: - doom/e2dep 1
-            either = doom/e2dep 0 [
-                doom/alien-state: either = doom/alien-detected 1 [ 1 ] [ 0 ]
-            ] [ none ]
-        ] [ doom/update-alien ]
+            either = doom/e2dep 0 [ doom/alien-state: 5 ] [ none ]
+        ] [ none ]
+    ] [
+        either = doom/alien-state 5 [ none ] [
+            either > doom/e2dep 0 [
+                doom/e2dep: - doom/e2dep 1
+                either = doom/e2dep 0 [
+                    doom/alien-state: either = doom/alien-detected 1 [ 1 ] [ 0 ]
+                ] [ none ]
+            ] [ doom/update-alien ]
+        ]
     ]
     either = 1 fire [
         either > doom/ammo 0 [
@@ -318,16 +330,18 @@ doom/tick: func [fw bk lf rt tl tr fire] [
             doom/los doom/alien-x doom/alien-y
             doom/hit: * * * > doom/tdepth 0 < doom/alien-d2 409600 < * doom/t doom/t 1048576 = doom/occluded 0
             either = 1 doom/hit [
-                doom/alien-health: - doom/alien-health 25
-                either < doom/alien-health 1 [
-                    doom/alien-health: 0
-                    doom/alien-state: 4
-                    doom/alien-detected: 0
-                    doom/e2dep: 0
-                ] [
-                    doom/alien-state: 3
-                    doom/e2dep: 2
-                ]
+                either > doom/alien-health 0 [
+                    doom/alien-health: - doom/alien-health 25
+                    either < doom/alien-health 1 [
+                        doom/alien-health: 0
+                        doom/alien-state: 4
+                        doom/alien-detected: 0
+                        doom/e2dep: 18
+                    ] [
+                        doom/alien-state: 3
+                        doom/e2dep: 4
+                    ]
+                ] [ none ]
             ] [ none ]
         ] [ none ]
     ] [ none ]
@@ -413,6 +427,7 @@ doom/reset: does [
     doom/alien-health: 100
     doom/alien-state: 0
     doom/alien-detected: 0
+    doom/e2dep: 0
     doom/ammo: 24
     doom/door-bars: 0
     doom/alien-avoid: 0
@@ -1113,6 +1128,7 @@ doom/status-block: [
     print doom/light-phase
     print doom/ammo
     print doom/player-hit
+    print doom/e2dep
 ]
 
 doom/sector-report: does [

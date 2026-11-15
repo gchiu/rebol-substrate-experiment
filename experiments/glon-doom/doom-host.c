@@ -47,6 +47,8 @@
 #define PROJ_SCALE 2
 #define TICK_HZ 60
 #define FIRE_MASK 64
+#define HIT_RECOIL_TICKS 4
+#define DEATH_COLLAPSE_TICKS 18
 #define MAX_CAPTURE (1u << 20)
 #define RENDER_INTS (PROJ_COLS * 5)
 #define DETAIL_MAX 64
@@ -84,6 +86,7 @@ typedef struct {
     int visible, left, right, top, bot;
     int light;
     int player_hit;
+    int phase;
 } Status;
 
 typedef struct { int id, depth, left, right, top, bot, visible; int x,y,hw,hd,h; } Obj;
@@ -1195,11 +1198,11 @@ static int get_valid(void) {
     return v;
 }
 static int get_status(Status *st) {
-    int v[19];
+    int v[20];
 #ifdef DOOM_S1_PROFILE
     prof_begin();
 #endif
-    int grc = run_capture(status_block, v, 19, "status");
+    int grc = run_capture(status_block, v, 20, "status");
 #ifdef DOOM_S1_PROFILE
     prof_collect(&prof_status);
 #endif
@@ -1209,7 +1212,7 @@ static int get_status(Status *st) {
     st->detected = v[7]; st->td2 = v[8]; st->tside = v[9]; st->tdepth = v[10];
     st->visible = v[11]; st->left = v[12]; st->right = v[13];
     st->top = v[14]; st->bot = v[15]; st->light = v[16]; st->ammo = v[17];
-    st->player_hit = v[18];
+    st->player_hit = v[18]; st->phase = v[19];
     if (objects_mode && get_objects(current_objs) == 0) {
         current_objs_valid = 1;
         if (st->door_blocked && last_px < 768)
@@ -2193,14 +2196,74 @@ static void draw_sprite_rect(uint32_t *fb, const uint32_t *src, int sw, int sh,
     }
 }
 
+static void draw_sprite_rect_rot(uint32_t *fb, const uint32_t *src, int sw, int sh,
+                                 int l, int r, int t, int b, int pct, int flip,
+                                 int flash, float angle) {
+    if (angle < 0.001f) { draw_sprite_rect(fb,src,sw,sh,l,r,t,b,pct,flip,flash); return; }
+    float ca=cosf(angle), sa=sinf(angle);
+    float hw=(r-l)*0.5f, h=(b-t);
+    float cx=(l+r)*0.5f, cy=(float)b;
+    float xs[4]={-hw,hw,hw,-hw}, ys[4]={-h,-h,0,0};
+    float minx=1e9f,maxx=-1e9f,miny=1e9f,maxy=-1e9f;
+    for(int i=0;i<4;i++){
+        float x=cx+xs[i]*ca-ys[i]*sa;
+        float y=cy+xs[i]*sa+ys[i]*ca;
+        if(x<minx)minx=x; if(x>maxx)maxx=x;
+        if(y<miny)miny=y; if(y>maxy)maxy=y;
+    }
+    int x0=(int)floorf(minx),x1=(int)ceilf(maxx);
+    int y0=(int)floorf(miny),y1=(int)ceilf(maxy);
+    if(x0<0)x0=0; if(y0<0)y0=0;
+    if(x1>=FB_W)x1=FB_W-1; if(y1>=FB_H)y1=FB_H-1;
+    for(int y=y0;y<=y1;y++) for(int x=x0;x<=x1;x++){
+        float dx=(float)x-cx, dy=(float)y-cy;
+        float u= dx*ca+dy*sa;
+        float v=-dx*sa+dy*ca;
+        if(u<-hw || u>hw || v<-h || v>0) continue;
+        int sx=(int)((u+hw)*(sw-1)/(2.0f*hw));
+        int sy=(int)((v+h)*(sh-1)/h);
+        if(sx<0)sx=0; if(sx>=sw)sx=sw-1;
+        if(sy<0)sy=0; if(sy>=sh)sy=sh-1;
+        if(flip) sx=sw-1-sx;
+        uint32_t c=src[sy*sw+sx];
+        int a=(int)(c>>24);
+        if(!a) continue;
+        c=shade_argb(c,pct);
+        if(flash){
+            int rr=(int)((c>>16)&255)+96,gg=(int)((c>>8)&255)/3,bb=(int)(c&255)/3;
+            if(rr>255)rr=255;
+            c=0xff000000u|((uint32_t)rr<<16)|((uint32_t)gg<<8)|(uint32_t)bb;
+        }
+        if(a==255){ fb[y*FB_W+x]=c; continue; }
+        int da=255-a;
+        int dr=(int)((fb[y*FB_W+x]>>16)&255),dg=(int)((fb[y*FB_W+x]>>8)&255),db=(int)(fb[y*FB_W+x]&255);
+        int rr=((int)((c>>16)&255)*a+dr*da)/255;
+        int gg=((int)((c>>8)&255)*a+dg*da)/255;
+        int bb=((int)(c&255)*a+db*da)/255;
+        fb[y*FB_W+x]=0xff000000u|((uint32_t)rr<<16)|((uint32_t)gg<<8)|(uint32_t)bb;
+    }
+}
+
 static void draw_alien_sprite(uint32_t *fb, const Status *st) {
     if (!st->visible) return;
     AlienFrame af = alien_frame_select(st);
     int l, r, t, b;
     alien_sprite_box(st, af, &l, &r, &t, &b);
-    int pct = st->state == 4 ? 30 : st->tdepth < 256 ? 112 : st->tdepth < 512 ? 100 : st->tdepth < 1024 ? 86 : 72;
-    draw_sprite_rect(fb, alien_dir_tex[af.idx], alien_dir_w[af.idx], alien_dir_h[af.idx],
-                     l, r, t, b, pct, af.flip, st->state == 3);
+    int pct = st->state >= 4 ? 30 : st->tdepth < 256 ? 112 : st->tdepth < 512 ? 100 : st->tdepth < 1024 ? 86 : 72;
+    int recoil = st->state == 3 ? st->phase*2 : 0;
+    if(st->state >= 4){
+        float angle=M_PI_2;
+        if(st->state == 4){
+            int p=st->phase; if(p<0)p=0;
+            angle=(1.0f-(float)p/(float)DEATH_COLLAPSE_TICKS)*M_PI_2;
+            if(angle<0)angle=0; if(angle>M_PI_2)angle=M_PI_2;
+        }
+        draw_sprite_rect_rot(fb, alien_dir_tex[af.idx], alien_dir_w[af.idx], alien_dir_h[af.idx],
+                             l, r, t, b, pct, af.flip, 0, angle);
+    } else {
+        draw_sprite_rect(fb, alien_dir_tex[af.idx], alien_dir_w[af.idx], alien_dir_h[af.idx],
+                         l+recoil, r+recoil, t, b, pct, af.flip, st->state == 3);
+    }
 }
 
 static int tracker_blip(const Status *st, int *bx, int *by) {
@@ -2286,7 +2349,7 @@ static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
                 list[n].sw = OBJ_W; list[n].sh = OBJ_H; list[n].pct = current_objs[i].depth < 256 ? 100 : 86;
                 list[n].flip = 0; n++;
             }
-            if (st->visible) {
+            if (st->visible && st->state < 3) {
                 AlienFrame af = alien_frame_select(st);
                 alien_sprite_box(st, af, &list[n].l, &list[n].r, &list[n].t, &list[n].b);
                 list[n].depth = st->tdepth; list[n].src = alien_dir_tex[af.idx];
@@ -2296,6 +2359,7 @@ static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
             }
             for (int i = 1; i < n; i++) { int j=i; while (j>0 && list[j-1].depth < list[j].depth) { SpriteDraw z=list[j]; list[j]=list[j-1]; list[j-1]=z; j--; } }
             for (int i = 0; i < n; i++) draw_sprite_rect(fb, list[i].src, list[i].sw, list[i].sh, list[i].l, list[i].r, list[i].t, list[i].b, list[i].pct, list[i].flip, 0);
+            if (st->visible && st->state >= 3) draw_alien_sprite(fb, st);
         } else draw_alien_sprite(fb, st);
     } else draw_alien_sprite(fb, st);
     int64_t sp1 = now_ns();
@@ -3026,8 +3090,9 @@ static int combat_test(void) {
     fails += expect_eq("combat shot ammo",st.ammo,23);
     fails += expect_eq("combat shot damage",st.health,75);
     fails += expect_eq("combat hit reaction state",st.state,3);
-    if(run_ticks(0,1)!=0 || get_status(&st)!=0) return 2;
+    if(run_ticks(0,3)!=0 || get_status(&st)!=0) return 2;
     fails += expect_eq("combat hit reaction holds",st.state,3);
+    fails += expect_eq("combat hit recoil phase",st.phase,1);
     if(run_ticks(0,1)!=0 || get_status(&st)!=0) return 2;
     fails += expect_eq("combat hit reaction expires alive",st.state,1);
     fails += expect_eq("combat hit reaction expired health",st.health,75);
@@ -3050,19 +3115,44 @@ static int combat_test(void) {
     fails += expect_eq("combat door obstruction health",st.health,100);
     fails += expect_eq("combat door obstruction ammo",st.ammo,23);
 
-    /* Four accepted hits kill; death is terminal and stops attack/movement. */
+    /* Four accepted hits kill and enter a deterministic collapse. */
     if(combat_scene(900,320,0,1120,320,0,100,1,1)!=0) return 2;
     for(int hit=0;hit<4;hit++) if(tick(FIRE_MASK)!=0) return 2;
     if(get_status(&st)!=0) return 2;
     fails += expect_eq("combat kill ammo",st.ammo,20);
     fails += expect_eq("combat kill health",st.health,0);
-    fails += expect_eq("combat death state",st.state,4);
+    fails += expect_eq("combat death collapse state",st.state,4);
+    fails += expect_eq("combat death collapse phase",st.phase,18);
+    int corpse_x=st.ax, corpse_y=st.ay;
+    if(run_ticks(0,17)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat collapse holds state",st.state,4);
+    fails += expect_eq("combat collapse last phase",st.phase,1);
+    fails += expect_eq("combat corpse position stable",st.ax==corpse_x && st.ay==corpse_y,1);
+    if(run_ticks(0,1)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat corpse state",st.state,5);
+    fails += expect_eq("combat corpse phase",st.phase,0);
     if(run_ticks(0,120)!=0 || get_status(&st)!=0) return 2;
-    fails += expect_eq("combat death terminal after ticks",st.state,4);
-    fails += expect_eq("combat death terminal health",st.health,0);
-    if(combat_scene(950,320,0,1120,320,0,0,4,0)!=0) return 2; /* dead body near player */
-    if(run_ticks(0,120)!=0 || get_status(&st)!=0) return 2;
-    fails += expect_eq("combat dead does not attack",st.state,4);
+    fails += expect_eq("combat corpse terminal",st.state,5);
+    fails += expect_eq("combat corpse health",st.health,0);
+    fails += expect_eq("combat corpse does not move",st.ax==corpse_x && st.ay==corpse_y,1);
+    fails += expect_eq("combat corpse no detection",st.detected,0);
+
+    /* Corpse is a low collision object: centre blocked, nearby clear. */
+    char pbuf[220];
+    snprintf(pbuf,sizeof pbuf,"[ doom/hit: 0 doom/check-all %d %d 400 print doom/hit ]",corpse_x,corpse_y);
+    cell cblock=parse_source(pbuf,"corpse collision"); int cv=-1;
+    if(run_capture(cblock,&cv,1,"corpse collision")!=0) return 2;
+    fails += expect_eq("combat corpse collision",cv,1);
+    snprintf(pbuf,sizeof pbuf,"[ doom/hit: 0 doom/check-all %d %d 400 print doom/hit ]",corpse_x+30,corpse_y);
+    cell cclear=parse_source(pbuf,"corpse clearance"); int cc=-1;
+    if(run_capture(cclear,&cc,1,"corpse clearance")!=0) return 2;
+    fails += expect_eq("combat corpse walk around",cc,0);
+
+    /* Corpse cannot be damaged or reset by a later shot. */
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("combat corpse shot ammo",st.ammo,19);
+    fails += expect_eq("combat corpse shot health",st.health,0);
+    fails += expect_eq("combat corpse shot state",st.state,5);
 
     /* No ammo: no accepted shot and no damage. */
     if(combat_scene(900,320,0,1120,320,0,100,1,1)!=0) return 2;
@@ -3076,6 +3166,10 @@ static int combat_test(void) {
     fails += expect_eq("combat reset health",st.health,100);
     fails += expect_eq("combat reset state",st.state,0);
     fails += expect_eq("combat reset ammo",st.ammo,24);
+    snprintf(pbuf,sizeof pbuf,"[ doom/hit: 0 doom/check-all %d %d 400 print doom/hit ]",corpse_x,corpse_y);
+    cell rclear=parse_source(pbuf,"corpse reset clearance"); int rc=-1;
+    if(run_capture(rclear,&rc,1,"corpse reset clearance")!=0) return 2;
+    fails += expect_eq("combat reset removes corpse",rc,0);
 
     /* Deterministic replay of the one-shot state machine. */
     Status a,b;
@@ -3096,11 +3190,14 @@ static int combat_test(void) {
     for(int i=0;i<FB_W*FB_H;i++) fb[i]=0xff112233u;
     vis.state=1; draw_alien_sprite(fb,&vis); uint32_t live=fnv1a(fb,(size_t)FB_W*FB_H*sizeof *fb);
     for(int i=0;i<FB_W*FB_H;i++) fb[i]=0xff112233u;
-    vis.state=3; draw_alien_sprite(fb,&vis); uint32_t hit=fnv1a(fb,(size_t)FB_W*FB_H*sizeof *fb);
+    vis.state=3; vis.phase=4; draw_alien_sprite(fb,&vis); uint32_t hit=fnv1a(fb,(size_t)FB_W*FB_H*sizeof *fb);
     for(int i=0;i<FB_W*FB_H;i++) fb[i]=0xff112233u;
-    vis.state=4; draw_alien_sprite(fb,&vis); uint32_t dead=fnv1a(fb,(size_t)FB_W*FB_H*sizeof *fb);
+    vis.state=4; vis.phase=9; draw_alien_sprite(fb,&vis); uint32_t dying=fnv1a(fb,(size_t)FB_W*FB_H*sizeof *fb);
+    for(int i=0;i<FB_W*FB_H;i++) fb[i]=0xff112233u;
+    vis.state=5; vis.phase=0; draw_alien_sprite(fb,&vis); uint32_t corpse=fnv1a(fb,(size_t)FB_W*FB_H*sizeof *fb);
     fails += expect_eq("combat hit reaction visible",live!=hit,1);
-    fails += expect_eq("combat death state visible",hit!=dead,1);
+    fails += expect_eq("combat collapse visible",hit!=dying,1);
+    fails += expect_eq("combat corpse visible",dying!=corpse,1);
     free(fb);
 
     printf("combat-test: %s\n",fails?"FAILED":"PASSED");
@@ -3679,7 +3776,7 @@ static void gl_plane_tint(double z, GLuint tex, float tint) {
 }
 static void gl_billboard(GLuint tex, double x,double y,double wworld,double hworld,
                          double pivot_world, double below_ground,int flip,
-                         float tint_r,float tint_g,float tint_b) {
+                         float tint_r,float tint_g,float tint_b,float roll) {
     /* camera-facing axes in world/game coordinates */
     double ca=cos(st_current_angle*2.0*M_PI/256.0), sa=sin(st_current_angle*2.0*M_PI/256.0);
     double rx=sa, ry=-ca; /* right */
@@ -3689,11 +3786,16 @@ static void gl_billboard(GLuint tex, double x,double y,double wworld,double hwor
     double zt = (hworld-below_ground)*64.0;
     float u0 = flip ? 1.0f : 0.0f, u1 = flip ? 0.0f : 1.0f;
     glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, tex); glColor3f(tint_r,tint_g,tint_b);
+    float cr=cosf(roll), sr=sinf(roll);
+    float hw=(float)(wworld*32.0), hh=(float)(hworld*64.0);
+    float lx[4]={-hw,hw,hw,-hw}, lz[4]={0,0,hh,hh};
     glBegin(GL_QUADS);
-    glTexCoord2f(u0,0); gl_gv(cx - rx*wworld*32, cy - ry*wworld*32, zb);
-    glTexCoord2f(u1,0); gl_gv(cx + rx*wworld*32, cy + ry*wworld*32, zb);
-    glTexCoord2f(u1,1); gl_gv(cx + rx*wworld*32, cy + ry*wworld*32, zt);
-    glTexCoord2f(u0,1); gl_gv(cx - rx*wworld*32, cy - ry*wworld*32, zt);
+    for(int i=0;i<4;i++){
+        float u=lx[i]*cr-lz[i]*sr;
+        float z=(float)zb+lx[i]*sr+lz[i]*cr;
+        glTexCoord2f(i==0||i==3?u0:u1,i<2?0:1);
+        gl_gv(cx + rx*u, cy + ry*u, z);
+    }
     glEnd();
 }
 static void gl_ammo_seg(float x,float y,float w,float h) {
@@ -5306,11 +5408,25 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
         double pivot_world = (alien_dir_pivot_x[idx] - alien_dir_w[idx] * 0.5) * px_scale;
         double below_ground = (alien_dir_h[idx] - alien_dir_anchor_y[idx]) * px_scale;
         glDepthMask(GL_TRUE);
-        float tr=1.0f,tg=1.0f,tb=1.0f;
-        if(st->state==3){ tg=0.35f; tb=0.35f; }
-        else if(st->state==4){ tr=tg=tb=0.35f; }
-        gl_billboard(gl_tex[GT_ALIEN0+idx], st->ax, st->ay, wworld, hworld,
-                     pivot_world, below_ground, af.flip, tr,tg,tb);
+        float tr=1.0f,tg=1.0f,tb=1.0f, roll=0.0f;
+        double ox=0.0,oy=0.0;
+        if(st->state==3){
+            tg=0.35f; tb=0.35f;
+            double rightx=sin(st_current_angle*2.0*M_PI/256.0), righty=-cos(st_current_angle*2.0*M_PI/256.0);
+            double recoil=st->phase*1.5;
+            ox=rightx*recoil; oy=righty*recoil;
+        } else if(st->state==4){
+            int p=st->phase; if(p<0)p=0;
+            float prog=1.0f-(float)p/(float)DEATH_COLLAPSE_TICKS;
+            if(prog<0)prog=0; if(prog>1)prog=1;
+            roll=prog*(float)(M_PI_2);
+            tr=tg=tb=0.65f;
+        } else if(st->state==5){
+            roll=(float)(M_PI_2);
+            tr=tg=tb=0.35f;
+        }
+        gl_billboard(gl_tex[GT_ALIEN0+idx], st->ax+ox, st->ay+oy, wworld, hworld,
+                     pivot_world, below_ground, af.flip, tr,tg,tb,roll);
     }
     glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
     gl_draw_weapon(st);
@@ -5576,6 +5692,29 @@ static int gl_apply_pose(int px,int py,int angle,int door_open,int door_blocked,
       px,py,angle,door_open,door_open,door_blocked,ax,ay,astate);
     cell b=parse_source(src,"gl tour pose"); return run_block(b,"gl tour pose");
 }
+static int gl_combat_shots(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2;
+    gl_active=1; load_session(); build_blocks();
+    if(gl_apply_pose(900,320,0,64,0,1120,320,0)!=0) return 2;
+    int px,py,pa; Status st;
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+    st_current_angle=pa;
+    st.visible=1; st.ax=1120; st.ay=320; st.health=0;
+    struct CP { const char *name; int state, phase; } shots[] = {
+        {"01-dying-18",4,18},{"02-dying-12",4,12},{"03-dying-06",4,6},
+        {"04-dying-01",4,1},{"05-corpse",5,0}
+    };
+    for(size_t i=0;i<sizeof shots/sizeof shots[0];i++){
+        st.state=shots[i].state; st.phase=shots[i].phase;
+        gl_scene(&st,NULL,0);
+        char path[4096]; snprintf(path,sizeof path,"%s/%s.ppm",dir,shots[i].name);
+        gl_save_ppm(path,w,h);
+        printf("combat %s state=%d phase=%d\n",shots[i].name,st.state,st.phase);
+    }
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
+    return 0;
+}
+
 static int gl_entrance_shots(const char *dir,int w,int h) {
     if(gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
     struct EP { const char *name; int px,py,angle; } poses[] = {
@@ -6033,6 +6172,10 @@ int main(int argc, char **argv) {
     }
     if (argc > 1 && strcmp(argv[1], "--entrance-test") == 0) return entrance_test();
     if (argc > 1 && strcmp(argv[1], "--combat-test") == 0) return combat_test();
+    if (argc > 2 && strcmp(argv[1], "--gl-combat-shots") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return gl_combat_shots(argv[2],w,h);
+    }
     if (argc > 2 && strcmp(argv[1], "--gl-entrance-shots") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
         return gl_entrance_shots(argv[2],w,h);
