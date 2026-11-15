@@ -35,6 +35,9 @@ HOLES = [
 ]
 # Screen interior around the baked 60. Coordinates in reference space.
 SCREEN = (1112, 687, 1202, 756)
+# Visible barrel exit in the reference crop; maps to the centre of the small
+# muzzle cylinder at the front-left of the weapon silhouette.
+MUZZLE = (805, 570)
 
 
 def main():
@@ -83,8 +86,10 @@ def main():
             return (round((x - CROP[0]) * sw / (CROP[2] - CROP[0])),
                     round((y - CROP[1]) * sh / (CROP[3] - CROP[1])))
         s0 = sxy(SCREEN[0], SCREEN[1]); s1 = sxy(SCREEN[2], SCREEN[3])
+        m = sxy(MUZZLE[0], MUZZLE[1])
         f.write(f'#define WEAPON_SCREEN_X0 {s0[0]}\n#define WEAPON_SCREEN_Y0 {s0[1]}\n')
-        f.write(f'#define WEAPON_SCREEN_X1 {s1[0]}\n#define WEAPON_SCREEN_Y1 {s1[1]}\n\n')
+        f.write(f'#define WEAPON_SCREEN_X1 {s1[0]}\n#define WEAPON_SCREEN_Y1 {s1[1]}\n')
+        f.write(f'#define WEAPON_MUZZLE_X {m[0]}\n#define WEAPON_MUZZLE_Y {m[1]}\n\n')
         f.write('static const uint32_t weapon_pulse[WEAPON_W*WEAPON_H] = {\n')
         for y in range(OUT_H):
             f.write('  ')

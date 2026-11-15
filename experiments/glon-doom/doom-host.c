@@ -144,6 +144,7 @@ static int smooth_shading = 0;
 static int flat_surfaces = 0;
 static int gl_active = 0;
 static int gl_hide_weapon = 0;
+static int gl_muzzle_debug = 0;
 static int corridor_art = 1;
 static int engineering_room_enabled = 1;
 static double gl_energy_time = 0.0;
@@ -4001,19 +4002,56 @@ static void gl_draw_muzzle_flash(float x,float y,float f) {
     glEnd();
     glColor4f(1,1,1,1); glDisable(GL_BLEND);
 }
-static void gl_draw_weapon(const Status *st) {
-    if (gl_hide_weapon || st->ammo < 0) return;
+/* Screen-space geometry shared by the weapon quad, its recoil and the muzzle
+ * effect. The flash uses this same x0/y0/w/h so it cannot drift on resize. */
+static void gl_weapon_geometry_at(float *ox0,float *oy0,float *ow,float *oh,
+                                  float *orecoil,int64_t now) {
     const float w=gl_w*0.60f, h=w*WEAPON_H/WEAPON_W;
     float x1=gl_w*0.99f, y2=gl_h*1.02f;
     float recoil=0.0f;
-    if(now_ns()<sfx_events.muzzle_until_ns){
-        float total=(float)(sfx_events.muzzle_until_ns-sfx_events.muzzle_start_ns);
-        float rem=(float)(sfx_events.muzzle_until_ns-now_ns());
-        recoil=6.0f*(rem/total);
-        if(recoil<0)recoil=0;
+    if(now < sfx_events.muzzle_until_ns){
+        int64_t total=sfx_events.muzzle_until_ns-sfx_events.muzzle_start_ns;
+        int64_t rem=sfx_events.muzzle_until_ns-now;
+        if(total>0 && rem>0) recoil=6.0f*((float)rem/(float)total);
+        if(recoil<0) recoil=0;
+        if(recoil>6.0f) recoil=6.0f;
     }
     x1-=recoil*0.35f; y2+=recoil;
-    const float x0=x1-w, y0=y2-h;
+    *ox0=x1-w; *oy0=y2-h; *ow=w; *oh=h; *orecoil=recoil;
+}
+static void gl_weapon_muzzle_at(float x0,float y0,float w,float h,
+                                float *mx,float *my) {
+    *mx=x0+(WEAPON_MUZZLE_X/(float)WEAPON_W)*w;
+    *my=y0+(WEAPON_MUZZLE_Y/(float)WEAPON_H)*h;
+}
+static void gl_muzzle_cross(float x,float y,float size,float r,float g,float b) {
+    glColor4f(r,g,b,0.95f);
+    glBegin(GL_LINES);
+    glVertex2f(x-size,y); glVertex2f(x+size,y);
+    glVertex2f(x,y-size); glVertex2f(x,y+size);
+    glEnd();
+}
+static void gl_draw_muzzle_debug(float mx,float my,float x0,float y0,float w,float h) {
+    glDisable(GL_TEXTURE_2D); glDisable(GL_DEPTH_TEST); glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    glLineWidth(2.0f);
+    gl_muzzle_cross(mx,my,14.0f,0.0f,1.0f,0.15f);   /* anchored flash origin */
+    glColor4f(0.0f,1.0f,0.15f,0.95f);
+    glBegin(GL_LINE_LOOP);
+    for(int i=0;i<16;i++){
+        float a=(float)i*(float)M_PI/8.0f;
+        glVertex2f(mx+cosf(a)*7.0f,my+sinf(a)*7.0f);
+    }
+    glEnd();
+    /* Red X: the old hard-coded anchor, retained only as a diagnostic. */
+    gl_muzzle_cross(x0+0.20f*w,y0+0.55f*h,9.0f,1.0f,0.2f,0.2f);
+    glLineWidth(1.0f); glColor4f(1,1,1,1); glDisable(GL_BLEND);
+}
+static void gl_draw_weapon(const Status *st) {
+    if (gl_hide_weapon || st->ammo < 0) return;
+    int64_t now=now_ns();
+    float w,h,recoil,x0,y0;
+    gl_weapon_geometry_at(&x0,&y0,&w,&h,&recoil,now);
     glDisable(GL_DEPTH_TEST); glDisable(GL_ALPHA_TEST);
     glEnable(GL_TEXTURE_2D); glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
@@ -4022,18 +4060,20 @@ static void gl_draw_weapon(const Status *st) {
     glBindTexture(GL_TEXTURE_2D,gl_tex[GT_WEAPON]); glColor4f(1,1,1,1);
     glBegin(GL_QUADS);
     glTexCoord2f(0,1); glVertex2f(x0,y0);
-    glTexCoord2f(1,1); glVertex2f(x1,y0);
-    glTexCoord2f(1,0); glVertex2f(x1,y2);
-    glTexCoord2f(0,0); glVertex2f(x0,y2);
+    glTexCoord2f(1,1); glVertex2f(x0+w,y0);
+    glTexCoord2f(1,0); glVertex2f(x0+w,y0+h);
+    glTexCoord2f(0,0); glVertex2f(x0,y0+h);
     glEnd();
     glDisable(GL_TEXTURE_2D);
-    if(now_ns()<sfx_events.muzzle_until_ns){
-        float rem=(float)(sfx_events.muzzle_until_ns-now_ns());
+    float mx,my;
+    gl_weapon_muzzle_at(x0,y0,w,h,&mx,&my);
+    if(now<sfx_events.muzzle_until_ns){
+        float rem=(float)(sfx_events.muzzle_until_ns-now);
         float total=(float)(sfx_events.muzzle_until_ns-sfx_events.muzzle_start_ns);
         float f=rem/total; if(f<0)f=0; if(f>1)f=1;
-        float mx=x0+0.20f*w, my=y0+0.55f*h;
         gl_draw_muzzle_flash(mx,my,f);
     }
+    if(gl_muzzle_debug) gl_draw_muzzle_debug(mx,my,x0,y0,w,h);
     /* Live count occupies the blanked display: output-space screen 444,194..519,251. */
     const float sx0=x0+(WEAPON_SCREEN_X0/(float)WEAPON_W)*w;
     const float sx1=x0+(WEAPON_SCREEN_X1/(float)WEAPON_W)*w;
@@ -5947,20 +5987,38 @@ static int gl_combat_shots(const char *dir,int w,int h) {
     return 0;
 }
 
+static void set_muzzle_phase(float f) {
+    int64_t now=now_ns();
+    if(f<=0.0f){ sfx_events.muzzle_start_ns=0; sfx_events.muzzle_until_ns=0; return; }
+    sfx_events.muzzle_start_ns=now-(int64_t)((1.0f-f)*80000000.0f);
+    sfx_events.muzzle_until_ns=now+(int64_t)(f*80000000.0f);
+}
 static int gl_muzzle_shots(const char *dir,int w,int h) {
     if(gl_init(w,h,0)!=0) return 2;
-    gl_active=1; load_session(); build_blocks();
+    gl_active=1; gl_muzzle_debug=1; load_session(); build_blocks();
     if(gl_apply_pose(900,320,0,64,0,1120,320,0)!=0) return 2;
     int px,py,pa; Status st;
     if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
     st_current_angle=pa;
-    sfx_events.muzzle_start_ns=now_ns();
-    sfx_events.muzzle_until_ns=sfx_events.muzzle_start_ns+80000000ull;
-    gl_scene(&st,NULL,0);
-    char path[4096]; snprintf(path,sizeof path,"%s/muzzle-flash.ppm",dir); gl_save_ppm(path,w,h);
-    sfx_events.muzzle_until_ns=0;
-    gl_scene(&st,NULL,0);
-    snprintf(path,sizeof path,"%s/no-flash.ppm",dir); gl_save_ppm(path,w,h);
+    struct MP {const char *name; float phase;} frames[]={
+        {"01-rest",0.0f},{"02-first",0.95f},{"03-peak",1.0f},
+        {"04-recoil",0.45f},{"05-return",0.0f}
+    };
+    float x0,y0,ww,hh,recoil,mx,my;
+    set_muzzle_phase(0.0f);
+    gl_weapon_geometry_at(&x0,&y0,&ww,&hh,&recoil,now_ns());
+    gl_weapon_muzzle_at(x0,y0,ww,hh,&mx,&my);
+    printf("muzzle-anchor %dx%d weapon=(%.2f,%.2f %.2fx%.2f) anchor_source=(%d,%d) screen=(%.2f,%.2f) old=(%.2f,%.2f)\n",
+           w,h,x0,y0,ww,hh,WEAPON_MUZZLE_X,WEAPON_MUZZLE_Y,mx,my,
+           x0+0.20f*ww,y0+0.55f*hh);
+    for(size_t i=0;i<sizeof frames/sizeof frames[0];i++){
+        set_muzzle_phase(frames[i].phase);
+        gl_scene(&st,NULL,0);
+        char path[4096]; snprintf(path,sizeof path,"%s/%s.ppm",dir,frames[i].name);
+        gl_save_ppm(path,w,h);
+        printf("muzzle-shot %s %dx%d phase=%.2f\n",frames[i].name,w,h,frames[i].phase);
+    }
+    sfx_events.muzzle_start_ns=0; sfx_events.muzzle_until_ns=0;
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
     return 0;
 }
@@ -6415,6 +6473,61 @@ static int resize_test(void) {
     return fails?1:0;
 }
 
+static int expect_float_near(const char *name,float got,float want) {
+    if(fabsf(got-want)<=0.01f){ printf("PASS %s: %.3f\n",name,got); return 0; }
+    printf("FAIL %s: got %.3f want %.3f\n",name,got,want); return 1;
+}
+static int muzzle_anchor_test(void) {
+    int fails=0;
+    const int sizes[][2]={{960,600},{1280,720},{1920,1080}};
+    int old_w=gl_w, old_h=gl_h;
+    uint64_t old_start=sfx_events.muzzle_start_ns, old_until=sfx_events.muzzle_until_ns;
+    sfx_events.muzzle_start_ns=0; sfx_events.muzzle_until_ns=0;
+    for(size_t i=0;i<sizeof sizes/sizeof sizes[0];i++){
+        gl_w=sizes[i][0]; gl_h=sizes[i][1];
+        float x0,y0,w,h,recoil,mx,my;
+        gl_weapon_geometry_at(&x0,&y0,&w,&h,&recoil,1000000000ll);
+        gl_weapon_muzzle_at(x0,y0,w,h,&mx,&my);
+        float want_x=x0+(WEAPON_MUZZLE_X/(float)WEAPON_W)*w;
+        float want_y=y0+(WEAPON_MUZZLE_Y/(float)WEAPON_H)*h;
+        char name[96];
+        snprintf(name,sizeof name,"muzzle anchor x %dx%d",sizes[i][0],sizes[i][1]); fails+=expect_float_near(name,mx,want_x);
+        snprintf(name,sizeof name,"muzzle anchor y %dx%d",sizes[i][0],sizes[i][1]); fails+=expect_float_near(name,my,want_y);
+        snprintf(name,sizeof name,"muzzle normalized x %dx%d",sizes[i][0],sizes[i][1]);
+        fails+=expect_float_near(name,(mx-x0)/w,WEAPON_MUZZLE_X/(float)WEAPON_W);
+        snprintf(name,sizeof name,"muzzle normalized y %dx%d",sizes[i][0],sizes[i][1]);
+        fails+=expect_float_near(name,(my-y0)/h,WEAPON_MUZZLE_Y/(float)WEAPON_H);
+        fails += expect_eq("muzzle anchor inside weapon",mx>x0&&mx<x0+w&&my>y0&&my<y0+h,1);
+        fails += expect_eq("muzzle anchor on opaque sprite",
+                           ((weapon_pulse[WEAPON_MUZZLE_Y*WEAPON_W+WEAPON_MUZZLE_X]>>24)&255)>0,1);
+        fails += expect_eq("muzzle anchor in visible barrel ROI",
+                           WEAPON_MUZZLE_X>=180&&WEAPON_MUZZLE_X<=195&&
+                           WEAPON_MUZZLE_Y>=90&&WEAPON_MUZZLE_Y<=105,1);
+        /* The retired anchor is the supporting-hand/forearm; ensure the fix is
+           a real barrel-space move rather than rounding. */
+        float old_mx=x0+0.20f*w, old_my=y0+0.55f*h;
+        float dx=mx-old_mx, dy=my-old_my;
+        printf("muzzle-anchor %dx%d old=(%.2f,%.2f) new=(%.2f,%.2f) delta=(%.2f,%.2f)\n",
+               sizes[i][0],sizes[i][1],old_mx,old_my,mx,my,dx,dy);
+        fails += expect_eq("muzzle anchor moved away from hand",(dx>10.0f&&dy<-40.0f),1);
+    }
+    /* Recoil must move the same weapon-space anchor with the weapon. */
+    gl_w=960; gl_h=600;
+    float x0,y0,w,h,recoil,mx,my;
+    gl_weapon_geometry_at(&x0,&y0,&w,&h,&recoil,1000000000ll);
+    gl_weapon_muzzle_at(x0,y0,w,h,&mx,&my);
+    sfx_events.muzzle_start_ns=900000000ll; sfx_events.muzzle_until_ns=980000000ll;
+    float rx0,ry0,rw,rh,rrecoil,rmx,rmy;
+    gl_weapon_geometry_at(&rx0,&ry0,&rw,&rh,&rrecoil,940000000ll);
+    gl_weapon_muzzle_at(rx0,ry0,rw,rh,&rmx,&rmy);
+    fails += expect_float_near("recoil offset",rrecoil,3.0f);
+    fails += expect_float_near("recoil anchor x follows weapon",rmx-mx,-rrecoil*0.35f);
+    fails += expect_float_near("recoil anchor y follows weapon",rmy-my,rrecoil);
+    gl_w=old_w; gl_h=old_h;
+    sfx_events.muzzle_start_ns=old_start; sfx_events.muzzle_until_ns=old_until;
+    printf("muzzle-anchor-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
+}
 int main(int argc, char **argv) {
     const char *env = getenv("DOOM_ROOT");
     if (env && *env) root_dir = env;
@@ -6509,6 +6622,7 @@ int main(int argc, char **argv) {
             if(strcmp(argv[i],"plain")==0) plain=1; }
         return gl_room_shots(argv[2],w,h,plain);
     }
+    if (argc > 1 && strcmp(argv[1], "--muzzle-anchor-test") == 0) return muzzle_anchor_test();
     if (argc > 1 && strcmp(argv[1], "--entrance-test") == 0) return entrance_test();
     if (argc > 1 && strcmp(argv[1], "--combat-test") == 0) return combat_test();
     if (argc > 1 && strcmp(argv[1], "--door-sync-test") == 0) return door_sync_test(0);

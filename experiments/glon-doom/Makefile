@@ -59,6 +59,7 @@ test: $(TARGET)
 	./$(TARGET) --combat-test
 	./$(TARGET) --door-sync-test
 	./$(TARGET) --corpse-stability-test
+	./$(TARGET) --muzzle-anchor-test
 	./$(TARGET) --flat-surfaces --objects-test
 	./$(TARGET) --self-test --raw-wall
 	./$(TARGET) --trace
