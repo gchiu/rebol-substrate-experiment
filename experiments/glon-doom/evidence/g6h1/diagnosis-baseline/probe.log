@@ -1,0 +1,14 @@
+Dropped Escape call with ulEscapeCode : 0x03007703
+G5p renderer=OpenGL renderer=D3D12 (AMD Radeon(TM) Graphics) vendor=Microsoft Corporation version=4.2 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4
+G6H1 spawn player=320,320 angle=0 draw_calls=0 adult=1120,320/0 visible=0
+G6H1   s0 x=980 y=320 hp=50 state=0 timer=6 depth=660.0 side=0.0 box=464.3,355.9 31.3x15.7
+G6H1   s1 x=1240 y=600 hp=50 state=0 timer=6 depth=920.0 side=-280.0 box=322.7,340.1 22.5x11.2
+G6H1   s2 x=1240 y=900 hp=50 state=0 timer=6 depth=920.0 side=-580.0 box=166.2,340.1 22.5x11.2
+G6H1 spawn states: s0=0 s1=0 s2=0 all_active=1
+G6H1 start visible pixel diff=441
+G6H1 corridor20 player=700,320 angle=0 draw_calls=2 adult=1080,320/1 visible=1
+G6H1   s0 x=924 y=320 hp=50 state=1 timer=2 depth=224.0 side=0.0 box=433.9,464.7 92.2x46.1
+G6H1   s1 x=1184 y=544 hp=50 state=1 timer=2 depth=484.0 side=-224.0 box=236.5,376.2 42.7x21.3
+G6H1   s2 x=1184 y=844 hp=50 state=1 timer=2 depth=484.0 side=-524.0 box=-61.0,376.2 42.7x21.3
+G6H1 corridor visible pixel diff=2043
+G6H1 probe: start_diff=441 corridor_diff=2043 draw_calls=5

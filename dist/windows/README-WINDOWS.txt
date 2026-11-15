@@ -1,11 +1,11 @@
-Glon AvP — G6h Windows build
+Glon AvP — G6h.1 Windows build
 ============================
 
 Launch from Windows (D: drive):
 
   D:
   cd D:\repos\glon-worktrees\glon-avp-g6f4\dist\windows
-  run-g6h.bat
+  run-g6h1.bat
 
 Controls: W/A/S/D move, arrow keys turn, E door, F or left mouse rifle
 fire, Space jump, M mute, [ / ] volume, Esc quit.
@@ -48,3 +48,10 @@ Scuttlers are low obstacles; jump over them when feet clear their 14-world-unit
 top. The loader arena is expanded for this game build to 25,000 cells using the
 unused M1 task arena; frozen S1 is unchanged. This build is awaiting physical
 Windows verification and is not an accepted baseline.
+
+G6h.1 fixes the first physical visibility failure: scuttlers now appear on the
+actual Windows renderer at the start (one in the starting room) and in the
+corridor. The correction is LOS-gated rendering, draw-after-weapon ordering,
+reachable spawn positions and a larger low-sprite scale. Frozen S1 is unchanged.
+Scuttler rendering remains a screen-space overlay, so world-depth occlusion is
+approximate. This build awaits physical verification and is not accepted.
