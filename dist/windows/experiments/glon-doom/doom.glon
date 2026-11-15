@@ -46,18 +46,6 @@ doom/verts: [
 
 ;; Linedefs: [vertex-a vertex-b wall-colour-id]. All walls are solid; the
 ;; sector is one open space so an opening is simply the absence of a wall.
-doom/lines: [
-        [0 1 1 0]
-        [1 2 1 1]
-        [2 3 2 2]
-        [3 4 3 4]
-        [4 5 3 0]
-        [5 6 3 3]
-        [6 7 2 2]
-        [7 8 1 1]
-        [8 9 1 0]
-        [9 0 1 3]
-]
 
 ;; 256-direction integer sine/cosine table (scaled by 64).
 doom/cos: [
@@ -604,18 +592,25 @@ doom/render-column-block: [
         ]
       ] [ none ]
     ]
-    either = doom/door-blocked 0 [ none ] [
+    either = doom/door-open 64 [ none ] [
       either = doom/rayx 0 [ none ] [
         doom/t: / * - 768 doom/px 64 doom/rayx
         either > doom/t 0 [
           doom/hy: + doom/py / * doom/t doom/rayy 64
           either < doom/hy 256 [ none ] [
             either > doom/hy 384 [ none ] [
-              either < doom/t doom/best [
-                doom/best: doom/t
-                doom/bcolor: 4
-                doom/bu: doom/hy
-                doom/bmat: 5
+              either < doom/hy 320 [
+                doom/cy: - 320 doom/hy
+              ] [
+                doom/cy: - doom/hy 320
+              ]
+              either >= doom/cy doom/door-open [
+                either < doom/t doom/best [
+                  doom/best: doom/t
+                  doom/bcolor: 4
+                  doom/bu: doom/hy
+                  doom/bmat: 5
+                ] [ none ]
               ] [ none ]
             ]
           ]

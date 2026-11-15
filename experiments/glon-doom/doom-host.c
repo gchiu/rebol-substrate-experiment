@@ -241,6 +241,7 @@ enum {
 typedef struct {
     int16_t *samples;
     int frames;
+    int start_frame;
     float gain;
     const char *name;
 } AudioClip;
@@ -351,6 +352,7 @@ static int audio_load_loop(const char *name,const char *file,float gain,int fade
     return 0;
 }
 
+#define DOOR_CLOSE_START_MS 410
 static int audio_load_sfx(void) {
     int loaded=0;
     for(int i=SFX_DOOR_OPEN;i<SFX_COUNT;i++){
@@ -358,6 +360,7 @@ static int audio_load_sfx(void) {
         if(audio_decode_mono(audio_sfx_defs[i].file,audio_sfx_defs[i].name,&pcm,&n)!=0) continue;
         audio_clips[i].samples=pcm;
         audio_clips[i].frames=n;
+        audio_clips[i].start_frame=(i==SFX_DOOR_CLOSE)?(AUDIO_RATE*DOOR_CLOSE_START_MS/1000):0;
         audio_clips[i].gain=audio_sfx_defs[i].gain;
         audio_clips[i].name=audio_sfx_defs[i].name;
         loaded++;
@@ -404,7 +407,7 @@ static int audio_voice_start(int id,float gain,int tag) {
             if(audio_voices[i].order<oldest){ oldest=audio_voices[i].order; slot=i; }
     }
     AudioVoice *v=&audio_voices[slot];
-    v->clip=&audio_clips[id]; v->pos=0;
+    v->clip=&audio_clips[id]; v->pos=audio_clips[id].start_frame;
     v->gain=gain*audio_clips[id].gain;
     v->tag=tag; v->active=1; v->fade_left=0; v->fade_total=0;
     v->order=++audio_voice_order;
@@ -2912,6 +2915,11 @@ static int voice_active_id(int id) {
         if(audio_voices[i].active && audio_voices[i].clip==&audio_clips[id]) return 1;
     return 0;
 }
+static int voice_pos_id(int id) {
+    for(int i=0;i<AUDIO_MAX_VOICES;i++)
+        if(audio_voices[i].active && audio_voices[i].clip==&audio_clips[id]) return audio_voices[i].pos;
+    return -1;
+}
 
 static int mix_peak_without_ambient(void) {
     int16_t buf[AUDIO_SAMPLES*AUDIO_CHANNELS];
@@ -2934,6 +2942,10 @@ static int audio_e2e_test(void) {
     audio_start();
     if(!audio_ready){ printf("audio-e2e: FAILED (dummy device)\n"); SDL_Quit(); return 1; }
     int fails=0;
+    fails += expect_eq("door close starts at measured impact offset",
+                       audio_clips[SFX_DOOR_CLOSE].start_frame,
+                       AUDIO_RATE*DOOR_CLOSE_START_MS/1000);
+    fails += expect_eq("door open starts at asset start",audio_clips[SFX_DOOR_OPEN].start_frame,0);
     objects_mode=1; combat_minimal=1;
     load_session(); build_blocks();
     int px,py,pa; Status st;
@@ -2979,6 +2991,8 @@ static int audio_e2e_test(void) {
     if(get_status(&st)!=0) return 2;
     audio_sfx_update(&st,px,py,0);
     fails += expect_eq("e2e door close voice",voice_active_id(SFX_DOOR_CLOSE),1);
+    fails += expect_eq("e2e door close starts at offset",voice_pos_id(SFX_DOOR_CLOSE),
+                       audio_clips[SFX_DOOR_CLOSE].start_frame);
     fails += expect_eq("e2e door close PCM",mix_peak_without_ambient()>0,1);
 
     /* Actual tick into a west wall. */
@@ -3301,6 +3315,63 @@ static int corpse_stability_test(const char *dir) {
     printf("corpse-stability-test: PASSED alien=%d,%d region=%d,%d..%d,%d frames=600\n",
            x0,y0,l0,t0,r0,b0);
     return 0;
+}
+
+static int door_side_run(const char *tag,int px,int py,int angle,int open,int target,int trace,int *seen_close,int *seen_open) {
+    reset();
+    char src[512];
+    snprintf(src,sizeof src,
+      "[ doom/px: %d doom/py: %d doom/angle: %d doom/aim "
+      "doom/door-open: %d doom/door-target: %d doom/door-blocked: %d "
+      "doom/alien-x: 1120 doom/alien-y: 320 doom/alien-state: 0 doom/alien-detected: 0 ]",
+      px,py,angle,open,target,open<32,1120,320);
+    if(run_block(parse_source(src,"door pose"),"door pose")!=0) return 2;
+    int motion=-1; Status st; Spans s;
+    for(int frame=0;frame<18;frame++){
+        if(get_state(&px,&py,&angle)!=0 || get_status(&st)!=0) return 2;
+        if(render_spans(&s,NULL)!=0) return 2;
+        int center=s.color[PROJ_COLS/2];
+        if(st.door_open>0 && center==4) return 1;
+        if(st.door_open==0 && center!=4) return 1;
+        int ev=sfx_door_event(st.door_open,st.door_target,&motion);
+        if(ev==SFX_DOOR_CLOSE) (*seen_close)++;
+        if(ev==SFX_DOOR_OPEN) (*seen_open)++;
+        if(trace)
+            printf("door-trace side=%s frame=%d open=%d target=%d blocked=%d aperture=%d center=%d event=%d\n",
+                   tag,frame,st.door_open,st.door_target,st.door_blocked,2*st.door_open,center,ev);
+        if(st.door_open==st.door_target) break;
+        if(tick(0)!=0) return 2;
+    }
+    return 0;
+}
+
+static int door_sync_test(int trace) {
+    load_session(); build_blocks();
+    int close=0,open=0,fails=0,motion=-1; Status st;
+    /* Closing from the room side and from the corridor side. */
+    if(door_side_run("room-close",620,320,0,64,0,trace,&close,&open)!=0) return 2;
+    if(door_side_run("corridor-close",900,320,128,64,0,trace,&close,&open)!=0) return 2;
+    if(close!=2){ printf("door-sync-test: close events=%d want=2\n",close); fails++; }
+    /* Opening is also a single transition-start event. */
+    motion=-1;
+    if(sfx_door_event(0,64,&motion)!=SFX_DOOR_OPEN) return 1;
+    if(sfx_door_event(0,64,&motion)!=0) return 1;
+    if(sfx_door_event(10,0,&motion)!=SFX_DOOR_CLOSE) return 1;
+    if(sfx_door_event(5,0,&motion)!=0) return 1;
+
+    /* Reset and repeated transitions must not accumulate events. */
+    reset();
+    reset();
+    if(get_status(&st)!=0) return 2;
+    fails += expect_eq("door reset open",st.door_open,0);
+    fails += expect_eq("door reset target",st.door_target,0);
+    motion=-1;
+    fails += expect_eq("door close after reset",sfx_door_event(64,0,&motion),SFX_DOOR_CLOSE);
+    fails += expect_eq("door close repeat suppressed",sfx_door_event(60,0,&motion),0);
+    fails += expect_eq("door open after reset",sfx_door_event(0,64,&motion),SFX_DOOR_OPEN);
+    fails += expect_eq("door open repeat suppressed",sfx_door_event(4,64,&motion),0);
+    printf("door-sync-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
 }
 
 static int interactive(void) {
@@ -5969,6 +6040,35 @@ static int gl_tour(const char *dir,int w,int h) {
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
 
+static int gl_door_sequence(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2;
+    gl_active=1; gl_hide_weapon=1; load_session(); build_blocks();
+    struct Side {const char *name; int px,py,angle;} sides[]={
+        {"room",620,320,0},{"corridor",900,320,128}
+    };
+    for(size_t s=0;s<sizeof sides/sizeof sides[0];s++){
+        reset(); char src[384];
+        snprintf(src,sizeof src,
+          "[ doom/px: %d doom/py: %d doom/angle: %d doom/aim "
+          "doom/door-open: 64 doom/door-target: 0 doom/door-blocked: 0 ]",
+          sides[s].px,sides[s].py,sides[s].angle);
+        if(run_block(parse_source(src,"door sequence pose"),"door sequence pose")!=0) return 2;
+        for(int frame=0;frame<18;frame++){
+            int px,py,pa; Status st;
+            if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+            st_current_angle=pa;
+            gl_scene(&st,NULL,0);
+            char path[4096]; snprintf(path,sizeof path,"%s/%s-%02d.ppm",dir,sides[s].name,frame);
+            gl_save_ppm(path,w,h);
+            printf("door-sequence side=%s frame=%d open=%d blocked=%d aperture=%d\n",
+                   sides[s].name,frame,st.door_open,st.door_blocked,2*st.door_open);
+            if(st.door_open==0) break;
+            if(tick(0)!=0) return 2;
+        }
+    }
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
 static int gl_door_shots(const char *dir,int w,int h) {
     if(gl_init(w,h,0)!=0) return 2; gl_active=1; load_session(); build_blocks();
     struct DP { const char *name; int px,py,angle,open,blocked; float pitch; } poses[] = {
@@ -5992,6 +6092,37 @@ static int gl_door_shots(const char *dir,int w,int h) {
         printf("door %s %dx%d open=%d blocked=%d\n",poses[i].name,w,h,st.door_open,st.door_blocked);
     }
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
+
+static int cpu_door_sequence(const char *dir) {
+    load_session(); build_blocks();
+    int floor_c,ceil_c; if(get_sector(&floor_c,&ceil_c)!=0) return 2;
+    struct Side {const char *name; int px,py,angle;} sides[]={
+        {"room",620,320,0},{"corridor",900,320,128}
+    };
+    for(size_t si=0;si<sizeof sides/sizeof sides[0];si++){
+        reset(); char src[384];
+        snprintf(src,sizeof src,
+          "[ doom/px: %d doom/py: %d doom/angle: %d doom/aim "
+          "doom/door-open: 64 doom/door-target: 0 doom/door-blocked: 0 ]",
+          sides[si].px,sides[si].py,sides[si].angle);
+        if(run_block(parse_source(src,"cpu door pose"),"cpu door pose")!=0) return 2;
+        for(int frame=0;frame<18;frame++){
+            Status st; Spans s; Detail d; TexRows tr;
+            if(get_status(&st)!=0 || render_spans(&s,NULL)!=0 ||
+               (need_texrows() && get_texrows(&tr)!=0)) return 2;
+            uint32_t *fb=malloc((size_t)FB_W*FB_H*sizeof *fb);
+            if(!fb) return 2;
+            draw_buffer(fb,&s,&d,&tr,&st,floor_c,ceil_c);
+            char path[4096]; snprintf(path,sizeof path,"%s/%s-%02d.ppm",dir,sides[si].name,frame);
+            save_ppm(path,fb); free(fb);
+            printf("cpu-door-sequence side=%s frame=%d open=%d blocked=%d center=%d\n",
+                   sides[si].name,frame,st.door_open,st.door_blocked,s.color[PROJ_COLS/2]);
+            if(st.door_open==0) break;
+            if(tick(0)!=0) return 2;
+        }
+    }
+    return 0;
 }
 
 static int gl_capture(const char *dir,const char *name,int w,int h,
@@ -6351,6 +6482,12 @@ int main(int argc, char **argv) {
         int w=argc>3?atoi(argv[3]):640, h=argc>4?atoi(argv[4]):400;
         return gl_orient_shot(argv[2],w,h);
     }
+    if (argc > 2 && strcmp(argv[1], "--cpu-door-sequence") == 0)
+        return cpu_door_sequence(argv[2]);
+    if (argc > 2 && strcmp(argv[1], "--gl-door-sequence") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return gl_door_sequence(argv[2],w,h);
+    }
     if (argc > 2 && strcmp(argv[1], "--gl-door-shots") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
         return gl_door_shots(argv[2],w,h);
@@ -6374,6 +6511,8 @@ int main(int argc, char **argv) {
     }
     if (argc > 1 && strcmp(argv[1], "--entrance-test") == 0) return entrance_test();
     if (argc > 1 && strcmp(argv[1], "--combat-test") == 0) return combat_test();
+    if (argc > 1 && strcmp(argv[1], "--door-sync-test") == 0) return door_sync_test(0);
+    if (argc > 1 && strcmp(argv[1], "--door-trace") == 0) return door_sync_test(1);
     if (argc > 1 && strcmp(argv[1], "--corpse-trace") == 0) return corpse_trace();
     if (argc > 1 && strcmp(argv[1], "--corpse-stability-test") == 0)
         return corpse_stability_test(argc>2?argv[2]:NULL);
