@@ -31,6 +31,9 @@ doom/alien-detect2: 490000
 doom/alien-attack2: 9216
 doom/alien-speed: 2
 doom/alien-radius2: 256
+;; Combined player+alien footprint: (20 + 16)^2. Used only for player
+;; movement against a living/dying alien; state 5 is non-blocking.
+doom/player-alien-radius2: 1296
 doom/alien-start-x: 1120
 doom/alien-start-y: 320
 
@@ -253,21 +256,33 @@ doom/check-all: func [x y r] [
         either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
     ]
     either = doom/objects-on 1 [ doom/check-objects x y r 0 ] [ none ]
-    either = doom/alien-state 5 [
-        doom/dx: - x doom/alien-x
-        doom/dy: - y doom/alien-y
-        either < + * doom/dx doom/dx * doom/dy doom/dy + r 144 [ doom/hit: 1 ] [ none ]
-    ] [ none ]
+]
+
+;; Player-only collision against one alien. Taking the centre/state/radius as
+;; arguments keeps this reusable for a future alien collection without changing
+;; the frozen language or the wall/door path.
+doom/check-alien: func [ax ay state radius2 x y] [
+    either = state 5 [ none ] [
+        doom/dx: - x ax
+        doom/dy: - y ay
+        either < + * doom/dx doom/dx * doom/dy doom/dy radius2 [ doom/hit: 1 ] [ none ]
+    ]
 ]
 
 doom/move-x: func [nx] [
     doom/hit: 0
     doom/check-all nx doom/py doom/radius2
+    either = doom/hit 0 [
+        doom/check-alien doom/alien-x doom/alien-y doom/alien-state doom/player-alien-radius2 nx doom/py
+    ] [ none ]
     either = doom/hit 0 [ doom/px: nx ] [ doom/player-hit: 1 ]
 ]
 doom/move-y: func [ny] [
     doom/hit: 0
     doom/check-all doom/px ny doom/radius2
+    either = doom/hit 0 [
+        doom/check-alien doom/alien-x doom/alien-y doom/alien-state doom/player-alien-radius2 doom/px ny
+    ] [ none ]
     either = doom/hit 0 [ doom/py: ny ] [ doom/player-hit: 1 ]
 ]
 

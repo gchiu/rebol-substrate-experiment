@@ -1120,7 +1120,7 @@ static void build_blocks(void) {
     ceil_line_block = parse_source("[ doom/detail-line 768 256 768 384 128 5 ]", "ceiling wall top");
 
     const char *collision_src =
-        "[ "
+        "[ doom/alien-y: 500 doom/alien-health: 0 doom/alien-state: 5 "
         "doom/hit: 0 doom/check-all 300 147 400 print doom/hit "
         "doom/hit: 0 doom/check-all 749 200 400 print doom/hit "
         "doom/hit: 0 doom/check-all 900 275 400 print doom/hit "
@@ -1468,11 +1468,12 @@ static int self_test(void) {
     fails += expect_near("through open door x", x, 904, 8);
     fails += expect_eq("through open door valid", get_valid(), 1);
 
-    /* Preserved G5a corridor traversal, now through the open door. */
-    if (open_door_near() != 0) return 2;
+    /* Preserved G5a corridor traversal, now through the open door.  Keep the
+     * living alien out of the traversal lane so this remains a geometry test. */
+    if (open_door_near() != 0 || run_block(collision_block,"traversal clear") != 0) return 2;
     run_ticks(1, 100); get_state(&x, &y, &a);
     fails += expect_near("corridor end", x, 1256, 8);
-    if (open_door_near() != 0) return 2;
+    if (open_door_near() != 0 || run_block(collision_block,"traversal clear") != 0) return 2;
     run_ticks(1, 60); run_ticks(16, 64); run_ticks(1, 100);
     get_state(&x, &y, &a);
     fails += expect_eq("corridor traversal x > door", x > 768, 1);
@@ -3016,26 +3017,26 @@ static int audio_e2e_test(void) {
     fails += expect_eq("e2e cargo voice",voice_active_id(SFX_CARGO),1);
     fails += expect_eq("e2e cargo PCM",mix_peak_without_ambient()>0,1);
 
-    /* Corpse collision uses the generic wall-contact SFX path. */
+    /* Living-alien contact uses the generic wall-contact SFX path. */
     reset(); memset(&sfx_events,0,sizeof sfx_events); memset(audio_voices,0,sizeof audio_voices);
     run_block(parse_source("[ doom/alien-x: 1120 doom/alien-y: 320 "
-                           "doom/alien-health: 0 doom/alien-state: 5 doom/alien-detected: 0 "
+                           "doom/alien-health: 75 doom/alien-state: 3 doom/alien-detected: 0 "
                            "doom/px: 1090 doom/py: 320 doom/angle: 0 doom/aim ]",
-                           "e2e corpse contact"),"e2e corpse contact");
+                           "e2e alien contact"),"e2e alien contact");
     if(tick(1)!=0 || get_status(&st)!=0) return 2;
-    fails += expect_eq("e2e corpse contact player-hit",st.player_hit,1);
+    fails += expect_eq("e2e living alien contact player-hit",st.player_hit,1);
     int near=current_objs_valid?sfx_near_cargo(1098,320,40):-1;
-    printf("e2e corpse contact near-cargo=%d\n",near);
+    printf("e2e living alien contact near-cargo=%d\n",near);
     if(near){
         audio_sfx_update(&st,1098,320,1);
-        fails += expect_eq("e2e corpse contact actual cargo SFX",voice_active_id(SFX_CARGO),1);
+        fails += expect_eq("e2e living alien contact actual cargo SFX",voice_active_id(SFX_CARGO),1);
         memset(&sfx_events,0,sizeof sfx_events); memset(audio_voices,0,sizeof audio_voices);
         current_objs_valid=0; /* isolate the generic wall path from nearby cargo */
         audio_sfx_update(&st,1098,320,1);
-        fails += expect_eq("e2e corpse contact generic wall SFX",voice_active_id(SFX_WALL),1);
+        fails += expect_eq("e2e living alien contact generic wall SFX",voice_active_id(SFX_WALL),1);
     } else {
         audio_sfx_update(&st,1098,320,1);
-        fails += expect_eq("e2e corpse contact wall SFX",voice_active_id(SFX_WALL),1);
+        fails += expect_eq("e2e living alien contact wall SFX",voice_active_id(SFX_WALL),1);
     }
 
     /* Leading-silence check: every event must begin within 50 ms. */
@@ -3085,6 +3086,121 @@ static int combat_scene(int px,int py,int angle,int ax,int ay,int blocked,int he
     return run_block(b,"combat scene");
 }
 
+static cell alien_scene_block(int state,int e2dep) {
+    char src[512];
+    snprintf(src,sizeof src,
+      "[ doom/px: 1000 doom/py: 320 doom/angle: 0 doom/aim "
+      "doom/door-open: 64 doom/door-target: 64 doom/door-blocked: 0 "
+      "doom/alien-x: 1120 doom/alien-y: 320 doom/alien-health: %d "
+      "doom/alien-state: %d doom/e2dep: %d doom/alien-detected: 0 ]",
+      state>=4?0:75,state,e2dep);
+    return parse_source(src,"alien collision scene");
+}
+static int alien_trace_scene(const char *name,cell scene,int state) {
+    if(run_block(scene,"alien collision scene")!=0) return 2;
+    printf("alien-collision scenario=%s start player=1000,320 alien=1120,320 state=%d door=open\n",name,state);
+    int before_x=1000, before_y=320;
+    for(int step=0;step<20;step++){
+        int bx,by,ba; Status before,after;
+        if(get_state(&bx,&by,&ba)!=0 || get_status(&before)!=0) return 2;
+        before_x=bx; before_y=by;
+        if(tick(1)!=0) return 2;
+        if(get_state(&bx,&by,&ba)!=0 || get_status(&after)!=0) return 2;
+        int d2=(bx-after.ax)*(bx-after.ax)+(by-after.ay)*(by-after.ay);
+        int moved=(bx!=before_x || by!=before_y);
+        const char *reason=moved?"accepted":(after.player_hit?
+            (after.state==5?"legacy-corpse-footprint":"alien-footprint"):"other");
+        printf("alien-collision trace=%s step=%02d before=(%d,%d) proposed=(%d,%d) actual=(%d,%d) "
+               "alien=(%d,%d) state=%d d2=%d door=%d/%d hit=%d moved=%d reason=%s\n",
+               name,step,before_x,before_y,before_x+8,before_y,bx,by,
+               after.ax,after.ay,after.state,d2,after.door_open,after.door_blocked,
+               after.player_hit,moved,reason);
+    }
+    return 0;
+}
+static int alien_collision_trace(void) {
+    load_session(); build_blocks();
+    cell living=alien_scene_block(3,1000);
+    cell dying=alien_scene_block(4,18);
+    cell dead=alien_scene_block(5,0);
+    if(alien_trace_scene("living",living,3)!=0) return 2;
+    if(alien_trace_scene("dying",dying,4)!=0) return 2;
+    if(alien_trace_scene("dead",dead,5)!=0) return 2;
+    return 0;
+}
+static int alien_collision_test(void) {
+    int fails=0;
+    load_session(); build_blocks();
+    cell living=alien_scene_block(3,1000);
+    cell dying=alien_scene_block(4,18);
+    cell dead=alien_scene_block(5,0);
+    (void)0;
+    /* Living alien blocks a straight approach. */
+    if(run_block(living,"living")!=0) return 2;
+    int blocked_seen=0;
+    for(int i=0;i<20;i++){
+        int bx,by,ba; Status st;
+        if(get_state(&bx,&by,&ba)!=0) return 2;
+        if(tick(1)!=0 || get_state(&bx,&by,&ba)!=0 || get_status(&st)!=0) return 2;
+        if(st.player_hit) blocked_seen=1;
+        if(bx>1084) { fails += expect_eq("living alien not crossed",0,1); break; }
+    }
+    int px,py,pa; Status st;
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("living alien blocked",blocked_seen,1);
+    fails += expect_eq("living alien stops player",px<=1084,1);
+    fails += expect_eq("living alien remains ahead",px<st.ax,1);
+    /* Dead corpse is non-blocking and can be crossed. */
+    if(run_block(dead,"dead")!=0) return 2;
+    int dead_hit=0;
+    for(int i=0;i<20;i++){
+        if(tick(1)!=0 || get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+        dead_hit += st.player_hit;
+    }
+    fails += expect_eq("dead alien crossed",px>1120,1);
+    fails += expect_eq("dead alien no collision flag",dead_hit,0);
+    /* Dying is solid until the deterministic state-5 transition, then passable. */
+    if(run_block(dying,"dying")!=0) return 2;
+    int dying_blocked=0, dying_passed=0;
+    for(int i=0;i<30;i++){
+        if(tick(1)!=0 || get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+        if(st.state==4 && st.player_hit) dying_blocked=1;
+        if(st.state==5 && px>1120) dying_passed=1;
+    }
+    fails += expect_eq("dying alien blocks before death",dying_blocked,1);
+    fails += expect_eq("dying alien becomes passable at corpse",dying_passed,1);
+    fails += expect_eq("dying alien reaches terminal state",st.state,5);
+    /* Reset restores living collision; repeated death/reset does not leave a blocker. */
+    for(int cycle=0;cycle<5;cycle++){
+        if(reset()!=0 || run_block(dead,"dead cycle")!=0) return 2;
+        for(int i=0;i<20;i++) if(tick(1)!=0) return 2;
+        if(get_state(&px,&py,&pa)!=0) return 2;
+        fails += expect_eq("dead remains passable after cycle",px>1120,1);
+        if(reset()!=0 || run_block(living,"living cycle")!=0) return 2;
+        for(int i=0;i<20;i++) if(tick(1)!=0) return 2;
+        if(get_state(&px,&py,&pa)!=0) return 2;
+        fails += expect_eq("reset restores living blocker",px<=1084,1);
+    }
+    /* Direct lifecycle probes plus wall/door regressions in one block. */
+    if(reset()!=0) return 2;
+    cell probes=parse_source(
+      "[ doom/hit: 0 doom/check-alien 1120 320 0 1296 1120 320 print doom/hit "
+      "doom/hit: 0 doom/check-alien 1120 320 4 1296 1120 320 print doom/hit "
+      "doom/hit: 0 doom/check-alien 1120 320 5 1296 1120 320 print doom/hit "
+      "doom/hit: 0 doom/check-all 147 320 400 print doom/hit "
+      "doom/px: 700 doom/py: 320 doom/door-open: 0 doom/door-target: 0 "
+      "doom/door-blocked: 1 doom/hit: 0 doom/check-all 770 320 400 print doom/hit ]",
+      "alien state and wall/door probes");
+    int pv[5];
+    if(run_capture(probes,pv,5,"alien state and wall/door probes")!=0) return 2;
+    fails += expect_eq("living alien state 0 collision",pv[0],1);
+    fails += expect_eq("dying alien state 4 collision",pv[1],1);
+    fails += expect_eq("dead alien state 5 collision",pv[2],0);
+    fails += expect_eq("wall collision remains",pv[3],1);
+    fails += expect_eq("closed door remains solid",pv[4],1);
+    printf("alien-collision-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
+}
 static int combat_test(void) {
     int fails=0; Status st;
     combat_minimal=1;
@@ -3142,16 +3258,16 @@ static int combat_test(void) {
     fails += expect_eq("combat corpse does not move",st.ax==corpse_x && st.ay==corpse_y,1);
     fails += expect_eq("combat corpse no detection",st.detected,0);
 
-    /* Corpse is a low collision object: centre blocked, nearby clear. */
+    /* Dead corpse remains visual but is non-blocking. */
     char pbuf[220];
     snprintf(pbuf,sizeof pbuf,"[ doom/hit: 0 doom/check-all %d %d 400 print doom/hit ]",corpse_x,corpse_y);
-    cell cblock=parse_source(pbuf,"corpse collision"); int cv=-1;
-    if(run_capture(cblock,&cv,1,"corpse collision")!=0) return 2;
-    fails += expect_eq("combat corpse collision",cv,1);
+    cell cblock=parse_source(pbuf,"corpse non-blocking"); int cv=-1;
+    if(run_capture(cblock,&cv,1,"corpse non-blocking")!=0) return 2;
+    fails += expect_eq("combat corpse non-blocking",cv,0);
     snprintf(pbuf,sizeof pbuf,"[ doom/hit: 0 doom/check-all %d %d 400 print doom/hit ]",corpse_x+30,corpse_y);
     cell cclear=parse_source(pbuf,"corpse clearance"); int cc=-1;
     if(run_capture(cclear,&cc,1,"corpse clearance")!=0) return 2;
-    fails += expect_eq("combat corpse walk around",cc,0);
+    fails += expect_eq("combat corpse walk through",cc,0);
 
     /* Corpse stays put while the player crosses the door and views it from both sides. */
     if(run_block(parse_source("[ doom/px: 700 doom/py: 320 doom/angle: 0 doom/aim ]","corpse door view"),"corpse door view")!=0) return 2;
@@ -6624,6 +6740,8 @@ int main(int argc, char **argv) {
     }
     if (argc > 1 && strcmp(argv[1], "--muzzle-anchor-test") == 0) return muzzle_anchor_test();
     if (argc > 1 && strcmp(argv[1], "--entrance-test") == 0) return entrance_test();
+    if (argc > 1 && strcmp(argv[1], "--alien-collision-trace") == 0) return alien_collision_trace();
+    if (argc > 1 && strcmp(argv[1], "--alien-collision-test") == 0) return alien_collision_test();
     if (argc > 1 && strcmp(argv[1], "--combat-test") == 0) return combat_test();
     if (argc > 1 && strcmp(argv[1], "--door-sync-test") == 0) return door_sync_test(0);
     if (argc > 1 && strcmp(argv[1], "--door-trace") == 0) return door_sync_test(1);

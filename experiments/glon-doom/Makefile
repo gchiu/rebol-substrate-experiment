@@ -56,6 +56,7 @@ test: $(TARGET)
 	./$(TARGET) --resize-test
 	./$(TARGET) --stationary-test
 	./$(TARGET) --entrance-test
+	./$(TARGET) --alien-collision-test
 	./$(TARGET) --combat-test
 	./$(TARGET) --door-sync-test
 	./$(TARGET) --corpse-stability-test
