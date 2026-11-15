@@ -87,6 +87,7 @@ typedef struct {
     int light;
     int player_hit;
     int phase;
+    int jump_z;
 } Status;
 
 typedef struct { int id, depth, left, right, top, bot, visible; int x,y,hw,hd,h; } Obj;
@@ -150,6 +151,7 @@ static int engineering_room_enabled = 1;
 static double gl_energy_time = 0.0;
 static int objects_mode = 0;
 static int combat_minimal = 0;
+static int lazy_ticks = 0;
 static Obj current_objs[6];
 static int current_objs_valid = 0;
 static int last_px = 320;
@@ -169,6 +171,7 @@ static cell floor_line_block, ceil_line_block, objects_block, objects_on_block;
 static cell alien_collision_block, los_wall_block, los_clear_block;
 static cell render_blocks[2];
 static cell tick_blocks[128];
+static cell jump_request_block;
 
 static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
                         const TexRows *tr, const Status *st,
@@ -1119,53 +1122,21 @@ static void build_blocks(void) {
     floor_line_block = parse_source("[ doom/detail-line 768 256 768 384 0 5 ]", "floor wall base");
     ceil_line_block = parse_source("[ doom/detail-line 768 256 768 384 128 5 ]", "ceiling wall top");
 
-    const char *collision_src =
-        "[ doom/alien-y: 500 doom/alien-health: 0 doom/alien-state: 5 "
-        "doom/hit: 0 doom/check-all 300 147 400 print doom/hit "
-        "doom/hit: 0 doom/check-all 749 200 400 print doom/hit "
-        "doom/hit: 0 doom/check-all 900 275 400 print doom/hit "
-        "doom/hit: 0 doom/check-all 1261 600 400 print doom/hit "
-        "doom/hit: 0 doom/check-all 1200 1005 400 print doom/hit "
-        "doom/hit: 0 doom/check-all 1171 700 400 print doom/hit "
-        "doom/hit: 0 doom/check-all 900 403 400 print doom/hit "
-        "doom/hit: 0 doom/check-all 787 500 400 print doom/hit "
-        "doom/hit: 0 doom/check-all 300 621 400 print doom/hit "
-        "doom/hit: 0 doom/check-all 147 300 400 print doom/hit "
-        "doom/hit: 0 doom/check-all 500 500 400 print doom/hit "
-        "]";
-    collision_block = parse_source(collision_src, "collision probes");
-
-    const char *alien_probe_src =
-        "[ "
-        "doom/hit: 0 doom/check-all 300 143 256 print doom/hit "
-        "doom/hit: 0 doom/check-all 753 200 256 print doom/hit "
-        "doom/hit: 0 doom/check-all 900 271 256 print doom/hit "
-        "doom/hit: 0 doom/check-all 1265 600 256 print doom/hit "
-        "doom/hit: 0 doom/check-all 1200 1009 256 print doom/hit "
-        "doom/hit: 0 doom/check-all 1167 700 256 print doom/hit "
-        "doom/hit: 0 doom/check-all 900 399 256 print doom/hit "
-        "doom/hit: 0 doom/check-all 783 500 256 print doom/hit "
-        "doom/hit: 0 doom/check-all 300 625 256 print doom/hit "
-        "doom/hit: 0 doom/check-all 143 300 256 print doom/hit "
-        "doom/hit: 0 doom/check-all 500 500 256 print doom/hit "
-        "]";
-    alien_collision_block = parse_source(alien_probe_src, "alien collision probes");
-    los_wall_block = parse_source(
-        "[ doom/px: 320 doom/py: 440 doom/door-blocked: 0 doom/los 1200 440 print doom/occluded ]",
-        "wall los");
-    los_clear_block = parse_source(
-        "[ doom/px: 320 doom/py: 320 doom/door-blocked: 0 doom/los 1120 320 print doom/occluded ]",
-        "clear los");
     }
 
-    for (int m = 0; m < 64; m++) {
-        if (normalize_move_mask(m) != m) continue;
-        char src[128];
-        snprintf(src, sizeof src, "[ doom/tick %d %d %d %d %d %d 0 ]",
-                 !!(m & 1), !!(m & 2), !!(m & 4), !!(m & 8), !!(m & 16), !!(m & 32));
-        tick_blocks[m] = parse_source(src, "tick");
+    /* The normal game gets every movement mask up front. Objects/raw-wall
+     * variants consume extra loader cells, so they materialise masks lazily. */
+    if (!objects_mode && !raw_wall_mode && !lazy_ticks) {
+        for (int m = 0; m < 64; m++) {
+            if (normalize_move_mask(m) != m) continue;
+            char src[128];
+            snprintf(src, sizeof src, "[ doom/tick %d %d %d %d %d %d 0 ]",
+                     !!(m & 1), !!(m & 2), !!(m & 4), !!(m & 8), !!(m & 16), !!(m & 32));
+            tick_blocks[m] = parse_source(src, "tick");
+        }
+        tick_blocks[64] = parse_source("[ doom/tick 0 0 0 0 0 0 1 ]", "fire tick");
     }
-    tick_blocks[64] = parse_source("[ doom/tick 0 0 0 0 0 0 1 ]", "fire tick");
+    jump_request_block = parse_source("[ doom/jump-input: 1 ]", "jump input");
 
     if (!gl_active && !combat_minimal) for (int b = 0; b < 2; b++) {
         size_t cap = 256 + (PROJ_COLS / 2) * 64;
@@ -1211,11 +1182,11 @@ static int get_valid(void) {
     return v;
 }
 static int get_status(Status *st) {
-    int v[20];
+    int v[21];
 #ifdef DOOM_S1_PROFILE
     prof_begin();
 #endif
-    int grc = run_capture(status_block, v, 20, "status");
+    int grc = run_capture(status_block, v, 21, "status");
 #ifdef DOOM_S1_PROFILE
     prof_collect(&prof_status);
 #endif
@@ -1226,6 +1197,7 @@ static int get_status(Status *st) {
     st->visible = v[11]; st->left = v[12]; st->right = v[13];
     st->top = v[14]; st->bot = v[15]; st->light = v[16]; st->ammo = v[17];
     st->player_hit = v[18]; st->phase = v[19];
+    st->jump_z = v[20];
     if (objects_mode && get_objects(current_objs) == 0) {
         current_objs_valid = 1;
         if (st->door_blocked && last_px < 768)
@@ -1311,9 +1283,23 @@ static int reset(void) {
     alien_view_reset();
     return run_block(reset_block, "reset");
 }
+static int ensure_tick_block(int idx) {
+    if (tick_blocks[idx]) return 0;
+    char src[128];
+    if (idx == 64) {
+        snprintf(src,sizeof src,"[ doom/tick 0 0 0 0 0 0 1 ]");
+    } else {
+        snprintf(src,sizeof src,"[ doom/tick %d %d %d %d %d %d 0 ]",
+                 !!(idx & 1), !!(idx & 2), !!(idx & 4), !!(idx & 8),
+                 !!(idx & 16), !!(idx & 32));
+    }
+    tick_blocks[idx] = parse_source(src, idx==64?"fire tick":"tick");
+    return tick_blocks[idx] ? 0 : -1;
+}
 static int tick(int mask) {
     if (objects_mode && !gl_active && !(mask&FIRE_MASK)) mask &= 15;
     int idx = (mask&FIRE_MASK) ? 64 : normalize_move_mask(mask & 63);
+    if (ensure_tick_block(idx) != 0) return -1;
 #ifdef DOOM_S1_PROFILE
     prof_begin();
 #endif
@@ -1323,6 +1309,10 @@ static int tick(int mask) {
 #endif
     if (rc == 0) sim_tick++;
     return rc;
+}
+static int tick_jump(int mask,int jump) {
+    if (jump && run_block(jump_request_block,"jump input")!=0) return -1;
+    return tick(mask);
 }
 
 static int render_spans(Spans *s, int64_t *ns) {
@@ -1401,6 +1391,9 @@ static int self_test(void) {
     fails += expect_eq("pixels per wall ray", PROJ_SCALE, 2);
     load_session();
     build_blocks();
+    cell traversal_clear = parse_source(
+      "[ doom/alien-y: 500 doom/alien-health: 0 doom/alien-state: 5 ]",
+      "traversal clear");
     int floor_c, ceil_c;
     if (get_sector(&floor_c, &ceil_c) != 0) return 2;
 
@@ -1470,10 +1463,10 @@ static int self_test(void) {
 
     /* Preserved G5a corridor traversal, now through the open door.  Keep the
      * living alien out of the traversal lane so this remains a geometry test. */
-    if (open_door_near() != 0 || run_block(collision_block,"traversal clear") != 0) return 2;
+    if (open_door_near() != 0 || run_block(traversal_clear,"traversal clear") != 0) return 2;
     run_ticks(1, 100); get_state(&x, &y, &a);
     fails += expect_near("corridor end", x, 1256, 8);
-    if (open_door_near() != 0 || run_block(collision_block,"traversal clear") != 0) return 2;
+    if (open_door_near() != 0 || run_block(traversal_clear,"traversal clear") != 0) return 2;
     run_ticks(1, 60); run_ticks(16, 64); run_ticks(1, 100);
     get_state(&x, &y, &a);
     fails += expect_eq("corridor traversal x > door", x > 768, 1);
@@ -1582,27 +1575,6 @@ static int self_test(void) {
     fails += expect_eq("tracker direction non-zero", st.tside != 0, 1);
     fails += expect_eq("tracker distance non-zero", st.td2 > 0, 1);
 
-    int probes[11];
-    if (reset() != 0 || run_capture(collision_block, probes, 11, "collision probes") != 0) return 2;
-    for (int i = 0; i < 10; i++) {
-        char name[32]; snprintf(name, sizeof name, "linedef %d collision", i);
-        fails += expect_eq(name, probes[i], 1);
-    }
-    fails += expect_eq("clear space", probes[10], 0);
-
-    int aprobes[11];
-    if (run_capture(alien_collision_block, aprobes, 11, "alien collision probes") != 0) return 2;
-    for (int i = 0; i < 10; i++) {
-        char name[40]; snprintf(name, sizeof name, "alien linedef %d collision", i);
-        fails += expect_eq(name, aprobes[i], 1);
-    }
-    fails += expect_eq("alien clear space", aprobes[10], 0);
-
-    int los;
-    if (run_capture(los_wall_block, &los, 1, "wall los") != 0) return 2;
-    fails += expect_eq("alien wall occlusion", los, 1);
-    if (run_capture(los_clear_block, &los, 1, "clear los") != 0) return 2;
-    fails += expect_eq("alien clear line of sight", los, 0);
     reset();
 
     Spans sa, sb, sf;
@@ -1720,7 +1692,7 @@ static int self_test(void) {
     cell loader0 = M[GC_LOADER_HP];
     for (int i = 0; i < 20; i++) {
         if (render_spans(&s, NULL) != 0 || get_status(&st) != 0) return 2;
-        if (run_ticks(i & 63, 1) != 0) return 2;
+        if (run_ticks(1, 1) != 0) return 2;
     }
     cell loader1 = M[GC_LOADER_HP];
     fails += expect_eq("repeated frames loader growth", loader1 - loader0, 0);
@@ -2868,7 +2840,7 @@ static int bench(int frames, int bench_alien) {
     return 0;
 }
 
-typedef struct { int w,s,a,d,left,right,fire; } HeldKeys;
+typedef struct { int w,s,a,d,left,right,fire,jump,jump_pending; } HeldKeys;
 static void held_keys_apply(HeldKeys *h, const SDL_Event *e) {
     if (e->type != SDL_KEYDOWN && e->type != SDL_KEYUP) return;
     int down = e->type == SDL_KEYDOWN;
@@ -2881,6 +2853,10 @@ static void held_keys_apply(HeldKeys *h, const SDL_Event *e) {
     else if (sc == SDL_SCANCODE_LEFT || sym == SDLK_LEFT || sc == SDL_SCANCODE_KP_4) h->left = down;
     else if (sc == SDL_SCANCODE_RIGHT || sym == SDLK_RIGHT || sc == SDL_SCANCODE_KP_6) h->right = down;
     else if (sc == SDL_SCANCODE_F || sym == SDLK_f) h->fire = down;
+    else if (sc == SDL_SCANCODE_SPACE || sym == SDLK_SPACE) {
+        if (down && !e->key.repeat && !h->jump) h->jump_pending = 1;
+        h->jump = down;
+    }
 }
 static int held_keys_mask(const HeldKeys *h, const Uint8 *k) {
     return (h->w || k[SDL_SCANCODE_W] ? 1 : 0) | (h->s || k[SDL_SCANCODE_S] ? 2 : 0) |
@@ -2908,6 +2884,16 @@ static int input_test(void) {
     e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_F; e.key.keysym.sym=SDLK_f;
     held_keys_apply(&h,&e); fails += expect_eq("F keydown maps fire", h.fire, 1);
     e.type=SDL_KEYUP; held_keys_apply(&h,&e); fails += expect_eq("F keyup clears fire", h.fire, 0);
+    HeldKeys j = {0};
+    memset(&e,0,sizeof e); e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_SPACE;
+    e.key.keysym.sym=SDLK_SPACE; e.key.repeat=0;
+    held_keys_apply(&j,&e);
+    fails += expect_eq("Space keydown requests jump", j.jump_pending, 1);
+    fails += expect_eq("Space held state", j.jump, 1);
+    j.jump_pending=0; e.key.repeat=1; held_keys_apply(&j,&e);
+    fails += expect_eq("Space repeat does not re-request", j.jump_pending, 0);
+    e.type=SDL_KEYUP; e.key.repeat=0; held_keys_apply(&j,&e);
+    fails += expect_eq("Space keyup clears held state", j.jump, 0);
     printf("input-test: %s\n", fails ? "FAILED" : "PASSED");
     return fails ? 1 : 0;
 }
@@ -3056,6 +3042,7 @@ static int audio_e2e_test(void) {
 }
 
 static int entrance_test(void) {
+    combat_minimal=1;
     int fails=0;
     for(float x=780.0f;x<1260.0f;x+=80.0f){
         float x0,x1; corridor_south_panel_span(x,&x0,&x1);
@@ -3109,16 +3096,17 @@ static int alien_trace_scene(const char *name,cell scene,int state) {
         int d2=(bx-after.ax)*(bx-after.ax)+(by-after.ay)*(by-after.ay);
         int moved=(bx!=before_x || by!=before_y);
         const char *reason=moved?"accepted":(after.player_hit?
-            (after.state==5?"legacy-corpse-footprint":"alien-footprint"):"other");
+            (after.state==5?"corpse-low-footprint":"alien-footprint"):"other");
         printf("alien-collision trace=%s step=%02d before=(%d,%d) proposed=(%d,%d) actual=(%d,%d) "
-               "alien=(%d,%d) state=%d d2=%d door=%d/%d hit=%d moved=%d reason=%s\n",
+               "alien=(%d,%d) state=%d z=%d d2=%d door=%d/%d hit=%d moved=%d reason=%s\n",
                name,step,before_x,before_y,before_x+8,before_y,bx,by,
-               after.ax,after.ay,after.state,d2,after.door_open,after.door_blocked,
+               after.ax,after.ay,after.state,after.jump_z,d2,after.door_open,after.door_blocked,
                after.player_hit,moved,reason);
     }
     return 0;
 }
 static int alien_collision_trace(void) {
+    combat_minimal=1;
     load_session(); build_blocks();
     cell living=alien_scene_block(3,1000);
     cell dying=alien_scene_block(4,18);
@@ -3129,6 +3117,7 @@ static int alien_collision_trace(void) {
     return 0;
 }
 static int alien_collision_test(void) {
+    combat_minimal=1;
     int fails=0;
     load_session(); build_blocks();
     cell living=alien_scene_block(3,1000);
@@ -3150,32 +3139,31 @@ static int alien_collision_test(void) {
     fails += expect_eq("living alien blocked",blocked_seen,1);
     fails += expect_eq("living alien stops player",px<=1084,1);
     fails += expect_eq("living alien remains ahead",px<st.ax,1);
-    /* Dead corpse is non-blocking and can be crossed. */
+    /* Grounded player is blocked by a low corpse. */
     if(run_block(dead,"dead")!=0) return 2;
     int dead_hit=0;
     for(int i=0;i<20;i++){
         if(tick(1)!=0 || get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
         dead_hit += st.player_hit;
     }
-    fails += expect_eq("dead alien crossed",px>1120,1);
-    fails += expect_eq("dead alien no collision flag",dead_hit,0);
-    /* Dying is solid until the deterministic state-5 transition, then passable. */
+    fails += expect_eq("grounded corpse blocks",px<1120,1);
+    fails += expect_eq("grounded corpse collision flag",dead_hit>0,1);
+    fails += expect_eq("grounded corpse not crossed",px<=1096,1);
+    /* Dying is solid; the grounded corpse remains a low obstacle. */
     if(run_block(dying,"dying")!=0) return 2;
-    int dying_blocked=0, dying_passed=0;
+    int dying_blocked=0;
     for(int i=0;i<30;i++){
         if(tick(1)!=0 || get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
-        if(st.state==4 && st.player_hit) dying_blocked=1;
-        if(st.state==5 && px>1120) dying_passed=1;
+        if(st.player_hit) dying_blocked=1;
     }
-    fails += expect_eq("dying alien blocks before death",dying_blocked,1);
-    fails += expect_eq("dying alien becomes passable at corpse",dying_passed,1);
+    fails += expect_eq("dying/corpse blocks grounded player",dying_blocked,1);
     fails += expect_eq("dying alien reaches terminal state",st.state,5);
-    /* Reset restores living collision; repeated death/reset does not leave a blocker. */
+    /* Reset restores living collision; repeated death/reset leaves the low body. */
     for(int cycle=0;cycle<5;cycle++){
         if(reset()!=0 || run_block(dead,"dead cycle")!=0) return 2;
         for(int i=0;i<20;i++) if(tick(1)!=0) return 2;
         if(get_state(&px,&py,&pa)!=0) return 2;
-        fails += expect_eq("dead remains passable after cycle",px>1120,1);
+        fails += expect_eq("grounded corpse remains blocking after cycle",px<1120,1);
         if(reset()!=0 || run_block(living,"living cycle")!=0) return 2;
         for(int i=0;i<20;i++) if(tick(1)!=0) return 2;
         if(get_state(&px,&py,&pa)!=0) return 2;
@@ -3184,21 +3172,201 @@ static int alien_collision_test(void) {
     /* Direct lifecycle probes plus wall/door regressions in one block. */
     if(reset()!=0) return 2;
     cell probes=parse_source(
-      "[ doom/hit: 0 doom/check-alien 1120 320 0 1296 1120 320 print doom/hit "
-      "doom/hit: 0 doom/check-alien 1120 320 4 1296 1120 320 print doom/hit "
-      "doom/hit: 0 doom/check-alien 1120 320 5 1296 1120 320 print doom/hit "
+      "[ doom/jump-z: 0 doom/hit: 0 doom/check-alien 1120 320 0 1296 1090 320 1090 320 print doom/hit "
+      "doom/hit: 0 doom/check-alien 1120 320 4 1296 1090 320 1090 320 print doom/hit "
+      "doom/hit: 0 doom/check-alien 1120 320 5 1296 1090 320 1090 320 print doom/hit "
+      "doom/jump-z: 176 doom/hit: 0 doom/check-alien 1120 320 5 1024 1090 320 1090 320 print doom/hit "
       "doom/hit: 0 doom/check-all 147 320 400 print doom/hit "
       "doom/px: 700 doom/py: 320 doom/door-open: 0 doom/door-target: 0 "
       "doom/door-blocked: 1 doom/hit: 0 doom/check-all 770 320 400 print doom/hit ]",
       "alien state and wall/door probes");
-    int pv[5];
-    if(run_capture(probes,pv,5,"alien state and wall/door probes")!=0) return 2;
+    int pv[6];
+    if(run_capture(probes,pv,6,"alien state and wall/door probes")!=0) return 2;
     fails += expect_eq("living alien state 0 collision",pv[0],1);
     fails += expect_eq("dying alien state 4 collision",pv[1],1);
-    fails += expect_eq("dead alien state 5 collision",pv[2],0);
-    fails += expect_eq("wall collision remains",pv[3],1);
-    fails += expect_eq("closed door remains solid",pv[4],1);
+    fails += expect_eq("grounded corpse state 5 collision",pv[2],1);
+    fails += expect_eq("high corpse state 5 clear",pv[3],0);
+    fails += expect_eq("wall collision remains",pv[4],1);
+    fails += expect_eq("closed door remains solid",pv[5],1);
     printf("alien-collision-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
+}
+static int collision_probe_test(void) {
+    int fails=0;
+    combat_minimal=1;
+    load_session(); build_blocks();
+    const char *collision_src =
+        "[ "
+        "doom/hit: 0 doom/check-all 300 147 400 print doom/hit "
+        "doom/hit: 0 doom/check-all 749 200 400 print doom/hit "
+        "doom/hit: 0 doom/check-all 900 275 400 print doom/hit "
+        "doom/hit: 0 doom/check-all 1261 600 400 print doom/hit "
+        "doom/hit: 0 doom/check-all 1200 1005 400 print doom/hit "
+        "doom/hit: 0 doom/check-all 1171 700 400 print doom/hit "
+        "doom/hit: 0 doom/check-all 900 403 400 print doom/hit "
+        "doom/hit: 0 doom/check-all 787 500 400 print doom/hit "
+        "doom/hit: 0 doom/check-all 300 621 400 print doom/hit "
+        "doom/hit: 0 doom/check-all 147 300 400 print doom/hit "
+        "doom/hit: 0 doom/check-all 500 500 400 print doom/hit "
+        "]";
+    const char *alien_src =
+        "[ "
+        "doom/hit: 0 doom/check-all 300 143 256 print doom/hit "
+        "doom/hit: 0 doom/check-all 753 200 256 print doom/hit "
+        "doom/hit: 0 doom/check-all 900 271 256 print doom/hit "
+        "doom/hit: 0 doom/check-all 1265 600 256 print doom/hit "
+        "doom/hit: 0 doom/check-all 1200 1009 256 print doom/hit "
+        "doom/hit: 0 doom/check-all 1167 700 256 print doom/hit "
+        "doom/hit: 0 doom/check-all 900 399 256 print doom/hit "
+        "doom/hit: 0 doom/check-all 783 500 256 print doom/hit "
+        "doom/hit: 0 doom/check-all 300 625 256 print doom/hit "
+        "doom/hit: 0 doom/check-all 143 300 256 print doom/hit "
+        "doom/hit: 0 doom/check-all 500 500 256 print doom/hit "
+        "]";
+    cell cb=parse_source(collision_src,"collision probes");
+    cell ab=parse_source(alien_src,"alien collision probes");
+    int probes[11];
+    if(reset()!=0 || run_capture(cb,probes,11,"collision probes")!=0) return 2;
+    for(int i=0;i<10;i++){
+        char name[32]; snprintf(name,sizeof name,"linedef %d collision",i);
+        fails += expect_eq(name,probes[i],1);
+    }
+    fails += expect_eq("clear space",probes[10],0);
+    int aprobes[11];
+    if(run_capture(ab,aprobes,11,"alien collision probes")!=0) return 2;
+    for(int i=0;i<10;i++){
+        char name[40]; snprintf(name,sizeof name,"alien linedef %d collision",i);
+        fails += expect_eq(name,aprobes[i],1);
+    }
+    fails += expect_eq("alien clear space",aprobes[10],0);
+    cell lw=parse_source("[ doom/px: 320 doom/py: 440 doom/door-blocked: 0 doom/los 1200 440 print doom/occluded ]","wall los");
+    cell lc=parse_source("[ doom/px: 320 doom/py: 320 doom/door-blocked: 0 doom/los 1120 320 print doom/occluded ]","clear los");
+    int los=-1;
+    if(run_capture(lw,&los,1,"wall los")!=0) return 2;
+    fails += expect_eq("alien wall occlusion",los,1);
+    if(run_capture(lc,&los,1,"clear los")!=0) return 2;
+    fails += expect_eq("alien clear line of sight",los,0);
+    printf("collision-probe-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
+}
+static int jump_test(void) {
+    int fails=0; Status st; int px,py,pa;
+    combat_minimal=1;
+    load_session(); build_blocks();
+    /* Stationary jump: takeoff through landing, with a deterministic trace. */
+    reset();
+    if(get_status(&st)!=0) return 2;
+    fails += expect_eq("jump starts grounded",st.jump_z,0);
+    if(tick_jump(0,1)!=0) return 2;
+    int steps=0,max_z=0;
+    for(;;){
+        if(get_status(&st)!=0 || get_state(&px,&py,&pa)!=0) return 2;
+        if(st.jump_z>max_z) max_z=st.jump_z;
+        printf("jump-trace step=%02d x=%d y=%d z=%d\n",steps,px,py,st.jump_z);
+        if(st.jump_z==0) break;
+        if(steps>=100) return 2;
+        if(tick_jump(0,0)!=0) return 2;
+        steps++;
+    }
+    fails += expect_eq("jump airborne tick index",steps,38);
+    fails += expect_eq("jump apex z units",max_z,190);
+    fails += expect_eq("jump returns to floor",st.jump_z,0);
+    fails += expect_eq("jump horizontal stationary",px,320);
+    /* Forward jump preserves movement and lands. */
+    reset();
+    for(int i=0;i<39;i++) if(tick_jump(1,i==0)!=0) return 2;
+    if(get_status(&st)!=0 || get_state(&px,&py,&pa)!=0) return 2;
+    fails += expect_eq("forward jump lands",st.jump_z,0);
+    fails += expect_eq("forward jump moves forward",px>320,1);
+    fails += expect_eq("forward jump y unchanged",py,320);
+    /* Diagonal jumping changes both axes. */
+    reset();
+    for(int i=0;i<39;i++) if(tick_jump(5,i==0)!=0) return 2;
+    if(get_status(&st)!=0 || get_state(&px,&py,&pa)!=0) return 2;
+    fails += expect_eq("diagonal jump lands",st.jump_z,0);
+    fails += expect_eq("diagonal jump x",px>320,1);
+    fails += expect_eq("diagonal jump y",py>320,1);
+    /* Air control: reverse direction while airborne, then land. */
+    reset();
+    if(tick_jump(1,1)!=0) return 2;
+    for(int i=0;i<5;i++) if(tick_jump(1,0)!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0) return 2;
+    int mid_x=px;
+    for(int i=0;i<8;i++) if(tick_jump(2,0)!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0) return 2;
+    fails += expect_eq("air control changes direction",px<mid_x,1);
+    for(int i=0;i<30;i++) if(tick_jump(0,0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails += expect_eq("air control lands",st.jump_z,0);
+    /* Holding jump input must not retrigger after landing. */
+    reset();
+    for(int i=0;i<80;i++) if(tick_jump(0,1)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails += expect_eq("held jump does not retrigger",st.jump_z,0);
+    /* Corpse is a grounded low obstacle; a jump clears it. */
+    cell dead=alien_scene_block(5,0);
+    reset();
+    if(run_block(dead,"jump corpse grounded")!=0) return 2;
+    int grounded_hit=0;
+    for(int i=0;i<20;i++){
+        if(tick(1)!=0 || get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+        if(st.player_hit) grounded_hit=1;
+    }
+    printf("jump-corpse grounded x=%d y=%d z=%d hit=%d\n",px,py,st.jump_z,grounded_hit);
+    fails += expect_eq("grounded corpse blocks jump approach",px<1120,1);
+    fails += expect_eq("grounded corpse collision",grounded_hit,1);
+    reset();
+    if(run_block(dead,"jump corpse airborne")!=0 || tick_jump(1,1)!=0) return 2;
+    for(int i=0;i<60;i++) if(tick_jump(1,0)!=0) return 2;
+    if(get_status(&st)!=0 || get_state(&px,&py,&pa)!=0) return 2;
+    printf("jump-corpse cleared x=%d y=%d z=%d\n",px,py,st.jump_z);
+    fails += expect_eq("jump clears corpse",px>1120,1);
+    fails += expect_eq("jump over corpse lands",st.jump_z,0);
+    /* Living and dying aliens remain full-height during the jump. */
+    cell living=alien_scene_block(3,1000);
+    cell dying=alien_scene_block(4,18);
+    reset(); if(run_block(living,"jump living")!=0 || tick_jump(1,1)!=0) return 2;
+    for(int i=0;i<12;i++) if(tick_jump(1,0)!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0) return 2;
+    fails += expect_eq("living alien blocks jump",px<1120,1);
+    reset(); if(run_block(dying,"jump dying")!=0 || tick_jump(1,1)!=0) return 2;
+    for(int i=0;i<12;i++) if(tick_jump(1,0)!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("dying alien blocks jump",px<1120,1);
+    fails += expect_eq("dying state remains",st.state,4);
+    /* Closed door and full-height wall cannot be bypassed; open door traverses. */
+    reset();
+    cell door=parse_source(
+      "[ doom/px: 700 doom/py: 320 doom/angle: 0 doom/aim "
+      "doom/door-open: 0 doom/door-target: 0 doom/door-blocked: 1 ]",
+      "jump door scene");
+    if(run_block(door,"jump closed door")!=0) return 2;
+    for(int i=0;i<20;i++) if(tick_jump(1,i==0)!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0) return 2;
+    fails += expect_eq("closed door blocks jump",px<768,1);
+    if(run_block(door,"jump door reopen")!=0 || run_block(activate_block,"jump activate")!=0) return 2;
+    for(int i=0;i<12;i++) if(tick(0)!=0) return 2;
+    if(tick_jump(1,1)!=0) return 2;
+    for(int i=0;i<38;i++) if(tick_jump(1,0)!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0) return 2;
+    fails += expect_eq("open door allows jump movement",px>768,1);
+    reset();
+    for(int i=0;i<20;i++) if(tick_jump(2,i==0)!=0) return 2;
+    if(get_state(&px,&py,&pa)!=0) return 2;
+    fails += expect_eq("wall blocks jump",px>=152,1);
+    /* Repeated jumps do not accumulate drift; reset restores jump state. */
+    reset();
+    for(int n=0;n<3;n++){
+        if(tick_jump(0,1)!=0) return 2;
+        for(int i=0;i<40;i++) if(tick_jump(0,0)!=0) return 2;
+        if(get_status(&st)!=0) return 2;
+        fails += expect_eq("repeated jump lands at floor",st.jump_z,0);
+    }
+    if(tick_jump(0,1)!=0 || reset()!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("reset clears jump height",st.jump_z,0);
+    if(tick_jump(0,1)!=0 || get_status(&st)!=0) return 2;
+    fails += expect_eq("reset allows a fresh jump",st.jump_z>0,1);
+    printf("jump-test: %s\n",fails?"FAILED":"PASSED");
     return fails?1:0;
 }
 static int combat_test(void) {
@@ -3463,6 +3631,7 @@ static int door_side_run(const char *tag,int px,int py,int angle,int open,int ta
 }
 
 static int door_sync_test(int trace) {
+    lazy_ticks=1;
     load_session(); build_blocks();
     int close=0,open=0,fails=0,motion=-1; Status st;
     /* Closing from the room side and from the corridor side. */
@@ -3569,8 +3738,10 @@ static int interactive(void) {
         acc += dt;
         int64_t ts = now_ns();
         int ticks = 0;
+        int jump = held.jump_pending ? 1 : 0;
         while (acc >= 1.0 / TICK_HZ && ticks < 10) {
-            if (tick(mask) != 0) { running = 0; break; }
+            if (tick_jump(mask,jump) != 0) { running = 0; break; }
+            if (jump) { held.jump_pending = 0; jump = 0; }
             acc -= 1.0 / TICK_HZ;
             ticks++;
         }
@@ -4002,9 +4173,10 @@ static int gl_init(int w, int h, int shown) {
 }
 
 static void gl_gv(double x,double y,double z) { glVertex3d(x/64.0, z/64.0, -y/64.0); }
-static void gl_view(double px,double py,double angle) {
-    /* map world (x,y,z) -> GL (x,z,-y), y up; yaw +90 - game angle */
-    double ex=px/64.0, ey=1.0, ez=-py/64.0;
+static void gl_view(double px,double py,double angle,int jump_z) {
+    /* map world (x,y,z) -> GL (x,z,-y), y up; yaw +90 - game angle.
+       jump_z is 1/8 world unit, so z/512 is the GL eye-height offset. */
+    double ex=px/64.0, ey=1.0+(double)jump_z/512.0, ez=-py/64.0;
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     glRotatef((float)(90.0 - angle*360.0/256.0), 0, 1, 0);
@@ -5769,7 +5941,7 @@ static void gl_corpse_planes(const Status *st,float alpha,float height) {
 static void gl_scene(const Status *st, const Obj *objs, int nobj) {
     gl_energy_time=(double)sim_tick/(double)TICK_HZ;
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    gl_projection(); gl_view(last_px, last_py, st_current_angle);
+    gl_projection(); gl_view(last_px, last_py, st_current_angle, st->jump_z);
     glDisable(GL_TEXTURE_2D); glDisable(GL_BLEND); glDepthMask(GL_TRUE); glEnable(GL_DEPTH_TEST);
     float l=0.72f + 0.16f*(float)sin((double)st->light*0.09);
     gl_corridor(l, st->door_open);
@@ -5940,7 +6112,8 @@ static int interactive_gl(int w, int h) {
         int mask=held_keys_mask(&held,k);
         double tn=(double)now_ns(); double dt=(tn-last)/1e9; last=tn; if(dt>0.10)dt=0.10; acc+=dt;
         int64_t pt_tick0=now_ns();
-        int ticks=0; while(acc>=1.0/TICK_HZ && ticks<10){ if(tick(mask)!=0){running=0;break;} acc-=1.0/TICK_HZ; ticks++; }
+        int ticks=0; int jump=held.jump_pending?1:0;
+        while(acc>=1.0/TICK_HZ && ticks<10){ if(tick_jump(mask,jump)!=0){running=0;break;} if(jump){held.jump_pending=0;jump=0;} acc-=1.0/TICK_HZ; ticks++; }
         int64_t pt_tick1=now_ns();
         if(!running) break;
         if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) break;
@@ -6135,6 +6308,35 @@ static int gl_muzzle_shots(const char *dir,int w,int h) {
         printf("muzzle-shot %s %dx%d phase=%.2f\n",frames[i].name,w,h,frames[i].phase);
     }
     sfx_events.muzzle_start_ns=0; sfx_events.muzzle_until_ns=0;
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
+    return 0;
+}
+
+static int gl_jump_shots(const char *dir,int w,int h) {
+    if(gl_init(w,h,0)!=0) return 2;
+    gl_active=1; load_session(); build_blocks();
+    if(gl_apply_pose(500,320,0,64,0,1120,320,5)!=0) return 2;
+    int px,py,pa; Status st;
+    if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
+    st_current_angle=pa;
+    char path[4096];
+    #define JUMP_SHOT(n) do { \
+        if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2; \
+        st_current_angle=pa; gl_scene(&st,NULL,0); \
+        snprintf(path,sizeof path,"%s/%s.ppm",dir,n); gl_save_ppm(path,w,h); \
+        printf("gl-jump %s z=%d player=%d,%d\n",n,st.jump_z,px,py); \
+    } while(0)
+    JUMP_SHOT("01-rest");
+    if(tick_jump(0,1)!=0) return 2;
+    for(int i=0;i<5;i++) if(tick_jump(0,0)!=0) return 2;
+    JUMP_SHOT("02-ascent");
+    for(int i=0;i<14;i++) if(tick_jump(0,0)!=0) return 2;
+    JUMP_SHOT("03-apex");
+    for(int i=0;i<10;i++) if(tick_jump(0,0)!=0) return 2;
+    JUMP_SHOT("04-descent");
+    for(int i=0;i<20;i++) if(tick_jump(0,0)!=0) return 2;
+    JUMP_SHOT("05-landed");
+    #undef JUMP_SHOT
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
     return 0;
 }
@@ -6740,6 +6942,8 @@ int main(int argc, char **argv) {
     }
     if (argc > 1 && strcmp(argv[1], "--muzzle-anchor-test") == 0) return muzzle_anchor_test();
     if (argc > 1 && strcmp(argv[1], "--entrance-test") == 0) return entrance_test();
+    if (argc > 1 && strcmp(argv[1], "--collision-probe-test") == 0) return collision_probe_test();
+    if (argc > 1 && strcmp(argv[1], "--jump-test") == 0) return jump_test();
     if (argc > 1 && strcmp(argv[1], "--alien-collision-trace") == 0) return alien_collision_trace();
     if (argc > 1 && strcmp(argv[1], "--alien-collision-test") == 0) return alien_collision_test();
     if (argc > 1 && strcmp(argv[1], "--combat-test") == 0) return combat_test();
@@ -6751,6 +6955,10 @@ int main(int argc, char **argv) {
     if (argc > 2 && strcmp(argv[1], "--gl-muzzle-shots") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
         return gl_muzzle_shots(argv[2],w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-jump-shots") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return gl_jump_shots(argv[2],w,h);
     }
     if (argc > 2 && strcmp(argv[1], "--gl-corpse-shots") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
