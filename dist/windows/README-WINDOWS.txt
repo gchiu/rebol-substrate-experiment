@@ -1,11 +1,11 @@
-Glon AvP — G6h.2 Windows build
+Glon AvP — G6i Windows build
 ============================
 
 Launch from Windows (D: drive):
 
   D:
   cd D:\repos\glon-worktrees\glon-avp-g6f4\dist\windows
-  run-g6h2.bat
+  run-g6i.bat
 
 Controls: W/A/S/D move, arrow keys turn, E door, F or left mouse rifle
 fire, Space jump, M mute, [ / ] volume, Esc quit.
@@ -57,3 +57,5 @@ Scuttler rendering remains a screen-space overlay, so world-depth occlusion is
 approximate. This build awaits physical verification and is not accepted.
 
 G6h.2 replaces the screen-space scuttler overlay with camera-facing world-space billboards: floor-anchored, depth-tested against walls/doors/props, and behind the foreground weapon. Visual height is 30 world units while collision stays low. Small-enemy aim tolerance is bounded and LOS-gated. The proximity monitor now derives all four contacts from Glon multi-entity state; it shows living scuttlers in addition to the adult and removes contacts on death. This build awaits physical verification and is not accepted.
+
+G6i starts with a GLON VS ALIEN boot/title screen: actual VM/loader/global/heap measurements, graphics and audio status, credits and Enter-to-start. Enemy AI does not tick on the title. Enter begins gameplay; Escape quits. G6h.2 four-enemy gameplay is preserved. This build awaits physical verification and is not accepted.

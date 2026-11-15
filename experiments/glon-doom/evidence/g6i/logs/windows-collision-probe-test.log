@@ -1,0 +1,31 @@
+
+D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom>set "DOOM_ROOT=D:\repos\glon-worktrees\glon-avp-g6i" 
+
+D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom>cd /d "D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom\build-win\.." 
+
+D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom>build-win\doom.exe --collision-probe-test 
+PASS linedef 0 collision      got=1
+PASS linedef 1 collision      got=1
+PASS linedef 2 collision      got=1
+PASS linedef 3 collision      got=1
+PASS linedef 4 collision      got=1
+PASS linedef 5 collision      got=1
+PASS linedef 6 collision      got=1
+PASS linedef 7 collision      got=1
+PASS linedef 8 collision      got=1
+PASS linedef 9 collision      got=1
+PASS clear space              got=0
+PASS alien linedef 0 collision got=1
+PASS alien linedef 1 collision got=1
+PASS alien linedef 2 collision got=1
+PASS alien linedef 3 collision got=1
+PASS alien linedef 4 collision got=1
+PASS alien linedef 5 collision got=1
+PASS alien linedef 6 collision got=1
+PASS alien linedef 7 collision got=1
+PASS alien linedef 8 collision got=1
+PASS alien linedef 9 collision got=1
+PASS alien clear space        got=0
+PASS alien wall occlusion     got=1
+PASS alien clear line of sight got=0
+collision-probe-test: PASSED

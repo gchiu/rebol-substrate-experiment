@@ -1,0 +1,1 @@
+G6I title metrics machine=65536 loader=25000 used=17830 free=7170 globals=274/512 heap_high=34240 gfx=1 audio=1/0

@@ -1,0 +1,7 @@
+
+D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom>set "DOOM_ROOT=D:\repos\glon-worktrees\glon-avp-g6i" 
+
+D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom>cd /d "D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom\build-win\.." 
+
+D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom>build-win\doom.exe --corpse-stability-test 
+corpse-stability-test: PASSED alien=1120,320 region=127,130..193,153 frames=600

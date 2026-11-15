@@ -1,0 +1,15 @@
+
+D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom>set "DOOM_ROOT=D:\repos\glon-worktrees\glon-avp-g6i" 
+
+D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom>cd /d "D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom\build-win\.." 
+
+D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom>build-win\doom.exe --tracker-multi-test 
+PASS tracker multi contacts   got=4
+PASS tracker multi identifies adult+3 got=15
+PASS tracker movement keeps four contacts got=4
+PASS tracker movement updates contact got=1
+PASS tracker rotation keeps four got=4
+PASS tracker rotation updates contact got=1
+PASS tracker death removes contact got=3
+PASS tracker restart restores four got=4
+tracker-multi-test: PASSED

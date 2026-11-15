@@ -1,0 +1,13 @@
+
+D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom>set "DOOM_ROOT=D:\repos\glon-worktrees\glon-avp-g6i" 
+
+D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom>cd /d "D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom\build-win\.." 
+
+D:\repos\glon-worktrees\glon-avp-g6i\experiments\glon-doom>build-win\doom.exe --door-sync-test 
+PASS door reset open          got=0
+PASS door reset target        got=0
+PASS door close after reset   got=2
+PASS door close repeat suppressed got=0
+PASS door open after reset    got=1
+PASS door open repeat suppressed got=0
+door-sync-test: PASSED
