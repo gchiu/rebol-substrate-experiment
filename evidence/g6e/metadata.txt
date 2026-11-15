@@ -1,0 +1,20 @@
+G6e first combat loop
+date: 2026-11-15
+baseline G6d: ab9544e (glon-avp-g6d-win, unchanged)
+branch: glon-avp-g6e
+implementation: 246e69b
+frozen S1: f90496c26dc45c7a387d8fc8639cd2781507d3d2
+Linux executable: 6207376 bytes
+Linux sha256: 739082436f890aba99aa8f5f8ea50990d008aa6c58a3869950b56e65ba909157
+Windows executable: 6555136 bytes
+Windows sha256: 5ee157b94ff5e92255c50d5b37509a14ddba94e438ee8daa9489a743d2103013
+Windows distribution: 22085319 bytes
+Windows launcher: dist/windows/run-g6e.bat
+loader after game: used=12880 free=1920 code=12454
+loader after host blocks: used=14386 free=414 globals=187/256
+Linux make test: PASSED (RC 0)
+Windows native: self PASSED, combat PASSED, audio-e2e PASSED,
+  audio-device WASAPI 44100 Hz 2ch 256, sfx-device 6 effects WASAPI,
+  run-g6e.bat --self-test PASSED
+Physical Windows playtest: pending user
+No capacity, collision or frozen S1 changes.

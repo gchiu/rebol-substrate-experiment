@@ -387,6 +387,18 @@ S1 pass; the Windows distribution was rebuilt and native Windows
 self/entrance/WASAPI tests pass. Evidence:
 `experiments/glon-doom/evidence/g6d-entrance/`.
 
+**[MEASURED] AvP G6e first combat loop (2026-11-15).**
+The rifle combat rules live in `doom.glon`; the host only supplies a fire tick,
+presents hit/death states and plays rifle SFX when authoritative ammo
+decreases. A shot spends ammo and requires depth, 640-unit range, an aim-ray
+circle test and clear `doom/los`; damage is 25. Hit state `3` expires after two
+updates to living state `1`/`0`; dead state `4` is terminal and skips the Alien
+update until reset. `doom/reset` restores 100 health and 24 ammo. The old host
+rifle cadence was removed. Loader headroom was handled by host-side normalized
+movement masks and minimal render blocks in non-rendering tests; no capacity or
+frozen S1 change. Full Linux tests, native Windows self/combat/WASAPI tests
+pass. Report: `experiments/glon-doom/G6E-COMBAT-REPORT.md`.
+
 ## 7. Vocabularies and experiments (status)
 
 | Item | Status | Where |

@@ -732,3 +732,16 @@ floating across it. `--entrance-test` verifies the clipped panel spans and
 traversal through `(1200,384)` and `(1200,500)`; it runs as part of
 `make test`. Before/after captures are under
 `experiments/glon-doom/evidence/g6d-entrance/`.
+
+### G6e first combat loop
+
+The rifle is now semi-automatic: each F keydown or left-mouse-down attempts one
+shot. All combat rules are in `doom.glon`: ammunition, 640-unit range, aim-ray
+and wall/door obstruction, 25 damage, two-tick hit reaction, terminal death
+state, and reset. The host only maps input, presents hit/death states with the
+existing alien sprite, and plays the rifle SFX when the authoritative Glon
+ammunition value decreases. There is no independent host firing cadence.
+
+`--combat-test` covers hits, aim/range/wall misses, damage, hit-reaction expiry,
+death, no-ammo rejection, reset, determinism and visible hit/death hashes; it
+runs as part of `make test`. See `G6E-COMBAT-REPORT.md`.

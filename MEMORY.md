@@ -1106,3 +1106,26 @@ rebuilt; native Windows self-test, entrance-test, WASAPI audio-device and
 sfx-device tests pass. Before/after evidence:
 `experiments/glon-doom/evidence/g6d-entrance/`; report:
 `experiments/glon-doom/G6D-A3-ENTRANCE-FIX-REPORT.md`.
+
+## 10ad. AvP G6e first combat loop (2026-11-15)
+
+G6e adds the smallest complete rifle-versus-Alien loop on branch
+`glon-avp-g6e`, based on G6d `ab9544e`; G6d is unchanged. Combat rules execute
+in `doom.glon` via a seventh `fire` argument to `doom/tick`: ammo spend, 640-unit
+range, forward depth, ray-circle aim test, wall/door LOS, 25 damage, two-tick
+hit reaction, terminal death state and ammo/health reset. The host only maps
+F/left-mouse-down to a fire tick, tints/dims the existing Alien sprite for hit
+and death, and plays rifle SFX when the authoritative `Status.ammo` decreases.
+The old independent 110 ms host rifle cadence was removed; the rifle is
+semi-automatic in this milestone.
+
+Hit state `3` lasts two fixed updates and expires to state `1` if detected,
+otherwise `0`. Dead state `4` skips the living Alien update, so it cannot move
+or attack until reset. Tests cover hits, aim/range/door misses, damage, both
+reaction transitions, death, no-ammo rejection, reset and determinism.
+`--combat-test` is in `make test`. The loader was already near capacity, so
+host tick-block construction was normalized for cancelled opposite keys and
+render blocks are omitted in non-rendering tests; no capacity or frozen S1
+semantics changed. Linux full tests pass; native Windows self/combat/WASAPI
+tests pass. Report: `experiments/glon-doom/G6E-COMBAT-REPORT.md`; evidence:
+`experiments/glon-doom/evidence/g6e/` and `g6e-win/`.
