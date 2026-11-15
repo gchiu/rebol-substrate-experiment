@@ -1,7 +1,7 @@
 # G6f.2 — Door Visibility and Audio Synchronisation
 
-Status: implemented and verified on Linux and native Windows. Physical Windows
-playtest remains for the user.
+Status: **ACCEPTED — known-good Windows baseline** (user physical confirmation
+15 November 2026). See `G6F2-WINDOWS-ACCEPTANCE.md`.
 
 - Branch/worktree: `glon-avp-g6f2` at
   `/mnt/d/repos/glon-worktrees/glon-avp-g6f2`
