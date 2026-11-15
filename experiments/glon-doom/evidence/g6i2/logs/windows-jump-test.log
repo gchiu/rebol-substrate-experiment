@@ -1,0 +1,71 @@
+PASS jump starts grounded     got=0
+jump-trace step=00 x=320 y=320 z=19
+jump-trace step=01 x=320 y=320 z=37
+jump-trace step=02 x=320 y=320 z=54
+jump-trace step=03 x=320 y=320 z=70
+jump-trace step=04 x=320 y=320 z=85
+jump-trace step=05 x=320 y=320 z=99
+jump-trace step=06 x=320 y=320 z=112
+jump-trace step=07 x=320 y=320 z=124
+jump-trace step=08 x=320 y=320 z=135
+jump-trace step=09 x=320 y=320 z=145
+jump-trace step=10 x=320 y=320 z=154
+jump-trace step=11 x=320 y=320 z=162
+jump-trace step=12 x=320 y=320 z=169
+jump-trace step=13 x=320 y=320 z=175
+jump-trace step=14 x=320 y=320 z=180
+jump-trace step=15 x=320 y=320 z=184
+jump-trace step=16 x=320 y=320 z=187
+jump-trace step=17 x=320 y=320 z=189
+jump-trace step=18 x=320 y=320 z=190
+jump-trace step=19 x=320 y=320 z=190
+jump-trace step=20 x=320 y=320 z=189
+jump-trace step=21 x=320 y=320 z=187
+jump-trace step=22 x=320 y=320 z=184
+jump-trace step=23 x=320 y=320 z=180
+jump-trace step=24 x=320 y=320 z=175
+jump-trace step=25 x=320 y=320 z=169
+jump-trace step=26 x=320 y=320 z=162
+jump-trace step=27 x=320 y=320 z=154
+jump-trace step=28 x=320 y=320 z=145
+jump-trace step=29 x=320 y=320 z=135
+jump-trace step=30 x=320 y=320 z=124
+jump-trace step=31 x=320 y=320 z=112
+jump-trace step=32 x=320 y=320 z=99
+jump-trace step=33 x=320 y=320 z=85
+jump-trace step=34 x=320 y=320 z=70
+jump-trace step=35 x=320 y=320 z=54
+jump-trace step=36 x=320 y=320 z=37
+jump-trace step=37 x=320 y=320 z=19
+jump-trace step=38 x=320 y=320 z=0
+PASS jump airborne tick index got=38
+PASS jump apex z units        got=190
+PASS jump returns to floor    got=0
+PASS jump horizontal stationary got=320
+PASS forward jump lands       got=0
+PASS forward jump moves forward got=1
+PASS forward jump y unchanged got=320
+PASS diagonal jump lands      got=0
+PASS diagonal jump x          got=1
+PASS diagonal jump y          got=1
+PASS air control changes direction got=1
+PASS air control lands        got=0
+PASS held jump does not retrigger got=0
+jump-corpse grounded x=1088 y=320 z=0 hit=1
+PASS grounded corpse blocks jump approach got=1
+PASS grounded corpse collision got=1
+jump-corpse cleared x=1256 y=320 z=0
+PASS jump clears corpse       got=1
+PASS jump over corpse lands   got=0
+PASS living alien blocks jump got=1
+PASS dying alien blocks jump  got=1
+PASS dying state remains      got=4
+PASS closed door blocks jump  got=1
+PASS open door allows jump movement got=1
+PASS wall blocks jump         got=1
+PASS repeated jump lands at floor got=0
+PASS repeated jump lands at floor got=0
+PASS repeated jump lands at floor got=0
+PASS reset clears jump height got=0
+PASS reset allows a fresh jump got=1
+jump-test: PASSED

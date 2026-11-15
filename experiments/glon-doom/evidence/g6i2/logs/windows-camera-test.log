@@ -1,0 +1,241 @@
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: -1.000
+PASS camera right x up = -forward y: 0.000
+PASS camera right x up = -forward z: 0.000
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: 0.000
+PASS camera pitch up y: 1.000
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: -0.866
+PASS camera right x up = -forward y: 0.500
+PASS camera right x up = -forward z: 0.000
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: -0.500
+PASS camera pitch up y: 0.866
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: -0.500
+PASS camera right x up = -forward y: 0.866
+PASS camera right x up = -forward z: 0.000
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: -0.866
+PASS camera pitch up y: 0.500
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: -0.259
+PASS camera right x up = -forward y: 0.966
+PASS camera right x up = -forward z: 0.000
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: -0.966
+PASS camera pitch up y: 0.259
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: 0.000
+PASS camera right x up = -forward y: 0.000
+PASS camera right x up = -forward z: 1.000
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: 0.000
+PASS camera pitch up y: 1.000
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: -0.000
+PASS camera right x up = -forward y: 0.500
+PASS camera right x up = -forward z: 0.866
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: -0.500
+PASS camera pitch up y: 0.866
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: -0.000
+PASS camera right x up = -forward y: 0.866
+PASS camera right x up = -forward z: 0.500
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: -0.866
+PASS camera pitch up y: 0.500
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: -0.000
+PASS camera right x up = -forward y: 0.966
+PASS camera right x up = -forward z: 0.259
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: -0.966
+PASS camera pitch up y: 0.259
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: 1.000
+PASS camera right x up = -forward y: -0.000
+PASS camera right x up = -forward z: 0.000
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: 0.000
+PASS camera pitch up y: 1.000
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: 0.866
+PASS camera right x up = -forward y: 0.500
+PASS camera right x up = -forward z: 0.000
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: -0.500
+PASS camera pitch up y: 0.866
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: 0.500
+PASS camera right x up = -forward y: 0.866
+PASS camera right x up = -forward z: 0.000
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: -0.866
+PASS camera pitch up y: 0.500
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: 0.259
+PASS camera right x up = -forward y: 0.966
+PASS camera right x up = -forward z: 0.000
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: -0.966
+PASS camera pitch up y: 0.259
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: 0.000
+PASS camera right x up = -forward y: 0.000
+PASS camera right x up = -forward z: -1.000
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: 0.000
+PASS camera pitch up y: 1.000
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: 0.000
+PASS camera right x up = -forward y: 0.500
+PASS camera right x up = -forward z: -0.866
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: -0.500
+PASS camera pitch up y: 0.866
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: 0.000
+PASS camera right x up = -forward y: 0.866
+PASS camera right x up = -forward z: -0.500
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: -0.866
+PASS camera pitch up y: 0.500
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: 0.000
+PASS camera right x up = -forward y: 0.966
+PASS camera right x up = -forward z: -0.259
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: -0.966
+PASS camera pitch up y: 0.259
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: -1.000
+PASS camera right x up = -forward y: 0.000
+PASS camera right x up = -forward z: -0.025
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: 0.000
+PASS camera pitch up y: 1.000
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: -0.866
+PASS camera right x up = -forward y: 0.500
+PASS camera right x up = -forward z: -0.021
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: -0.500
+PASS camera pitch up y: 0.866
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: -0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: -0.500
+PASS camera right x up = -forward y: 0.866
+PASS camera right x up = -forward z: -0.012
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: -0.866
+PASS camera pitch up y: 0.500
+PASS camera forward normalized: 1.000
+PASS camera right normalized: 1.000
+PASS camera up normalized: 1.000
+PASS camera f dot r: 0.000
+PASS camera f dot u: 0.000
+PASS camera r dot u: 0.000
+PASS camera right x up = -forward x: -0.259
+PASS camera right x up = -forward y: 0.966
+PASS camera right x up = -forward z: -0.006
+PASS camera no roll right horizontal: 0.000
+PASS camera pitch forward y: -0.966
+PASS camera pitch up y: 0.259
+camera-test: PASSED

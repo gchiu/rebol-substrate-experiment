@@ -1,0 +1,11 @@
+PASS detail line count        got=4
+PASS identical frame detail hash got=1
+PASS floor detail moves on translation got=1
+PASS ceiling detail responds to turn got=1
+PASS floor/ceiling wall alignment samples got=4
+INFO projection alignment: visible=4 aligned=4 angles=11000
+glon-doom: projection-test passed
+PASS near-plane clipped line visible got=1
+PASS reversed line visible    got=1
+PASS endpoint order independent got=1
+projection-test: PASSED

@@ -1,0 +1,7 @@
+PASS look starts horizontal   got=0
+PASS down step tilts          got=3
+PASS down clamps at 75        got=75
+PASS release begins return    got=70
+PASS release returns horizontal got=0
+PASS pitch slope positive     got=1
+look-test: PASSED

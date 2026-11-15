@@ -1,32 +1,32 @@
-GLON vs ALIEN — G6i.1 Windows candidate
+GLON vs ALIEN — G6i.2 Windows candidate
 ======================================
 
-Launch from Windows:
+Launch:
 
   D:
-  cd D:\repos\glon-worktrees\glon-avp-g6i1\dist\windows
-  run-g6i1.bat
+  cd D:\repos\glon-worktrees\glon-avp-g6i2\dist\windows
+  run-g6i2.bat
 
 Controls:
-  W/S/A/D             move forward/back/strafe
+  W/S/A/D             move/strafe
   Left/Right arrows   turn
   Up arrow            jump
-  Down arrow          look down (held; releases smoothly to level)
-  Space               fire rifle
-  Left mouse          fire rifle
-  E                   open nearby door
+  Down arrow          look down (held; smooth return)
+  Space               fire
+  Left mouse          fire
+  E                   door
   Enter               start from title
-  C                   credits from title
+  C                   credits from title (does not start gameplay)
   Escape              credits -> title; title/game -> quit
   M / [ / ]           mute / volume
 
-Title screen shows live VM capacity, loader reserved/occupied/free, globals,
-managed-heap high-water, and live Windows working/peak/private memory. VM cells
-are 8 bytes on x64: 65,536 cells = 524,288 bytes. Loader/global/heap regions are
-parts of the same VM address space and must not be added together.
+Camera pitch is a true downward pitch with no roll; pitch is clamped at 75°
+and reset on restart. Player movement slides on walls, retreats from cabinets
+and corners, and diagonal speed is normalized. Scuttlers use local obstacle
+avoidance around barrels/cabinets; closed doors remain solid.
 
-G6i.1 is an unaccepted candidate pending physical Windows acceptance. It has no
-new enemies, acid, attack damage or sound system. Distinctive scuttler
-movement/proximity sounds remain outstanding. Packaging was cross-compiled;
-see the G6I1 report and evidence for tests, screenshots, SHA-256 and known
-limitations.
+This is an unaccepted candidate pending physical Windows testing. No new
+enemies, acid, damage, weapons, audio assets or asset optimizations. Scuttler
+damage attacks and distinctive movement/proximity sounds remain outstanding.
+See evidence/G6I2-CAMERA-COLLISION-NAV-REPORT.md for tests, screenshots,
+measurements, SHA-256 and limitations.

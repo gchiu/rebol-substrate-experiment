@@ -1,0 +1,9 @@
+PASS tracker multi contacts   got=4
+PASS tracker multi identifies adult+3 got=15
+PASS tracker movement keeps four contacts got=4
+PASS tracker movement updates contact got=1
+PASS tracker rotation keeps four got=4
+PASS tracker rotation updates contact got=1
+PASS tracker death removes contact got=3
+PASS tracker restart restores four got=4
+tracker-multi-test: PASSED
