@@ -31,6 +31,21 @@ doom/alien-detect2: 490000
 doom/alien-attack2: 9216
 doom/alien-speed: 2
 doom/alien-radius2: 256
+;; Combined player+alien footprint: (20 + 16)^2. Used only for player
+;; movement against a living/dying alien; state 5 is non-blocking.
+doom/player-alien-radius2: 1296
+;; Vertical units are 1/8 world unit. v0=19 and g=1 therefore give a fixed
+;; 39-tick (~0.65 s at 60 Hz) jump with a 23.75-world-unit apex. The rendered
+;; corpse is 22 world units high; its collision top is 176 z-units.
+doom/jump-z: 0
+doom/jump-vz: 0
+doom/grounded: 1
+doom/jump-armed: 1
+doom/jump-input: 0
+doom/jump-v0: 19
+doom/jump-gravity: 1
+doom/corpse-z: 176
+doom/corpse-radius2: 1024
 doom/alien-start-x: 1120
 doom/alien-start-y: 320
 
@@ -167,6 +182,10 @@ doom/alien-detected: 0
 doom/door-bars: 0
 doom/alien-dx: 0
 doom/alien-dy: 0
+doom/pdx: 0
+doom/pdy: 0
+doom/otop: 0
+doom/oradius2: 0
 doom/alien-d2: 0
 doom/alien-avoid: 0
 doom/tdepth: 0
@@ -253,21 +272,42 @@ doom/check-all: func [x y r] [
         either < + * doom/dx doom/dx * doom/dy doom/dy r [ doom/hit: 1 ] [ none ]
     ]
     either = doom/objects-on 1 [ doom/check-objects x y r 0 ] [ none ]
-    either = doom/alien-state 5 [
-        doom/dx: - x doom/alien-x
-        doom/dy: - y doom/alien-y
-        either < + * doom/dx doom/dx * doom/dy doom/dy + r 144 [ doom/hit: 1 ] [ none ]
+]
+
+;; Player-only one-circle collision. If the player is already overlapping (for
+;; example after landing on a low body), moving outward is allowed so a body
+;; can never become a permanent trap. State 5 uses the rendered corpse's low
+;; top and smaller footprint; living/dying states use the full-height top.
+doom/check-alien: func [ax ay state radius2 cx cy x y] [
+    doom/otop: either = state 5 [ doom/corpse-z ] [ 2048 ]
+    doom/oradius2: either = state 5 [ doom/corpse-radius2 ] [ radius2 ]
+    either < doom/jump-z doom/otop [
+        doom/dx: - x ax
+        doom/dy: - y ay
+        either < + * doom/dx doom/dx * doom/dy doom/dy doom/oradius2 [
+            doom/pdx: - cx ax
+            doom/pdy: - cy ay
+            either > + * doom/dx doom/dx * doom/dy doom/dy + * doom/pdx doom/pdx * doom/pdy doom/pdy [
+                none
+            ] [ doom/hit: 1 ]
+        ] [ none ]
     ] [ none ]
 ]
 
 doom/move-x: func [nx] [
     doom/hit: 0
     doom/check-all nx doom/py doom/radius2
+    either = doom/hit 0 [
+        doom/check-alien doom/alien-x doom/alien-y doom/alien-state doom/player-alien-radius2 doom/px doom/py nx doom/py
+    ] [ none ]
     either = doom/hit 0 [ doom/px: nx ] [ doom/player-hit: 1 ]
 ]
 doom/move-y: func [ny] [
     doom/hit: 0
     doom/check-all doom/px ny doom/radius2
+    either = doom/hit 0 [
+        doom/check-alien doom/alien-x doom/alien-y doom/alien-state doom/player-alien-radius2 doom/px doom/py doom/px ny
+    ] [ none ]
     either = doom/hit 0 [ doom/py: ny ] [ doom/player-hit: 1 ]
 ]
 
@@ -276,6 +316,25 @@ doom/tick: func [fw bk lf rt tl tr fire] [
     doom/wrap-angle
     doom/aim
     doom/player-hit: 0
+    either = doom/jump-input 1 [
+        either = doom/grounded 1 [
+            either = doom/jump-armed 1 [
+                doom/jump-vz: doom/jump-v0
+                doom/grounded: 0
+            ] [ none ]
+        ] [ none ]
+        doom/jump-armed: 0
+        doom/jump-input: 0
+    ] [ doom/jump-armed: 1 ]
+    either = doom/grounded 0 [
+        doom/jump-z: + doom/jump-z doom/jump-vz
+        doom/jump-vz: - doom/jump-vz doom/jump-gravity
+        either < doom/jump-z 1 [
+            doom/jump-z: 0
+            doom/jump-vz: 0
+            doom/grounded: 1
+        ] [ none ]
+    ] [ none ]
     doom/fw: - fw bk
     doom/st: - rt lf
     doom/mdx: / * + * doom/dirx doom/fw * doom/diry doom/st doom/speed 64
@@ -422,6 +481,11 @@ doom/reset: does [
     doom/occluded: 0
     doom/alien-visible: 0
     doom/light-phase: 0
+    doom/jump-z: 0
+    doom/jump-vz: 0
+    doom/grounded: 1
+    doom/jump-armed: 1
+    doom/jump-input: 0
 ]
 
 
@@ -1124,6 +1188,7 @@ doom/status-block: [
     print doom/ammo
     print doom/player-hit
     print doom/e2dep
+    print doom/jump-z
 ]
 
 doom/sector-report: does [

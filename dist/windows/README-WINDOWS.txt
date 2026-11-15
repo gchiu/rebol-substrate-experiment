@@ -1,14 +1,14 @@
-Glon AvP — G6f.4 Windows build
+Glon AvP — G6g Windows build
 ============================
 
 Launch from Windows (D: drive):
 
   D:
   cd D:\repos\glon-worktrees\glon-avp-g6f4\dist\windows
-  run-g6f4.bat
+  run-g6g.bat
 
 Controls: W/A/S/D move, arrow keys turn, E door, F or left mouse rifle
-fire, M mute, [ / ] volume, Esc quit.
+fire, Space jump, M mute, [ / ] volume, Esc quit.
 
 Audio uses SDL2's native WASAPI backend. The game does not use PulseAudio or
 WSLg. SDL2.dll is required; Windows UCRT and OPENGL32 are system components.
@@ -34,3 +34,10 @@ G6f.4 corrects alien collision ownership: the living/dying alien is solid to
 player movement, the terminal corpse remains rendered but has no collider, and
 walls/doors keep the existing check-all path. This build is awaiting physical
 Windows verification; it is not yet an accepted baseline.
+
+G6g adds a deterministic Spacebar jump owned by Glon. Jumping preserves normal
+horizontal and air control, clears the low corpse only when the player's feet
+are above its collision top, and cannot bypass walls, closed doors, living or
+dying aliens. Camera rise/fall is presentation-only in OpenGL.
+This build is awaiting physical Windows verification; it is not yet an accepted
+baseline.

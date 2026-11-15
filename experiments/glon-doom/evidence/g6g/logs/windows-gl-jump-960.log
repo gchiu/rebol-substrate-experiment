@@ -1,0 +1,6 @@
+G5p renderer=OpenGL renderer=AMD Radeon(TM) Graphics vendor=ATI Technologies Inc. version=4.6.0 Compatibility Profile Context 25.10.32.04.251216
+gl-jump 01-rest z=0 player=500,320
+gl-jump 02-ascent z=99 player=500,320
+gl-jump 03-apex z=190 player=500,320
+gl-jump 04-descent z=135 player=500,320
+gl-jump 05-landed z=0 player=500,320
