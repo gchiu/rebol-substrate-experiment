@@ -1,0 +1,35 @@
+audio: loaded Freesound 873687 spaceship interior 1455303 frames (33.000s), 44100-frame crossfade, gain 3.00
+audio: loaded sfx door open 97020 frames (2.200s), gain 1.00
+audio: loaded sfx door close 52920 frames (1.200s), gain 1.00
+audio: loaded sfx alien shriek 93347 frames (2.117s), gain 0.90
+audio: loaded sfx rifle shot 28665 frames (0.650s), gain 0.60
+audio: loaded sfx wall thud 52920 frames (1.200s), gain 0.90
+audio: loaded sfx cargo impact 37044 frames (0.840s), gain 1.00
+audio: ambient started driver=dummy 44100 Hz 2ch samples=256 volume=60%
+PASS door close starts at measured impact offset got=18081
+PASS door open starts at asset start got=0
+PASS e2e shot ammo            got=23
+PASS e2e accepted shot requests rifle got=1
+PASS e2e accepted shot muzzle flash got=1
+PASS e2e muzzle flash duration ms got=80
+PASS e2e rifle has PCM        got=1
+PASS e2e empty shot ammo      got=0
+PASS e2e empty shot no rifle SFX got=0
+PASS e2e empty shot no muzzle flash got=0
+PASS e2e E target             got=64
+PASS e2e door open voice      got=1
+PASS e2e door open PCM        got=1
+PASS e2e door close voice     got=1
+PASS e2e door close starts at offset got=18081
+PASS e2e door close PCM       got=1
+PASS e2e wall collision flag  got=1
+PASS e2e wall voice           got=1
+PASS e2e wall PCM             got=1
+PASS e2e cargo collision flag got=1
+PASS e2e cargo voice          got=1
+PASS e2e cargo PCM            got=1
+PASS e2e living alien contact player-hit got=1
+e2e living alien contact near-cargo=1
+PASS e2e living alien contact actual cargo SFX got=1
+PASS e2e living alien contact generic wall SFX got=1
+audio-e2e: PASSED

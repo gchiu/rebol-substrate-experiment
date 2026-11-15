@@ -1,0 +1,24 @@
+PASS living alien blocked     got=1
+PASS living alien stops player got=1
+PASS living alien remains ahead got=1
+PASS dead alien crossed       got=1
+PASS dead alien no collision flag got=0
+PASS dying alien blocks before death got=1
+PASS dying alien becomes passable at corpse got=1
+PASS dying alien reaches terminal state got=5
+PASS dead remains passable after cycle got=1
+PASS reset restores living blocker got=1
+PASS dead remains passable after cycle got=1
+PASS reset restores living blocker got=1
+PASS dead remains passable after cycle got=1
+PASS reset restores living blocker got=1
+PASS dead remains passable after cycle got=1
+PASS reset restores living blocker got=1
+PASS dead remains passable after cycle got=1
+PASS reset restores living blocker got=1
+PASS living alien state 0 collision got=1
+PASS dying alien state 4 collision got=1
+PASS dead alien state 5 collision got=0
+PASS wall collision remains   got=1
+PASS closed door remains solid got=1
+alien-collision-test: PASSED

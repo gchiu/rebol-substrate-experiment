@@ -1,0 +1,7 @@
+PASS door reset open          got=0
+PASS door reset target        got=0
+PASS door close after reset   got=2
+PASS door close repeat suppressed got=0
+PASS door open after reset    got=1
+PASS door open repeat suppressed got=0
+door-sync-test: PASSED

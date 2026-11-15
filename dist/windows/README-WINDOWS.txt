@@ -1,11 +1,11 @@
-Glon AvP — G6f.3 Windows build
+Glon AvP — G6f.4 Windows build
 ============================
 
 Launch from Windows (D: drive):
 
   D:
-  cd D:\repos\glon-worktrees\glon-avp-g6f3\dist\windows
-  run-g6f3.bat
+  cd D:\repos\glon-worktrees\glon-avp-g6f4\dist\windows
+  run-g6f4.bat
 
 Controls: W/A/S/D move, arrow keys turn, E door, F or left mouse rifle
 fire, M mute, [ / ] volume, Esc quit.
@@ -29,3 +29,8 @@ anchor to the visible barrel exit in weapon-sprite space. Recoil and viewport
 resizing use the same weapon transform, so the flash follows the barrel.
 This build is awaiting physical Windows verification; it is not yet an
 accepted baseline.
+
+G6f.4 corrects alien collision ownership: the living/dying alien is solid to
+player movement, the terminal corpse remains rendered but has no collider, and
+walls/doors keep the existing check-all path. This build is awaiting physical
+Windows verification; it is not yet an accepted baseline.
