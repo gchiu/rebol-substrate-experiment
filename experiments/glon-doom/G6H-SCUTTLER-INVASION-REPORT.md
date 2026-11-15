@@ -169,3 +169,12 @@ restores all four.
 - No acid pools, facehuggers, boss mechanics or additional enemy types.
 - Loader expansion reuses the unused M1 task arena and is game-build-only;
   default/M1 behavior is unchanged.
+
+## 9. Deferred optimization
+
+See `G6H-OPTIMIZATION-INVESTIGATION.md`. The fixed evaluator remains 12,454
+code cells; growth is loader data. Game/entity data added ~3,213 loader cells and
+host/test blocks ~483. The 25,000-cell arena could plausibly be reduced toward
+~20,000 after gating lazy test blocks, packing entity fields and merging accessor
+logic, but not to 14,800 without redesign. No optimization was applied before
+packaging.
