@@ -1,0 +1,25 @@
+G5p renderer=OpenGL renderer=AMD Radeon(TM) Graphics vendor=ATI Technologies Inc. version=4.6.0 Compatibility Profile Context 25.10.32.04.251216
+G6H2 01-world-unobstructed diff=5400
+PASS G6H2 unobstructed visible got=1
+G6H2 02-partly-wall diff=1250
+PASS G6H2 partly wall nonempty got=1
+PASS G6H2 partly wall reduced got=1
+G6H2 03-closed-door diff=0
+PASS G6H2 closed door occludes got=0
+G6H2 04-near-weapon diff=4866
+PASS G6H2 near weapon visible in world got=1
+G6H2 05-approaching diff=18754
+PASS G6H2 approaching visible got=1
+PASS G6H2 framed shot damages got=25
+G6H2 06-shot diff=14233
+G6H2 07a-jump-before diff=14364
+PASS G6H2 jump clears scuttler got=1
+G6H2 07-jump diff=0
+G6H2 tracker contacts=4 player=700,320 angle=0
+G6H2 contact kind=0 side=0 depth=420 at=42,158
+G6H2 contact kind=1 side=0 depth=200 at=42,163
+G6H2 contact kind=2 side=158 depth=100 at=46,166
+G6H2 contact kind=3 side=-158 depth=300 at=38,161
+PASS G6H2 HUD four contacts   got=4
+PASS G6H2 HUD contact pixels  got=1
+G6H2 visibility/depth test: PASSED

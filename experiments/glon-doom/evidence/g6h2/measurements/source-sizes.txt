@@ -1,0 +1,3 @@
+  46251 doom.glon
+1213107 scuttler_sprites_g6h.h
+1259358 total

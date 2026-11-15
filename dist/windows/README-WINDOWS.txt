@@ -1,11 +1,11 @@
-Glon AvP — G6h.1 Windows build
+Glon AvP — G6h.2 Windows build
 ============================
 
 Launch from Windows (D: drive):
 
   D:
   cd D:\repos\glon-worktrees\glon-avp-g6f4\dist\windows
-  run-g6h1.bat
+  run-g6h2.bat
 
 Controls: W/A/S/D move, arrow keys turn, E door, F or left mouse rifle
 fire, Space jump, M mute, [ / ] volume, Esc quit.
@@ -55,3 +55,5 @@ corridor. The correction is LOS-gated rendering, draw-after-weapon ordering,
 reachable spawn positions and a larger low-sprite scale. Frozen S1 is unchanged.
 Scuttler rendering remains a screen-space overlay, so world-depth occlusion is
 approximate. This build awaits physical verification and is not accepted.
+
+G6h.2 replaces the screen-space scuttler overlay with camera-facing world-space billboards: floor-anchored, depth-tested against walls/doors/props, and behind the foreground weapon. Visual height is 30 world units while collision stays low. Small-enemy aim tolerance is bounded and LOS-gated. The proximity monitor now derives all four contacts from Glon multi-entity state; it shows living scuttlers in addition to the adult and removes contacts on death. This build awaits physical verification and is not accepted.
