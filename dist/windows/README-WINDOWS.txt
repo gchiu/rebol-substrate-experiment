@@ -1,11 +1,11 @@
-GLON vs ALIEN — G6j Windows candidate
-====================================
+GLON vs ALIEN — G6j.1 Windows candidate
+======================================
 
 Launch:
 
   D:
-  cd D:\repos\glon-worktrees\glon-avp-g6j\dist\windows
-  run-g6j.bat
+  cd D:\repos\glon-worktrees\glon-avp-g6j1\dist\windows
+  run-g6j1.bat
 
 Controls:
   W/S/A/D             move/strafe
@@ -13,21 +13,21 @@ Controls:
   Up arrow            jump
   Down arrow          gradually look down; release holds angle
   R                   smoothly return camera to horizontal
-  Space               fire
-  Left mouse          fire
+  Space / left mouse  fire
   E                   door
   Enter               start from title
   C                   credits from title (does not start gameplay)
   Escape              credits -> title; title/game -> quit
-  M / [ / ]           mute / volume
 
-The game starts with three dormant alien cocoons. Approach one to alert it; it
-pulses and has an 8-second hatch countdown. Two rifle hits destroy a cocoon and
-prevent its scuttler from ever appearing. Surviving cocoons hatch into the
-existing scuttlers. The adult alien remains active independently.
+Three dormant cocoons replace the initial scuttlers. Approach a cocoon to alert
+it; it pulses and has an 8-second hatch countdown. Two rifle hits destroy it and
+prevent its scuttler from ever appearing. A destroyed cocoon collapses over
+about 0.5 seconds into a low floor-level organic heap, using the extracted
+low-profile destroyed artwork. A successful hatch still leaves an upright empty
+shell and releases its scuttler.
 
-This is an unaccepted candidate pending physical Windows testing. Cocoon
-sprites are extracted/cleaned from the supplied contact sheet; some floor
-debris remains on a few frames. Cocoons are rendered world-space but are not
-solid player-collision volumes. See evidence/G6J-COCOON-LIFECYCLE-REPORT.md for
-tests, screenshots, measurements, SHA-256 and limitations.
+Unaccepted candidate pending physical Windows testing. Some extracted cocoon
+frames retain minor floor/debris; cocoons are not solid player-collision volumes.
+No new enemies, acid, player damage, weapons or audio assets. See
+evidence/G6J1-COCOON-COLLAPSE-REPORT.md for before/after captures, tests,
+measurements, SHA-256 and limitations.

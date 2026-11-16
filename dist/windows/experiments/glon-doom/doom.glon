@@ -546,6 +546,9 @@ doom/cocoon-step: func [i] [
             either = doom/occluded 0 [ doom/ssv: 1 doom/stv: 480 ] [ none ]
         ] [ none ]
     ] [
+        either = doom/ssv 4 [
+            either > doom/stv 0 [ doom/stv: - doom/stv 1 ] [ none ]
+        ] [
         either = doom/ssv 1 [
             either < doom/stv 1 [
                 doom/ssv: 2 doom/stv: 48 doom/scale: 0
@@ -565,6 +568,7 @@ doom/cocoon-step: func [i] [
                     doom/sh! i 50
                 ] [ doom/stv: - doom/stv 1 ]
             ] [ none ]
+        ]
         ]
     ]
     either = i 0 [ doom/ax: doom/ssv doom/ay: doom/shv doom/bx: doom/stv doom/by: doom/scale ] [
@@ -666,15 +670,15 @@ doom/tick: func [fw bk lf rt tl tr fire aimslope] [
                         either = doom/target 3 [ doom/damage-scuttler 2 ] [
                             either = doom/target 10 [
                                 doom/ay: - doom/ay 1
-                                either < doom/ay 1 [ doom/ax: 4 doom/ay: 0 doom/bx: 0 doom/by: 0 ] [ doom/by: 1 ]
+                                either < doom/ay 1 [ doom/ax: 4 doom/ay: 0 doom/bx: 30 doom/by: 0 ] [ doom/by: 1 ]
                             ] [
                                 either = doom/target 11 [
                                     doom/dvis: - doom/dvis 1
-                                    either < doom/dvis 1 [ doom/dt: 4 doom/dvis: 0 doom/trad: 0 doom/trvalid: 0 ] [ doom/trvalid: 1 ]
+                                    either < doom/dvis 1 [ doom/dt: 4 doom/dvis: 0 doom/trad: 30 doom/trvalid: 0 ] [ doom/trvalid: 1 ]
                                 ] [
                                     either = doom/target 12 [
                                         doom/hiy: - doom/hiy 1
-                                        either < doom/hiy 1 [ doom/loy: 4 doom/hiy: 0 doom/e2sy: 0 doom/focal-h: 0 ] [ doom/focal-h: 1 ]
+                                        either < doom/hiy 1 [ doom/loy: 4 doom/hiy: 0 doom/e2sy: 30 doom/focal-h: 0 ] [ doom/focal-h: 1 ]
                                     ] [ none ]
                                 ]
                             ]
