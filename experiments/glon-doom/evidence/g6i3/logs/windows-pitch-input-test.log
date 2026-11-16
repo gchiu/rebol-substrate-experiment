@@ -1,0 +1,6 @@
+PASS pitch input Down held    got=1
+PASS pitch input half degree  got=500
+PASS pitch input release      got=0
+PASS pitch input release holds got=500
+PASS pitch input R returns    got=0
+pitch-input-test: PASSED

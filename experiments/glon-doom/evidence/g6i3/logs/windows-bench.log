@@ -1,0 +1,2 @@
+bench frames=60 wall_fps=5.4
+metrics: sim=11.18ms wall=141.38ms texrow=32.06ms raster=0.45ms sprite=0.00ms present=1.27ms frame=186.34ms fps=5.4 heap_high=34080 gc=0 live=0

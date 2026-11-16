@@ -1,0 +1,19 @@
+PASS right keydown maps turn-right got=32
+PASS right keyup clears       got=0
+PASS keypad right fallback    got=32
+PASS left keydown maps turn-left got=16
+PASS W keydown maps forward   got=1
+PASS Space keydown maps fire  got=1
+PASS Space keyup clears fire  got=0
+PASS Space fire does not request jump got=0
+PASS Space fire held          got=1
+PASS Space repeat stays fire  got=1
+PASS Space keyup clears fire  got=0
+PASS Up keydown requests jump got=1
+PASS Up key does not fire     got=0
+PASS Up repeat does not re-request got=0
+PASS Down held look           got=1
+PASS Down release             got=0
+PASS W plus Up maps forward and jump got=1
+PASS W and Up independent     got=1
+input-test: PASSED

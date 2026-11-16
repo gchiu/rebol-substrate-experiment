@@ -1,0 +1,44 @@
+PASS door open transition     got=1
+PASS door opening no retrigger got=0
+PASS door reverse to closing  got=2
+PASS door closing no retrigger got=0
+PASS door stopped             got=0
+PASS alien detection event    got=3
+PASS alien detection no retrigger got=0
+PASS alien cooldown suppresses attack got=0
+PASS alien attack after cooldown got=3
+PASS wall impact              got=5
+PASS wall contact no retrigger got=0
+PASS wall cooldown doesn't retrigger while held got=0
+PASS wall after release       got=5
+PASS cargo impact             got=6
+PASS cargo no retrigger       got=0
+PASS cargo priority over wall got=0
+PASS no movement clears contact got=0
+PASS attenuation at source    got=1000
+PASS attenuation decreases    got=1
+PASS attenuation far silent   got=0
+PASS near crate classified cargo got=1
+PASS far position not cargo   got=0
+PASS host door open transition got=1
+PASS host door close transition got=2
+PASS host wall contact        got=1
+PASS host wall not cargo      got=0
+PASS host cargo contact       got=1
+PASS host cargo not wall      got=0
+audio: loaded Freesound 873687 spaceship interior 1455303 frames (33.000s), 44100-frame crossfade, gain 3.00
+audio: loaded sfx door open 97020 frames (2.200s), gain 1.00
+audio: loaded sfx door close 52920 frames (1.200s), gain 1.00
+audio: loaded sfx alien shriek 93347 frames (2.117s), gain 0.90
+audio: loaded sfx rifle shot 28665 frames (0.650s), gain 0.60
+audio: loaded sfx wall thud 52920 frames (1.200s), gain 0.90
+audio: loaded sfx cargo impact 37044 frames (0.840s), gain 1.00
+PASS voice limit              got=8
+PASS voice steal keeps limit  got=8
+PASS multiple effects audible got=1
+PASS effects within S16       got=1
+PASS volume zero silences effects got=0
+PASS mute silences effects    got=0
+PASS effect mixer budget      got=1
+sfx-test: mix=0.0015ms/block (budget 5.80ms)
+sfx-test: PASSED

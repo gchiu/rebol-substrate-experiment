@@ -1,17 +1,18 @@
-GLON vs ALIEN — G6i.2 Windows candidate
+GLON vs ALIEN — G6i.3 Windows candidate
 ======================================
 
 Launch:
 
   D:
-  cd D:\repos\glon-worktrees\glon-avp-g6i2\dist\windows
-  run-g6i2.bat
+  cd D:\repos\glon-worktrees\glon-avp-g6i3\dist\windows
+  run-g6i3.bat
 
 Controls:
   W/S/A/D             move/strafe
   Left/Right arrows   turn
   Up arrow            jump
-  Down arrow          look down (held; smooth return)
+  Down arrow          gradually look down; release holds angle
+  R                   smoothly return camera to horizontal
   Space               fire
   Left mouse          fire
   E                   door
@@ -20,13 +21,14 @@ Controls:
   Escape              credits -> title; title/game -> quit
   M / [ / ]           mute / volume
 
-Camera pitch is a true downward pitch with no roll; pitch is clamped at 75°
-and reset on restart. Player movement slides on walls, retreats from cabinets
-and corners, and diagonal speed is normalized. Scuttlers use local obstacle
-avoidance around barrels/cabinets; closed doors remain solid.
+Pitch starts at 0, rises at 30°/s while Down is held, clamps at 75°, and R
+returns it at 300°/s without resetting the game. No camera roll.
 
-This is an unaccepted candidate pending physical Windows testing. No new
-enemies, acid, damage, weapons, audio assets or asset optimizations. Scuttler
-damage attacks and distinctive movement/proximity sounds remain outstanding.
-See evidence/G6I2-CAMERA-COLLISION-NAV-REPORT.md for tests, screenshots,
-measurements, SHA-256 and limitations.
+Scuttlers use persistent per-enemy detour waypoints around the actual barrels
+and cabinets, then resume direct pursuit; closed doors remain solid.
+
+Unaccepted candidate pending physical Windows testing. Scuttler damage attacks
+and distinctive movement/proximity sounds remain outstanding. No new enemies,
+acid, player damage, weapons, audio assets or asset optimizations. See
+evidence/G6I3-PRECISION-AIM-NAV-REPORT.md for tests, screenshots, measurements,
+SHA-256 and limitations.

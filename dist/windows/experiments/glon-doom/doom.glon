@@ -388,52 +388,66 @@ doom/update-scuttler: func [i] [
                             doom/ss! i 2
                             doom/stm! i 6
                         ] [
-                            doom/e2sx: doom/sx i
-                            doom/e2sy: doom/sy i
-                            either > doom/e1dep 0 [
-                                doom/nx: + doom/sx i doom/e1dx
-                                doom/ny: + doom/sy i doom/e1dy
-                                doom/hit: 0
-                                doom/check-all doom/nx doom/ny doom/scuttler-radius2
-                                either = doom/hit 0 [
-                                    doom/sx! i doom/nx
-                                    doom/sy! i doom/ny
-                                    doom/e1dep: - doom/e1dep 1
-                                ] [ doom/e1dep: 0 ]
-                            ] [
+                            doom/e2sx: 0
+                            either = i 0 [ doom/nx: doom/e1dx doom/ny: doom/e1dy doom/e2sx: doom/e1dep ] [
+                                either = i 1 [ doom/nx: doom/e1sx doom/ny: doom/e1sy doom/e2sx: doom/e1side ] [
+                                    doom/nx: doom/e2dx doom/ny: doom/e2dy doom/e2sx: doom/e2side
+                                ]
+                            ]
+                            either > doom/e2sx 0 [
+                                doom/tdx: - doom/nx doom/sx i
+                                doom/tdy: - doom/ny doom/sy i
+                                doom/lox: doom/sx i
+                                doom/hix: doom/sy i
                                 either > doom/tdx 0 [ doom/move-sx i + doom/sx i doom/scuttler-speed ] [ none ]
                                 either < doom/tdx 0 [ doom/move-sx i - doom/sx i doom/scuttler-speed ] [ none ]
                                 either > doom/tdy 0 [ doom/move-sy i + doom/sy i doom/scuttler-speed ] [ none ]
                                 either < doom/tdy 0 [ doom/move-sy i - doom/sy i doom/scuttler-speed ] [ none ]
-                                either = doom/e2sx doom/sx i [
-                                    either = doom/e2sy doom/sy i [
+                                either > + * doom/tdx doom/tdx * doom/tdy doom/tdy 64 [
+                                    either = doom/lox doom/sx i [
+                                        either = doom/hix doom/sy i [
+                                            either = i 0 [ doom/e1dep: 0 ] [ either = i 1 [ doom/e1side: 0 ] [ doom/e2side: 0 ] ]
+                                        ] [ none ]
+                                    ] [ none ]
+                                ] [
+                                    either = i 0 [ doom/e1dep: 0 ] [ either = i 1 [ doom/e1side: 0 ] [ doom/e2side: 0 ] ]
+                                ]
+                            ] [
+                                doom/lox: doom/sx i
+                                doom/hix: doom/sy i
+                                either > doom/tdx 0 [ doom/move-sx i + doom/sx i doom/scuttler-speed ] [ none ]
+                                either < doom/tdx 0 [ doom/move-sx i - doom/sx i doom/scuttler-speed ] [ none ]
+                                either > doom/tdy 0 [ doom/move-sy i + doom/sy i doom/scuttler-speed ] [ none ]
+                                either < doom/tdy 0 [ doom/move-sy i - doom/sy i doom/scuttler-speed ] [ none ]
+                                either = doom/lox doom/sx i [
+                                    either = doom/hix doom/sy i [
                                         doom/adx: either > doom/tdx 0 [ 1 ] [ either < doom/tdx 0 [ -1 ] [ 0 ] ]
                                         doom/ady: either > doom/tdy 0 [ 1 ] [ either < doom/tdy 0 [ -1 ] [ 0 ] ]
-                                        doom/nx: + doom/sx i * - 0 doom/ady doom/scuttler-speed
-                                        doom/ny: + doom/sy i * doom/adx doom/scuttler-speed
+                                        doom/nx: + doom/sx i * - 0 doom/ady 64
+                                        doom/ny: + doom/sy i * doom/adx 64
                                         doom/hit: 0
                                         doom/check-all doom/nx doom/ny doom/scuttler-radius2
                                         either = doom/hit 0 [
-                                            doom/e1dx: - 0 doom/ady
-                                            doom/e1dy: doom/adx
-                                            doom/e1dep: 12
-                                            doom/sx! i doom/nx
-                                            doom/sy! i doom/ny
+                                            either = i 0 [ doom/e1dx: doom/nx doom/e1dy: doom/ny doom/e1dep: 1 ] [
+                                                either = i 1 [ doom/e1sx: doom/nx doom/e1sy: doom/ny doom/e1side: 1 ] [
+                                                    doom/e2dx: doom/nx doom/e2dy: doom/ny doom/e2side: 1
+                                                ]
+                                            ]
                                         ] [
-                                            doom/nx: + doom/sx i * doom/ady doom/scuttler-speed
-                                            doom/ny: + doom/sy i * - 0 doom/adx doom/scuttler-speed
+                                            doom/nx: + doom/sx i * doom/ady 64
+                                            doom/ny: + doom/sy i * - 0 doom/adx 64
                                             doom/hit: 0
                                             doom/check-all doom/nx doom/ny doom/scuttler-radius2
                                             either = doom/hit 0 [
-                                                doom/e1dx: doom/ady
-                                                doom/e1dy: - 0 doom/adx
-                                                doom/e1dep: 12
-                                                doom/sx! i doom/nx
-                                                doom/sy! i doom/ny
-                                            ] [ doom/e1dep: 0 ]
+                                                either = i 0 [ doom/e1dx: doom/nx doom/e1dy: doom/ny doom/e1dep: 1 ] [
+                                                    either = i 1 [ doom/e1sx: doom/nx doom/e1sy: doom/ny doom/e1side: 1 ] [
+                                                        doom/e2dx: doom/nx doom/e2dy: doom/ny doom/e2side: 1
+                                                    ]
+                                                ]
+                                            ] [ none ]
                                         ]
-                                    ] [ doom/e1dep: 0 ]
-                                ] [ doom/e1dep: 0 ]
+                                    ] [ none ]
+                                ] [ none ]
                             ]
                             doom/stv: - doom/stm i 1
                             doom/stm! i doom/stv
@@ -692,7 +706,7 @@ doom/reset: does [
     doom/jump-armed: 1
     doom/jump-input: 0
     doom/aim-slope: 0
-    doom/e1dx: 0 doom/e1dy: 0 doom/e1dep: 0
+    doom/e1dx: 0 doom/e1dy: 0 doom/e1dep: 0 doom/e1side: 0 doom/e1sx: 0 doom/e1sy: 0 doom/e2dx: 0 doom/e2dy: 0 doom/e2side: 0 doom/e2dep: 0
     doom/s0-x: 650 doom/s0-y: 360 doom/s0-h: 50 doom/s0-state: 0 doom/s0-timer: 6
     doom/s1-x: 900 doom/s1-y: 280 doom/s1-h: 50 doom/s1-state: 0 doom/s1-timer: 6
     doom/s2-x: 1050 doom/s2-y: 360 doom/s2-h: 50 doom/s2-state: 0 doom/s2-timer: 6
