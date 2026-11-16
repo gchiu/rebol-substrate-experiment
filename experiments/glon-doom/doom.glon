@@ -522,7 +522,7 @@ doom/damage-scuttler: func [i] [
 ]
 ;; G6j cocoon state machine. States: 0 dormant, 1 alerted, 2 hatching,
 ;; 3 hatched, 4 destroyed. Positions are fixed map landmarks:
-;; c0 (480,500) room, c1 (620,200) room north, c2 (700,500) room east.
+;; c0 (480,500) room, c1 (620,250) north wall, c2 (700,500) room east.
 ;; Each scuttler is dormant (state 6, health 0) until its own cocoon hatches.
 ;; This is a sequential update of three independent records in one tick,
 ;; not parallel execution or scheduler-based multitasking.
@@ -534,14 +534,14 @@ doom/cocoon-step: func [i] [
     ]
     either = doom/ssv 0 [
         either = i 0 [ doom/tdx: - 480 doom/px doom/tdy: - 500 doom/py ] [
-            either = i 1 [ doom/tdx: - 620 doom/px doom/tdy: - 200 doom/py ] [
+            either = i 1 [ doom/tdx: - 620 doom/px doom/tdy: - 250 doom/py ] [
                 doom/tdx: - 700 doom/px doom/tdy: - 500 doom/py
             ]
         ]
         doom/td2: + * doom/tdx doom/tdx * doom/tdy doom/tdy
         either < doom/td2 36864 [
             either = i 0 [ doom/los 480 500 ] [
-                either = i 1 [ doom/los 620 200 ] [ doom/los 700 500 ]
+                either = i 1 [ doom/los 620 250 ] [ doom/los 700 500 ]
             ]
             either = doom/occluded 0 [ doom/ssv: 1 doom/stv: 480 ] [ none ]
         ] [ none ]
@@ -651,7 +651,7 @@ doom/tick: func [fw bk lf rt tl tr fire aimslope] [
             doom/consider doom/s1-x doom/s1-y doom/s1-h 2 4194304 15 16
             doom/consider doom/s2-x doom/s2-y doom/s2-h 3 4194304 15 16
             either < doom/ay 1 [ none ] [ doom/consider 480 500 doom/ay 10 1048576 40 40 ]
-            either < doom/dvis 1 [ none ] [ doom/consider 620 200 doom/dvis 11 1048576 40 40 ]
+            either < doom/dvis 1 [ none ] [ doom/consider 620 250 doom/dvis 11 1048576 40 40 ]
             either < doom/hiy 1 [ none ] [ doom/consider 700 500 doom/hiy 12 1048576 40 40 ]
             either = doom/target 0 [
                 doom/alien-health: - doom/alien-health 25

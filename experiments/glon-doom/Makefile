@@ -68,6 +68,8 @@ test: $(TARGET)
 	./$(TARGET) --multi-alien-test
 	./$(TARGET) --cocoon-test
 	./$(TARGET) --gl-cocoon-shots /tmp/glon-g6j-cocoon 960 600 --no-audio
+	./$(TARGET) --gl-cocoon-occlusion /tmp/glon-g6j2-occlusion 960 600 --no-audio
+	./$(TARGET) --gl-cocoon-states /tmp/glon-g6j2-states 960 600 --no-audio
 	./$(TARGET) --title-test /tmp/glon-g6i-title 960 600 --no-audio
 	./$(TARGET) --tracker-multi-test
 	./$(TARGET) --gl-scuttler-probe /tmp/glon-g6h1-probe 960 600
