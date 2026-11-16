@@ -1,3 +1,0 @@
-8606416faaf31ee7e020093aa19c97475ea97aeff7ef865c8d7a1a446e13f654  dist/windows/doom.exe
-b67bca20a0a35c0e0689495f9f3095526aa6575543c2678646c1593107410800  dist/windows/SDL2.dll
-c2f2049b766e655f3b01a7c77cd9c546480230acf1c323505ce38fc0b7df5a8a  dist/windows/experiments/glon-doom/doom.glon
