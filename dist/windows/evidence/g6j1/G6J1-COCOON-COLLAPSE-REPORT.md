@@ -2,7 +2,8 @@
 
 Branch: `glon-avp-g6j1`, based on G6j `a713fb1`  
 Status: **implemented, packaged and verified; unaccepted pending physical Windows testing**
-Source commit: `448a703cb14ef0225d7d4b66553cef633bf162b0`  
+Source commit: `448a703cb14ef0225d7d4b66553cef633bf162b0`
+Package/evidence commit: `ff27419cfd420be16212f10aa473126515b008d1`  
 Windows executable: `dist/windows/doom.exe`, **8,178,176 bytes**  
 SHA-256: `f06f1368457c8b3404fabe0a9988fe1499ca003aa36a1b6b9ca59b280d81c024`  
 Launcher: `dist/windows/run-g6j1.bat`
