@@ -1,11 +1,11 @@
-GLON vs ALIEN — G6i.3 Windows candidate
-======================================
+GLON vs ALIEN — G6j Windows candidate
+====================================
 
 Launch:
 
   D:
-  cd D:\repos\glon-worktrees\glon-avp-g6i3\dist\windows
-  run-g6i3.bat
+  cd D:\repos\glon-worktrees\glon-avp-g6j\dist\windows
+  run-g6j.bat
 
 Controls:
   W/S/A/D             move/strafe
@@ -21,14 +21,13 @@ Controls:
   Escape              credits -> title; title/game -> quit
   M / [ / ]           mute / volume
 
-Pitch starts at 0, rises at 30°/s while Down is held, clamps at 75°, and R
-returns it at 300°/s without resetting the game. No camera roll.
+The game starts with three dormant alien cocoons. Approach one to alert it; it
+pulses and has an 8-second hatch countdown. Two rifle hits destroy a cocoon and
+prevent its scuttler from ever appearing. Surviving cocoons hatch into the
+existing scuttlers. The adult alien remains active independently.
 
-Scuttlers use persistent per-enemy detour waypoints around the actual barrels
-and cabinets, then resume direct pursuit; closed doors remain solid.
-
-Unaccepted candidate pending physical Windows testing. Scuttler damage attacks
-and distinctive movement/proximity sounds remain outstanding. No new enemies,
-acid, player damage, weapons, audio assets or asset optimizations. See
-evidence/G6I3-PRECISION-AIM-NAV-REPORT.md for tests, screenshots, measurements,
-SHA-256 and limitations.
+This is an unaccepted candidate pending physical Windows testing. Cocoon
+sprites are extracted/cleaned from the supplied contact sheet; some floor
+debris remains on a few frames. Cocoons are rendered world-space but are not
+solid player-collision volumes. See evidence/G6J-COCOON-LIFECYCLE-REPORT.md for
+tests, screenshots, measurements, SHA-256 and limitations.
