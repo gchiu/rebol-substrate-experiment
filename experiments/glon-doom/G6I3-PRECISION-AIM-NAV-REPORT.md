@@ -1,7 +1,8 @@
 # G6i.3 — precision aiming and reliable scuttler navigation
 
 Branch: `glon-avp-g6i3`, based on G6i.2 `a3ddac6`
-Source commit: `7ed73cf1a05c65685ad01fd387b8d12bc9e54890`  
+Source commit: `7ed73cf1a05c65685ad01fd387b8d12bc9e54890`
+Package/evidence commit: `74f40be7c9d510b86131c5d4554206ddc75ce2ad`  
 Status: **implemented, packaged and verified; unaccepted pending physical Windows testing**  
 Windows executable: `dist/windows/doom.exe`, **7,052,288 bytes**  
 SHA-256: `8606416faaf31ee7e020093aa19c97475ea97aeff7ef865c8d7a1a446e13f654`  
