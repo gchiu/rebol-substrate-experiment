@@ -20,6 +20,7 @@
 #include "weapon_sprites.h"
 #include "credits.h"
 #include "scuttler_sprites_g6h.h"
+#include "cocoon_sprites.h"
 #include "orientation_test.h"
 #include "corridor_textures.h"
 #include "g5j_textures.h"
@@ -100,6 +101,7 @@ typedef struct {
     int phase;
     int jump_z;
     int s_x[3], s_y[3], s_h[3], s_state[3], s_timer[3], s_vis[3];
+    int c_state[3], c_hp[3], c_timer[3], c_anim[3];
 } Status;
 
 typedef struct { int id, depth, left, right, top, bot, visible; int x,y,hw,hd,h; } Obj;
@@ -162,6 +164,7 @@ static int corridor_art = 1;
 static int engineering_room_enabled = 1;
 static double gl_energy_time = 0.0;
 static int objects_mode = 0;
+static int disable_cocoons(void);
 static int combat_minimal = 0;
 static int lazy_ticks = 0;
 static int isolate_scuttlers = 0;
@@ -1206,11 +1209,11 @@ static int get_valid(void) {
     return v;
 }
 static int get_status(Status *st) {
-    int v[37];
+    int v[49];
 #ifdef DOOM_S1_PROFILE
     prof_begin();
 #endif
-    int grc = run_capture(status_block, v, 37, "status");
+    int grc = run_capture(status_block, v, 49, "status");
 #ifdef DOOM_S1_PROFILE
     prof_collect(&prof_status);
 #endif
@@ -1227,6 +1230,8 @@ static int get_status(Status *st) {
         st->s_h[i] = v[23+i*5]; st->s_state[i] = v[24+i*5];
         st->s_timer[i] = v[25+i*5];
         st->s_vis[i] = (v[36]>>i)&1;
+        st->c_state[i] = v[37+i*4]; st->c_hp[i] = v[38+i*4];
+        st->c_timer[i] = v[39+i*4]; st->c_anim[i] = v[40+i*4];
     }
     if (objects_mode && get_objects(current_objs) == 0) {
         current_objs_valid = 1;
@@ -3230,6 +3235,7 @@ static int entrance_test(void) {
 
 static int combat_scene(int px,int py,int angle,int ax,int ay,int blocked,int health,int state,int detected) {
     reset();
+    if(disable_cocoons()!=0) return -1;
     char src[512];
     snprintf(src,sizeof src,
              "[ doom/px: %d doom/py: %d doom/angle: %d doom/aim "
@@ -3543,11 +3549,111 @@ static int jump_test(void) {
     return fails?1:0;
 }
 static int scuttler_view_dir(const Status *st,int i,int *flip);
+static int cocoon_test(void){
+    int fails=0; Status st; int px,py,pa;
+    combat_minimal=1; load_session(); build_blocks();
+    reset();
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("cocoon all dormant",st.c_state[0]+st.c_state[1]+st.c_state[2],0);
+    fails+=expect_eq("cocoon all full health",st.c_hp[0]+st.c_hp[1]+st.c_hp[2],6);
+    fails+=expect_eq("cocoon no scuttlers active",st.s_state[0]+st.s_state[1]+st.s_state[2],18);
+    for(int i=0;i<120;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("cocoon no immediate pursuit",st.s_x[0]==480&&st.s_x[1]==620&&st.s_x[2]==700,1);
+    /* Approach only cocoon 0. */
+    if(run_block(parse_source("[ doom/px: 480 doom/py: 600 doom/angle: 192 doom/aim ]","cocoon approach"),"cocoon approach")!=0) return 2;
+    if(tick(0)!=0 || get_status(&st)!=0) return 2;
+    fails+=expect_eq("cocoon 0 activated",st.c_state[0],1);
+    fails+=expect_eq("cocoon 1 stays dormant",st.c_state[1],0);
+    fails+=expect_eq("cocoon 2 stays dormant",st.c_state[2],0);
+    fails+=expect_eq("cocoon 0 countdown",st.c_timer[0]>450,1);
+    /* Independent countdown, no scuttler yet. */
+    for(int i=0;i<100;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("cocoon 0 still alert",st.c_state[0],1);
+    fails+=expect_eq("cocoon 0 still no scuttler",st.s_state[0],6);
+    /* Shoot cocoon 0: two hits destroy, no spawn. */
+    reset();
+    if(run_block(parse_source("[ doom/px: 480 doom/py: 600 doom/angle: 192 doom/aim ]","cocoon shoot"),"cocoon shoot")!=0) return 2;
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails+=expect_eq("cocoon first hit",st.c_hp[0],1);
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails+=expect_eq("cocoon destroyed",st.c_state[0],4);
+    for(int i=0;i<600;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("destroyed cocoon never hatches",st.c_state[0],4);
+    fails+=expect_eq("destroyed cocoon no scuttler",st.s_state[0],6);
+    /* Hatch cocoon 1 independently. */
+    reset();
+    if(run_block(parse_source("[ doom/px: 620 doom/py: 300 doom/angle: 64 doom/aim ]","hatch approach"),"hatch approach")!=0) return 2;
+    for(int i=0;i<620;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("cocoon 1 hatched",st.c_state[1],3);
+    fails+=expect_eq("cocoon 1 scuttler active",st.s_state[1],1);
+    { TrackerContact tc[4]; int n=tracker_contacts(&st,620,300,64,tc); fails+=expect_eq("cocoon hatched proximity contact",n>=1,1); }
+    fails+=expect_eq("cocoon 0 not activated by cocoon 1",st.c_state[0],0);
+    reset();
+    if(run_block(parse_source("[ doom/px: 700 doom/py: 600 doom/angle: 192 doom/aim ]","c2 hatch pose"),"c2 hatch pose")!=0) return 2;
+    for(int i=0;i<620;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("cocoon 2 hatched independently",st.c_state[2],3);
+    fails+=expect_eq("cocoon 2 scuttler active",st.s_state[2],1);
+
+    reset();
+    if(run_block(parse_source("[ doom/px: 700 doom/py: 600 doom/angle: 192 doom/aim ]","c2 shoot"),"c2 shoot")!=0) return 2;
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails+=expect_eq("cocoon 2 first hit",st.c_hp[2],1);
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails+=expect_eq("cocoon 2 destroyed",st.c_state[2],4);
+    fails+=expect_eq("cocoon 2 no scuttler",st.s_state[2],6);
+    /* Dormant cocoons do not appear as active proximity contacts. */
+    reset();
+    if(get_status(&st)!=0) return 2;
+    { TrackerContact tc[4]; int n=tracker_contacts(&st,320,320,0,tc); fails+=expect_eq("cocoon dormant proximity empty",n,0); }
+    /* A wall between player and cocoon blocks the shot. */
+    reset();
+    if(run_block(parse_source("[ doom/px: 1000 doom/py: 500 doom/angle: 128 doom/aim doom/door-open: 0 doom/door-target: 0 doom/door-blocked: 1 ]","wall cocoon"),"wall cocoon")!=0) return 2;
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    fails+=expect_eq("cocoon behind wall safe",st.c_hp[0],2);
+    /* Independent timers: activate c0, then c1 later. */
+    reset();
+    if(run_block(parse_source("[ doom/px: 480 doom/py: 600 doom/angle: 192 doom/aim ]","c0 near"),"c0 near")!=0) return 2;
+    if(tick(0)!=0 || get_status(&st)!=0) return 2;
+    int t0=st.c_timer[0];
+    for(int i=0;i<100;i++) if(tick(0)!=0) return 2;
+    if(run_block(parse_source("[ doom/px: 620 doom/py: 300 doom/angle: 64 doom/aim ]","c1 near"),"c1 near")!=0) return 2;
+    if(tick(0)!=0 || get_status(&st)!=0) return 2;
+    fails+=expect_eq("cocoon independent c0 alert",st.c_state[0],1);
+    fails+=expect_eq("cocoon independent c1 alert",st.c_state[1],1);
+    fails+=expect_eq("cocoon independent c2 dormant",st.c_state[2],0);
+    fails+=expect_eq("cocoon independent timers",st.c_timer[0]<t0,1);
+    /* All three can be destroyed without releasing scuttlers. */
+    reset();
+    for(int i=0;i<3;i++){
+        int px= i==0?480:(i==1?620:700);
+        int py= i==0?600:(i==1?300:600);
+        int ang=192;
+        char src[256]; snprintf(src,sizeof src,"[ doom/px: %d doom/py: %d doom/angle: %d doom/aim ]",px,py,ang);
+        if(run_block(parse_source(src,"destroy all pose"),"destroy all pose")!=0) return 2;
+        if(tick(FIRE_MASK)!=0 || tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+    }
+    fails+=expect_eq("cocoon all three destroyed",st.c_state[0]+st.c_state[1]+st.c_state[2],12);
+    fails+=expect_eq("cocoon all three no scuttlers",st.s_state[0]+st.s_state[1]+st.s_state[2],18);
+    reset();
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("cocoon restart dormant",st.c_state[0]+st.c_state[1]+st.c_state[2],0);
+    printf("cocoon-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
+}
+static int disable_cocoons(void){
+    return run_block(parse_source("[ doom/ax: 4 doom/ay: 0 doom/bx: 0 doom/by: 0 doom/dt: 4 doom/dvis: 0 doom/trad: 0 doom/trvalid: 0 doom/loy: 4 doom/hiy: 0 doom/e2sy: 0 doom/focal-h: 0 ]","cocoons off"),"cocoons off");
+}
 static int multi_scene(int px,int py,int angle,int ax,int ay,int astate,int door,
                        int s0x,int s0y,int s0state,int s0timer,
                        int s1x,int s1y,int s1state,int s1timer,
                        int s2x,int s2y,int s2state,int s2timer) {
     reset();
+    if(disable_cocoons()!=0) return -1;
     char src[1024];
     snprintf(src,sizeof src,
       "[ doom/px: %d doom/py: %d doom/angle: %d doom/aim "
@@ -3570,11 +3676,13 @@ static int multi_alien_test(void) {
     reset();
     if(get_status(&st)!=0) return 2;
     fails += expect_eq("multi adult spawn health",st.health,100);
-    fails += expect_eq("multi scuttler count health",st.s_h[0]+st.s_h[1]+st.s_h[2],150);
-    fails += expect_eq("multi spawn s0",st.s_x[0]==650&&st.s_y[0]==360,1);
-    fails += expect_eq("multi spawn visibility",st.s_vis[0]==1&&st.s_vis[1]==0&&st.s_vis[2]==0,1);
-    fails += expect_eq("multi spawn s1",st.s_x[1]==900&&st.s_y[1]==280,1);
-    fails += expect_eq("multi spawn s2",st.s_x[2]==1050&&st.s_y[2]==360,1);
+    fails += expect_eq("multi cocoon dormant count",st.c_state[0]+st.c_state[1]+st.c_state[2],0);
+    fails += expect_eq("multi cocoon health",st.c_hp[0]+st.c_hp[1]+st.c_hp[2],6);
+    fails += expect_eq("multi scuttler count health",st.s_h[0]+st.s_h[1]+st.s_h[2],0);
+    fails += expect_eq("multi spawn s0 dormant",st.s_x[0]==480&&st.s_y[0]==440&&st.s_state[0]==6,1);
+    fails += expect_eq("multi spawn visibility",st.s_vis[0]==0&&st.s_vis[1]==0&&st.s_vis[2]==0,1);
+    fails += expect_eq("multi spawn s1 dormant",st.s_x[1]==620&&st.s_y[1]==260&&st.s_state[1]==6,1);
+    fails += expect_eq("multi spawn s2 dormant",st.s_x[2]==700&&st.s_y[2]==560&&st.s_state[2]==6,1);
     /* Target selection: nearest scuttler, not adult or the other scuttlers. */
     if(multi_scene(900,320,0,1120,320,0,0,
                    1000,320,1,100,1250,600,0,100,1250,900,0,100)!=0) return 2;
@@ -3667,10 +3775,11 @@ static int multi_alien_test(void) {
         for(int i=0;i<8;i++) if(tick(0)!=0) return 2;
         if(reset()!=0 || get_status(&st)!=0) return 2;
         fails += expect_eq("multi reset adult",st.health,100);
-        fails += expect_eq("multi reset s0 hp",st.s_h[0],50);
-        fails += expect_eq("multi reset s1 hp",st.s_h[1],50);
-        fails += expect_eq("multi reset s2 hp",st.s_h[2],50);
-        fails += expect_eq("multi reset positions",st.s_x[0]==650&&st.s_y[0]==360&&st.s_x[1]==900&&st.s_y[1]==280&&st.s_x[2]==1050&&st.s_y[2]==360,1);
+        fails += expect_eq("multi reset s0 dormant",st.s_h[0]==0&&st.s_state[0]==6,1);
+        fails += expect_eq("multi reset s1 dormant",st.s_h[1]==0&&st.s_state[1]==6,1);
+        fails += expect_eq("multi reset s2 dormant",st.s_h[2]==0&&st.s_state[2]==6,1);
+        fails += expect_eq("multi reset cocoons",st.c_state[0]==0&&st.c_state[1]==0&&st.c_state[2]==0,1);
+        fails += expect_eq("multi reset positions",st.s_x[0]==480&&st.s_y[0]==440&&st.s_x[1]==620&&st.s_y[1]==260&&st.s_x[2]==700&&st.s_y[2]==560,1);
     }
     /* Sprite frames: actual alpha corners and directional selection. */
     for(int f=0;f<SCUTTLER_FRAME_COUNT;f++){
@@ -3719,6 +3828,7 @@ static int tracker_multi_test(void) {
     n=tracker_contacts(&st,700,320,64,c);
     fails+=expect_eq("tracker death removes contact",n,3);
     if(reset()!=0 || get_status(&st)!=0) return 2;
+    if(run_block(parse_source("[ doom/s0-state: 1 doom/s0-h: 50 doom/s1-state: 1 doom/s1-h: 50 doom/s2-state: 1 doom/s2-h: 50 doom/s-vis: 7 ]","tracker active"),"tracker active")!=0 || get_status(&st)!=0) return 2;
     n=tracker_contacts(&st,700,320,0,c);
     fails+=expect_eq("tracker restart restores four",n,4);
     printf("tracker-multi-test: %s\n",fails?"FAILED":"PASSED");
@@ -4275,7 +4385,9 @@ enum { GT_PANEL, GT_SERVICE, GT_FLOOR, GT_CEIL, GT_CEIL_PANEL,
        GT_DRUM, GT_CRATE, GT_CABINET, GT_CONTAINER, GT_ALIEN0,
        GT_ORIENT = GT_ALIEN0 + ALIEN_DIR_COUNT, GT_ART_WALL, GT_ART_PANEL, GT_ART_FLOOR,
        GT_WEAPON, GT_SCUTTLER0, GT_SCUTTLER_LAST = GT_SCUTTLER0 + SCUTTLER_FRAME_COUNT - 1,
-       GT_G5Z_ATLAS = GT_SCUTTLER_LAST + 1, GT_COUNT = GT_G5Z_ATLAS + 1 };
+       GT_G5Z_ATLAS = GT_SCUTTLER_LAST + 1, GT_COCOON0 = GT_G5Z_ATLAS + 1,
+       GT_COCOON_LAST = GT_COCOON0 + COCOON_FRAME_COUNT - 1,
+       GT_COUNT = GT_COCOON_LAST + 1 };
 static GLuint gl_tex[GT_COUNT];
 static SDL_Window *gl_win;
 static SDL_GLContext gl_ctx;
@@ -4542,6 +4654,8 @@ static int gl_init(int w, int h, int shown) {
     gl_upload(gl_tex[GT_WEAPON], weapon_pulse,WEAPON_W,WEAPON_H);
     for (int i = 0; i < SCUTTLER_FRAME_COUNT; i++)
         gl_upload(gl_tex[GT_SCUTTLER0+i], scuttler_pixels[i], SCUTTLER_FRAME_W, SCUTTLER_FRAME_H);
+    for (int i = 0; i < COCOON_FRAME_COUNT; i++)
+        gl_upload(gl_tex[GT_COCOON0+i], cocoon_pixels[i], COCOON_FRAME_W, COCOON_FRAME_H);
     uint32_t *g5z_atlas=g5z_build_atlas();
     gl_upload(gl_tex[GT_G5Z_ATLAS],g5z_atlas,G5Z_ATLAS_W,G5Z_ATLAS_H);
     free(g5z_atlas);
@@ -6392,7 +6506,7 @@ static void gl_draw_scuttlers(const Status *st) {
     double ca=cos(st_current_angle*2.0*M_PI/256.0), sa=sin(st_current_angle*2.0*M_PI/256.0);
     double rx=sa, ry=-ca;
     for(int i=0;i<3;i++){
-        if(!st->s_vis[i]) continue;
+        if(!st->s_vis[i] || st->s_state[i]==6) continue;
         int flip=0, frame=scuttler_frame(st,i,&flip);
         double hw=30.0;                 /* 60 world wide, 30 tall, 2:1 */
         double x0=st->s_x[i]-rx*hw, x1=st->s_x[i]+rx*hw;
@@ -6584,6 +6698,25 @@ static void g6i_title_render(const G6iTitleMetrics *m,double elapsed) {
         g6i_text_center(l->y,l->text,l->scale,r,g,b);
     }
 }
+static void gl_draw_cocoons(const Status *st){
+    if(!gl_active) return;
+    const int cx[3]={480,620,700}, cy[3]={500,200,500};
+    for(int i=0;i<3;i++){
+        int state=st->c_state[i];
+        int frame=COCOON_DORMANT;
+        if(state==1){ int t=st->c_timer[i]; if(t<0)t=0; frame=COCOON_PULSE_BASE+((480-t)/30)%4; }
+        else if(state==2){ int f=(48-st->c_timer[i])/6; if(f<0)f=0; if(f>7)f=7; frame=COCOON_HATCH_BASE+f; }
+        else if(state==3) frame=COCOON_HATCHED;
+        else if(state==4) frame=COCOON_DESTROYED;
+        float tr=1.0f,tg=1.0f,tb=1.0f;
+        if(st->c_hp[i]==1&&state<3){tr=1.0f;tg=0.55f;tb=0.45f;}
+        glEnable(GL_TEXTURE_2D); glEnable(GL_ALPHA_TEST); glAlphaFunc(GL_GREATER,0.15f);
+        glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_TRUE);
+        gl_billboard(gl_tex[GT_COCOON0+frame], cx[i], cy[i], 0.95, 1.0, 0.0, 0.0, 0, tr,tg,tb,0.0f);
+    }
+    glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
+}
 static void gl_scene(const Status *st, const Obj *objs, int nobj) {
     gl_energy_time=(double)sim_tick/(double)TICK_HZ;
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -6600,6 +6733,7 @@ static void gl_scene(const Status *st, const Obj *objs, int nobj) {
         glDepthMask(GL_TRUE);
         gl_prop_3d(&objs[i]);
     }
+    gl_draw_cocoons(st);
     gl_draw_scuttlers(st);
     if (st->visible) {
         if(st->state==5){
@@ -7114,12 +7248,16 @@ static int g6h2_gl_test(const char *dir,int w,int h) {
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit();
     return fails?1:0;
 }
+static int activate_test_scuttlers(void){
+    return run_block(parse_source("[ doom/s0-state: 1 doom/s0-h: 50 doom/s1-state: 1 doom/s1-h: 50 doom/s2-state: 1 doom/s2-h: 50 doom/s-vis: 7 ]","test active"),"test active");
+}
 static int g6h1_gl_probe(const char *dir,int w,int h) {
     if(gl_init(w,h,0)!=0) return 2;
     gl_active=1; load_session(); build_blocks();
     uint32_t *fb=malloc((size_t)w*h*sizeof *fb);
     if(!fb) return 2;
     reset();
+    if(activate_test_scuttlers()!=0) return 2;
     Status st; int px,py,pa;
     if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
     g6h1_log_scuttlers("spawn", &st,px,py,pa);
@@ -7139,6 +7277,7 @@ static int g6h1_gl_probe(const char *dir,int w,int h) {
     const char *scene="[ doom/px: 700 doom/py: 320 doom/angle: 0 doom/aim doom/door-open: 64 doom/door-target: 64 doom/door-blocked: 0 ]";
     cell b=parse_source(scene,"g6h1 corridor scene");
     if(run_block(b,"g6h1 corridor scene")!=0) return 2;
+    if(activate_test_scuttlers()!=0) return 2;
     for(int i=0;i<20;i++) if(tick(0)!=0) return 2;
     if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) return 2;
     g6h1_log_scuttlers("corridor20", &st,px,py,pa);
@@ -7986,6 +8125,27 @@ static int g6i2_gameplay_test(void){
 static void gl_save_ppm_fmt(const char *dir,const char *name,int w,int h){
     char path[4096]; snprintf(path,sizeof path,"%s/%s.ppm",dir,name); gl_save_ppm(path,w,h);
 }
+static int g6j_cocoon_shots(const char *dir,int w,int h){
+    if(gl_init(w,h,0)!=0) return 2;
+    gl_active=1; objects_mode=1; load_session(); build_blocks(); reset();
+    cell pose=parse_source("[ doom/px: 700 doom/py: 600 doom/angle: 192 doom/aim doom/door-open: 64 doom/door-target: 64 doom/door-blocked: 0 doom/alien-x: 1120 doom/alien-y: 320 doom/alien-state: 5 doom/alien-detected: 0 doom/s0-state: 6 doom/s1-state: 6 doom/s2-state: 6 doom/s-vis: 0 ]","cocoon pose");
+    if(run_block(pose,"cocoon pose")!=0) return 2;
+    Status st; int px,py,pa; if(get_state(&px,&py,&pa)!=0||get_status(&st)!=0) return 2; st_current_angle=pa;
+    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"dormant",w,h);
+    tick(0); if(get_status(&st)!=0) return 2; st_current_angle=pa;
+    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"alerted",w,h);
+    for(int i=0;i<470;i++) tick(0);
+    if(get_status(&st)!=0) return 2; st_current_angle=pa;
+    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"hatching",w,h);
+    for(int i=0;i<60;i++) tick(0);
+    if(get_status(&st)!=0) return 2; st_current_angle=pa;
+    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"hatched",w,h);
+    if(run_block(parse_source("[ doom/loy: 4 doom/hiy: 0 doom/e2sy: 0 doom/focal-h: 0 ]","destroyed pose"),"destroyed pose")!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    st_current_angle=pa; gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"destroyed",w,h);
+    printf("G6I2 cocoon states dormant/alerted/hatching/hatched/destroyed\n");
+    SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
+}
 static int g6i2_nav_shots(const char *dir,int w,int h){
     if(gl_init(w,h,0)!=0) return 2;
     gl_active=1; objects_mode=1; load_session(); build_blocks(); reset();
@@ -8120,6 +8280,7 @@ int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "--muzzle-anchor-test") == 0) return muzzle_anchor_test();
     if (argc > 1 && strcmp(argv[1], "--entrance-test") == 0) return entrance_test();
     if (argc > 1 && strcmp(argv[1], "--collision-probe-test") == 0) return collision_probe_test();
+    if (argc > 1 && strcmp(argv[1], "--cocoon-test") == 0) return cocoon_test();
     if (argc > 1 && strcmp(argv[1], "--multi-alien-test") == 0) return multi_alien_test();
     if (argc > 1 && strcmp(argv[1], "--tracker-multi-test") == 0) return tracker_multi_test();
     if (argc > 1 && strcmp(argv[1], "--jump-test") == 0) return jump_test();
@@ -8221,6 +8382,10 @@ int main(int argc, char **argv) {
     if (argc > 2 && strcmp(argv[1], "--gl-g6i1-shots") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
         return g6i1_look_shots(argv[2],w,h);
+    }
+    if (argc > 2 && strcmp(argv[1], "--gl-cocoon-shots") == 0) {
+        int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;
+        return g6j_cocoon_shots(argv[2],w,h);
     }
     if (argc > 2 && strcmp(argv[1], "--gl-g6i2-nav") == 0) {
         int w=argc>3?atoi(argv[3]):960, h=argc>4?atoi(argv[4]):600;

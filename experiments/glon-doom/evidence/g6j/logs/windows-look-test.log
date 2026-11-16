@@ -1,0 +1,11 @@
+PASS look starts horizontal   got=0
+PASS brief down is half degree got=500
+PASS release holds angle      got=500
+PASS hold angle indefinitely  got=500
+PASS down rate 30 deg/s       got=5500
+PASS release at 5.5 deg       got=5500
+PASS R begins smooth return   got=500
+PASS R returns horizontal     got=0
+PASS down clamps at 75        got=75000
+PASS pitch slope positive     got=1
+look-test: PASSED

@@ -1,0 +1,9 @@
+PASS south wall panel clear of side opening got=1
+PASS south wall panel clear of side opening got=1
+PASS south wall panel clear of side opening got=1
+PASS south wall panel clear of side opening got=1
+PASS south wall panel clear of side opening got=1
+PASS south wall panel clear of side opening got=1
+PASS side entrance traversable got=0
+PASS side corridor traversable got=0
+entrance-test: PASSED

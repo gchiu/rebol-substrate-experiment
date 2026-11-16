@@ -8,23 +8,15 @@
 ;; World units: 64 subunits per map unit. Map x is east, y is north.
 [
 doom/scale: 64
-doom/radius: 20
 doom/radius2: 400
 doom/speed: 8
 doom/eye: 64
-doom/wall-height: 128
 doom/horizon: 100
 doom/projection: 246
 doom/focal-h: 243
-doom/screen-w: 320
-doom/screen-h: 200
-doom/line-count: 10
 doom/start-x: 320
 doom/start-y: 320
 doom/start-angle: 0
-doom/door-x: 768
-doom/door-y0: 256
-doom/door-y1: 384
 doom/door-step: 4
 doom/door-threshold: 32
 doom/alien-detect2: 490000
@@ -360,7 +352,7 @@ doom/move-sy: func [i ny] [
 ]
 doom/update-scuttler: func [i] [
     doom/ssv: doom/ss i
-    either = doom/ssv 5 [ none ] [
+    either = doom/ssv 6 [ none ] [ either = doom/ssv 5 [ none ] [
         either = doom/ssv 4 [
             doom/stv: - doom/stm i 1
             doom/stm! i doom/stv
@@ -459,17 +451,24 @@ doom/update-scuttler: func [i] [
         ]
     ]
 ]
+]
 doom/update-scuttlers: does [
     doom/update-scuttler 0
     doom/update-scuttler 1
     doom/update-scuttler 2
     doom/s-vis: 0
-    doom/los doom/s0-x doom/s0-y
-    either = doom/occluded 0 [ doom/s-vis: + doom/s-vis 1 ] [ none ]
-    doom/los doom/s1-x doom/s1-y
-    either = doom/occluded 0 [ doom/s-vis: + doom/s-vis 2 ] [ none ]
-    doom/los doom/s2-x doom/s2-y
-    either = doom/occluded 0 [ doom/s-vis: + doom/s-vis 4 ] [ none ]
+    either = doom/s0-state 6 [ none ] [
+        doom/los doom/s0-x doom/s0-y
+        either = doom/occluded 0 [ doom/s-vis: + doom/s-vis 1 ] [ none ]
+    ]
+    either = doom/s1-state 6 [ none ] [
+        doom/los doom/s1-x doom/s1-y
+        either = doom/occluded 0 [ doom/s-vis: + doom/s-vis 2 ] [ none ]
+    ]
+    either = doom/s2-state 6 [ none ] [
+        doom/los doom/s2-x doom/s2-y
+        either = doom/occluded 0 [ doom/s-vis: + doom/s-vis 4 ] [ none ]
+    ]
 ]
 doom/move-x: func [nx] [
     doom/hit: 0
@@ -519,6 +518,59 @@ doom/damage-scuttler: func [i] [
     ] [
         doom/ss! i 3
         doom/stm! i 4
+    ]
+]
+;; G6j cocoon state machine. States: 0 dormant, 1 alerted, 2 hatching,
+;; 3 hatched, 4 destroyed. Positions are fixed map landmarks:
+;; c0 (480,500) room, c1 (620,200) room north, c2 (700,500) room east.
+;; Each scuttler is dormant (state 6, health 0) until its own cocoon hatches.
+;; This is a sequential update of three independent records in one tick,
+;; not parallel execution or scheduler-based multitasking.
+doom/cocoon-step: func [i] [
+    either = i 0 [ doom/ssv: doom/ax doom/shv: doom/ay doom/stv: doom/bx doom/scale: doom/by ] [
+        either = i 1 [ doom/ssv: doom/dt doom/shv: doom/dvis doom/stv: doom/trad doom/scale: doom/trvalid ] [
+            doom/ssv: doom/loy doom/shv: doom/hiy doom/stv: doom/e2sy doom/scale: doom/focal-h
+        ]
+    ]
+    either = doom/ssv 0 [
+        either = i 0 [ doom/tdx: - 480 doom/px doom/tdy: - 500 doom/py ] [
+            either = i 1 [ doom/tdx: - 620 doom/px doom/tdy: - 200 doom/py ] [
+                doom/tdx: - 700 doom/px doom/tdy: - 500 doom/py
+            ]
+        ]
+        doom/td2: + * doom/tdx doom/tdx * doom/tdy doom/tdy
+        either < doom/td2 36864 [
+            either = i 0 [ doom/los 480 500 ] [
+                either = i 1 [ doom/los 620 200 ] [ doom/los 700 500 ]
+            ]
+            either = doom/occluded 0 [ doom/ssv: 1 doom/stv: 480 ] [ none ]
+        ] [ none ]
+    ] [
+        either = doom/ssv 1 [
+            either < doom/stv 1 [
+                doom/ssv: 2 doom/stv: 48 doom/scale: 0
+            ] [ doom/stv: - doom/stv 1 ]
+        ] [
+            either = doom/ssv 2 [
+                doom/scale: / - 48 doom/stv 6
+                either < doom/stv 1 [
+                    doom/ssv: 3
+                    doom/shv: 0
+                    either = i 0 [ doom/sx! 0 480 doom/sy! 0 440 ] [
+                        either = i 1 [ doom/sx! 1 620 doom/sy! 1 260 ] [
+                            doom/sx! 2 700 doom/sy! 2 560
+                        ]
+                    ]
+                    doom/ss! i 1
+                    doom/sh! i 50
+                ] [ doom/stv: - doom/stv 1 ]
+            ] [ none ]
+        ]
+    ]
+    either = i 0 [ doom/ax: doom/ssv doom/ay: doom/shv doom/bx: doom/stv doom/by: doom/scale ] [
+        either = i 1 [ doom/dt: doom/ssv doom/dvis: doom/shv doom/trad: doom/stv doom/trvalid: doom/scale ] [
+            doom/loy: doom/ssv doom/hiy: doom/shv doom/e2sy: doom/stv doom/focal-h: doom/scale
+        ]
     ]
 ]
 doom/tick: func [fw bk lf rt tl tr fire aimslope] [
@@ -581,6 +633,9 @@ doom/tick: func [fw bk lf rt tl tr fire aimslope] [
             ] [ doom/update-alien ]
         ]
     ]
+    doom/cocoon-step 0
+    doom/cocoon-step 1
+    doom/cocoon-step 2
     doom/update-scuttlers
     either = 1 fire [
         either > doom/ammo 0 [
@@ -591,6 +646,9 @@ doom/tick: func [fw bk lf rt tl tr fire aimslope] [
             doom/consider doom/s0-x doom/s0-y doom/s0-h 1 4194304 15 16
             doom/consider doom/s1-x doom/s1-y doom/s1-h 2 4194304 15 16
             doom/consider doom/s2-x doom/s2-y doom/s2-h 3 4194304 15 16
+            either < doom/ay 1 [ none ] [ doom/consider 480 500 doom/ay 10 1048576 40 40 ]
+            either < doom/dvis 1 [ none ] [ doom/consider 620 200 doom/dvis 11 1048576 40 40 ]
+            either < doom/hiy 1 [ none ] [ doom/consider 700 500 doom/hiy 12 1048576 40 40 ]
             either = doom/target 0 [
                 doom/alien-health: - doom/alien-health 25
                 either < doom/alien-health 1 [
@@ -605,7 +663,22 @@ doom/tick: func [fw bk lf rt tl tr fire aimslope] [
             ] [
                 either = doom/target 1 [ doom/damage-scuttler 0 ] [
                     either = doom/target 2 [ doom/damage-scuttler 1 ] [
-                        either = doom/target 3 [ doom/damage-scuttler 2 ] [ none ]
+                        either = doom/target 3 [ doom/damage-scuttler 2 ] [
+                            either = doom/target 10 [
+                                doom/ay: - doom/ay 1
+                                either < doom/ay 1 [ doom/ax: 4 doom/ay: 0 doom/bx: 0 doom/by: 0 ] [ doom/by: 1 ]
+                            ] [
+                                either = doom/target 11 [
+                                    doom/dvis: - doom/dvis 1
+                                    either < doom/dvis 1 [ doom/dt: 4 doom/dvis: 0 doom/trad: 0 doom/trvalid: 0 ] [ doom/trvalid: 1 ]
+                                ] [
+                                    either = doom/target 12 [
+                                        doom/hiy: - doom/hiy 1
+                                        either < doom/hiy 1 [ doom/loy: 4 doom/hiy: 0 doom/e2sy: 0 doom/focal-h: 0 ] [ doom/focal-h: 1 ]
+                                    ] [ none ]
+                                ]
+                            ]
+                        ]
                     ]
                 ]
             ]
@@ -707,10 +780,13 @@ doom/reset: does [
     doom/jump-input: 0
     doom/aim-slope: 0
     doom/e1dx: 0 doom/e1dy: 0 doom/e1dep: 0 doom/e1side: 0 doom/e1sx: 0 doom/e1sy: 0 doom/e2dx: 0 doom/e2dy: 0 doom/e2side: 0 doom/e2dep: 0
-    doom/s0-x: 650 doom/s0-y: 360 doom/s0-h: 50 doom/s0-state: 0 doom/s0-timer: 6
-    doom/s1-x: 900 doom/s1-y: 280 doom/s1-h: 50 doom/s1-state: 0 doom/s1-timer: 6
-    doom/s2-x: 1050 doom/s2-y: 360 doom/s2-h: 50 doom/s2-state: 0 doom/s2-timer: 6
-    doom/s-vis: 1
+    doom/ax: 0 doom/ay: 2 doom/bx: 0 doom/by: 0
+    doom/dt: 0 doom/dvis: 2 doom/trad: 0 doom/trvalid: 0
+    doom/loy: 0 doom/hiy: 2 doom/e2sy: 0 doom/focal-h: 0
+    doom/s0-x: 480 doom/s0-y: 440 doom/s0-h: 0 doom/s0-state: 6 doom/s0-timer: 0
+    doom/s1-x: 620 doom/s1-y: 260 doom/s1-h: 0 doom/s1-state: 6 doom/s1-timer: 0
+    doom/s2-x: 700 doom/s2-y: 560 doom/s2-h: 0 doom/s2-state: 6 doom/s2-timer: 0
+    doom/s-vis: 0
     doom/best: 100000
     doom/target: -1
 ]
@@ -1432,6 +1508,18 @@ doom/status-block: [
     print doom/s2-state
     print doom/s2-timer
     print doom/s-vis
+    print doom/ax
+    print doom/ay
+    print doom/bx
+    print doom/by
+    print doom/dt
+    print doom/dvis
+    print doom/trad
+    print doom/trvalid
+    print doom/loy
+    print doom/hiy
+    print doom/e2sy
+    print doom/focal-h
 ]
 
 doom/sector-report: does [

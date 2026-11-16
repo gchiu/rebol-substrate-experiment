@@ -66,6 +66,8 @@ test: $(TARGET)
 	./$(TARGET) --entrance-test
 	./$(TARGET) --collision-probe-test
 	./$(TARGET) --multi-alien-test
+	./$(TARGET) --cocoon-test
+	./$(TARGET) --gl-cocoon-shots /tmp/glon-g6j-cocoon 960 600 --no-audio
 	./$(TARGET) --title-test /tmp/glon-g6i-title 960 600 --no-audio
 	./$(TARGET) --tracker-multi-test
 	./$(TARGET) --gl-scuttler-probe /tmp/glon-g6h1-probe 960 600
