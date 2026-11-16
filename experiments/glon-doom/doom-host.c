@@ -52,6 +52,11 @@
 #define PROJ_COLS 160
 #define PROJ_SCALE 2
 #define TICK_HZ 60
+/* G6i.3 precision pitch: 30 deg/s downward; R returns at 300 deg/s. */
+#define G6I3_PITCH_DEG_PER_SEC 30.0f
+#define G6I3_PITCH_RETURN_DEG_PER_SEC 300.0f
+#define G6I3_PITCH_STEP_MDEG ((int)lround((double)G6I3_PITCH_DEG_PER_SEC*1000.0/TICK_HZ))
+#define G6I3_PITCH_RETURN_STEP_MDEG ((int)lround((double)G6I3_PITCH_RETURN_DEG_PER_SEC*1000.0/TICK_HZ))
 #define FIRE_MASK 64
 #define HIT_RECOIL_TICKS 4
 #define DEATH_COLLAPSE_TICKS 18
@@ -183,8 +188,9 @@ static cell alien_collision_block, los_wall_block, los_clear_block;
 static cell render_blocks[2];
 static cell tick_blocks[128];
 static cell fire_tick_blocks[256];
-static int look_pitch = 0;
+static int look_pitch = 0; /* millidegrees down */
 static int look_slope = 0;
+static int pitch_returning = 0;
 static cell jump_request_block, scuttler_clear_block;
 
 static void draw_buffer(uint32_t *fb, const Spans *s, const Detail *d,
@@ -1305,7 +1311,7 @@ static int get_texrows(TexRows *r) {
 
 static int reset(void) {
     alien_view_reset();
-    look_pitch=0; look_slope=0;
+    look_pitch=0; look_slope=0; pitch_returning=0;
     int rc=run_block(reset_block, "reset");
     if (rc==0 && isolate_scuttlers && scuttler_clear_block) rc=run_block(scuttler_clear_block,"scuttler isolation");
     return rc;
@@ -1319,24 +1325,31 @@ static int ensure_tick_block(int idx) {
     tick_blocks[idx] = parse_source(src, "tick");
     return tick_blocks[idx] ? 0 : -1;
 }
-static int look_pitch_step(int down) {
-    if (down) {
-        if (look_pitch < 75) look_pitch += 3;
-        if (look_pitch > 75) look_pitch = 75;
+static void look_pitch_recalc(void){
+    double deg=(double)look_pitch/1000.0;
+    look_slope=(int)lround(tan(deg*M_PI/180.0)*64.0);
+    if(look_slope<0) look_slope=0; if(look_slope>239) look_slope=239;
+}
+static int look_pitch_update(int down,int reset_intent) {
+    if(down){
+        pitch_returning=0;
+        look_pitch += G6I3_PITCH_STEP_MDEG;
+        if(look_pitch>75000) look_pitch=75000;
     } else {
-        if (look_pitch > 0) look_pitch -= 5;
-        if (look_pitch < 0) look_pitch = 0;
+        if(reset_intent) pitch_returning=1;
+        if(pitch_returning){
+            look_pitch -= G6I3_PITCH_RETURN_STEP_MDEG;
+            if(look_pitch<0) look_pitch=0;
+            if(look_pitch==0) pitch_returning=0;
+        }
     }
-    look_slope=(int)lround(tan((double)look_pitch*M_PI/180.0)*64.0);
-    if(look_slope<0) look_slope=0;
-    if(look_slope>239) look_slope=239;
+    look_pitch_recalc();
     return look_pitch;
 }
+static void look_pitch_begin_return(void){ pitch_returning=1; }
 static void set_look_pitch(int deg) {
     if(deg<0) deg=0; if(deg>75) deg=75;
-    look_pitch=deg;
-    look_slope=(int)lround(tan((double)look_pitch*M_PI/180.0)*64.0);
-    if(look_slope<0) look_slope=0; if(look_slope>239) look_slope=239;
+    look_pitch=deg*1000; pitch_returning=0; look_pitch_recalc();
 }
 static int ensure_fire_block(void) {
     if (look_slope < 0) look_slope = 0;
@@ -2968,15 +2981,36 @@ static int look_test(void) {
     int fails=0;
     set_look_pitch(0);
     fails+=expect_eq("look starts horizontal",look_pitch,0);
-    fails+=expect_eq("down step tilts",look_pitch_step(1),3);
-    for(int i=0;i<40;i++) look_pitch_step(1);
-    fails+=expect_eq("down clamps at 75",look_pitch,75);
-    fails+=expect_eq("release begins return",look_pitch_step(0),70);
-    for(int i=0;i<30;i++) look_pitch_step(0);
-    fails+=expect_eq("release returns horizontal",look_pitch,0);
+    fails+=expect_eq("brief down is half degree",look_pitch_update(1,0),500);
+    fails+=expect_eq("release holds angle",look_pitch_update(0,0),500);
+    fails+=expect_eq("hold angle indefinitely",look_pitch_update(0,0),500);
+    for(int i=0;i<10;i++) look_pitch_update(1,0);
+    fails+=expect_eq("down rate 30 deg/s",look_pitch,5500);
+    look_pitch_update(0,0); fails+=expect_eq("release at 5.5 deg",look_pitch,5500);
+    look_pitch_begin_return();
+    look_pitch_update(0,1); fails+=expect_eq("R begins smooth return",look_pitch,500);
+    for(int i=0;i<12;i++) look_pitch_update(0,1);
+    fails+=expect_eq("R returns horizontal",look_pitch,0);
+    for(int i=0;i<200;i++) look_pitch_update(1,0);
+    fails+=expect_eq("down clamps at 75",look_pitch,75000);
     set_look_pitch(60);
     fails+=expect_eq("pitch slope positive",look_slope>0,1);
     printf("look-test: %s\n",fails?"FAILED":"PASSED");
+    return fails?1:0;
+}
+static int pitch_input_test(void){
+    int fails=0; HeldKeys h={0}; SDL_Event e; memset(&e,0,sizeof e);
+    e.type=SDL_KEYDOWN; e.key.keysym.scancode=SDL_SCANCODE_DOWN; e.key.keysym.sym=SDLK_DOWN; e.key.repeat=0;
+    held_keys_apply(&h,&e);
+    fails+=expect_eq("pitch input Down held",h.down,1);
+    look_pitch_update(h.down,0); fails+=expect_eq("pitch input half degree",look_pitch,500);
+    e.type=SDL_KEYUP; held_keys_apply(&h,&e);
+    fails+=expect_eq("pitch input release",h.down,0);
+    look_pitch_update(0,0); fails+=expect_eq("pitch input release holds",look_pitch,500);
+    set_look_pitch(30); look_pitch_begin_return();
+    for(int i=0;i<10;i++) look_pitch_update(0,0);
+    fails+=expect_eq("pitch input R returns",look_pitch,0);
+    printf("pitch-input-test: %s\n",fails?"FAILED":"PASSED");
     return fails?1:0;
 }
 static int input_test(void) {
@@ -4052,6 +4086,9 @@ static int interactive(void) {
                     if(tick(FIRE_MASK)!=0){ running=0; break; }
                 }
                 else if ((sc == SDL_SCANCODE_R || sym == SDLK_r) && down && !e.key.repeat) {
+                    look_pitch_begin_return();
+                }
+                else if ((sc == SDL_SCANCODE_R || sym == SDLK_r) && down && !e.key.repeat) {
                     simple_mode = !simple_mode;
                     live_cache.valid = 0;
                     printf("render mode: %s\n", simple_mode ? "simple" : "detailed");
@@ -4081,7 +4118,7 @@ static int interactive(void) {
         int jump = held.jump_pending ? 1 : 0;
         int downheld = held.down || k[SDL_SCANCODE_DOWN];
         while (acc >= 1.0 / TICK_HZ && ticks < 10) {
-            look_pitch_step(downheld);
+            look_pitch_update(downheld,0);
             if (tick_jump(mask,jump) != 0) { running = 0; break; }
             if (jump) { held.jump_pending = 0; jump = 0; }
             acc -= 1.0 / TICK_HZ;
@@ -4541,7 +4578,7 @@ static void gl_view(double px,double py,double angle,int jump_z) {
        jump_z is 1/8 world unit, so z/512 is the GL eye-height offset. */
     double ex=px/64.0, ey=1.0+(double)jump_z/512.0, ez=-py/64.0;
     double f[3],r[3],u[3];
-    float pitch=(float)look_pitch-gl_debug_pitch;
+    float pitch=(float)look_pitch/1000.0f-gl_debug_pitch;
     if(pitch<-89.0f)pitch=-89.0f; if(pitch>89.0f)pitch=89.0f;
     g6i_camera_basis((int)angle,pitch,f,r,u);
     /* Rows of world->camera rotation: right, up, -forward. */
@@ -6730,7 +6767,7 @@ static int interactive_gl(int w, int h) {
                 SDL_Keycode sym=e.key.keysym.sym;
                 if((sc==SDL_SCANCODE_ESCAPE||sym==SDLK_ESCAPE) && down) running=0;
                 else if((sc==SDL_SCANCODE_E||sym==SDLK_e) && down && !e.key.repeat) run_block(activate_block,"activate");
-                else if((sc==SDL_SCANCODE_R||sym==SDLK_r) && down && !e.key.repeat) printf("GL renderer: R debug toggle not used\n");
+                else if((sc==SDL_SCANCODE_R||sym==SDLK_r) && down && !e.key.repeat) look_pitch_begin_return();
                 else if((sc==SDL_SCANCODE_SPACE||sym==SDLK_SPACE) && down && !e.key.repeat) {
                     if(tick(FIRE_MASK)!=0){ running=0; break; }
                 }
@@ -6748,7 +6785,7 @@ static int interactive_gl(int w, int h) {
         int64_t pt_tick0=now_ns();
         int ticks=0; int jump=held.jump_pending?1:0;
         int downheld=held.down || k[SDL_SCANCODE_DOWN];
-        while(acc>=1.0/TICK_HZ && ticks<10){ look_pitch_step(downheld); if(tick_jump(mask,jump)!=0){running=0;break;} if(jump){held.jump_pending=0;jump=0;} acc-=1.0/TICK_HZ; ticks++; }
+        while(acc>=1.0/TICK_HZ && ticks<10){ look_pitch_update(downheld,0); if(tick_jump(mask,jump)!=0){running=0;break;} if(jump){held.jump_pending=0;jump=0;} acc-=1.0/TICK_HZ; ticks++; }
         int64_t pt_tick1=now_ns();
         if(!running) break;
         if(get_state(&px,&py,&pa)!=0 || get_status(&st)!=0) break;
@@ -7670,7 +7707,7 @@ static int muzzle_anchor_test(void) {
 static int camera_test(void){
     int fails=0;
     int angles[]={0,64,128,192,255};
-    float pitches[]={0,30,60,75};
+    float pitches[]={0,10,20,30,45,60,75};
     for(size_t a=0;a<sizeof angles/sizeof angles[0];a++){
         for(size_t q=0;q<sizeof pitches/sizeof pitches[0];q++){
             double f[3],r[3],u[3];
@@ -7705,8 +7742,8 @@ static int g6i2_camera_shots(const char *dir,int w,int h){
     if(run_block(b,"camera pose")!=0) return 2;
     Status st; int px,py,pa; if(get_state(&px,&py,&pa)!=0||get_status(&st)!=0) return 2;
     st_current_angle=pa;
-    int angles[]={0,30,60,75};
-    for(int i=0;i<4;i++){
+    int angles[]={0,10,20,30,45,60,75};
+    for(int i=0;i<7;i++){
         set_look_pitch(angles[i]); gl_scene(&st,NULL,0);
         char path[4096]; snprintf(path,sizeof path,"%s/camera-%02d.ppm",dir,angles[i]); gl_save_ppm(path,w,h);
     }
@@ -7882,7 +7919,13 @@ static int g6i2_gameplay_test(void){
     fails+=expect_eq("nav barrel geometry",game_point_hit(st.s_x[0],st.s_y[0],64)==0,1);
     if(multi_scene(1000,370,0,0,0,5,0,850,370,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
     int lastx=0, flips=0; for(int i=0;i<180;i++){ if(tick(0)!=0) return 2; get_status(&st); int d=st.s_x[0]-lastx; if(lastx!=0 && d!=0 && ((d>0)!=(lastx>0))) flips++; if(d!=0) lastx=d; }
-    fails+=expect_eq("nav barrel no rapid oscillation",flips<20,1);
+    fails+=expect_eq("nav barrel no rapid oscillation",flips<20,1);    /* Opposite side of the same barrel: scuttler east, player west. */
+    if(multi_scene(850,370,0,0,0,5,0,1120,370,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+    for(int i=0;i<180;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("nav right barrel progressed",st.s_x[0]<900,1);
+    fails+=expect_eq("nav right barrel geometry",game_point_hit(st.s_x[0],st.s_y[0],64)==0,1);
+    printf("nav trace barrel final s0=%d,%d ticks=180\n",st.s_x[0],st.s_y[0]);
     /* Cabinet at 860,270 between scuttler and player. */
     if(multi_scene(1000,270,0,0,0,5,0,800,270,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
     for(int i=0;i<180;i++) if(tick(0)!=0) return 2;
@@ -7927,6 +7970,16 @@ static int g6i2_gameplay_test(void){
     if(get_status(&st)!=0) return 2;
     fails+=expect_eq("nav corner progress",st.s_x[0]>900||st.s_y[0]>500,1);
     fails+=expect_eq("nav corner clear",game_point_hit(st.s_x[0],st.s_y[0],64)==0,1);
+    /* Precision aiming sweep against a visible scuttler at a chosen depth. */
+    int aimangles[]={10,20,30,45,60};
+    int aimranges[]={278,135,85,49,28};
+    for(int ai=0;ai<5;ai++){
+        int sx=1000+aimranges[ai];
+        if(multi_scene(1000,320,0,0,0,5,0,sx,320,1,100,0,0,5,0,0,0,5,0)!=0) return 2;
+        set_look_pitch(aimangles[ai]);
+        if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
+        fails+=expect_eq("aim sweep hits at pitch",st.s_h[0]<50,1);
+    }
     printf("g6i2-gameplay-test: %s\n",fails?"FAILED":"PASSED");
     return fails?1:0;
 }
@@ -7952,6 +8005,7 @@ static int g6i2_nav_shots(const char *dir,int w,int h){
     for(int i=0;i<260;i++) tick(0);
     if(run_block(parse_source("[ doom/px: 1000 doom/py: 370 doom/angle: 128 doom/aim ]","nav observe"),"nav observe")!=0) return 2;
     get_state(&px,&py,&pa); get_status(&st); st_current_angle=pa;
+    printf("nav around player=%d,%d angle=%d s0=%d,%d vis=%d state=%d\n",px,py,pa,st.s_x[0],st.s_y[0],st.s_vis[0],st.s_state[0]);
     gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"nav-around",w,h);
     printf("G6I2 nav script s0=%d,%d\n",st.s_x[0],st.s_y[0]);
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
@@ -8152,6 +8206,7 @@ int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "--audio-e2e") == 0) return audio_e2e_test();
     if (argc > 1 && strcmp(argv[1], "--input-test") == 0) return input_test();
     if (argc > 1 && strcmp(argv[1], "--look-test") == 0) return look_test();
+    if (argc > 1 && strcmp(argv[1], "--pitch-input-test") == 0) return pitch_input_test();
     if (argc > 1 && strcmp(argv[1], "--tracker-test") == 0) return tracker_test();
     if (argc > 1 && strcmp(argv[1], "--resize-test") == 0) return resize_test();
     if (argc > 1 && strcmp(argv[1], "--self-test") == 0) return self_test();

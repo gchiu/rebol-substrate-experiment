@@ -57,6 +57,7 @@ test: $(TARGET)
 	./$(TARGET) --projection-test
 	./$(TARGET) --input-test
 	./$(TARGET) --look-test
+	./$(TARGET) --pitch-input-test
 	./$(TARGET) --camera-test
 	./$(TARGET) --g6i2-gameplay-test
 	./$(TARGET) --tracker-test
