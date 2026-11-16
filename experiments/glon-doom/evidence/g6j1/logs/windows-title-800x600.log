@@ -1,0 +1,41 @@
+G5p renderer=OpenGL renderer=AMD Radeon(TM) Graphics vendor=ATI Technologies Inc. version=4.6.0 Compatibility Profile Context 25.10.32.04.251216
+audio: loaded Freesound 873687 spaceship interior 1455303 frames (33.000s), 44100-frame crossfade, gain 3.00
+audio: loaded sfx door open 97020 frames (2.200s), gain 1.00
+audio: loaded sfx door close 52920 frames (1.200s), gain 1.00
+audio: loaded sfx alien shriek 93347 frames (2.117s), gain 0.90
+audio: loaded sfx rifle shot 28665 frames (0.650s), gain 0.60
+audio: loaded sfx wall thud 52920 frames (1.200s), gain 0.90
+audio: loaded sfx cargo impact 37044 frames (0.840s), gain 1.00
+audio: ambient started driver=wasapi 44100 Hz 2ch samples=256 volume=60%
+PASS title machine cells      got=65536
+PASS title loader capacity    got=25000
+PASS title loader used actual got=20070
+PASS title loader free actual got=4930
+PASS title globals actual     got=270
+PASS title globals cap actual got=512
+PASS title heap high actual   got=34272
+PASS title credits present    got=1
+G6I title metrics machine=65536 loader=25000 used=20070 free=4930 globals=270/512 heap_high=34272 gfx=1 audio=1/0
+G6I live process available=1 working=98856960 peak=100978688 private=120004608
+PASS G6I main plan fits all resolutions got=1
+PASS G6I main layout no overlap/clipping got=1
+PASS G6I credits layout no overlap/clipping got=1
+PASS G6I main layout no overlap/clipping got=1
+PASS G6I credits layout no overlap/clipping got=1
+PASS G6I main layout no overlap/clipping got=1
+PASS G6I credits layout no overlap/clipping got=1
+PASS G6I main layout no overlap/clipping got=1
+PASS G6I credits layout no overlap/clipping got=1
+PASS G6I title window label   got=1
+PASS G6I live process working set got=1
+PASS title pauses enemy AI    got=1
+PASS title starts in title state got=0
+PASS title C event opens credits got=1
+PASS C pauses enemy simulation got=1
+PASS credits ignores W        got=1
+PASS credits Enter does not start got=1
+PASS credits Escape returns   got=1
+PASS title Enter starts       got=1
+PASS title Escape quits       got=1
+PASS title restart cycles no loader leak got=60070
+title-test: PASSED

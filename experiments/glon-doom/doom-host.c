@@ -165,6 +165,7 @@ static int engineering_room_enabled = 1;
 static double gl_energy_time = 0.0;
 static int objects_mode = 0;
 static int disable_cocoons(void);
+static void cocoon_visual_metrics(int state,int timer,float *hh,float *ww,int *frame);
 static int combat_minimal = 0;
 static int lazy_ticks = 0;
 static int isolate_scuttlers = 0;
@@ -3577,8 +3578,19 @@ static int cocoon_test(void){
     if(run_block(parse_source("[ doom/px: 480 doom/py: 600 doom/angle: 192 doom/aim ]","cocoon shoot"),"cocoon shoot")!=0) return 2;
     if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
     fails+=expect_eq("cocoon first hit",st.c_hp[0],1);
+    fails+=expect_eq("cocoon first hit stays upright",st.c_state[0],1);
     if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2;
     fails+=expect_eq("cocoon destroyed",st.c_state[0],4);
+    fails+=expect_eq("cocoon collapse starts",st.c_timer[0],30);
+    { float hh,ww; int fr; cocoon_visual_metrics(st.c_state[0],st.c_timer[0],&hh,&ww,&fr); fails+=expect_eq("cocoon collapse starts high",hh>0.6,1); }
+    for(int i=0;i<15;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("cocoon mid collapse timer",st.c_timer[0],15);
+    { float hh,ww; int fr; cocoon_visual_metrics(st.c_state[0],st.c_timer[0],&hh,&ww,&fr); fails+=expect_eq("cocoon mid collapse height",hh<0.6&&hh>0.3,1); }
+    for(int i=0;i<15;i++) if(tick(0)!=0) return 2;
+    if(get_status(&st)!=0) return 2;
+    fails+=expect_eq("cocoon collapse finishes",st.c_timer[0],0);
+    { float hh,ww; int fr; cocoon_visual_metrics(st.c_state[0],st.c_timer[0],&hh,&ww,&fr); fails+=expect_eq("cocoon final height low",hh<0.4,1); fails+=expect_eq("cocoon final footprint wide",ww>1.1,1); }
     for(int i=0;i<600;i++) if(tick(0)!=0) return 2;
     if(get_status(&st)!=0) return 2;
     fails+=expect_eq("destroyed cocoon never hatches",st.c_state[0],4);
@@ -3590,10 +3602,11 @@ static int cocoon_test(void){
     if(get_status(&st)!=0) return 2;
     fails+=expect_eq("cocoon 1 hatched",st.c_state[1],3);
     fails+=expect_eq("cocoon 1 scuttler active",st.s_state[1],1);
+    { float hh,ww; int fr; cocoon_visual_metrics(st.c_state[1],st.c_timer[1],&hh,&ww,&fr); fails+=expect_eq("hatched cocoon upright",hh>0.95,1); }
     { TrackerContact tc[4]; int n=tracker_contacts(&st,620,300,64,tc); fails+=expect_eq("cocoon hatched proximity contact",n>=1,1); }
     fails+=expect_eq("cocoon 0 not activated by cocoon 1",st.c_state[0],0);
     reset();
-    if(run_block(parse_source("[ doom/px: 700 doom/py: 600 doom/angle: 192 doom/aim ]","c2 hatch pose"),"c2 hatch pose")!=0) return 2;
+    if(run_block(parse_source("[ doom/px: 700 doom/py: 560 doom/angle: 192 doom/aim ]","c2 hatch pose"),"c2 hatch pose")!=0) return 2;
     for(int i=0;i<620;i++) if(tick(0)!=0) return 2;
     if(get_status(&st)!=0) return 2;
     fails+=expect_eq("cocoon 2 hatched independently",st.c_state[2],3);
@@ -6698,22 +6711,30 @@ static void g6i_title_render(const G6iTitleMetrics *m,double elapsed) {
         g6i_text_center(l->y,l->text,l->scale,r,g,b);
     }
 }
+static void cocoon_visual_metrics(int state,int timer,float *hh,float *ww,int *frame){
+    *hh=1.0f; *ww=0.95f; *frame=COCOON_DORMANT;
+    if(state==1){ int t=timer; if(t<0)t=0; *frame=COCOON_PULSE_BASE+((480-t)/30)%4; }
+    else if(state==2){ int f=(48-timer)/6; if(f<0)f=0; if(f>7)f=7; *frame=COCOON_HATCH_BASE+f; }
+    else if(state==3) *frame=COCOON_HATCHED;
+    else if(state==4){
+        float p=(float)(30-timer)/30.0f; if(p<0)p=0; if(p>1)p=1;
+        *hh=0.75f-0.37f*p; *ww=0.95f+0.30f*p;
+        *frame=(p<0.25f)?COCOON_COLLAPSE_BASE+1:COCOON_COLLAPSE_BASE;
+    }
+}
 static void gl_draw_cocoons(const Status *st){
     if(!gl_active) return;
     const int cx[3]={480,620,700}, cy[3]={500,200,500};
     for(int i=0;i<3;i++){
         int state=st->c_state[i];
-        int frame=COCOON_DORMANT;
-        if(state==1){ int t=st->c_timer[i]; if(t<0)t=0; frame=COCOON_PULSE_BASE+((480-t)/30)%4; }
-        else if(state==2){ int f=(48-st->c_timer[i])/6; if(f<0)f=0; if(f>7)f=7; frame=COCOON_HATCH_BASE+f; }
-        else if(state==3) frame=COCOON_HATCHED;
-        else if(state==4) frame=COCOON_DESTROYED;
+        float hh,ww; int frame;
+        cocoon_visual_metrics(state,st->c_timer[i],&hh,&ww,&frame);
         float tr=1.0f,tg=1.0f,tb=1.0f;
         if(st->c_hp[i]==1&&state<3){tr=1.0f;tg=0.55f;tb=0.45f;}
         glEnable(GL_TEXTURE_2D); glEnable(GL_ALPHA_TEST); glAlphaFunc(GL_GREATER,0.15f);
         glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(GL_TRUE);
-        gl_billboard(gl_tex[GT_COCOON0+frame], cx[i], cy[i], 0.95, 1.0, 0.0, 0.0, 0, tr,tg,tb,0.0f);
+        gl_billboard(gl_tex[GT_COCOON0+frame], cx[i], cy[i], ww, hh, 0.0, -0.12, 0, tr,tg,tb,0.0f);
     }
     glDisable(GL_ALPHA_TEST); glDisable(GL_BLEND);
 }
@@ -8127,23 +8148,29 @@ static void gl_save_ppm_fmt(const char *dir,const char *name,int w,int h){
 }
 static int g6j_cocoon_shots(const char *dir,int w,int h){
     if(gl_init(w,h,0)!=0) return 2;
-    gl_active=1; objects_mode=1; load_session(); build_blocks(); reset();
+    gl_active=1; gl_hide_weapon=1; objects_mode=1; load_session(); build_blocks(); reset();
     cell pose=parse_source("[ doom/px: 700 doom/py: 600 doom/angle: 192 doom/aim doom/door-open: 64 doom/door-target: 64 doom/door-blocked: 0 doom/alien-x: 1120 doom/alien-y: 320 doom/alien-state: 5 doom/alien-detected: 0 doom/s0-state: 6 doom/s1-state: 6 doom/s2-state: 6 doom/s-vis: 0 ]","cocoon pose");
     if(run_block(pose,"cocoon pose")!=0) return 2;
     Status st; int px,py,pa; if(get_state(&px,&py,&pa)!=0||get_status(&st)!=0) return 2; st_current_angle=pa;
-    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"dormant",w,h);
-    tick(0); if(get_status(&st)!=0) return 2; st_current_angle=pa;
-    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"alerted",w,h);
-    for(int i=0;i<470;i++) tick(0);
-    if(get_status(&st)!=0) return 2; st_current_angle=pa;
-    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"hatching",w,h);
-    for(int i=0;i<60;i++) tick(0);
-    if(get_status(&st)!=0) return 2; st_current_angle=pa;
+    get_state(&px,&py,&pa); get_status(&st); st_current_angle=pa;
+    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"intact",w,h);
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2; get_state(&px,&py,&pa); get_status(&st); st_current_angle=pa;
+    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"first-hit",w,h);
+    if(tick(FIRE_MASK)!=0 || get_status(&st)!=0) return 2; set_look_pitch(25); get_state(&px,&py,&pa); get_status(&st); st_current_angle=pa;
+    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"collapse-start",w,h);
+    for(int i=0;i<15;i++) tick(0);
+    if(get_status(&st)!=0) return 2; get_state(&px,&py,&pa); get_status(&st); st_current_angle=pa;
+    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"collapse-mid",w,h);
+    for(int i=0;i<15;i++) tick(0);
+    if(get_status(&st)!=0) return 2; get_state(&px,&py,&pa); get_status(&st); st_current_angle=pa;
+    gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"collapsed",w,h);
+    /* Successful hatch for visual comparison. */
+    reset(); set_look_pitch(0);
+    if(run_block(pose,"cocoon pose")!=0) return 2;
+    for(int i=0;i<620;i++) tick(0);
+    if(get_status(&st)!=0) return 2; get_state(&px,&py,&pa); get_status(&st); st_current_angle=pa;
     gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"hatched",w,h);
-    if(run_block(parse_source("[ doom/loy: 4 doom/hiy: 0 doom/e2sy: 0 doom/focal-h: 0 ]","destroyed pose"),"destroyed pose")!=0) return 2;
-    if(get_status(&st)!=0) return 2;
-    st_current_angle=pa; gl_scene(&st,NULL,0); gl_save_ppm_fmt(dir,"destroyed",w,h);
-    printf("G6I2 cocoon states dormant/alerted/hatching/hatched/destroyed\n");
+    printf("G6j1 cocoon intact/first-hit/collapse-start/mid/collapsed/hatched\n");
     SDL_GL_DeleteContext(gl_ctx); SDL_DestroyWindow(gl_win); SDL_Quit(); return 0;
 }
 static int g6i2_nav_shots(const char *dir,int w,int h){

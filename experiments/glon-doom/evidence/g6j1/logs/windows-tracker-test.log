@@ -1,0 +1,9 @@
+PASS tracker ahead blip visible got=1
+PASS tracker ahead x          got=42
+PASS tracker ahead y          got=168
+PASS tracker right x          got=60
+PASS tracker left x           got=24
+PASS tracker behind           got=186
+PASS tracker near y           got=150
+PASS tracker out of range dark got=0
+tracker-test: PASSED
