@@ -10,4 +10,4 @@ audio: ambient volume 42%
 audio: muted
 audio: unmuted
 audio: ambient volume 60%
-audio-test: PASSED rms=583 mix=0.0018ms/block (budget 5.80ms)
+audio-test: PASSED rms=583 mix=0.0016ms/block (budget 5.80ms)

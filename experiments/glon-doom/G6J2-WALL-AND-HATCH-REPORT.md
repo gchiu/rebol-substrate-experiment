@@ -3,6 +3,7 @@
 Branch: `glon-avp-g6j2`, based on G6j.1 `9879143`
 Status: **implemented, packaged and verified; unaccepted pending physical Windows testing**
 Source commit: `cb508d2b9e73eb395f1e59b609a24bd9e561ae31`
+Package/evidence commit: `d94e439e8971dfa5d3f06aab7ced59980c0c14f7`
 Windows executable: `dist/windows/doom.exe`, **8,183,296 bytes**
 SHA-256: `cd19456c200e9a90baac0bc3efcf53bb56ebf9e09755bde38989f5747b7ab80b`
 Launcher: `dist/windows/run-g6j2.bat`
@@ -113,8 +114,8 @@ Focused visual coverage in `evidence/g6j2/`:
 
 - Loader: 25,000 reserved, **20,070 used**, 4,930 free.
 - Globals: **270 / 512**; managed-heap high **34,272**.
-- Native Windows live title: working **93,224,960 B**, peak **93,650,944 B**,
-  private **115,531,776 B**.
+- Native Windows live title: working **93,192,192 B**, peak **93,609,984 B**,
+  private **115,347,456 B**.
 - Linux `--bench 60`: `sim=11.56 ms`, `frame=173.95 ms`.
 - Native Windows `--bench 60`: `sim=11.53 ms`, `frame=206.37 ms`.
 
