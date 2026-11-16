@@ -1,0 +1,23 @@
+PASS resize viewport fills drawable got=0
+PASS resize viewport origin   got=1
+PASS resize viewport dimensions got=1
+PASS HUD circular at resize   got=1
+PASS resize viewport fills drawable got=0
+PASS resize viewport origin   got=1
+PASS resize viewport dimensions got=1
+PASS HUD circular at resize   got=1
+PASS resize viewport fills drawable got=0
+PASS resize viewport origin   got=1
+PASS resize viewport dimensions got=1
+PASS HUD circular at resize   got=1
+PASS resize viewport fills drawable got=0
+PASS resize viewport origin   got=1
+PASS resize viewport dimensions got=1
+PASS HUD circular at resize   got=1
+PASS resize viewport fills drawable got=0
+PASS resize viewport origin   got=1
+PASS resize viewport dimensions got=1
+PASS HUD circular at resize   got=1
+PASS HUD cap at 1600 high     got=1
+PASS HUD base at 200 high     got=1
+resize-test: PASSED

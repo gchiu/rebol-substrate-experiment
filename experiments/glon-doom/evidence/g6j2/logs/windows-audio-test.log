@@ -1,0 +1,13 @@
+audio: loaded Freesound 873687 spaceship interior 1455303 frames (33.000s), 44100-frame crossfade, gain 3.00
+audio: loaded sfx door open 97020 frames (2.200s), gain 1.00
+audio: loaded sfx door close 52920 frames (1.200s), gain 1.00
+audio: loaded sfx alien shriek 93347 frames (2.117s), gain 0.90
+audio: loaded sfx rifle shot 28665 frames (0.650s), gain 0.60
+audio: loaded sfx wall thud 52920 frames (1.200s), gain 0.90
+audio: loaded sfx cargo impact 37044 frames (0.840s), gain 1.00
+audio-test: layer 0 frames=1455303 (33.000s) seam=11 peak=978
+audio: ambient volume 42%
+audio: muted
+audio: unmuted
+audio: ambient volume 60%
+audio-test: PASSED rms=583 mix=0.0018ms/block (budget 5.80ms)

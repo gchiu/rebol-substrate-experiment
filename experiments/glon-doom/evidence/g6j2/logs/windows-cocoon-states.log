@@ -1,0 +1,10 @@
+G5p renderer=OpenGL renderer=AMD Radeon(TM) Graphics vendor=ATI Technologies Inc. version=4.6.0 Compatibility Profile Context 25.10.32.04.251216
+G6j2 dormant state=0/0/0 timer=0/0/0
+G6j2 opening state=0/0/2 timer=0/0/26
+G6j2 hatched-front state=0/0/3 timer=0/0/0
+G6j2 hatched-oblique state=0/0/3 timer=0/0/0
+G6j2 destroyed state=0/0/0 timer=0/0/0
+G6j2 destroyed state=4
+G6j2 hatched-c0 state=3/0/0 timer=0/0/0
+G6j2 hatched-c1 state=0/3/0 timer=0/0/0
+G6j2 cocoon states dormant/opening/hatched-front/hatched-oblique/destroyed/collapsed/hatched-c0/hatched-c1

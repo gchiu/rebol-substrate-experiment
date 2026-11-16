@@ -1,0 +1,14 @@
+G5p renderer=OpenGL renderer=AMD Radeon(TM) Graphics vendor=ATI Technologies Inc. version=4.6.0 Compatibility Profile Context 25.10.32.04.251216
+G6H1 spawn player=320,320 angle=0 draw_calls=0 adult=1120,320/0 visible=0 vismask=7
+G6H1   s0 x=480 y=440 hp=50 state=1 timer=0 depth=160.0 side=-120.0 box=55.4,530.6 129.1x64.6
+G6H1   s1 x=620 y=260 hp=50 state=1 timer=0 depth=300.0 side=60.0 box=541.6,423.0 68.9x34.4
+G6H1   s2 x=700 y=560 hp=50 state=1 timer=0 depth=380.0 side=-240.0 box=149.7,397.1 54.4x27.2
+G6H1 spawn states: s0=1 s1=1 s2=1 all_active=1
+G6H1 start visible pixel diff=5398
+G6H1 corridor20 player=700,320 angle=0 draw_calls=2 adult=1080,320/1 visible=1 vismask=7
+G6H1   s0 x=560 y=360 hp=50 state=1 timer=-20 depth=-140.0 side=-40.0 box=-29052.0,37200.0 20664.0x10332.0
+G6H1   s1 x=660 y=300 hp=50 state=1 timer=16 depth=-40.0 side=20.0 box=-252.0,37200.0 20664.0x10332.0
+G6H1   s2 x=700 y=480 hp=50 state=1 timer=-20 depth=0.0 side=-160.0 box=-86652.0,37200.0 20664.0x10332.0
+G6H1 corridor visible pixel diff=23722
+G6H1 probe: start_diff=5398 corridor_diff=23722 draw_calls=5
+G6H1 visibility: PASSED (threshold 200 actual differing pixels)

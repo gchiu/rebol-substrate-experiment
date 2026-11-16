@@ -1,0 +1,6 @@
+PASS object record count      got=6
+PASS object records deterministic got=1
+PASS player object collision  got=1
+PASS player clear of object   got=0
+PASS alien object collision   got=1
+objects-test: PASSED

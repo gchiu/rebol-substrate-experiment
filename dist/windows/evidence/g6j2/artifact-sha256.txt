@@ -1,0 +1,1 @@
+cd19456c200e9a90baac0bc3efcf53bb56ebf9e09755bde38989f5747b7ab80b  dist/windows/doom.exe

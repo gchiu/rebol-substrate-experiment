@@ -1,0 +1,7 @@
+trace start: x=320 y=320 angle=0
+trace approach-closed-door x=744 y=320 angle=0 door=0/1 alien=1120,320 state=1 det=1 vis=0
+trace activate-door        x=744 y=320 angle=0 door=48/0 alien=1110,320 state=1 det=1 vis=1
+trace observe-alien        x=744 y=320 angle=0 door=64/0 alien=990,320 state=1 det=1 vis=1
+trace enter-corridor       x=904 y=320 angle=0 door=64/0 alien=960,320 state=2 det=1 vis=1
+trace turn-left-90         x=904 y=320 angle=64 door=64/0 alien=960,320 state=2 det=1 vis=0
+trace strafe-left          x=784 y=320 angle=64 door=64/0 alien=938,320 state=1 det=1 vis=0

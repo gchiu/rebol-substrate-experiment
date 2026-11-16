@@ -1,0 +1,12 @@
+loader report: base=40000 limit=65000 reserved=25000
+loader after init used=1539 free=23461 code=12454
+loader after prelude used=1996 free=23004 code=12454
+loader after game used=19013 free=5987 code=12454
+loader after host blocks used=20338 free=4662 code=12454 asm_here=13126 globals=247/512
+code bytes? cells=12454 ip_start=0 ip_end=11984
+loader table probe n=128 delta=144 used=20482 free=4518
+loader table probe n=256 delta=272 used=20754 free=4246
+loader table probe n=320 delta=336 used=21090 free=3910
+loader table probe n=384 delta=400 used=21490 free=3510
+loader table probe n=448 delta=464 used=21954 free=3046
+loader table probe largest=448; game has no masm (all loader data, runtime code resident)

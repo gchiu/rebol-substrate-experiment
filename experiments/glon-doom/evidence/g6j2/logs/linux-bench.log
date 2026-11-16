@@ -1,0 +1,3 @@
+Dropped Escape call with ulEscapeCode : 0x03007703
+bench frames=60 wall_fps=5.7
+metrics: sim=11.56ms wall=128.21ms texrow=22.58ms raster=0.75ms sprite=0.00ms present=10.85ms frame=173.95ms fps=5.7 heap_high=34112 gc=0 live=0

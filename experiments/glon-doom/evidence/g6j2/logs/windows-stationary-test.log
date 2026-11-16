@@ -1,0 +1,11 @@
+PASS stationary first frame is a miss got=1
+PASS stationary unchanged frame is a hit got=0
+PASS stationary cached pixels identical got=-2127918676
+PASS stationary cache does not alter player got=1
+PASS stationary cache does not alter status got=1
+PASS camera turn invalidates cache got=1
+PASS camera turn changes pixels got=1
+PASS door state invalidates cache got=1
+PASS door change alters pixels got=1
+PASS forced uncached frame matches cached path got=2011375040
+stationary-test: PASSED
