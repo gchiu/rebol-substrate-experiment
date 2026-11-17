@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 339 80" width="339" height="80" role="img" aria-label="Railroad diagram for production masm-block">
+<title>masm-block</title>
+<rect x="0" y="0" width="339" height="80" fill="#ffffff"/>
+<path d="M24 40 L34 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="34" y="24" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M78 40 L88 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="44" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">[</text>
+<path d="M88 40 L106 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 40 L116 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="116" y="24" width="106.7" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M222.7 40 L232.7 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="169.35" y="44" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">masm-tokens</text>
+<path d="M232.7 40 L250.7 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M250.7 40 L260.7 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="260.7" y="24" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M304.7 40 L314.7 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="282.7" y="44" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">]</text>
+</svg>

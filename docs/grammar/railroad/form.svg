@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 168" width="180" height="168" role="img" aria-label="Railroad diagram for production form">
+<title>form</title>
+<rect x="0" y="0" width="180" height="168" fill="#ffffff"/>
+<path d="M24 84 L42 84" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 84 L42 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 84 L42 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 84 L42 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 16 L52 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="0" width="60.5" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M112.5 16 L122.5 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="82.25" y="20" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">block</text>
+<path d="M122.5 16 L137.9 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 60 L52 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="44" width="75.9" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M127.9 60 L137.9 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="89.95" y="64" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">integer</text>
+<path d="M42 104 L52 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="88" width="52.8" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M104.8 104 L114.8 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="78.4" y="108" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">word</text>
+<path d="M114.8 104 L137.9 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M137.9 16 L137.9 84" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M137.9 60 L137.9 84" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M137.9 104 L137.9 84" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M137.9 84 L155.9 84" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

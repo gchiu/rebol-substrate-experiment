@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glon Grammar and Railroad Diagrams</title>
+<style>
+:root {
+  --ink: #17202a;
+  --muted: #5b6773;
+  --line: #d7dde3;
+  --panel: #f6f8fa;
+  --accent: #1f5f8b;
+  --code: #20262e;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: #fff;
+  font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header {
+  padding: 2rem clamp(1rem, 4vw, 3rem) 1.2rem;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #f9fbfd, #fff);
+}
+header h1 { margin: 0 0 .4rem; font-size: clamp(1.6rem, 4vw, 2.4rem); }
+header p { max-width: 72ch; margin: .35rem 0; color: var(--muted); }
+.breadcrumb { font-size: .85rem; margin: 0 0 .55rem; }
+.layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 2rem;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 1.5rem clamp(1rem, 3vw, 2rem) 4rem;
+}
+nav {
+  align-self: start;
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 1rem;
+  font-size: .92rem;
+}
+nav h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 1rem 0 .35rem; }
+nav ul { list-style: none; margin: 0; padding: 0; }
+nav li { margin: .15rem 0; }
+nav > ul > li > a { font-weight: 600; }
+main { min-width: 0; }
+section.doc { margin: 0 0 2.5rem; }
+section.doc h2 { border-bottom: 1px solid var(--line); padding-bottom: .35rem; }
+.production {
+  border-top: 1px solid var(--line);
+  padding: 1.3rem 0 1.6rem;
+}
+.prod-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.prod-head h3 { margin: 0; font-size: 1.12rem; }
+.prod-head h3 a.self { color: var(--ink); }
+.svg-link { font-size: .82rem; white-space: nowrap; }
+pre.ebnf {
+  margin: .7rem 0;
+  padding: .7rem .85rem;
+  border-radius: 8px;
+  overflow: auto;
+  background: var(--code);
+  color: #e8edf2;
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.note { color: var(--muted); max-width: 85ch; margin: .35rem 0 .8rem; }
+.zoom { display: flex; gap: .4rem; margin: .4rem 0 .7rem; }
+.zoom button {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 6px;
+  padding: .25rem .55rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: .82rem;
+}
+.zoom button:hover { background: var(--panel); }
+.rail {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: .6rem;
+  -webkit-overflow-scrolling: touch;
+}
+.rail svg { display: block; width: 100%; height: auto; min-width: 320px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; }
+.card { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 1rem; }
+.card h3 { margin-top: 0; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+table { border-collapse: collapse; width: 100%; margin: .7rem 0 1rem; }
+th, td { border: 1px solid var(--line); padding: .45rem .55rem; text-align: left; vertical-align: top; }
+th { background: var(--panel); }
+.status { display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .04em; border-radius: 999px; padding: .1rem .45rem; border: 1px solid var(--line); }
+.verified { color: #165c35; background: #edf8f1; }
+.unresolved { color: #7a2e12; background: #fff3ec; }
+footer { border-top: 1px solid var(--line); padding: 1.2rem clamp(1rem, 4vw, 3rem); color: var(--muted); font-size: .85rem; }
+@media (max-width: 900px) {
+  .layout { display: block; }
+  nav { position: static; max-height: none; margin-bottom: 1.5rem; }
+}
+</style>
+</head>
+<body>
+<header>
+  <p class="breadcrumb"><a href="../">Glon</a> / <a href="../language/">Language Reference</a> / Grammar</p>
+  <h1>Glon Grammar and Railroad Diagrams</h1>
+  <p>Generated from the verified reader EBNF in <code>glon-grammar.ebnf</code>. The EBNF is the canonical machine-readable source; the SVG diagrams and this page are deterministic generated outputs.</p>
+  <p><span class="status verified">VERIFIED</span> Reader acceptance only. This page does not claim that unresolved semantic behaviour has been verified.</p>
+</header>
+<div class="layout">
+<nav aria-label="Grammar navigation">
+<li><a href="#overview">Overview</a></li>
+<li><a href="#lexical">Lexical grammar</a></li>
+<h2>Lexical productions</h2>
+<ul>
+<li><a href="#prod-string">string</a></li>
+<li><a href="#prod-integer">integer</a></li>
+<li><a href="#prod-word">word</a></li>
+<li><a href="#prod-word-value">word-value</a></li>
+<li><a href="#prod-token">token</a></li>
+<li><a href="#prod-token-byte">token-byte</a></li>
+<li><a href="#prod-non-quote-byte">non-quote-byte</a></li>
+<li><a href="#prod-any-byte">any-byte</a></li>
+<li><a href="#prod-masm-tokens">masm-tokens</a></li>
+<li><a href="#prod-digit">digit</a></li>
+<li><a href="#prod-ws">ws</a></li>
+</ul>
+<li><a href="#structural">Structural grammar</a></li>
+<h2>Structural productions</h2>
+<ul>
+<li><a href="#prod-source">source</a></li>
+<li><a href="#prod-trailing-tail">trailing-tail</a></li>
+<li><a href="#prod-top-item">top-item</a></li>
+<li><a href="#prod-block">block</a></li>
+<li><a href="#prod-block-item">block-item</a></li>
+<li><a href="#prod-form">form</a></li>
+<li><a href="#prod-func-form">func-form</a></li>
+<li><a href="#prod-masm-form">masm-form</a></li>
+<li><a href="#prod-masm-block">masm-block</a></li>
+</ul>
+<li><a href="#grouping">Arity-driven grouping</a></li>
+<li><a href="#implementation">Implementation-specific parsing</a></li>
+<li><a href="#unresolved">Unresolved cases</a></li>
+<li><a href="#documents">Related documents</a></li>
+</nav>
+<main>
+<section class="doc" id="overview">
+  <h2>Overview</h2>
+  <p>This reference separates three concerns that are often mixed together:</p>
+  <div class="grid">
+    <div class="card">
+      <h3>Lexical grammar</h3>
+      <p>Bytes, whitespace, tokens, word forms, strings, integers and the private masm token stream. These productions decide what the reader accepts.</p>
+      <p><a href="#lexical">Go to lexical grammar</a></p>
+    </div>
+    <div class="card">
+      <h3>Structural grammar</h3>
+      <p>Source envelopes, blocks, items, forms, <code>func</code> and <code>masm</code> forms. These decide how accepted forms nest.</p>
+      <p><a href="#structural">Go to structural grammar</a></p>
+    </div>
+    <div class="card">
+      <h3>Arity-driven grouping</h3>
+      <p>There is no lexical grouping grammar. A callable consumes its own arity of following expressions; parentheses and commas do not exist.</p>
+      <p><a href="#grouping">Go to grouping</a></p>
+    </div>
+  </div>
+  <p>The canonical grammar file is <a href="glon-grammar.ebnf">glon-grammar.ebnf</a>. Run <code>python3 generate.py</code> to regenerate this page and the SVG files; run <code>python3 verify.py</code> to verify them.</p>
+</section>
+
+<section class="doc" id="lexical">
+  <h2>Lexical grammar</h2>
+  <p>Terminals are shown as boxes. <code>? ... ?</code> denotes a character-class or private terminal, not a Glon value.</p>
+  <section class="production" id="prod-string" data-production="string">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-string">string</a></h3>
+    <a class="svg-link" href="railroad/string.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>string = &#x27;&quot;&#x27; non-quote-byte* &#x27;&quot;&#x27; ;</code></pre>
+  <p class="note">Recognised at item start only. No escape sequences. At most 512 bytes. Expands to mk-string plus a block of byte integers.</p>
+  <div class="zoom" aria-label="Zoom controls for string">
+    <button type="button" data-target="diagram-string" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-string" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-string" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-string">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 398 108" width="398" height="108" role="img" aria-label="Railroad diagram for production string">
+<title>string</title>
+<rect x="0" y="0" width="398" height="108" fill="#ffffff"/>
+<path d="M24 54 L34 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="34" y="38" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M78 54 L88 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">"</text>
+<path d="M88 54 L106 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 54 L124 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M124 54 L124 28" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M124 28 L273.8 28" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M273.8 28 L273.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M124 54 L134 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="134" y="38" width="129.8" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M263.8 54 L273.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="198.9" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">non-quote-byte</text>
+<path d="M273.8 54 L273.8 80" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M273.8 80 L124 80" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M124 80 L124 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M273.8 54 L291.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M291.8 54 L309.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M309.8 54 L319.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="319.8" y="38" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M363.8 54 L373.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="341.8" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">"</text>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-integer" data-production="integer">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-integer">integer</a></h3>
+    <a class="svg-link" href="railroad/integer.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>integer = [ &quot;-&quot; ] digit+ ;</code></pre>
+  <p class="note">Optional minus sign followed by decimal digits. No plus sign, decimal point, exponent, or overflow check.</p>
+  <div class="zoom" aria-label="Zoom controls for integer">
+    <button type="button" data-target="diagram-integer" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-integer" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-integer" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-integer">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 283 108" width="283" height="108" role="img" aria-label="Railroad diagram for production integer">
+<title>integer</title>
+<rect x="0" y="0" width="283" height="108" fill="#ffffff"/>
+<path d="M24 54 L42 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 54 L42 24" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 24 L106 24" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 24 L106 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 54 L52 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="38" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 54 L106 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">-</text>
+<path d="M106 54 L124 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M124 54 L142 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M142 54 L160 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M160 54 L170 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="170" y="38" width="60.5" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M230.5 54 L240.5 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="200.25" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">digit</text>
+<path d="M240.5 54 L240.5 80" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M240.5 80 L160 80" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M160 80 L160 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M240.5 54 L258.5 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-word" data-production="word">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-word">word</a></h3>
+    <a class="svg-link" href="railroad/word.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>word = token ;</code></pre>
+  <p class="note">A word is a maximal token; see word-value for the source-form interpretation.</p>
+  <div class="zoom" aria-label="Zoom controls for word">
+    <button type="button" data-target="diagram-word" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-word" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-word" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-word">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 129 80" width="129" height="80" role="img" aria-label="Railroad diagram for production word">
+<title>word</title>
+<rect x="0" y="0" width="129" height="80" fill="#ffffff"/>
+<path d="M24 40 L34 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="34" y="24" width="60.5" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M94.5 40 L104.5 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="64.25" y="44" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">token</text>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-word-value" data-production="word-value">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-word-value">word-value</a></h3>
+    <a class="svg-link" href="railroad/word-value.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>word-value = &quot;none&quot; | token &quot;:&quot; | &quot;:&quot; token | &quot;&#x27;&quot; token | token ;</code></pre>
+  <p class="note">After reading and truncating a token, apply the first matching rule: exact none; trailing colon (SET-WORD); leading colon (GET-WORD); leading apostrophe (LIT-WORD); otherwise WORD.</p>
+  <div class="zoom" aria-label="Zoom controls for word-value">
+    <button type="button" data-target="diagram-word-value" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-word-value" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-word-value" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-word-value">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 247 256" width="247" height="256" role="img" aria-label="Railroad diagram for production word-value">
+<title>word-value</title>
+<rect x="0" y="0" width="247" height="256" fill="#ffffff"/>
+<path d="M24 128 L42 128" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 128 L42 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 128 L42 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 128 L42 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 128 L42 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 128 L42 192" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 16 L52 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="0" width="50.8" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M102.8 16 L112.8 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="77.4" y="20" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">none</text>
+<path d="M112.8 16 L204.5 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 60 L52 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="44" width="60.5" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M112.5 60 L122.5 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="82.25" y="64" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">token</text>
+<path d="M122.5 60 L140.5 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M140.5 60 L150.5 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="150.5" y="44" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M194.5 60 L204.5 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="172.5" y="64" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">:</text>
+<path d="M42 104 L52 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="88" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 104 L106 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="108" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">:</text>
+<path d="M106 104 L124 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M124 104 L134 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="134" y="88" width="60.5" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M194.5 104 L204.5 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="164.25" y="108" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">token</text>
+<path d="M42 148 L52 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="132" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 148 L106 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="152" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">'</text>
+<path d="M106 148 L124 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M124 148 L134 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="134" y="132" width="60.5" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M194.5 148 L204.5 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="164.25" y="152" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">token</text>
+<path d="M42 192 L52 192" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="176" width="60.5" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M112.5 192 L122.5 192" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="82.25" y="196" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">token</text>
+<path d="M122.5 192 L204.5 192" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M204.5 16 L204.5 128" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M204.5 60 L204.5 128" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M204.5 104 L204.5 128" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M204.5 148 L204.5 128" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M204.5 192 L204.5 128" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M204.5 128 L222.5 128" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-token" data-production="token">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-token">token</a></h3>
+    <a class="svg-link" href="railroad/token.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>token = token-byte+ ;</code></pre>
+  <p class="note">Maximal run excluding whitespace and brackets. The reader keeps the first 63 bytes; longer tokens can therefore collide.</p>
+  <div class="zoom" aria-label="Zoom controls for token">
+    <button type="button" data-target="diagram-token" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-token" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-token" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-token">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 203 108" width="203" height="108" role="img" aria-label="Railroad diagram for production token">
+<title>token</title>
+<rect x="0" y="0" width="203" height="108" fill="#ffffff"/>
+<path d="M24 54 L42 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 54 L52 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="38" width="99" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M151 54 L161 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="101.5" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">token-byte</text>
+<path d="M161 54 L161 80" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M161 80 L42 80" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 80 L42 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M161 54 L179 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-token-byte" data-production="token-byte">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-token-byte">token-byte</a></h3>
+    <a class="svg-link" href="railroad/token-byte.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>token-byte = ? any byte except whitespace, &quot;[&quot; or &quot;]&quot; ? ;</code></pre>
+  <p class="note">Any byte except whitespace, open bracket, or close bracket.</p>
+  <div class="zoom" aria-label="Zoom controls for token-byte">
+    <button type="button" data-target="diagram-token-byte" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-token-byte" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-token-byte" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-token-byte">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 381 80" width="381" height="80" role="img" aria-label="Railroad diagram for production token-byte">
+<title>token-byte</title>
+<rect x="0" y="0" width="381" height="80" fill="#ffffff"/>
+<path d="M24 40 L34 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="34" y="24" width="312.6" height="32" rx="4" fill="#fbfbfb" stroke="#303030" stroke-width="1.5" stroke-dasharray="5 4"/>
+<path d="M346.6 40 L356.6 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="190.3" y="44" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">any byte except whitespace, "[" or "]"</text>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-non-quote-byte" data-production="non-quote-byte">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-non-quote-byte">non-quote-byte</a></h3>
+    <a class="svg-link" href="railroad/non-quote-byte.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>non-quote-byte = ? any byte except double quote ? ;</code></pre>
+  <p class="note">Any byte except a double quote. A backslash is an ordinary byte; there are no string escapes.</p>
+  <div class="zoom" aria-label="Zoom controls for non-quote-byte">
+    <button type="button" data-target="diagram-non-quote-byte" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-non-quote-byte" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-non-quote-byte" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-non-quote-byte">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 304 80" width="304" height="80" role="img" aria-label="Railroad diagram for production non-quote-byte">
+<title>non-quote-byte</title>
+<rect x="0" y="0" width="304" height="80" fill="#ffffff"/>
+<path d="M24 40 L34 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="34" y="24" width="235.6" height="32" rx="4" fill="#fbfbfb" stroke="#303030" stroke-width="1.5" stroke-dasharray="5 4"/>
+<path d="M269.6 40 L279.6 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="151.8" y="44" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">any byte except double quote</text>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-any-byte" data-production="any-byte">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-any-byte">any-byte</a></h3>
+    <a class="svg-link" href="railroad/any-byte.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>any-byte = ? any byte 0..255 ? ;</code></pre>
+  <p class="note">Any byte 0..255.</p>
+  <div class="zoom" aria-label="Zoom controls for any-byte">
+    <button type="button" data-target="diagram-any-byte" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-any-byte" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-any-byte" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-any-byte">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 204 80" width="204" height="80" role="img" aria-label="Railroad diagram for production any-byte">
+<title>any-byte</title>
+<rect x="0" y="0" width="204" height="80" fill="#ffffff"/>
+<path d="M24 40 L34 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="34" y="24" width="135.5" height="32" rx="4" fill="#fbfbfb" stroke="#303030" stroke-width="1.5" stroke-dasharray="5 4"/>
+<path d="M169.5 40 L179.5 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="101.75" y="44" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">any byte 0..255</text>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-masm-tokens" data-production="masm-tokens">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-masm-tokens">masm-tokens</a></h3>
+    <a class="svg-link" href="railroad/masm-tokens.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>masm-tokens = ? private S1 macro-assembly tokens ? ;</code></pre>
+  <p class="note">Private S1 macro-assembly tokens. They are not interned and do not participate in Glon binding.</p>
+  <div class="zoom" aria-label="Zoom controls for masm-tokens">
+    <button type="button" data-target="diagram-masm-tokens" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-masm-tokens" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-masm-tokens" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-masm-tokens">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 335 80" width="335" height="80" role="img" aria-label="Railroad diagram for production masm-tokens">
+<title>masm-tokens</title>
+<rect x="0" y="0" width="335" height="80" fill="#ffffff"/>
+<path d="M24 40 L34 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="34" y="24" width="266.4" height="32" rx="4" fill="#fbfbfb" stroke="#303030" stroke-width="1.5" stroke-dasharray="5 4"/>
+<path d="M300.4 40 L310.4 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="167.2" y="44" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">private S1 macro-assembly tokens</text>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-digit" data-production="digit">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-digit">digit</a></h3>
+    <a class="svg-link" href="railroad/digit.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>digit = &quot;0&quot; | &quot;1&quot; | &quot;2&quot; | &quot;3&quot; | &quot;4&quot; | &quot;5&quot; | &quot;6&quot; | &quot;7&quot; | &quot;8&quot; | &quot;9&quot; ;</code></pre>
+  <p class="note">Decimal digit.</p>
+  <div class="zoom" aria-label="Zoom controls for digit">
+    <button type="button" data-target="diagram-digit" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-digit" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-digit" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-digit">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 148 476" width="148" height="476" role="img" aria-label="Railroad diagram for production digit">
+<title>digit</title>
+<rect x="0" y="0" width="148" height="476" fill="#ffffff"/>
+<path d="M24 238 L42 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 192" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 236" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 280" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 324" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 368" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 412" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 16 L52 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="0" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 16 L106 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="20" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">0</text>
+<path d="M42 60 L52 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="44" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 60 L106 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="64" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">1</text>
+<path d="M42 104 L52 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="88" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 104 L106 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="108" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">2</text>
+<path d="M42 148 L52 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="132" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 148 L106 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="152" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">3</text>
+<path d="M42 192 L52 192" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="176" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 192 L106 192" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="196" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">4</text>
+<path d="M42 236 L52 236" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="220" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 236 L106 236" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="240" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">5</text>
+<path d="M42 280 L52 280" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="264" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 280 L106 280" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="284" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">6</text>
+<path d="M42 324 L52 324" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="308" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 324 L106 324" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="328" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">7</text>
+<path d="M42 368 L52 368" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="352" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 368 L106 368" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="372" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">8</text>
+<path d="M42 412 L52 412" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="396" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 412 L106 412" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="416" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">9</text>
+<path d="M106 16 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 60 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 104 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 148 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 192 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 236 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 280 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 324 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 368 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 412 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 238 L124 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-ws" data-production="ws">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-ws">ws</a></h3>
+    <a class="svg-link" href="railroad/ws.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>ws = &quot; &quot; | &quot;\t&quot; | &quot;\n&quot; | &quot;\r&quot; | &quot;\v&quot; | &quot;\f&quot; ;</code></pre>
+  <p class="note">C isspace set: space, tab, LF, CR, vertical tab, form feed.</p>
+  <div class="zoom" aria-label="Zoom controls for ws">
+    <button type="button" data-target="diagram-ws" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-ws" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-ws" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-ws">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 163 300" width="163" height="300" role="img" aria-label="Railroad diagram for production ws">
+<title>ws</title>
+<rect x="0" y="0" width="163" height="300" fill="#ffffff"/>
+<path d="M24 150 L42 150" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 150 L42 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 150 L42 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 150 L42 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 150 L42 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 150 L42 192" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 150 L42 236" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 16 L52 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="0" width="58.5" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M110.5 16 L120.5 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="81.25" y="20" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">space</text>
+<path d="M42 60 L52 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="44" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 60 L106 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="64" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">tab</text>
+<path d="M106 60 L120.5 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 104 L52 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="88" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 104 L106 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="108" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">LF</text>
+<path d="M106 104 L120.5 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 148 L52 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="132" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 148 L106 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="152" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">CR</text>
+<path d="M106 148 L120.5 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 192 L52 192" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="176" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 192 L106 192" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="196" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">VT</text>
+<path d="M106 192 L120.5 192" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 236 L52 236" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="220" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 236 L106 236" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="240" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">FF</text>
+<path d="M106 236 L120.5 236" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M120.5 16 L120.5 150" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M120.5 60 L120.5 150" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M120.5 104 L120.5 150" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M120.5 148 L120.5 150" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M120.5 192 L120.5 150" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M120.5 236 L120.5 150" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M120.5 150 L138.5 150" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+  </div>
+</section>
+</section>
+
+<section class="doc" id="structural">
+  <h2>Structural grammar</h2>
+  <p>An item is what a block or program loop recognises; a form is what <code>parse_form</code> recognises. This distinction is load-bearing for strings, <code>func</code> and <code>masm</code>.</p>
+  <section class="production" id="prod-source" data-production="source">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-source">source</a></h3>
+    <a class="svg-link" href="railroad/source.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>source = ws* ( block trailing-tail | top-item ( ws* top-item )* ws* ) ;</code></pre>
+  <p class="note">If the first non-space byte is an open bracket, that one block is parsed and all trailing source bytes are ignored. An unwrapped source is a sequence of top-items.</p>
+  <div class="zoom" aria-label="Zoom controls for source">
+    <button type="button" data-target="diagram-source" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-source" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-source" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-source">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 724 180" width="724" height="180" role="img" aria-label="Railroad diagram for production source">
+<title>source</title>
+<rect x="0" y="0" width="724" height="180" fill="#ffffff"/>
+<path d="M24 90 L42 90" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 90 L42 64" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 64 L114 64" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M114 64 L114 90" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 90 L52 90" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="74" width="52" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M104 90 L114 90" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="78" y="94" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">ws</text>
+<path d="M114 90 L114 116" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M114 116 L42 116" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 116 L42 90" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M114 90 L132 90" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M132 90 L150 90" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M150 90 L168 90" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M168 90 L168 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M168 90 L168 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M168 16 L178 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="178" y="0" width="60.5" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M238.5 16 L248.5 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="208.25" y="20" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">block</text>
+<path d="M248.5 16 L266.5 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M266.5 16 L276.5 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="276.5" y="0" width="122.1" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M398.6 16 L408.6 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="337.55" y="20" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">trailing-tail</text>
+<path d="M408.6 16 L681.2 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M168 88 L178 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="178" y="72" width="83.6" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M261.6 88 L271.6 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="219.8" y="92" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">top-item</text>
+<path d="M271.6 88 L289.6 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M289.6 88 L307.6 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M307.6 88 L307.6 48" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M307.6 48 L537.2 48" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M537.2 48 L537.2 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M307.6 88 L325.6 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M325.6 88 L325.6 62" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M325.6 62 L397.6 62" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M397.6 62 L397.6 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M325.6 88 L335.6 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="335.6" y="72" width="52" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M387.6 88 L397.6 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="361.6" y="92" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">ws</text>
+<path d="M397.6 88 L397.6 114" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M397.6 114 L325.6 114" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M325.6 114 L325.6 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M397.6 88 L415.6 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M415.6 88 L433.6 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M433.6 88 L443.6 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="443.6" y="72" width="83.6" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M527.2 88 L537.2 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="485.4" y="92" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">top-item</text>
+<path d="M537.2 88 L537.2 128" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M537.2 128 L307.6 128" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M307.6 128 L307.6 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M537.2 88 L555.2 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M555.2 88 L573.2 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M573.2 88 L591.2 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M591.2 88 L591.2 62" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M591.2 62 L663.2 62" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M663.2 62 L663.2 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M591.2 88 L601.2 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="601.2" y="72" width="52" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M653.2 88 L663.2 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="627.2" y="92" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">ws</text>
+<path d="M663.2 88 L663.2 114" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M663.2 114 L591.2 114" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M591.2 114 L591.2 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M663.2 88 L681.2 88" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M681.2 16 L681.2 90" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M681.2 88 L681.2 90" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M681.2 90 L699.2 90" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-trailing-tail" data-production="trailing-tail">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-trailing-tail">trailing-tail</a></h3>
+    <a class="svg-link" href="railroad/trailing-tail.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>trailing-tail = any-byte* ;</code></pre>
+  <p class="note">Not a Glon value; it is the parser&#x27;s ignored remainder after a leading block. `[1] 2` parses as `[1]`.</p>
+  <div class="zoom" aria-label="Zoom controls for trailing-tail">
+    <button type="button" data-target="diagram-trailing-tail" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-trailing-tail" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-trailing-tail" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-trailing-tail">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 188 108" width="188" height="108" role="img" aria-label="Railroad diagram for production trailing-tail">
+<title>trailing-tail</title>
+<rect x="0" y="0" width="188" height="108" fill="#ffffff"/>
+<path d="M24 54 L42 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 54 L42 28" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 28 L145.6 28" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M145.6 28 L145.6 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 54 L52 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="38" width="83.6" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M135.6 54 L145.6 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="93.8" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">any-byte</text>
+<path d="M145.6 54 L145.6 80" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M145.6 80 L42 80" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 80 L42 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M145.6 54 L163.6 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-top-item" data-production="top-item">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-top-item">top-item</a></h3>
+    <a class="svg-link" href="railroad/top-item.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>top-item = string | masm-form | form ;</code></pre>
+  <p class="note">The unwrapped top-level loop recognises strings, masm/raw, and basic forms. It does not special-case func.</p>
+  <div class="zoom" aria-label="Zoom controls for top-item">
+    <button type="button" data-target="diagram-top-item" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-top-item" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-top-item" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-top-item">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 196 168" width="196" height="168" role="img" aria-label="Railroad diagram for production top-item">
+<title>top-item</title>
+<rect x="0" y="0" width="196" height="168" fill="#ffffff"/>
+<path d="M24 84 L42 84" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 84 L42 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 84 L42 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 84 L42 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 16 L52 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="0" width="68.2" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M120.2 16 L130.2 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="86.1" y="20" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">string</text>
+<path d="M130.2 16 L153.3 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 60 L52 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="44" width="91.3" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M143.3 60 L153.3 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="97.65" y="64" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">masm-form</text>
+<path d="M42 104 L52 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="88" width="52.8" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M104.8 104 L114.8 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="78.4" y="108" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">form</text>
+<path d="M114.8 104 L153.3 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M153.3 16 L153.3 84" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M153.3 60 L153.3 84" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M153.3 104 L153.3 84" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M153.3 84 L171.3 84" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-block" data-production="block">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-block">block</a></h3>
+    <a class="svg-link" href="railroad/block.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>block = &quot;[&quot; ( ws | block-item )* &quot;]&quot; ;</code></pre>
+  <p class="note">A block may be empty. The reader stops at the matching close bracket. A string literal contributes two forms.</p>
+  <div class="zoom" aria-label="Zoom controls for block">
+    <button type="button" data-target="diagram-block" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-block" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-block" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-block">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 403 152" width="403" height="152" role="img" aria-label="Railroad diagram for production block">
+<title>block</title>
+<rect x="0" y="0" width="403" height="152" fill="#ffffff"/>
+<path d="M24 76 L34 76" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="34" y="60" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M78 76 L88 76" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="80" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">[</text>
+<path d="M88 76 L106 76" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 76 L124 76" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M124 76 L124 28" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M124 28 L279 28" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M279 28 L279 76" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M124 76 L142 76" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M142 76 L142 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M142 76 L142 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M142 16 L152 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="152" y="0" width="52" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M204 16 L214 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="178" y="20" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">ws</text>
+<path d="M214 16 L261 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M142 60 L152 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="152" y="44" width="99" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M251 60 L261 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="201.5" y="64" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">block-item</text>
+<path d="M261 16 L261 76" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M261 60 L261 76" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M261 76 L279 76" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M279 76 L279 124" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M279 124 L124 124" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M124 124 L124 76" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M279 76 L297 76" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M297 76 L315 76" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M315 76 L325 76" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="325" y="60" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M369 76 L379 76" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="347" y="80" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">]</text>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-block-item" data-production="block-item">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-block-item">block-item</a></h3>
+    <a class="svg-link" href="railroad/block-item.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>block-item = string | func-form | masm-form | form ;</code></pre>
+  <p class="note">Inside a block, func is special-cased before ordinary form parsing; masm/raw and strings are handled at item start.</p>
+  <div class="zoom" aria-label="Zoom controls for block-item">
+    <button type="button" data-target="diagram-block-item" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-block-item" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-block-item" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-block-item">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 196 212" width="196" height="212" role="img" aria-label="Railroad diagram for production block-item">
+<title>block-item</title>
+<rect x="0" y="0" width="196" height="212" fill="#ffffff"/>
+<path d="M24 106 L42 106" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 106 L42 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 106 L42 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 106 L42 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 106 L42 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 16 L52 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="0" width="68.2" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M120.2 16 L130.2 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="86.1" y="20" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">string</text>
+<path d="M130.2 16 L153.3 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 60 L52 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="44" width="91.3" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M143.3 60 L153.3 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="97.65" y="64" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">func-form</text>
+<path d="M42 104 L52 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="88" width="91.3" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M143.3 104 L153.3 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="97.65" y="108" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">masm-form</text>
+<path d="M42 148 L52 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="132" width="52.8" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M104.8 148 L114.8 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="78.4" y="152" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">form</text>
+<path d="M114.8 148 L153.3 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M153.3 16 L153.3 106" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M153.3 60 L153.3 106" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M153.3 104 L153.3 106" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M153.3 148 L153.3 106" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M153.3 106 L171.3 106" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-form" data-production="form">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-form">form</a></h3>
+    <a class="svg-link" href="railroad/form.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>form = block | integer | word ;</code></pre>
+  <p class="note">Parse_form accepts only a block, an integer, or a word token. It does not recognise a string literal, func, or masm.</p>
+  <div class="zoom" aria-label="Zoom controls for form">
+    <button type="button" data-target="diagram-form" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-form" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-form" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-form">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 168" width="180" height="168" role="img" aria-label="Railroad diagram for production form">
+<title>form</title>
+<rect x="0" y="0" width="180" height="168" fill="#ffffff"/>
+<path d="M24 84 L42 84" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 84 L42 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 84 L42 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 84 L42 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 16 L52 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="0" width="60.5" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M112.5 16 L122.5 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="82.25" y="20" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">block</text>
+<path d="M122.5 16 L137.9 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 60 L52 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="44" width="75.9" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M127.9 60 L137.9 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="89.95" y="64" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">integer</text>
+<path d="M42 104 L52 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="88" width="52.8" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M104.8 104 L114.8 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="78.4" y="108" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">word</text>
+<path d="M114.8 104 L137.9 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M137.9 16 L137.9 84" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M137.9 60 L137.9 84" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M137.9 104 L137.9 84" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M137.9 84 L155.9 84" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-func-form" data-production="func-form">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-func-form">func-form</a></h3>
+    <a class="svg-link" href="railroad/func-form.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>func-form = &quot;func&quot; form block? ;</code></pre>
+  <p class="note">Block-only. The spec is parsed with parse_form; a directly following block is the literal body. A computed body is left in the stream. At run time the body must evaluate to a block.</p>
+  <div class="zoom" aria-label="Zoom controls for func-form">
+    <button type="button" data-target="diagram-func-form" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-func-form" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-func-form" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-func-form">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 345 108" width="345" height="108" role="img" aria-label="Railroad diagram for production func-form">
+<title>func-form</title>
+<rect x="0" y="0" width="345" height="108" fill="#ffffff"/>
+<path d="M24 54 L34 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="34" y="38" width="50.8" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M84.8 54 L94.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="59.4" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">func</text>
+<path d="M94.8 54 L112.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M112.8 54 L122.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="122.8" y="38" width="52.8" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M175.6 54 L185.6 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="149.2" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">form</text>
+<path d="M185.6 54 L203.6 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M203.6 54 L221.6 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M221.6 54 L221.6 24" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M221.6 24 L302.1 24" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M302.1 24 L302.1 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M221.6 54 L231.6 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="231.6" y="38" width="60.5" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M292.1 54 L302.1 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="261.85" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">block</text>
+<path d="M302.1 54 L320.1 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-masm-form" data-production="masm-form">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-masm-form">masm-form</a></h3>
+    <a class="svg-link" href="railroad/masm-form.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>masm-form = ( &quot;masm&quot; | &quot;raw&quot; ) ( ws+ digit+ )? ws* masm-block ;</code></pre>
+  <p class="note">The keyword must be the whole maximal token. The optional arity is an unsigned decimal integer. The masm block is a private S1 sublanguage.</p>
+  <div class="zoom" aria-label="Zoom controls for masm-form">
+    <button type="button" data-target="diagram-masm-form" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-masm-form" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-masm-form" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-masm-form">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 715 136" width="715" height="136" role="img" aria-label="Railroad diagram for production masm-form">
+<title>masm-form</title>
+<rect x="0" y="0" width="715" height="136" fill="#ffffff"/>
+<path d="M24 68 L42 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 68 L42 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 68 L42 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 16 L52 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="0" width="50.8" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M102.8 16 L112.8 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="77.4" y="20" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">masm</text>
+<path d="M42 60 L52 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="44" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 60 L106 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="64" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">raw</text>
+<path d="M106 60 L112.8 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M112.8 16 L112.8 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M112.8 60 L112.8 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M112.8 68 L130.8 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M130.8 68 L148.8 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M148.8 68 L166.8 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M166.8 68 L166.8 24" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M166.8 24 L409.3 24" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M409.3 24 L409.3 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M166.8 68 L184.8 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M184.8 68 L194.8 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="194.8" y="52" width="52" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M246.8 68 L256.8 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="220.8" y="72" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">ws</text>
+<path d="M256.8 68 L256.8 94" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M256.8 94 L184.8 94" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M184.8 94 L184.8 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M256.8 68 L274.8 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M274.8 68 L292.8 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M292.8 68 L310.8 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M310.8 68 L320.8 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="320.8" y="52" width="60.5" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M381.3 68 L391.3 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="351.05" y="72" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">digit</text>
+<path d="M391.3 68 L391.3 94" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M391.3 94 L310.8 94" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M310.8 94 L310.8 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M391.3 68 L409.3 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M409.3 68 L427.3 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M427.3 68 L445.3 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M445.3 68 L463.3 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M463.3 68 L463.3 42" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M463.3 42 L535.3 42" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M535.3 42 L535.3 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M463.3 68 L473.3 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="473.3" y="52" width="52" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M525.3 68 L535.3 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="499.3" y="72" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">ws</text>
+<path d="M535.3 68 L535.3 94" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M535.3 94 L463.3 94" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M463.3 94 L463.3 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M535.3 68 L553.3 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M553.3 68 L571.3 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M571.3 68 L581.3 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="581.3" y="52" width="99" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M680.3 68 L690.3 68" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="630.8" y="72" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">masm-block</text>
+</svg>
+
+  </div>
+</section>
+<section class="production" id="prod-masm-block" data-production="masm-block">
+  <div class="prod-head">
+    <h3><a class="self" href="#prod-masm-block">masm-block</a></h3>
+    <a class="svg-link" href="railroad/masm-block.svg">standalone SVG</a>
+  </div>
+  <pre class="ebnf"><code>masm-block = &quot;[&quot; masm-tokens &quot;]&quot; ;</code></pre>
+  <p class="note">Opaque to Glon item parsing. Limits: 511 tokens, 64 labels, 128 label references, and the code-space bound.</p>
+  <div class="zoom" aria-label="Zoom controls for masm-block">
+    <button type="button" data-target="diagram-masm-block" data-zoom="0.8">-</button>
+    <button type="button" data-target="diagram-masm-block" data-zoom="1">reset</button>
+    <button type="button" data-target="diagram-masm-block" data-zoom="1.25">+</button>
+  </div>
+  <div class="rail" id="diagram-masm-block">
+    <?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 339 80" width="339" height="80" role="img" aria-label="Railroad diagram for production masm-block">
+<title>masm-block</title>
+<rect x="0" y="0" width="339" height="80" fill="#ffffff"/>
+<path d="M24 40 L34 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="34" y="24" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M78 40 L88 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="44" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">[</text>
+<path d="M88 40 L106 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 40 L116 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="116" y="24" width="106.7" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M222.7 40 L232.7 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="169.35" y="44" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">masm-tokens</text>
+<path d="M232.7 40 L250.7 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M250.7 40 L260.7 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="260.7" y="24" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M304.7 40 L314.7 40" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="282.7" y="44" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">]</text>
+</svg>
+
+  </div>
+</section>
+</section>
+
+<section class="doc" id="grouping">
+  <h2>Arity-driven expression grouping</h2>
+  <p><span class="status verified">NOT EBNF</span> Grouping is an evaluation rule, not a lexical production. The reader emits a flat stream of values; the evaluator gives each callable its fixed number of following complete expressions.</p>
+  <table>
+    <thead><tr><th>Expression</th><th>Grouping</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td><code>+ 1 * 2 3</code></td><td><code>+ 1 (* 2 3)</code></td><td><code>7</code></td></tr>
+      <tr><td><code>double double 5</code></td><td><code>double (double 5)</code></td><td><code>20</code> for the primer's <code>double</code></td></tr>
+      <tr><td><code>values [10 20]</code></td><td>one expression yielding multiple results</td><td><code>10 20</code></td></tr>
+    </tbody>
+  </table>
+  <p>See <a href="../language/evaluation.md">GLON-EVALUATION-MODEL.md</a> for the evaluation diagrams and <a href="../language/spec.md">GLON-LANGUAGE-SPEC.md</a> §3 for fixed-arity rules. Non-block <code>do</code>/<code>either</code> and missing arguments are unresolved, not groupable syntax.</p>
+</section>
+
+<section class="doc" id="implementation">
+  <h2>Implementation-specific parsing behaviour</h2>
+  <p>These facts are implemented and documented; they are not additional syntax.</p>
+  <ul>
+    <li><span class="status verified">IMPLEMENTED</span> A source beginning with a block ignores all trailing bytes.</li>
+    <li><span class="status verified">IMPLEMENTED</span> <code>func</code> is special-cased inside a block, not by the unwrapped top-level program loop.</li>
+    <li><span class="status verified">IMPLEMENTED</span> A string at <code>form</code> position (for example a <code>func</code> spec) is a word token, not a string literal.</li>
+    <li><span class="status verified">IMPLEMENTED</span> Tokens are truncated to 63 bytes before interning.</li>
+    <li><span class="status verified">IMPLEMENTED</span> <code>;;</code> comments are host pre-processing, not reader syntax; the stripper is not string-aware.</li>
+    <li><span class="status verified">IMPLEMENTED</span> A string literal expands to <code>mk-string</code> plus a byte block and needs the library binding at run time.</li>
+    <li><span class="status verified">IMPLEMENTED</span> <code>masm</code>/<code>raw</code> is a private S1 sublanguage, not ordinary Glon vocabulary.</li>
+  </ul>
+</section>
+
+<section class="doc" id="unresolved">
+  <h2>Unresolved cases</h2>
+  <p><span class="status unresolved">UNRESOLVED</span> The documentation and implementation do not define or test all of the following. They are listed so an implementer does not mistake a guess for a contract.</p>
+  <ul>
+    <li>Non-integer arithmetic and <code>print</code>; division/modulo by zero.</li>
+    <li>Non-block <code>do</code>/<code>either</code>; missing or extra call arguments.</li>
+    <li>Malformed <code>func</code> specs (non-block, duplicate parameters, more than 16 parameters).</li>
+    <li><code>return</code> with no following expression.</li>
+    <li><code>values</code> zero/multi-result forms and first-result collapse in argument position.</li>
+    <li>Token-truncation collisions; malformed <code>masm</code> empty blocks; some host/comment boundary cases.</li>
+  </ul>
+  <p>See <a href="../language/verification.md">GLON-SPEC-VERIFICATION.md</a> §7 and <a href="../language/spec.md">GLON-LANGUAGE-SPEC.md</a> §11.3 for the prioritised list.</p>
+</section>
+
+<section class="doc" id="documents">
+  <h2>Related documents</h2>
+  <ul>
+<li><a href="../language/">Language reference hub</a></li>
+<li><a href="../language/spec.md">Language specification</a></li>
+<li><a href="../language/laws.md">Alpha language laws (normative)</a></li>
+<li><a href="../language/evaluation.md">Evaluation model</a></li>
+<li><a href="../language/syntax-diagrams.md">Syntax diagrams (verified prose)</a></li>
+<li><a href="../language/verification.md">Specification verification</a></li>
+<li><a href="../language/host-abi.md">Host ABI</a></li>
+<li><a href="../language/wasm-abi.md">Original WASM ABI</a></li>
+<li><a href="../language/implementer-guide.md">Implementer reading guide</a></li>
+<li><a href="../language/ai-authoring.md">AI authoring guide</a></li>
+  </ul>
+</section>
+</main>
+</div>
+<footer>Generated by <code>docs/grammar/generate.py</code> from <code>docs/grammar/glon-grammar.ebnf</code>. Do not edit generated SVG or HTML by hand. No network or CDN dependency.</footer>
+<script>
+(function () {
+  const defaults = new WeakMap();
+  function setZoom(target, factor) {
+    const rail = document.getElementById(target);
+    if (!rail) return;
+    const svg = rail.querySelector('svg');
+    if (!svg) return;
+    let current = defaults.get(svg) || 1;
+    if (factor === 1) current = 1;
+    else current = Math.max(0.5, Math.min(3, current * factor));
+    defaults.set(svg, current);
+    svg.style.width = (current * 100) + '%';
+  }
+  document.querySelectorAll('button[data-target]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      const target = button.getAttribute('data-target');
+      const zoom = parseFloat(button.getAttribute('data-zoom'));
+      setZoom(target, zoom);
+    });
+  });
+})();
+</script>
+</body>
+</html>

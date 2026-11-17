@@ -2,6 +2,8 @@
 # existing GitHub Pages site (branch-mode: docs/ served from `main`):
 #
 #   site/index.html     ->  docs/index.html       (the Glon landing page)
+#   docs/language/      ->  docs/language/        (language reference + source docs)
+#   docs/grammar/       ->  docs/grammar/         (generated EBNF + railroad diagrams)
 #   docs/r0-counter.html + demo.js/demo.wasm      (the early R0/S1 counter demo,
 #                                                  formerly the site root)
 #   demo/shop/app.html  ->  docs/shop/index.html
@@ -42,6 +44,11 @@ jobs:
 
       - name: Frozen-S1 check
         run: ./check-frozen-s1.sh
+
+      - name: Verify language reference and railroad diagrams
+        run: |
+          python3 docs/grammar/generate.py
+          python3 docs/grammar/verify.py
 
       - name: Native tests
         run: make test
@@ -146,6 +153,10 @@ jobs:
           mkdir -p pages/docs/shop
           cp -r /tmp/shop/. pages/docs/shop/
           cp site/index.html pages/docs/index.html
+          # Language reference and generated grammar/railroad diagrams.
+          rm -rf pages/docs/language pages/docs/grammar
+          cp -r docs/language pages/docs/language
+          cp -r docs/grammar pages/docs/grammar
           cp docs/r0-counter.html docs/demo.js docs/demo.wasm pages/docs/
           # Glon Patrol: stage the browser demo plus the runtime files it loads.
           # The WASM is the shop build above; prelude/strings are the same shared
@@ -195,7 +206,7 @@ jobs:
           cd pages
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/shop docs/demos/patrol docs/demos/kaka docs/latex docs/inflate docs/parse docs/index.html docs/r0-counter.html docs/demo.js docs/demo.wasm
+          git add docs/shop docs/demos/patrol docs/demos/kaka docs/latex docs/inflate docs/parse docs/grammar docs/language docs/index.html docs/r0-counter.html docs/demo.js docs/demo.wasm
           if git diff --cached --quiet; then
             echo "docs/ unchanged; nothing to commit"
           else

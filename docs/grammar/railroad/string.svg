@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 398 108" width="398" height="108" role="img" aria-label="Railroad diagram for production string">
+<title>string</title>
+<rect x="0" y="0" width="398" height="108" fill="#ffffff"/>
+<path d="M24 54 L34 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="34" y="38" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M78 54 L88 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">"</text>
+<path d="M88 54 L106 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 54 L124 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M124 54 L124 28" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M124 28 L273.8 28" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M273.8 28 L273.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M124 54 L134 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="134" y="38" width="129.8" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M263.8 54 L273.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="198.9" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">non-quote-byte</text>
+<path d="M273.8 54 L273.8 80" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M273.8 80 L124 80" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M124 80 L124 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M273.8 54 L291.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M291.8 54 L309.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M309.8 54 L319.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="319.8" y="38" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M363.8 54 L373.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="341.8" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">"</text>
+</svg>

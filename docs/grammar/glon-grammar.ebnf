@@ -1,0 +1,36 @@
+(* Glon reader grammar - canonical machine-readable source.
+ *
+ * This is the verified lexical/structural grammar from
+ * GLON-SYNTAX-DIAGRAMS.md. It describes reader acceptance only: it does not
+ * describe arity grouping, evaluation, captures, result sets or failure
+ * behaviour. See GLON-LANGUAGE-SPEC.md and GLON-EVALUATION-MODEL.md.
+ *
+ * Constraints carried by the prose specification, not by EBNF:
+ *   - token: reader keeps the first 63 bytes;
+ *   - string: item-start only, at most 512 bytes, no escape syntax;
+ *   - block: at most 512 forms, a string literal costs two forms;
+ *   - source: a leading block ignores all trailing bytes;
+ *   - func: special-cased only inside a block, not at unwrapped top level;
+ *   - masm: keyword must be the whole token; arity is unsigned digits only.
+ *)
+
+source        = ws* ( block trailing-tail | top-item ( ws* top-item )* ws* ) ;
+trailing-tail = any-byte* ;
+top-item      = string | masm-form | form ;
+block         = "[" ( ws | block-item )* "]" ;
+block-item    = string | func-form | masm-form | form ;
+form          = block | integer | word ;
+func-form     = "func" form block? ;
+masm-form     = ( "masm" | "raw" ) ( ws+ digit+ )? ws* masm-block ;
+masm-block    = "[" masm-tokens "]" ;
+string        = '"' non-quote-byte* '"' ;
+integer       = [ "-" ] digit+ ;
+word          = token ;
+word-value    = "none" | token ":" | ":" token | "'" token | token ;
+token         = token-byte+ ;
+token-byte    = ? any byte except whitespace, "[" or "]" ? ;
+non-quote-byte = ? any byte except double quote ? ;
+any-byte      = ? any byte 0..255 ? ;
+masm-tokens   = ? private S1 macro-assembly tokens ? ;
+digit         = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+ws            = " " | "\t" | "\n" | "\r" | "\v" | "\f" ;

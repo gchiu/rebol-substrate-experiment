@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 148 476" width="148" height="476" role="img" aria-label="Railroad diagram for production digit">
+<title>digit</title>
+<rect x="0" y="0" width="148" height="476" fill="#ffffff"/>
+<path d="M24 238 L42 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 192" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 236" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 280" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 324" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 368" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 238 L42 412" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M42 16 L52 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="0" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 16 L106 16" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="20" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">0</text>
+<path d="M42 60 L52 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="44" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 60 L106 60" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="64" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">1</text>
+<path d="M42 104 L52 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="88" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 104 L106 104" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="108" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">2</text>
+<path d="M42 148 L52 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="132" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 148 L106 148" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="152" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">3</text>
+<path d="M42 192 L52 192" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="176" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 192 L106 192" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="196" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">4</text>
+<path d="M42 236 L52 236" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="220" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 236 L106 236" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="240" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">5</text>
+<path d="M42 280 L52 280" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="264" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 280 L106 280" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="284" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">6</text>
+<path d="M42 324 L52 324" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="308" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 324 L106 324" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="328" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">7</text>
+<path d="M42 368 L52 368" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="352" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 368 L106 368" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="372" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">8</text>
+<path d="M42 412 L52 412" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="396" width="44" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M96 412 L106 412" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="416" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">9</text>
+<path d="M106 16 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 60 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 104 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 148 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 192 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 236 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 280 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 324 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 368 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 412 L106 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M106 238 L124 238" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
