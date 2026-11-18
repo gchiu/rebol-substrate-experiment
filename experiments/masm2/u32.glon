@@ -1,0 +1,44 @@
+;; MASM-2 experiment: fused big-endian u32 STRING! construction.
+;;
+;; The existing io/u32 builds four one-byte strings and three s/+ results.
+;; This worker allocates one 4-byte STRING! directly using the documented
+;; `alloc`/GC_KIND_STRING convention used by mk-string and s/raw-slice.
+;; It does not mutate any existing string and does not use a HOST service.
+[
+;; Keep the existing implementation as the ordinary reference.
+io/u32-glon: :io/u32
+
+;; ( n -- string! ) where n is a tagged integer.
+io/raw-u32: masm 1 [
+    LIT 16 DIV LIT SCRATCH_F !                 ;; untagged n
+    LIT 16 LIT GC_KIND_STRING CALL alloc LIT SCRATCH_A ! ;; payload
+    LIT SCRATCH_A @ LIT T_STRING ADD           ;; result root
+    LIT 4 LIT SCRATCH_A @ !                    ;; length
+    LIT SCRATCH_F @ LIT 16777216 DIV
+    LIT SCRATCH_A @ LIT 1 ADD !
+    LIT SCRATCH_F @ LIT 65536 DIV
+    LIT 256 LIT SCRATCH_F @ LIT 16777216 DIV MUL SUB
+    LIT SCRATCH_A @ LIT 2 ADD !
+    LIT SCRATCH_F @ LIT 256 DIV
+    LIT 256 LIT SCRATCH_F @ LIT 65536 DIV MUL SUB
+    LIT SCRATCH_A @ LIT 3 ADD !
+    LIT SCRATCH_F @
+    LIT 256 LIT SCRATCH_F @ LIT 256 DIV MUL SUB
+    LIT SCRATCH_A @ LIT 4 ADD !
+    ARITY 1 EXIT
+]
+
+io/u32-masm: :io/raw-u32
+
+;; Ordinary-Glon fused control: one mk-string instead of four strings + three
+;; s/+ calls.  Still allocates a temporary reduce block and one managed string.
+io/u32-fused: func [n] [
+    b0: / n 16777216
+    b1: - / n 65536 * 256 / n 16777216
+    b2: - / n 256 * 256 / n 65536
+    b3: - n * 256 / n 256
+    mk-string reduce [ b0 b1 b2 b3 ]
+]
+
+io/u32: :io/u32-masm
+]

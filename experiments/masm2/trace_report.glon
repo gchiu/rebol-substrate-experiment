@@ -1,0 +1,15 @@
+[
+s/print s/+ "mk-string=" s/from-int cnt-mk-string
+s/print s/+ "s/+=" s/from-int cnt-s-plus
+s/print s/+ "s/slice=" s/from-int cnt-s-slice
+s/print s/+ "s/length=" s/from-int cnt-s-length
+s/print s/+ "s/raw-at=" s/from-int cnt-s-raw-at
+s/print s/+ "s/==" s/from-int cnt-s-eq
+s/print s/+ "block-at=" s/from-int cnt-block-at
+s/print s/+ "block-len=" s/from-int cnt-block-len
+s/print s/+ "io/request=" s/from-int cnt-io-request
+s/print s/+ "io/u32=" s/from-int cnt-io-u32
+s/print s/+ "io/handle=" s/from-int cnt-io-handle
+s/print s/+ "io/reply=" s/from-int cnt-io-reply
+s/print s/+ "s/find=" s/from-int cnt-s-find
+]

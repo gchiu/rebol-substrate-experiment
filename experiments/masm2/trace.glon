@@ -1,0 +1,63 @@
+;; IO-4 vocabulary trace wrappers.  Load after the normal libraries and after
+;; MASM s/find, before the application.  These wrappers count invocations only;
+;; they are not a performance build.
+[
+cnt-mk-string: 0
+cnt-s-plus: 0
+cnt-s-slice: 0
+cnt-s-length: 0
+cnt-s-raw-at: 0
+cnt-s-eq: 0
+cnt-block-at: 0
+cnt-block-len: 0
+cnt-io-request: 0
+cnt-io-u32: 0
+cnt-io-handle: 0
+cnt-io-reply: 0
+cnt-s-find: 0
+
+orig-mk-string: :mk-string
+mk-string: func [b] [ cnt-mk-string: + cnt-mk-string 1 orig-mk-string b ]
+
+orig-s-plus: :s/+
+s/+: func [a b] [ cnt-s-plus: + cnt-s-plus 1 orig-s-plus a b ]
+
+orig-s-slice: :s/slice
+s/slice: func [a b c] [ cnt-s-slice: + cnt-s-slice 1 orig-s-slice a b c ]
+
+orig-s-length: :s/length
+s/length: func [a] [ cnt-s-length: + cnt-s-length 1 orig-s-length a ]
+
+orig-s-raw-at: :s/raw-at
+s/raw-at: func [a b] [ cnt-s-raw-at: + cnt-s-raw-at 1 orig-s-raw-at a b ]
+
+orig-s-eq: :s/=
+s/=: func [a b] [ cnt-s-eq: + cnt-s-eq 1 orig-s-eq a b ]
+
+orig-block-at: :block-at
+block-at: func [b i] [ cnt-block-at: + cnt-block-at 1 orig-block-at b i ]
+
+orig-block-len: :block-len
+block-len: func [b] [ cnt-block-len: + cnt-block-len 1 orig-block-len b ]
+
+orig-io-request: :io/request
+io/request: func [op fields success failure arg] [
+    cnt-io-request: + cnt-io-request 1
+    orig-io-request op fields :success :failure arg
+]
+
+orig-io-u32: :io/u32
+io/u32: func [n] [ cnt-io-u32: + cnt-io-u32 1 orig-io-u32 n ]
+
+orig-io-handle-field: :io/handle-field
+io/handle-field: func [h] [ cnt-io-handle: + cnt-io-handle 1 orig-io-handle-field h ]
+
+orig-io-reply: :io/reply
+io/reply: func [id status v1 v2] [
+    cnt-io-reply: + cnt-io-reply 1
+    orig-io-reply id status v1 v2
+]
+
+orig-s-find: :s/find
+s/find: func [text pattern] [ cnt-s-find: + cnt-s-find 1 orig-s-find text pattern ]
+]
