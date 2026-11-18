@@ -1,0 +1,46 @@
+;; IO-4 loader-heap lifetime probe.
+;;
+;; Application loader objects (block, closure, SIN!, late global binding) are
+;; created before asynchronous replies.  They must survive repeated reply-turn
+;; loader reclamation.  A managed block created in a callback is also retained.
+[
+saved-block: [11 22 33]
+saved-closure: does [ + block-at saved-block 1 100 ]
+saved-error: create-sin 'demo 'oops 7
+late-global: none
+late-managed: none
+
+check: func [label ok] [
+    either ok [ s/print label ] [ raise create-sin 'test 'failed label ]
+]
+
+check-references: func [] [
+    check "block" = 22 block-at saved-block 1
+    check "closure" = saved-closure 122
+    check "sin-id" = sin-id saved-error 'oops
+    check "sin-arg" = sin-arg saved-error 7
+    either = late-global none [
+        check "late-global-init" 1
+    ] [
+        check "late-global" = late-global 99
+        check "late-managed" = block-at late-managed 1 55
+    ]
+]
+
+step: func [n] [
+    either = n 0 [
+        s/print "LIFETIME_OK"
+    ] [
+        file/read "doc.txt"
+            func [text] [
+                check-references
+                late-global: 99
+                late-managed: reduce [ 44 55 66 ]
+                step - n 1
+            ]
+            func [e] [ raise e ]
+    ]
+]
+
+step 50
+]

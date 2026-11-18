@@ -1,0 +1,24 @@
+;; IO-4 control: streaming copy with no search.  Same 400-byte read/write
+;; requests and callback state machine as the IO-3 recipe, but no `s/find`.
+[
+copy-step: func [in out success failure] [
+    io/read in 400
+        func [chunk] [
+            either = 0 s/length chunk [
+                io/close out func [x] [ io/close in func [y] [ success none ] :failure ] :failure
+            ] [
+                io/write out chunk
+                    func [n] [ copy-step in out :success :failure ]
+                    :failure
+            ]
+        ]
+        :failure
+]
+io/open "doc.txt" 'read
+    func [in] [
+        io/open "out.txt" 'write
+            func [out] [ copy-step in out func [x] [ s/print "COPY_DONE" ] func [e] [ raise e ] ]
+            func [e] [ io/close in func [x] [ raise e ] :failure ]
+    ]
+    func [e] [ raise e ]
+]
