@@ -1,0 +1,10 @@
+[
+io/open "doc.txt" 'read
+    func [h] [
+        s/print "FIRST_OPEN"
+        io/open "doc.txt" 'read
+            func [h2] [ s/print "SECOND_OPEN" ]
+            func [e] [ raise e ]
+    ]
+    func [e] [ raise e ]
+]

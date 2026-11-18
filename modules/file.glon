@@ -1,0 +1,200 @@
+;; modules/file.glon -- optional asynchronous file I/O for the native Glon CLI.
+;;
+;; This is ordinary Glon built over a host request/reply boundary.  It adds no
+;; primitive, HOST id, parser/evaluator change or blocking file word.
+;;
+;; Host protocol (built here, decoded by glon_io_file.c):
+;;   request  = 0x01 op:u8 id:u32be field-count:u8 field*
+;;   field    = length:u32be bytes[length]
+;; The host owns paths, file descriptors and bytes.  Replacement stays in Glon.
+;;
+;; Only one request may be outstanding.  `io/take-request` returns the current
+;; frame (or NONE); the host calls `io/reply id status v1 v2` when the worker
+;; finishes.  A callback may issue the next request before returning.
+;;
+;; Requires the shipped prelude/strings libraries and strings-ext (s/slice).
+[
+io/next-id: 0
+io/pending: none
+io/pending-id: 0
+io/pending-op: 0
+io/pending-arg: none
+io/pending-frame: ""
+io/pending-record: none
+
+;; Big-endian u32 as exactly four bytes.  No bitwise or MOD word is used.
+io/u32: func [n] [
+    b0: / n 16777216
+    b1: - / n 65536 * 256 / n 16777216
+    b2: - / n 256 * 256 / n 65536
+    b3: - n * 256 / n 256
+    s/+ s/+ s/+
+        mk-string reduce [ b0 ]
+        mk-string reduce [ b1 ]
+        mk-string reduce [ b2 ]
+        mk-string reduce [ b3 ]
+]
+
+io/field: func [s] [ s/+ io/u32 s/length s s ]
+
+io/fields: func [fields i n] [
+    either < i n [
+        s/+ io/field block-at fields i io/fields fields + i 1 n
+    ] [
+        ""
+    ]
+]
+
+io/frame: func [op id fields] [
+    s/+ s/+ s/+ s/+
+        mk-string reduce [ 1 ]
+        mk-string reduce [ op ]
+        io/u32 id
+        mk-string reduce [ block-len fields ]
+        io/fields fields 0 block-len fields
+]
+
+io/handle-field: func [h] [
+    s/+ io/u32 block-at h 0 io/u32 block-at h 1
+]
+
+io/mode-byte: func [mode] [
+    either = mode 'read [
+        1
+    ] [
+        either = mode 'write [
+            2
+        ] [
+            either = mode 'read-write [
+                3
+            ] [
+                raise create-sin 'io 'unsupported mode
+            ]
+        ]
+    ]
+]
+
+;; Queue one request.  Request construction and callback retention are Glon
+;; state; the returned frame is consumed by the host driver.
+io/request: func [op fields success failure arg] [
+    either io/pending [
+        raise create-sin 'io 'busy arg
+    ] [
+        io/next-id: + io/next-id 1
+        io/pending-id: io/next-id
+        io/pending-op: op
+        io/pending-record: reduce [ io/next-id op :success :failure arg ]
+        io/pending-arg: arg
+        io/pending-frame: io/frame op io/next-id fields
+        io/pending: 1
+        none
+    ]
+]
+
+io/take-request: func [] [
+    either io/pending [ io/pending-frame ] [ none ]
+]
+
+;; The host feeds one bounded reply back.  Unknown/stale ids are a job failure,
+;; not a recoverable file error.  Recoverable statuses become SIN! values in
+;; the failure closure.  A judge in the original caller cannot span this turn.
+io/reply: func [id status v1 v2] [
+    either either io/pending [ = id io/pending-id ] [ 0 ] [
+        op: block-at io/pending-record 1
+        success: block-at io/pending-record 2
+        failure: block-at io/pending-record 3
+        arg: block-at io/pending-record 4
+        io/pending: none
+        either = status 'ok [
+            either = op 1 [
+                success reduce [ v1 v2 ]
+            ] [
+                either = op 2 [
+                    success v1
+                ] [
+                    either = op 3 [ success v1 ] [ success none ]
+                ]
+            ]
+        ] [
+            either = status 'eof [
+                either = op 2 [
+                    success ""
+                ] [
+                    failure create-sin 'io status arg
+                ]
+            ] [
+                failure create-sin 'io status arg
+            ]
+        ]
+    ] [
+        raise create-sin 'io 'stale-reply id
+    ]
+]
+
+;; Low-level handle jobs.
+io/open: func [name mode success failure] [
+    io/request 1 reduce [ name mk-string reduce [ io/mode-byte mode ] ]
+        :success :failure name
+]
+
+io/read: func [handle max success failure] [
+    io/request 2 reduce [ io/handle-field handle io/u32 max ] :success :failure handle
+]
+
+io/write: func [handle bytes success failure] [
+    io/request 3 reduce [ io/handle-field handle bytes ] :success :failure handle
+]
+
+io/close: func [handle success failure] [
+    io/request 4 reduce [ io/handle-field handle ] :success :failure handle
+]
+
+;; Whole-file convenience.  The host never sees "web" or "rebol"; it only moves
+;; bytes.  Reads and writes loop over short results and stop at EOF.
+file/read-loop: func [h acc success failure] [
+    io/read h 400
+        func [chunk] [
+            either = 0 s/length chunk [
+                io/close h func [x] [ success acc ] :failure
+            ] [
+                file/read-loop h s/+ acc chunk :success :failure
+            ]
+        ]
+        func [e] [
+            io/close h func [x] [ failure e ] :failure
+        ]
+]
+
+file/read: func [name success failure] [
+    io/open name 'read
+        func [h] [ file/read-loop h "" :success :failure ]
+        :failure
+]
+
+file/write-loop: func [h bytes success failure] [
+    chunk: either > s/length bytes 400 [ s/slice bytes 0 400 ] [ bytes ]
+    io/write h chunk
+        func [n] [
+            either = n s/length bytes [
+                io/close h func [x] [ success none ] :failure
+            ] [
+                file/write-loop h s/slice bytes n - s/length bytes n :success :failure
+            ]
+        ]
+        func [e] [
+            io/close h func [x] [ failure e ] :failure
+        ]
+]
+
+file/write: func [name bytes success failure] [
+    io/open name 'write
+        func [h] [
+            either = 0 s/length bytes [
+                io/close h func [x] [ success none ] :failure
+            ] [
+                file/write-loop h bytes :success :failure
+            ]
+        ]
+        :failure
+]
+]

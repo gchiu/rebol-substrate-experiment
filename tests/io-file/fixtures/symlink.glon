@@ -1,0 +1,5 @@
+[
+file/read "link"
+    func [b] [ s/print "UNEXPECTED" ]
+    func [e] [ raise e ]
+]

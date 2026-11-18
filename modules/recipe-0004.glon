@@ -1,0 +1,43 @@
+;; modules/recipe-0004.glon -- REBOL Cookbook recipe 0004 on optional file I/O.
+;;
+;; The replacement algorithm is ordinary Glon and is the same first-occurrence
+;; implementation used by the in-memory Challenge 3 listing.  It requires the
+;; optional strings-ext library for s/slice.  The host never performs the text
+;; replacement; it only opens, reads, writes and closes doc.txt.
+[
+find-first: func [text pattern i text-len pat-len] [
+    either > + i pat-len text-len [
+        -1
+    ] [
+        either s/= s/slice text i pat-len pattern [
+            i
+        ] [
+            find-first text pattern + i 1 text-len pat-len
+        ]
+    ]
+]
+
+replace-first: func [text old new] [
+    index: find-first text old 0 s/length text s/length old
+    either = index -1 [
+        text
+    ] [
+        tail-start: + index s/length old
+        s/+ s/+ s/slice text 0 index new s/slice text tail-start - s/length text tail-start
+    ]
+]
+
+file-replace-first: func [name success failure] [
+    file/read name
+        func [text] [
+            file/write name replace-first text "web" "rebol"
+                :success
+                :failure
+        ]
+        :failure
+]
+
+file-replace-first "doc.txt"
+    func [x] [ s/print "RECIPE_DONE" ]
+    func [e] [ raise e ]
+]

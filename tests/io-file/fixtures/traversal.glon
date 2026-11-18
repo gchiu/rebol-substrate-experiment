@@ -1,0 +1,5 @@
+[
+file/read "../outside.txt"
+    func [b] [ s/print "UNEXPECTED" ]
+    func [e] [ raise e ]
+]

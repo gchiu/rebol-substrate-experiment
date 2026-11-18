@@ -1,0 +1,5 @@
+[
+io/read [ 99 0 ] 1
+    func [b] [ s/print "UNEXPECTED" ]
+    func [e] [ raise e ]
+]

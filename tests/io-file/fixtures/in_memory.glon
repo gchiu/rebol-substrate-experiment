@@ -1,0 +1,30 @@
+[
+find-first: func [text pattern i text-len pat-len] [
+    either > + i pat-len text-len [
+        -1
+    ] [
+        either s/= s/slice text i pat-len pattern [
+            i
+        ] [
+            find-first text pattern + i 1 text-len pat-len
+        ]
+    ]
+]
+
+replace-first: func [text old new] [
+    index: find-first text old 0 s/length text s/length old
+    either = index -1 [
+        text
+    ] [
+        tail-start: + index s/length old
+        s/+ s/+ s/slice text 0 index new s/slice text tail-start - s/length text tail-start
+    ]
+]
+
+s/print replace-first "web site" "web" "rebol"
+s/print replace-first "the web is wide" "web" "rebol"
+s/print replace-first "the web" "web" "rebol"
+s/print replace-first "the internet" "web" "rebol"
+s/print replace-first "web web web" "web" "rebol"
+s/print replace-first "" "web" "rebol"
+]

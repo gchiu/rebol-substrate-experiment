@@ -1,0 +1,5 @@
+[
+file/read "/etc/passwd"
+    func [b] [ s/print "UNEXPECTED" ]
+    func [e] [ raise e ]
+]

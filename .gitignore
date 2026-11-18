@@ -35,3 +35,7 @@ gc-worklist-overflow-test
 machine-integrity-test
 integrity-asan-probe
 integrity/build/
+
+# optional module configuration stamp
+.glon-config
+.glon-config.tmp
