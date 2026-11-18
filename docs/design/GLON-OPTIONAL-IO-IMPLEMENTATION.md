@@ -5,6 +5,7 @@
 **Base:** `glon-shop-g1a` at `3bccc6e95f77c01542c4adbe88e604dec58c5d09`.
 **Design:** [`GLON-OPTIONAL-IO.md`](GLON-OPTIONAL-IO.md), Approach B
 (host-mediated request/reply).
+**Stabilisation:** see [`GLON-OPTIONAL-IO-STABILISATION.md`](GLON-OPTIONAL-IO-STABILISATION.md) for the IO-2 audit, sanitizers and final measurements.
 **Scope:** POSIX native `glon` only. This is not a general I/O, plugin, WASM or
 Windows framework.
 
@@ -38,7 +39,7 @@ Runtime capability is separate from compilation. The host defaults to deny-all:
 --allow-file-read          permit read access under the root
 --allow-file-write         permit write access under the root
 --io-max-handles N         default 8, hard maximum 16
---io-max-file BYTES        default 2048
+--io-max-file BYTES        default 1024, measured safe maximum 1024
 --io-delay-ms N            test-only worker delay
 --io-short N               test-only cap on one read/write
 --io-progress FILE         run an independent Glon job while a request is pending
@@ -69,8 +70,29 @@ reply   = magic:u8=0x81, request_id:u32, status:u8, field_count:u8, field*
 
 Operations: `open=1`, `read=2`, `write=3`, `close=4`.
 
-Statuses: `ok`, `eof`, `not-found`, `permission`, `invalid-handle`,
-`too-large`, `io-error`, `unsupported`, `busy`.
+Protocol version 1 is identified by request magic `0x01` and reply magic
+`0x81`.  A future incompatible version must use a new magic; the v1 status
+numbers below are stable for this contract:
+
+| Code | Status |
+|---:|---|
+| 0 | `ok` |
+| 1 | `eof` |
+| 2 | `not-found` |
+| 3 | `permission` |
+| 4 | `invalid-handle` |
+| 5 | `too-large` |
+| 6 | `io-error` |
+| 7 | `unsupported` |
+| 8 | `busy` |
+
+All integers are fixed-width big-endian; lengths are `u32`; fields are
+length-delimited. No C `size_t`, pointer, file descriptor or struct layout
+crosses the boundary. Handles are `(u32 value, u32 generation)` and are not
+OS descriptors. Embedded zero bytes and arbitrary binary data are preserved by
+the field lengths. A missing host capability is either no vocabulary (minimal
+build) or `permission` (module build without the matching grant), never a
+fabricated empty success.
 
 `open` sends `(name, mode)` and returns `(handle value, generation)`.
 `read` sends `(handle value, handle generation, max_bytes)` and returns bytes
@@ -205,7 +227,7 @@ Every acceptance case reads the resulting file bytes independently in Python:
 - minimal build has no file vocabulary;
 - the six original in-memory replacement cases.
 
-`make io-file-test` result: **26 passed, 0 failed**.
+`make io-file-test` result: **30 passed, 0 failed** (29 module cases plus the minimal-build regression), plus the focused `io-file-c-test` protocol/driver checks.
 
 ---
 
@@ -244,8 +266,8 @@ Measured, not estimates:
 
 | Artifact | Minimal | `MODULES=file` | Delta |
 |---|---:|---:|---:|
-| executable bytes | 185,216 | 230,880 | +45,664 |
-| `size` text | 93,258 | 115,158 | +21,900 |
+| executable bytes | 185,216 | 230,936 | +45,720 |
+| `size` text | 93,258 | 115,389 | +22,131 |
 | `size` data | 2,208 | 2,352 | +144 |
 | `size` bss | 621,992 | 621,992 | 0 |
 
@@ -253,10 +275,10 @@ Peak RSS (`/usr/bin/time -v`):
 
 | Run | Max RSS | Wall |
 |---|---:|---:|
-| minimal, in-memory fixture | 1,604 KB | 0.02 s |
-| module, in-memory fixture | 1,648 KB | 0.06 s |
-| module, Recipe 0004 | 1,944 KB | 0.11 s |
-| module, recipe + 150 ms/request + progress | ~1,900 KB | 1.18 s |
+| minimal, small in-memory probe | 1,796 KB | 0.00 s |
+| module, same in-memory probe | 2,072 KB | 0.00 s |
+| module, Recipe 0004 (median of 3) | 2,136 KB | 0.10 s |
+| module, recipe + 150 ms/request + progress | ~2,100 KB | 1.18 s |
 
 The executable delta exceeds the design's provisional 12 KiB budget under the
 default `-O0 -g` build. The module adds pthread/libc code and debug symbols;
@@ -268,20 +290,26 @@ Resource bounds:
 |---|---:|
 | open handles | default 8, hard 16 (session/job scope in phase 1) |
 | one read/write chunk | 400 bytes |
-| whole-file default cap | 2,048 bytes |
+| whole-file default cap | 1,024 bytes |
 | request frame bound | 8,192 bytes |
 | reply frame bound | 8,192 bytes |
 | service struct (handles + reply scratch) | 5,200 bytes |
 | driver request + reply buffers | 16,384 bytes |
 
-The whole-file cap was reduced from the design's provisional 4,096 to 2,048
-after measurement: immutable-string accumulation holds the previous and new
-strings during a copy, and a 4,096-byte file exhausted the 7,232-cell managed
-heap before completion. This is evidence-driven, not a silent semantic change.
+The whole-file cap was reduced from the design's provisional 4,096 to a
+measured safe **1,024 bytes**.  Immutable-string accumulation holds the
+previous and new strings during a copy; the recipe also holds the input,
+replacement and write slice together.  A 1,200-byte recipe reproducibly
+exhausted the 7,232-cell managed heap during the first write, while 1,022-byte
+input / 1,024-byte output completed.  The host now rejects a configured
+`--io-max-file` above 1,024 instead of allowing a machine-level halt.  Bounded
+chunk processing alone does not remove the peak (the final string and its
+chunks coexist), so the cap was not raised to satisfy a benchmark.
 
-Host implementation: 742 non-comment C lines across the module header/source
+Host implementation: 751 non-comment C lines across the module header/source
 files, plus the conditional native CLI driver. Glon library: 159 non-comment
-lines. Tests: 197-line acceptance harness plus fixtures.
+lines. Tests: 207-line acceptance harness, 194-line focused C test, plus
+fixtures.
 
 ---
 

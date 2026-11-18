@@ -65,6 +65,13 @@ int glon_io_service_init(glon_io_service *svc, const glon_io_policy *policy,
     if (svc->policy.max_chunk > GLON_IO_MAX_CHUNK)
         svc->policy.max_chunk = GLON_IO_MAX_CHUNK;
     if (svc->policy.max_file == 0) svc->policy.max_file = GLON_IO_DEFAULT_MAX_FILE;
+    if (svc->policy.max_file > GLON_IO_SAFE_MAX_FILE) {
+        if (errcap) snprintf(err, errcap,
+                             "io max file %u exceeds measured safe limit %u",
+                             (unsigned)svc->policy.max_file,
+                             (unsigned)GLON_IO_SAFE_MAX_FILE);
+        return -1;
+    }
     svc->next_generation = 1;
 
     if (!realpath(svc->policy.root, svc->root_real)) {

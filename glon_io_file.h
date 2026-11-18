@@ -15,12 +15,17 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define GLON_IO_REQUEST_MAGIC  0x01u
-#define GLON_IO_REPLY_MAGIC    0x81u
+#define GLON_IO_REQUEST_MAGIC  0x01u  /* protocol v1 */
+#define GLON_IO_REPLY_MAGIC    0x81u  /* protocol v1 */
 #define GLON_IO_MAX_FIELDS     4u
 #define GLON_IO_MAX_FRAME      8192u
 #define GLON_IO_MAX_CHUNK      400u
-#define GLON_IO_DEFAULT_MAX_FILE 2048u
+/* Whole-file limit measured against the 7,232-cell managed heap.  The
+ * recipe needs input + replacement + write slice live together; 1 KiB is the
+ * conservative safe bound.  Larger values are rejected, not clamped. */
+#define GLON_IO_DEFAULT_MAX_FILE 1024u
+#define GLON_IO_SAFE_MAX_FILE    1024u
+#define GLON_IO_PROTOCOL_VERSION 1u
 #define GLON_IO_HARD_MAX_HANDLES 16u
 
 typedef enum {

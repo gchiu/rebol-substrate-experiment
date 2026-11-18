@@ -39,3 +39,6 @@ integrity/build/
 # optional module configuration stamp
 .glon-config
 .glon-config.tmp
+
+# optional module focused test binary
+io-file-c-test

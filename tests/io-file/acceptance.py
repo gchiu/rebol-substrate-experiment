@@ -100,6 +100,13 @@ def main():
                 b"left\x00right web tail\xff", b"left\x00right rebol tail\xff")
     recipe_case("multi-chunk file", b"web" + b"z" * 1000,
                 b"rebol" + b"z" * 1000)
+    recipe_case("whole-file safe boundary", b"web" + b"z" * 1019,
+                b"rebol" + b"z" * 1019)
+    failure_case("whole-file cap exceeded", b"x" * 1025, (),
+                 RECIPE, "too-large")
+    failure_case("unsafe configured whole-file cap rejected", b"web site", (),
+                 RECIPE, "exceeds measured safe limit",
+                 extra=("--io-max-file", "2048"))
 
     # Short reads/writes must loop, not truncate or duplicate bytes.
     recipe_case("short reads and writes", b"web site and more text",
@@ -131,6 +138,9 @@ def main():
     check(r.returncode != 0 and b"permission" in r.stderr,
           "symlink escape rejected", f"rc={r.returncode} stderr={r.stderr[-300:]!r}")
     td.cleanup()
+
+    failure_case("stale reply id rejected", b"web site", (),
+                 FIXTURES / "stale_reply.glon", "stale-reply")
 
     failure_case("malformed request is a protocol failure", b"web site", (),
                  FIXTURES / "bad_frame.glon", "bad request magic")

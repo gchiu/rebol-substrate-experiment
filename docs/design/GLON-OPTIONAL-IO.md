@@ -1,6 +1,9 @@
 # Glon Optional Portable File I/O — `glon-io-file` Design Proposal
 
-**Status:** design only, revision 2. Nothing in this document is implemented.
+**Status:** design, revision 2. A POSIX native proof of concept now exists;
+see `GLON-OPTIONAL-IO-IMPLEMENTATION.md` and
+`GLON-OPTIONAL-IO-STABILISATION.md`. The Windows/WASM/embedded backends in
+this document remain unimplemented.
 **Base:** `glon-shop-g1a` at `89de40e737b022a0d987093bb6c5b1e8d1a8a83e`.
 **Revision 2:** adds the blocking-versus-asynchronous feasibility study in §12
 and the revised recommendation in §12.7.

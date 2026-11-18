@@ -280,7 +280,7 @@ static int reply_field(const uint8_t *frame, size_t len, unsigned index,
                        const uint8_t **bytes, uint32_t *flen) {
     if (len < 7 || frame[0] != GLON_IO_REPLY_MAGIC) return -1;
     unsigned count = frame[6];
-    if (index >= count) return -1;
+    if (count > 2 || index >= count) return -1;
     size_t off = 7;
     for (unsigned i = 0; i < count; i++) {
         if (off + 4 > len) return -1;
@@ -301,6 +301,10 @@ static int run_io_reply(const uint8_t *frame, size_t len, uint32_t expected_id,
     }
     uint32_t id = glon_io_get_u32(frame + 1);
     unsigned status = frame[5];
+    if (status > GLON_IO_BUSY) {
+        snprintf(err, errcap, "unknown reply status %u", status);
+        return -1;
+    }
     if (id != expected_id) {
         snprintf(err, errcap, "reply id %u does not match request %u", id, expected_id);
         return -1;
@@ -322,8 +326,8 @@ static int run_io_reply(const uint8_t *frame, size_t len, uint32_t expected_id,
                       glon_io_get_u32(a), glon_io_get_u32(b));
     } else if (status == GLON_IO_OK && op == GLON_IO_OP_READ) {
         const uint8_t *a; uint32_t al;
-        if (reply_field(frame, len, 0, &a, &al)) {
-            snprintf(err, errcap, "malformed read reply");
+        if (reply_field(frame, len, 0, &a, &al) || al > GLON_IO_MAX_CHUNK) {
+            snprintf(err, errcap, "malformed/oversized read reply");
             return -1;
         }
         n += snprintf(src + n, sizeof src - (size_t)n, "mk-string [");
