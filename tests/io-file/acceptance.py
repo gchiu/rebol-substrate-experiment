@@ -104,9 +104,8 @@ def main():
                 b"rebol" + b"z" * 1019)
     failure_case("whole-file cap exceeded", b"x" * 1025, (),
                  RECIPE, "too-large")
-    failure_case("unsafe configured whole-file cap rejected", b"web site", (),
-                 RECIPE, "exceeds measured safe limit",
-                 extra=("--io-max-file", "2048"))
+    failure_case("whole-file cap independent of host cap", b"x" * 1025, (),
+                 RECIPE, "too-large", extra=("--io-max-file", "4096"))
 
     # Short reads/writes must loop, not truncate or duplicate bytes.
     recipe_case("short reads and writes", b"web site and more text",
@@ -143,7 +142,7 @@ def main():
                  FIXTURES / "stale_reply.glon", "stale-reply")
 
     failure_case("malformed request is a protocol failure", b"web site", (),
-                 FIXTURES / "bad_frame.glon", "bad request magic")
+                 FIXTURES / "bad_frame.glon", "io/take-request field types")
 
     failure_case("invalid handle", b"web site", (),
                  FIXTURES / "invalid_handle.glon", "invalid-handle")

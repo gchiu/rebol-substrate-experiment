@@ -309,7 +309,7 @@ ifeq ($(strip $(MODULES)),)
 else ifeq ($(strip $(MODULES)),file)
   GLON_MODULE_SRCS := glon_io_file.c glon_io_file_posix.c glon_io_file_cli.c
   GLON_MODULE_CFLAGS := -DGLON_MODULE_FILE
-  GLON_MODULE_LIBS := $(GLON_LIB_DIR)/file.glon
+  GLON_MODULE_LIBS := $(GLON_LIB_DIR)/file.glon $(GLON_LIB_DIR)/file-stream.glon
   GLON_MODULE_LDLIBS := -pthread
 else
   $(error unknown MODULES='$(MODULES)'; supported value: file)
@@ -346,6 +346,10 @@ $(GLON_LIB_DIR)/file.glon: modules/file.glon
 	@mkdir -p $(GLON_LIB_DIR)
 	cp $< $@
 
+$(GLON_LIB_DIR)/file-stream.glon: modules/file-stream.glon
+	@mkdir -p $(GLON_LIB_DIR)
+	cp $< $@
+
 glon-lib: $(GLON_LIBS)
 
 glon-smoke: glon
@@ -365,6 +369,19 @@ io-file-test: io-file-c-test
 	cp -R glon-lib "$$tmp/glon-lib"; \
 	$(MAKE) --no-print-directory glon MODULES=file; \
 	python3 tests/io-file/acceptance.py --glon ./glon --minimal "$$tmp/glon-minimal"
+
+# Streaming acceptance: 1 KiB through 64 KiB by default; --scale adds 1 MiB.
+io-file-stream-test:
+	$(MAKE) --no-print-directory glon MODULES=file
+	python3 tests/io-file/streaming_acceptance.py --glon ./glon
+
+io-file-stream-scale:
+	$(MAKE) --no-print-directory glon MODULES=file
+	python3 tests/io-file/streaming_acceptance.py --glon ./glon --scale
+
+io-file-stream-4m:
+	$(MAKE) --no-print-directory glon MODULES=file
+	python3 tests/io-file/streaming_acceptance.py --glon ./glon --scale --four-mib
 
 # ---- Desktop proof: native Glon application + browser/WASM Glon View --------
 # glon-desktop is the installed application host: it binds a localhost TCP
@@ -597,7 +614,7 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon glon-lib glon-smoke io-file-c-test io-file-test glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test kaka-wave-test kaka-serve wasm-kaka-test kaka-browser-regression kaka-refresh-regression
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon glon-lib glon-smoke io-file-c-test io-file-test io-file-stream-test io-file-stream-scale io-file-stream-4m glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test kaka-wave-test kaka-serve wasm-kaka-test kaka-browser-regression kaka-refresh-regression
 
 # ---- machine integrity (MACHINE-INTEGRITY-AUDIT.md) ------------------------
 # Machine-level invariants, separate from the functional suite (./s1): the

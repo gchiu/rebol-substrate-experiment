@@ -141,10 +141,10 @@ int main(void) {
           "oversized field rejected");
 
     glon_io_policy too_big = pol;
-    too_big.max_file = GLON_IO_SAFE_MAX_FILE + 1;
+    too_big.max_file = GLON_IO_HARD_MAX_FILE + 1;
     glon_io_service svc2;
     check(glon_io_service_init(&svc2, &too_big, err, sizeof err) != 0,
-          "unsafe whole-file cap rejected");
+          "host hard file cap rejected");
 
     /* Cancellation must join the worker and never expose a stale reply. */
     glon_io_cli *cli = NULL;

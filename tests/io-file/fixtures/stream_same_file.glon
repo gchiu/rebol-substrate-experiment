@@ -1,0 +1,5 @@
+[
+stream/replace-first "doc.txt" "doc.txt" "web" "rebol"
+    func [x] [ s/print "UNEXPECTED" ]
+    func [e] [ raise e ]
+]

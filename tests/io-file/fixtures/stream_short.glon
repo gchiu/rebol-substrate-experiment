@@ -1,0 +1,5 @@
+[
+stream/replace-first "doc.txt" "out.txt" "web" "X"
+    func [x] [ s/print "STREAM_DONE" ]
+    func [e] [ raise e ]
+]

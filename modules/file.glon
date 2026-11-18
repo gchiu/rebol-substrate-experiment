@@ -8,9 +8,10 @@
 ;;   field    = length:u32be bytes[length]
 ;; The host owns paths, file descriptors and bytes.  Replacement stays in Glon.
 ;;
-;; Only one request may be outstanding.  `io/take-request` returns the current
-;; frame (or NONE); the host calls `io/reply id status v1 v2` when the worker
-;; finishes.  A callback may issue the next request before returning.
+;; Only one request may be outstanding.  `io/take-request` returns a structured
+;; [id op fields] block (or NONE); the host encodes the v1 frame in C.  The
+;; host calls `io/reply id status v1 v2` when the worker finishes.  A callback
+;; may issue the next request before returning.
 ;;
 ;; Requires the shipped prelude/strings libraries and strings-ext (s/slice).
 [
@@ -19,7 +20,7 @@ io/pending: none
 io/pending-id: 0
 io/pending-op: 0
 io/pending-arg: none
-io/pending-frame: ""
+io/pending-request: none
 io/pending-record: none
 
 ;; Big-endian u32 as exactly four bytes.  No bitwise or MOD word is used.
@@ -33,25 +34,6 @@ io/u32: func [n] [
         mk-string reduce [ b1 ]
         mk-string reduce [ b2 ]
         mk-string reduce [ b3 ]
-]
-
-io/field: func [s] [ s/+ io/u32 s/length s s ]
-
-io/fields: func [fields i n] [
-    either < i n [
-        s/+ io/field block-at fields i io/fields fields + i 1 n
-    ] [
-        ""
-    ]
-]
-
-io/frame: func [op id fields] [
-    s/+ s/+ s/+ s/+
-        mk-string reduce [ 1 ]
-        mk-string reduce [ op ]
-        io/u32 id
-        mk-string reduce [ block-len fields ]
-        io/fields fields 0 block-len fields
 ]
 
 io/handle-field: func [h] [
@@ -85,14 +67,14 @@ io/request: func [op fields success failure arg] [
         io/pending-op: op
         io/pending-record: reduce [ io/next-id op :success :failure arg ]
         io/pending-arg: arg
-        io/pending-frame: io/frame op io/next-id fields
+        io/pending-request: reduce [ io/next-id op fields ]
         io/pending: 1
         none
     ]
 ]
 
 io/take-request: func [] [
-    either io/pending [ io/pending-frame ] [ none ]
+    either io/pending [ io/pending-request ] [ none ]
 ]
 
 ;; The host feeds one bounded reply back.  Unknown/stale ids are a job failure,
@@ -105,6 +87,9 @@ io/reply: func [id status v1 v2] [
         failure: block-at io/pending-record 3
         arg: block-at io/pending-record 4
         io/pending: none
+        io/pending-record: none
+        io/pending-request: none
+        io/pending-arg: none
         either = status 'ok [
             either = op 1 [
                 success reduce [ v1 v2 ]
@@ -149,15 +134,26 @@ io/close: func [handle success failure] [
     io/request 4 reduce [ io/handle-field handle ] :success :failure handle
 ]
 
-;; Whole-file convenience.  The host never sees "web" or "rebol"; it only moves
-;; bytes.  Reads and writes loop over short results and stop at EOF.
+;; Whole-file convenience.  The cap belongs to this immutable-string API; the
+;; host's --io-max-file is a separate per-handle streaming safety bound.  This
+;; path uses 128-byte allocations so the non-moving heap can satisfy them after
+;; the result string is live.  Streaming (file-stream.glon) uses the 400-byte
+;; protocol chunk.
+file/max-bytes: 1024
+
 file/read-loop: func [h acc success failure] [
-    io/read h 400
+    io/read h 128
         func [chunk] [
             either = 0 s/length chunk [
                 io/close h func [x] [ success acc ] :failure
             ] [
-                file/read-loop h s/+ acc chunk :success :failure
+                either > + s/length acc s/length chunk file/max-bytes [
+                    io/close h
+                        func [x] [ failure create-sin 'io 'too-large file/max-bytes ]
+                        :failure
+                ] [
+                    file/read-loop h s/+ acc chunk :success :failure
+                ]
             ]
         ]
         func [e] [
@@ -172,7 +168,7 @@ file/read: func [name success failure] [
 ]
 
 file/write-loop: func [h bytes success failure] [
-    chunk: either > s/length bytes 400 [ s/slice bytes 0 400 ] [ bytes ]
+    chunk: either > s/length bytes 128 [ s/slice bytes 0 128 ] [ bytes ]
     io/write h chunk
         func [n] [
             either = n s/length bytes [
@@ -187,14 +183,18 @@ file/write-loop: func [h bytes success failure] [
 ]
 
 file/write: func [name bytes success failure] [
-    io/open name 'write
-        func [h] [
-            either = 0 s/length bytes [
-                io/close h func [x] [ success none ] :failure
-            ] [
-                file/write-loop h bytes :success :failure
+    either > s/length bytes file/max-bytes [
+        failure create-sin 'io 'too-large file/max-bytes
+    ] [
+        io/open name 'write
+            func [h] [
+                either = 0 s/length bytes [
+                    io/close h func [x] [ success none ] :failure
+                ] [
+                    file/write-loop h bytes :success :failure
+                ]
             ]
-        ]
-        :failure
+            :failure
+    ]
 ]
 ]

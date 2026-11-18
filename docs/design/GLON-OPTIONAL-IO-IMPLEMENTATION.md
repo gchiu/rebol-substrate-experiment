@@ -6,6 +6,7 @@
 **Design:** [`GLON-OPTIONAL-IO.md`](GLON-OPTIONAL-IO.md), Approach B
 (host-mediated request/reply).
 **Stabilisation:** see [`GLON-OPTIONAL-IO-STABILISATION.md`](GLON-OPTIONAL-IO-STABILISATION.md) for the IO-2 audit, sanitizers and final measurements.
+**Streaming:** see [`GLON-OPTIONAL-IO-STREAMING.md`](GLON-OPTIONAL-IO-STREAMING.md) for IO-3 bounded-memory replacement.
 **Scope:** POSIX native `glon` only. This is not a general I/O, plugin, WASM or
 Windows framework.
 
@@ -39,7 +40,7 @@ Runtime capability is separate from compilation. The host defaults to deny-all:
 --allow-file-read          permit read access under the root
 --allow-file-write         permit write access under the root
 --io-max-handles N         default 8, hard maximum 16
---io-max-file BYTES        default 1024, measured safe maximum 1024
+--io-max-file BYTES        host per-handle streaming cap; default 8 MiB, hard 16 MiB
 --io-delay-ms N            test-only worker delay
 --io-short N               test-only cap on one read/write
 --io-progress FILE         run an independent Glon job while a request is pending
@@ -266,8 +267,8 @@ Measured, not estimates:
 
 | Artifact | Minimal | `MODULES=file` | Delta |
 |---|---:|---:|---:|
-| executable bytes | 185,216 | 230,936 | +45,720 |
-| `size` text | 93,258 | 115,389 | +22,131 |
+| executable bytes | 185,216 | 231,872 | +46,656 |
+| `size` text | 93,258 | 117,295 | +24,037 |
 | `size` data | 2,208 | 2,352 | +144 |
 | `size` bss | 621,992 | 621,992 | 0 |
 
@@ -289,22 +290,23 @@ Resource bounds:
 | Item | Value |
 |---|---:|
 | open handles | default 8, hard 16 (session/job scope in phase 1) |
-| one read/write chunk | 400 bytes |
-| whole-file default cap | 1,024 bytes |
+| streaming read/write chunk | 400 bytes |
+| whole-file loop slice | 128 bytes |
+| whole-file convenience cap (Glon library) | 1,024 bytes |
+| host per-handle streaming cap | 8 MiB default, 16 MiB hard |
 | request frame bound | 8,192 bytes |
 | reply frame bound | 8,192 bytes |
 | service struct (handles + reply scratch) | 5,200 bytes |
 | driver request + reply buffers | 16,384 bytes |
 
-The whole-file cap was reduced from the design's provisional 4,096 to a
-measured safe **1,024 bytes**.  Immutable-string accumulation holds the
-previous and new strings during a copy; the recipe also holds the input,
-replacement and write slice together.  A 1,200-byte recipe reproducibly
-exhausted the 7,232-cell managed heap during the first write, while 1,022-byte
-input / 1,024-byte output completed.  The host now rejects a configured
-`--io-max-file` above 1,024 instead of allowing a machine-level halt.  Bounded
-chunk processing alone does not remove the peak (the final string and its
-chunks coexist), so the cap was not raised to satisfy a benchmark.
+IO-3 separates two limits that IO-2 had conflated.  The immutable whole-file
+convenience cap remains **1,024 bytes** in `modules/file.glon`; it is not raised
+for streaming.  The host's `--io-max-file` is now a per-handle streaming safety
+cap (8 MiB default, 16 MiB hard).  Streaming `file-stream.glon` uses the
+existing 400-byte chunk protocol and does not construct the complete file.  The
+whole-file loop uses 128-byte allocations because the non-moving heap could not
+always satisfy a 400-byte allocation once the result string was live.  See the
+streaming report for measurements.
 
 Host implementation: 751 non-comment C lines across the module header/source
 files, plus the conditional native CLI driver. Glon library: 159 non-comment
@@ -328,8 +330,9 @@ fixtures.
   transactional write. A failed short write can leave partial contents.
 - Path confinement is canonicalisation plus `O_NOFOLLOW`; it is not an
   openat2/`RESOLVE_BENEATH` hardening claim against concurrent attackers.
-- Whole-file reads are bounded by the managed heap and the 400-byte protocol
-  chunk. Larger streaming is a phase-2 API, not implemented here.
+- Whole-file reads are bounded by the 1,024-byte library cap.  Streaming
+  `file-stream.glon` processes larger files with bounded live memory; see
+  `GLON-OPTIONAL-IO-STREAMING.md`.
 - No arbitrary C calls, no new S1 HOST IDs, no evaluator/parser changes, no
   dynamic plugin loading.
 - The minimal build intentionally has no file vocabulary; the same source fails

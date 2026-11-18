@@ -2,5 +2,5 @@
 io/open "doc.txt" 'read
     func [h] [ s/print "UNEXPECTED" ]
     func [e] [ raise e ]
-io/pending-frame: "bad"
+io/pending-request: reduce [ 1 1 0 ]
 ]

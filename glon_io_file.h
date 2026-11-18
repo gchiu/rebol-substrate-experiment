@@ -20,11 +20,11 @@
 #define GLON_IO_MAX_FIELDS     4u
 #define GLON_IO_MAX_FRAME      8192u
 #define GLON_IO_MAX_CHUNK      400u
-/* Whole-file limit measured against the 7,232-cell managed heap.  The
- * recipe needs input + replacement + write slice live together; 1 KiB is the
- * conservative safe bound.  Larger values are rejected, not clamped. */
-#define GLON_IO_DEFAULT_MAX_FILE 1024u
-#define GLON_IO_SAFE_MAX_FILE    1024u
+/* Host per-handle cumulative safety bound for streaming.  The immutable
+ * whole-file convenience cap is separate, in modules/file.glon (1,024 bytes),
+ * because input + replacement + write slice coexist in the managed heap. */
+#define GLON_IO_DEFAULT_MAX_FILE (8u * 1024u * 1024u)
+#define GLON_IO_HARD_MAX_FILE    (16u * 1024u * 1024u)
 #define GLON_IO_PROTOCOL_VERSION 1u
 #define GLON_IO_HARD_MAX_HANDLES 16u
 

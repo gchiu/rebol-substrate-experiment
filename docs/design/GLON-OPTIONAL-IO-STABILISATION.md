@@ -3,6 +3,9 @@
 **Branch:** `impl/optional-file-io`
 **Starting commit:** `7adf05765aba40c207233cc50ac2de6b1ab5f6bf`
 **Base branch:** `glon-shop-g1a` at `3bccc6e95f77c01542c4adbe88e604dec58c5d09`
+**IO-3 update:** the host `--io-max-file` is now a streaming per-handle cap
+(8 MiB default); the 1,024-byte whole-file cap is enforced by `file.glon`.
+See `GLON-OPTIONAL-IO-STREAMING.md`.
 **Scope:** audit, harden and measure the existing optional asynchronous file
 I/O module. No new S1/HOST operation, parser/evaluator/grammar change, M1
 scheduler change, network/seek/stat feature, or production-repository change.

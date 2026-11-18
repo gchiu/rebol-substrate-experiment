@@ -1,0 +1,185 @@
+;; modules/file-stream.glon -- bounded-memory file replacement in Glon.
+;;
+;; Recipe 0004 semantics without constructing the complete file:
+;;   source -> [read 400, carry at most len(old)-1, write safe prefix]*
+;;          -> first match: prefix + replacement + suffix -> copy rest raw
+;;
+;; The host only transports bytes.  Matching, carry-over and replacement are
+;; all ordinary Glon.  Input and output are distinct handles; the source is
+;; never truncated while it is being read.
+;;
+;; Empty search patterns are rejected: there is no single well-defined first
+;; gap between bytes.  A failure after the output file is opened may leave a
+;; partial output file; no atomic replace or truncate-on-failure is provided.
+[
+;; Search in bounded segments so the recursive matcher's stack depth is
+;; bounded by STREAM-SCAN (64), not by the 400-byte chunk.  A match starting
+;; in a segment may read past that segment; only start positions are segmented.
+stream/match-at: func [text pattern i pat-len j] [
+    either >= j pat-len [
+        1
+    ] [
+        either = s/raw-at text + i j s/raw-at pattern j [
+            stream/match-at text pattern i pat-len + j 1
+        ] [
+            0
+        ]
+    ]
+]
+
+stream/find-small: func [text pattern i end text-len pat-len] [
+    either either >= i end [ 1 ] [ > + i pat-len text-len ] [
+        -1
+    ] [
+        either = s/raw-at text i s/raw-at pattern 0 [
+            either stream/match-at text pattern i pat-len 1 [
+                i
+            ] [
+                stream/find-small text pattern + i 1 end text-len pat-len
+            ]
+        ] [
+            stream/find-small text pattern + i 1 end text-len pat-len
+        ]
+    ]
+]
+
+stream/find-range: func [text pattern base end text-len pat-len] [
+    either >= base end [
+        -1
+    ] [
+        seg-end: either > + base 64 end [ end ] [ + base 64 ]
+        idx: stream/find-small text pattern base seg-end text-len pat-len
+        either < idx 0 [
+            stream/find-range text pattern seg-end end text-len pat-len
+        ] [
+            idx
+        ]
+    ]
+]
+
+stream/find-first: func [text pattern i text-len pat-len] [
+    limit: + 1 - text-len pat-len
+    stream/find-range text pattern i either < limit 0 [ 0 ] [ limit ] text-len pat-len
+]
+
+;; Write one bounded string to an open handle without closing it.  A short
+;; write advances by the returned byte count; a zero-progress result is a
+;; host failure, not a loop.
+stream/write-all: func [h bytes success failure] [
+    either = 0 s/length bytes [
+        success none
+    ] [
+        chunk: either > s/length bytes 400 [ s/slice bytes 0 400 ] [ bytes ]
+        io/write h chunk
+            func [n] [
+                either = n s/length bytes [
+                    success none
+                ] [
+                    stream/write-all h s/slice bytes n - s/length bytes n :success :failure
+                ]
+            ]
+            :failure
+    ]
+]
+
+;; Write prefix, replacement, suffix in order.  Each part may be empty.
+stream/emit3: func [h a b c success failure] [
+    stream/write-all h a
+        func [x] [
+            stream/write-all h b
+                func [y] [
+                    stream/write-all h c :success :failure
+                ]
+                :failure
+        ]
+        :failure
+]
+
+stream/close-both: func [in out success failure] [
+    io/close out
+        func [x] [
+            io/close in func [y] [ success none ] :failure
+        ]
+        func [e] [
+            io/close in func [y] [ failure e ] :failure
+        ]
+]
+
+stream/close-error: func [in out sin failure] [
+    io/close out
+        func [x] [
+            io/close in func [y] [ failure sin ] :failure
+        ]
+        func [e] [
+            io/close in func [y] [ failure sin ] :failure
+        ]
+]
+
+stream/finish: func [in out carry success failure] [
+    stream/write-all out carry
+        func [x] [ stream/close-both in out :success :failure ]
+        func [e] [ stream/close-error in out e :failure ]
+]
+
+;; One read/reply turn.  `done` is 0 until the first replacement is emitted,
+;; then 1 and all later input is copied unchanged.
+stream/step: func [in out carry done old new success failure] [
+    io/read in 400
+        func [chunk] [
+            either = 0 s/length chunk [
+                stream/finish in out carry :success :failure
+            ] [
+                combined: s/+ carry chunk
+                either done [
+                    stream/write-all out combined
+                        func [x] [ stream/step in out "" 1 old new :success :failure ]
+                        func [e] [ stream/close-error in out e :failure ]
+                ] [
+                    idx: stream/find-first combined old 0 s/length combined s/length old
+                    either < idx 0 [
+                        keep: - s/length old 1
+                        safe-len: - s/length combined keep
+                        either > safe-len 0 [
+                            safe: s/slice combined 0 safe-len
+                            next-carry: s/slice combined safe-len - s/length combined safe-len
+                            stream/write-all out safe
+                                func [x] [ stream/step in out next-carry 0 old new :success :failure ]
+                                func [e] [ stream/close-error in out e :failure ]
+                        ] [
+                            stream/step in out combined 0 old new :success :failure
+                        ]
+                    ] [
+                        prefix: s/slice combined 0 idx
+                        tail-start: + idx s/length old
+                        suffix: s/slice combined tail-start - s/length combined tail-start
+                        stream/emit3 out prefix new suffix
+                            func [x] [ stream/step in out "" 1 old new :success :failure ]
+                            func [e] [ stream/close-error in out e :failure ]
+                    ]
+                ]
+            ]
+        ]
+        func [e] [ stream/close-error in out e :failure ]
+]
+
+;; Reusable streaming job.  Source and target must be distinct logical names.
+stream/replace-first: func [source target old new success failure] [
+    either = 0 s/length old [
+        failure create-sin 'stream 'empty-pattern source
+    ] [
+        either s/= source target [
+            failure create-sin 'stream 'same-file target
+        ] [
+            io/open source 'read
+                func [in] [
+                    io/open target 'write
+                        func [out] [ stream/step in out "" 0 old new :success :failure ]
+                        func [e] [
+                            io/close in func [x] [ failure e ] :failure
+                        ]
+                ]
+                :failure
+        ]
+    ]
+]
+]
