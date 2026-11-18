@@ -1,0 +1,118 @@
+;; experiments/masm-vocabulary/find.glon
+;;
+;; `s/find text pattern` -- first byte offset, or -1.
+;; The public wrappers require STRING! arguments; the MASM worker assumes the
+;; wrappers' checks.  Empty pattern returns 0, including for empty text.
+;;
+;; `s/find-glon` is the portable ordinary-Glon reference.  `s/find-masm` is the
+;; accelerated implementation.  `s/find` is the selected implementation.
+[
+;; ---- portable Glon reference -------------------------------------------
+;; Bounded segments keep recursive stack depth independent of text length.
+;; A match starting in a segment may read past that segment; only candidate
+;; starts are segmented.
+s/find-glon-small: func [text pattern i end text-len pat-len] [
+    either either >= i end [ 1 ] [ > + i pat-len text-len ] [
+        -1
+    ] [
+        either = s/raw-at text i s/raw-at pattern 0 [
+            idx: s/find-glon-at text pattern i text-len pat-len 1
+            either < idx 0 [
+                s/find-glon-small text pattern + i 1 end text-len pat-len
+            ] [
+                idx
+            ]
+        ] [
+            s/find-glon-small text pattern + i 1 end text-len pat-len
+        ]
+    ]
+]
+
+s/find-glon-at: func [text pattern i text-len pat-len j] [
+    either >= j pat-len [
+        i
+    ] [
+        either = s/raw-at text + i j s/raw-at pattern j [
+            s/find-glon-at text pattern i text-len pat-len + j 1
+        ] [
+            -1
+        ]
+    ]
+]
+
+s/find-glon-range: func [text pattern base end text-len pat-len] [
+    either >= base end [
+        -1
+    ] [
+        seg-end: either > + base 64 end [ end ] [ + base 64 ]
+        idx: s/find-glon-small text pattern base seg-end text-len pat-len
+        either < idx 0 [
+            s/find-glon-range text pattern seg-end end text-len pat-len
+        ] [
+            idx
+        ]
+    ]
+]
+
+s/find-glon: func [text pattern] [
+    either s/raw-string? text [
+        either s/raw-string? pattern [
+            text-len: s/length text
+            pat-len: s/length pattern
+            either = 0 pat-len [
+                0
+            ] [
+                limit: + 1 - text-len pat-len
+                s/find-glon-range text pattern 0 either < limit 0 [ 0 ] [ limit ] text-len pat-len
+            ]
+        ] [ raise create-sin 'type 's/find pattern ]
+    ] [ raise create-sin 'type 's/find text ]
+]
+
+;; ---- MASM implementation ------------------------------------------------
+;; Scratch A/B hold text/pattern payload pointers; C/F hold the current text
+;; and pattern cursors.  The candidate start is the only return-stack local.
+;; The routine allocates no managed memory and writes neither string.
+s/raw-find: masm 2 [
+    LIT T_STRING SUB LIT SCRATCH_B !          ;; pattern payload
+    LIT T_STRING SUB LIT SCRATCH_A !          ;; text payload
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_C ! ;; text cursor = first text byte
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_F ! ;; pattern cursor = first pattern byte
+  find-outer:
+    LIT SCRATCH_C @                            ;; cursor
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A @ @ ADD ;; text first byte + text length
+    LIT SCRATCH_B @ @ SUB                      ;; minus pattern length
+    LE ZBRANCH find-no                         ;; cursor <= end -> continue; else no match
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_F ! ;; reset pattern cursor
+    LIT SCRATCH_C @ >R                         ;; save candidate
+  find-inner:
+    LIT SCRATCH_F @                            ;; pattern cursor
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B @ @ ADD ;; pattern end
+    LT ZBRANCH find-match                      ;; not (cursor < end) -> match
+    LIT SCRATCH_C @ @                          ;; text byte
+    LIT SCRATCH_F @ @                          ;; pattern byte
+    EQ ZBRANCH find-next
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT 1 ADD LIT SCRATCH_F !
+    BRANCH find-inner
+  find-next:
+    R> LIT 1 ADD LIT SCRATCH_C !               ;; next candidate
+    BRANCH find-outer
+  find-match:
+    R> LIT SCRATCH_A @ SUB LIT 1 SUB LIT 16 MUL ARITY 1 EXIT
+  find-no:
+    LIT -1 LIT 16 MUL ARITY 1 EXIT
+]
+
+s/find-masm: func [text pattern] [
+    either s/raw-string? text [
+        either s/raw-string? pattern [
+            s/raw-find text pattern
+        ] [ raise create-sin 'type 's/find pattern ]
+    ] [ raise create-sin 'type 's/find text ]
+]
+
+;; Selected implementation.  The reference remains callable for differential
+;; tests and as the portable fallback.
+s/find: :s/find-masm
+]
