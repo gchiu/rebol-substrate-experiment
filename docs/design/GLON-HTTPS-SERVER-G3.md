@@ -4,6 +4,7 @@
 **Branch:** `experiment/glon-https-g3`  
 **Worktree:** `/mnt/d/repos/glon-https-g3`  
 **Base:** G2 `f854b60` (implementation `c955523`)  
+**Implementation commit:** `9d943c7`  
 **Frozen S1:** `f90496c26dc45c7a387d8fc8639cd2781507d3d2` (unchanged)
 
 ---
