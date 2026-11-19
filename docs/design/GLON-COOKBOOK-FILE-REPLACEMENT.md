@@ -198,7 +198,7 @@ cookbook/replace-first: func [] [
 ```
 
 Application source: **5 executable lines**; the published file with explanatory
-comments is **18 lines / 826 bytes** (the site generator reports the full file).
+comments is **16 lines / 826 bytes** (the site generator reports the full file).
 This is not compared as a concision contest with the four-line REBOL
 application; the layered comparison is maintained in the public challenge.
 
