@@ -1,0 +1,14 @@
+;; examples/https-g1/server.glon -- G1: one HTML page served by Glon over HTTPS.
+;;
+;; The native host supplies sockets, TLS and HTTP parsing (optional http
+;; module).  This file is the whole application: a handler closure and a
+;; listener request.  Editing this file changes the response without
+;; recompiling the native executable.
+[
+home: func [request] [
+    http/respond request 200 "text/html; charset=utf-8"
+        "<h1>Served by Glon</h1>"
+]
+
+http/listen 8443 :home
+]

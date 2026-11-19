@@ -1,0 +1,102 @@
+;; modules/http.glon -- optional HTTPS vocabulary for the native Glon CLI.
+;;
+;; This is ordinary Glon built over the existing persistent-session
+;; request/reply boundary.  CivetWeb owns sockets, TLS and HTTP parsing; the
+;; application owns the handler and the response bytes.
+;;
+;; Host -> Glon:  http/dispatch <id> <method-string> <path-string>
+;; Glon -> host:  http/take-response => [id status content-type body] | NONE
+;;
+;; The request passed to the handler is an opaque block [id method path].  The
+;; id is an integer, never a native pointer.  A response is accepted only for
+;; the request currently being dispatched, so a stale or fabricated handle
+;; cannot address another connection.
+;;
+;; Requires the shipped prelude (block-at, reduce, either) and the built-in
+;; SIN! vocabulary (judge, sin?, raise, create-sin).
+[
+http/port: none
+http/handler: none
+http/current: none
+http/response: none
+http/stop-requested: none
+
+http/listen: func [port handler] [
+    either < port 1 [
+        raise create-sin 'http 'bad-port port
+    ] [
+        either > port 65535 [
+            raise create-sin 'http 'bad-port port
+        ] [
+            http/port: port
+            http/handler: :handler
+            none
+        ]
+    ]
+]
+
+;; Consumed once by the host before it starts the listener.
+http/take-listen: func [] [
+    either http/port [ reduce [ 1 http/port ] ] [ none ]
+]
+
+;; Application response generation.  The body is any ordinary Glon STRING!.
+http/respond: func [request status content-type body] [
+    either sin? request [
+        raise request
+    ] [
+        either http/current [
+            either = block-at request 0 block-at http/current 0 [
+                either either < status 100 [ 1 ] [ > status 599 ] [
+                    raise create-sin 'http 'bad-status status
+                ] [
+                    http/response: reduce [ block-at http/current 0 status content-type body ]
+                    none
+                ]
+            ] [
+                raise create-sin 'http 'stale-request request
+            ]
+        ] [
+            raise create-sin 'http 'no-request request
+        ]
+    ]
+]
+
+;; Ask the host to stop after the current response.  The host polls this flag
+;; from the same worker that owns the Glon session.
+http/stop: func [] [
+    http/stop-requested: 1
+    none
+]
+
+http/stopped?: func [] [
+    either http/stop-requested [ 1 ] [ 0 ]
+]
+
+;; Called by the host for one completed request.  Handler errors become a 500
+;; response; the host never loses track of the request id.
+http/dispatch: func [id method path] [
+    http/current: reduce [ id method path ]
+    http/response: none
+    result: judge [ http/handler :http/current ]
+    either sin? result [
+        either http/response [ none ] [
+            http/response: reduce [ id 500 "text/plain; charset=utf-8" "internal error" ]
+        ]
+    ] [
+        either http/response [ none ] [
+            http/response: reduce [ id 500 "text/plain; charset=utf-8" "no response" ]
+        ]
+    ]
+    http/current: none
+    none
+]
+
+;; Consumed by the host immediately after dispatch.  Clearing the stored
+;; response here drops the last Glon reference; the collector reclaims it.
+http/take-response: func [] [
+    r: http/response
+    http/response: none
+    r
+]
+]

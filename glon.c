@@ -30,6 +30,9 @@
 #include "glon_io_file.h"
 #include "glon_io_file_cli.h"
 #endif
+#ifdef GLON_MODULE_HTTP
+#include "glon_http.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -125,6 +128,12 @@ static int load_default_libraries(void) {
         if (load_library(path) != 0) return -1;
     }
 #endif
+#ifdef GLON_MODULE_HTTP
+    /* Ordinary Glon over the host request/reply boundary; never loaded by the
+     * minimal binary. */
+    snprintf(path, sizeof path, "%s/glon-lib/http.glon", exe_dir);
+    if (load_library(path) != 0) return -1;
+#endif
     return 0;
 }
 
@@ -175,10 +184,22 @@ static void report_outcome(const r0_s1_outcome *out, const char *path) {
     }
 }
 
-#ifdef GLON_MODULE_FILE
-/* ---- optional native file module driver --------------------------------- */
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP)
+/* ---- optional module options -------------------------------------------- */
 
-#define IO_REPLY_SRC_CAP 32768
+typedef struct {
+#ifdef GLON_MODULE_FILE
+    glon_io_policy io_policy;
+    const char *io_progress;
+    int io_report;
+    int io_gc_report;
+    int io_cancel;
+#endif
+#ifdef GLON_MODULE_HTTP
+    glon_http_config http;
+    int http_report;
+#endif
+} module_options;
 
 static int parse_uint_opt(const char *s, unsigned *out) {
     char *end = NULL;
@@ -188,55 +209,95 @@ static int parse_uint_opt(const char *s, unsigned *out) {
     return 0;
 }
 
-static void io_usage(void) {
+static void module_options_init(module_options *o) {
+    memset(o, 0, sizeof *o);
+#ifdef GLON_MODULE_FILE
+    glon_io_policy_default(&o->io_policy);
+#endif
+#ifdef GLON_MODULE_HTTP
+    glon_http_config_default(&o->http);
+#endif
+}
+
+static void module_usage(void) {
+    fprintf(stderr, "usage: glon");
+#ifdef GLON_MODULE_FILE
     fprintf(stderr,
-        "usage: glon [--io-root DIR] [--allow-file-read] [--allow-file-write]\n"
+        " [--io-root DIR] [--allow-file-read] [--allow-file-write]\n"
         "            [--io-max-handles N] [--io-max-file BYTES]\n"
         "            [--io-delay-ms N] [--io-short N] [--io-progress FILE]\n"
         "            [--io-fail-close] [--io-fail-rename]\n"
-        "            [--io-report] [--gc-report] [--io-cancel-before-reply] FILE...\n");
+        "            [--io-report] [--gc-report] [--io-cancel-before-reply]");
+#endif
+#ifdef GLON_MODULE_HTTP
+    fprintf(stderr,
+        " [--http-cert FILE] [--http-bind ADDR] [--http-max-requests N]\n"
+        "            [--http-timeout-ms N] [--http-max-request-size N] [--http-report]");
+#endif
+    fprintf(stderr, " FILE...\n");
 }
 
-static int parse_io_options(int argc, char **argv, int *first_file,
-                            glon_io_policy *policy, const char **progress,
-                            int *report, int *gc_report, int *cancel_before_reply) {
+static int parse_module_options(int argc, char **argv, int *first_file,
+                                module_options *o) {
     int i = 1;
     while (i < argc && argv[i][0] == '-' && argv[i][1] == '-') {
         const char *a = argv[i];
         if (!strcmp(a, "--")) { i++; break; }
+#ifdef GLON_MODULE_FILE
         else if (!strcmp(a, "--io-root")) {
             if (++i >= argc) return -1;
-            policy->root = argv[i];
+            o->io_policy.root = argv[i];
         } else if (!strcmp(a, "--allow-file-read")) {
-            policy->allow_read = 1;
+            o->io_policy.allow_read = 1;
         } else if (!strcmp(a, "--allow-file-write")) {
-            policy->allow_write = 1;
+            o->io_policy.allow_write = 1;
         } else if (!strcmp(a, "--io-max-handles")) {
             unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v)) return -1;
-            policy->max_handles = v;
+            o->io_policy.max_handles = v;
         } else if (!strcmp(a, "--io-max-file")) {
             unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v) || v == 0) return -1;
-            policy->max_file = v;
+            o->io_policy.max_file = v;
         } else if (!strcmp(a, "--io-delay-ms")) {
             unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v)) return -1;
-            policy->delay_ms = v;
+            o->io_policy.delay_ms = v;
         } else if (!strcmp(a, "--io-short")) {
             unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v) || v == 0) return -1;
-            policy->short_io = v;
+            o->io_policy.short_io = v;
         } else if (!strcmp(a, "--io-fail-close")) {
-            policy->fail_close = 1;
+            o->io_policy.fail_close = 1;
         } else if (!strcmp(a, "--io-fail-rename")) {
-            policy->fail_rename = 1;
+            o->io_policy.fail_rename = 1;
         } else if (!strcmp(a, "--io-progress")) {
             if (++i >= argc) return -1;
-            *progress = argv[i];
+            o->io_progress = argv[i];
         } else if (!strcmp(a, "--io-report")) {
-            *report = 1;
+            o->io_report = 1;
         } else if (!strcmp(a, "--gc-report")) {
-            *gc_report = 1;
+            o->io_gc_report = 1;
         } else if (!strcmp(a, "--io-cancel-before-reply")) {
-            *cancel_before_reply = 1;
-        } else {
+            o->io_cancel = 1;
+        }
+#endif
+#ifdef GLON_MODULE_HTTP
+        else if (!strcmp(a, "--http-cert")) {
+            if (++i >= argc) return -1;
+            o->http.cert = argv[i];
+        } else if (!strcmp(a, "--http-bind")) {
+            if (++i >= argc || !argv[i][0]) return -1;
+            o->http.bind = argv[i];
+        } else if (!strcmp(a, "--http-max-requests")) {
+            if (++i >= argc || parse_uint_opt(argv[i], &o->http.max_requests)) return -1;
+        } else if (!strcmp(a, "--http-timeout-ms")) {
+            unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v) || v == 0) return -1;
+            o->http.request_timeout_ms = v;
+        } else if (!strcmp(a, "--http-max-request-size")) {
+            unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v) || v == 0) return -1;
+            o->http.max_request_size = v;
+        } else if (!strcmp(a, "--http-report")) {
+            o->http_report = 1;
+        }
+#endif
+        else {
             return -1;
         }
         i++;
@@ -244,6 +305,12 @@ static int parse_io_options(int argc, char **argv, int *first_file,
     *first_file = i;
     return 0;
 }
+#endif /* GLON_MODULE_FILE || GLON_MODULE_HTTP */
+
+#ifdef GLON_MODULE_FILE
+/* ---- optional native file module driver --------------------------------- */
+
+#define IO_REPLY_SRC_CAP 32768
 
 static int run_expression(const char *src, r0_s1_outcome *oc) {
     /* Reply/take sources are transient host-built expressions.  Reclaim their
@@ -520,14 +587,12 @@ static void report_io(glon_io_cli *io) {
 /* ---- main ---------------------------------------------------------------- */
 
 int main(int argc, char **argv) {
-#ifdef GLON_MODULE_FILE
-    glon_io_policy io_policy;
-    glon_io_policy_default(&io_policy);
-    const char *io_progress = NULL;
-    int io_report = 0, io_gc_report = 0, io_cancel = 0, first_file = 1;
-    if (parse_io_options(argc, argv, &first_file, &io_policy, &io_progress,
-                         &io_report, &io_gc_report, &io_cancel) != 0) {
-        io_usage();
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP)
+    module_options opts;
+    module_options_init(&opts);
+    int first_file = 1;
+    if (parse_module_options(argc, argv, &first_file, &opts) != 0) {
+        module_usage();
         return 2;
     }
 #else
@@ -548,10 +613,10 @@ int main(int argc, char **argv) {
     if (load_default_libraries() != 0) return 2;
 
 #ifdef GLON_MODULE_FILE
-    if (io_gc_report) gc_report("start");
+    if (opts.io_gc_report) gc_report("start");
     glon_io_cli *io = NULL;
     char io_err[512];
-    if (glon_io_cli_init(&io, &io_policy, io_err, sizeof io_err) != 0) {
+    if (glon_io_cli_init(&io, &opts.io_policy, io_err, sizeof io_err) != 0) {
         fprintf(stderr, "glon: io: %s\n", io_err);
         return 2;
     }
@@ -580,11 +645,11 @@ int main(int argc, char **argv) {
 
 #ifdef GLON_MODULE_FILE
         int progress_done = 0;
-        if (drain_io(io, io_progress, &progress_done, io_report,
-                     io_gc_report, io_cancel) != 0) {
+        if (drain_io(io, opts.io_progress, &progress_done, opts.io_report,
+                     opts.io_gc_report, opts.io_cancel) != 0) {
             rc = 1; break;
         }
-        if (io_report) { report_io(io); io_reported = 1; }
+        if (opts.io_report) { report_io(io); io_reported = 1; }
         else (void)glon_io_cli_cleanup(io, NULL);
 #else
         /* minimal build: no file module, no request/reply driver */
@@ -598,11 +663,25 @@ int main(int argc, char **argv) {
         unsigned failed = 0;
         unsigned open = glon_io_cli_open_handles(io);
         unsigned closed = glon_io_cli_cleanup(io, &failed);
-        if (io_report && !io_reported)
+        if (opts.io_report && !io_reported)
             fprintf(stderr, "glon: io: handles_open=%u cleanup_closed=%u close_failed=%u\n",
                     open, closed, failed);
     }
     glon_io_cli_destroy(io);
+#endif
+
+#ifdef GLON_MODULE_HTTP
+    /* Start only after every source file has been loaded, and only if the
+     * application actually called http/listen.  The native listener owns the
+     * sockets/TLS/HTTP parser; the loaded Glon handler owns the response. */
+    if (rc == 0) {
+        char http_err[512];
+        if (glon_http_run(&opts.http, opts.http_report,
+                          http_err, sizeof http_err) != 0) {
+            fprintf(stderr, "glon: http: %s\n", http_err);
+            rc = 2;
+        }
+    }
 #endif
     return rc;
 }

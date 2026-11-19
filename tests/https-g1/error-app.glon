@@ -1,0 +1,13 @@
+;; Test application: a handler SIN! becomes a 500 response and the server
+;; remains available for later requests.
+[
+home: func [request] [
+    either str-eq block-at request 2 "/boom" [
+        raise create-sin 'app 'boom "test failure"
+    ] [
+        http/respond request 200 "text/html; charset=utf-8"
+            "<h1>Served by Glon</h1>"
+    ]
+]
+http/listen 8443 :home
+]

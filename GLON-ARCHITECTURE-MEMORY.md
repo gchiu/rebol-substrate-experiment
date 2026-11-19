@@ -940,6 +940,56 @@ Details: `docs/design/GLON-COOKBOOK-FILE-REPLACEMENT.md`,
 `modules/file-replace.glon`, `modules/file-atomic.glon` and the host module
 sources.
 
+### HTTPS server G1 (2026-11-20) — [IMPLEMENTED, LOCAL]
+
+**[DECISION] Optional HTTP module, not a substrate change.** CivetWeb 1.16
+(MIT, vendored unmodified in `third_party/civetweb/`) owns listening sockets,
+TLS, HTTP parsing, request-size limits and connection cleanup. OpenSSL 3 is the
+TLS implementation. No HTTP parser, TLS code or S1 primitive was written, and
+the frozen HOST table is unchanged. Mongoose was rejected for its
+GPLv2/commercial dual licence; libmicrohttpd for its LGPL relinking obligations
+without a size advantage.
+
+**[DECISION] Reuse the optional-module and session request/reply model.** Like
+`MODULES=file`, the HTTP bridge runs transient source turns in the existing
+persistent session and restores the loader-heap high-water mark after each
+turn. The application handler is a persistent Glon closure; per-request blocks
+are transient and rooted in the `http/` globals only for the duration of a
+dispatch. The request id is an integer, never a native pointer; both the Glon
+`http/respond` check and the C bridge reject an id other than the active one.
+
+**[DECISION] One worker, no concurrent evaluator entry.** CivetWeb is
+configured with `num_threads=1`. The main thread loads the application and then
+only polls shutdown/counter state; the single worker owns the Glon session.
+Network connection overlap is not Glon task concurrency. Response completion is
+synchronous: dispatch, `http/take-response`, transport write. There is no
+asynchronous continuation. A handler `SIN!` is caught by `judge` in
+`http/dispatch` and becomes a 500; a machine fail-stop is not judgeable and
+stops the listener rather than continuing with a possibly inconsistent runtime.
+
+**[MEASURED]** Configuration: Linux/WSL2 x86_64, GCC 11.4, default
+`-O0 -g` Glon flags, CivetWeb `-O2`, OpenSSL 3.0.2 dynamic, self-signed cert,
+loopback. Executable sizes (unstripped / stripped): minimal 185,208 / 104,768 B;
+`MODULES=file` 250,864 / 137,568 B; `MODULES=http` 372,976 / 260,416 B;
+`MODULES=file,http` 436,944 / 293,216 B. HTTP adds 152 KiB stripped beyond the
+minimal CLI. Peak RSS: minimal 1,796 KiB; HTTP server 7,668 KiB over 300
+bounded requests; file+http acceptance 7,904 KiB. Managed heap after 300
+requests: 512 live cells / 16 live objects / 6,720 free cells / 10 collections;
+the 7,232-cell heap was not enlarged. Acceptance covered exact body/status/type,
+30 sequential and 300 bounded requests, 8-way overlapping clients, client
+disconnect, oversized request rejection, stale-handle rejection, handler SIN!,
+missing-certificate startup failure, SIGTERM and `http/stop` shutdown, source
+edit without recompilation, minimal build, `MODULES=file,http`, and frozen S1.
+Full results: `docs/design/GLON-HTTPS-SERVER-G1.md`.
+
+**[LIMITATION]** G1 exposes method, decoded path and id only; no headers,
+query helper or request body. Responses are capped at 64 KiB; requests default
+to 8 KiB and keep-alive is off. A slow client can delay later clients because
+there is one worker. `MODULES=file,http` builds, but the asynchronous file
+request queue is not drained from inside an HTTP handler in G1. DigitalOcean
+deployment still needs a real certificate/renewal, explicit binding and
+firewall rules, a non-root service unit and OpenSSL/CivetWeb maintenance.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

@@ -298,26 +298,61 @@ GLON_LIB_DIR = glon-lib
 GLON_LIBS = $(GLON_LIB_DIR)/prelude.glon $(GLON_LIB_DIR)/strings.glon $(GLON_LIB_DIR)/strings-ext.glon
 
 # Optional modules are compile-time selected. MODULES is empty for the
-# unchanged minimal CLI; MODULES=file links the host-mediated async file module
-# and stages its ordinary Glon library. Unknown names fail at build time.
-MODULES ?=
+# unchanged minimal CLI.  The list is comma-separated:
+#
+#   MODULES=file        host-mediated async file module
+#   MODULES=http        optional CivetWeb HTTPS listener + ordinary http.glon
+#   MODULES=file,http   both optional modules
+#
+# Unknown names fail at build time.  Modules are additive: a minimal build
+# never compiles or links any module object, source or Glon library.
+comma := ,
+GLON_MODULE_LIST := $(subst $(comma), ,$(strip $(MODULES)))
+GLON_MODULE_UNKNOWN := $(filter-out file http,$(GLON_MODULE_LIST))
+ifneq ($(strip $(GLON_MODULE_UNKNOWN)),)
+  $(error unknown MODULES='$(MODULES)'; supported values: file, http, file,http)
+endif
+
 GLON_MODULE_SRCS :=
+GLON_MODULE_OBJS :=
 GLON_MODULE_CFLAGS :=
 GLON_MODULE_LIBS :=
 GLON_MODULE_LDLIBS :=
-ifeq ($(strip $(MODULES)),)
-else ifeq ($(strip $(MODULES)),file)
-  GLON_MODULE_SRCS := glon_io_file.c glon_io_file_posix.c glon_io_file_cli.c
-  GLON_MODULE_CFLAGS := -DGLON_MODULE_FILE
-  GLON_MODULE_LIBS := $(GLON_LIB_DIR)/file.glon $(GLON_LIB_DIR)/file-stream.glon
-  GLON_MODULE_LDLIBS := -pthread
-else
-  $(error unknown MODULES='$(MODULES)'; supported value: file)
+
+ifneq ($(filter file,$(GLON_MODULE_LIST)),)
+  GLON_MODULE_SRCS += glon_io_file.c glon_io_file_posix.c glon_io_file_cli.c
+  GLON_MODULE_CFLAGS += -DGLON_MODULE_FILE
+  GLON_MODULE_LIBS += $(GLON_LIB_DIR)/file.glon $(GLON_LIB_DIR)/file-stream.glon
+  GLON_MODULE_LDLIBS += -pthread
 endif
+
+# OpenSSL 3 development files are the only non-standard build dependency of
+# the optional HTTP module.  A normal Linux install provides them with
+# `libssl-dev`; OPENSSL_CFLAGS/OPENSSL_LIBS let a local or cross environment
+# point at an unpacked development package without editing the Makefile.
+OPENSSL_CFLAGS ?=
+OPENSSL_LIBS ?= -lssl -lcrypto
+
+ifneq ($(filter http,$(GLON_MODULE_LIST)),)
+  GLON_MODULE_SRCS += glon_http.c
+  GLON_MODULE_OBJS += third_party/civetweb/civetweb.o
+  GLON_MODULE_CFLAGS += -DGLON_MODULE_HTTP -Ithird_party/civetweb $(OPENSSL_CFLAGS)
+  GLON_MODULE_LIBS += $(GLON_LIB_DIR)/http.glon
+  GLON_MODULE_LDLIBS += -pthread $(OPENSSL_LIBS)
+endif
+
 GLON_TARGET_LIBS = $(GLON_LIBS) $(GLON_MODULE_LIBS)
 
+# CivetWeb is compiled separately with its own production flags, so the
+# default -O0 -g CFLAGS and warnings used for Glon do not slow down or clutter
+# the networking library.  TLS comes from the system OpenSSL 3.
+third_party/civetweb/civetweb.o: third_party/civetweb/civetweb.c third_party/civetweb/civetweb.h \
+		$(wildcard third_party/civetweb/*.inl)
+	$(CC) -std=c17 -O2 -w -pthread -DOPENSSL_API_3_0 -DNO_CGI -DNO_CACHING \
+		-DNO_SSL_DL -Ithird_party/civetweb $(OPENSSL_CFLAGS) -c $< -o $@
+
 # Track the selected module configuration so `make glon` and
-# `make glon MODULES=file` relink when the selection changes.
+# `make glon MODULES=...` relink when the selection changes.
 GLON_CONFIG = .glon-config
 .PHONY: FORCE
 FORCE:
@@ -325,8 +360,8 @@ $(GLON_CONFIG): FORCE
 	@printf '%s' '$(strip $(MODULES))' > $@.tmp
 	@if ! cmp -s $@.tmp $@; then mv $@.tmp $@; else rm -f $@.tmp; fi
 
-glon: $(GLON_SRCS) $(GLON_MODULE_SRCS) r0_s1.h s1.h m1_layout.h $(GLON_CONFIG) $(GLON_TARGET_LIBS)
-	$(CC) $(CFLAGS) $(GLON_MODULE_CFLAGS) -I. -o $@ $(GLON_SRCS) $(GLON_MODULE_SRCS) $(GLON_MODULE_LDLIBS)
+glon: $(GLON_SRCS) $(GLON_MODULE_SRCS) $(GLON_MODULE_OBJS) r0_s1.h s1.h m1_layout.h $(GLON_CONFIG) $(GLON_TARGET_LIBS)
+	$(CC) $(CFLAGS) $(GLON_MODULE_CFLAGS) -I. -o $@ $(GLON_SRCS) $(GLON_MODULE_SRCS) $(GLON_MODULE_OBJS) $(GLON_MODULE_LDLIBS)
 
 $(GLON_LIB_DIR)/prelude.glon: jupyter/prelude.glon
 	@mkdir -p $(GLON_LIB_DIR)
@@ -347,6 +382,10 @@ $(GLON_LIB_DIR)/file.glon: modules/file.glon
 	cp $< $@
 
 $(GLON_LIB_DIR)/file-stream.glon: modules/file-stream.glon
+	@mkdir -p $(GLON_LIB_DIR)
+	cp $< $@
+
+$(GLON_LIB_DIR)/http.glon: modules/http.glon
 	@mkdir -p $(GLON_LIB_DIR)
 	cp $< $@
 
@@ -392,6 +431,21 @@ io-file-inplace-test: io-file-c-test
 io-file-inplace-bench:
 	$(MAKE) --no-print-directory glon MODULES=file
 	python3 tests/io-file/inplace_bench.py --glon ./glon
+
+# ---- Optional HTTPS module (G1) --------------------------------------------
+# Build the minimal CLI, the file module, the HTTP module and the combined
+# module set, then run the bounded local HTTPS acceptance tests.  Requires
+# OpenSSL 3 development files (libssl-dev) and the openssl command-line tool.
+https-g1-test:
+	$(MAKE) --no-print-directory glon MODULES=
+	@./glon tests/https-g1/minimal-smoke.glon | grep -qx minimal-ok
+	$(MAKE) --no-print-directory glon MODULES=file
+	$(MAKE) --no-print-directory glon MODULES=http
+	tests/https-g1/make-cert.sh
+	python3 tests/https-g1/acceptance.py --glon ./glon
+	$(MAKE) --no-print-directory glon MODULES=file,http
+	python3 tests/https-g1/acceptance.py --glon ./glon
+	$(MAKE) --no-print-directory glon MODULES=http
 
 # ---- Desktop proof: native Glon application + browser/WASM Glon View --------
 # glon-desktop is the installed application host: it binds a localhost TCP

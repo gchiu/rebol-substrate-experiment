@@ -1,0 +1,9 @@
+;; Test application: serve one page, then ask the host to stop cleanly.
+[
+home: func [request] [
+    http/respond request 200 "text/html; charset=utf-8"
+        "<h1>Served by Glon</h1>"
+    http/stop
+]
+http/listen 8443 :home
+]

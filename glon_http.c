@@ -1,0 +1,481 @@
+/* glon_http.c - optional native HTTPS listener for the Glon CLI.
+ *
+ * CivetWeb (MIT, vendored in third_party/civetweb) provides the networking,
+ * TLS, HTTP parsing, request-size limits and connection cleanup.  This file
+ * only bridges a completed HTTP request into the persistent Glon session and
+ * transports the response bytes back.  It contains no application HTML and no
+ * routing policy.
+ *
+ * See glon_http.h for the boundary and docs/design/GLON-HTTPS-SERVER-G1.md for
+ * the design and limitations.
+ */
+
+#define _GNU_SOURCE
+#include "glon_http.h"
+#include "r0_s1.h"
+#include "m1_layout.h"
+
+#include "civetweb.h"
+
+#include <pthread.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#define GLON_HTTP_SRC_CAP 32768
+#define GLON_HTTP_CTYPE_CAP ((size_t)GLON_HTTP_TYPE_CAP)
+
+typedef struct {
+    int status;
+    char ctype[GLON_HTTP_TYPE_CAP];
+    size_t body_len;
+    unsigned char body[GLON_HTTP_BODY_CAP];
+} http_response;
+
+typedef struct {
+    glon_http_config cfg;
+    pthread_mutex_t lock;
+    volatile int stop_requested;      /* read by the main polling loop */
+    volatile int fatal;               /* read by the main polling loop */
+    volatile unsigned long completed; /* read by the main polling loop */
+    unsigned long next_id;
+    unsigned long current_id;
+    unsigned long requests;
+    unsigned long errors;
+    unsigned long write_failures;
+    unsigned long rejected;
+} http_state;
+
+static http_state http;
+
+static volatile sig_atomic_t signal_stop_flag;
+
+/* ---- source builder ------------------------------------------------------ */
+
+typedef struct {
+    char *out;
+    size_t len;
+    size_t cap;
+    int overflow;
+} http_src;
+
+static void hs_byte(http_src *b, char c) {
+    if (b->len + 1 >= b->cap) { b->overflow = 1; return; }
+    b->out[b->len++] = c;
+}
+
+static void hs_text(http_src *b, const char *s) {
+    while (*s) hs_byte(b, *s++);
+}
+
+static void hs_uint(http_src *b, unsigned long v) {
+    char tmp[32];
+    int n = 0;
+    do { tmp[n++] = (char)('0' + (int)(v % 10)); v /= 10; } while (v);
+    while (n) hs_byte(b, tmp[--n]);
+}
+
+/* Emit one ordinary Glon managed string from raw host bytes.  This is the same
+ * technique the optional file module uses for reply bytes. */
+static void hs_string(http_src *b, const unsigned char *bytes, size_t n) {
+    hs_text(b, "mk-string [");
+    for (size_t i = 0; i < n; i++) {
+        hs_byte(b, ' ');
+        hs_uint(b, (unsigned long)bytes[i]);
+    }
+    hs_text(b, " ]");
+}
+
+/* ---- one session turn ---------------------------------------------------- */
+
+static int http_run_expression(const char *src, r0_s1_outcome *oc) {
+    cell save_lhp = M[GC_LOADER_HP];
+    int perr = 0;
+    cell prog = r0_s1_parse(src, &perr);
+    if (perr) {
+        r0_s1_session_parse_error(oc);
+        M[GC_LOADER_HP] = save_lhp;
+        return -1;
+    }
+    int r = r0_s1_session_run_block(prog, oc);
+    M[GC_LOADER_HP] = save_lhp;
+    return r;
+}
+
+static void http_outcome_text(const r0_s1_outcome *oc, char *err, size_t errcap) {
+    switch (oc->status) {
+    case R0S1_OUT_OK:
+        snprintf(err, errcap, "ok");
+        break;
+    case R0S1_OUT_PARSE_ERROR:
+        snprintf(err, errcap, "parse error (%s)",
+                 r0_s1_outcome_detail_name(oc->detail));
+        break;
+    case R0S1_OUT_RESOURCE_ERROR:
+        snprintf(err, errcap, "resource error (%s)",
+                 r0_s1_outcome_detail_name(oc->detail));
+        break;
+    case R0S1_OUT_UNCAUGHT_SIN:
+        snprintf(err, errcap, "uncaught SIN! (%s)",
+                 r0_s1_outcome_status_name(oc->status));
+        break;
+    case R0S1_OUT_HALT:
+        snprintf(err, errcap, "machine halt (%s)",
+                 r0_s1_outcome_detail_name(oc->detail));
+        break;
+    default:
+        snprintf(err, errcap, "unknown session outcome %d", oc->status);
+        break;
+    }
+}
+
+/* ---- Glon-side listener configuration ----------------------------------- */
+
+int glon_http_take_listen(int *port, char *err, size_t errcap) {
+    r0_s1_outcome oc;
+    if (http_run_expression("[ http/take-listen ]", &oc) != 0 ||
+        oc.status != R0S1_OUT_OK) {
+        http_outcome_text(&oc, err, errcap);
+        return -1;
+    }
+    if (oc.count <= 0 ||
+        (oc.count == 1 && r0_s1_result(0, oc.count) == R0_NONE)) {
+        return 0;
+    }
+    if (oc.count != 1) {
+        snprintf(err, errcap, "http/take-listen returned %d values", oc.count);
+        return -1;
+    }
+    cell v = r0_s1_result(0, oc.count);
+    if (r0_tag(v) != T_BLOCK) {
+        snprintf(err, errcap, "http/take-listen did not return a BLOCK or NONE");
+        return -1;
+    }
+    cell p = r0_untag(v);
+    if (M[p] != 2) {
+        snprintf(err, errcap, "http/take-listen block shape");
+        return -1;
+    }
+    cell pv = M[p + BLK_DATA + 1];
+    if (r0_tag(pv) != T_INT) {
+        snprintf(err, errcap, "http/take-listen port is not an integer");
+        return -1;
+    }
+    long n = (long)int_val(pv);
+    if (n < 1 || n > 65535) {
+        snprintf(err, errcap, "http/take-listen port %ld is out of range", n);
+        return -1;
+    }
+    *port = (int)n;
+    return 1;
+}
+
+/* ---- request dispatch and response extraction --------------------------- */
+
+static int http_dispatch(unsigned long id, const char *method,
+                         const char *path, char *err, size_t errcap) {
+    char src[GLON_HTTP_SRC_CAP];
+    http_src b = { src, 0, sizeof src, 0 };
+
+    hs_text(&b, "[ http/dispatch ");
+    hs_uint(&b, id);
+    hs_byte(&b, ' ');
+    hs_string(&b, (const unsigned char *)method, strlen(method));
+    hs_byte(&b, ' ');
+    hs_string(&b, (const unsigned char *)path, strlen(path));
+    hs_text(&b, " ]");
+    if (b.overflow || b.len + 1 >= b.cap) {
+        snprintf(err, errcap, "dispatch source is too large");
+        return -1;
+    }
+    src[b.len] = 0;
+
+    r0_s1_outcome oc;
+    if (http_run_expression(src, &oc) != 0 || oc.status != R0S1_OUT_OK) {
+        http_outcome_text(&oc, err, errcap);
+        return -1;
+    }
+    return 0;
+}
+
+static int copy_glon_string(cell v, unsigned char *out, size_t cap,
+                            size_t *out_len, char *err, size_t errcap) {
+    if (r0_tag(v) != T_STRING) {
+        snprintf(err, errcap, "response field is not a STRING!");
+        return -1;
+    }
+    cell p = r0_untag(v);
+    cell n = M[p];
+    if (n < 0 || (size_t)n > cap) {
+        snprintf(err, errcap, "response field is too large");
+        return -1;
+    }
+    for (cell i = 0; i < n; i++) out[i] = (unsigned char)M[p + 1 + i];
+    *out_len = (size_t)n;
+    return 0;
+}
+
+static int http_take_body(cell bv, http_response *out, char *err, size_t errcap) {
+    return copy_glon_string(bv, out->body, sizeof out->body,
+                            &out->body_len, err, errcap);
+}
+
+static int http_take_response(unsigned long expected, http_response *out,
+                              int *have, char *err, size_t errcap) {
+    r0_s1_outcome oc;
+    *have = 0;
+    if (http_run_expression("[ http/take-response ]", &oc) != 0 ||
+        oc.status != R0S1_OUT_OK) {
+        http_outcome_text(&oc, err, errcap);
+        return -1;
+    }
+    if (oc.count <= 0 ||
+        (oc.count == 1 && r0_s1_result(0, oc.count) == R0_NONE)) {
+        return 0;
+    }
+    if (oc.count != 1) {
+        snprintf(err, errcap, "http/take-response returned %d values", oc.count);
+        return -1;
+    }
+    cell v = r0_s1_result(0, oc.count);
+    if (r0_tag(v) != T_BLOCK) {
+        snprintf(err, errcap, "http/take-response did not return a BLOCK or NONE");
+        return -1;
+    }
+    cell p = r0_untag(v);
+    if (M[p] != 4) {
+        snprintf(err, errcap, "http/take-response block shape");
+        return -1;
+    }
+    cell idv = M[p + BLK_DATA];
+    cell sv = M[p + BLK_DATA + 1];
+    cell tv = M[p + BLK_DATA + 2];
+    cell bv = M[p + BLK_DATA + 3];
+    if (r0_tag(idv) != T_INT || r0_tag(sv) != T_INT) {
+        snprintf(err, errcap, "response id/status are not integers");
+        return -1;
+    }
+    if ((unsigned long)int_val(idv) != expected) {
+        snprintf(err, errcap, "response id does not match the active request");
+        return -1;
+    }
+    long status = (long)int_val(sv);
+    if (status < 100 || status > 599) {
+        snprintf(err, errcap, "response status %ld is out of range", status);
+        return -1;
+    }
+    out->status = (int)status;
+    size_t tlen = 0;
+    if (copy_glon_string(tv, (unsigned char *)out->ctype,
+                         GLON_HTTP_CTYPE_CAP - 1, &tlen, err, errcap) != 0) {
+        return -1;
+    }
+    out->ctype[tlen] = 0;
+    if (http_take_body(bv, out, err, errcap) != 0) return -1;
+    *have = 1;
+    return 0;
+}
+
+static int http_app_stopped(void) {
+    r0_s1_outcome oc;
+    if (http_run_expression("[ http/stopped? ]", &oc) != 0 ||
+        oc.status != R0S1_OUT_OK || oc.count != 1) {
+        return 0;
+    }
+    cell v = r0_s1_result(0, oc.count);
+    if (r0_tag(v) != T_INT) return 0;
+    return int_val(v) != 0;
+}
+
+/* ---- HTTP transport ------------------------------------------------------ */
+
+static int http_send_response(struct mg_connection *conn,
+                              const http_response *r) {
+    char len[32];
+    snprintf(len, sizeof len, "%lu", (unsigned long)r->body_len);
+    if (mg_response_header_start(conn, r->status) < 0) return -1;
+    if (mg_response_header_add(conn, "Content-Type", r->ctype, -1) < 0) return -1;
+    if (mg_response_header_add(conn, "Content-Length", len, -1) < 0) return -1;
+    if (mg_response_header_add(conn, "Connection", "close", -1) < 0) return -1;
+    if (mg_response_header_add(conn, "Cache-Control", "no-store", -1) < 0) return -1;
+    if (mg_response_header_send(conn) < 0) return -1;
+    if (r->body_len > 0) {
+        int n = mg_write(conn, r->body, r->body_len);
+        if (n < 0 || (size_t)n != r->body_len) return -1;
+    }
+    return 0;
+}
+
+static int http_send_text(struct mg_connection *conn, int status,
+                          const char *ctype, const char *text) {
+    http_response r;
+    size_t n = strlen(text);
+    if (n > sizeof r.body) n = sizeof r.body;
+    memset(&r, 0, sizeof r);
+    r.status = status;
+    snprintf(r.ctype, sizeof r.ctype, "%s", ctype);
+    r.body_len = n;
+    memcpy(r.body, text, n);
+    return http_send_response(conn, &r);
+}
+
+static int http_begin_request(struct mg_connection *conn) {
+    const struct mg_request_info *ri = mg_get_request_info(conn);
+    if (!ri) return 0;
+
+    const char *method = ri->request_method ? ri->request_method : "GET";
+    const char *path = ri->local_uri ? ri->local_uri
+                      : (ri->request_uri ? ri->request_uri : "/");
+    if (strlen(method) >= GLON_HTTP_METHOD_CAP ||
+        strlen(path) >= GLON_HTTP_URI_CAP) {
+        http.rejected++;
+        return http_send_text(conn, 414, "text/plain; charset=utf-8",
+                              "URI too long") == 0 ? 414 : 500;
+    }
+    if (ri->content_length > (long long)GLON_HTTP_BODY_CAP) {
+        http.rejected++;
+        return http_send_text(conn, 413, "text/plain; charset=utf-8",
+                              "request body too large") == 0 ? 413 : 500;
+    }
+
+    int reply_status = 500;
+    pthread_mutex_lock(&http.lock);
+    unsigned long id = ++http.next_id;
+    if (id == 0) id = ++http.next_id;   /* ids are opaque; skip 0 */
+    http.current_id = id;
+    http.requests++;
+
+    char err[256];
+    if (http_dispatch(id, method, path, err, sizeof err) != 0) {
+        fprintf(stderr, "glon: http: dispatch %lu: %s\n", id, err);
+        http.errors++;
+        http.fatal = 1;
+        if (http_send_text(conn, 500, "text/plain; charset=utf-8",
+                           "Glon dispatch failed") == 0) reply_status = 500;
+    } else {
+        http_response r;
+        int have = 0;
+        if (http_take_response(id, &r, &have, err, sizeof err) != 0) {
+            fprintf(stderr, "glon: http: response %lu: %s\n", id, err);
+            http.errors++;
+            http.fatal = 1;
+            if (http_send_text(conn, 500, "text/plain; charset=utf-8",
+                               "Glon response failed") == 0) reply_status = 500;
+        } else if (!have) {
+            http.errors++;
+            if (http_send_text(conn, 500, "text/plain; charset=utf-8",
+                               "no response") == 0) reply_status = 500;
+        } else {
+            reply_status = r.status;
+            if (http_send_response(conn, &r) != 0) {
+                http.write_failures++;   /* usually a client disconnect */
+            }
+            http.completed++;
+        }
+    }
+    if (!http.fatal && http_app_stopped()) http.stop_requested = 1;
+    http.current_id = 0;
+    pthread_mutex_unlock(&http.lock);
+
+    return reply_status;
+}
+
+static void http_signal_handler(int sig) {
+    (void)sig;
+    signal_stop_flag = 1;
+}
+
+void glon_http_config_default(glon_http_config *cfg) {
+    memset(cfg, 0, sizeof *cfg);
+    cfg->bind = "127.0.0.1";
+    cfg->max_requests = 0;
+    cfg->request_timeout_ms = 10000;
+    cfg->max_request_size = 8192;
+}
+
+int glon_http_run(const glon_http_config *cfg, int report,
+                  char *err, size_t errcap) {
+    int port = 0;
+    int lr = glon_http_take_listen(&port, err, errcap);
+    if (lr < 0) return -1;
+    if (lr == 0) return 0;                 /* application did not listen */
+
+    if (!cfg->cert || !cfg->cert[0]) {
+        snprintf(err, errcap,
+                 "the application configured a listener but --http-cert was not supplied");
+        return -1;
+    }
+
+    memset(&http, 0, sizeof http);
+    http.cfg = *cfg;
+    pthread_mutex_init(&http.lock, NULL);
+
+    char ports[256];
+    snprintf(ports, sizeof ports, "%s:%d%s", cfg->bind, port, "s");
+
+    char timeout[32], maxreq[32];
+    snprintf(timeout, sizeof timeout, "%u", cfg->request_timeout_ms);
+    snprintf(maxreq, sizeof maxreq, "%u", cfg->max_request_size);
+
+    const char *options[] = {
+        "listening_ports", ports,
+        "num_threads", "1",              /* one Glon evaluator owner */
+        "enable_keep_alive", "no",
+        "request_timeout_ms", timeout,
+        "max_request_size", maxreq,
+        "ssl_certificate", cfg->cert,
+        "document_root", ".",
+        "decode_url", "yes",
+        NULL
+    };
+
+    struct mg_callbacks callbacks;
+    memset(&callbacks, 0, sizeof callbacks);
+    callbacks.begin_request = http_begin_request;
+
+    struct sigaction sa, old_int, old_term;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = http_signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, &old_int);
+    sigaction(SIGTERM, &sa, &old_term);
+    signal_stop_flag = 0;
+
+    struct mg_context *ctx = mg_start(&callbacks, NULL, options);
+    if (!ctx) {
+        snprintf(err, errcap,
+                 "HTTPS listener could not start (bind/TLS configuration failed); "
+                 "no insecure fallback was attempted");
+        sigaction(SIGINT, &old_int, NULL);
+        sigaction(SIGTERM, &old_term, NULL);
+        pthread_mutex_destroy(&http.lock);
+        return -1;
+    }
+    fprintf(stderr, "glon: http: listening on https://%s:%d\n", cfg->bind, port);
+
+    while (!signal_stop_flag && !http.stop_requested && !http.fatal) {
+        if (cfg->max_requests && http.completed >= cfg->max_requests) break;
+        usleep(10000);
+    }
+
+    mg_stop(ctx);
+    sigaction(SIGINT, &old_int, NULL);
+    sigaction(SIGTERM, &old_term, NULL);
+    pthread_mutex_destroy(&http.lock);
+
+    if (report) {
+        fprintf(stderr,
+                "glon: http: requests=%lu completed=%lu errors=%lu "
+                "rejected=%lu write_failures=%lu gc=%ld live_cells=%ld "
+                "live_objs=%ld heap_high=%ld free_cells=%ld\n",
+                http.requests, http.completed, http.errors, http.rejected,
+                http.write_failures, r0_s1_gc_count(),
+                r0_s1_gc_live_cells(), r0_s1_gc_live_objs(),
+                r0_s1_heap_high(), r0_s1_gc_free_cells());
+    }
+
+    snprintf(err, errcap, "stopped");
+    return http.fatal ? -1 : 0;
+}
