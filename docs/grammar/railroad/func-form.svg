@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 345 108" width="345" height="108" role="img" aria-label="Railroad diagram for production func-form">
+<title>func-form</title>
+<rect x="0" y="0" width="345" height="108" fill="#ffffff"/>
+<path d="M24 54 L34 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="34" y="38" width="50.8" height="32" rx="4" fill="#ffffff" stroke="#303030" stroke-width="1.5"/>
+<path d="M84.8 54 L94.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="59.4" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#111">func</text>
+<path d="M94.8 54 L112.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M112.8 54 L122.8 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="122.8" y="38" width="52.8" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M175.6 54 L185.6 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="149.2" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">form</text>
+<path d="M185.6 54 L203.6 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M203.6 54 L221.6 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M221.6 54 L221.6 24" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M221.6 24 L302.1 24" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M302.1 24 L302.1 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M221.6 54 L231.6 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="231.6" y="38" width="60.5" height="32" rx="12" fill="#eef4ff" stroke="#303030" stroke-width="1.5"/>
+<path d="M292.1 54 L302.1 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="261.85" y="58" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#111">block</text>
+<path d="M302.1 54 L320.1 54" fill="none" stroke="#404040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

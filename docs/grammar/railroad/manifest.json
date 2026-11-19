@@ -1,0 +1,131 @@
+{
+  "generator": "docs/grammar/generate.py",
+  "generator_version": 1,
+  "grammar": "glon-grammar.ebnf",
+  "grammar_sha256": "29354e2478832154abe6c418a3a51eafee8cc4fb1b4b3cbe02ef0fbe50621dd9",
+  "index_bytes": 100339,
+  "index_sha256": "b2639630f37471214ba7e56039b54ae0f5fd7ae6c22533fa02046fc3eeac13e4",
+  "production_count": 20,
+  "productions": [
+    {
+      "bytes": 9551,
+      "name": "source",
+      "sha256": "fe2b4e2f6c90b1e39cef813237d4a660e6363daafb9448f3021d88e07c2e007b",
+      "svg": "source.svg"
+    },
+    {
+      "bytes": 1814,
+      "name": "trailing-tail",
+      "sha256": "d381e755ed3300ad684a88a041aa9f8eadb03943994075049413df4829830e49",
+      "svg": "trailing-tail.svg"
+    },
+    {
+      "bytes": 3120,
+      "name": "top-item",
+      "sha256": "230415522bcd6305235ab0fb95bcf9bf1258406ca7bbcbf7a40a13c6f92fd4d6",
+      "svg": "top-item.svg"
+    },
+    {
+      "bytes": 4410,
+      "name": "block",
+      "sha256": "fc84ce7326bc1d68895495df901439065e14374bdef1b2f025c359ba0d772a7e",
+      "svg": "block.svg"
+    },
+    {
+      "bytes": 3923,
+      "name": "block-item",
+      "sha256": "59c540d150b9ecab60d2978d2d8ed195d9eec6f88af56970fa9d66662273264e",
+      "svg": "block-item.svg"
+    },
+    {
+      "bytes": 3110,
+      "name": "form",
+      "sha256": "dd9706a022b36280db78c78645cb7d096bdf8da800d6f9bd3f306df440057e95",
+      "svg": "form.svg"
+    },
+    {
+      "bytes": 2749,
+      "name": "func-form",
+      "sha256": "14b4bf1c6cc7a41e4185520c8fa36a5ebed5a38dd33fc9dcca377f8038aa4b21",
+      "svg": "func-form.svg"
+    },
+    {
+      "bytes": 7722,
+      "name": "masm-form",
+      "sha256": "67a892d92b4e4ecc27aba70c3e7d0c62243d74decaa1cc70c2639713f0a72e48",
+      "svg": "masm-form.svg"
+    },
+    {
+      "bytes": 2075,
+      "name": "masm-block",
+      "sha256": "e95134a6e521f5485735b9598cf47c615a24c5f48f191e9fc5779208f4b639fe",
+      "svg": "masm-block.svg"
+    },
+    {
+      "bytes": 3072,
+      "name": "string",
+      "sha256": "46a6e37c3b0c2f5615d4f4abd483e981410bb4f034c120c98d29838cc44636a8",
+      "svg": "string.svg"
+    },
+    {
+      "bytes": 2664,
+      "name": "integer",
+      "sha256": "094165f63e2439b8131660403cd8bf6eed1f0e3a0121fe9d40c5a8676037f765",
+      "svg": "integer.svg"
+    },
+    {
+      "bytes": 798,
+      "name": "word",
+      "sha256": "4883ecbb1e1f71c80ede75d842428aabbe8cc39828938f68f1665be5831fb821",
+      "svg": "word.svg"
+    },
+    {
+      "bytes": 6576,
+      "name": "word-value",
+      "sha256": "244d8d3cd26dfc87f296c26f0a1f7fd23d2668b432eaef7bd7c84d940943d761",
+      "svg": "word-value.svg"
+    },
+    {
+      "bytes": 1413,
+      "name": "token",
+      "sha256": "fd7265cf0b26de07ddcb4fed0e905a7569942230522d2efa8eebaf1dc6049cf9",
+      "svg": "token.svg"
+    },
+    {
+      "bytes": 867,
+      "name": "token-byte",
+      "sha256": "72c728b99b0906ba2897fcac97b997cd27d1eaea6448158adce101af3fa10dcd",
+      "svg": "token-byte.svg"
+    },
+    {
+      "bytes": 865,
+      "name": "non-quote-byte",
+      "sha256": "b10ef4d3179c1fbadc6ebf9d5d0e98dda009d8efafa589f599c852478201ffda",
+      "svg": "non-quote-byte.svg"
+    },
+    {
+      "bytes": 841,
+      "name": "any-byte",
+      "sha256": "ff1be2c89c48b5cfb84ab819489b61fe7f3cb3479c77c690d0178de4baa5f66c",
+      "svg": "any-byte.svg"
+    },
+    {
+      "bytes": 863,
+      "name": "masm-tokens",
+      "sha256": "276141e790b40366afb9c7baa79cbc8e2c52c38d10fb16476629b1a95c0142ae",
+      "svg": "masm-tokens.svg"
+    },
+    {
+      "bytes": 7987,
+      "name": "digit",
+      "sha256": "7663f08309398e9b8c1c06baa5951f7e16220a2913f0f402200b86191ff6e34d",
+      "svg": "digit.svg"
+    },
+    {
+      "bytes": 5670,
+      "name": "ws",
+      "sha256": "4d923aece418f4bb9d8b0f05340332e68d07db2cecbbdb580b125b6b4c4841d1",
+      "svg": "ws.svg"
+    }
+  ]
+}
