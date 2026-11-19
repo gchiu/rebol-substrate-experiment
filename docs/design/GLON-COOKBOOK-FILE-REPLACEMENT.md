@@ -4,9 +4,10 @@
 **Branch:** `integration/cookbook-file-replace`
 **Worktree:** `/mnt/d/repos/glon-cookbook-complete`
 **Base:** `87a5ca70610585df387a4a097541b87c4d82e3f2` (MASM-3)
-**Final integration commit:** recorded at publication/pin time in
-`gchiu/glon/interpreter.json` and in the engineering delivery report. The
-engineering branch head is the final revision.
+**Implementation commit:** `a2245b2b6e5854bcbaf21406b9b852d84427d5f4`.
+**Language/grammar source commit:** `ceebc62cfde847530269ff4f8bd60e7739cc8054`.
+**Final integration revision:** this commit (the engineering branch head; the
+exact hash is pinned in `gchiu/glon/interpreter.json`).
 
 This completes REBOL Cookbook recipe 0004 at the original path:
 
@@ -196,10 +197,10 @@ cookbook/replace-first: func [] [
 ]
 ```
 
-Application source size: **5 lines / 205 bytes** (including the trailing
-newline count used by the site generator). This is not compared as a concision
-contest with the four-line REBOL application; the layered comparison is
-maintained in the public challenge.
+Application source: **5 executable lines**; the published file with explanatory
+comments is **18 lines / 826 bytes** (the site generator reports the full file).
+This is not compared as a concision contest with the four-line REBOL
+application; the layered comparison is maintained in the public challenge.
 
 ---
 
