@@ -3,6 +3,7 @@
 **Status:** implemented, locally committed, not pushed or deployed.  
 **Branch:** `experiment/glon-https-g2`  
 **Base commit:** `d01dab5` (G1)  
+**Implementation commit:** `c955523`  
 **Frozen S1:** `f90496c26dc45c7a387d8fc8639cd2781507d3d2` (verified unchanged)
 
 G2 turns the G1 single-page server into a small multi-page HTTPS application.
