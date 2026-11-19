@@ -322,6 +322,21 @@ In order:
 | Iterator vocabulary v001 (**experiment, not deployed**) | *(untagged)* | *(the commit adding `experiments/glon-iter/`)* |
 | DOM-tree iterator v001 (**experiment, not deployed**) | *(untagged)* | `369a3f0` |
 | Host-backed DOM and native `glon-web` link extraction (**experimental milestone, not deployed**) | *(untagged)* | *(the commit adding `experiments/glon-dom-links/`, `glon-dom-host/`, `glon-links-native/`)* |
+| Optional async file I/O + bounded streaming (**experimental, not production**) | *(untagged)* | IO-1 `7adf057`, IO-2 `97b8d36`, IO-3 `72ff1ff` |
+| HOST-boundary investigation (**design only**) | *(untagged)* | `43600bb` |
+| MASM `s/find` + fused `io/u32` (**experimental, not production**) | *(untagged)* | MASM-1 `fac9b57`, IO-4 `24c10b2`, MASM-2 `4a054ec` |
+| MASM `s/slice2` variable-length worker (**experimental, not production**) | *(untagged)* | *(this experiment)* |
+
+**Optional I/O and MASM track (experiments, not deployed).** IO-1 through
+MASM-3 are local branches/worktrees. Frozen S1, the HOST table, parser,
+evaluator, GC, M1 and IO-3 are unchanged. MASM-3 found that ~72% of the
+remaining 1 MiB no-match callback opcodes are in the GC region, and that adding
+ten unused helper closures raises GC work by 26% with identical allocations.
+`s/slice2` is 2.9–3.2× faster than its ordinary reference standalone and,
+with a zero-carry direct-write composition, improves matched/boundary streaming
+by 8–10% at 1 MiB; no-match is neutral. Worker polling (IO-5) and request-path
+allocation remain. See `docs/design/GLON-MASM-VOCABULARY-ACCELERATION-3.md` and
+`experiments/masm3/`.
 
 **Glon LaTeX milestone (2026-11-06/07).** What is deployed and what is
 experimental are different things:
@@ -541,6 +556,9 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `R3-FIB-COMPARISON.md` — local Rebol3 vs Glon P5 Fibonacci benchmark.
 - `GLON-ARCHITECTURE-MEMORY.md` — architectural decisions, measurements and
   proposals (the memory map, capacities, vocabularies and experiments).
+- `docs/design/GLON-MASM-VOCABULARY-ACCELERATION-3.md` — MASM-3 profile,
+  `s/slice2` variable-length worker, allocation/GC findings and streaming
+  benchmarks; implementation and tests in `experiments/masm3/`.
 - `GLON-EXECUTION-ARCHITECTURE.md` — 2026-11-10 investigation of where
   execution complexity resides (evaluator, GC, primitive set, assembler and
   host integration), with its measurement tools in

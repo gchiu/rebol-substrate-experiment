@@ -859,6 +859,52 @@ emitter attribution, six workloads, native `-O1`; tools in
 All are assembler or runtime changes, not S1 changes. A larger memory profile
 does not add code space unless it also moves `DS_INIT` (frozen).
 
+### Optional I/O and MASM experiments (locally committed, not production)
+
+**[FINDING]** A separate experimental track demonstrates optional asynchronous
+file I/O and MASM vocabulary acceleration without changing frozen S1, the HOST
+table, parser, evaluator, GC or M1 scheduler. Git remains authoritative; none of
+these commits is merged, pushed, tagged or accepted for production.
+
+| Track | Commit | Outcome |
+|---|---|---|
+| IO-1 | `7adf057` | Optional async file module, framed v1 protocol, POSIX worker. |
+| IO-2 | `97b8d36` | Stabilisation: caps, status/protocol validation, C tests, sanitizers. |
+| IO-3 | `72ff1ff` | Bounded-memory streaming replacement, 400-byte chunks, 4 MiB verified. |
+| HOST investigation | `43600bb` | Keep the closed HOST table; external complexity is async completion, not the table. |
+| MASM-1 | `fac9b57` | MASM `s/find`; 221/221 differential; ~220–235× on a 400-byte no-match. |
+| IO-4 | `24c10b2` | Callback/state ~77%, worker wait ~17%; textual build/parse <1%; loader-lifetime audit. |
+| MASM-2 | `4a054ec` | MASM fused `io/u32`; fixed-size managed STRING!; 1 MiB no-match 78.98 s → 34.76 s. |
+| MASM-3 | *(this experiment)* | `s/slice2` variable-length worker; matched/boundary streaming −8–10%; no-match neutral. |
+
+**MASM-3 measurements (2026-11-19, 64K profile, WSL2, load-sensitive).**
+- A 1 MiB MASM-2 no-match profile attributes ~72% of callback S1 opcodes to the
+  GC region and ~4% to `alloc`; worker wait is ~5.85 s. The dominant remaining
+  cost is collection, not a string primitive.
+- GC cost depends on live roots: loading ten unused helper closures raised the
+  same 64 KiB callback from 1.13 s to 1.34 s (+18%) and GC opcodes from
+  191.5 M to 241.8 M (+26%) with identical allocations. New vocabulary has a
+  per-collection live-root cost; ship deployment-minimal libraries.
+- `s/slice2 a b start n` slices the virtual concatenation without materialising
+  it. It is 2.9–3.2× faster than the ordinary reference standalone. With a
+  zero-carry direct-write composition, 1 MiB match/boundary improve by 8–10% and
+  4 MiB by 7–9%; 1 MiB no-match is neutral because the GC saving and the added
+  copy/setup cost cancel.
+- Variable-length construction is feasible with only the seven S1 instructions
+  and the documented `alloc`/`GC_KIND_STRING` path. The worker roots sources on
+  the data stack across the single allocation, makes no allocation after it, and
+  uses an untraced 16-cell tail of the result allocation as local workspace.
+  Measured limit in the test harness: 2,048 bytes succeeds, 2,500 fail-stops on
+  heap exhaustion; the tail costs 16 cells of maximum size.
+- Cooperative M1 `spawn`/`yield` use is tested with results surviving yields and
+  allocation pressure. The worker does not yield; arbitrary preemption and
+  reentrancy are not supported or claimed.
+- Request-path allocation (~224 cells/request) and the 1 ms worker polling
+  remain. Polling is IO-5; request-path allocation is a follow-up experiment.
+
+Details: `docs/design/GLON-MASM-VOCABULARY-ACCELERATION-3.md`,
+`experiments/masm3/`, and the earlier IO/MASM reports cited there.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

@@ -1,0 +1,116 @@
+[ mnew-task: masm 3 [
+    LIT M1_S2 ! ;; finish-word
+    LIT M1_S1 ! ;; do-word
+    CALL ESC_TRANSPORT ;; escape law (5): reject a dependent body first
+    DUP LIT 16 MOD SUB LIT M1_S0 ! ;; body ptr
+    LIT 0 LIT M1_S3 ! ;; slot = 0
+  Lfind:
+    LIT M1_S3 @ LIT 3 LT ZBRANCH Lfull
+    LIT M1_S3 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S4 ! ;; record addr
+    LIT M1_S4 @ LIT TREC_STATE ADD @ LIT 2 EQ ZBRANCH Lnext ;; EMPTY?
+    BRANCH Lmake
+  Lnext:
+    LIT M1_S3 @ LIT 1 ADD LIT M1_S3 !
+    BRANCH Lfind
+  Lfull:
+    LIT -1 LIT 16 MUL ARITY 1 EXIT
+  Lmake:
+    ;; build the wrapper block [arity 0 do-word body-ctx finish-word]
+    LIT M1_S4 @ LIT M1_WRAPPER_DELTA ADD LIT M1_S5 !
+    LIT 3 LIT M1_S5 @ !
+    LIT 0 LIT M1_S5 @ LIT 1 ADD !
+    LIT M1_S1 @ LIT M1_S5 @ LIT 2 ADD !
+    LIT M1_S0 @ LIT 6 ADD LIT M1_S5 @ LIT 3 ADD !
+    LIT M1_S2 @ LIT M1_S5 @ LIT 4 ADD !
+    LIT M1_MAIN_ENTRY_CELL @ LIT M1_S4 @ !
+    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_DS_OFF ADD LIT M1_S4 @ LIT TREC_SP ADD !
+    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_RS_OFF ADD LIT M1_S4 @ LIT TREC_RP ADD !
+    LIT M1_S5 @ LIT 2 ADD LIT M1_S4 @ LIT TREC_CUR ADD !
+    LIT M1_S5 @ LIT 5 ADD LIT M1_S4 @ LIT TREC_END ADD !
+    LIT RV_CTX @ LIT M1_S4 @ LIT TREC_CTX ADD !
+    LIT M1_S5 @ LIT M1_S4 @ LIT TREC_BLK ADD !
+    LIT 0 LIT M1_S4 @ LIT TREC_FRAME ADD !
+    LIT 0 LIT M1_S4 @ LIT TREC_STATE ADD !
+    LIT M1_S4 @ LIT 16 MUL ARITY 1 EXIT
+]
+;; YIELD -- save this task's machine state to its record, resume the scheduler.
+ yield: masm [
+    NONE LIT 16
+    LIT REG_RP @ @ LIT M1_CUR_TASK @ LIT TREC_IP ADD ! ;; task IP
+    LIT REG_SP @ LIT M1_CUR_TASK @ LIT TREC_SP ADD !
+    LIT REG_RP @ LIT M1_CUR_TASK @ LIT TREC_RP ADD !
+    LIT RV_CUR @ LIT M1_CUR_TASK @ LIT TREC_CUR ADD !
+    LIT RV_END @ LIT M1_CUR_TASK @ LIT TREC_END ADD !
+    LIT RV_CTX @ LIT M1_CUR_TASK @ LIT TREC_CTX ADD !
+    LIT RV_BLK @ LIT M1_CUR_TASK @ LIT TREC_BLK ADD !
+    LIT RV_FRAME @ LIT M1_CUR_TASK @ LIT TREC_FRAME ADD !
+    LIT M1_SCHED_REC LIT TREC_SP ADD @ LIT REG_SP !
+    LIT M1_SCHED_REC LIT TREC_RP ADD @ LIT REG_RP !
+    LIT M1_SCHED_REC LIT TREC_CUR ADD @ LIT RV_CUR !
+    LIT M1_SCHED_REC LIT TREC_END ADD @ LIT RV_END !
+    LIT M1_SCHED_REC LIT TREC_CTX ADD @ LIT RV_CTX !
+    LIT M1_SCHED_REC LIT TREC_BLK ADD @ LIT RV_BLK !
+    LIT M1_SCHED_REC LIT TREC_FRAME ADD @ LIT RV_FRAME !
+    LIT M1_SCHED_REC LIT TREC_IP ADD @ LIT REG_IP !
+]
+;; TASK-FINISH -- mark this task finished, then resume the scheduler.
+ task-finish: masm [
+    LIT 1 LIT M1_CUR_TASK @ LIT TREC_STATE ADD !
+    LIT M1_SCHED_REC LIT TREC_SP ADD @ LIT REG_SP !
+    LIT M1_SCHED_REC LIT TREC_RP ADD @ LIT REG_RP !
+    LIT M1_SCHED_REC LIT TREC_CUR ADD @ LIT RV_CUR !
+    LIT M1_SCHED_REC LIT TREC_END ADD @ LIT RV_END !
+    LIT M1_SCHED_REC LIT TREC_CTX ADD @ LIT RV_CTX !
+    LIT M1_SCHED_REC LIT TREC_BLK ADD @ LIT RV_BLK !
+    LIT M1_SCHED_REC LIT TREC_FRAME ADD @ LIT RV_FRAME !
+    LIT M1_SCHED_REC LIT TREC_IP ADD @ LIT REG_IP !
+]
+;; RUN-TASKS -- deterministic round-robin: save the scheduler, then restore the
+;; next runnable task's saved state and transfer control to its continuation.
+ run-tasks: masm [
+    LIT REG_IP @ LIT 11 ADD LIT M1_SCHED_REC LIT TREC_IP ADD !
+    LIT REG_SP @ LIT M1_SCHED_REC LIT TREC_SP ADD !
+    LIT REG_RP @ LIT M1_SCHED_REC LIT TREC_RP ADD !
+    LIT RV_CUR @ LIT M1_SCHED_REC LIT TREC_CUR ADD !
+    LIT RV_END @ LIT M1_SCHED_REC LIT TREC_END ADD !
+    LIT RV_CTX @ LIT M1_SCHED_REC LIT TREC_CTX ADD !
+    LIT RV_BLK @ LIT M1_SCHED_REC LIT TREC_BLK ADD !
+    LIT RV_FRAME @ LIT M1_SCHED_REC LIT TREC_FRAME ADD !
+    LIT M1_CURSOR @ LIT M1_S7 ! ;; scan index
+    LIT 0 LIT M1_S8 ! ;; scan count
+  Lscan:
+    LIT M1_S8 @ LIT 3 LT ZBRANCH Ldone
+    LIT M1_S7 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S6 ! ;; record addr
+    LIT M1_S6 @ LIT TREC_STATE ADD @ LIT 0 NE ZBRANCH Lfound ;; RUNNABLE/FINISHED
+  Lskip:
+    LIT M1_S7 @ LIT 1 ADD LIT 3 MOD LIT M1_S7 !
+    LIT M1_S8 @ LIT 1 ADD LIT M1_S8 !
+    BRANCH Lscan
+  Ldone:
+    NONE LIT 16 EXIT
+  Lfound:
+    LIT M1_S6 @ LIT M1_CUR_TASK ! ;; resume this record
+    LIT M1_S7 @ LIT 1 ADD LIT 3 MOD LIT M1_CURSOR ! ;; next cursor
+    LIT M1_CUR_TASK @ LIT TREC_SP ADD @ LIT REG_SP !
+    LIT M1_CUR_TASK @ LIT TREC_RP ADD @ LIT REG_RP !
+    LIT M1_CUR_TASK @ LIT TREC_CUR ADD @ LIT RV_CUR !
+    LIT M1_CUR_TASK @ LIT TREC_END ADD @ LIT RV_END !
+    LIT M1_CUR_TASK @ LIT TREC_CTX ADD @ LIT RV_CTX !
+    LIT M1_CUR_TASK @ LIT TREC_BLK ADD @ LIT RV_BLK !
+    LIT M1_CUR_TASK @ LIT TREC_FRAME ADD @ LIT RV_FRAME !
+    LIT M1_CUR_TASK @ LIT TREC_IP ADD @ LIT REG_IP !
+]
+;; RESET-TASKS -- mark all three task slots EMPTY and reset the cursor.
+  reset-tasks: masm [
+    LIT 0 LIT M1_S3 !
+  Rloop:
+    LIT M1_S3 @ LIT 3 LT ZBRANCH Rdone
+    LIT 2 LIT M1_S3 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT TREC_STATE ADD !
+    LIT M1_S3 @ LIT 1 ADD LIT M1_S3 !
+    BRANCH Rloop
+  Rdone:
+    LIT 0 LIT M1_CURSOR !
+    ARITY 0 EXIT
+]
+spawn: func [body] [ mnew-task body 'do 'task-finish ]
+]

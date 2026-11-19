@@ -1,0 +1,98 @@
+;; MASM-3 minimal library: only the worker and the checked wrapper, for
+;; deployment into the experimental streaming copy.  The richer reference and
+;; test helpers live in slice2.glon; each global closure is a permanent GC root
+;; and adds measurable per-collection cost (see the MASM-3 report).
+[
+s/raw-slice2: masm 4 [
+    LIT 16 DIV LIT SCRATCH_F !                 ;; n (raw)
+    LIT 16 DIV LIT SCRATCH_B !                 ;; start (raw)
+    LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL
+    LIT 16 ADD                                 ;; rounded payload + 16-cell workspace
+    LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C ! ;; C = payload
+    LIT SCRATCH_F @ LIT SCRATCH_C @ !          ;; length = n
+    ;; A = workspace base = payload + rounded payload extent
+    LIT SCRATCH_C @
+    LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL
+    ADD LIT SCRATCH_A !
+    ;; pop b and a into workspace cursors (payload + 1 = first byte)
+    LIT T_STRING SUB LIT 1 ADD LIT SCRATCH_A @ LIT 1 ADD !
+    LIT T_STRING SUB LIT 1 ADD LIT SCRATCH_A @ !
+    ;; W+2 = a end, W+3 = b end
+    LIT SCRATCH_A @ @ DUP LIT 1 SUB @ ADD LIT SCRATCH_A @ LIT 2 ADD !
+    LIT SCRATCH_A @ LIT 1 ADD @ DUP LIT 1 SUB @ ADD LIT SCRATCH_A @ LIT 3 ADD !
+    ;; W+4 = destination cursor, W+5 = result payload
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_A @ LIT 4 ADD !
+    LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 5 ADD !
+    ;; W+6 = start, W+7 = n
+    LIT SCRATCH_B @ LIT SCRATCH_A @ LIT 6 ADD !
+    LIT SCRATCH_F @ LIT SCRATCH_A @ LIT 7 ADD !
+    ;; avail = a_end - a_cursor; if start < avail use the a part, else skip a
+    LIT SCRATCH_A @ LIT 2 ADD @ LIT SCRATCH_A @ @ SUB
+    DUP LIT SCRATCH_A @ LIT 6 ADD @ GT ZBRANCH slice2-b-only
+    ;; a part: advance a cursor by start; a_count = min(n, new_avail)
+    DROP
+    LIT SCRATCH_A @ @ LIT SCRATCH_A @ LIT 6 ADD @ ADD LIT SCRATCH_A @ !
+    LIT SCRATCH_A @ LIT 2 ADD @ LIT SCRATCH_A @ @ SUB
+    DUP LIT SCRATCH_A @ LIT 7 ADD @ LT ZBRANCH slice2-take-n
+    BRANCH slice2-a-count
+  slice2-take-n:
+    DROP LIT SCRATCH_A @ LIT 7 ADD @
+  slice2-a-count:
+    DUP LIT SCRATCH_A @ LIT 6 ADD !
+    >R LIT SCRATCH_A @ LIT 7 ADD @ R> SUB LIT SCRATCH_A @ LIT 7 ADD !
+    BRANCH slice2-copy-setup
+  slice2-b-only:
+    ;; start >= avail: a cursor = a end; b cursor += start - avail; a_count = 0
+    LIT SCRATCH_A @ LIT 2 ADD @ LIT SCRATCH_A @ !
+    >R LIT SCRATCH_A @ LIT 6 ADD @ R> SUB
+    LIT SCRATCH_A @ LIT 1 ADD @ ADD LIT SCRATCH_A @ LIT 1 ADD !
+    LIT 0 LIT SCRATCH_A @ LIT 6 ADD !
+  slice2-copy-setup:
+    ;; A=source a, B=source b, C=dest, F=a_count; W saved on the return stack
+    LIT SCRATCH_A @ >R
+    LIT SCRATCH_A @ LIT 1 ADD @ LIT SCRATCH_B !
+    LIT SCRATCH_A @ LIT 4 ADD @ LIT SCRATCH_C !
+    LIT SCRATCH_A @ LIT 6 ADD @ LIT SCRATCH_F !
+    LIT SCRATCH_A @ @ LIT SCRATCH_A !
+  slice2-a-loop:
+    LIT SCRATCH_F @ ZBRANCH slice2-b-loop
+    LIT SCRATCH_A @ @ LIT SCRATCH_C @ !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT 1 SUB LIT SCRATCH_F !
+    BRANCH slice2-a-loop
+  slice2-b-loop:
+    ;; recover W, load b_count, keep W for the result
+    R> DUP LIT 7 ADD @ LIT SCRATCH_F ! >R
+  slice2-b-copy:
+    LIT SCRATCH_F @ ZBRANCH slice2-done
+    LIT SCRATCH_B @ @ LIT SCRATCH_C @ !
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT 1 SUB LIT SCRATCH_F !
+    BRANCH slice2-b-copy
+  slice2-done:
+    R> LIT 5 ADD @ LIT T_STRING ADD
+    ARITY 1 EXIT
+
+]
+
+
+s/slice2: func [a b start n] [
+    either s/raw-string? a [
+        either s/raw-string? b [
+            either s/raw-int? start [
+                either s/raw-int? n [
+                    total: + s/raw-length a s/raw-length b
+                    either either >= start 0 [ >= n 0 ] [ 0 ] [
+                        either either <= start total [ <= n - total start ] [ 0 ] [
+                            s/raw-slice2 a b start n
+                        ] [ raise create-sin 'range 's/slice2 reduce [ start n ] ]
+                    ] [ raise create-sin 'range 's/slice2 reduce [ start n ] ]
+                ] [ raise create-sin 'type 's/slice2 n ]
+            ] [ raise create-sin 'type 's/slice2 start ]
+        ] [ raise create-sin 'type 's/slice2 b ]
+    ] [ raise create-sin 'type 's/slice2 a ]
+]
+
+]

@@ -1,0 +1,160 @@
+;; MASM-3 experiment: slice the virtual concatenation of two immutable strings.
+;;
+;;   s/slice2 a b start n  ->  the n bytes at offset `start` of (a ++ b)
+;;
+;; The ordinary reference materialises the concatenation first
+;; (`s/slice (s/+ a b) start n`, two allocations).  The MASM worker allocates
+;; one variable-length STRING! and copies the requested bytes directly from
+;; the two sources, so the intermediate concatenation is never created.
+;;
+;; This is a reusable vocabulary operation: any caller that needs a window
+;; across two adjacent pieces (streaming carry+chunk, ring buffers, joining
+;; then extracting) can use it without building the joined string.
+;;
+;; CONTRACT
+;;   - a and b are STRING!; start and n are INTEGER!.
+;;   - 0 <= start, 0 <= n, start <= len(a)+len(b), n <= len(a)+len(b)-start.
+;;     The last form is used instead of start+n <= total so a huge tagged n
+;;     cannot overflow the comparison.
+;;   - returns a NEW STRING! of exactly n bytes; neither input is changed.
+;;   - a wrong type raises SIN! 'type 's/slice2 with the offending value.
+;;   - a bad range raises SIN! 'range 's/slice2 with the block [start n].
+;;   - n = 0 returns a new empty string.
+;;
+;; WORKER / REPRESENTATION DEPENDENCIES
+;;   - Uses the documented `alloc` + GC_KIND_STRING path; one allocation.
+;;   - STRING! payload layout [length, byte...]; one byte per cell;
+;;     T_STRING; 16-cell aligned payloads.
+;;   - The allocation includes 16 cells beyond the rounded payload.  Those
+;;     cells are inside the managed object but past the string's declared
+;;     length, so the collector never traces them; the worker uses them as a
+;;     local workspace (the same idea as s/raw-scan-set's length-0 workspace,
+;;     fused into the result allocation to avoid a second allocation).
+;;   - Sources stay on the data stack across the allocation (GC roots).  The
+;;     result is filled with no further allocation, so no GC can run between
+;;     allocation and return; the result is pushed only after the fill.
+;;   - Scratch A only; safe scratch cells B/C/F are free.
+;;   - Non-reentrant and non-yielding, like other MASM workers.  Cooperative
+;;     tasks are safe because the worker never yields or allocates after the
+;;     first allocation; arbitrary preemption/reentry is not supported.
+[
+;; Ordinary reference: materialise then slice, with the same checks/errors.
+s/slice2-glon: func [a b start n] [
+    either s/slice2-valid? a b start n [
+        s/slice s/+ a b start n
+    ] [
+        s/slice2-error a b start n
+    ]
+]
+
+;; ( string! string! integer! integer! -> string! ) unchecked.
+s/raw-slice2: masm 4 [
+    LIT 16 DIV LIT SCRATCH_F !                 ;; n (raw)
+    LIT 16 DIV LIT SCRATCH_B !                 ;; start (raw)
+    LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL
+    LIT 16 ADD                                 ;; rounded payload + 16-cell workspace
+    LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C ! ;; C = payload
+    LIT SCRATCH_F @ LIT SCRATCH_C @ !          ;; length = n
+    ;; A = workspace base = payload + rounded payload extent
+    LIT SCRATCH_C @
+    LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL
+    ADD LIT SCRATCH_A !
+    ;; pop b and a into workspace cursors (payload + 1 = first byte)
+    LIT T_STRING SUB LIT 1 ADD LIT SCRATCH_A @ LIT 1 ADD !
+    LIT T_STRING SUB LIT 1 ADD LIT SCRATCH_A @ !
+    ;; W+2 = a end, W+3 = b end
+    LIT SCRATCH_A @ @ DUP LIT 1 SUB @ ADD LIT SCRATCH_A @ LIT 2 ADD !
+    LIT SCRATCH_A @ LIT 1 ADD @ DUP LIT 1 SUB @ ADD LIT SCRATCH_A @ LIT 3 ADD !
+    ;; W+4 = destination cursor, W+5 = result payload
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_A @ LIT 4 ADD !
+    LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 5 ADD !
+    ;; W+6 = start, W+7 = n
+    LIT SCRATCH_B @ LIT SCRATCH_A @ LIT 6 ADD !
+    LIT SCRATCH_F @ LIT SCRATCH_A @ LIT 7 ADD !
+    ;; avail = a_end - a_cursor; if start < avail use the a part, else skip a
+    LIT SCRATCH_A @ LIT 2 ADD @ LIT SCRATCH_A @ @ SUB
+    DUP LIT SCRATCH_A @ LIT 6 ADD @ GT ZBRANCH slice2-b-only
+    ;; a part: advance a cursor by start; a_count = min(n, new_avail)
+    DROP
+    LIT SCRATCH_A @ @ LIT SCRATCH_A @ LIT 6 ADD @ ADD LIT SCRATCH_A @ !
+    LIT SCRATCH_A @ LIT 2 ADD @ LIT SCRATCH_A @ @ SUB
+    DUP LIT SCRATCH_A @ LIT 7 ADD @ LT ZBRANCH slice2-take-n
+    BRANCH slice2-a-count
+  slice2-take-n:
+    DROP LIT SCRATCH_A @ LIT 7 ADD @
+  slice2-a-count:
+    DUP LIT SCRATCH_A @ LIT 6 ADD !
+    >R LIT SCRATCH_A @ LIT 7 ADD @ R> SUB LIT SCRATCH_A @ LIT 7 ADD !
+    BRANCH slice2-copy-setup
+  slice2-b-only:
+    ;; start >= avail: a cursor = a end; b cursor += start - avail; a_count = 0
+    LIT SCRATCH_A @ LIT 2 ADD @ LIT SCRATCH_A @ !
+    >R LIT SCRATCH_A @ LIT 6 ADD @ R> SUB
+    LIT SCRATCH_A @ LIT 1 ADD @ ADD LIT SCRATCH_A @ LIT 1 ADD !
+    LIT 0 LIT SCRATCH_A @ LIT 6 ADD !
+  slice2-copy-setup:
+    ;; A=source a, B=source b, C=dest, F=a_count; W saved on the return stack
+    LIT SCRATCH_A @ >R
+    LIT SCRATCH_A @ LIT 1 ADD @ LIT SCRATCH_B !
+    LIT SCRATCH_A @ LIT 4 ADD @ LIT SCRATCH_C !
+    LIT SCRATCH_A @ LIT 6 ADD @ LIT SCRATCH_F !
+    LIT SCRATCH_A @ @ LIT SCRATCH_A !
+  slice2-a-loop:
+    LIT SCRATCH_F @ ZBRANCH slice2-b-loop
+    LIT SCRATCH_A @ @ LIT SCRATCH_C @ !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT 1 SUB LIT SCRATCH_F !
+    BRANCH slice2-a-loop
+  slice2-b-loop:
+    ;; recover W, load b_count, keep W for the result
+    R> DUP LIT 7 ADD @ LIT SCRATCH_F ! >R
+  slice2-b-copy:
+    LIT SCRATCH_F @ ZBRANCH slice2-done
+    LIT SCRATCH_B @ @ LIT SCRATCH_C @ !
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT SCRATCH_F @ LIT 1 SUB LIT SCRATCH_F !
+    BRANCH slice2-b-copy
+  slice2-done:
+    R> LIT 5 ADD @ LIT T_STRING ADD
+    ARITY 1 EXIT
+
+]
+
+;; Shared validation.  The valid path is one helper call; error classification
+;; runs only when the call fails.
+s/slice2-valid?: func [a b start n] [
+    either either s/raw-string? a [ s/raw-string? b ] [ 0 ] [
+        either either s/raw-int? start [ s/raw-int? n ] [ 0 ] [
+            either either >= start 0 [ >= n 0 ] [ 0 ] [
+                total: + s/raw-length a s/raw-length b
+                either <= start total [ <= n - total start ] [ 0 ]
+            ] [ 0 ]
+        ] [ 0 ]
+    ] [ 0 ]
+]
+
+s/slice2-error: func [a b start n] [
+    either s/raw-string? a [
+        either s/raw-string? b [
+            either s/raw-int? start [
+                either s/raw-int? n [
+                    raise create-sin 'range 's/slice2 reduce [ start n ]
+                ] [ raise create-sin 'type 's/slice2 n ]
+            ] [ raise create-sin 'type 's/slice2 start ]
+        ] [ raise create-sin 'type 's/slice2 b ]
+    ] [ raise create-sin 'type 's/slice2 a ]
+]
+
+s/slice2-masm: func [a b start n] [
+    either s/slice2-valid? a b start n [
+        s/raw-slice2 a b start n
+    ] [
+        s/slice2-error a b start n
+    ]
+]
+
+;; Selected implementation for the experiment.  The reference stays callable.
+s/slice2: :s/slice2-masm
+]

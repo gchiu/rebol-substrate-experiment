@@ -1,0 +1,183 @@
+;; experiments/masm3/file-stream-masm3.glon
+;;
+;; Experimental MASM-3 streaming copy.  Based on the MASM-1 streaming copy,
+;; with two allocation-composition changes in `stream/step`:
+;;
+;;   1. When the carry is empty (the initial chunk, and every chunk after the
+;;      replacement has been emitted) the chunk is written directly.  The old
+;;      `s/+ carry chunk` copied the whole 400-byte chunk just to write it.
+;;   2. Before the replacement, the carry+chunk concatenation is no longer
+;;      materialised.  A small boundary string (carry + the first pattern-1
+;;      bytes of chunk) is searched for matches that start in the carry, then
+;;      the chunk itself is searched.  safe/next-carry/prefix/suffix are
+;;      extracted directly from the two sources with `s/slice2`, one allocation
+;;      each instead of materialise-then-slice.
+;;
+;; Search still uses the MASM `s/find` from experiments/masm-vocabulary.
+;; IO-3, MASM-1 and MASM-2 files are unchanged.
+[
+stream/empty: ""
+
+;; Write one bounded string to an open handle without closing it.  A short
+;; write advances by the returned byte count; a zero-progress result is a
+;; host failure, not a loop.
+stream/write-all: func [h bytes success failure] [
+    either = 0 s/length bytes [
+        success none
+    ] [
+        chunk: either > s/length bytes 400 [ s/slice bytes 0 400 ] [ bytes ]
+        io/write h chunk
+            func [n] [
+                either = n s/length bytes [
+                    success none
+                ] [
+                    stream/write-all h s/slice bytes n - s/length bytes n :success :failure
+                ]
+            ]
+            :failure
+    ]
+]
+
+;; Write prefix, replacement, suffix in order.  Each part may be empty.
+stream/emit3: func [h a b c success failure] [
+    stream/write-all h a
+        func [x] [
+            stream/write-all h b
+                func [y] [
+                    stream/write-all h c :success :failure
+                ]
+                :failure
+        ]
+        :failure
+]
+
+stream/close-both: func [in out success failure] [
+    io/close out
+        func [x] [
+            io/close in func [y] [ success none ] :failure
+        ]
+        func [e] [
+            io/close in func [y] [ failure e ] :failure
+        ]
+]
+
+stream/close-error: func [in out sin failure] [
+    io/close out
+        func [x] [
+            io/close in func [y] [ failure sin ] :failure
+        ]
+        func [e] [
+            io/close in func [y] [ failure sin ] :failure
+        ]
+]
+
+stream/finish: func [in out carry success failure] [
+    stream/write-all out carry
+        func [x] [ stream/close-both in out :success :failure ]
+        func [e] [ stream/close-error in out e :failure ]
+]
+
+;; First match in the virtual concatenation carry++chunk.
+;; A match that starts inside the carry is wholly contained in
+;; carry ++ chunk[0 .. pat-len-2], which is at most 2*pat-len-2 bytes.
+stream/find-combined: func [carry chunk old] [
+    carry-len: s/length carry
+    chunk-len: s/length chunk
+    combined-len: + carry-len chunk-len
+    either = 0 carry-len [
+        s/find chunk old
+    ] [
+        pat-len: s/length old
+        keep: - pat-len 1
+        bound-len: either > + carry-len keep combined-len [ combined-len ] [ + carry-len keep ]
+        boundary: s/slice2 carry chunk 0 bound-len
+        bi: s/find boundary old
+        either either >= bi 0 [ < bi carry-len ] [ 0 ] [
+            bi
+        ] [
+            ci: s/find chunk old
+            either < ci 0 [ -1 ] [ + carry-len ci ]
+        ]
+    ]
+]
+
+;; One read/reply turn.  `done` is 0 until the first replacement is emitted,
+;; then 1 and all later input is copied unchanged.
+stream/step: func [in out carry done old new success failure] [
+    io/read in 400
+        func [chunk] [
+            either = 0 s/length chunk [
+                stream/finish in out carry :success :failure
+            ] [
+                either done [
+                    either = 0 s/length carry [
+                        stream/write-all out chunk
+                            func [x] [ stream/step in out stream/empty 1 old new :success :failure ]
+                            func [e] [ stream/close-error in out e :failure ]
+                    ] [
+                        combined: s/slice2 carry chunk 0 + s/length carry s/length chunk
+                        stream/write-all out combined
+                            func [x] [ stream/step in out stream/empty 1 old new :success :failure ]
+                            func [e] [ stream/close-error in out e :failure ]
+                    ]
+                ] [
+                    carry-len: s/length carry
+                    chunk-len: s/length chunk
+                    combined-len: + carry-len chunk-len
+                    idx: either = 0 carry-len [
+                        s/find chunk old
+                    ] [
+                        stream/find-combined carry chunk old
+                    ]
+                    either < idx 0 [
+                        keep: - s/length old 1
+                        safe-len: - combined-len keep
+                        either > safe-len 0 [
+                            safe: either = 0 carry-len [ s/slice chunk 0 safe-len ] [ s/slice2 carry chunk 0 safe-len ]
+                            next-carry: either >= safe-len carry-len [
+                                s/slice chunk - safe-len carry-len - combined-len safe-len
+                            ] [
+                                s/slice2 carry chunk safe-len - combined-len safe-len
+                            ]
+                            stream/write-all out safe
+                                func [x] [ stream/step in out next-carry 0 old new :success :failure ]
+                                func [e] [ stream/close-error in out e :failure ]
+                        ] [
+                            next-carry: either = 0 carry-len [ s/slice chunk 0 combined-len ] [ s/slice2 carry chunk 0 combined-len ]
+                            stream/step in out next-carry 0 old new :success :failure
+                        ]
+                    ] [
+                        prefix: s/slice2 carry chunk 0 idx
+                        tail-start: + idx s/length old
+                        suffix: s/slice2 carry chunk tail-start - combined-len tail-start
+                        stream/emit3 out prefix new suffix
+                            func [x] [ stream/step in out stream/empty 1 old new :success :failure ]
+                            func [e] [ stream/close-error in out e :failure ]
+                    ]
+                ]
+            ]
+        ]
+        func [e] [ stream/close-error in out e :failure ]
+]
+
+;; Reusable streaming job.  Source and target must be distinct logical names.
+stream/replace-first: func [source target old new success failure] [
+    either = 0 s/length old [
+        failure create-sin 'stream 'empty-pattern source
+    ] [
+        either s/= source target [
+            failure create-sin 'stream 'same-file target
+        ] [
+            io/open source 'read
+                func [in] [
+                    io/open target 'write
+                        func [out] [ stream/step in out stream/empty 0 old new :success :failure ]
+                        func [e] [
+                            io/close in func [x] [ failure e ] :failure
+                        ]
+                ]
+                :failure
+        ]
+    ]
+]
+]
