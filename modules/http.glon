@@ -4,11 +4,13 @@
 ;; request/reply boundary.  CivetWeb owns sockets, TLS and HTTP parsing; the
 ;; application owns the handler and the response bytes.
 ;;
-;; Host -> Glon:  http/dispatch <id> <method> <path> <query>
+;; Host -> Glon:  http/dispatch <id> <method> <path> <query> <body> <headers>
 ;; Glon -> host:  http/take-response
 ;;                => [id status content-type headers body] | NONE
 ;;
-;; The request passed to the handler is an opaque block [id method path query].
+;; The request passed to the handler is an opaque block
+;; [id method path query body headers].  `body` is a bounded STRING! (empty
+;; when absent); `headers` is a block of alternating STRING! name/value pairs.
 ;; The id is an integer, never a native pointer.  A response is accepted only
 ;; for the request currently being dispatched, so a stale or fabricated handle
 ;; cannot address another connection.  `headers` is NONE or an alternating
@@ -45,9 +47,12 @@ http/take-listen: func [] [
 
 ;; Request inspection.  Each accessor validates that the block is the request
 ;; currently being dispatched; a stale or foreign handle raises a SIN!.
-;;   http/method r -> STRING!  "GET", "POST", ...
-;;   http/path   r -> STRING!  decoded path without the query string
-;;   http/query  r -> STRING!  raw query bytes without the leading "?", or ""
+;;   http/method  r -> STRING!  "GET", "POST", ...
+;;   http/path    r -> STRING!  decoded path without the query string
+;;   http/query   r -> STRING!  raw query bytes without the leading "?", or ""
+;;   http/body    r -> STRING!  request body bytes (empty when absent)
+;;   http/header  r n -> STRING! value, or NONE (case-insensitive name match)
+;;   http/content-type r -> STRING! value, or NONE
 http/request-field: func [request index] [
     either sin? request [
         raise request
@@ -67,9 +72,46 @@ http/request-field: func [request index] [
 http/method: func [request] [ http/request-field request 1 ]
 http/path: func [request] [ http/request-field request 2 ]
 http/query: func [request] [ http/request-field request 3 ]
+http/body: func [request] [ http/request-field request 4 ]
 
-;; Application response generation.  The body is any ordinary Glon STRING!.
-;; The short form sends no application headers.
+;; Header names are compared case-insensitively.  The first matching header is
+;; returned; duplicate request headers are not merged.
+http/lower: func [b] [
+    either either >= b 65 [ <= b 90 ] [ 0 ] [ + b 32 ] [ b ]
+]
+http/ci-eq: func [a b] [
+    either = s/length a s/length b [ http/ci-loop a b 0 ] [ 0 ]
+]
+http/ci-loop: func [a b i] [
+    either >= i s/length a [
+        1
+    ] [
+        either = http/lower s/at a i http/lower s/at b i [
+            http/ci-loop a b + i 1
+        ] [
+            0
+        ]
+    ]
+]
+http/header-scan: func [headers name i] [
+    either < i block-len headers [
+        either http/ci-eq block-at headers i name [
+            block-at headers + i 1
+        ] [
+            http/header-scan headers name + i 2
+        ]
+    ] [
+        none
+    ]
+]
+http/header: func [request name] [
+    http/header-scan http/request-field request 5 name 0
+]
+http/content-type: func [request] [ http/header request "Content-Type" ]
+
+;; Application response generation.  The body is a STRING! or a nested block
+;; of STRING!/BLOCK! parts; the host flattens it in order.  The short form sends
+;; no application headers.
 http/respond: func [request status content-type body] [
     http/respond-with request status content-type none body
 ]
@@ -113,8 +155,8 @@ http/stopped?: func [] [
 
 ;; Called by the host for one completed request.  Handler errors become a 500
 ;; response; the host never loses track of the request id.
-http/dispatch: func [id method path query] [
-    http/current: reduce [ id method path query ]
+http/dispatch: func [id method path query body headers] [
+    http/current: reduce [ id method path query body headers ]
     http/response: none
     result: judge [ http/handler :http/current ]
     either sin? result [

@@ -1,6 +1,10 @@
 # Glon HTTPS Server — G2: Request Inspection and Routing
 
 **Status:** implemented, locally committed, not pushed or deployed.  
+
+> **G3 note.** G3 extends the wire contract with a request body and header
+> block, and allows a response body to be a nested block of parts. The G2
+> application and tests remain valid; see `GLON-HTTPS-SERVER-G3.md`.
 **Branch:** `experiment/glon-https-g2`  
 **Base commit:** `d01dab5` (G1)  
 **Implementation commit:** `c955523`  

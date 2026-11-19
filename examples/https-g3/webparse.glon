@@ -1,0 +1,286 @@
+;; examples/https-g3/webparse.glon -- small application-level request decoders.
+;;
+;; Ordinary Glon over the shipped string vocabulary.  This is deliberately not
+;; a general web framework: it decodes the flat, string-valued form/JSON shapes
+;; the membership application accepts, and escapes values for HTML/JSON output.
+;; Malformed input raises SIN! 'app <status> "<message>" (the HTTP status is
+;; chosen here only because this file is part of the application).
+[
+wp/quote: mk-string reduce [ 34 ]
+wp/backslash: mk-string reduce [ 92 ]
+
+wp/hex-val: func [b] [
+    either = b none [ -1 ] [
+        either either >= b 48 [ <= b 57 ] [ 0 ] [
+            - b 48
+        ] [
+            either either >= b 65 [ <= b 70 ] [ 0 ] [
+                + - b 65 10
+            ] [
+                either either >= b 97 [ <= b 102 ] [ 0 ] [
+                    + - b 97 10
+                ] [
+                    -1
+                ]
+            ]
+        ]
+    ]
+]
+
+wp/find-byte: func [s from ch] [
+    either >= from s/length s [ -1 ] [
+        either = s/at s from ch [
+            from
+        ] [
+            wp/find-byte s + from 1 ch
+        ]
+    ]
+]
+wp/match-at?: func [s i sub] [
+    end: + i s/length sub
+    either > end s/length s [ 0 ] [
+        x: s/span s i end
+        str-eq x sub
+    ]
+]
+
+wp/starts-with?: func [s prefix] [
+    either >= s/length s s/length prefix [
+        x: s/span s 0 s/length prefix
+        str-eq x prefix
+    ] [ 0 ]
+]
+wp/ci-prefix?: func [s prefix] [
+    either s [
+        either >= s/length s s/length prefix [
+            wp/ci-loop s prefix 0
+        ] [
+            0
+        ]
+    ] [
+        0
+    ]
+]
+wp/ci-loop: func [s prefix i] [
+    either >= i s/length prefix [
+        1
+    ] [
+        a: s/at s i
+        b: s/at prefix i
+        la: either either >= a 65 [ <= a 90 ] [ 0 ] [ + a 32 ] [ a ]
+        lb: either either >= b 65 [ <= b 90 ] [ 0 ] [ + b 32 ] [ b ]
+        either = la lb [ wp/ci-loop s prefix + i 1 ] [ 0 ]
+    ]
+]
+
+;; application/x-www-form-urlencoded percent decoding.  '+' becomes space.
+wp/url-decode-loop: func [s i out] [
+    either >= i s/length s [
+        out
+    ] [
+        b: s/at s i
+        either = b 37 [
+            h: wp/hex-val s/at s + i 1
+            l: wp/hex-val s/at s + i 2
+            either either < h 0 [ 1 ] [ < l 0 ] [
+                raise create-sin 'app 400 "malformed form encoding"
+            ] [
+                wp/url-decode-loop s + i 3
+                    s/+ out mk-string reduce [ + * h 16 l ]
+            ]
+        ] [
+            wp/url-decode-loop s + i 1
+                s/+ out mk-string reduce [ either = b 43 [ 32 ] [ b ] ]
+        ]
+    ]
+]
+
+;; Reject any malformed percent escape anywhere in a form body, including in
+;; fields the application does not use.
+wp/form-check-loop: func [body i] [
+    either >= i s/length body [
+        1
+    ] [
+        either = s/at body i 37 [
+            h: wp/hex-val s/at body + i 1
+            l: wp/hex-val s/at body + i 2
+            either either < h 0 [ 1 ] [ < l 0 ] [
+                raise create-sin 'app 400 "malformed form encoding"
+            ] [
+                wp/form-check-loop body + i 3
+            ]
+        ] [
+            wp/form-check-loop body + i 1
+        ]
+    ]
+]
+
+;; First value for `key`, or NONE.  Keys occur at the start or after '&'.
+wp/form-scan: func [body key pos] [
+    either >= pos s/length body [
+        none
+    ] [
+        either either wp/match-at? body pos key [
+            = s/at body + pos s/length key 61
+        ] [ 0 ] [
+            start: + + pos s/length key 1
+            end: wp/find-byte body start 38
+            either < end 0 [ end: s/length body ] [ none ]
+            wp/url-decode-loop s/span body start end 0 ""
+        ] [
+            amp: wp/find-byte body pos 38
+            either < amp 0 [ none ] [ wp/form-scan body key + amp 1 ]
+        ]
+    ]
+]
+
+;; Flat JSON object of string values: {"key":"value", ...}.  Keys are decoded
+;; strings; duplicate target keys are rejected.  Nested objects/arrays, numbers,
+;; booleans, null and \\u escapes are unsupported and rejected.
+wp/json-ws: func [s i] [
+    either >= i s/length s [
+        i
+    ] [
+        either either = s/at s i 32 [ 1 ] [
+            either = s/at s i 9 [ 1 ] [
+                either = s/at s i 10 [ 1 ] [ = s/at s i 13 ]
+            ]
+        ] [
+            wp/json-ws s + i 1
+        ] [
+            i
+        ]
+    ]
+]
+wp/json-string-loop: func [s i out] [
+    b: s/at s i
+    either = b none [
+        raise create-sin 'app 400 "unterminated JSON string"
+    ] [
+        either = b 34 [
+            reduce [ out + i 1 ]
+        ] [
+            either = b 92 [
+                e: s/at s + i 1
+                either = e 34 [
+                    wp/json-string-loop s + i 2 s/+ out wp/quote
+                ] [
+                    either = e 92 [
+                        wp/json-string-loop s + i 2 s/+ out wp/backslash
+                    ] [
+                        raise create-sin 'app 400 "unsupported JSON escape"
+                    ]
+                ]
+            ] [
+                either < b 32 [
+                    raise create-sin 'app 400 "control byte in JSON string"
+                ] [
+                    wp/json-string-loop s + i 1 s/+ out mk-string reduce [ b ]
+                ]
+            ]
+        ]
+    ]
+]
+wp/json-find: func [s target] [
+    i: wp/json-ws s 0
+    either = s/at s i 123 [
+        i: wp/json-ws s + i 1
+        either = s/at s i 125 [
+            j: wp/json-ws s + i 1
+            either = j s/length s [ none ] [
+                raise create-sin 'app 400 "trailing JSON data"
+            ]
+        ] [
+            wp/json-pairs s target i none
+        ]
+    ] [
+        raise create-sin 'app 400 "JSON body must be an object"
+    ]
+]
+wp/json-pairs: func [s target i found] [
+    either = s/at s i 34 [ none ] [ raise create-sin 'app 400 "expected JSON string" ]
+    p: wp/json-string-loop s + i 1 ""
+    key: block-at p 0
+    i: wp/json-ws s block-at p 1
+    either = s/at s i 58 [
+        i: wp/json-ws s + i 1
+    ] [
+        raise create-sin 'app 400 "expected JSON colon"
+    ]
+    either = s/at s i 34 [ none ] [ raise create-sin 'app 400 "expected JSON string" ]
+    v: wp/json-string-loop s + i 1 ""
+    val: block-at v 0
+    i: wp/json-ws s block-at v 1
+    found2: either str-eq key target [
+        either found [ raise create-sin 'app 400 "duplicate JSON field" ] [ val ]
+    ] [ found ]
+    b: s/at s i
+    either = b 44 [
+        wp/json-pairs s target wp/json-ws s + i 1 found2
+    ] [
+        either = b 125 [
+            j: wp/json-ws s + i 1
+            either = j s/length s [ found2 ] [
+                raise create-sin 'app 400 "trailing JSON data"
+            ]
+        ] [
+            raise create-sin 'app 400 "expected JSON delimiter"
+        ]
+    ]
+]
+
+wp/html-special?: func [b] [
+    either = b 38 [ 1 ] [
+        either = b 60 [ 1 ] [
+            either = b 62 [ 1 ] [
+                either = b 34 [ 1 ] [ either = b 39 [ 1 ] [ 0 ] ]
+            ]
+        ]
+    ]
+]
+wp/find-html-special: func [s i] [
+    either >= i s/length s [ i ] [
+        either wp/html-special? s/at s i [ i ] [
+            wp/find-html-special s + i 1
+        ]
+    ]
+]
+wp/escape-html: func [s] [ wp/escape-html-loop s 0 "" ]
+wp/escape-html-loop: func [s i out] [
+    j: wp/find-html-special s i
+    out2: either > j i [ s/+ out s/span s i j ] [ out ]
+    b: s/at s j
+    either = b none [ out2 ] [
+        piece: either = b 38 [ "&amp;" ] [
+            either = b 60 [ "&lt;" ] [
+                either = b 62 [ "&gt;" ] [
+                    either = b 34 [ "&quot;" ] [ "&#39;" ]
+                ]
+            ]
+        ]
+        wp/escape-html-loop s + j 1 s/+ out2 piece
+    ]
+]
+
+wp/json-special?: func [b] [
+    either = b 34 [ 1 ] [ either = b 92 [ 1 ] [ 0 ] ]
+]
+wp/find-json-special: func [s i] [
+    either >= i s/length s [ i ] [
+        either wp/json-special? s/at s i [ i ] [
+            wp/find-json-special s + i 1
+        ]
+    ]
+]
+wp/escape-json: func [s] [ wp/escape-json-loop s 0 "" ]
+wp/escape-json-loop: func [s i out] [
+    j: wp/find-json-special s i
+    out2: either > j i [ s/+ out s/span s i j ] [ out ]
+    b: s/at s j
+    either = b none [ out2 ] [
+        piece: either = b 34 [ s/+ wp/backslash wp/quote ] [ s/+ wp/backslash wp/backslash ]
+        wp/escape-json-loop s + j 1 s/+ out2 piece
+    ]
+]
+
+]

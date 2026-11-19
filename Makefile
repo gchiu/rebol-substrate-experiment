@@ -333,6 +333,16 @@ endif
 OPENSSL_CFLAGS ?=
 OPENSSL_LIBS ?= -lssl -lcrypto
 
+# The HTTP server does not create M1 tasks.  The G3 application plus the
+# transient per-request source expression outgrow the default 14,800-cell
+# loader heap, so the documented R0S1_HEAP_LIMIT override can reclaim the
+# otherwise-unused M1 task arena for this build.  This is opt-in and changes
+# no frozen S1 file; the minimal and file-only builds keep the default map.
+GLON_HTTP_RECLAIM_M1 ?= 0
+ifeq ($(GLON_HTTP_RECLAIM_M1),1)
+  GLON_MODULE_CFLAGS += -DR0S1_HEAP_LIMIT=65000
+endif
+
 ifneq ($(filter http,$(GLON_MODULE_LIST)),)
   GLON_MODULE_SRCS += glon_http.c
   GLON_MODULE_OBJS += third_party/civetweb/civetweb.o
@@ -357,7 +367,7 @@ GLON_CONFIG = .glon-config
 .PHONY: FORCE
 FORCE:
 $(GLON_CONFIG): FORCE
-	@printf '%s' '$(strip $(MODULES))' > $@.tmp
+	@printf '%s %s' '$(strip $(MODULES))' '$(GLON_HTTP_RECLAIM_M1)' > $@.tmp
 	@if ! cmp -s $@.tmp $@; then mv $@.tmp $@; else rm -f $@.tmp; fi
 
 glon: $(GLON_SRCS) $(GLON_MODULE_SRCS) $(GLON_MODULE_OBJS) r0_s1.h s1.h m1_layout.h $(GLON_CONFIG) $(GLON_TARGET_LIBS)
@@ -463,6 +473,29 @@ https-g2-test:
 	python3 tests/https-g1/acceptance.py --glon ./glon
 	python3 tests/https-g2/acceptance.py --glon ./glon
 	$(MAKE) --no-print-directory glon MODULES=http
+
+# ---- Optional HTTPS module (G3) --------------------------------------------
+# Retains G1/G2, then runs G3 under HTTP and file+http.  G3 opts into the
+# documented loader-heap extension into the unused M1 task arena because the
+# application plus transient request source exceeds the default loader heap.
+https-g3-test:
+	./check-frozen-s1.sh
+	$(MAKE) --no-print-directory glon MODULES=
+	@./glon tests/https-g1/minimal-smoke.glon | grep -qx minimal-ok
+	$(MAKE) --no-print-directory glon MODULES=file
+	$(MAKE) --no-print-directory glon MODULES=http
+	tests/https-g1/make-cert.sh
+	python3 tests/https-g1/acceptance.py --glon ./glon
+	python3 tests/https-g2/acceptance.py --glon ./glon
+	$(MAKE) --no-print-directory glon MODULES=http GLON_HTTP_RECLAIM_M1=1
+	python3 tests/https-g3/acceptance.py --glon ./glon
+	$(MAKE) --no-print-directory glon MODULES=file,http GLON_HTTP_RECLAIM_M1=1
+	python3 tests/https-g1/acceptance.py --glon ./glon
+	python3 tests/https-g2/acceptance.py --glon ./glon
+	# G3 stays HTTP-only: the file module's Glon libraries consume enough of
+	# the 7,232-cell managed heap that the membership app is not reliable in
+	# the combined build.  G1/G2 still verify MODULES=file,http.
+	$(MAKE) --no-print-directory glon MODULES=http GLON_HTTP_RECLAIM_M1=1
 
 # ---- Desktop proof: native Glon application + browser/WASM Glon View --------
 # glon-desktop is the installed application host: it binds a localhost TCP

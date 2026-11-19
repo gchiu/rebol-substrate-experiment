@@ -1,0 +1,342 @@
+;; examples/https-g3/server.glon -- synthetic membership register over HTTPS.
+;;
+;; Requires examples/https-g3/webparse.glon to be loaded first (the Makefile
+;; and acceptance commands pass both files in order).  All routes, validation,
+;; state, HTML and JSON are Glon.  Synthetic data only; no authentication.
+[
+block-set!: masm 3 [
+    LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD !
+    ARITY 0 EXIT
+]
+reg: reduce [ "m1|Ada Lovelace|ada@example.test|active;" none none ]
+
+reg/check: func [value pred label] [
+    either = value none [
+        raise create-sin 'app 422 s/+ label " is required"
+    ] [
+        either pred value [ 1 ] [ raise create-sin 'app 422 s/+ label " is invalid" ]
+    ]
+]
+reg/text-ok?: func [s] [
+    either > s/length s 128 [ 0 ] [
+    either > s/length s 0 [
+        either < wp/find-byte s 0 124 0 [
+            either < wp/find-byte s 0 59 0 [ 1 ] [ 0 ]
+        ] [ 0 ]
+    ] [ 0 ]
+    ]
+]
+reg/id-ok?: func [s] [ reg/text-ok? s ]
+reg/name-ok?: func [s] [ reg/text-ok? s ]
+reg/email-ok?: func [s] [
+    either reg/text-ok? s [
+        at: wp/find-byte s 0 64
+        either < at 1 [ 0 ] [
+            either >= at - s/length s 1 [ 0 ] [
+                idx: wp/find-byte s + at 1 64
+                either < idx 0 [ 1 ] [ 0 ]
+            ]
+        ]
+    ] [ 0 ]
+]
+reg/status-ok?: func [s] [
+    either str-eq s "active" [ 1 ] [ either str-eq s "inactive" [ 1 ] [ 0 ] ]
+]
+
+reg/field-scan: func [rec idx i start] [
+    end: wp/find-byte rec start 124
+    either < end 0 [
+        either = i idx [ s/span rec start s/length rec ] [ "" ]
+    ] [
+        either = i idx [
+            s/span rec start end
+        ] [
+            reg/field-scan rec idx + i 1 + end 1
+        ]
+    ]
+]
+reg/field: func [rec idx] [ reg/field-scan rec idx 0 0 ]
+
+reg/make: func [id name email status] [
+    r: s/+ id "|"
+    r: s/+ r name
+    r: s/+ r "|"
+    r: s/+ r email
+    r: s/+ r "|"
+    r: s/+ r status
+    s/+ r ";"
+]
+
+reg/find-loop: func [id i] [
+    either >= i block-len reg [ none ] [
+        rec: block-at reg i
+        either rec [
+            rid: reg/field rec 0
+            either str-eq rid id [ rec ] [ reg/find-loop id + i 1 ]
+        ] [ reg/find-loop id + i 1 ]
+    ]
+]
+reg/find: func [id] [ reg/find-loop id 0 ]
+reg/index: func [id i] [
+    either >= i block-len reg [ -1 ] [
+        rec: block-at reg i
+        either rec [
+            rid: reg/field rec 0
+            either str-eq rid id [ i ] [ reg/index id + i 1 ]
+        ] [ reg/index id + i 1 ]
+    ]
+]
+reg/free: func [i] [
+    either >= i block-len reg [ -1 ] [
+        either block-at reg i [ reg/free + i 1 ] [ i ]
+    ]
+]
+
+reg/from-fields: func [fields] [
+    id: block-at fields 0
+    name: block-at fields 1
+    email: block-at fields 2
+    status: block-at fields 3
+    reg/check id :reg/id-ok? "id"
+    reg/check name :reg/name-ok? "name"
+    reg/check email :reg/email-ok? "email"
+    reg/check status :reg/status-ok? "status"
+    reg/make id name email status
+]
+
+reg/add: func [fields] [
+    rec: reg/from-fields fields
+    id: reg/field rec 0
+    either reg/find id [
+        raise create-sin 'app 409 "duplicate id"
+    ] [ none ]
+    idx: reg/free 0
+    either < idx 0 [
+        raise create-sin 'app 422 "register capacity reached"
+    ] [
+        block-set! reg idx rec
+        rec
+    ]
+]
+
+reg/update: func [id fields] [
+    old: reg/find id
+    either old [
+        rec: reg/from-fields fields
+        rid: reg/field rec 0
+        either str-eq rid id [
+            idx: reg/index id 0
+            block-set! reg idx rec
+            rec
+        ] [
+            raise create-sin 'app 422 "id in body does not match path"
+        ]
+    ] [
+        raise create-sin 'app 404 "member not found"
+    ]
+]
+
+req/fields: func [request json] [
+    ct: http/content-type request
+    body: http/body request
+    either > s/length body 0 [
+        either json [
+            either wp/ci-prefix? ct "application/json" [
+                idv: wp/json-find body "id"
+                namev: wp/json-find body "name"
+                emailv: wp/json-find body "email"
+                statusv: wp/json-find body "status"
+                reduce [ idv namev emailv statusv ]
+            ] [
+                raise create-sin 'app 415 "unsupported content type"
+            ]
+        ] [
+            either wp/ci-prefix? ct "application/x-www-form-urlencoded" [
+                wp/form-check-loop body 0
+                idv: wp/form-scan body "id" 0
+                namev: wp/form-scan body "name" 0
+                emailv: wp/form-scan body "email" 0
+                statusv: wp/form-scan body "status" 0
+                reduce [ idv namev emailv statusv ]
+            ] [
+                raise create-sin 'app 415 "unsupported content type"
+            ]
+        ]
+    ] [
+        raise create-sin 'app 400 "empty request body"
+    ]
+]
+
+html/page: func [title body] [
+    reduce [
+        "<!doctype html><html><head><meta charset='utf-8'><title>" title
+        "</title><style>body{font-family:sans-serif}</style></head><body>" body
+        "</body></html>"
+    ]
+]
+html/row: func [rec] [
+    id: reg/field rec 0
+    eid: wp/escape-html id
+    en: wp/escape-html reg/field rec 1
+    reduce [
+        "<tr><td><a href='/members/" eid "'>" eid "</a></td><td>" en "</td></tr>"
+    ]
+]
+html/list-loop: func [i] [
+    either >= i block-len reg [ reduce [ ] ] [
+        rec: block-at reg i
+        rest: html/list-loop + i 1
+        either rec [
+            row: html/row rec
+            reduce [ row rest ]
+        ] [ rest ]
+    ]
+]
+html/list-body: func [] [
+    rows: html/list-loop 0
+    html/page "Members" reduce [
+        "<h1>Members</h1><p><a href='/add'>Add member</a></p><table><tr><th>ID</th><th>Name</th></tr>"
+        rows
+    ]
+]
+html/add-page: func [] [
+    html/page "Add member" html/form "/" "" "" "" "active" "Add" ""
+]
+html/detail: func [rec] [
+    id: reg/field rec 0
+    name: reg/field rec 1
+    email: reg/field rec 2
+    status: reg/field rec 3
+    action: s/+ "/members/" id
+    f: html/form action id name email status "Save" " readonly"
+    en: wp/escape-html name
+    html/page "Member" reduce [ "<h1>" en "</h1>" f ]
+]
+html/form: func [action id name email status submit readonly] [
+    active-sel: either str-eq status "active" [ " selected" ] [ "" ]
+    inactive-sel: either str-eq status "inactive" [ " selected" ] [ "" ]
+    eid: wp/escape-html id
+    en: wp/escape-html name
+    ee: wp/escape-html email
+    reduce [
+        "<form method=post action='" action "'><p>ID <input name=id value='"
+        eid "'" readonly "><p>Name <input name=name value='"
+        en "'><p>Email <input name=email value='"
+        ee "'><p>Status <select name=status><option value=active"
+        active-sel ">active</option><option value=inactive" inactive-sel
+        ">inactive</option></select><p><button type=submit>" submit "</button></form>"
+    ]
+]
+
+json/ok: func [rec] [
+    id: reg/field rec 0
+    name: reg/field rec 1
+    eid: wp/escape-json id
+    en: wp/escape-json name
+    reduce [
+        "{" wp/quote "id" wp/quote ":" wp/quote eid wp/quote
+        "," wp/quote "name" wp/quote ":" wp/quote en wp/quote "}"
+    ]
+]
+
+respond/text: func [request status body] [
+    http/respond request status "text/plain; charset=utf-8" body
+]
+respond/html: func [request status body] [
+    http/respond request status "text/html; charset=utf-8" body
+]
+respond/json: func [request status body] [
+    http/respond request status "application/json" body
+]
+respond/405: func [request allow] [
+    http/respond-with request 405 "text/plain; charset=utf-8"
+        reduce [ "Allow" allow ] "405 Method Not Allowed"
+]
+respond/error: func [request sin] [
+    status: sin-id sin
+    either s/raw-int? status [
+        ct: http/content-type request
+        msg: sin-arg sin
+        either wp/ci-prefix? ct "application/json" [
+            esc: wp/escape-json-loop msg 0 ""
+            respond/json request status reduce [
+                "{" wp/quote "error" wp/quote ":" wp/quote esc wp/quote "}"
+            ]
+        ] [
+            respond/text request status msg
+        ]
+    ] [
+        respond/text request 500 "internal application error"
+    ]
+]
+
+do/html-post: func [request id] [
+    result: judge [
+        fields: req/fields request 0
+        either id [ reg/update id fields ] [ reg/add fields ]
+    ]
+    either sin? result [ respond/error request result ] [ respond/html request 200 html/detail result ]
+]
+do/json-post: func [request id] [
+    result: judge [
+        fields: req/fields request 1
+        either id [ reg/update id fields ] [ reg/add fields ]
+    ]
+    either sin? result [
+        respond/error request result
+    ] [
+        respond/json request either id [ 200 ] [ 201 ] json/ok result
+    ]
+]
+
+route/html-member: func [request method id] [
+    either str-eq method "GET" [
+        rec: reg/find id
+        either rec [ respond/html request 200 html/detail rec ] [ respond/text request 404 "member not found" ]
+    ] [
+        either either str-eq method "POST" [ 1 ] [ str-eq method "PUT" ] [
+            do/html-post request id
+        ] [ respond/405 request "GET, POST, PUT" ]
+    ]
+]
+route/api-member: func [request method id] [
+    either either str-eq method "POST" [ 1 ] [ str-eq method "PUT" ] [
+        do/json-post request id
+    ] [ respond/405 request "POST, PUT" ]
+]
+
+handle: func [request] [
+    method: http/method request
+    path: http/path request
+    either str-eq path "/" [
+        either str-eq method "GET" [
+            respond/html request 200 html/list-body
+        ] [
+            either str-eq method "POST" [ do/html-post request none ] [ respond/405 request "GET, POST" ]
+        ]
+    ] [
+        either str-eq path "/add" [
+            either str-eq method "GET" [ respond/html request 200 html/add-page ] [ respond/405 request "GET" ]
+        ] [
+        either str-eq path "/api/members" [
+            either str-eq method "POST" [ do/json-post request none ] [ respond/405 request "POST" ]
+        ] [
+            either wp/starts-with? path "/api/members/" [
+                route/api-member request method
+                    s/span path 13 s/length path
+            ] [
+                either wp/starts-with? path "/members/" [
+                    route/html-member request method
+                        s/span path 9 s/length path
+                ] [
+                    respond/text request 404 "not found"
+                ]
+            ]
+        ]
+        ]
+    ]
+]
+
+http/listen 8443 :handle
+]

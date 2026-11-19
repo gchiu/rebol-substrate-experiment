@@ -1,0 +1,32 @@
+;; Test application: request body/header/content-type accessors and stale
+;; handle rejection.  The first request is echoed; a later /stale request tries
+;; to read the saved request's body and must get SIN! 'http 'stale-request.
+[
+saved: none
+
+inspect: func [request] [
+    req-path: http/path request
+    either str-eq req-path "/stale" [
+        e: judge [ http/body saved ]
+        either sin? e [
+            http/respond request 200 "text/plain; charset=utf-8" "stale rejected"
+        ] [
+            http/respond request 200 "text/plain; charset=utf-8" "STALE ACCEPTED"
+        ]
+    ] [
+        saved: request
+        b: http/body request
+        h: http/header request "X-Test"
+        ct: http/content-type request
+        out: "body="
+        out: s/+ out b
+        out: s/+ out " header="
+        out: s/+ out h
+        out: s/+ out " ct="
+        out: s/+ out ct
+        http/respond request 200 "text/plain; charset=utf-8" out
+    ]
+]
+
+http/listen 8443 :inspect
+]

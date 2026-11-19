@@ -25,7 +25,7 @@
 #include <strings.h>
 #include <unistd.h>
 
-#define GLON_HTTP_SRC_CAP 32768
+#define GLON_HTTP_SRC_CAP 65536
 #define GLON_HTTP_CTYPE_CAP ((size_t)GLON_HTTP_TYPE_CAP)
 
 typedef struct {
@@ -35,7 +35,7 @@ typedef struct {
     char header_names[GLON_HTTP_MAX_HEADERS][GLON_HTTP_HEADER_NAME_CAP];
     char header_values[GLON_HTTP_MAX_HEADERS][GLON_HTTP_HEADER_VALUE_CAP];
     size_t body_len;
-    unsigned char body[GLON_HTTP_BODY_CAP];
+    unsigned char body[GLON_HTTP_RESPONSE_CAP];
 } http_response;
 
 typedef struct {
@@ -180,6 +180,8 @@ int glon_http_take_listen(int *port, char *err, size_t errcap) {
 
 static int http_dispatch(unsigned long id, const char *method,
                          const char *path, const char *query,
+                         const unsigned char *body, size_t body_len,
+                         const struct mg_request_info *ri,
                          char *err, size_t errcap) {
     char src[GLON_HTTP_SRC_CAP];
     http_src b = { src, 0, sizeof src, 0 };
@@ -192,7 +194,22 @@ static int http_dispatch(unsigned long id, const char *method,
     hs_string(&b, (const unsigned char *)path, strlen(path));
     hs_byte(&b, ' ');
     hs_string(&b, (const unsigned char *)query, strlen(query));
-    hs_text(&b, " ]");
+    hs_byte(&b, ' ');
+    hs_string(&b, body, body_len);
+    hs_byte(&b, ' ');
+    hs_text(&b, "reduce [");
+    unsigned nh = ri ? ri->num_headers : 0;
+    if (nh > GLON_HTTP_MAX_REQUEST_HEADERS)
+        nh = GLON_HTTP_MAX_REQUEST_HEADERS;
+    for (unsigned i = 0; i < nh; i++) {
+        const char *name = ri->http_headers[i].name ? ri->http_headers[i].name : "";
+        const char *value = ri->http_headers[i].value ? ri->http_headers[i].value : "";
+        hs_byte(&b, ' ');
+        hs_string(&b, (const unsigned char *)name, strlen(name));
+        hs_byte(&b, ' ');
+        hs_string(&b, (const unsigned char *)value, strlen(value));
+    }
+    hs_text(&b, " ] ]");
     if (b.overflow || b.len + 1 >= b.cap) {
         snprintf(err, errcap, "dispatch source is too large");
         return -1;
@@ -224,9 +241,45 @@ static int copy_glon_string(cell v, unsigned char *out, size_t cap,
     return 0;
 }
 
+/* A response body may be a STRING! or a nested block of STRING!/BLOCK!
+ * parts.  The host flattens it in order into one bounded transport buffer, so
+ * an application can compose a long page without repeated string copying. */
+static int http_copy_body_part(cell v, unsigned char *out, size_t cap,
+                               size_t *used, int depth,
+                               char *err, size_t errcap) {
+    if (depth > 256) {
+        snprintf(err, errcap, "response body nesting is too deep");
+        return -1;
+    }
+    if (r0_tag(v) == T_STRING) {
+        cell p = r0_untag(v);
+        cell n = M[p];
+        if (n < 0 || (size_t)n > cap - *used) {
+            snprintf(err, errcap, "response body is too large");
+            return -1;
+        }
+        for (cell i = 0; i < n; i++) out[*used + (size_t)i] = (unsigned char)M[p + 1 + i];
+        *used += (size_t)n;
+        return 0;
+    }
+    if (r0_tag(v) == T_BLOCK) {
+        cell p = r0_untag(v);
+        cell n = M[p];
+        for (cell i = 0; i < n; i++) {
+            if (http_copy_body_part(M[p + BLK_DATA + i], out, cap, used,
+                                    depth + 1, err, errcap) != 0)
+                return -1;
+        }
+        return 0;
+    }
+    snprintf(err, errcap, "response body part is not a STRING! or BLOCK!");
+    return -1;
+}
+
 static int http_take_body(cell bv, http_response *out, char *err, size_t errcap) {
-    return copy_glon_string(bv, out->body, sizeof out->body,
-                            &out->body_len, err, errcap);
+    out->body_len = 0;
+    return http_copy_body_part(bv, out->body, sizeof out->body,
+                               &out->body_len, 0, err, errcap);
 }
 
 static int copy_header_string(cell v, char *out, size_t cap,
@@ -408,10 +461,36 @@ static int http_begin_request(struct mg_connection *conn) {
         return http_send_text(conn, 414, "text/plain; charset=utf-8",
                               "URI or query too long") == 0 ? 414 : 500;
     }
-    if (ri->content_length > (long long)GLON_HTTP_BODY_CAP) {
+    long long declared = ri->content_length;
+    int may_have_body = strcasecmp(method, "POST") == 0
+                     || strcasecmp(method, "PUT") == 0
+                     || strcasecmp(method, "PATCH") == 0;
+    if (declared < 0) {
+        if (may_have_body) {
+            http.rejected++;
+            return http_send_text(conn, 411, "text/plain; charset=utf-8",
+                                  "Content-Length required") == 0 ? 411 : 500;
+        }
+        declared = 0;
+    }
+    if ((unsigned long long)declared > http.cfg.max_body ||
+        (unsigned long long)declared > GLON_HTTP_REQUEST_BODY_HARD) {
         http.rejected++;
         return http_send_text(conn, 413, "text/plain; charset=utf-8",
                               "request body too large") == 0 ? 413 : 500;
+    }
+
+    unsigned char body[GLON_HTTP_REQUEST_BODY_HARD];
+    size_t body_len = 0;
+    while (body_len < (size_t)declared) {
+        int n = mg_read(conn, body + body_len,
+                        (size_t)declared - body_len);
+        if (n <= 0) {
+            http.rejected++;
+            return http_send_text(conn, 400, "text/plain; charset=utf-8",
+                                  "incomplete request body") == 0 ? 400 : 500;
+        }
+        body_len += (size_t)n;
     }
 
     int reply_status = 500;
@@ -422,7 +501,8 @@ static int http_begin_request(struct mg_connection *conn) {
     http.requests++;
 
     char err[256];
-    if (http_dispatch(id, method, path, query, err, sizeof err) != 0) {
+    if (http_dispatch(id, method, path, query, body, body_len, ri,
+                      err, sizeof err) != 0) {
         fprintf(stderr, "glon: http: dispatch %lu: %s\n", id, err);
         http.errors++;
         http.fatal = 1;
@@ -467,6 +547,7 @@ void glon_http_config_default(glon_http_config *cfg) {
     cfg->max_requests = 0;
     cfg->request_timeout_ms = 10000;
     cfg->max_request_size = 8192;
+    cfg->max_body = GLON_HTTP_REQUEST_BODY_DEFAULT;
 }
 
 int glon_http_run(const glon_http_config *cfg, int report,

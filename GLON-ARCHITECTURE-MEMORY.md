@@ -1034,6 +1034,66 @@ body API, and asynchronous file I/O is not drained inside an HTTP handler in the
 combined build. Deployment work from G1 (real certificate/renewal, explicit bind
 and firewall, non-root service unit, dependency maintenance) remains.
 
+### HTTPS server G3 (2026-11-20) — [IMPLEMENTED, LOCAL, OPT-IN BUILD]
+
+**[DECISION] Bounded request body and headers, application decoding.** The host
+reads at most `--http-max-body` bytes (default 2,048; hard 4,096) into a bounded
+buffer and passes them to the persistent session as ordinary managed strings:
+`[ http/dispatch id method path query body headers ]`. Request headers are a
+bounded block of pairs (16 max, 64-byte names, 256-byte values). Glon accessors
+`http/body`, `http/header` and `http/content-type` use the same active-id check
+as G2; stale or foreign handles raise the existing `SIN! 'http 'stale-request`.
+URL-encoded forms and a deliberately restricted flat JSON object of string
+values are decoded in application Glon. Malformed input is a 400; missing or
+invalid fields are 422; duplicates are 409; unsupported content types are 415;
+oversized bodies are 413 before dispatch.
+
+**[DECISION] Response bodies may be part blocks.** A response body is a
+STRING! or a nested block of STRING!/BLOCK! parts. The host flattens it in
+order into the existing bounded 64 KiB transport buffer. This is an extension
+of `http/respond`/`http/respond-with`, not a new routing or template
+vocabulary. It avoids repeated string concatenation on the non-moving managed
+heap; the application composes pages from small parts.
+
+**[DECISION] Fixed block register, not string replacement.** The synthetic
+membership register is a global three-slot block of record strings. Add/update
+parses and validates first, then performs one `block-set!` (a small local masm
+primitive, as used by existing demos) only after duplicate/capacity checks.
+Repeatedly replacing a whole register string caused managed-heap fragmentation;
+the fixed block keeps the live state bounded. Capacity is three records
+(one seeded plus two additions); a further add is 422.
+
+**[DECISION, OPT-IN, REVIEW REQUIRED] G3 build reclaims the unused M1 arena
+for loader space.** The G3 source plus the transient dispatch expression
+(especially request body/headers) exceeds the default 14,800-cell loader heap.
+The HTTP server creates no M1 tasks, so the documented `R0S1_HEAP_LIMIT`
+override is used only when `GLON_HTTP_RECLAIM_M1=1` is passed
+(`-DR0S1_HEAP_LIMIT=65000`). The default HTTP build keeps 54,800 and remains
+valid for G1/G2. This changes no frozen S1 file and does not enlarge the
+7,232-cell managed heap. It is opt-in and should be reviewed before becoming a
+general HTTP default.
+
+**[MEASURED]** Linux/WSL2 x86_64, GCC 11.4, OpenSSL 3.0.2 dynamic. Stripped
+executable: minimal 104,768 B; file 137,568 B; HTTP 264,512 B; file+http 297,312
+B. HTTP adds 156 KiB stripped. G3 server peak RSS was 7.96–7.99 MiB. Managed
+heap remained 7,232 cells. Workload A (fixed state, reads/updates/rejections):
+300 requests ended at 4,288 live cells; 1,000 and 3,000 requests both ended at
+3,280 live cells / 100 objects. Workload B baseline (seed only) 300 requests
+ended at 3,680 live cells; grown (+2 records) 300 ended at 4,288; grown 1,000
+converged to 3,280. GC ran roughly once per request (3,017 collections for
+3,014 requests at 3,000). Median local end-to-end latency was ~88–148 ms with a
+fresh TLS connection per request (Python/TLS included; not a Glon-only
+measurement). Full results: `docs/design/GLON-HTTPS-SERVER-G3.md`.
+
+**[LIMITATION]** G3 is HTTP-only for reliability: `MODULES=file,http` builds
+and passes G1/G2, but the file libraries' persistent live set leaves too little
+managed heap for the G3 app (a client-disconnect run failed). No file-backed
+persistence is integrated; the file module's request pump is not drained inside
+HTTP handlers. The register is capped at three records. The JSON decoder is
+flat/string-only and supports only `\"`/`\\` escapes. Request bodies are
+materialised as one managed string; there is no streaming. Loader-heap policy
+and a larger register remain explicit follow-up decisions.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

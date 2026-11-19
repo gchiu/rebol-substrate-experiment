@@ -238,7 +238,8 @@ static void module_usage(void) {
 #ifdef GLON_MODULE_HTTP
     fprintf(stderr,
         " [--http-cert FILE] [--http-bind ADDR] [--http-max-requests N]\n"
-        "            [--http-timeout-ms N] [--http-max-request-size N] [--http-report]");
+        "            [--http-timeout-ms N] [--http-max-request-size N]\n"
+        "            [--http-max-body N] [--http-report]");
 #endif
     fprintf(stderr, " FILE...\n");
 }
@@ -299,6 +300,10 @@ static int parse_module_options(int argc, char **argv, int *first_file,
         } else if (!strcmp(a, "--http-max-request-size")) {
             unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v) || v == 0) return -1;
             o->http.max_request_size = v;
+        } else if (!strcmp(a, "--http-max-body")) {
+            unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v) ||
+                           v == 0 || v > GLON_HTTP_REQUEST_BODY_HARD) return -1;
+            o->http.max_body = v;
         } else if (!strcmp(a, "--http-report")) {
             o->http_report = 1;
         }
