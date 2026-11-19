@@ -447,6 +447,23 @@ https-g1-test:
 	python3 tests/https-g1/acceptance.py --glon ./glon
 	$(MAKE) --no-print-directory glon MODULES=http
 
+# ---- Optional HTTPS module (G2) --------------------------------------------
+# Retain the G1 suite, then exercise G2 routing/inspection under both HTTP and
+# file+http builds.  Bounded and local-only; requires libssl-dev and openssl.
+https-g2-test:
+	./check-frozen-s1.sh
+	$(MAKE) --no-print-directory glon MODULES=
+	@./glon tests/https-g1/minimal-smoke.glon | grep -qx minimal-ok
+	$(MAKE) --no-print-directory glon MODULES=file
+	$(MAKE) --no-print-directory glon MODULES=http
+	tests/https-g1/make-cert.sh
+	python3 tests/https-g1/acceptance.py --glon ./glon
+	python3 tests/https-g2/acceptance.py --glon ./glon
+	$(MAKE) --no-print-directory glon MODULES=file,http
+	python3 tests/https-g1/acceptance.py --glon ./glon
+	python3 tests/https-g2/acceptance.py --glon ./glon
+	$(MAKE) --no-print-directory glon MODULES=http
+
 # ---- Desktop proof: native Glon application + browser/WASM Glon View --------
 # glon-desktop is the installed application host: it binds a localhost TCP
 # listener, serves the browser/WASM Glon View, opens the default browser, and

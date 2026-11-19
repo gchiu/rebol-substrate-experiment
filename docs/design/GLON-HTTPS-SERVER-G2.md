@@ -1,0 +1,387 @@
+# Glon HTTPS Server — G2: Request Inspection and Routing
+
+**Status:** implemented, locally committed, not pushed or deployed.  
+**Branch:** `experiment/glon-https-g2`  
+**Base commit:** `d01dab5` (G1)  
+**Frozen S1:** `f90496c26dc45c7a387d8fc8639cd2781507d3d2` (verified unchanged)
+
+G2 turns the G1 single-page server into a small multi-page HTTPS application.
+CivetWeb continues to own sockets, TLS and HTTP parsing; every route, status
+code, header and response body is ordinary Glon source. No second host
+architecture, routing DSL or HTTP parser was introduced.
+
+---
+
+## 1. Starting state and branch
+
+- Worktree: `/mnt/d/repos/glon-https`
+- G1 branch: `experiment/glon-https-g1` at `d01dab5`
+- G2 branch created from that commit: `experiment/glon-https-g2`
+- G1 acceptance and frozen-S1 verification were rerun before and after the G2
+  changes.
+
+---
+
+## 2. Request inspection
+
+CivetWeb already parses the request line and headers. G2 passes three
+CivetWeb-derived properties to the persistent Glon session:
+
+| Glon accessor | Contract |
+|---|---|
+| `http/method request` | `STRING!` method, for example `"GET"` or `"POST"` |
+| `http/path request` | `STRING!` URL-decoded local path, without the query string |
+| `http/query request` | `STRING!` raw query bytes after `?` (not URL-decoded); `""` when absent |
+
+The host -> Glon source turn is now:
+
+```glon
+[ http/dispatch <id> <method-string> <path-string> <query-string> ]
+```
+
+The request block is opaque application data:
+
+```text
+[id method path query]
+```
+
+Lifetime and ownership rules are unchanged from G1:
+
+- `id` is an increasing integer, never a native pointer.
+- The accessors validate the id against the request currently being dispatched.
+- A stored (stale) request, or a request from another dispatch, raises
+  `SIN! 'http 'stale-request`.
+- An accessor outside a dispatch raises `SIN! 'http 'no-request`.
+- If the request argument is itself a `SIN!`, it is raised.
+- `http/respond` and `http/respond-with` apply the same ownership check.
+
+`http/request-field` is the small shared helper behind the three public
+accessors. It is ordinary Glon; no host pointer or new substrate operation is
+involved.
+
+### Response headers
+
+G2 adds one response form:
+
+```glon
+http/respond-with request status content-type headers body
+```
+
+`headers` is `NONE` or an alternating block of `STRING!` name/value pairs, for
+example:
+
+```glon
+reduce [ "Allow" "GET" ]
+```
+
+The host validates the block shape and writes each pair. The host owns
+`Content-Type`, `Content-Length`, `Connection` and `Cache-Control`; attempts to
+set those through the application header list are filtered. The older
+`http/respond request status content-type body` remains the short form and is
+implemented as `http/respond-with ... none body`.
+
+The response block is now:
+
+```text
+[id status content-type headers body]
+```
+
+---
+
+## 3. Application source
+
+`examples/https-g2/server.glon` is the complete application:
+
+```glon
+;; examples/https-g2/server.glon -- G2: multi-page HTTPS application in Glon.
+;;
+;; CivetWeb supplies socket/TLS/HTTP parsing.  This file owns every route,
+;; status code, header and response body.  Request inspection is through
+;; http/method, http/path and http/query; no routing framework is used.
+[
+http/requests: 0
+http/json-quote: mk-string reduce [ 34 ]
+
+http/known-path?: func [path] [
+    either str-eq path "/" [
+        1
+    ] [
+        either str-eq path "/about" [
+            1
+        ] [
+            either str-eq path "/status" [ 1 ] [ 0 ]
+        ]
+    ]
+]
+
+http/status-json: func [n] [
+    status-text: "{"
+    status-text: s/+ status-text http/json-quote
+    status-text: s/+ status-text "server"
+    status-text: s/+ status-text http/json-quote
+    status-text: s/+ status-text ":"
+    status-text: s/+ status-text http/json-quote
+    status-text: s/+ status-text "Glon"
+    status-text: s/+ status-text http/json-quote
+    status-text: s/+ status-text ","
+    status-text: s/+ status-text http/json-quote
+    status-text: s/+ status-text "status"
+    status-text: s/+ status-text http/json-quote
+    status-text: s/+ status-text ":"
+    status-text: s/+ status-text http/json-quote
+    status-text: s/+ status-text "running"
+    status-text: s/+ status-text http/json-quote
+    status-text: s/+ status-text ","
+    status-text: s/+ status-text http/json-quote
+    status-text: s/+ status-text "requests"
+    status-text: s/+ status-text http/json-quote
+    status-text: s/+ status-text ":"
+    status-text: s/+ status-text s/from-int n
+    s/+ status-text "}"
+]
+
+home-body: "<!doctype html><html><head><title>Glon HTTPS</title></head><body><h1>Served by Glon</h1><p><a href='/'>Home</a> | <a href='/about'>About</a> | <a href='/status'>Status</a></p></body></html>"
+
+about-body: "<!doctype html><html><head><title>About Glon</title></head><body><h1>About Glon</h1><p>Glon is a small REBOL-family runtime. This page is generated by Glon source and served over HTTPS.</p><p><a href='/'>Home</a> | <a href='/status'>Status</a></p></body></html>"
+
+home: func [request] [
+    http/requests: + http/requests 1
+    req-method: http/method request
+    req-path: http/path request
+    either http/known-path? req-path [
+        either str-eq req-method "GET" [
+            either str-eq req-path "/" [
+                http/respond request 200 "text/html; charset=utf-8" home-body
+            ] [
+                either str-eq req-path "/about" [
+                    http/respond request 200 "text/html; charset=utf-8" about-body
+                ] [
+                    http/respond request 200 "application/json" http/status-json http/requests
+                ]
+            ]
+        ] [
+            http/respond-with request 405 "text/plain; charset=utf-8"
+                reduce [ "Allow" "GET" ]
+                "405 Method Not Allowed"
+        ]
+    ] [
+        http/respond request 404 "text/plain; charset=utf-8" "404 Not Found"
+    ]
+]
+
+http/listen 8443 :home
+]
+```
+
+Routing uses ordinary `either`, `str-eq` and function calls. `str-eq` is the
+content comparison from the prelude; `=` is identity for strings in Glon and
+is therefore not used for paths or methods.
+
+### Endpoints
+
+| Method | Path | Status | Content-Type | Body |
+|---|---|---|---|---|
+| GET | `/` | 200 | `text/html; charset=utf-8` | home page with links |
+| GET | `/about` | 200 | `text/html; charset=utf-8` | about page |
+| GET | `/status` | 200 | `application/json` | server/status/requests JSON |
+| GET | other | 404 | `text/plain; charset=utf-8` | `404 Not Found` |
+| non-GET | `/`, `/about`, `/status` | 405 | `text/plain; charset=utf-8` | `405 Method Not Allowed`, `Allow: GET` |
+
+Unknown paths return 404 regardless of method. A known path with a non-GET
+method returns 405 with the `Allow` header.
+
+The request counter is a global Glon integer incremented at the start of every
+handler invocation. Because the single CivetWeb worker serializes handler
+execution, overlapping network connections cannot interleave the increment.
+The JSON builder is application code, not a general JSON vocabulary; it uses
+the existing `s/+` and `s/from-int` string operations.
+
+---
+
+## 4. Build and launch
+
+### Dependencies
+
+```sh
+sudo apt-get install build-essential libssl-dev
+```
+
+As in G1, a private OpenSSL development tree can be used without editing the
+Makefile:
+
+```sh
+make glon MODULES=http \
+  OPENSSL_CFLAGS="-I/path/usr/include -I/path/usr/include/x86_64-linux-gnu" \
+  OPENSSL_LIBS="-L/path/usr/lib/x86_64-linux-gnu -lssl -lcrypto"
+```
+
+### Build
+
+```sh
+make glon                  # minimal CLI
+make glon MODULES=http     # G2 server
+make glon MODULES=file,http
+```
+
+The HTTP module now also loads the shipped `strings-ext.glon` library for
+`s/from-int`. It is staged for every build but is not loaded by the minimal
+CLI. This is an ordinary Glon library, not new host machinery.
+
+### Certificate and launch
+
+```sh
+tests/https-g1/make-cert.sh
+./glon --http-cert tests/https-g1/.cert/server.pem \
+       examples/https-g2/server.glon
+```
+
+The listener is `https://127.0.0.1:8443`. Useful bounded options remain
+`--http-max-requests`, `--http-timeout-ms`, `--http-max-request-size`,
+`--http-bind` and `--http-report`.
+
+### Browser and curl URLs
+
+```sh
+curl -k https://127.0.0.1:8443/
+curl -k https://127.0.0.1:8443/about
+curl -k https://127.0.0.1:8443/status
+curl -k -i https://127.0.0.1:8443/missing
+curl -k -i -X POST https://127.0.0.1:8443/about
+curl -k 'https://127.0.0.1:8443/about?x=1&y=2'
+```
+
+Browser URLs (accept the local self-signed certificate):
+
+```text
+https://127.0.0.1:8443/
+https://127.0.0.1:8443/about
+https://127.0.0.1:8443/status
+```
+
+The home page links to `/about` and `/status`.
+
+### Acceptance targets
+
+```sh
+make https-g1-test   # retained G1 suite
+make https-g2-test   # frozen S1, minimal smoke, G1 + G2 under http and file,http
+```
+
+Direct G2 suite:
+
+```sh
+python3 tests/https-g2/acceptance.py --glon ./glon
+```
+
+---
+
+## 5. Acceptance results
+
+Configuration: Linux/WSL2 x86_64, loopback, local self-signed certificate,
+bounded requests. G1 suite retained and passing.
+
+| Requirement | Result |
+|---|---|
+| `GET /` expected home content and links | PASS |
+| `GET /about` expected content | PASS |
+| `GET /status` expected JSON | PASS |
+| Status codes and content types | PASS |
+| `/status` is valid JSON with server/status/requests | PASS |
+| Unknown path returns 404 | PASS |
+| Unsupported method on known path returns 405 with `Allow: GET` | PASS |
+| Query string does not affect path routing | PASS |
+| Request counter persists across requests | PASS (N then N+1) |
+| Overlapping connections processed safely | PASS (40 requests, 8 workers) |
+| Invalid/stale handles rejected | PASS (respond and accessor paths) |
+| Repeated requests bounded managed heap | PASS (300 requests; 1,584 live cells) |
+| Source edit changes routing/content without recompiling | PASS |
+| G1 acceptance retained | PASS |
+| `MODULES=file,http` | PASS (G1 and G2 suites) |
+| Minimal build functional | PASS (`minimal-ok`; no HTTP symbols) |
+| Frozen S1 | PASS |
+
+Final summary lines:
+
+```text
+HTTPS_G1_ACCEPTANCE PASS
+HTTPS_G2_ACCEPTANCE PASS
+```
+
+### Measured counters
+
+| Run | Requests | GC collections | Live cells | Live objects | Free cells |
+|---|---:|---:|---:|---:|---:|
+| G2, `MODULES=http` | 352 | 50 | 1,584 | 36 | 5,648 |
+| G2, `MODULES=file,http` | 352 | 59 | 2,464 | 63 | 4,768 |
+| G2, 300-request timed run | 300 | 42 | 1,584 | 36 | 5,648 |
+
+The 7,232-cell managed heap was not enlarged. The persistent live set is the
+loaded libraries plus the handler closure and G2 globals; per-request request
+and response blocks are reclaimed.
+
+---
+
+## 6. Binary size and memory
+
+Environment: GCC 11.4, default `-std=c17 -Wall -Wextra -O0 -g`, CivetWeb
+compiled `-O2`, OpenSSL 3.0.2 dynamic. Sizes are bytes.
+
+| Build | Unstripped | Stripped |
+|---|---:|---:|
+| minimal | 185,208 | 104,768 |
+| `MODULES=file` | 250,864 | 137,568 |
+| `MODULES=http` | 374,352 | 260,416 |
+| `MODULES=file,http` | 438,304 | 293,216 |
+
+G2 adds ~1.4 KiB unstripped over G1; stripped page alignment is unchanged.
+OpenSSL remains a shared runtime dependency.
+
+| Memory measurement | Result |
+|---|---|
+| G2 server peak RSS, 300 requests (`VmHWM`) | 7,804 KiB |
+| G1 server peak RSS, 73 requests | 7,816 KiB |
+| Minimal CLI peak RSS, trivial source | 1,796 KiB |
+
+No performance optimisation was undertaken.
+
+---
+
+## 7. Remaining limitations
+
+- One CivetWeb worker; handlers are serialized through one Glon evaluator.
+  Overlapping clients are accepted but not evaluated concurrently.
+- No request body API, POST processing, static files, authentication, sessions,
+  databases, templates, WebSockets, automatic certificates, HTTP/2 or HTTP/3.
+- `http/query` returns the raw query bytes; no query-parameter parsing or
+  URL-decoding vocabulary is provided.
+- The response header list is limited to 8 pairs (64-byte names, 256-byte
+  values); the host filters its own managed headers.
+- Response bodies are capped at 64 KiB by the bridge. Request size defaults to
+  8 KiB; keep-alive is off.
+- Query strings are capped at 2,048 bytes, paths at 2,048 bytes and methods at
+  32 bytes.
+- `MODULES=file,http` still does not drain the asynchronous file request queue
+  from inside an HTTP handler.
+- Certificate reload/rotation, explicit binding/firewall policy and a non-root
+  service unit remain deployment work, as in G1.
+- Routing is intentionally a simple handler; there is no routing DSL or
+  general-purpose framework yet.
+
+---
+
+## 8. Files changed in G2
+
+| File | Change |
+|---|---|
+| `glon_http.c`, `glon_http.h` | query string dispatch, response header transport, header filtering |
+| `modules/http.glon` | accessors, `http/respond-with`, 5-field responses, 4-argument dispatch |
+| `glon.c` | load `strings-ext.glon` for optional modules (for `s/from-int`) |
+| `examples/https-g2/server.glon` | complete G2 application |
+| `tests/https-g2/acceptance.py` | G2 acceptance suite |
+| `tests/https-g2/inspect.glon` | accessor and stale-handle test application |
+| `Makefile` | `https-g2-test` |
+| `docs/design/GLON-HTTPS-SERVER-G1.md` | note that G2 extends the wire contract |
+| `GLON-ARCHITECTURE-MEMORY.md` | G2 decision and measurements |
+
+Frozen files `s1.c`, `s1.h`, `tests.c`, `adversarial.c` and `claims.c` are
+untouched.

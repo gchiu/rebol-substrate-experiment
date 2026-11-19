@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 
 #define GLON_HTTP_SRC_CAP 32768
@@ -30,6 +31,9 @@
 typedef struct {
     int status;
     char ctype[GLON_HTTP_TYPE_CAP];
+    unsigned header_count;
+    char header_names[GLON_HTTP_MAX_HEADERS][GLON_HTTP_HEADER_NAME_CAP];
+    char header_values[GLON_HTTP_MAX_HEADERS][GLON_HTTP_HEADER_VALUE_CAP];
     size_t body_len;
     unsigned char body[GLON_HTTP_BODY_CAP];
 } http_response;
@@ -175,7 +179,8 @@ int glon_http_take_listen(int *port, char *err, size_t errcap) {
 /* ---- request dispatch and response extraction --------------------------- */
 
 static int http_dispatch(unsigned long id, const char *method,
-                         const char *path, char *err, size_t errcap) {
+                         const char *path, const char *query,
+                         char *err, size_t errcap) {
     char src[GLON_HTTP_SRC_CAP];
     http_src b = { src, 0, sizeof src, 0 };
 
@@ -185,6 +190,8 @@ static int http_dispatch(unsigned long id, const char *method,
     hs_string(&b, (const unsigned char *)method, strlen(method));
     hs_byte(&b, ' ');
     hs_string(&b, (const unsigned char *)path, strlen(path));
+    hs_byte(&b, ' ');
+    hs_string(&b, (const unsigned char *)query, strlen(query));
     hs_text(&b, " ]");
     if (b.overflow || b.len + 1 >= b.cap) {
         snprintf(err, errcap, "dispatch source is too large");
@@ -222,6 +229,55 @@ static int http_take_body(cell bv, http_response *out, char *err, size_t errcap)
                             &out->body_len, err, errcap);
 }
 
+static int copy_header_string(cell v, char *out, size_t cap,
+                              char *err, size_t errcap) {
+    size_t n = 0;
+    if (copy_glon_string(v, (unsigned char *)out, cap - 1, &n, err, errcap) != 0)
+        return -1;
+    out[n] = 0;
+    return 0;
+}
+
+/* `headers` is NONE or an alternating block of STRING! name/value pairs.  The
+ * host owns Content-Type, Content-Length and Connection; those names are
+ * filtered when the response is written. */
+static int http_take_headers(cell hv, http_response *out,
+                             char *err, size_t errcap) {
+    out->header_count = 0;
+    if (hv == R0_NONE) return 0;
+    if (r0_tag(hv) != T_BLOCK) {
+        snprintf(err, errcap, "response headers are not a BLOCK or NONE");
+        return -1;
+    }
+    cell hp = r0_untag(hv);
+    cell n = M[hp];
+    if (n < 0 || (n % 2) != 0) {
+        snprintf(err, errcap, "response headers need name/value pairs");
+        return -1;
+    }
+    unsigned pairs = (unsigned)(n / 2);
+    if (pairs > GLON_HTTP_MAX_HEADERS) {
+        snprintf(err, errcap, "too many response headers");
+        return -1;
+    }
+    for (unsigned i = 0; i < pairs; i++) {
+        cell nv = M[hp + BLK_DATA + i * 2];
+        cell vv = M[hp + BLK_DATA + i * 2 + 1];
+        char *name = out->header_names[out->header_count];
+        char *value = out->header_values[out->header_count];
+        if (copy_header_string(nv, name, GLON_HTTP_HEADER_NAME_CAP,
+                               err, errcap) != 0) return -1;
+        if (name[0] == 0) {
+            snprintf(err, errcap, "empty response header name");
+            return -1;
+        }
+        if (copy_header_string(vv, value, GLON_HTTP_HEADER_VALUE_CAP,
+                               err, errcap) != 0) return -1;
+        out->header_count++;
+    }
+    return 0;
+}
+
 static int http_take_response(unsigned long expected, http_response *out,
                               int *have, char *err, size_t errcap) {
     r0_s1_outcome oc;
@@ -245,14 +301,15 @@ static int http_take_response(unsigned long expected, http_response *out,
         return -1;
     }
     cell p = r0_untag(v);
-    if (M[p] != 4) {
+    if (M[p] != 5) {
         snprintf(err, errcap, "http/take-response block shape");
         return -1;
     }
     cell idv = M[p + BLK_DATA];
     cell sv = M[p + BLK_DATA + 1];
     cell tv = M[p + BLK_DATA + 2];
-    cell bv = M[p + BLK_DATA + 3];
+    cell hv = M[p + BLK_DATA + 3];
+    cell bv = M[p + BLK_DATA + 4];
     if (r0_tag(idv) != T_INT || r0_tag(sv) != T_INT) {
         snprintf(err, errcap, "response id/status are not integers");
         return -1;
@@ -273,6 +330,7 @@ static int http_take_response(unsigned long expected, http_response *out,
         return -1;
     }
     out->ctype[tlen] = 0;
+    if (http_take_headers(hv, out, err, errcap) != 0) return -1;
     if (http_take_body(bv, out, err, errcap) != 0) return -1;
     *have = 1;
     return 0;
@@ -291,6 +349,13 @@ static int http_app_stopped(void) {
 
 /* ---- HTTP transport ------------------------------------------------------ */
 
+static int http_header_managed(const char *name) {
+    return strcasecmp(name, "Content-Type") == 0
+        || strcasecmp(name, "Content-Length") == 0
+        || strcasecmp(name, "Connection") == 0
+        || strcasecmp(name, "Transfer-Encoding") == 0;
+}
+
 static int http_send_response(struct mg_connection *conn,
                               const http_response *r) {
     char len[32];
@@ -300,6 +365,11 @@ static int http_send_response(struct mg_connection *conn,
     if (mg_response_header_add(conn, "Content-Length", len, -1) < 0) return -1;
     if (mg_response_header_add(conn, "Connection", "close", -1) < 0) return -1;
     if (mg_response_header_add(conn, "Cache-Control", "no-store", -1) < 0) return -1;
+    for (unsigned i = 0; i < r->header_count; i++) {
+        if (http_header_managed(r->header_names[i])) continue;
+        if (mg_response_header_add(conn, r->header_names[i],
+                                   r->header_values[i], -1) < 0) return -1;
+    }
     if (mg_response_header_send(conn) < 0) return -1;
     if (r->body_len > 0) {
         int n = mg_write(conn, r->body, r->body_len);
@@ -328,11 +398,15 @@ static int http_begin_request(struct mg_connection *conn) {
     const char *method = ri->request_method ? ri->request_method : "GET";
     const char *path = ri->local_uri ? ri->local_uri
                       : (ri->request_uri ? ri->request_uri : "/");
+    /* CivetWeb parses the query separately; Glon receives it raw (not
+     * URL-decoded) and the path is the decoded local URI. */
+    const char *query = ri->query_string ? ri->query_string : "";
     if (strlen(method) >= GLON_HTTP_METHOD_CAP ||
-        strlen(path) >= GLON_HTTP_URI_CAP) {
+        strlen(path) >= GLON_HTTP_URI_CAP ||
+        strlen(query) >= GLON_HTTP_QUERY_CAP) {
         http.rejected++;
         return http_send_text(conn, 414, "text/plain; charset=utf-8",
-                              "URI too long") == 0 ? 414 : 500;
+                              "URI or query too long") == 0 ? 414 : 500;
     }
     if (ri->content_length > (long long)GLON_HTTP_BODY_CAP) {
         http.rejected++;
@@ -348,7 +422,7 @@ static int http_begin_request(struct mg_connection *conn) {
     http.requests++;
 
     char err[256];
-    if (http_dispatch(id, method, path, err, sizeof err) != 0) {
+    if (http_dispatch(id, method, path, query, err, sizeof err) != 0) {
         fprintf(stderr, "glon: http: dispatch %lu: %s\n", id, err);
         http.errors++;
         http.fatal = 1;

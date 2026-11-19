@@ -1,0 +1,28 @@
+;; Test application: exposes the request-inspection vocabulary and verifies
+;; that a stored (stale) handle is rejected by the accessors.
+[
+saved: none
+
+inspect: func [request] [
+    req-path: http/path request
+    either str-eq req-path "/stale" [
+        e: judge [ http/path saved ]
+        either sin? e [
+            http/respond request 200 "text/plain; charset=utf-8" "stale rejected"
+        ] [
+            http/respond request 200 "text/plain; charset=utf-8" "STALE ACCEPTED"
+        ]
+    ] [
+        saved: request
+        req-method: http/method request
+        req-query: http/query request
+        text: s/+ req-method " "
+        text: s/+ text req-path
+        text: s/+ text " ?"
+        text: s/+ text req-query
+        http/respond request 200 "text/plain; charset=utf-8" text
+    ]
+]
+
+http/listen 8443 :inspect
+]

@@ -990,6 +990,50 @@ request queue is not drained from inside an HTTP handler in G1. DigitalOcean
 deployment still needs a real certificate/renewal, explicit binding and
 firewall rules, a non-root service unit and OpenSSL/CivetWeb maintenance.
 
+### HTTPS server G2 (2026-11-20) — [IMPLEMENTED, LOCAL]
+
+**[DECISION] Request inspection is host-parsed data, routing is Glon.** The
+CivetWeb-derived method, decoded local path and raw query string are passed to
+the persistent session as `[ http/dispatch id method path query ]`. The opaque
+request block is `[id method path query]`. Ordinary Glon accessors
+`http/method`, `http/path` and `http/query` validate the active id and raise the
+existing `SIN! 'http 'stale-request` / `'no-request` on misuse. Routing uses
+`either` and `str-eq`; `=` is identity for strings and is not used for paths.
+No HTTP parsing, routing DSL or host route table was added.
+
+**[DECISION] Response headers with a fixed contract.** `http/respond-with
+request status content-type headers body` accepts `NONE` or an alternating
+block of STRING! name/value pairs (maximum 8 pairs, 64-byte names, 256-byte
+values). The host writes them but owns `Content-Type`, `Content-Length`,
+`Connection` and `Cache-Control`, and filters those names. The existing
+`http/respond` short form is unchanged for callers and passes `none` headers.
+The response block is now `[id status content-type headers body]`.
+
+**[DECISION] Reuse `strings-ext` for integer formatting.** The HTTP build loads
+the shipped `strings-ext.glon` (staged for every build) so the G2 status JSON can
+use `s/from-int`. The minimal CLI still does not load it. The JSON body is a
+single application function, not a general JSON vocabulary.
+
+**[MEASURED]** Configuration as G1 (Linux/WSL2 x86_64, GCC 11.4, OpenSSL 3.0.2
+dynamic, self-signed loopback). Executable sizes (unstripped / stripped):
+minimal 185,208 / 104,768 B; file 250,864 / 137,568 B; http 374,352 / 260,416 B;
+file+http 438,304 / 293,216 B. G2 adds ~1.4 KiB unstripped over G1; stripped
+sizes are page-aligned to the same values. G2 server peak RSS over 300 bounded
+requests: 7,804 KiB. Post-collection managed heap after 352 requests: 1,584
+live cells / 36 objects / 5,648 free under `MODULES=http`; 2,464 live cells /
+63 objects / 4,768 free under `file,http`. The 7,232-cell heap was not enlarged.
+Acceptance: `/`, `/about`, `/status`, 404, 405 + `Allow: GET`, valid JSON and
+persistent counter, query-string routing, 40 overlapping requests, 300 bounded
+repeated requests, stale accessor/handle rejection, source edit without
+recompilation, retained G1 suite, minimal build, `file,http`, and frozen S1.
+Full results: `docs/design/GLON-HTTPS-SERVER-G2.md`.
+
+**[LIMITATION]** One worker still serializes Glon handlers. `http/query` is raw
+(not URL-decoded) and no parameter parser is provided. There is still no request
+body API, and asynchronous file I/O is not drained inside an HTTP handler in the
+combined build. Deployment work from G1 (real certificate/renewal, explicit bind
+and firewall, non-root service unit, dependency maintenance) remains.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

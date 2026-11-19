@@ -119,10 +119,16 @@ static int load_default_libraries(void) {
         snprintf(path, sizeof path, "%s/glon-lib/%s", exe_dir, names[k]);
         if (load_library(path) != 0) return -1;
     }
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP)
+    /* strings-ext supplies s/from-int, used by the HTTP status JSON and by
+     * file.glon's write loop.  It is staged for every build but loaded only
+     * when an optional module needs it. */
+    snprintf(path, sizeof path, "%s/glon-lib/strings-ext.glon", exe_dir);
+    if (load_library(path) != 0) return -1;
+#endif
 #ifdef GLON_MODULE_FILE
-    /* strings-ext is needed by file.glon's whole-file write loop.  Both are
-     * ordinary Glon libraries; the minimal binary never loads them. */
-    static const char *module_names[] = { "strings-ext.glon", "file.glon", "file-stream.glon" };
+    /* Ordinary Glon libraries; the minimal binary never loads them. */
+    static const char *module_names[] = { "file.glon", "file-stream.glon" };
     for (unsigned k = 0; k < sizeof module_names / sizeof module_names[0]; k++) {
         snprintf(path, sizeof path, "%s/glon-lib/%s", exe_dir, module_names[k]);
         if (load_library(path) != 0) return -1;

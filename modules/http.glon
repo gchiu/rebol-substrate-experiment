@@ -4,13 +4,16 @@
 ;; request/reply boundary.  CivetWeb owns sockets, TLS and HTTP parsing; the
 ;; application owns the handler and the response bytes.
 ;;
-;; Host -> Glon:  http/dispatch <id> <method-string> <path-string>
-;; Glon -> host:  http/take-response => [id status content-type body] | NONE
+;; Host -> Glon:  http/dispatch <id> <method> <path> <query>
+;; Glon -> host:  http/take-response
+;;                => [id status content-type headers body] | NONE
 ;;
-;; The request passed to the handler is an opaque block [id method path].  The
-;; id is an integer, never a native pointer.  A response is accepted only for
-;; the request currently being dispatched, so a stale or fabricated handle
-;; cannot address another connection.
+;; The request passed to the handler is an opaque block [id method path query].
+;; The id is an integer, never a native pointer.  A response is accepted only
+;; for the request currently being dispatched, so a stale or fabricated handle
+;; cannot address another connection.  `headers` is NONE or an alternating
+;; block of STRING! name/value pairs; the host owns Content-Type,
+;; Content-Length and Connection.
 ;;
 ;; Requires the shipped prelude (block-at, reduce, either) and the built-in
 ;; SIN! vocabulary (judge, sin?, raise, create-sin).
@@ -40,8 +43,41 @@ http/take-listen: func [] [
     either http/port [ reduce [ 1 http/port ] ] [ none ]
 ]
 
+;; Request inspection.  Each accessor validates that the block is the request
+;; currently being dispatched; a stale or foreign handle raises a SIN!.
+;;   http/method r -> STRING!  "GET", "POST", ...
+;;   http/path   r -> STRING!  decoded path without the query string
+;;   http/query  r -> STRING!  raw query bytes without the leading "?", or ""
+http/request-field: func [request index] [
+    either sin? request [
+        raise request
+    ] [
+        either http/current [
+            either = block-at request 0 block-at http/current 0 [
+                block-at http/current index
+            ] [
+                raise create-sin 'http 'stale-request request
+            ]
+        ] [
+            raise create-sin 'http 'no-request request
+        ]
+    ]
+]
+
+http/method: func [request] [ http/request-field request 1 ]
+http/path: func [request] [ http/request-field request 2 ]
+http/query: func [request] [ http/request-field request 3 ]
+
 ;; Application response generation.  The body is any ordinary Glon STRING!.
+;; The short form sends no application headers.
 http/respond: func [request status content-type body] [
+    http/respond-with request status content-type none body
+]
+
+;; Response with additional application headers.  `headers` is NONE or an
+;; alternating block such as reduce [ "Allow" "GET" ].  The host validates the
+;; shape and filters headers it owns.
+http/respond-with: func [request status content-type headers body] [
     either sin? request [
         raise request
     ] [
@@ -50,7 +86,9 @@ http/respond: func [request status content-type body] [
                 either either < status 100 [ 1 ] [ > status 599 ] [
                     raise create-sin 'http 'bad-status status
                 ] [
-                    http/response: reduce [ block-at http/current 0 status content-type body ]
+                    http/response: reduce [
+                        block-at http/current 0 status content-type headers body
+                    ]
                     none
                 ]
             ] [
@@ -75,17 +113,17 @@ http/stopped?: func [] [
 
 ;; Called by the host for one completed request.  Handler errors become a 500
 ;; response; the host never loses track of the request id.
-http/dispatch: func [id method path] [
-    http/current: reduce [ id method path ]
+http/dispatch: func [id method path query] [
+    http/current: reduce [ id method path query ]
     http/response: none
     result: judge [ http/handler :http/current ]
     either sin? result [
         either http/response [ none ] [
-            http/response: reduce [ id 500 "text/plain; charset=utf-8" "internal error" ]
+            http/response: reduce [ id 500 "text/plain; charset=utf-8" none "internal error" ]
         ]
     ] [
         either http/response [ none ] [
-            http/response: reduce [ id 500 "text/plain; charset=utf-8" "no response" ]
+            http/response: reduce [ id 500 "text/plain; charset=utf-8" none "no response" ]
         ]
     ]
     http/current: none

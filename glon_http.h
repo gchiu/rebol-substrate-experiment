@@ -7,8 +7,12 @@
  *
  * The bridge is the existing persistent-session request/reply pattern:
  *
- *   host -> Glon   [ http/dispatch <id> <method> <path> ]
- *   Glon -> host   [ http/take-response ] => [id status ctype body] | NONE
+ *   host -> Glon   [ http/dispatch <id> <method> <path> <query> ]
+ *   Glon -> host   [ http/take-response ]
+ *                  => [id status ctype headers body] | NONE
+ *
+ * `headers` is NONE or a block of alternating STRING! name/value pairs.  The
+ * host adds Content-Type, Content-Length and Connection itself.
  *
  * No new S1 primitive, HOST id, parser/evaluator change or parallel error
  * system is introduced.  The request id is an opaque integer; native pointers
@@ -23,7 +27,11 @@
 #define GLON_HTTP_BODY_CAP   (64u * 1024u)  /* one Glon-generated response body */
 #define GLON_HTTP_TYPE_CAP   128u
 #define GLON_HTTP_URI_CAP    2048u
+#define GLON_HTTP_QUERY_CAP  2048u
 #define GLON_HTTP_METHOD_CAP 32u
+#define GLON_HTTP_MAX_HEADERS 8u
+#define GLON_HTTP_HEADER_NAME_CAP 64u
+#define GLON_HTTP_HEADER_VALUE_CAP 256u
 
 typedef struct {
     const char *bind;              /* listening address; default 127.0.0.1 */
