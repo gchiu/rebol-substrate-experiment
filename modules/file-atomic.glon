@@ -1,0 +1,31 @@
+;; modules/file-atomic.glon -- protocol v2 atomic filesystem operations.
+;;
+;; Optional companion to modules/file.glon.  These are general filesystem
+;; operations, not the Cookbook replacement algorithm:
+;;
+;;   io/temp-open source success failure
+;;       create a unique temporary file in the source's directory, with the
+;;       source's permission bits and exclusive creation, and return an open
+;;       write handle;
+;;   io/commit temp-handle target success failure
+;;       close the temporary and atomically rename it over `target`; the
+;;       target must be in the same directory; a changed source is refused;
+;;   io/discard temp-handle success failure
+;;       close and remove an unfinished temporary.
+;;
+;; Requires modules/file.glon (io/request, io/handle-field, io/reply).  Not
+;; loaded by the default MODULES=file build: the base whole-file 1,024-byte
+;; recipe depends on leaving this vocabulary out.
+[
+io/temp-open: func [source success failure] [
+    io/request 5 reduce [ source ] :success :failure source
+]
+
+io/commit: func [handle target success failure] [
+    io/request 6 reduce [ io/handle-field handle target ] :success :failure target
+]
+
+io/discard: func [handle success failure] [
+    io/request 7 reduce [ io/handle-field handle ] :success :failure handle
+]
+]

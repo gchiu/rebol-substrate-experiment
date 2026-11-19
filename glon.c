@@ -193,6 +193,7 @@ static void io_usage(void) {
         "usage: glon [--io-root DIR] [--allow-file-read] [--allow-file-write]\n"
         "            [--io-max-handles N] [--io-max-file BYTES]\n"
         "            [--io-delay-ms N] [--io-short N] [--io-progress FILE]\n"
+        "            [--io-fail-close] [--io-fail-rename]\n"
         "            [--io-report] [--gc-report] [--io-cancel-before-reply] FILE...\n");
 }
 
@@ -222,6 +223,10 @@ static int parse_io_options(int argc, char **argv, int *first_file,
         } else if (!strcmp(a, "--io-short")) {
             unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v) || v == 0) return -1;
             policy->short_io = v;
+        } else if (!strcmp(a, "--io-fail-close")) {
+            policy->fail_close = 1;
+        } else if (!strcmp(a, "--io-fail-rename")) {
+            policy->fail_rename = 1;
         } else if (!strcmp(a, "--io-progress")) {
             if (++i >= argc) return -1;
             *progress = argv[i];
@@ -292,7 +297,7 @@ static int take_request(uint8_t *buf, size_t cap, size_t *len, int *pending,
     }
     uint32_t id = (uint32_t)int_val(idv);
     unsigned op = (unsigned)int_val(opv);
-    if (id == 0 || op < GLON_IO_OP_OPEN || op > GLON_IO_OP_CLOSE) {
+    if (id == 0 || op < GLON_IO_OP_OPEN || op > GLON_IO_OP_DISCARD) {
         snprintf(err, errcap, "io/take-request id/op");
         return -1;
     }
@@ -354,7 +359,7 @@ static int run_io_reply(const uint8_t *frame, size_t len, uint32_t expected_id,
     }
     uint32_t id = glon_io_get_u32(frame + 1);
     unsigned status = frame[5];
-    if (status > GLON_IO_BUSY) {
+    if (status > GLON_IO_STALE) {
         snprintf(err, errcap, "unknown reply status %u", status);
         return -1;
     }
@@ -368,7 +373,7 @@ static int run_io_reply(const uint8_t *frame, size_t len, uint32_t expected_id,
                      id, glon_io_status_word(status));
     if (n < 0 || (size_t)n >= sizeof src) return -1;
 
-    if (status == GLON_IO_OK && op == GLON_IO_OP_OPEN) {
+    if (status == GLON_IO_OK && (op == GLON_IO_OP_OPEN || op == GLON_IO_OP_TEMP_OPEN)) {
         const uint8_t *a, *b; uint32_t al, bl;
         if (reply_field(frame, len, 0, &a, &al) || reply_field(frame, len, 1, &b, &bl) ||
             al != 4 || bl != 4) {

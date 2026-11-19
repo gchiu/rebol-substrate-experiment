@@ -1,0 +1,148 @@
+;; modules/file-replace.glon -- reusable first-occurrence replacement.
+;;
+;; Three layers, each independently callable:
+;;
+;;   s/replace-first text old new
+;;       immutable in-memory first-occurrence replacement;
+;;
+;;   stream/replace-first-to in out old new success failure
+;;       stream the same replacement from the open read handle `in` to the
+;;       open write handle `out`; neither handle is closed on success;
+;;
+;;   file/replace-first path old new success failure
+;;       replace the first occurrence inside the file at `path` and atomically
+;;       replace that original path.  The source is opened read-only; a unique
+;;       temporary file is created in the same directory with the source's
+;;       permission bits; the streaming job writes it; and only after every
+;;       read, write and close succeeds is the temporary renamed over the
+;;       original path.  On failure the original path is not replaced and the
+;;       temporary is removed where possible.
+;;
+;; Contract:
+;;   - old must be a non-empty STRING! (empty pattern is rejected);
+;;   - new is a STRING!; both are immutable and are never modified;
+;;   - only the first occurrence of old is replaced;
+;;   - success receives NONE; failure receives a SIN! value;
+;;   - the operation is asynchronous: the callbacks run from later reply turns;
+;;   - any permitted logical path under the host --io-root may be used.
+;;
+;; Dependencies: the optional file module (io/open, io/read, io/write, io/close),
+;; file-atomic.glon (io/temp-open, io/commit, io/discard), file-stream.glon helpers
+;; (stream/write-all, stream/emit3, stream/find-first) and strings-ext (s/slice).
+;; If the experimental MASM-1 search is loaded, stream/find-first is overridden
+;; to use it; the replacement algorithm itself remains ordinary Glon.
+;;
+;; Atomic replacement means the original path changes from the old complete
+;; file to the new complete file in one rename.  It is not a power-loss
+;; durability guarantee: neither the temporary file nor its directory is
+;; fsynced.  POSIX ownership, ACLs, xattrs and timestamps are not preserved;
+;; permission bits are copied from the source.
+[
+;; In-memory first-occurrence replacement.
+s/replace-first: func [text old new] [
+    either = 0 s/length old [
+        raise create-sin 's 'empty-pattern old
+    ] [
+        index: stream/find-first text old 0 s/length text s/length old
+        either = index -1 [
+            text
+        ] [
+            tail-start: + index s/length old
+            s/+ s/+ s/slice text 0 index new s/slice text tail-start - s/length text tail-start
+        ]
+    ]
+]
+
+;; Close only the read handle; the caller still owns the temporary write
+;; handle and will either commit or discard it.
+replace/close-input: func [in success failure] [
+    io/close in func [x] [ success none ] :failure
+]
+
+replace/close-input-error: func [in sin failure] [
+    io/close in func [x] [ failure sin ] :failure
+]
+
+;; One read/reply turn for streaming into an output handle that stays open.
+replace/step: func [in out carry done old new success failure] [
+    io/read in 400
+        func [chunk] [
+            either = 0 s/length chunk [
+                stream/write-all out carry
+                    func [x] [ replace/close-input in :success :failure ]
+                    func [e] [ replace/close-input-error in e :failure ]
+            ] [
+                combined: s/+ carry chunk
+                either done [
+                    stream/write-all out combined
+                        func [x] [ replace/step in out "" 1 old new :success :failure ]
+                        func [e] [ replace/close-input-error in e :failure ]
+                ] [
+                    idx: stream/find-first combined old 0 s/length combined s/length old
+                    either < idx 0 [
+                        keep: - s/length old 1
+                        safe-len: - s/length combined keep
+                        either > safe-len 0 [
+                            safe: s/slice combined 0 safe-len
+                            next-carry: s/slice combined safe-len - s/length combined safe-len
+                            stream/write-all out safe
+                                func [x] [ replace/step in out next-carry 0 old new :success :failure ]
+                                func [e] [ replace/close-input-error in e :failure ]
+                        ] [
+                            replace/step in out combined 0 old new :success :failure
+                        ]
+                    ] [
+                        prefix: s/slice combined 0 idx
+                        tail-start: + idx s/length old
+                        suffix: s/slice combined tail-start - s/length combined tail-start
+                        stream/emit3 out prefix new suffix
+                            func [x] [ replace/step in out "" 1 old new :success :failure ]
+                            func [e] [ replace/close-input-error in e :failure ]
+                    ]
+                ]
+            ]
+        ]
+        func [e] [ replace/close-input-error in e :failure ]
+]
+
+;; Reusable streaming first-occurrence replacement into an already-open output.
+;; The output handle remains open on success and is not closed here.
+stream/replace-first-to: func [in out old new success failure] [
+    either = 0 s/length old [
+        failure create-sin 'stream 'empty-pattern out
+    ] [
+        replace/step in out "" 0 old new :success :failure
+    ]
+]
+
+;; Safe in-place replacement at the original path.
+file/replace-first: func [path old new success failure] [
+    either = 0 s/length old [
+        failure create-sin 'file 'empty-pattern path
+    ] [
+        io/open path 'read
+            func [in] [
+                io/temp-open path
+                    func [out] [
+                        ;; replace/step closes the input on both success and
+                        ;; failure.  The temporary output stays open for commit
+                        ;; or discard.
+                        replace/step in out "" 0 old new
+                            func [x] [
+                                io/commit out path :success
+                                    func [e] [ failure e ]
+                            ]
+                            func [e] [
+                                io/discard out
+                                    func [z] [ failure e ]
+                                    func [z] [ failure e ]
+                            ]
+                    ]
+                    func [e] [
+                        io/close in func [x] [ failure e ] :failure
+                    ]
+            ]
+            :failure
+    ]
+]
+]

@@ -325,7 +325,8 @@ In order:
 | Optional async file I/O + bounded streaming (**experimental, not production**) | *(untagged)* | IO-1 `7adf057`, IO-2 `97b8d36`, IO-3 `72ff1ff` |
 | HOST-boundary investigation (**design only**) | *(untagged)* | `43600bb` |
 | MASM `s/find` + fused `io/u32` (**experimental, not production**) | *(untagged)* | MASM-1 `fac9b57`, IO-4 `24c10b2`, MASM-2 `4a054ec` |
-| MASM `s/slice2` variable-length worker (**experimental, not production**) | *(untagged)* | *(this experiment)* |
+| MASM `s/slice2` variable-length worker (**experimental, not production**) | *(untagged)* | `87a5ca7` |
+| Cookbook 0004 original-path file replacement (**completed local integration, not deployed**) | *(untagged)* | *(this integration commit)* |
 
 **Optional I/O and MASM track (experiments, not deployed).** IO-1 through
 MASM-3 are local branches/worktrees. Frozen S1, the HOST table, parser,
@@ -337,6 +338,17 @@ with a zero-carry direct-write composition, improves matched/boundary streaming
 by 8–10% at 1 MiB; no-match is neutral. Worker polling (IO-5) and request-path
 allocation remain. See `docs/design/GLON-MASM-VOCABULARY-ACCELERATION-3.md` and
 `experiments/masm3/`.
+
+**Cookbook 0004 completed (local integration).** The optional file service now
+supports safe original-path replacement through general `temp-open`/`commit`/
+`discard` host operations and reusable `s/replace-first`,
+`stream/replace-first-to` and `file/replace-first` vocabulary. It creates an
+exclusive same-directory temp, preserves source permission bits at commit,
+detects stale sources, and atomically renames only after successful read/write/
+close. It is not power-loss durable (no fsync) and does not preserve ownership/
+ACLs/timestamps; hard links other than the replaced path keep old content.
+MASM-1 search and MASM-2 u32 are integrated; MASM-3 is not. See
+`docs/design/GLON-COOKBOOK-FILE-REPLACEMENT.md`.
 
 **Glon LaTeX milestone (2026-11-06/07).** What is deployed and what is
 experimental are different things:
@@ -559,6 +571,10 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `docs/design/GLON-MASM-VOCABULARY-ACCELERATION-3.md` — MASM-3 profile,
   `s/slice2` variable-length worker, allocation/GC findings and streaming
   benchmarks; implementation and tests in `experiments/masm3/`.
+- `docs/design/GLON-COOKBOOK-FILE-REPLACEMENT.md` — completed Cookbook 0004
+  original-path replacement, protocol v2, reusable vocabulary, tests and
+  performance; sources in `modules/file-replace.glon`,
+  `modules/file-atomic.glon` and `tests/io-file/inplace_replacement.py`.
 - `GLON-EXECUTION-ARCHITECTURE.md` — 2026-11-10 investigation of where
   execution complexity resides (evaluator, GC, primitive set, assembler and
   host integration), with its measurement tools in

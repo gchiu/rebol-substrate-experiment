@@ -25,7 +25,7 @@
  * because input + replacement + write slice coexist in the managed heap. */
 #define GLON_IO_DEFAULT_MAX_FILE (8u * 1024u * 1024u)
 #define GLON_IO_HARD_MAX_FILE    (16u * 1024u * 1024u)
-#define GLON_IO_PROTOCOL_VERSION 1u
+#define GLON_IO_PROTOCOL_VERSION 2u  /* v2 adds additive temp/commit/discard ops */
 #define GLON_IO_HARD_MAX_HANDLES 16u
 
 typedef enum {
@@ -37,7 +37,8 @@ typedef enum {
     GLON_IO_TOO_LARGE,
     GLON_IO_IO_ERROR,
     GLON_IO_UNSUPPORTED,
-    GLON_IO_BUSY
+    GLON_IO_BUSY,
+    GLON_IO_STALE          /* source changed since the temp file was created */
 } glon_io_status;
 
 typedef enum {
@@ -50,7 +51,13 @@ typedef enum {
     GLON_IO_OP_OPEN = 1,
     GLON_IO_OP_READ = 2,
     GLON_IO_OP_WRITE = 3,
-    GLON_IO_OP_CLOSE = 4
+    GLON_IO_OP_CLOSE = 4,
+    /* Protocol v2 additive filesystem operations.  glon_io_file_cli.c encodes
+     * their replies; older clients never send them and older hosts return
+     * GLON_IO_UNSUPPORTED. */
+    GLON_IO_OP_TEMP_OPEN = 5,
+    GLON_IO_OP_COMMIT = 6,
+    GLON_IO_OP_DISCARD = 7
 } glon_io_op;
 
 typedef struct {
@@ -67,6 +74,8 @@ typedef struct {
     uint32_t max_file;         /* per-open cumulative byte limit */
     unsigned delay_ms;         /* test-only worker delay before the operation */
     unsigned short_io;         /* test-only cap on one read/write result */
+    int fail_close;            /* test-only: report every close as an error */
+    int fail_rename;           /* test-only: report commit rename as an error */
 } glon_io_policy;
 
 typedef struct {
@@ -88,6 +97,8 @@ typedef struct {
     glon_io_field fields[2];
 } glon_io_reply;
 
+#define GLON_IO_PATH_CAP 4096
+
 typedef struct {
     int open;
     int fd;
@@ -96,6 +107,19 @@ typedef struct {
     uint32_t generation;
     uint64_t read_total;
     uint64_t write_total;
+    /* Protocol v2 temp slot.  A temp slot owns a file that may be committed
+     * over a target in the same directory, or discarded. */
+    int is_temp;
+    char temp_path[GLON_IO_PATH_CAP];
+    char source_real[GLON_IO_PATH_CAP];
+    char parent_real[GLON_IO_PATH_CAP];
+    unsigned long long source_dev;
+    unsigned long long source_ino;
+    unsigned long long source_size;
+    long source_mtime_sec;
+    long source_mtime_nsec;
+    unsigned source_mode;
+    int have_source_stat;
 } glon_io_slot;
 
 typedef struct {
@@ -142,5 +166,24 @@ int glon_io_posix_read(int fd, uint8_t *buf, size_t cap, size_t *got,
 int glon_io_posix_write(int fd, const uint8_t *buf, size_t len, size_t *put,
                         char *err, size_t errcap);
 int glon_io_posix_close(int fd, char *err, size_t errcap);
+
+/* Protocol v2 POSIX helpers.  They never perform text replacement. */
+int glon_io_posix_make_temp(const char *root_real, const char *name,
+                            size_t name_len, int *fd,
+                            char *temp_path, size_t temp_cap,
+                            char *source_real, size_t source_cap,
+                            char *parent_real, size_t parent_cap,
+                            unsigned long long *dev, unsigned long long *ino,
+                            unsigned long long *size, long *mtime_sec,
+                            long *mtime_nsec, unsigned *mode,
+                            char *err, size_t errcap);
+int glon_io_posix_commit(const char *root_real, const char *target_name,
+                         size_t target_len, const char *temp_path,
+                         const char *parent_real, const char *source_real,
+                         unsigned long long dev, unsigned long long ino,
+                         unsigned long long size, long mtime_sec,
+                         long mtime_nsec, unsigned mode,
+                         char *err, size_t errcap);
+int glon_io_posix_unlink(const char *path, char *err, size_t errcap);
 
 #endif /* GLON_IO_FILE_H */

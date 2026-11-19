@@ -905,6 +905,41 @@ these commits is merged, pushed, tagged or accepted for production.
 Details: `docs/design/GLON-MASM-VOCABULARY-ACCELERATION-3.md`,
 `experiments/masm3/`, and the earlier IO/MASM reports cited there.
 
+### Cookbook 0004 original-path replacement (completed local integration)
+
+**[FINDING]** The optional file service now supports safe replacement of an
+original path without adding a frozen S1 primitive or host-side replacement
+logic. Protocol v2 adds general `temp-open`, `commit` and `discard` operations;
+the existing open/read/write/close operations and wire magic are unchanged.
+
+- A unique temporary is created with `O_CREAT|O_EXCL|O_NOFOLLOW` in the source
+  directory, mode 0600; source permission bits are applied only at commit.
+- Commit requires the target in the same real directory, rejects symlink
+  targets, checks device/inode/size/mtime/mode against the source captured at
+  temp-open (`stale`), closes and renames. Any failure removes the temp and
+  leaves the original path untouched.
+- `rename` gives atomic process-level replacement, not power-loss durability:
+  no file or directory fsync is performed. Ownership/ACL/xattr/timestamps are
+  not preserved; hard links other than the replaced path keep old content;
+  symlink final components are rejected.
+- Reusable Glon vocabulary: `s/replace-first`, `stream/replace-first-to`,
+  `file/replace-first`. The application-level Cookbook source is five lines.
+- Integration uses MASM-1 search and MASM-2 u32; MASM-3 is not integrated
+  (modest/neutral benefit for this completion). Profilers and benchmark-only C
+  are not runtime dependencies.
+- Measured 1 KiB–4 MiB in-place files: roughly 2.5–4.0k post-collection live
+  cells, ~2.1–2.5 MiB peak RSS, GC collections scaling with size (1,311/MiB;
+  5,243/4 MiB). No further optimisation was undertaken.
+- Tests: host protocol tests, 36 in-place acceptance cases with Python-generated
+  expected bytes, failure/capability/symlink/hard-link/stale-source/temp-cleanup
+  cases, existing 30 whole-file and streaming acceptance, MASM-1/2/3 baselines,
+  IO-4 loader lifetime, 948-check non-simulation runner, frozen S1. WASM not
+  run (`emcc` unavailable). Full `./s1` still not claimed.
+
+Details: `docs/design/GLON-COOKBOOK-FILE-REPLACEMENT.md`,
+`modules/file-replace.glon`, `modules/file-atomic.glon` and the host module
+sources.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

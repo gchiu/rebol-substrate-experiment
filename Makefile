@@ -383,6 +383,16 @@ io-file-stream-4m:
 	$(MAKE) --no-print-directory glon MODULES=file
 	python3 tests/io-file/streaming_acceptance.py --glon ./glon --scale --four-mib
 
+# Original-path replacement: unique same-directory temp, streaming write, atomic
+# rename, source-change detection and cleanup.  Expected bytes come from Python.
+io-file-inplace-test: io-file-c-test
+	$(MAKE) --no-print-directory glon MODULES=file
+	python3 tests/io-file/inplace_replacement.py --glon ./glon
+
+io-file-inplace-bench:
+	$(MAKE) --no-print-directory glon MODULES=file
+	python3 tests/io-file/inplace_bench.py --glon ./glon
+
 # ---- Desktop proof: native Glon application + browser/WASM Glon View --------
 # glon-desktop is the installed application host: it binds a localhost TCP
 # listener, serves the browser/WASM Glon View, opens the default browser, and
@@ -614,7 +624,7 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon glon-lib glon-smoke io-file-c-test io-file-test io-file-stream-test io-file-stream-scale io-file-stream-4m glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test kaka-wave-test kaka-serve wasm-kaka-test kaka-browser-regression kaka-refresh-regression
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon glon-lib glon-smoke io-file-c-test io-file-test io-file-stream-test io-file-stream-scale io-file-stream-4m io-file-inplace-test io-file-inplace-bench glon-kernel-host host-test kernel-test kernel-install kernelspec-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test kaka-wave-test kaka-serve wasm-kaka-test kaka-browser-regression kaka-refresh-regression
 
 # ---- machine integrity (MACHINE-INTEGRITY-AUDIT.md) ------------------------
 # Machine-level invariants, separate from the functional suite (./s1): the

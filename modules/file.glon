@@ -97,7 +97,11 @@ io/reply: func [id status v1 v2] [
                 either = op 2 [
                     success v1
                 ] [
-                    either = op 3 [ success v1 ] [ success none ]
+                    either = op 3 [
+                        success v1
+                    ] [
+                        either = op 5 [ success reduce [ v1 v2 ] ] [ success none ]
+                    ]
                 ]
             ]
         ] [
