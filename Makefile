@@ -411,11 +411,11 @@ $(GLON_CONFIG): FORCE
 build/profile:
 	@mkdir -p $@
 
-build/profile/s1_profile.h: s1.h Makefile | build/profile
+build/profile/s1_profile.h: s1.h Makefile $(GLON_CONFIG) | build/profile
 	@sed 's/^#define MEM_CELLS 65536$$/#define MEM_CELLS $(MEM_TOTAL)/' $< > $@.tmp
 	@mv $@.tmp $@
 
-build/profile/s1_profile.c: s1.c Makefile | build/profile
+build/profile/s1_profile.c: s1.c Makefile $(GLON_CONFIG) | build/profile
 	@sed 's/^#include "s1.h"$$/#include "s1_profile.h"/' $< > $@.tmp
 	@mv $@.tmp $@
 
