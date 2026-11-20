@@ -120,6 +120,7 @@ jobs:
         if: matrix.platform == 'windows'
         shell: 'msys2 {0}'
         run: |
+          mkdir -p /usr/local/bin
           printf '#!/bin/sh\nexec /mingw64/bin/python.exe "$@"\n' > /usr/local/bin/python3
           chmod +x /usr/local/bin/python3
           python3 --version
@@ -276,6 +277,7 @@ jobs:
         if: matrix.platform == 'windows'
         shell: 'msys2 {0}'
         run: |
+          mkdir -p /usr/local/bin
           printf '#!/bin/sh\nexec /mingw64/bin/python.exe "$@"\n' > /usr/local/bin/python3
           chmod +x /usr/local/bin/python3
           python3 --version
