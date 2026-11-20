@@ -1175,6 +1175,16 @@ in `glon_http.c`, dynamic CivetWeb OpenSSL loading), release documentation, the
 Shop HTTPS page and distribution packaging. It does not change Glon syntax,
 evaluator/GC semantics or the constrained profile.
 
+### Glon Developer Preview 1 correction (2026-11-20) — [RELEASE CORRECTION]
+
+**[DECISION] Alpha.2 corrects a Shop-only tagged-source test regression without
+moving the alpha.1 tag.** The alpha.1 tag remains at `7207c70`. Adding the HTTPS
+Shop link to the constrained landing page exhausted the 64K loader heap in the
+G1E tuple-space test. Commit `5b4dee9` shortens the landing copy and regenerates
+`bootstrap.glon`, `app.html` and `primer.html`; `make test` passes. No runtime,
+frozen S1, memory map, binary size or package capability changes. The corrected
+release is `v0.1.0-alpha.2`, with the same verified binaries.
+
 **[INCLUDED]** Linux x86-64 minimal (stripped 104,768 B), constrained HTTPS
 (264,512 B), and large HTTPS+file (297,312 B); native Windows x86-64 minimal
 (245,248 B), constrained HTTPS (457,216 B), and large HTTPS+JSON (457,216 B).

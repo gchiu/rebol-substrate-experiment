@@ -1,6 +1,6 @@
 # Glon Developer Preview 1
 
-`v0.1.0-alpha.1` — an experimental execution substrate for AI-generated
+`v0.1.0-alpha.2` — an experimental execution substrate for AI-generated
 applications.
 
 ## What is here

@@ -1,10 +1,10 @@
 # Glon Developer Preview 1 — release manifest
 
-- **Release identifier:** `v0.1.0-alpha.1`
+- **Release identifier:** `v0.1.0-alpha.2`
 - **Release name:** Glon Developer Preview 1
 - **Status:** public alpha developer preview (pre-release)
-- **Source branch:** `release/v0.1.0-alpha.1`
-- **Source commit:** `abe00ec`
+- **Source branch:** `release/v0.1.0-alpha.2`
+- **Source commit:** `5b4dee9`
 - **Base:** G3A implementation `546de49`, docs `492f55f`
 - **Frozen S1:** `f90496c26dc45c7a387d8fc8639cd2781507d3d2` (unchanged)
 - **Build host:** Linux/WSL2 x86-64; MSVC 14.51 BuildTools for Windows

@@ -329,6 +329,7 @@ In order:
 | Cookbook 0004 original-path file replacement (**completed local integration, not deployed**) | *(untagged)* | *(this integration commit)* |
 | HTTPS G1/G2/G3/G3A (**local experiments, not pushed**) | *(untagged)* | `d01dab5`, `c955523`, `9d943c7`, `546de49` |
 | Glon Developer Preview 1 (**public alpha release preparation**) | `v0.1.0-alpha.1` | *(this release commit)* |
+| Glon Developer Preview 1 correction (**public alpha.2 pre-release**) | `v0.1.0-alpha.2` | `5b4dee9` |
 
 **Optional I/O and MASM track (experiments, not deployed).** IO-1 through
 MASM-3 are local branches/worktrees. Frozen S1, the HOST table, parser,

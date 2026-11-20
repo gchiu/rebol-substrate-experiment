@@ -1,6 +1,6 @@
 # Glon AI Quick Start
 
-Glon Developer Preview 1 (`v0.1.0-alpha.1`) is an experimental execution
+Glon Developer Preview 1 (`v0.1.0-alpha.2`) is an experimental execution
 substrate intended primarily for AI-generated applications.
 
 ## Workflow

@@ -5,9 +5,9 @@ require WSL, Cygwin, a Linux compatibility layer, Python or Node.js.
 
 ## Packages
 
-- `glon-v0.1.0-alpha.1-windows-x86_64-minimal.zip` — interpreter only.
-- `glon-v0.1.0-alpha.1-windows-x86_64-https.zip` — constrained HTTPS (examples 1–3).
-- `glon-v0.1.0-alpha.1-windows-x86_64-https-large.zip` — large HTTPS + JSON
+- `glon-v0.1.0-alpha.2-windows-x86_64-minimal.zip` — interpreter only.
+- `glon-v0.1.0-alpha.2-windows-x86_64-https.zip` — constrained HTTPS (examples 1–3).
+- `glon-v0.1.0-alpha.2-windows-x86_64-https-large.zip` — large HTTPS + JSON
   (example 4). This package does **not** include file persistence; the current
   file module has no Win32 backend.
 
