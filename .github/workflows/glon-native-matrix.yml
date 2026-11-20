@@ -1,0 +1,285 @@
+# Native Glon on every supported GitHub-hosted architecture.
+#
+# Verification runs on push to the development/release branches, pull requests,
+# manual dispatch and release tags.  Each platform job carries the full useful
+# suite; fail-fast is disabled so a failure on one platform still leaves the
+# others' logs and summaries available.
+#
+# Distribution archives are built only after every verification job succeeds,
+# and only on a release tag or manual dispatch.  They are uploaded as Actions
+# artifacts; this workflow never creates or edits a GitHub Release.
+name: Glon native cross-platform matrix
+
+on:
+  push:
+    branches:
+      - glon-shop-g1a
+      - main
+      - 'release/**'
+      - 'ci/**'
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: glon-native-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  S1_FROZEN: f90496c26dc45c7a387d8fc8639cd2781507d3d2
+
+jobs:
+  native:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-24.04
+            platform: linux
+            arch: x86_64
+            shell: bash
+            file: '1'
+            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+          - name: linux-aarch64
+            os: ubuntu-24.04-arm
+            platform: linux
+            arch: aarch64
+            shell: bash
+            file: '1'
+            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+          - name: windows-x86_64
+            os: windows-2025
+            platform: windows
+            arch: x86_64
+            shell: 'msys2 {0}'
+            file: '0'
+            cflags: '-std=c17 -Wall -Wextra -O0 -g -Ddup=_dup -Ddup2=_dup2 -Dclose=_close -Dopen=_open'
+          - name: macos-arm64
+            os: macos-15
+            platform: macos
+            arch: arm64
+            shell: bash
+            file: '1'
+            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+          - name: macos-x86_64
+            os: macos-15-intel
+            platform: macos
+            arch: x86_64
+            shell: bash
+            file: '1'
+            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+    steps:
+      - name: Checkout source and frozen tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev openssl
+
+      - name: Install macOS OpenSSL 3
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          brew install openssl@3
+          prefix="$(brew --prefix openssl@3)"
+          echo "OPENSSL_CFLAGS=-I$prefix/include" >> "$GITHUB_ENV"
+          echo "OPENSSL_LIBS=-L$prefix/lib -lssl -lcrypto" >> "$GITHUB_ENV"
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+
+      - name: Set up MSYS2 MinGW-w64
+        if: matrix.platform == 'windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            make
+            unzip
+            zip
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-python
+            mingw-w64-x86_64-zlib
+
+      - name: Prepare MSYS2 Python alias
+        if: matrix.platform == 'windows'
+        shell: 'msys2 {0}'
+        run: |
+          printf '#!/bin/sh\nexec /mingw64/bin/python.exe "$@"\n' > /usr/local/bin/python3
+          chmod +x /usr/local/bin/python3
+          python3 --version
+
+      - name: Fetch and verify frozen-S1 tag
+        shell: ${{ matrix.shell }}
+        run: |
+          git fetch origin '+refs/tags/s1-frozen-v1:refs/tags/s1-frozen-v1'
+          test "$(git rev-parse 's1-frozen-v1^{commit}')" = "$S1_FROZEN"
+
+      - name: Run native build and regression suite
+        shell: ${{ matrix.shell }}
+        env:
+          CI_PLATFORM: ${{ matrix.platform }}
+          CI_ARCH: ${{ matrix.arch }}
+          CI_SUPPORT_FILE: ${{ matrix.file }}
+          CI_LOG_DIR: ci-logs/${{ matrix.name }}
+          CFLAGS: ${{ matrix.cflags }}
+        run: bash scripts/ci/native-suite.sh
+
+      - name: Upload native logs and measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: glon-native-${{ matrix.name }}
+          path: ci-logs/${{ matrix.name }}/
+          if-no-files-found: warn
+          retention-days: 14
+
+  report:
+    name: Report per-platform results
+    needs: native
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download all native results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: glon-native-*
+          path: native-results
+
+      - name: Assemble summary
+        shell: bash
+        run: |
+          {
+            echo "# Glon native cross-platform matrix"
+            echo
+            echo "Platforms: linux-x86_64, linux-aarch64, windows-x86_64, macos-arm64, macos-x86_64."
+            echo
+            for f in $(find native-results -name summary.md | sort); do
+              echo "## $(basename "$(dirname "$f")")"
+              cat "$f"
+              echo
+            done
+            echo "## Executable sizes"
+            echo
+            find native-results -name sizes.txt -print -exec cat {} \;
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$GITHUB_STEP_SUMMARY"
+
+  package:
+    name: Package ${{ matrix.name }}
+    needs: native
+    if: success() && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-24.04
+            platform: linux
+            arch: x86_64
+            shell: bash
+            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+          - name: linux-aarch64
+            os: ubuntu-24.04-arm
+            platform: linux
+            arch: aarch64
+            shell: bash
+            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+          - name: windows-x86_64
+            os: windows-2025
+            platform: windows
+            arch: x86_64
+            shell: 'msys2 {0}'
+            cflags: '-std=c17 -Wall -Wextra -O0 -g -Ddup=_dup -Ddup2=_dup2 -Dclose=_close -Dopen=_open'
+          - name: macos-arm64
+            os: macos-15
+            platform: macos
+            arch: arm64
+            shell: bash
+            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+          - name: macos-x86_64
+            os: macos-15-intel
+            platform: macos
+            arch: x86_64
+            shell: bash
+            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+    steps:
+      - name: Checkout source and frozen tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev openssl
+
+      - name: Install macOS OpenSSL 3
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          brew install openssl@3
+          prefix="$(brew --prefix openssl@3)"
+          echo "OPENSSL_CFLAGS=-I$prefix/include" >> "$GITHUB_ENV"
+          echo "OPENSSL_LIBS=-L$prefix/lib -lssl -lcrypto" >> "$GITHUB_ENV"
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+
+      - name: Set up MSYS2 MinGW-w64
+        if: matrix.platform == 'windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            make
+            unzip
+            zip
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-python
+            mingw-w64-x86_64-zlib
+
+      - name: Prepare MSYS2 Python alias
+        if: matrix.platform == 'windows'
+        shell: 'msys2 {0}'
+        run: |
+          printf '#!/bin/sh\nexec /mingw64/bin/python.exe "$@"\n' > /usr/local/bin/python3
+          chmod +x /usr/local/bin/python3
+          python3 --version
+
+      - name: Build, package and smoke-test distributions
+        shell: ${{ matrix.shell }}
+        env:
+          CI_PLATFORM: ${{ matrix.platform }}
+          CI_ARCH: ${{ matrix.arch }}
+          CFLAGS: ${{ matrix.cflags }}
+          GLON_CI_VERSION: v0.1.0-alpha.2-ci.${{ github.sha }}
+        run: bash scripts/ci/package-platform.sh
+
+      - name: Upload platform distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: glon-dist-${{ matrix.name }}
+          path: dist/
+          retention-days: 14

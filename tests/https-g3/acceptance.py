@@ -360,8 +360,11 @@ def main():
         ok("300 bounded mixed reads/updates/rejections succeeded")
 
         rc = srv.stop(timeout=15)
-        if rc != 0:
+        if rc != 0 and os.name != "nt":
             fail(f"server shutdown returned {rc}:\n{srv.stderr}")
+        if rc != 0:
+            print("NOTE: Windows terminates the process on SIGTERM; "
+                  "graceful-signal shutdown is not verified on this host")
         if not wait_port_free():
             fail("listener was not released")
         live = None

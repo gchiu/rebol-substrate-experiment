@@ -39,6 +39,9 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <direct.h>
+#elif defined(__APPLE__)
+#include <unistd.h>
+#include <mach-o/dyld.h>
 #else
 #include <unistd.h>
 #endif
@@ -91,6 +94,17 @@ static int find_exe_dir(void) {
     exe_dir[n] = 0;
     char *slash = strrchr(exe_dir, '\\');
     if (!slash) slash = strrchr(exe_dir, '/');
+    if (slash) *slash = 0; else strcpy(exe_dir, ".");
+    return 0;
+#elif defined(__APPLE__)
+    char raw[sizeof exe_dir];
+    uint32_t size = (uint32_t)sizeof raw;
+    if (_NSGetExecutablePath(raw, &size) != 0) return -1;
+    if (!realpath(raw, exe_dir)) {
+        if (strlen(raw) >= sizeof exe_dir) return -1;
+        strcpy(exe_dir, raw);
+    }
+    char *slash = strrchr(exe_dir, '/');
     if (slash) *slash = 0; else strcpy(exe_dir, ".");
     return 0;
 #else

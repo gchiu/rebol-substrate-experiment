@@ -1,0 +1,6 @@
+Runner: GitHub-hosted macos-15 (arm64) / macos-15-intel (x86-64).
+Compiler: Apple Clang with C17 support.
+HTTPS packages are built against Homebrew openssl@3. The distribution bundles
+libssl.3.dylib and libcrypto.3.dylib in lib/ and rewrites their install names
+to @executable_path/lib, so the extracted archive does not depend on the build
+prefix. macOS system frameworks and libSystem are used normally.

@@ -12,7 +12,14 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 DIST="$(mktemp -d "${TMPDIR:-/tmp}/glon-smoke.XXXXXX")"
 trap 'rm -rf "$DIST"' EXIT
 
-cp "$ROOT/glon" "$DIST/glon"
+if [ -x "$ROOT/glon" ]; then
+    cp "$ROOT/glon" "$DIST/glon"
+elif [ -x "$ROOT/glon.exe" ]; then
+    cp "$ROOT/glon.exe" "$DIST/glon.exe"
+else
+    echo "glon-smoke: no built glon executable" >&2
+    exit 1
+fi
 cp -r "$ROOT/glon-lib" "$DIST/glon-lib"
 
 # arithmetic + persistent definition + STRING! library (prelude + strings)

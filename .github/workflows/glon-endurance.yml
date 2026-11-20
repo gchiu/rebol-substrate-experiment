@@ -1,0 +1,64 @@
+# Exhaustive G3A scale/endurance runs are deliberately separate from the
+# routine native matrix.  Manual dispatch only; bounded inputs; no release
+# publication.
+name: Glon endurance and scale
+
+on:
+  workflow_dispatch:
+    inputs:
+      requests:
+        description: 'HTTPS requests for the endurance run'
+        required: true
+        default: '1000'
+      sizes:
+        description: 'Comma-separated register restore sizes'
+        required: true
+        default: '10,100,1000'
+
+permissions:
+  contents: read
+
+jobs:
+  endurance:
+    name: linux-x86_64 G3A scale and endurance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout source and frozen tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev openssl
+
+      - name: Verify frozen substrate
+        run: |
+          git fetch origin '+refs/tags/s1-frozen-v1:refs/tags/s1-frozen-v1'
+          test "$(git rev-parse 's1-frozen-v1^{commit}')" = "f90496c26dc45c7a387d8fc8639cd2781507d3d2"
+          bash check-frozen-s1.sh
+
+      - name: Build the large file+HTTPS configuration
+        run: make glon MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+
+      - name: Generate the local TLS certificate
+        run: tests/https-g1/make-cert.sh
+
+      - name: Bounded restore scale
+        run: python3 tests/https-g3a/scale.py --glon ./glon --sizes "${{ inputs.sizes }}"
+
+      - name: Bounded HTTPS endurance
+        run: python3 tests/https-g3a/endurance.py --glon ./glon --requests "${{ inputs.requests }}" --workers 1
+
+      - name: Upload endurance logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: glon-endurance-logs
+          path: |
+            tests/https-g1/.cert/
+          if-no-files-found: ignore
+          retention-days: 14

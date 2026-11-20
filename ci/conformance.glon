@@ -1,0 +1,20 @@
+;; ci/conformance.glon - platform-independent semantic output for the CI matrix.
+;; Run with: ./glon glon-lib/strings-ext.glon ci/conformance.glon
+;; Only ordinary Glon operations are used; no host addresses, clocks or paths.
+[
+c: func [label v] [ s/print s/+ label s/from-int v ]
+c "C1=" + 1 2
+c "C2=" - 0 1
+c "C3=" * 123456789 987654321
+c "C4=" / 100 7
+c "C6=" = 0 0
+c "C7=" < -1 0
+c "C8=" block-len reduce [ 1 2 3 4 ]
+c "C9=" s/length "Glon"
+c "C10=" s/at "Glon" 0
+c "C11=" s/at mk-string [ 0 255 65 ] 1
+c "C12=" s/length s/+ "glo" "n"
+c "C13=" 0
+c "C14=" -1099511627776
+s/print "CONFORMANCE PASS"
+]

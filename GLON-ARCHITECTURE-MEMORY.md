@@ -1175,6 +1175,32 @@ in `glon_http.c`, dynamic CivetWeb OpenSSL loading), release documentation, the
 Shop HTTPS page and distribution packaging. It does not change Glon syntax,
 evaluator/GC semantics or the constrained profile.
 
+### Cross-platform native CI matrix (2026-11-21) — [VERIFICATION INFRASTRUCTURE]
+
+**[DECISION] The CI matrix verifies the same unmodified runtime on every
+supported 64-bit host; it does not introduce platform dialects.** The workflow
+targets `ubuntu-24.04`, `ubuntu-24.04-arm`, `windows-2025`, `macos-15` and
+`macos-15-intel`; each job builds the minimal, constrained, file, HTTPS, combined
+and large configurations that the host supports, then runs the frozen-S1 check,
+the full native suite, JSON, iterator/lexer, M1 large, file I/O, HTTPS G1/G2/G3
+and (where file I/O exists) G3A acceptance. `fail-fast` is disabled so one host
+cannot hide another host's diagnosis. Endurance/scale remains a separate manual
+workflow.
+
+**[HOST PORTABILITY]** macOS executable discovery now uses
+`_NSGetExecutablePath` and `realpath` instead of Linux `/proc/self/exe`. This is
+library discovery only; no Glon semantics, memory map or frozen file changed.
+Windows CI uses native MinGW-w64 PE builds with the POSIX-oriented C test
+harness adapted through CRT name mappings and `NUL`; the runtime itself is
+unchanged.
+
+**[BLOCKERS]** The file module's path-confinement backend is POSIX-only, so
+Windows file I/O, combined file+HTTPS and G3A persistence are not built or
+claimed. Windows SIGTERM is translated by Python into process termination; the
+HTTPS acceptance harness therefore verifies TLS/request behavior but records
+graceful-signal shutdown as unverified on Windows. Neither is a Glon dialect or
+a silent semantic change.
+
 ### Glon Developer Preview 1 correction (2026-11-20) — [RELEASE CORRECTION]
 
 **[DECISION] Alpha.2 corrects a Shop-only tagged-source test regression without

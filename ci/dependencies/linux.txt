@@ -1,0 +1,5 @@
+Runner: GitHub-hosted ubuntu-24.04 / ubuntu-24.04-arm (x86-64 or arm64).
+Compiler: system GCC or Clang with C17 support.
+Required for HTTPS packages: OpenSSL 3 development headers and runtime
+(libssl-dev on Ubuntu; libssl3/libcrypto3 at run time), pthreads, libc.
+No MSVC runtime, WSL, Cygwin or Python is required to execute the binary.

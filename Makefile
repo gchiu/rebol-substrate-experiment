@@ -131,7 +131,7 @@ clean:
 	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench fib-p10b-bench traffic-bench-o0 traffic-bench-o2 glon-live-native-test demo/shop/glon-live.wasm $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
 	rm -f glon-desktop glon-desktop.exe desktop-test patrol-test kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test kaka-wave-test desktop/glon.wasm desktop/prelude.glon desktop/strings.glon desktop/big.txt
 	rm -rf glon glon-lib
-	rm -f .glon-config .glon-config.tmp io-file-c-test
+	rm -f .glon-config .glon-config.tmp io-file-c-test arch-check
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
 # Produces web/demo.js (Emscripten runtime + web/glue.js) and web/demo.wasm,
@@ -864,3 +864,16 @@ json-test:
 	@out=$$(./glon glon-lib/strings-ext.glon modules/json.glon tests/json/tests.glon); status=$$?; \
 	printf '%s\n' "$$out" | grep -v '^#\[func\]$$'; exit $$status
 .PHONY: json-test
+
+# ---- Cross-platform CI probes (host portability, no language change) -------
+# arch-check prints the cell width, alignment, pointer width and the exact
+# boundary constants used by the frozen 64K map; the CI matrix requires a
+# 64-bit cell and checks the same invariant on every runner.
+arch-check: ci/arch_check.c s1.c r0_s1.h s1.h m1_layout.h
+	$(CC) $(CFLAGS) -I. -o $@ ci/arch_check.c s1.c
+
+# Iterator vocabulary tests live in experiments/glon-iter; they build a fresh
+# CLI from the unchanged runtime and run the native iterator/lexer suites.
+iterators-test:
+	$(MAKE) -C experiments/glon-iter test
+.PHONY: arch-check iterators-test

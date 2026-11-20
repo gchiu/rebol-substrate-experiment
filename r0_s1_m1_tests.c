@@ -481,7 +481,13 @@ int run_r0_s1_m1_tests(void) {
     /* K provokes a fail-stop on purpose (its [dump] is expected), so it runs
      * after the diagnostics scan above, with stderr set aside */
     {
-        int keep = dup(2), nul = open("/dev/null", O_WRONLY);
+        int keep = dup(2), nul = open(
+#ifdef _WIN32
+            "NUL"
+#else
+            "/dev/null"
+#endif
+            , O_WRONLY);
         if (nul >= 0) { dup2(nul, 2); close(nul); }
         test_task_ds_guard();
         fflush(stderr);

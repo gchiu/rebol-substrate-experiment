@@ -1,0 +1,7 @@
+Runner: GitHub-hosted windows-2025 (x86-64).
+Compiler: MSYS2 MinGW-w64 GCC with C17 support. The executable is a native
+Windows PE and does not use WSL, Cygwin or the MSYS2 runtime.
+HTTPS packages bundle the MinGW/OpenSSL runtime DLLs in lib/ (libssl, libcrypto,
+zlib, winpthread and GCC runtime as required). The file module is not built on
+Windows because its path-confinement backend is POSIX-only; this is a documented
+platform blocker, not a Glon dialect.
