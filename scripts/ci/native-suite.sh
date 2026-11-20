@@ -72,7 +72,8 @@ https_windows() {
     echo "https_windows glon_bin=$(glon_bin)" >&2
     ls -l glon* 2>/dev/null >&2 || true
     command -v file >/dev/null 2>&1 && file "$(glon_bin)" >&2 || true
-    tests/https-g1/make-cert.sh
+    bash tests/https-g1/make-cert.sh
+    ls -l tests/https-g1/.cert 2>/dev/null >&2 || true
     python3 tests/https-g1/acceptance.py --glon "$(glon_bin)"
     python3 tests/https-g2/acceptance.py --glon "$(glon_bin)"
     make glon MODULES=http GLON_HTTP_RECLAIM_M1=1

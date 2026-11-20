@@ -206,7 +206,7 @@ def main():
     if not os.path.exists(args.glon):
         fail(f"missing executable {args.glon}")
     if not os.path.exists(args.cert):
-        subprocess.run([os.path.join(root, "tests/https-g1/make-cert.sh")], check=True)
+        subprocess.run(([ "bash" ] if os.name == "nt" else []) + [os.path.join(root, "tests/https-g1/make-cert.sh")], check=True)
     if not wait_port_free():
         fail("port 8443 is already in use")
 
