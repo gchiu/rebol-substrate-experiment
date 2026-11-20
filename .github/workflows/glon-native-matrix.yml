@@ -125,13 +125,25 @@ jobs:
           python3 --version
 
       - name: Fetch and verify frozen-S1 tag
-        shell: ${{ matrix.shell }}
+        shell: bash
         run: |
           git fetch origin '+refs/tags/s1-frozen-v1:refs/tags/s1-frozen-v1'
           test "$(git rev-parse 's1-frozen-v1^{commit}')" = "$S1_FROZEN"
 
-      - name: Run native build and regression suite
-        shell: ${{ matrix.shell }}
+      - name: Run native build and regression suite (POSIX)
+        if: matrix.platform != 'windows'
+        shell: bash
+        env:
+          CI_PLATFORM: ${{ matrix.platform }}
+          CI_ARCH: ${{ matrix.arch }}
+          CI_SUPPORT_FILE: ${{ matrix.file }}
+          CI_LOG_DIR: ci-logs/${{ matrix.name }}
+          CFLAGS: ${{ matrix.cflags }}
+        run: bash scripts/ci/native-suite.sh
+
+      - name: Run native build and regression suite (Windows)
+        if: matrix.platform == 'windows'
+        shell: 'msys2 {0}'
         env:
           CI_PLATFORM: ${{ matrix.platform }}
           CI_ARCH: ${{ matrix.arch }}
@@ -268,8 +280,19 @@ jobs:
           chmod +x /usr/local/bin/python3
           python3 --version
 
-      - name: Build, package and smoke-test distributions
-        shell: ${{ matrix.shell }}
+      - name: Build, package and smoke-test distributions (POSIX)
+        if: matrix.platform != 'windows'
+        shell: bash
+        env:
+          CI_PLATFORM: ${{ matrix.platform }}
+          CI_ARCH: ${{ matrix.arch }}
+          CFLAGS: ${{ matrix.cflags }}
+          GLON_CI_VERSION: v0.1.0-alpha.2-ci.${{ github.sha }}
+        run: bash scripts/ci/package-platform.sh
+
+      - name: Build, package and smoke-test distributions (Windows)
+        if: matrix.platform == 'windows'
+        shell: 'msys2 {0}'
         env:
           CI_PLATFORM: ${{ matrix.platform }}
           CI_ARCH: ${{ matrix.arch }}
