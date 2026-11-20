@@ -401,8 +401,10 @@
       var a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = "glon-inflate-output.bin";
+      a.style.display = "none";
+      document.body.appendChild(a);
       a.click();
-      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+      setTimeout(function () { a.remove(); URL.revokeObjectURL(a.href); }, 60000);
     });
   }
 
