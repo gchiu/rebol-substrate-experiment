@@ -17,7 +17,7 @@ mkdir -p "$DIST"
 BUNDLE="$ROOT/bundle-libs"
 
 glon_bin() {
-    if [ -x ./glon ]; then echo ./glon; else echo ./glon.exe; fi
+    if [ -f ./glon.exe ]; then echo ./glon.exe; elif [ -x ./glon ]; then echo ./glon; else echo ./glon; fi
 }
 
 bundle_macos() {

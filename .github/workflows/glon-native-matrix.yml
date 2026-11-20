@@ -47,35 +47,35 @@ jobs:
             arch: x86_64
             shell: bash
             file: '1'
-            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+            cflags: '-std=c17 -fwrapv -Wall -Wextra -O0 -g'
           - name: linux-aarch64
             os: ubuntu-24.04-arm
             platform: linux
             arch: aarch64
             shell: bash
             file: '1'
-            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+            cflags: '-std=c17 -fwrapv -Wall -Wextra -O0 -g'
           - name: windows-x86_64
             os: windows-2025
             platform: windows
             arch: x86_64
             shell: 'msys2 {0}'
             file: '0'
-            cflags: '-std=c17 -Wall -Wextra -O0 -g -Ddup=_dup -Ddup2=_dup2 -Dclose=_close -Dopen=_open'
+            cflags: '-std=c17 -fwrapv -Wall -Wextra -O0 -g -Ddup=_dup -Ddup2=_dup2 -Dclose=_close -Dopen=_open'
           - name: macos-arm64
             os: macos-15
             platform: macos
             arch: arm64
             shell: bash
             file: '1'
-            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+            cflags: '-std=c17 -fwrapv -Wall -Wextra -O0 -g'
           - name: macos-x86_64
             os: macos-15-intel
             platform: macos
             arch: x86_64
             shell: bash
             file: '1'
-            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+            cflags: '-std=c17 -fwrapv -Wall -Wextra -O0 -g'
     steps:
       - name: Checkout source and frozen tag
         uses: actions/checkout@v4
@@ -209,31 +209,31 @@ jobs:
             platform: linux
             arch: x86_64
             shell: bash
-            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+            cflags: '-std=c17 -fwrapv -Wall -Wextra -O0 -g'
           - name: linux-aarch64
             os: ubuntu-24.04-arm
             platform: linux
             arch: aarch64
             shell: bash
-            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+            cflags: '-std=c17 -fwrapv -Wall -Wextra -O0 -g'
           - name: windows-x86_64
             os: windows-2025
             platform: windows
             arch: x86_64
             shell: 'msys2 {0}'
-            cflags: '-std=c17 -Wall -Wextra -O0 -g -Ddup=_dup -Ddup2=_dup2 -Dclose=_close -Dopen=_open'
+            cflags: '-std=c17 -fwrapv -Wall -Wextra -O0 -g -Ddup=_dup -Ddup2=_dup2 -Dclose=_close -Dopen=_open'
           - name: macos-arm64
             os: macos-15
             platform: macos
             arch: arm64
             shell: bash
-            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+            cflags: '-std=c17 -fwrapv -Wall -Wextra -O0 -g'
           - name: macos-x86_64
             os: macos-15-intel
             platform: macos
             arch: x86_64
             shell: bash
-            cflags: '-std=c17 -Wall -Wextra -O0 -g'
+            cflags: '-std=c17 -fwrapv -Wall -Wextra -O0 -g'
     steps:
       - name: Checkout source and frozen tag
         uses: actions/checkout@v4

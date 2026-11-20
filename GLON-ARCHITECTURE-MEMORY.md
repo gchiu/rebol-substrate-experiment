@@ -1187,7 +1187,11 @@ and (where file I/O exists) G3A acceptance. `fail-fast` is disabled so one host
 cannot hide another host's diagnosis. Endurance/scale remains a separate manual
 workflow.
 
-**[HOST PORTABILITY]** macOS executable discovery now uses
+**[HOST PORTABILITY]** Native builds use `-fwrapv` so signed cell arithmetic
+has the explicit two's-complement wrap the Glon integer range and conformance
+tests require; without it, the extreme tagged value in the D4 test is
+compiler-dependent (observed with MinGW-w64 GCC 16). This defines the existing
+intended arithmetic; it does not add a dialect. macOS executable discovery now uses
 `_NSGetExecutablePath` and `realpath` instead of Linux `/proc/self/exe`. This is
 library discovery only; no Glon semantics, memory map or frozen file changed.
 Windows CI uses native MinGW-w64 PE builds with the POSIX-oriented C test
