@@ -396,10 +396,10 @@ demos: [
 
 home-view: [
     heading [ emit-text "Glon Demos" ]
-    tagline [ emit-text "Small applications running in Glon" ]
+    tagline [ emit-text "Small apps in Glon" ]
     each-demo 0 block-len demos
-    emit-text "<p><a href='linda.html'>Linda / tuple space — real cooperative blocking</a></p>"
-    emit-text "<p><a href='https.html'>Glon HTTPS Server — a programmable HTTPS application server in under 300 KiB</a></p>"
+    emit-text "<p><a href='linda.html'>Linda / tuple space</a></p>"
+    emit-text "<p><a href='https.html'>Glon HTTPS Server</a></p>"
 ]
 
 each-demo: func [i n] [
