@@ -16,5 +16,7 @@ c "C11=" s/at mk-string [ 0 255 65 ] 1
 c "C12=" s/length s/+ "glo" "n"
 c "C13=" 0
 c "C14=" -1099511627776
+c "C15=" - * 1073741824 536870912 1
+c "C16=" * -1073741824 536870912
 s/print "CONFORMANCE PASS"
 ]

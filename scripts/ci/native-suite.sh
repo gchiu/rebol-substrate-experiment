@@ -64,7 +64,10 @@ glon_bin() {
 }
 
 conformance() {
-    "$(glon_bin)" glon-lib/strings-ext.glon ci/conformance.glon | grep -v '^#\[func\]$'
+    out="$("$(glon_bin)" glon-lib/strings-ext.glon ci/conformance.glon | grep -v '^#\[func\]$')"
+    printf '%s\n' "$out"
+    printf '%s\n' "$out" | grep -qx 'C15=576460752303423487' || return 1
+    printf '%s\n' "$out" | grep -qx 'C16=-576460752303423488' || return 1
 }
 
 https_windows() {

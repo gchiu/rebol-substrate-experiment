@@ -331,6 +331,7 @@ In order:
 | Glon Developer Preview 1 (**public alpha release preparation**) | `v0.1.0-alpha.1` | *(this release commit)* |
 | Glon Developer Preview 1 correction (**public alpha.2 pre-release**) | `v0.1.0-alpha.2` | `5b4dee9` |
 | Cross-platform native CI matrix (**verification infrastructure**) | *(CI branch)* | *(this commit)* |
+| Windows LLC/LLP64 portability fixes (**verified locally with MSVC**) | *(CI branch)* | *(this commit)* |
 
 **Optional I/O and MASM track (experiments, not deployed).** IO-1 through
 MASM-3 are local branches/worktrees. Frozen S1, the HOST table, parser,

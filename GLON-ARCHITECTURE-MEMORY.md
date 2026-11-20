@@ -1175,6 +1175,31 @@ in `glon_http.c`, dynamic CivetWeb OpenSSL loading), release documentation, the
 Shop HTTPS page and distribution packaging. It does not change Glon syntax,
 evaluator/GC semantics or the constrained profile.
 
+### Local Windows portability verification (2026-11-21) — [HOST PORTABILITY]
+
+**[MEASUREMENT]** Local native toolchain: MSVC 19.51.36256 x64 (VS 18
+BuildTools, `vcvars64.bat`, `/std:c17 /MT /O2`), Windows OpenSSL 3.5.6 from
+Git for Windows. The local binary sizes matched the released Windows PE sizes
+(457,216 bytes for the constrained HTTPS build).
+
+**[CONFIRMED DEFECTS AND FIXES]** (1) The parser stored numeric literals in
+`long`; Windows is LLP64, so literals above 2^27 lost bits before tagging, and
+the D4 edge case became `-1`. `parse_int` now uses `cell`. (2) `r0_s1_mold`
+formatted integers through `long`; it now uses `long long`. (3) The local
+certificate helper's `-subj /CN=...` was rewritten as a Windows path by Git
+Bash/MSYS2, so HTTPS tests saw no certificate. The helper now uses a temporary
+OpenSSL config file and verifies that `cert.pem` was written. (4) The C tests
+captured stderr under `/tmp`, which the native CRT maps to the current drive;
+CI creates `D:\tmp`. (5) `-fwrapv` makes the intended two's-complement wrap
+explicit across compilers.
+
+**[LOCAL RESULTS]** MSVC D4 passed; G1, G2 and the reclaim-enabled G3 HTTPS
+acceptance passed natively on Windows. The same suite passed on Linux with the
+released large/file+HTTPS binary. Windows file I/O and G3A persistence remain
+unsupported because the file backend is POSIX-only; Windows SIGTERM becomes
+process termination, so graceful-signal shutdown and the shutdown heap report
+are explicitly unverified there.
+
 ### Cross-platform native CI matrix (2026-11-21) — [VERIFICATION INFRASTRUCTURE]
 
 **[DECISION] The CI matrix verifies the same unmodified runtime on every

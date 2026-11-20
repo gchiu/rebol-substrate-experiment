@@ -78,6 +78,12 @@ class Server:
         fail(f"{self.label}: server did not accept TLS within {timeout}s")
 
     def stop(self, sig=signal.SIGTERM, timeout=10.0):
+        # Give a bounded server (max-requests / http-stop) a chance to exit
+        # naturally before signalling it.  Windows process startup is slower
+        # than Linux, so an immediate SIGTERM can race the final request.
+        deadline = time.time() + 3.0
+        while time.time() < deadline and self.proc.poll() is None:
+            time.sleep(0.01)
         if self.proc.poll() is None:
             self.proc.send_signal(sig)
         try:
@@ -304,18 +310,22 @@ def main():
                   "graceful-signal shutdown is not verified on this host")
         if not wait_port_free():
             fail("listener was not released after shutdown")
-        live = None
-        for line in srv.stderr.splitlines():
-            if line.startswith("glon: http: requests="):
-                print("MEASURE:", line)
-                m = re.search(r"live_cells=(\d+)", line)
-                if m:
-                    live = int(m.group(1))
-        if live is None:
-            fail("shutdown report did not include live_cells")
-        if live > 4096:
-            fail(f"post-collection live managed heap grew unexpectedly: {live} cells")
-        ok(f"repeated requests leave a bounded live heap ({live} cells)")
+        if os.name == "nt":
+            print("NOTE: Windows SIGTERM terminates the process, so the "
+                  "graceful-shutdown heap report is unavailable")
+        else:
+            live = None
+            for line in srv.stderr.splitlines():
+                if line.startswith("glon: http: requests="):
+                    print("MEASURE:", line)
+                    m = re.search(r"live_cells=(\d+)", line)
+                    if m:
+                        live = int(m.group(1))
+            if live is None:
+                fail("shutdown report did not include live_cells")
+            if live > 4096:
+                fail(f"post-collection live managed heap grew unexpectedly: {live} cells")
+            ok(f"repeated requests leave a bounded live heap ({live} cells)")
     finally:
         if srv.proc.poll() is None:
             srv.proc.kill()

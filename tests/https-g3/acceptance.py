@@ -69,6 +69,9 @@ class Server:
         fail(f"{self.label}: no listener within {timeout}s")
 
     def stop(self, timeout=10.0):
+        deadline = time.time() + 3.0
+        while time.time() < deadline and self.proc.poll() is None:
+            time.sleep(0.01)
         if self.proc.poll() is None:
             self.proc.send_signal(signal.SIGTERM)
         try:
@@ -205,7 +208,7 @@ def main():
 
         status, hs, body = add_form("m3", "Alice", "alice@example.test")
         if status != 200:
-            fail(f"form add status {status}")
+            fail(f"form add status {status}\n{srv.stderr}")
         status, hs, body = request("GET", "/members/m3")
         if status != 200 or b"Alice" not in body:
             fail("form-added member not visible")
@@ -368,17 +371,21 @@ def main():
         if not wait_port_free():
             fail("listener was not released")
         live = None
-        for line in srv.stderr.splitlines():
-            if line.startswith("glon: http: requests="):
-                print("MEASURE:", line)
-                m = re.search(r"live_cells=(\d+)", line)
-                if m:
-                    live = int(m.group(1))
-        if live is None:
-            fail("no shutdown report")
-        if live > 6500:
-            fail(f"unexpected managed heap growth: {live} cells")
-        ok(f"repeated requests leave bounded state ({live} live cells)")
+        if os.name == "nt":
+            print("NOTE: Windows SIGTERM terminates the process, so the "
+                  "graceful-shutdown report is unavailable")
+        else:
+            for line in srv.stderr.splitlines():
+                if line.startswith("glon: http: requests="):
+                    print("MEASURE:", line)
+                    m = re.search(r"live_cells=(\d+)", line)
+                    if m:
+                        live = int(m.group(1))
+            if live is None:
+                fail("no shutdown report")
+            if live > 6500:
+                fail(f"unexpected managed heap growth: {live} cells")
+            ok(f"repeated requests leave bounded state ({live} live cells)")
     finally:
         if srv.proc.poll() is None:
             srv.proc.kill()

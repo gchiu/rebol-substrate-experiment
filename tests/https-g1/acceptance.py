@@ -85,6 +85,12 @@ class Server:
         return None
 
     def stop(self, sig=signal.SIGTERM, timeout=10.0):
+        # Give a bounded server (max-requests / http-stop) a chance to exit
+        # naturally before signalling it.  Windows process startup is slower
+        # than Linux, so an immediate SIGTERM can race the final request.
+        deadline = time.time() + 3.0
+        while time.time() < deadline and self.proc.poll() is None:
+            time.sleep(0.01)
         if self.proc.poll() is None:
             self.proc.send_signal(sig)
         try:
