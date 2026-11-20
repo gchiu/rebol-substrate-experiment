@@ -4,6 +4,7 @@
 **Branch:** `experiment/glon-https-g3a`  
 **Worktree:** `/mnt/d/repos/glon-https-g3a`  
 **Base:** G3 `32c0310` (implementation `9d943c7`)  
+**Implementation commit:** `546de49`  
 **Frozen S1:** `f90496c26dc45c7a387d8fc8639cd2781507d3d2` (unchanged)
 
 G3A removes the artificial 7,232-cell managed-heap ceiling from general-purpose
