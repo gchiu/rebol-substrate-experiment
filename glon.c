@@ -36,7 +36,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#include <direct.h>
+#else
 #include <unistd.h>
+#endif
 
 #define MAX_SOURCE (1u << 20)
 
@@ -80,12 +85,22 @@ static void strip_comments(char *s) {
 static char exe_dir[2048];
 
 static int find_exe_dir(void) {
+#ifdef _WIN32
+    DWORD n = GetModuleFileNameA(NULL, exe_dir, (DWORD)sizeof exe_dir);
+    if (n == 0 || n >= sizeof exe_dir) return -1;
+    exe_dir[n] = 0;
+    char *slash = strrchr(exe_dir, '\\');
+    if (!slash) slash = strrchr(exe_dir, '/');
+    if (slash) *slash = 0; else strcpy(exe_dir, ".");
+    return 0;
+#else
     ssize_t n = readlink("/proc/self/exe", exe_dir, sizeof exe_dir - 1);
     if (n <= 0) return -1;
     exe_dir[n] = 0;
     char *slash = strrchr(exe_dir, '/');
     if (slash) *slash = 0; else strcpy(exe_dir, ".");
     return 0;
+#endif
 }
 
 static int load_library(const char *path) {

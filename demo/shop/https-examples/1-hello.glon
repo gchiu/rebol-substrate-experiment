@@ -1,0 +1,6 @@
+[
+hello: func [request] [
+    http/respond request 200 "text/plain; charset=utf-8" "Hello World"
+]
+http/listen 8443 :hello
+]

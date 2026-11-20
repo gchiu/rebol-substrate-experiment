@@ -1,0 +1,466 @@
+;; examples/https-g3a/server.glon -- synthetic G3A membership HTTPS application.
+;;
+;; Load after web.glon, json.glon, slots.glon, reg.glon and persist.glon.  The
+;; register is paginated by hash group: page 0..159 is one fixed group (at most
+;; 64 records) and page 160 is the overflow list.  No list response walks the
+;; 10,240 fixed slots.  All routes, validation, HTML and JSON are Glon.
+;;
+;; Helpers are hidden in nested installer contexts so the fixed 256-binding
+;; global context contains only `handle` (plus the module vocabulary).
+[
+json/max-items: 128
+handle: none
+
+server/install: func [] [
+    page/parse-digits: func [q i n] [
+        either >= i s/length q [ n ] [
+            b: s/at q i
+            either either >= b 48 [ <= b 57 ] [ 0 ] [
+                n2: + * n 10 - b 48
+                either > n2 100000 [
+                    raise create-sin 'app 400 "invalid page"
+                ] [
+                    page/parse-digits q + i 1 n2
+                ]
+            ] [
+                raise create-sin 'app 400 "invalid page"
+            ]
+        ]
+    ]
+    page/parse: func [q] [
+        either = s/length q 0 [ 0 ] [
+            either wp/starts-with? q "page=" [
+                page/parse-digits q 5 0
+            ] [
+                raise create-sin 'app 400 "invalid page"
+            ]
+        ]
+    ]
+    page/check: func [n] [
+        either either < n 0 [ 1 ] [ > n 160 ] [
+            raise create-sin 'app 400 "page out of range"
+        ] [ n ]
+    ]
+
+    respond/text: func [request status body] [
+        http/respond request status "text/plain; charset=utf-8" body
+    ]
+    respond/html: func [request status body] [
+        http/respond request status "text/html; charset=utf-8" body
+    ]
+    respond/json: func [request status body] [
+        http/respond request status "application/json" body
+    ]
+    respond/405: func [request allow] [
+        http/respond-with request 405 "text/plain; charset=utf-8"
+            reduce [ "Allow" allow ] "405 Method Not Allowed"
+    ]
+    respond/error-text: func [request sin] [
+        status: sin-id sin
+        either s/raw-int? status [
+            respond/text request status sin-arg sin
+        ] [
+            respond/text request 500 "internal application error"
+        ]
+    ]
+    respond/error-json: func [request sin] [
+        status: sin-id sin
+        either s/raw-int? status [
+            msg: sin-arg sin
+            body: json/encode json/object reg/jpair "error"
+                either s/raw-string? msg [ msg ] [ "application error" ] none
+            respond/json request status body
+        ] [
+            respond/text request 500 "internal application error"
+        ]
+    ]
+
+    setup-b: func [] [
+        html/page: func [title body] [
+            reduce [
+                "<!doctype html><html><head><meta charset='utf-8'><title>" title
+                "</title><style>body{font-family:sans-serif}</style></head><body>" body
+                "</body></html>"
+            ]
+        ]
+        html/row: func [rec] [
+            id: reg/field rec 0
+            eid: wp/escape-html id
+            en: wp/escape-html reg/field rec 1
+            reduce [
+                "<tr><td><a href='/members/" eid "'>" eid "</a></td><td>" en "</td></tr>"
+            ]
+        ]
+        ;; Eight-slot chunks keep every recursive walk well below the return
+        ;; stack limit even when a hash group is full (64 records).
+        html/slots-chunk: func [group i end] [
+            either >= i end [ reduce [ ] ] [
+                rec: block-at group i
+                rest: html/slots-chunk group + i 1 end
+                either rec [ reduce [ html/row rec rest ] ] [ rest ]
+            ]
+        ]
+        html/slots: func [group] [
+            reduce [
+                html/slots-chunk group 0 8
+                html/slots-chunk group 8 16
+                html/slots-chunk group 16 24
+                html/slots-chunk group 24 32
+                html/slots-chunk group 32 40
+                html/slots-chunk group 40 48
+                html/slots-chunk group 48 56
+                html/slots-chunk group 56 64
+            ]
+        ]
+        html/overflow: func [node] [
+            either = node none [ reduce [ ] ] [
+                rec: block-at node 0
+                rest: html/overflow block-at node 1
+                reduce [ html/row rec rest ]
+            ]
+        ]
+        html/pager: func [page] [
+            prev: either > page 0 [
+                s/+ "<a href='/?page=" s/+ s/from-int - page 1 "'>Previous</a>"
+            ] [ "Previous" ]
+            next: either < page 160 [
+                s/+ "<a href='/?page=" s/+ s/from-int + page 1 "'>Next</a>"
+            ] [ "Next" ]
+            reduce [ "<p>" prev " | " next "</p>" ]
+        ]
+        html/list-body: func [page] [
+            rows: either = page 160 [
+                html/overflow reg/overflow
+            ] [
+                group: block-at reg/slots page
+                html/slots group
+            ]
+            html/page "Members" reduce [
+                "<h1>Members</h1><p><a href='/add'>Add member</a></p>"
+                "<p>Page " s/from-int + page 1 " of 161; "
+                s/from-int reg/count " records</p>"
+                html/pager page
+                "<table><tr><th>ID</th><th>Name</th></tr>"
+                rows
+                "</table>"
+                html/pager page
+            ]
+        ]
+        html/form: func [action id name email status submit readonly] [
+            active-sel: either str-eq status "active" [ " selected" ] [ "" ]
+            inactive-sel: either str-eq status "inactive" [ " selected" ] [ "" ]
+            eaction: wp/escape-html action
+            eid: wp/escape-html id
+            en: wp/escape-html name
+            ee: wp/escape-html email
+            reduce [
+                "<form method=post action='" eaction "'><p>ID <input name=id value='"
+                eid "'" readonly "><p>Name <input name=name value='"
+                en "'><p>Email <input name=email value='"
+                ee "'><p>Status <select name=status><option value=active"
+                active-sel ">active</option><option value=inactive" inactive-sel
+                ">inactive</option></select><p><button type=submit>" submit "</button></form>"
+            ]
+        ]
+        html/add-page: func [] [
+            html/page "Add member" reduce [
+                "<h1>Add member</h1>"
+                html/form "/" "" "" "" "active" "Add" ""
+                "<p><a href='/'>Back</a></p>"
+            ]
+        ]
+        html/detail: func [rec] [
+            id: reg/field rec 0
+            name: reg/field rec 1
+            email: reg/field rec 2
+            status: reg/field rec 3
+            action: s/+ "/members/" id
+            en: wp/escape-html name
+            html/page "Member" reduce [
+                "<h1>" en "</h1>"
+                html/form action id name email status "Save" " readonly"
+                "<p><a href='/'>Back</a></p>"
+            ]
+        ]
+
+        setup-c: func [] [
+            req/form-fields: func [request] [
+                body: http/body request
+                either > s/length body 0 [
+                    ct: http/content-type request
+                    either wp/ci-prefix? ct "application/x-www-form-urlencoded" [
+                        wp/form-check-loop body 0
+                        reduce [
+                            wp/form-scan body "id" 0
+                            wp/form-scan body "name" 0
+                            wp/form-scan body "email" 0
+                            wp/form-scan body "status" 0
+                        ]
+                    ] [
+                        raise create-sin 'app 415 "unsupported content type"
+                    ]
+                ] [
+                    raise create-sin 'app 400 "empty request body"
+                ]
+            ]
+            req/json-text: func [obj key] [
+                v: json/object-get obj key
+                either = v none [ none ] [
+                    either json/string? v [
+                        v
+                    ] [
+                        raise create-sin 'app 422 s/+ key " must be a string"
+                    ]
+                ]
+            ]
+            req/json-fields: func [request] [
+                body: http/body request
+                either > s/length body 0 [
+                    ct: http/content-type request
+                    either wp/ci-prefix? ct "application/json" [
+                        decoded: judge [ json/decode body ]
+                        either sin? decoded [
+                            raise create-sin 'app 400 "malformed JSON body"
+                        ] [
+                            either json/object? decoded [
+                                reduce [
+                                    req/json-text decoded "id"
+                                    req/json-text decoded "name"
+                                    req/json-text decoded "email"
+                                    req/json-text decoded "status"
+                                ]
+                            ] [
+                                raise create-sin 'app 400 "JSON body must be an object"
+                            ]
+                        ]
+                    ] [
+                        raise create-sin 'app 415 "unsupported content type"
+                    ]
+                ] [
+                    raise create-sin 'app 400 "empty request body"
+                ]
+            ]
+
+            ;; JSON items are encoded in small chunks and joined as text.  The
+            ;; module encoder recurses per array item, so a 64-item tagged array
+            ;; would itself approach the return-stack limit inside a callback.
+            api/text-chunk: func [group i end] [
+                either >= i end [ "" ] [
+                    rec: block-at group i
+                    rest: api/text-chunk group + i 1 end
+                    either rec [
+                        piece: json/encode reg/json-member rec
+                        either str-eq rest "" [ piece ] [ s/+ piece s/+ "," rest ]
+                    ] [ rest ]
+                ]
+            ]
+            api/join-text: func [a b] [
+                either str-eq a "" [ b ] [
+                    either str-eq b "" [ a ] [ s/+ a s/+ "," b ]
+                ]
+            ]
+            api/group-text: func [group] [
+                api/join-text api/text-chunk group 0 8
+                    api/join-text api/text-chunk group 8 16
+                        api/join-text api/text-chunk group 16 24
+                            api/join-text api/text-chunk group 24 32
+                                api/join-text api/text-chunk group 32 40
+                                    api/join-text api/text-chunk group 40 48
+                                        api/join-text api/text-chunk group 48 56
+                                            api/text-chunk group 56 64
+            ]
+            api/overflow-chunk: func [node n] [
+                either = node none [ reduce [ "" none ] ] [
+                    either = n 0 [ reduce [ "" node ] ] [
+                        rec: block-at node 0
+                        p: api/overflow-chunk block-at node 1 - n 1
+                        tail: block-at p 0
+                        rest: block-at p 1
+                        piece: json/encode reg/json-member rec
+                        reduce [
+                            either str-eq tail "" [ piece ] [ s/+ piece s/+ "," tail ]
+                            rest
+                        ]
+                    ]
+                ]
+            ]
+            api/overflow-text: func [node] [
+                either = node none [ "" ] [
+                    p: api/overflow-chunk node 8
+                    head: block-at p 0
+                    rest: block-at p 1
+                    either = rest none [ head ] [ api/join-text head api/overflow-text rest ]
+                ]
+            ]
+            api/list-body: func [page] [
+                members: either = page 160 [
+                    api/overflow-text reg/overflow
+                ] [
+                    group: block-at reg/slots page
+                    api/group-text group
+                ]
+                q: wp/quote
+                reduce [
+                    "{" q "count" q ":" s/from-int reg/count
+                    "," q "page" q ":" s/from-int page
+                    "," q "pages" q ":161"
+                    "," q "members" q ":[" members "]}"
+                ]
+            ]
+            status-body: func [] [
+                error-value: either persist/error [ persist/error ] [ json/null ]
+                warning-value: either persist/warning [ persist/warning ] [ json/null ]
+                json/encode json/object reg/jpair "count" reg/count
+                    reg/jpair "capacity" reg/capacity
+                    reg/jpair "persistence" persist/state
+                    reg/jpair "error" error-value
+                    reg/jpair "warning" warning-value
+                    reg/jpair "path" persist/path none
+            ]
+
+            setup-d: func [] [
+                do/html-post: func [request id] [
+                    result: judge [
+                        fields: req/form-fields request
+                        either id [ reg/update id fields ] [ reg/add fields ]
+                    ]
+                    either sin? result [
+                        respond/error-text request result
+                    ] [
+                        persist/save result
+                        respond/html request 200 html/detail result
+                    ]
+                ]
+                do/json-post: func [request id] [
+                    result: judge [
+                        fields: req/json-fields request
+                        either id [ reg/update id fields ] [ reg/add fields ]
+                    ]
+                    either sin? result [
+                        respond/error-json request result
+                    ] [
+                        persist/save result
+                        respond/json request either id [ 200 ] [ 201 ]
+                            json/encode reg/json-member result
+                    ]
+                ]
+
+                route/root: func [request method] [
+                    either str-eq method "GET" [
+                        result: judge [
+                            page: page/check page/parse http/query request
+                            html/list-body page
+                        ]
+                        either sin? result [
+                            respond/error-text request result
+                        ] [
+                            respond/html request 200 result
+                        ]
+                    ] [
+                        either str-eq method "POST" [
+                            do/html-post request none
+                        ] [
+                            respond/405 request "GET, POST"
+                        ]
+                    ]
+                ]
+                route/add: func [request method] [
+                    either str-eq method "GET" [
+                        respond/html request 200 html/add-page
+                    ] [
+                        respond/405 request "GET"
+                    ]
+                ]
+                route/status: func [request method] [
+                    either str-eq method "GET" [
+                        respond/json request 200 status-body
+                    ] [
+                        respond/405 request "GET"
+                    ]
+                ]
+                route/api-list: func [request method] [
+                    either str-eq method "GET" [
+                        result: judge [
+                            page: page/check page/parse http/query request
+                            api/list-body page
+                        ]
+                        either sin? result [
+                            respond/error-json request result
+                        ] [
+                            respond/json request 200 result
+                        ]
+                    ] [
+                        either str-eq method "POST" [
+                            do/json-post request none
+                        ] [
+                            respond/405 request "GET, POST"
+                        ]
+                    ]
+                ]
+                route/html-member: func [request method id] [
+                    either str-eq method "GET" [
+                        rec: reg/find id
+                        either rec [
+                            respond/html request 200 html/detail rec
+                        ] [
+                            respond/text request 404 "member not found"
+                        ]
+                    ] [
+                        either either str-eq method "POST" [ 1 ] [ str-eq method "PUT" ] [
+                            do/html-post request id
+                        ] [
+                            respond/405 request "GET, POST, PUT"
+                        ]
+                    ]
+                ]
+                route/api-member: func [request method id] [
+                    either str-eq method "GET" [
+                        rec: reg/find id
+                        either rec [
+                            respond/json request 200 json/encode reg/json-member rec
+                        ] [
+                            respond/error-json request create-sin 'app 404 "member not found"
+                        ]
+                    ] [
+                        either either str-eq method "POST" [ 1 ] [ str-eq method "PUT" ] [
+                            do/json-post request id
+                        ] [
+                            respond/405 request "GET, POST, PUT"
+                        ]
+                    ]
+                ]
+
+                handle: func [request] [
+                    method: http/method request
+                    path: http/path request
+                    either str-eq path "/" [
+                        route/root request method
+                    ] [
+                    either str-eq path "/add" [
+                        route/add request method
+                    ] [
+                    either str-eq path "/status" [
+                        route/status request method
+                    ] [
+                    either str-eq path "/api/members" [
+                        route/api-list request method
+                    ] [
+                    either wp/starts-with? path "/api/members/" [
+                        route/api-member request method s/span path 13 s/length path
+                    ] [
+                    either wp/starts-with? path "/members/" [
+                        route/html-member request method s/span path 9 s/length path
+                    ] [
+                        respond/text request 404 "not found"
+                    ] ] ] ] ] ]
+                ]
+            ]
+            setup-d
+        ]
+        setup-c
+    ]
+    setup-b
+]
+server/install
+http/listen 8443 :handle
+]

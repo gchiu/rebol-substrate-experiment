@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glon HTTPS Server — Developer Preview 1</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  :root { --fg:#16181d; --muted:#5d6470; --bg:#fdfdfc; --panel:#f3f4f6; --line:#d9dce1; --accent:#2456a6; --code:#eceef2; }
+  @media (prefers-color-scheme: dark) { :root { --fg:#e6e8ec; --muted:#9aa1ad; --bg:#15171b; --panel:#1e2127; --line:#333842; --accent:#7fa7ec; --code:#262a31; } }
+  * { box-sizing:border-box; }
+  body { font-family:system-ui,sans-serif; line-height:1.55; max-width:1100px; margin:0 auto; padding:2rem 16px 4rem; color:var(--fg); background:var(--bg); }
+  h1 { font-size:2.4rem; margin:0 0 .3rem; letter-spacing:-.01em; }
+  h2 { font-size:1.25rem; margin:2.2rem 0 .6rem; }
+  h3 { font-size:1rem; margin:1rem 0 .4rem; }
+  .lede { font-size:1.2rem; margin:0 0 1rem; }
+  .muted { color:var(--muted); }
+  a { color:var(--accent); }
+  code,pre { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.9rem; }
+  code { background:var(--code); padding:0 .25rem; border-radius:3px; }
+  pre { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.75rem 1rem; overflow-x:auto; line-height:1.45; white-space:pre-wrap; }
+  .alpha { display:inline-block; padding:.2rem .5rem; border:1px solid var(--accent); border-radius:999px; color:var(--accent); font-size:.8rem; font-weight:600; }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start; }
+  @media (max-width:800px) { .split { grid-template-columns:1fr; } }
+  .example { border:1px solid var(--line); border-radius:8px; padding:.6rem 1rem 1rem; margin:1rem 0; background:var(--bg); }
+  .example summary { cursor:pointer; font-size:1.05rem; }
+  .copy { float:right; border:1px solid var(--line); background:var(--panel); color:var(--fg); border-radius:6px; padding:.3rem .6rem; cursor:pointer; }
+  .copy:active { border-color:var(--accent); }
+  table { border-collapse:collapse; width:100%; margin:.6rem 0; }
+  th,td { text-align:left; padding:.35rem .4rem; border-bottom:1px solid var(--line); }
+  .hero { border:1px solid var(--accent); border-radius:10px; padding:1rem 1.2rem; background:var(--panel); }
+  .diagram { font-family:ui-monospace,monospace; white-space:pre; overflow-x:auto; }
+  footer { margin-top:3rem; padding-top:1rem; border-top:1px solid var(--line); font-size:.85rem; }
+</style>
+</head>
+<body>
+<p><a href="index.html">← Glon Shop</a> · <span class="alpha">ALPHA / EXPERIMENTAL</span></p>
+<header class="hero">
+<h1>Glon HTTPS Server</h1>
+<p class="lede">A programmable HTTPS application server in under 300 KiB.</p>
+<p>Glon combines a compact interpreter with HTTPS transport, application routing,
+dynamic HTML generation, JSON processing, form handling and persistent
+application state.</p>
+<p>CivetWeb and OpenSSL provide the native HTTP and TLS infrastructure.
+Application behaviour is implemented in Glon.</p>
+<p>The smallest verified HTTPS application requires <strong>six lines and 125 bytes</strong>
+of application source.</p>
+<p><a href="https://github.com/gchiu/rebol-substrate-experiment/releases/tag/v0.1.0-alpha.1">Glon Developer Preview 1 on GitHub</a>
+ · <a href="https://github.com/gchiu/rebol-substrate-experiment">Source repository</a></p>
+</header>
+
+<section>
+<h2>Architecture</h2>
+<pre class="diagram">Application expressed in Glon
+             |
+HTTP / Web / JSON vocabularies
+             |
+Glon execution substrate
+             |
+Native HTTP transport — CivetWeb
+             |
+TLS — OpenSSL
+             |
+Network</pre>
+<p>Glon owns routing, validation, response content and status selection, HTML/JSON
+generation, JSON encoding/decoding and persistence logic. CivetWeb and OpenSSL
+provide sockets, HTTP parsing and TLS; they contain no application routes or
+membership fields. The 64K constrained profile and the large profile share the
+same frozen execution semantics; only capacity and address layout differ.</p>
+</section>
+
+<section>
+<h2>The four verified HTTPS examples</h2>
+<p>These are actual sources executed locally during release verification. The
+outputs below are recorded transcripts, not live server responses. Each example
+is also downloadable.</p>
+
+<details class="example" open>
+<summary><strong>Example 1 — Hello World</strong> <span class="muted">— 6 lines / 125 bytes</span></summary>
+<p><strong>Dependencies.</strong> Constrained HTTPS build. No application libraries beyond the built-in HTTP vocabulary.</p>
+<div class="split">
+<div>
+<h3>Source</h3>
+<button class="copy" data-copy="1-hello">Copy source</button>
+<pre id="src-1-hello"><code>[
+hello: func [request] [
+    http/respond request 200 &quot;text/plain; charset=utf-8&quot; &quot;Hello World&quot;
+]
+http/listen 8443 :hello
+]
+</code></pre>
+</div>
+<div>
+<h3>Build and run</h3>
+<pre><code>make glon MODULES=http
+./glon --http-cert tests/https-g1/.cert/server.pem 1-hello.glon</code></pre>
+<h3>Curl test</h3>
+<pre><code>curl -k https://127.0.0.1:8443/</code></pre>
+<h3>Verified output</h3>
+<pre><code>HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Content-Length: 11
+
+Hello World</code></pre>
+
+<p><a href="https-examples/1-hello.glon" download>Download 1-hello.glon</a></p>
+</div>
+</div>
+</details>
+<details class="example" open>
+<summary><strong>Example 2 — Serving HTML</strong> <span class="muted">— 7 lines / 227 bytes</span></summary>
+<p><strong>Dependencies.</strong> Constrained HTTPS build. No application libraries beyond the built-in HTTP vocabulary.</p>
+<div class="split">
+<div>
+<h3>Source</h3>
+<button class="copy" data-copy="2-static">Copy source</button>
+<pre id="src-2-static"><code>[
+page: &quot;&lt;!doctype html&gt;&lt;html&gt;&lt;head&gt;&lt;title&gt;Static&lt;/title&gt;&lt;/head&gt;&lt;body&gt;&lt;h1&gt;Static HTML from Glon&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;&quot;
+home: func [request] [
+    http/respond request 200 &quot;text/html; charset=utf-8&quot; page
+]
+http/listen 8443 :home
+]
+</code></pre>
+</div>
+<div>
+<h3>Build and run</h3>
+<pre><code>make glon MODULES=http
+./glon --http-cert tests/https-g1/.cert/server.pem 2-static.glon</code></pre>
+<h3>Curl test</h3>
+<pre><code>curl -k https://127.0.0.1:8443/</code></pre>
+<h3>Verified output</h3>
+<pre><code>HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+
+&lt;!doctype html&gt;…&lt;h1&gt;Static HTML from Glon&lt;/h1&gt;…</code></pre>
+
+<p><a href="https-examples/2-static.glon" download>Download 2-static.glon</a></p>
+</div>
+</div>
+</details>
+<details class="example" open>
+<summary><strong>Example 3 — HTML and JSON routing</strong> <span class="muted">— 23 lines / 609 bytes</span></summary>
+<p><strong>Dependencies.</strong> Constrained HTTPS build. Uses `s/+`, `mk-string`, `str-eq` from the shipped libraries.</p>
+<div class="split">
+<div>
+<h3>Source</h3>
+<button class="copy" data-copy="3-routes">Copy source</button>
+<pre id="src-3-routes"><code>[
+q: mk-string reduce [ 34 ]
+json-body: s/+ &quot;{&quot; q
+json-body: s/+ json-body &quot;ok&quot;
+json-body: s/+ json-body q
+json-body: s/+ json-body &quot;:true}&quot;
+
+html-body: &quot;&lt;!doctype html&gt;&lt;html&gt;&lt;body&gt;&lt;h1&gt;HTML route&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;&quot;
+
+home: func [request] [
+    path: http/path request
+    either str-eq path &quot;/&quot; [
+        http/respond request 200 &quot;text/html; charset=utf-8&quot; html-body
+    ] [
+        either str-eq path &quot;/api&quot; [
+            http/respond request 200 &quot;application/json&quot; json-body
+        ] [
+            http/respond request 404 &quot;text/plain; charset=utf-8&quot; &quot;not found&quot;
+        ]
+    ]
+]
+http/listen 8443 :home
+]
+</code></pre>
+</div>
+<div>
+<h3>Build and run</h3>
+<pre><code>make glon MODULES=http
+./glon --http-cert tests/https-g1/.cert/server.pem 3-routes.glon</code></pre>
+<h3>Curl test</h3>
+<pre><code>curl -k https://127.0.0.1:8443/
+curl -k https://127.0.0.1:8443/api
+curl -k -i https://127.0.0.1:8443/missing</code></pre>
+<h3>Verified output</h3>
+<pre><code>GET /        -&gt; 200 text/html; charset=utf-8
+GET /api     -&gt; 200 application/json
+                {&quot;ok&quot;:true}
+GET /missing -&gt; 404 text/plain; charset=utf-8</code></pre>
+
+<p><a href="https-examples/3-routes.glon" download>Download 3-routes.glon</a></p>
+</div>
+</div>
+</details>
+<details class="example" open>
+<summary><strong>Example 4 — POST and JSON processing</strong> <span class="muted">— 29 lines / 1,038 bytes</span></summary>
+<p><strong>Dependencies.</strong> Large memory profile plus `modules/json.glon` (782 lines / 26,752 bytes). The JSON module requires the large loader.</p>
+<div class="split">
+<div>
+<h3>Source</h3>
+<button class="copy" data-copy="4-post-json">Copy source</button>
+<pre id="src-4-post-json"><code>[
+home: func [request] [
+    method: http/method request
+    either str-eq method &quot;POST&quot; [
+        body: http/body request
+        decoded: judge [ json/decode body ]
+        either sin? decoded [
+            http/respond request 400 &quot;text/plain; charset=utf-8&quot; &quot;malformed JSON&quot;
+        ] [
+            either json/object? decoded [
+                name: json/object-get decoded &quot;name&quot;
+                either json/string? name [
+                    pair: reduce [ &quot;hello&quot; name ]
+                    pairs: reduce [ pair none ]
+                    out: json/encode json/object pairs
+                    http/respond request 200 &quot;application/json&quot; out
+                ] [
+                    http/respond request 422 &quot;text/plain; charset=utf-8&quot; &quot;name must be a string&quot;
+                ]
+            ] [
+                http/respond request 400 &quot;text/plain; charset=utf-8&quot; &quot;JSON body must be an object&quot;
+            ]
+        ]
+    ] [
+        http/respond request 405 &quot;text/plain; charset=utf-8&quot; &quot;POST only&quot;
+    ]
+]
+http/listen 8443 :home
+]
+</code></pre>
+</div>
+<div>
+<h3>Build and run</h3>
+<pre><code>make glon MODULES=http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+./glon --http-cert tests/https-g1/.cert/server.pem modules/json.glon 4-post-json.glon</code></pre>
+<h3>Curl test</h3>
+<pre><code>curl -k -X POST -H &#x27;Content-Type: application/json&#x27; --data &#x27;{&quot;name&quot;:&quot;Ada&quot;}&#x27; https://127.0.0.1:8443/
+curl -k -i -X POST -H &#x27;Content-Type: application/json&#x27; --data &#x27;{&#x27; https://127.0.0.1:8443/</code></pre>
+<h3>Verified output</h3>
+<pre><code>POST {&quot;name&quot;:&quot;Ada&quot;} -&gt; 200 application/json
+                       {&quot;hello&quot;:&quot;Ada&quot;}
+POST {             -&gt; 400 text/plain; charset=utf-8
+                       malformed JSON</code></pre>
+
+<p><a href="https-examples/4-post-json.glon" download>Download 4-post-json.glon</a></p>
+</div>
+</div>
+</details>
+</section>
+
+<section>
+<h2>Advanced experimental application — membership register</h2>
+<p><strong>Experimental, synthetic data only.</strong> The G3A membership register demonstrates
+listing, viewing, adding, editing, HTML forms, a JSON API, validation, duplicate
+detection, pagination and NDJSON persistence. It is not exposed as a public
+internet service in this release.</p>
+<p><strong>Source modules:</strong></p>
+<ul>
+<li><a href="https-examples/g3a/server.glon" download>server.glon</a> — entry point, routes, HTML/JSON</li>
+<li><a href="https-examples/g3a/reg.glon" download>reg.glon</a> — register, validation, hash/overflow</li>
+<li><a href="https-examples/g3a/slots.glon" download>slots.glon</a> — generated 160 × 64 slot table</li>
+<li><a href="https-examples/g3a/persist.glon" download>persist.glon</a> — NDJSON append log and replay</li>
+<li><a href="https-examples/g3a/web.glon" download>web.glon</a> — form decoding and HTML escaping</li>
+<li><a href="https-examples/g3a/json.glon" download>json.glon</a> — general JSON vocabulary</li>
+</ul>
+<h3>Launch (Linux)</h3>
+<pre><code>make glon MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+tests/https-g1/make-cert.sh
+./glon --http-cert tests/https-g1/.cert/server.pem \
+    --allow-file-read --allow-file-write --io-root . \
+    glon-lib/web.glon glon-lib/json.glon \
+    examples/https-g3a/slots.glon examples/https-g3a/reg.glon \
+    examples/https-g3a/persist.glon examples/https-g3a/server.glon</code></pre>
+<h3>Routes</h3>
+<pre><code>GET  /                     paginated HTML member list
+GET  /add                  add-member HTML form
+GET  /members/&lt;id&gt;         member detail / edit form
+POST /                     add (form)
+POST /members/&lt;id&gt;         update (form or PUT)
+GET  /api/members?page=N   JSON page
+POST /api/members          add (JSON)
+GET  /status               JSON status and persistence state</code></pre>
+<p><strong>Measured limits:</strong> the 200-record restart acceptance passed. The
+1,000-record restore took 450.143 s; the 10,000-record restore failed with
+return-stack exhaustion. No 100,000-request endurance claim is made. See the
+release documentation for full measurements and limitations.</p>
+</section>
+
+<section>
+<h2>Measured footprint</h2>
+<table>
+<tr><th>Component</th><th>Measured</th></tr>
+<tr><td>Minimal Linux executable, stripped</td><td>~103 KiB</td></tr>
+<tr><td>Constrained HTTPS Linux executable, stripped</td><td>~259 KiB</td></tr>
+<tr><td>Large HTTPS + file Linux executable, stripped</td><td>~291 KiB</td></tr>
+<tr><td>Hello World application</td><td>125 bytes</td></tr>
+<tr><td>HTTP vocabulary</td><td>6,277 bytes</td></tr>
+<tr><td>Reusable web vocabulary</td><td>4,847 bytes</td></tr>
+<tr><td>General JSON vocabulary</td><td>26,752 bytes</td></tr>
+<tr><td>Membership entry point</td><td>19,031 bytes</td></tr>
+</table>
+<p class="muted">Linux x86-64, Ubuntu/WSL2, GCC 11.4, stripped binaries. The
+executable sizes exclude dynamically linked OpenSSL and the Glon source libraries.
+The large profile uses a 1,048,576-cell managed heap and a 500,000-cell loader;
+its BSS is approximately 13.2 MB.</p>
+</section>
+
+<section>
+<h2>Build and certificate instructions</h2>
+<p>Linux dependencies: <code>build-essential</code>, <code>libssl-dev</code>, <code>openssl</code>.
+Windows builds in this preview are native x86-64 executables; the constrained
+HTTPS and large HTTPS/JSON packages include the required OpenSSL DLLs. The
+Windows file-enabled membership package is not included because the current
+file module has no Win32 backend (see the release manifest).</p>
+<pre><code># Linux
+make glon MODULES=http
+tests/https-g1/make-cert.sh
+./glon --http-cert tests/https-g1/.cert/server.pem 1-hello.glon
+curl -k https://127.0.0.1:8443/
+
+# Windows PowerShell (HTTPS package)
+.\make-cert.ps1
+.\glon.exe --http-cert .\server.pem 1-hello.glon
+curl.exe -k https://127.0.0.1:8443/</code></pre>
+</section>
+
+<section>
+<h2>Honest status</h2>
+<p><strong>Verified:</strong> native interpreter; constrained and large profiles; M1 multitasking
+on the large profile; HTTPS transport; GET/POST/PUT; HTML responses; forms;
+JSON encode/decode; file-backed persistence on Linux; NDJSON restart; four
+verified HTTPS examples.</p>
+<p><strong>Not claimed:</strong> concurrent Glon request handlers; production readiness;
+long-term server reliability; authentication, authorisation or CSRF protection;
+10,000-record restore; 100,000-request endurance; Windows file-enabled
+membership persistence; runtime-selectable memory.</p>
+<p>The next networking milestone is a UniServe-inspired asynchronous,
+multiprotocol substrate. Those capabilities are proposals, not implemented
+features. UniServe has not been recreated in Glon.</p>
+</section>
+
+<footer>
+<p>Glon Developer Preview 1 · <code>v0.1.0-alpha.1</code> · published from commit
+<a href="https://github.com/gchiu/rebol-substrate-experiment/commit/RELEASE_COMMIT">RELEASE_COMMIT</a>.</p>
+<p>Glon is experimental. Application source is synthetic. CivetWeb is MIT;
+OpenSSL is Apache-2.0. See the release <code>THIRD-PARTY-NOTICES.md</code>.</p>
+</footer>
+<script>
+document.querySelectorAll('.copy').forEach(function(b){
+  b.addEventListener('click', function(){
+    var id=b.getAttribute('data-copy');
+    var text=document.getElementById('src-'+id).innerText;
+    navigator.clipboard.writeText(text).then(function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy source';},1200);});
+  });
+});
+</script>
+</body>
+</html>

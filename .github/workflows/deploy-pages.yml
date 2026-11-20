@@ -113,6 +113,8 @@ jobs:
           cp demo/shop/linda.html demo/shop/linda-host.js /tmp/shop/
           cp demo/shop/primer.html demo/shop/primer-host.js /tmp/shop/
           cp demo/shop/live.html demo/shop/live-host.js demo/shop/qwen-client.js demo/shop/glon-live.wasm /tmp/shop/
+          cp demo/shop/https.html /tmp/shop/
+          cp -r demo/shop/https-examples /tmp/shop/https-examples
           cp -r demo/shop/demos /tmp/shop/demos
           # Glon Inflate (/inflate/): the verified page, its seven-primitive WASM,
           # decoder sources and genuine fixtures.  The WASM is the page's

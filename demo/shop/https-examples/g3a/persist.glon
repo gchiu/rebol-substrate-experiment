@@ -1,0 +1,184 @@
+;; examples/https-g3a/persist.glon -- NDJSON append log for the G3A register.
+;;
+;; Load after reg.glon.  The default path is "members.ndjson" relative to the
+;; process working directory (the file module's configured root; the host needs
+;; --allow-file-read and --allow-file-write).  One JSON object is appended per
+;; add/update; loading replays the file in order so the last line for an id
+;; wins.  A malformed complete line aborts startup before http/listen.  A final
+;; line without a newline is treated as a truncated tail and ignored with a
+;; warning, keeping the earlier valid lines.  A save failure leaves the previous
+;; bytes intact (append log) and is reported by /status.
+;;
+;; Durability is OS-cache dependent: the host exposes no fsync.  The save is
+;; asynchronous and is drained by the host after the HTTP response, so a request
+;; never waits for the write.
+[
+persist/path: "members.ndjson"
+persist/state: "loading"
+persist/error: none
+persist/warning: none
+persist/save: none
+
+persist/install: func [] [
+    ;; Printable bytes 32..126, used by an iterative S1 scan so a long NDJSON
+    ;; line does not consume return-stack depth. (newline is not included).  Persisted JSON
+    ;; lines produced by json/encode are printable ASCII; a raw control byte is
+    ;; not a valid line and is reported as malformed.
+    non-newline-set: mk-string reduce [
+        32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47
+        48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63
+        64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79
+        80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95
+        96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111
+        112 113 114 115 116 117 118 119 120 121 122 123 124 125 126
+    ]
+
+    sin-text: func [e] [
+        either sin? e [
+            a: sin-arg e
+            either either = a none [ 0 ] [ s/raw-string? a ] [ a ] [ "file I/O error" ]
+        ] [ "unknown error" ]
+    ]
+
+    seed: func [] [
+        either = reg/count 0 [
+            rec: reg/from-fields reduce [
+                "m1" "Ada Lovelace" "ada@example.test" "active"
+            ]
+            reg/apply rec
+        ] [ none ]
+    ]
+    ready: func [] [
+        persist/state: "ready"
+        seed
+    ]
+
+    json-text: func [obj key] [
+        v: json/object-get obj key
+        either = v none [ none ] [
+            either json/string? v [
+                v
+            ] [
+                raise create-sin 'persist 'malformed s/+ key " is not a string"
+            ]
+        ]
+    ]
+
+    apply-line: func [line] [
+        obj: json/decode line
+        either json/object? obj [
+            id: json-text obj "id"
+            name: json-text obj "name"
+            email: json-text obj "email"
+            status: json-text obj "status"
+            rec: reg/from-fields reduce [ id name email status ]
+            reg/apply rec
+        ] [
+            raise create-sin 'persist 'malformed "line is not a JSON object"
+        ]
+    ]
+
+    scan-lines: func [h s i] [
+        either >= i s/length s [
+            load-loop h s/span s i s/length s
+        ] [
+            j: s/scan-set s i non-newline-set
+            either >= j s/length s [
+                load-loop h s/span s i s/length s
+            ] [
+                line: s/span s i j
+                result: judge [ apply-line line ]
+                either sin? result [
+                    raise create-sin 'persist 'malformed sin-text result
+                ] [
+                    scan-lines h s + j 1
+                ]
+            ]
+        ]
+    ]
+
+    load-finish: func [carry] [
+        either > s/length carry 0 [
+            persist/warning: "ignored truncated trailing line"
+        ] [ none ]
+        ready
+    ]
+    load-eof: func [h carry] [
+        io/close h
+            func [x] [ load-finish carry ]
+            func [e] [ raise create-sin 'persist 'close sin-text e ]
+    ]
+    load-loop: func [h carry] [
+        io/read h 2048
+            func [chunk] [
+                either = 0 s/length chunk [
+                    load-eof h carry
+                ] [
+                    scan-lines h s/+ carry chunk 0
+                ]
+            ]
+            func [e] [
+                io/close h
+                    func [x] [ raise create-sin 'persist 'read sin-text e ]
+                    func [e2] [ raise create-sin 'persist 'read sin-text e ]
+            ]
+    ]
+    load-start: func [] [
+        persist/state: "loading"
+        io/open persist/path 'read
+            func [h] [ load-loop h "" ]
+            func [e] [
+                either = sin-id e 'not-found [
+                    load-finish ""
+                ] [
+                    raise create-sin 'persist 'load sin-text e
+                ]
+            ]
+    ]
+
+    save-ok: func [] [
+        persist/state: "ready"
+        persist/error: none
+    ]
+    save-fail: func [e] [
+        persist/state: "error"
+        persist/error: sin-text e
+    ]
+    close-fail: func [h e] [
+        io/close h
+            func [x] [ save-fail e ]
+            func [e2] [ save-fail e ]
+    ]
+    write-all: func [h bytes done] [
+        either >= done s/length bytes [
+            io/close h
+                func [x] [ save-ok ]
+                func [e] [ save-fail e ]
+        ] [
+            io/write h s/slice bytes done - s/length bytes done
+                func [n] [
+                    either > n 0 [
+                        write-all h bytes + done n
+                    ] [
+                        close-fail h create-sin 'io 'write 0
+                    ]
+                ]
+                func [e] [ close-fail h e ]
+        ]
+    ]
+    append-line: func [line] [
+        io/open persist/path 'append
+            func [h] [ write-all h line 0 ]
+            func [e] [ save-fail e ]
+    ]
+
+    persist/save: func [rec] [
+        line: s/+ json/encode reg/json-member rec mk-string reduce [ 10 ]
+        result: judge [ append-line line ]
+        either sin? result [ save-fail result ] [ none ]
+    ]
+
+    load-start
+]
+persist/install
+]

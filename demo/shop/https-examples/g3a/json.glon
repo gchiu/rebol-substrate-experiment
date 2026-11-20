@@ -1,0 +1,782 @@
+;; modules/json.glon -- a reusable JSON vocabulary in ordinary Glon.
+;;
+;; Requires prelude.glon (mk-string, block-len, block-at, s/raw-string?),
+;; strings.glon (s/+ s/= s/length s/print) and strings-ext.glon
+;; (s/at s/slice s/span s/scan-set s/from-int).  Load this file after them.
+;;
+;; VALUE MAPPING (used consistently by decode, encode and the predicates):
+;;
+;;   JSON string                     -> ordinary Glon STRING! (UTF-8 bytes)
+;;   JSON integer inside Glon range  -> ordinary Glon INTEGER!
+;;   JSON number with a fraction or
+;;   exponent, or an out-of-range
+;;   integer                         -> tagged block [ 'json-number "<exact token>" ]
+;;   JSON true / false               -> tagged block [ 'json-bool 1 ] / [ 'json-bool 0 ]
+;;   JSON null                       -> tagged block [ 'json-null ]
+;;   JSON array                      -> tagged block [ 'json-array <items> ]
+;;   JSON object                     -> tagged block [ 'json-object <pairs> ]
+;;
+;; <items> is a cons list [value rest] or NONE for the empty array.
+;; <pairs> is a cons list [pair rest] or NONE for the empty object; each pair is
+;; [key value] and key is a STRING!.  Source key order is preserved.  Duplicate
+;; keys are rejected while decoding; object-get returns the first matching key
+;; (constructors and hand-built tagged blocks may contain duplicates).
+;;
+;; NONE IS NOT NULL.  Glon NONE is the "no value" result of an accessor (an
+;; absent object key, the empty list terminator); JSON null is a real value and
+;; keeps its own tag so that a null field and a missing field stay distinct.
+;;
+;; LIMITS (ordinary globals; set them before calling decode/encode):
+;;
+;;   json/max-depth   maximum container nesting, default 16 (the root is 1)
+;;   json/max-items   maximum elements/pairs in one array/object, default 32
+;;
+;; A document that exceeds either limit raises SIN! 'json 'too-deep /
+;; 'too-many-items.  Because Glon has no loops and a small return stack, large
+;; collections must be paginated by the application or carried in a
+;; line-oriented format.  Deep nesting combined with many items at every level
+;; can exhaust the return stack before the limits are reached; lower the two
+;; globals for hostile input.
+;;
+;; DECODER ERROR IDS (always SIN! type 'json; the arg is normally the byte
+;; position, or the stated value):
+;;
+;;   'bad-token          unexpected byte, delimiter or literal
+;;   'unterminated-string
+;;   'bad-escape
+;;   'bad-unicode        bad \uXXXX, bad hex or a lone/malformed surrogate
+;;   'bad-number         a token that is not a JSON number
+;;   'bad-utf8           the input is not valid UTF-8
+;;   'too-deep           arg = container depth
+;;   'too-many-items     arg = item count
+;;   'duplicate-key      arg = the repeated key STRING!
+;;   'trailing-data      arg = position of the first non-whitespace byte
+;;
+;; The encoder raises SIN! 'json 'not-a-json-value for any value outside the
+;; mapping (including NONE, words, closures and untagged blocks), and
+;; 'json 'bad-utf8 / 'bad-number when a tagged value carries invalid text.
+;;
+;; decode keeps its cursor in the private globals j/src and j/pos, so it is not
+;; re-entrant (do not call decode from inside a decode).  decode and encode do
+;; not mutate their arguments.
+
+[
+
+;; ---- limits -------------------------------------------------------------
+json/max-depth: 16
+json/max-items: 32
+
+;; ---- small private type tests (the codebase's usual RAW tag readers) -----
+j/block?:  masm 1 [ LIT 16 MOD LIT 6 EQ LIT 16 MUL ARITY 1 EXIT ]
+j/string?: masm 1 [ LIT 16 MOD LIT 12 EQ LIT 16 MUL ARITY 1 EXIT ]
+j/int?:    masm 1 [ LIT 16 MOD LIT 0 EQ LIT 16 MUL ARITY 1 EXIT ]
+
+;; Validate a whole STRING! as UTF-8 (RFC 3629: no overlongs, no surrogates,
+;; no code point above U+10FFFF).  A RAW worker loops in S1 so long input costs
+;; no return-stack depth; it reads string payload bytes directly.
+j/raw-utf8?: masm 1 [
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_B !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+  j-u-loop:
+    LIT SCRATCH_B @ ZBRANCH j-u-ok
+    LIT SCRATCH_A @ @ LIT SCRATCH_C !
+    LIT SCRATCH_C @ LIT 128 GE ZBRANCH j-u-ascii
+    LIT SCRATCH_C @ LIT 194 GE ZBRANCH j-u-bad
+    LIT SCRATCH_C @ LIT 224 GE ZBRANCH j-u-two
+    LIT SCRATCH_C @ LIT 240 GE ZBRANCH j-u-three
+    LIT SCRATCH_C @ LIT 245 GE ZBRANCH j-u-four
+    BRANCH j-u-bad
+  j-u-ascii:
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_B @ LIT 1 SUB LIT SCRATCH_B !
+    BRANCH j-u-loop
+  j-u-two:
+    LIT SCRATCH_B @ LIT 2 GE ZBRANCH j-u-bad
+    LIT SCRATCH_A @ LIT 1 ADD @ LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 128 GE ZBRANCH j-u-bad
+    LIT SCRATCH_F @ LIT 192 LT ZBRANCH j-u-bad
+    LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_A !
+    LIT SCRATCH_B @ LIT 2 SUB LIT SCRATCH_B !
+    BRANCH j-u-loop
+  j-u-three:
+    LIT SCRATCH_B @ LIT 3 GE ZBRANCH j-u-bad
+    LIT SCRATCH_A @ LIT 1 ADD @ LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 128 GE ZBRANCH j-u-bad
+    LIT SCRATCH_F @ LIT 192 LT ZBRANCH j-u-bad
+    LIT SCRATCH_C @ LIT 224 EQ ZBRANCH j-u-three-not-e0
+    LIT SCRATCH_F @ LIT 160 GE ZBRANCH j-u-bad
+    BRANCH j-u-three-b2
+  j-u-three-not-e0:
+    LIT SCRATCH_C @ LIT 237 EQ ZBRANCH j-u-three-b2
+    LIT SCRATCH_F @ LIT 160 GE ZBRANCH j-u-three-b2
+    BRANCH j-u-bad
+  j-u-three-b2:
+    LIT SCRATCH_A @ LIT 2 ADD @ LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 128 GE ZBRANCH j-u-bad
+    LIT SCRATCH_F @ LIT 192 LT ZBRANCH j-u-bad
+    LIT SCRATCH_A @ LIT 3 ADD LIT SCRATCH_A !
+    LIT SCRATCH_B @ LIT 3 SUB LIT SCRATCH_B !
+    BRANCH j-u-loop
+  j-u-four:
+    LIT SCRATCH_B @ LIT 4 GE ZBRANCH j-u-bad
+    LIT SCRATCH_A @ LIT 1 ADD @ LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 128 GE ZBRANCH j-u-bad
+    LIT SCRATCH_F @ LIT 192 LT ZBRANCH j-u-bad
+    LIT SCRATCH_C @ LIT 240 EQ ZBRANCH j-u-four-not-f0
+    LIT SCRATCH_F @ LIT 144 GE ZBRANCH j-u-bad
+    BRANCH j-u-four-b2
+  j-u-four-not-f0:
+    LIT SCRATCH_C @ LIT 244 EQ ZBRANCH j-u-four-b2
+    LIT SCRATCH_F @ LIT 144 GE ZBRANCH j-u-four-b2
+    BRANCH j-u-bad
+  j-u-four-b2:
+    LIT SCRATCH_A @ LIT 2 ADD @ LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 128 GE ZBRANCH j-u-bad
+    LIT SCRATCH_F @ LIT 192 LT ZBRANCH j-u-bad
+    LIT SCRATCH_A @ LIT 3 ADD @ LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 128 GE ZBRANCH j-u-bad
+    LIT SCRATCH_F @ LIT 192 LT ZBRANCH j-u-bad
+    LIT SCRATCH_A @ LIT 4 ADD LIT SCRATCH_A !
+    LIT SCRATCH_B @ LIT 4 SUB LIT SCRATCH_B !
+    BRANCH j-u-loop
+  j-u-bad:
+    INT 0 ARITY 1 EXIT
+  j-u-ok:
+    INT 1 ARITY 1 EXIT
+]
+
+;; Find the next byte that needs string handling: quote, backslash, or a raw
+;; control byte below 0x20.  A RAW loop keeps long strings off the return stack.
+;; Returns the byte index, or the string length when there is none.
+j/raw-special-at: masm 2 [
+    LIT 16 DIV LIT SCRATCH_C !
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_B !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_A @ LIT SCRATCH_C @ ADD LIT SCRATCH_A !
+    LIT SCRATCH_B @ LIT SCRATCH_C @ SUB LIT SCRATCH_B !
+  j-s-loop:
+    LIT SCRATCH_B @ ZBRANCH j-s-done
+    LIT SCRATCH_A @ @ LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 32 GE ZBRANCH j-s-done
+    LIT SCRATCH_F @ LIT 34 EQ ZBRANCH j-s-next
+    BRANCH j-s-done
+  j-s-next:
+    LIT SCRATCH_F @ LIT 92 EQ ZBRANCH j-s-advance
+    BRANCH j-s-done
+  j-s-advance:
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_B @ LIT 1 SUB LIT SCRATCH_B !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    BRANCH j-s-loop
+  j-s-done:
+    LIT SCRATCH_C @ LIT 16 MUL ARITY 1 EXIT
+]
+
+;; ---- constants and parser state ----------------------------------------
+j/src: ""
+j/pos: 0
+j/ws-set: mk-string reduce [ 32 9 10 13 ]
+j/digits: "0123456789"
+j/int-set: "0123456789-+"
+j/num-set: "0123456789+-.eE"
+j/quote: mk-string reduce [ 34 ]
+j/backslash: mk-string reduce [ 92 ]
+
+j/error: func [id arg] [ raise create-sin 'json id arg ]
+
+;; ---- scalar byte predicates --------------------------------------------
+j/digit?: func [b] [ either = b none [ 0 ] [ either >= b 48 [ <= b 57 ] [ 0 ] ] ]
+j/digit19?: func [b] [ either = b none [ 0 ] [ either >= b 49 [ <= b 57 ] [ 0 ] ] ]
+
+j/mod: func [a b] [ - a * / a b b ]
+
+;; ---- UTF-8 scalar encoder (a code point already validated) --------------
+j/utf8: func [cp] [
+    either <= cp 127 [
+        mk-string reduce [ cp ]
+    ] [
+        either <= cp 2047 [
+            mk-string reduce [ + 192 / cp 64 + 128 j/mod cp 64 ]
+        ] [
+            either <= cp 65535 [
+                mk-string reduce [
+                    + 224 / cp 4096
+                    + 128 j/mod / cp 64 64
+                    + 128 j/mod cp 64
+                ]
+            ] [
+                mk-string reduce [
+                    + 240 / cp 262144
+                    + 128 j/mod / cp 4096 64
+                    + 128 j/mod / cp 64 64
+                    + 128 j/mod cp 64
+                ]
+            ]
+        ]
+    ]
+]
+
+;; ---- \uXXXX helpers -----------------------------------------------------
+j/hex-digit: func [b] [
+    either = b none [ -1 ] [
+        either either >= b 48 [ <= b 57 ] [ 0 ] [
+            - b 48
+        ] [
+            either either >= b 65 [ <= b 70 ] [ 0 ] [
+                + - b 65 10
+            ] [
+                either either >= b 97 [ <= b 102 ] [ 0 ] [
+                    + - b 97 10
+                ] [ -1 ]
+            ]
+        ]
+    ]
+]
+
+j/hex4: func [at] [
+    either > + at 4 s/length j/src [ -1 ] [
+        a: j/hex-digit s/at j/src at
+        b: j/hex-digit s/at j/src + at 1
+        c: j/hex-digit s/at j/src + at 2
+        d: j/hex-digit s/at j/src + at 3
+        either < a 0 [ -1 ] [
+            either < b 0 [ -1 ] [
+                either < c 0 [ -1 ] [
+                    either < d 0 [ -1 ] [
+                        + + + * a 4096 * b 256 * c 16 d
+                    ]
+                ]
+            ]
+        ]
+    ]
+]
+
+;; ---- string decoding ----------------------------------------------------
+j/simple-escape: func [e] [
+    either = e 34 [ mk-string reduce [ 34 ] ] [
+        either = e 92 [ mk-string reduce [ 92 ] ] [
+            either = e 47 [ mk-string reduce [ 47 ] ] [
+                either = e 98 [ mk-string reduce [ 8 ] ] [
+                    either = e 102 [ mk-string reduce [ 12 ] ] [
+                        either = e 110 [ mk-string reduce [ 10 ] ] [
+                            either = e 114 [ mk-string reduce [ 13 ] ] [
+                                either = e 116 [ mk-string reduce [ 9 ] ] [ none ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+]
+
+j/parse-unicode: func [out] [
+    h: j/hex4 + j/pos 2
+    either < h 0 [ j/error 'bad-unicode j/pos ] [
+        either either >= h 55296 [ <= h 56319 ] [ 0 ] [
+            p: + j/pos 6
+            either either = s/at j/src p 92 [ = s/at j/src + p 1 117 ] [ 0 ] [
+                l: j/hex4 + p 2
+                either < l 0 [ j/error 'bad-unicode p ] [
+                    either either >= l 56320 [ <= l 57343 ] [ 0 ] [
+                        cp: + 65536 + * - h 55296 1024 - l 56320
+                        j/pos: + p 6
+                        s/+ out j/utf8 cp
+                    ] [ j/error 'bad-unicode p ]
+                ]
+            ] [ j/error 'bad-unicode j/pos ]
+        ] [
+            either either >= h 56320 [ <= h 57343 ] [ 0 ] [
+                j/error 'bad-unicode j/pos
+            ] [
+                j/pos: + j/pos 6
+                s/+ out j/utf8 h
+            ]
+        ]
+    ]
+]
+
+j/parse-escape: func [out] [
+    e: s/at j/src + j/pos 1
+    either = e none [ j/error 'unterminated-string j/pos ] [
+        either = e 117 [ j/parse-unicode out ] [
+            piece: j/simple-escape e
+            either = piece none [ j/error 'bad-escape j/pos ] [
+                j/pos: + j/pos 2
+                s/+ out piece
+            ]
+        ]
+    ]
+]
+
+j/parse-string-loop: func [out] [
+    start: j/pos
+    j: j/raw-special-at j/src start
+    out2: either > j start [ s/+ out s/span j/src start j ] [ out ]
+    b: s/at j/src j
+    either = b none [ j/error 'unterminated-string j/pos ] [
+        j/pos: j
+        either = b 34 [
+            j/pos: + j/pos 1
+            out2
+        ] [
+            either = b 92 [
+                j/parse-string-loop j/parse-escape out2
+            ] [
+                j/error 'bad-token j/pos
+            ]
+        ]
+    ]
+]
+
+j/parse-string: func [] [
+    j/pos: + j/pos 1
+    j/parse-string-loop ""
+]
+
+;; ---- number grammar and value conversion --------------------------------
+j/exp?: func [b] [
+    either = b none [ 0 ] [ either = b 101 [ 1 ] [ = b 69 ] ]
+]
+
+j/num-tail: func [tok i n] [
+    either >= i n [ 1 ] [
+        either = s/at tok i 46 [
+            j: + i 1
+            either j/digit? s/at tok j [
+                j2: s/scan-set tok j j/digits
+                either >= j2 n [ 1 ] [
+                    either j/exp? s/at tok j2 [ j/num-exp tok j2 n ] [ 0 ]
+                ]
+            ] [ 0 ]
+        ] [
+            either j/exp? s/at tok i [ j/num-exp tok i n ] [ 0 ]
+        ]
+    ]
+]
+
+j/num-exp: func [tok i n] [
+    j2: + i 1
+    either either = s/at tok j2 43 [ 1 ] [ = s/at tok j2 45 ] [
+        j2: + j2 1
+    ] [ none ]
+    either j/digit? s/at tok j2 [
+        >= s/scan-set tok j2 j/digits n
+    ] [ 0 ]
+]
+
+j/valid-number?: func [tok] [
+    n: s/length tok
+    either < n 1 [ 0 ] [
+        i: either = s/at tok 0 45 [ 1 ] [ 0 ]
+        either >= i n [ 0 ] [
+            b: s/at tok i
+            either = b 48 [
+                either j/digit? s/at tok + i 1 [ 0 ] [ j/num-tail tok + i 1 n ]
+            ] [
+                either j/digit19? b [
+                    j/num-tail tok s/scan-set tok i j/digits n
+                ] [ 0 ]
+            ]
+        ]
+    ]
+]
+
+j/int-token?: func [tok] [ = s/scan-set tok 0 j/int-set s/length tok ]
+
+j/int-digits: func [tok] [
+    either = s/at tok 0 45 [ - s/length tok 1 ] [ s/length tok ]
+]
+
+j/parse-int: func [tok start end] [
+    either >= start end [ 0 ] [
+        + * 10 j/parse-int tok start - end 1 - s/at tok - end 1 48
+    ]
+]
+
+j/token-zero?: func [tok] [
+    either = s/length tok 1 [ = s/at tok 0 48 ] [
+        either = s/length tok 2 [
+            either = s/at tok 0 45 [ = s/at tok 1 48 ] [ 0 ]
+        ] [ 0 ]
+    ]
+]
+
+;; An exact integer, or NONE when the token is too long or does not round-trip
+;; (an overflowed/unsupported build range).  NONE is safe here: JSON null is a
+;; tagged block, never NONE.
+j/int-value: func [tok] [
+    either > j/int-digits tok 18 [ none ] [
+        either j/token-zero? tok [ 0 ] [
+            neg: = s/at tok 0 45
+            n: j/parse-int tok either neg [ 1 ] [ 0 ] s/length tok
+            either neg [ n: - 0 n ] [ none ]
+            either s/= s/from-int n tok [ n ] [ none ]
+        ]
+    ]
+]
+
+j/number-start?: func [b] [
+    either = b none [ 0 ] [
+        either = b 45 [ 1 ] [ j/digit? b ]
+    ]
+]
+
+j/parse-number: func [] [
+    start: j/pos
+    end: s/scan-set j/src start j/num-set
+    tok: s/span j/src start end
+    either j/valid-number? tok [
+        j/pos: end
+        either j/int-token? tok [
+            n: j/int-value tok
+            either = n none [ reduce [ 'json-number tok ] ] [ n ]
+        ] [ reduce [ 'json-number tok ] ]
+    ] [ j/error 'bad-number start ]
+]
+
+;; ---- literals and container decoding ------------------------------------
+j/literal: func [text value] [
+    len: s/length text
+    either > + j/pos len s/length j/src [ j/error 'bad-token j/pos ] [
+        either s/= s/span j/src j/pos + j/pos len text [
+            j/pos: + j/pos len
+            value
+        ] [ j/error 'bad-token j/pos ]
+    ]
+]
+
+j/skip-ws: func [] [
+    j/pos: s/scan-set j/src j/pos j/ws-set
+]
+
+j/pair-has-key?: func [pairs key] [
+    either = pairs none [ 0 ] [
+        either either j/block? pairs [ = block-len pairs 2 ] [ 0 ] [
+            pair: block-at pairs 0
+            either either j/block? pair [ = block-len pair 2 ] [ 0 ] [
+                either s/= block-at pair 0 key [
+                    1
+                ] [ j/pair-has-key? block-at pairs 1 key ]
+            ] [ j/error 'bad-token j/pos ]
+        ] [ j/error 'bad-token j/pos ]
+    ]
+]
+
+j/array-rest: func [depth count] [
+    j/skip-ws
+    b: s/at j/src j/pos
+    either = b none [ j/error 'bad-token j/pos ] [
+        either = b 93 [
+            j/pos: + j/pos 1
+            none
+        ] [
+            either >= count json/max-items [ j/error 'too-many-items count ] [
+                v: j/parse-value + depth 1
+                j/skip-ws
+                d: s/at j/src j/pos
+                either = d 44 [
+                    j/pos: + j/pos 1
+                    j/skip-ws
+                    either = s/at j/src j/pos 93 [ j/error 'bad-token j/pos ] [
+                        rest: j/array-rest depth + count 1
+                        reduce [ v rest ]
+                    ]
+                ] [
+                    either = d 93 [
+                        j/pos: + j/pos 1
+                        reduce [ v none ]
+                    ] [ j/error 'bad-token j/pos ]
+                ]
+            ]
+        ]
+    ]
+]
+
+j/object-rest: func [depth count] [
+    j/skip-ws
+    b: s/at j/src j/pos
+    either = b none [ j/error 'bad-token j/pos ] [
+        either = b 125 [
+            j/pos: + j/pos 1
+            none
+        ] [
+            either >= count json/max-items [ j/error 'too-many-items count ] [
+                either = b 34 [
+                    key: j/parse-string
+                    j/skip-ws
+                    either = s/at j/src j/pos 58 [
+                        j/pos: + j/pos 1
+                        j/skip-ws
+                        val: j/parse-value + depth 1
+                        j/skip-ws
+                        d: s/at j/src j/pos
+                        either = d 44 [
+                            j/pos: + j/pos 1
+                            j/skip-ws
+                            either = s/at j/src j/pos 125 [ j/error 'bad-token j/pos ] [
+                                rest: j/object-rest depth + count 1
+                                either j/pair-has-key? rest key [
+                                    j/error 'duplicate-key key
+                                ] [
+                                    reduce [ reduce [ key val ] rest ]
+                                ]
+                            ]
+                        ] [
+                            either = d 125 [
+                                j/pos: + j/pos 1
+                                reduce [ reduce [ key val ] none ]
+                            ] [ j/error 'bad-token j/pos ]
+                        ]
+                    ] [ j/error 'bad-token j/pos ]
+                ] [ j/error 'bad-token j/pos ]
+            ]
+        ]
+    ]
+]
+
+j/parse-value: func [depth] [
+    b: s/at j/src j/pos
+    either = b none [ j/error 'bad-token j/pos ] [
+        either = b 34 [ j/parse-string ] [
+            either = b 123 [
+                either > depth json/max-depth [ j/error 'too-deep depth ] [
+                    j/pos: + j/pos 1
+                    reduce [ 'json-object j/object-rest depth 0 ]
+                ]
+            ] [
+                either = b 91 [
+                    either > depth json/max-depth [ j/error 'too-deep depth ] [
+                        j/pos: + j/pos 1
+                        reduce [ 'json-array j/array-rest depth 0 ]
+                    ]
+                ] [
+                    either = b 116 [ j/literal "true" json/true ] [
+                        either = b 102 [ j/literal "false" json/false ] [
+                            either = b 110 [ j/literal "null" json/null ] [
+                                either j/number-start? b [
+                                    j/parse-number
+                                ] [ j/error 'bad-token j/pos ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+]
+
+json/decode: func [text] [
+    either j/string? text [
+        j/src: text
+        j/pos: 0
+        either j/raw-utf8? text [
+            j/skip-ws
+            v: j/parse-value 1
+            j/skip-ws
+            either = j/pos s/length text [
+                v
+            ] [ j/error 'trailing-data j/pos ]
+        ] [ j/error 'bad-utf8 0 ]
+    ] [ raise create-sin 'type 'json/decode text ]
+]
+
+;; ---- predicates, accessors and constructors ----------------------------
+j/tagged?: func [v name n] [
+    either either j/block? v [ = block-len v n ] [ 0 ] [
+        = block-at v 0 name
+    ] [ 0 ]
+]
+
+json/object?:  func [v] [ j/tagged? v 'json-object 2 ]
+json/array?:   func [v] [ j/tagged? v 'json-array 2 ]
+json/null?:    func [v] [ j/tagged? v 'json-null 1 ]
+json/bool?:    func [v] [ j/tagged? v 'json-bool 2 ]
+json/string?:  func [v] [ j/string? v ]
+json/integer?: func [v] [ j/int? v ]
+json/number?:  func [v] [
+    either j/int? v [ 1 ] [ j/tagged? v 'json-number 2 ]
+]
+
+json/object: func [pairs] [ reduce [ 'json-object pairs ] ]
+json/array:  func [items] [ reduce [ 'json-array items ] ]
+json/string: func [s] [
+    either j/string? s [ s ] [ raise create-sin 'type 'json/string s ]
+]
+json/integer: func [n] [
+    either j/int? n [ n ] [ raise create-sin 'type 'json/integer n ]
+]
+json/number: func [text] [
+    either j/string? text [
+        either j/valid-number? text [
+            reduce [ 'json-number text ]
+        ] [ j/error 'bad-number text ]
+    ] [ raise create-sin 'type 'json/number text ]
+]
+
+json/true:  reduce [ 'json-bool 1 ]
+json/false: reduce [ 'json-bool 0 ]
+json/null:  reduce [ 'json-null ]
+
+j/object-get: func [pairs key] [
+    either = pairs none [ none ] [
+        either either j/block? pairs [ = block-len pairs 2 ] [ 0 ] [
+            pair: block-at pairs 0
+            either either j/block? pair [ = block-len pair 2 ] [ 0 ] [
+                either s/= block-at pair 0 key [
+                    block-at pair 1
+                ] [ j/object-get block-at pairs 1 key ]
+            ] [ j/error 'not-a-json-value pairs ]
+        ] [ j/error 'not-a-json-value pairs ]
+    ]
+]
+
+json/object-get: func [obj key] [
+    either json/object? obj [
+        either j/string? key [
+            j/object-get block-at obj 1 key
+        ] [ raise create-sin 'type 'json/object-get key ]
+    ] [ raise create-sin 'type 'json/object-get obj ]
+]
+
+json/array-values: func [arr] [
+    either json/array? arr [
+        block-at arr 1
+    ] [ raise create-sin 'type 'json/array-values arr ]
+]
+
+json/number-text: func [v] [
+    either j/int? v [
+        s/from-int v
+    ] [
+        either j/tagged? v 'json-number 2 [
+            block-at v 1
+        ] [ raise create-sin 'type 'json/number-text v ]
+    ]
+]
+
+;; ---- encoder -----------------------------------------------------------
+j/hex-char: func [n] [
+    either < n 10 [ + 48 n ] [ + 87 n ]
+]
+j/hex2: func [n] [
+    mk-string reduce [ j/hex-char / n 16 j/hex-char j/mod n 16 ]
+]
+
+j/encode-string-loop: func [s i] [
+    j: j/raw-special-at s i
+    piece: either > j i [ s/span s i j ] [ "" ]
+    b: s/at s j
+    either = b none [ piece ] [
+        esc: either = b 34 [
+            s/+ j/backslash j/quote
+        ] [
+            either = b 92 [
+                s/+ j/backslash j/backslash
+            ] [ s/+ "\u00" j/hex2 b ]
+        ]
+        s/+ piece s/+ esc j/encode-string-loop s + j 1
+    ]
+]
+
+j/encode-string: func [s] [
+    either j/raw-utf8? s [
+        s/+ j/quote s/+ j/encode-string-loop s 0 j/quote
+    ] [ j/error 'bad-utf8 s ]
+]
+
+j/encode-items: func [items depth count] [
+    either = items none [ "" ] [
+        either either j/block? items [ = block-len items 2 ] [ 0 ] [
+            either >= count json/max-items [ j/error 'too-many-items count ] [
+                rest: block-at items 1
+                s/+ j/encode block-at items 0 + depth 1
+                    either = rest none [ "" ] [ s/+ "," j/encode-items rest depth + count 1 ]
+            ]
+        ] [ j/error 'not-a-json-value items ]
+    ]
+]
+
+j/encode-pairs: func [pairs depth count] [
+    either = pairs none [ "" ] [
+        either either j/block? pairs [ = block-len pairs 2 ] [ 0 ] [
+            either >= count json/max-items [ j/error 'too-many-items count ] [
+                pair: block-at pairs 0
+                either either j/block? pair [ = block-len pair 2 ] [ 0 ] [
+                    key: block-at pair 0
+                    either j/string? key [
+                        rest: block-at pairs 1
+                        s/+ s/+ j/encode-string key ":"
+                            s/+ j/encode block-at pair 1 + depth 1
+                                either = rest none [ "" ] [ s/+ "," j/encode-pairs rest depth + count 1 ]
+                    ] [ j/error 'not-a-json-value pair ]
+                ] [ j/error 'not-a-json-value pairs ]
+            ]
+        ] [ j/error 'not-a-json-value pairs ]
+    ]
+]
+
+j/encode-block: func [v depth] [
+    n: block-len v
+    head: block-at v 0
+    either = head 'json-null [
+        either = n 1 [ "null" ] [ j/error 'not-a-json-value v ]
+    ] [
+        either = head 'json-bool [
+            either = n 2 [
+                either = block-at v 1 1 [
+                    "true"
+                ] [
+                    either = block-at v 1 0 [ "false" ] [ j/error 'not-a-json-value v ]
+                ]
+            ] [ j/error 'not-a-json-value v ]
+        ] [
+            either = head 'json-number [
+                either = n 2 [
+                    tok: block-at v 1
+                    either j/string? tok [
+                        either j/valid-number? tok [ tok ] [ j/error 'bad-number tok ]
+                    ] [ j/error 'not-a-json-value v ]
+                ] [ j/error 'not-a-json-value v ]
+            ] [
+                either = head 'json-array [
+                    either = n 2 [
+                        either > depth json/max-depth [ j/error 'too-deep depth ] [
+                            s/+ "[" s/+ j/encode-items block-at v 1 + depth 1 0 "]"
+                        ]
+                    ] [ j/error 'not-a-json-value v ]
+                ] [
+                    either = head 'json-object [
+                        either = n 2 [
+                            either > depth json/max-depth [ j/error 'too-deep depth ] [
+                                s/+ "{" s/+ j/encode-pairs block-at v 1 + depth 1 0 "}"
+                            ]
+                        ] [ j/error 'not-a-json-value v ]
+                    ] [ j/error 'not-a-json-value v ]
+                ]
+            ]
+        ]
+    ]
+]
+
+j/encode: func [v depth] [
+    either j/string? v [
+        j/encode-string v
+    ] [
+        either j/int? v [
+            s/from-int v
+        ] [
+            either j/block? v [
+                j/encode-block v depth
+            ] [ j/error 'not-a-json-value v ]
+        ]
+    ]
+]
+
+json/encode: func [value] [ j/encode value 1 ]
+
+none
+
+]

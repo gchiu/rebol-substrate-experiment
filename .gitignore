@@ -47,3 +47,16 @@ m1-large-test
 
 # generated memory-profile build artifacts
 build/
+
+# Developer Preview 1 release artifacts
+release/stage/
+release/dist/
+glon-win-*.exe
+*.dll
+civetweb.obj
+build/
+glon-lib/
+server.pem
+key.pem
+cert.pem
+members.ndjson

@@ -17,13 +17,17 @@
 
 #include "civetweb.h"
 
+#ifdef _WIN32
+#include "glon_win_compat.h"
+#else
 #include <pthread.h>
 #include <signal.h>
+#include <strings.h>
+#include <unistd.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
-#include <unistd.h>
 
 #define GLON_HTTP_SRC_CAP 65536
 #define GLON_HTTP_CTYPE_CAP ((size_t)GLON_HTTP_TYPE_CAP)
@@ -606,6 +610,11 @@ int glon_http_run(const glon_http_config *cfg, int report,
     memset(&callbacks, 0, sizeof callbacks);
     callbacks.begin_request = http_begin_request;
 
+#ifdef _WIN32
+    signal(SIGINT, http_signal_handler);
+    signal(SIGTERM, http_signal_handler);
+    signal_stop_flag = 0;
+#else
     struct sigaction sa, old_int, old_term;
     memset(&sa, 0, sizeof sa);
     sa.sa_handler = http_signal_handler;
@@ -613,14 +622,20 @@ int glon_http_run(const glon_http_config *cfg, int report,
     sigaction(SIGINT, &sa, &old_int);
     sigaction(SIGTERM, &sa, &old_term);
     signal_stop_flag = 0;
+#endif
 
     struct mg_context *ctx = mg_start(&callbacks, NULL, options);
     if (!ctx) {
         snprintf(err, errcap,
                  "HTTPS listener could not start (bind/TLS configuration failed); "
                  "no insecure fallback was attempted");
+#ifdef _WIN32
+        signal(SIGINT, SIG_DFL);
+        signal(SIGTERM, SIG_DFL);
+#else
         sigaction(SIGINT, &old_int, NULL);
         sigaction(SIGTERM, &old_term, NULL);
+#endif
         pthread_mutex_destroy(&http.lock);
         return -1;
     }
@@ -632,8 +647,13 @@ int glon_http_run(const glon_http_config *cfg, int report,
     }
 
     mg_stop(ctx);
+#ifdef _WIN32
+    signal(SIGINT, SIG_DFL);
+    signal(SIGTERM, SIG_DFL);
+#else
     sigaction(SIGINT, &old_int, NULL);
     sigaction(SIGTERM, &old_term, NULL);
+#endif
     if (pump && pump(pump_user) != 0) {
         http.errors++;
         http.fatal = 1;

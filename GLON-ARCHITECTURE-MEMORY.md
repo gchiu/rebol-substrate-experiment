@@ -1165,6 +1165,39 @@ fragmentation, file-replay throughput, single-worker serialisation and lack of
 100k endurance evidence remain. The generated large profile should be reviewed
 as an experimental server configuration before it becomes a default.
 
+### Glon Developer Preview 1 (2026-11-20) — [RELEASE PREPARATION]
+
+**[DECISION] Publication snapshot, no execution-architecture change.** The
+release branch `release/v0.1.0-alpha.1` is based on G3A `492f55f` / `546de49`
+and preserves frozen S1 `f90496c`. The release adds host portability for native
+Windows x86-64 (MSVC `/MT`, `GetModuleFileNameA`, Win32 mutex/signal/sleep shims
+in `glon_http.c`, dynamic CivetWeb OpenSSL loading), release documentation, the
+Shop HTTPS page and distribution packaging. It does not change Glon syntax,
+evaluator/GC semantics or the constrained profile.
+
+**[INCLUDED]** Linux x86-64 minimal (stripped 104,768 B), constrained HTTPS
+(264,512 B), and large HTTPS+file (297,312 B); native Windows x86-64 minimal
+(245,248 B), constrained HTTPS (457,216 B), and large HTTPS+JSON (457,216 B).
+Windows executables use the static MSVC CRT (`/MT`) and dynamically load the
+shipped OpenSSL 3 DLLs. The Windows **file-enabled membership** build is not
+included: `glon_io_file_posix.c`/the file module are POSIX-only and have no
+Win32 backend. Windows HTML, JSON, Hello World and routes examples were tested
+natively; Windows file persistence and the G3A membership app were not.
+
+**[VERIFIED]** G1/G2/G3/G3A suites, frozen S1, JSON tests, file C tests, M1
+large-profile tests, all four HTTPS examples on Linux and Windows. G3A
+membership acceptance passed 200-record restart; 1,000-record restore took
+450.143 s; 10,000-record restore failed with return-stack exhaustion;
+100,000-request endurance was not completed. No production or long-term
+reliability claim.
+
+**[PUBLICATION BLOCKER]** The local environment has no `gh`, no `GITHUB_TOKEN`
+and no non-interactive git credential; `git push`/tag/GitHub release creation
+could not be performed. The release branch, annotated tag, Shop page, archives
+and checksums are prepared locally. Do not treat the public release as
+published until the prepared branch/tag is pushed and the GitHub pre-release
+and Pages deployment are verified.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

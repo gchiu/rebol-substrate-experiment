@@ -1,0 +1,29 @@
+[
+home: func [request] [
+    method: http/method request
+    either str-eq method "POST" [
+        body: http/body request
+        decoded: judge [ json/decode body ]
+        either sin? decoded [
+            http/respond request 400 "text/plain; charset=utf-8" "malformed JSON"
+        ] [
+            either json/object? decoded [
+                name: json/object-get decoded "name"
+                either json/string? name [
+                    pair: reduce [ "hello" name ]
+                    pairs: reduce [ pair none ]
+                    out: json/encode json/object pairs
+                    http/respond request 200 "application/json" out
+                ] [
+                    http/respond request 422 "text/plain; charset=utf-8" "name must be a string"
+                ]
+            ] [
+                http/respond request 400 "text/plain; charset=utf-8" "JSON body must be an object"
+            ]
+        ]
+    ] [
+        http/respond request 405 "text/plain; charset=utf-8" "POST only"
+    ]
+]
+http/listen 8443 :home
+]
