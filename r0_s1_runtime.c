@@ -177,7 +177,9 @@ static cell parse_form(parser_t *P);
 static cell parse_int(parser_t *P) {
     int neg = 0;
     if (P->s[P->pos] == '-') { neg = 1; P->pos++; }
-    long n = 0;
+    /* cell, not long: Windows is LLP64, where long is 32-bit and a legal
+     * Glon literal above 2^27 would be truncated before tagging. */
+    cell n = 0;
     while (P->s[P->pos] >= '0' && P->s[P->pos] <= '9') { n = n * 10 + (P->s[P->pos] - '0'); P->pos++; }
     return mk_int(neg ? -n : n);
 }
