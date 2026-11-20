@@ -28,6 +28,14 @@
 
 #define IO_PATH_CAP 4096
 
+/* macOS names the nanosecond timestamp st_mtimespec; Linux/BSDs use st_mtim.
+ * This is a host portability detail of the replacement-race check only. */
+#if defined(__APPLE__)
+#define GLON_STAT_MTIM(sb) ((sb).st_mtimespec)
+#else
+#define GLON_STAT_MTIM(sb) ((sb).st_mtim)
+#endif
+
 static int under_root(const char *root, const char *path) {
     size_t n = strlen(root);
     if (n == 0) return 0;
@@ -286,8 +294,8 @@ int glon_io_posix_make_temp(const char *root_real, const char *name,
         *dev = (unsigned long long)sb.st_dev;
         *ino = (unsigned long long)sb.st_ino;
         *size = (unsigned long long)sb.st_size;
-        *mtime_sec = (long)sb.st_mtim.tv_sec;
-        *mtime_nsec = (long)sb.st_mtim.tv_nsec;
+        *mtime_sec = (long)GLON_STAT_MTIM(sb).tv_sec;
+        *mtime_nsec = (long)GLON_STAT_MTIM(sb).tv_nsec;
         *mode = (unsigned)sb.st_mode;
         return GLON_IO_OK;
     }
@@ -353,8 +361,8 @@ int glon_io_posix_commit(const char *root_real, const char *target_name,
     if ((unsigned long long)sb.st_dev != dev ||
         (unsigned long long)sb.st_ino != ino ||
         (unsigned long long)sb.st_size != size ||
-        (long)sb.st_mtim.tv_sec != mtime_sec ||
-        (long)sb.st_mtim.tv_nsec != mtime_nsec ||
+        (long)GLON_STAT_MTIM(sb).tv_sec != mtime_sec ||
+        (long)GLON_STAT_MTIM(sb).tv_nsec != mtime_nsec ||
         (unsigned)sb.st_mode != mode) {
         if (errcap) snprintf(err, errcap, "source changed during replacement: %s",
                              source_real);

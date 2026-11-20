@@ -109,6 +109,7 @@ jobs:
           install: >-
             git
             make
+            diffutils
             unzip
             zip
             mingw-w64-x86_64-gcc
@@ -266,6 +267,7 @@ jobs:
           install: >-
             git
             make
+            diffutils
             unzip
             zip
             mingw-w64-x86_64-gcc

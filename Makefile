@@ -386,6 +386,9 @@ ifneq ($(filter http,$(GLON_MODULE_LIST)),)
   GLON_MODULE_CFLAGS += -DGLON_MODULE_HTTP -Ithird_party/civetweb $(OPENSSL_CFLAGS)
   GLON_MODULE_LIBS += $(GLON_LIB_DIR)/http.glon
   GLON_MODULE_LDLIBS += -pthread $(OPENSSL_LIBS)
+  ifeq ($(OS),Windows_NT)
+    GLON_MODULE_LDLIBS += -lws2_32
+  endif
 endif
 
 GLON_TARGET_LIBS = $(GLON_LIBS) $(GLON_MODULE_LIBS)
