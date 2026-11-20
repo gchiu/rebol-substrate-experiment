@@ -22,7 +22,13 @@ case "$PLATFORM" in
     *) echo "unknown CI_PLATFORM=$PLATFORM" >&2; exit 2 ;;
 esac
 SUPPORT_FILE="${CI_SUPPORT_FILE:-1}"
-if [ "$PLATFORM" = windows ]; then SUPPORT_FILE=0; fi
+if [ "$PLATFORM" = windows ]; then
+    SUPPORT_FILE=0
+    # The native CRT maps /tmp/... to <current-drive>:\tmp.  The test harness
+    # uses that path for stderr-capture files; create it before the suite.
+    mkdir -p /d/tmp 2>/dev/null || true
+    mkdir -p /c/tmp 2>/dev/null || true
+fi
 LOG_DIR="${CI_LOG_DIR:-ci-logs}"
 mkdir -p "$LOG_DIR"
 SUMMARY="$LOG_DIR/summary.md"

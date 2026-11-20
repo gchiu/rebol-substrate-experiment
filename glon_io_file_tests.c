@@ -4,6 +4,9 @@
  * with AddressSanitizer, UndefinedBehaviorSanitizer or ThreadSanitizer without
  * involving the interpreter's static 64K machine.
  */
+#if defined(__APPLE__)
+#define _DARWIN_C_SOURCE 1
+#endif
 #define _POSIX_C_SOURCE 200809L
 #define _XOPEN_SOURCE 700
 #include "glon_io_file.h"

@@ -28,10 +28,10 @@ static void put_ch(out_t *o, char c) {
 static void put_s(out_t *o, const char *s) {
     while (s && *s) put_ch(o, *s++);
 }
-static void put_int(out_t *o, long v) {
+static void put_int(out_t *o, long long v) {
     char tmp[24];
     int k = 0;
-    unsigned long u = (v < 0) ? (unsigned long)(-(v + 1)) + 1 : (unsigned long)v;
+    unsigned long long u = (v < 0) ? (unsigned long long)(-(v + 1)) + 1 : (unsigned long long)v;
     if (v < 0) put_ch(o, '-');
     do { tmp[k++] = (char)('0' + u % 10); u /= 10; } while (u);
     while (k) put_ch(o, tmp[--k]);
@@ -40,13 +40,13 @@ static void put_int(out_t *o, long v) {
 static void put_word(out_t *o, cell v) {
     const char *name = r0_s1_sym_name(word_id(v));
     if (name) put_s(o, name);
-    else { put_s(o, "#[word "); put_int(o, (long)word_id(v)); put_ch(o, ']'); }
+    else { put_s(o, "#[word "); put_int(o, (long long)word_id(v)); put_ch(o, ']'); }
 }
 
 static void mold(out_t *o, cell v, int depth) {
     cell p = v & ~(cell)15;
     switch ((int)(v & 15)) {
-    case T_INT:  put_int(o, (long)(v / 16)); break;
+    case T_INT:  put_int(o, (long long)(v / 16)); break;
     case T_NONE: put_s(o, "none"); break;
     case T_WORD: put_word(o, v); break;
     case T_SET:  put_word(o, v); put_ch(o, ':'); break;
