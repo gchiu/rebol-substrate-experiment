@@ -1,0 +1,23 @@
+[
+q: mk-string reduce [ 34 ]
+json-body: s/+ "{" q
+json-body: s/+ json-body "ok"
+json-body: s/+ json-body q
+json-body: s/+ json-body ":true}"
+
+html-body: "<!doctype html><html><body><h1>HTML route</h1></body></html>"
+
+home: func [request] [
+    path: http/path request
+    either str-eq path "/" [
+        http/respond request 200 "text/html; charset=utf-8" html-body
+    ] [
+        either str-eq path "/api" [
+            http/respond request 200 "application/json" json-body
+        ] [
+            http/respond request 404 "text/plain; charset=utf-8" "not found"
+        ]
+    ]
+]
+http/listen 8443 :home
+]

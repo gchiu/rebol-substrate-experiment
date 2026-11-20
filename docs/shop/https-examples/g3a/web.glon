@@ -1,0 +1,172 @@
+;; modules/web.glon -- reusable form decoding and HTML escaping for Glon
+;; HTTP applications.  This is application-level code, not host vocabulary.
+;;
+;;   wp/form-scan body key 0     first URL-decoded form value, or NONE
+;;   wp/form-check-loop body 0   reject malformed percent escapes
+;;   wp/escape-html s            HTML-escape & < > " '
+;;   wp/ci-prefix? s prefix      case-insensitive prefix test
+;;
+;; JSON is deliberately NOT here: use the general modules/json.glon vocabulary.
+;; Requires prelude, strings and strings-ext.
+[
+wp/quote: mk-string reduce [ 34 ]
+wp/backslash: mk-string reduce [ 92 ]
+
+wp/hex-val: func [b] [
+    either = b none [ -1 ] [
+        either either >= b 48 [ <= b 57 ] [ 0 ] [
+            - b 48
+        ] [
+            either either >= b 65 [ <= b 70 ] [ 0 ] [
+                + - b 65 10
+            ] [
+                either either >= b 97 [ <= b 102 ] [ 0 ] [
+                    + - b 97 10
+                ] [
+                    -1
+                ]
+            ]
+        ]
+    ]
+]
+
+wp/find-byte: func [s from ch] [
+    either >= from s/length s [ -1 ] [
+        either = s/at s from ch [
+            from
+        ] [
+            wp/find-byte s + from 1 ch
+        ]
+    ]
+]
+wp/match-at?: func [s i sub] [
+    end: + i s/length sub
+    either > end s/length s [ 0 ] [
+        x: s/span s i end
+        str-eq x sub
+    ]
+]
+
+wp/starts-with?: func [s prefix] [
+    either >= s/length s s/length prefix [
+        x: s/span s 0 s/length prefix
+        str-eq x prefix
+    ] [ 0 ]
+]
+wp/ci-prefix?: func [s prefix] [
+    either s [
+        either >= s/length s s/length prefix [
+            wp/ci-loop s prefix 0
+        ] [
+            0
+        ]
+    ] [
+        0
+    ]
+]
+wp/ci-loop: func [s prefix i] [
+    either >= i s/length prefix [
+        1
+    ] [
+        a: s/at s i
+        b: s/at prefix i
+        la: either either >= a 65 [ <= a 90 ] [ 0 ] [ + a 32 ] [ a ]
+        lb: either either >= b 65 [ <= b 90 ] [ 0 ] [ + b 32 ] [ b ]
+        either = la lb [ wp/ci-loop s prefix + i 1 ] [ 0 ]
+    ]
+]
+
+;; application/x-www-form-urlencoded percent decoding.  '+' becomes space.
+wp/url-decode-loop: func [s i out] [
+    either >= i s/length s [
+        out
+    ] [
+        b: s/at s i
+        either = b 37 [
+            h: wp/hex-val s/at s + i 1
+            l: wp/hex-val s/at s + i 2
+            either either < h 0 [ 1 ] [ < l 0 ] [
+                raise create-sin 'app 400 "malformed form encoding"
+            ] [
+                wp/url-decode-loop s + i 3
+                    s/+ out mk-string reduce [ + * h 16 l ]
+            ]
+        ] [
+            wp/url-decode-loop s + i 1
+                s/+ out mk-string reduce [ either = b 43 [ 32 ] [ b ] ]
+        ]
+    ]
+]
+
+;; Reject any malformed percent escape anywhere in a form body, including in
+;; fields the application does not use.
+wp/form-check-loop: func [body i] [
+    either >= i s/length body [
+        1
+    ] [
+        either = s/at body i 37 [
+            h: wp/hex-val s/at body + i 1
+            l: wp/hex-val s/at body + i 2
+            either either < h 0 [ 1 ] [ < l 0 ] [
+                raise create-sin 'app 400 "malformed form encoding"
+            ] [
+                wp/form-check-loop body + i 3
+            ]
+        ] [
+            wp/form-check-loop body + i 1
+        ]
+    ]
+]
+
+;; First value for `key`, or NONE.  Keys occur at the start or after '&'.
+wp/form-scan: func [body key pos] [
+    either >= pos s/length body [
+        none
+    ] [
+        either either wp/match-at? body pos key [
+            = s/at body + pos s/length key 61
+        ] [ 0 ] [
+            start: + + pos s/length key 1
+            end: wp/find-byte body start 38
+            either < end 0 [ end: s/length body ] [ none ]
+            wp/url-decode-loop s/span body start end 0 ""
+        ] [
+            amp: wp/find-byte body pos 38
+            either < amp 0 [ none ] [ wp/form-scan body key + amp 1 ]
+        ]
+    ]
+]
+
+wp/html-special?: func [b] [
+    either = b 38 [ 1 ] [
+        either = b 60 [ 1 ] [
+            either = b 62 [ 1 ] [
+                either = b 34 [ 1 ] [ either = b 39 [ 1 ] [ 0 ] ]
+            ]
+        ]
+    ]
+]
+wp/find-html-special: func [s i] [
+    either >= i s/length s [ i ] [
+        either wp/html-special? s/at s i [ i ] [
+            wp/find-html-special s + i 1
+        ]
+    ]
+]
+wp/escape-html: func [s] [ wp/escape-html-loop s 0 "" ]
+wp/escape-html-loop: func [s i out] [
+    j: wp/find-html-special s i
+    out2: either > j i [ s/+ out s/span s i j ] [ out ]
+    b: s/at s j
+    either = b none [ out2 ] [
+        piece: either = b 38 [ "&amp;" ] [
+            either = b 60 [ "&lt;" ] [
+                either = b 62 [ "&gt;" ] [
+                    either = b 34 [ "&quot;" ] [ "&#39;" ]
+                ]
+            ]
+        ]
+        wp/escape-html-loop s + j 1 s/+ out2 piece
+    ]
+]
+]
