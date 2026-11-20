@@ -1094,6 +1094,77 @@ flat/string-only and supports only `\"`/`\\` escapes. Request bodies are
 materialised as one managed string; there is no streaming. Loader-heap policy
 and a larger register remain explicit follow-up decisions.
 
+### HTTPS server G3A (2026-11-20) — [IMPLEMENTED, LOCAL, EXPERIMENTAL PROFILE]
+
+**[DECISION] Generated large S1 profile; frozen files untouched.** The frozen
+`MEM_CELLS 65536` array size is the only hard addressability limit. The build
+generates `build/profile/s1_profile.h`/`.c` copies whose only differences are
+`MEM_CELLS` (and the include name); `s1.c`, `s1.h` and the seven-instruction
+semantics are unchanged, and `check-frozen-s1.sh` passes. `r0_s1.h` now makes
+`R0S1_HEAP_BASE`, `R0S1_LOAD_BASE`, `GC_WORKLIST` and `GC_WORKLIST_CAP`
+profile-configurable; the runtime loader checks use the independent loader base.
+The M1 arena and task table are relocated above the loader, not removed.
+
+**[DECISION] Constrained profile remains the default and conformance target.**
+`MEM_PROFILE=constrained` uses the original 64K map and frozen `s1.c`.
+`MEM_PROFILE=large` defaults to a 1,048,576-cell managed heap, 40,000-entry GC
+worklist, 500,000-cell loader, and 3 × 3,400 M1 arenas. `MEM_MANAGED_CELLS`,
+`MEM_WORKLIST_CELLS` and `MEM_LOADER_CELLS` are build options; the worklist
+must be >= managed/32 (build-time assertion). `GLON_HTTP_RECLAIM_M1` is no
+longer needed for G3A. This is a build-time experimental configuration; a
+runtime-selectable heap was deliberately not introduced.
+
+**[MEASURED] Large-heap effect.** G3 acceptance on 7,232 cells: 327 requests,
+254 GC collections, 4,240 post-collection live cells. The same suite on
+1,048,576 cells: 327 requests, **0** GC collections. G3A endurance on 1M cells:
+1,010 requests, 3 collections, 26,672 live cells, peak RSS 16,804 KiB. Large
+memory removes allocation-pressure collections; it does not make an individual
+collection cheaper or the heap moving. The stripped G3A binary is 297,312 B;
+BSS is ~13.2 MB (the `M[]` array).
+
+**[DECISION] Reusable JSON vocabulary.** `modules/json.glon` implements
+objects, arrays, nested values, strings, integers, fraction/exponent/out-of-
+range numbers as exact `[ 'json-number token ]`, booleans, null, escaped
+characters, `\uXXXX`/surrogate pairs, UTF-8 validation, empty collections,
+whitespace, duplicate-key rejection and stable `SIN! 'json` errors. Null is not
+NONE. Limits are depth 16 and 32 items per container (explicit resource
+boundaries; larger collections must be paginated or line-oriented). JSON is
+ordinary Glon; `make json-test` passes independently of HTTP. Generic form
+decoding/HTML escaping moved to `modules/web.glon`.
+
+**[DECISION] Scaled register with NDJSON append persistence.** The G3A app uses
+160 fixed hash groups × 64 slots (10,240 slots) plus an overflow cons list,
+masm slot scans, and pagination by group (page 160 = overflow). JSON is the
+HTTP representation. `members.ndjson` is an append-only log of compact JSON
+objects; the file module gained `'append` mode, the HTTP host pumps file
+requests after each dispatch and at shutdown. Startup replays complete lines
+before `http/listen`; a malformed complete line aborts without overwriting, a
+truncated tail is ignored with a warning. There is no fsync, compaction or
+deletion. Capacity is 10,240 fixed slots plus overflow; the prior G3
+three-record cap is gone.
+
+**[MEASURED] Scale/persistence/endurance.** 200 records (add/edit/restart),
+malformed/truncated log, pagination, escaping and stale-handle cases pass the
+G3A acceptance suite. NDJSON restore (512-byte replay chunks at the time):
+10 records 1.298 s; 100 18.438 s; 1,000 450.143 s. The one-chunk-per-file-worker
+round trip dominates; the replay chunk was later raised to 2,048 bytes without
+changing the JSON/item limits. 1,000-record replay completed in 450 s. The
+10,000-record replay was attempted and failed with return-stack exhaustion
+(`RP=16444`) before `http/listen`; the 160×64 table is also near full at 10k, so
+overflow depth contributes. 100,000/1,000,000-request endurance was not
+completed. These are measured limits, not claims. Completed endurance: 100 requests (34.04 s, 1 worker) and 1,000
+requests (719.83 s, median 388 ms, p95 883 ms, peak RSS 16,804 KiB, live 26,672,
+GC 3, FDs 5→4). The single CivetWeb worker serialises Glon handlers; keep-alive
+concurrency can starve other connections and must not be fixed by raising the
+worker count without an evaluator-ownership design.
+
+**[LIMITATION]** The G3A app is for the large profile; the constrained profile
+continues to run the G3-sized applications with identical semantics. The JSON
+limits, no deletion/compaction/fsync, static slot capacity, non-moving
+fragmentation, file-replay throughput, single-worker serialisation and lack of
+100k endurance evidence remain. The generated large profile should be reviewed
+as an experimental server configuration before it becomes a default.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

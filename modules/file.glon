@@ -50,7 +50,11 @@ io/mode-byte: func [mode] [
             either = mode 'read-write [
                 3
             ] [
-                raise create-sin 'io 'unsupported mode
+                either = mode 'append [
+                    4
+                ] [
+                    raise create-sin 'io 'unsupported mode
+                ]
             ]
         ]
     ]

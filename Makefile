@@ -293,7 +293,44 @@ wasm-primer-test: demo/shop/glon.wasm primer.html
 # A thin host over the persistent session facade (r0_s1_session_run_block):
 # one runtime, the shipped core libraries, then every FILE in one session.
 # glon-lib/ is copied beside the executable; it is not compiled in.
-GLON_SRCS = glon.c r0_s1_session.c r0_s1_show.c r0_s1_runtime.c s1.c
+# ---- Configurable memory profile -------------------------------------------
+# constrained: the frozen 64K reference (MEM_CELLS 65536, 7,232-cell managed
+#              heap, loader and M1 task arena unchanged).  This is the default
+#              and the conformance profile.
+# large:       a generated S1 object with a larger MEM_CELLS, an enlarged
+#              managed heap, an independent GC worklist and loader heap, and
+#              the M1 arena/table relocated above them.  Frozen s1.c/s1.h are
+#              read only; the generated copies differ only in MEM_CELLS.
+MEM_PROFILE ?= constrained
+MEM_MANAGED_CELLS ?= 1048576
+MEM_WORKLIST_CELLS ?= 40000
+MEM_LOADER_CELLS ?= 200000
+MEM_M1_CELLS ?= 10200
+MEM_TOTAL ?= 65536
+GLON_MEMORY_CFLAGS :=
+GLON_PROFILE_DEPS :=
+GLON_S1_SRC := s1.c
+ifeq ($(MEM_PROFILE),constrained)
+else ifeq ($(MEM_PROFILE),large)
+  MEM_MANAGED_END := $(shell expr 32768 + $(MEM_MANAGED_CELLS))
+  MEM_LOAD_BASE := $(shell expr $(MEM_MANAGED_END) + $(MEM_WORKLIST_CELLS))
+  MEM_M1_BASE := $(shell expr $(MEM_LOAD_BASE) + $(MEM_LOADER_CELLS))
+  MEM_TASK_TABLE := $(shell expr $(MEM_M1_BASE) + $(MEM_M1_CELLS))
+  MEM_TOTAL := $(shell expr $(MEM_TASK_TABLE) + 536 + 1024)
+  GLON_MEMORY_CFLAGS := -DR0S1_HEAP_BASE=$(MEM_MANAGED_END) \
+      -DR0S1_LOAD_BASE=$(MEM_LOAD_BASE) \
+      -DR0S1_HEAP_LIMIT=$(MEM_M1_BASE) \
+      -DGC_WORKLIST=$(MEM_MANAGED_END) \
+      -DGC_WORKLIST_CAP=$(MEM_WORKLIST_CELLS) \
+      -DM1_ARENA_BASE=$(MEM_M1_BASE) \
+      -DM1_TASK_TABLE=$(MEM_TASK_TABLE)
+  GLON_S1_SRC := build/profile/s1_profile.c
+  GLON_PROFILE_DEPS := build/profile/s1_profile.c build/profile/s1_profile.h
+else
+  $(error unknown MEM_PROFILE='$(MEM_PROFILE)'; supported values: constrained, large)
+endif
+
+GLON_SRCS = glon.c r0_s1_session.c r0_s1_show.c r0_s1_runtime.c $(GLON_S1_SRC)
 GLON_LIB_DIR = glon-lib
 GLON_LIBS = $(GLON_LIB_DIR)/prelude.glon $(GLON_LIB_DIR)/strings.glon $(GLON_LIB_DIR)/strings-ext.glon
 
@@ -367,11 +404,23 @@ GLON_CONFIG = .glon-config
 .PHONY: FORCE
 FORCE:
 $(GLON_CONFIG): FORCE
-	@printf '%s %s' '$(strip $(MODULES))' '$(GLON_HTTP_RECLAIM_M1)' > $@.tmp
+	@printf '%s %s %s %s %s %s' '$(strip $(MODULES))' '$(GLON_HTTP_RECLAIM_M1)' \
+	    '$(MEM_PROFILE)' '$(MEM_MANAGED_CELLS)' '$(MEM_WORKLIST_CELLS)' '$(MEM_LOADER_CELLS)' > $@.tmp
 	@if ! cmp -s $@.tmp $@; then mv $@.tmp $@; else rm -f $@.tmp; fi
 
-glon: $(GLON_SRCS) $(GLON_MODULE_SRCS) $(GLON_MODULE_OBJS) r0_s1.h s1.h m1_layout.h $(GLON_CONFIG) $(GLON_TARGET_LIBS)
-	$(CC) $(CFLAGS) $(GLON_MODULE_CFLAGS) -I. -o $@ $(GLON_SRCS) $(GLON_MODULE_SRCS) $(GLON_MODULE_OBJS) $(GLON_MODULE_LDLIBS)
+build/profile:
+	@mkdir -p $@
+
+build/profile/s1_profile.h: s1.h Makefile | build/profile
+	@sed 's/^#define MEM_CELLS 65536$$/#define MEM_CELLS $(MEM_TOTAL)/' $< > $@.tmp
+	@mv $@.tmp $@
+
+build/profile/s1_profile.c: s1.c Makefile | build/profile
+	@sed 's/^#include "s1.h"$$/#include "s1_profile.h"/' $< > $@.tmp
+	@mv $@.tmp $@
+
+glon: $(GLON_SRCS) $(GLON_MODULE_SRCS) $(GLON_MODULE_OBJS) $(GLON_PROFILE_DEPS) r0_s1.h s1.h m1_layout.h $(GLON_CONFIG) $(GLON_TARGET_LIBS)
+	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) $(GLON_MODULE_CFLAGS) -I. -o $@ $(GLON_SRCS) $(GLON_MODULE_SRCS) $(GLON_MODULE_OBJS) $(GLON_MODULE_LDLIBS)
 
 $(GLON_LIB_DIR)/prelude.glon: jupyter/prelude.glon
 	@mkdir -p $(GLON_LIB_DIR)
@@ -496,6 +545,34 @@ https-g3-test:
 	# the 7,232-cell managed heap that the membership app is not reliable in
 	# the combined build.  G1/G2 still verify MODULES=file,http.
 	$(MAKE) --no-print-directory glon MODULES=http GLON_HTTP_RECLAIM_M1=1
+
+# ---- G3A: grouped membership register with NDJSON persistence --------------
+# The app lives in examples/https-g3a and uses the large profile.  The caller
+# supplies the local OpenSSL C_INCLUDE_PATH/LIBRARY_PATH (see the build notes),
+# or installs libssl-dev.  The acceptance suite is local-only and bounded.
+https-g3a-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	tests/https-g1/make-cert.sh
+	python3 tests/https-g3a/acceptance.py --glon $(CURDIR)/glon
+.PHONY: https-g3a-test
+
+https-g3a-scale:
+	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	tests/https-g1/make-cert.sh
+	python3 tests/https-g3a/scale.py --glon $(CURDIR)/glon --sizes 10,100,1000
+.PHONY: https-g3a-scale
+
+https-g3a-endurance:
+	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	tests/https-g1/make-cert.sh
+	python3 tests/https-g3a/endurance.py --glon $(CURDIR)/glon --requests 1000 --workers 1
+.PHONY: https-g3a-endurance
+
+m1-large-test: tests/m1_large_driver.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c $(GLON_PROFILE_DEPS)
+	@test "$(MEM_PROFILE)" = large || { echo "use MEM_PROFILE=large"; exit 2; }
+	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o m1-large-test tests/m1_large_driver.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c $(GLON_S1_SRC)
+	./m1-large-test
+.PHONY: m1-large-test
 
 # ---- Desktop proof: native Glon application + browser/WASM Glon View --------
 # glon-desktop is the installed application host: it binds a localhost TCP
@@ -774,3 +851,16 @@ machine-integrity-wasm: integrity/build/glon.wasm glon
 	@echo "machine-integrity-wasm: PASS (native and WASM output as expected, identical)"
 
 .PHONY: machine-integrity machine-integrity-wasm
+
+# ---- JSON vocabulary tests (ordinary Glon; no OpenSSL) ---------------------
+# The general JSON module and its full focused suite exceed the constrained
+# profile's 14,800-cell loader heap, so this test build uses the documented
+# large memory profile. MODULES= keeps it minimal: no optional module or
+# OpenSSL is compiled or linked. strings-ext.glon is loaded explicitly (the
+# minimal CLI loads only prelude + strings); loading it as a FILE also prints
+# its final closure result, so that one #[func] line is filtered out.
+json-test:
+	$(MAKE) --no-print-directory glon MODULES= MEM_PROFILE=large
+	@out=$$(./glon glon-lib/strings-ext.glon modules/json.glon tests/json/tests.glon); status=$$?; \
+	printf '%s\n' "$$out" | grep -v '^#\[func\]$$'; exit $$status
+.PHONY: json-test

@@ -77,13 +77,21 @@ enum {
  * R0S1_GC_OVERFLOW_TEST_BUILD (`make gc-worklist-overflow-test`), which grows
  * the managed heap to exercise the GC worklist bound. Never define that macro
  * in a shipped build. */
-#if defined(R0S1_HEAP_BASE) || defined(GC_HEAP_LIMIT)
-#error "R0S1_HEAP_BASE / GC_HEAP_LIMIT are fixed by the 64K memory map, not build options"
+#if defined(GC_HEAP_LIMIT)
+#error "GC_HEAP_LIMIT is derived from R0S1_HEAP_BASE and is not a build option"
 #endif
 #ifdef R0S1_GC_OVERFLOW_TEST_BUILD
 #define R0S1_HEAP_BASE 44000L   /* TEST BUILD ONLY: 11,232-cell managed heap */
 #else
+#ifndef R0S1_HEAP_BASE
 #define R0S1_HEAP_BASE 40000L
+#endif
+#endif
+/* The loader heap starts here.  The 64K profile leaves it equal to the managed
+ * heap end.  A larger profile can reserve a GC worklist region between the two
+ * and/or move the loader/M1 regions above the larger managed heap. */
+#ifndef R0S1_LOAD_BASE
+#define R0S1_LOAD_BASE R0S1_HEAP_BASE
 #endif
 /* The loader heap grows upward to M1_ARENA_BASE (m1_layout.h). The G1E demo
  * launcher (launcher + shop + guide + merchant-flow) plus the per-dispatch
@@ -311,7 +319,9 @@ _Static_assert(GC_HEAP_LIMIT == R0S1_HEAP_BASE,
 #define GC_C5           25054
 #define GC_C6           25055
 #define GC_WL_SP        25056
-#define GC_WORKLIST     25057    /* 256 entries -> ..25312 */
+#ifndef GC_WORKLIST
+#define GC_WORKLIST     25057    /* default 64K: 256 entries -> ..25312 */
+#endif
 #define GC_A1           25313    /* alloc()'s persistent extent */
 #define GC_A2           25314    /* alloc()'s persistent kind */
 
@@ -328,9 +338,10 @@ _Static_assert(GC_HEAP_LIMIT == R0S1_HEAP_BASE,
  * push (R0S1_HALT_GC_WORKLIST_FULL) as defence in depth. Only the explicitly
  * identified test build R0S1_GC_OVERFLOW_TEST_BUILD skips the assertion, to
  * exercise that runtime bound; every other build keeps it. */
-#define GC_WORKLIST_CAP (GC_A1 - GC_WORKLIST)
+#ifndef GC_WORKLIST_CAP
+#define GC_WORKLIST_CAP 256      /* default 64K: entries immediately before GC_A1 */
+#endif
 #define GC_MIN_EXTENT   (GC_HDR_STRIDE + 16)
-_Static_assert(GC_WORKLIST_CAP == 256, "the 64K map reserves 256 worklist entries before GC_A1");
 #ifndef R0S1_GC_OVERFLOW_TEST_BUILD
 _Static_assert(GC_WORKLIST_CAP >= (GC_HEAP_LIMIT - GC_HEAP_BASE) / GC_MIN_EXTENT,
                "GC worklist too small for the managed heap: enlarge GC_WORKLIST_CAP before the heap");

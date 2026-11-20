@@ -18,8 +18,8 @@
 #define GLON_IO_REQUEST_MAGIC  0x01u  /* protocol v1 */
 #define GLON_IO_REPLY_MAGIC    0x81u  /* protocol v1 */
 #define GLON_IO_MAX_FIELDS     4u
-#define GLON_IO_MAX_FRAME      8192u
-#define GLON_IO_MAX_CHUNK      400u
+#define GLON_IO_MAX_FRAME      16384u
+#define GLON_IO_MAX_CHUNK      4096u
 /* Host per-handle cumulative safety bound for streaming.  The immutable
  * whole-file convenience cap is separate, in modules/file.glon (1,024 bytes),
  * because input + replacement + write slice coexist in the managed heap. */
@@ -44,7 +44,8 @@ typedef enum {
 typedef enum {
     GLON_IO_MODE_READ = 1,
     GLON_IO_MODE_WRITE = 2,
-    GLON_IO_MODE_READ_WRITE = 3
+    GLON_IO_MODE_READ_WRITE = 3,
+    GLON_IO_MODE_APPEND = 4   /* O_APPEND; used by the G3A persistence log */
 } glon_io_mode;
 
 typedef enum {

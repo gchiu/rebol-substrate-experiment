@@ -239,7 +239,7 @@ static void module_usage(void) {
     fprintf(stderr,
         " [--http-cert FILE] [--http-bind ADDR] [--http-max-requests N]\n"
         "            [--http-timeout-ms N] [--http-max-request-size N]\n"
-        "            [--http-max-body N] [--http-report]");
+        "            [--http-max-body N] [--http-keep-alive] [--http-report]");
 #endif
     fprintf(stderr, " FILE...\n");
 }
@@ -304,6 +304,8 @@ static int parse_module_options(int argc, char **argv, int *first_file,
             unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v) ||
                            v == 0 || v > GLON_HTTP_REQUEST_BODY_HARD) return -1;
             o->http.max_body = v;
+        } else if (!strcmp(a, "--http-keep-alive")) {
+            o->http.keep_alive = 1;
         } else if (!strcmp(a, "--http-report")) {
             o->http_report = 1;
         }
@@ -466,10 +468,26 @@ static int run_io_reply(const uint8_t *frame, size_t len, uint32_t expected_id,
             snprintf(err, errcap, "malformed/oversized read reply");
             return -1;
         }
-        n += snprintf(src + n, sizeof src - (size_t)n, "mk-string [");
-        for (uint32_t i = 0; i < al && (size_t)n + 5 < sizeof src; i++)
-            n += snprintf(src + n, sizeof src - (size_t)n, " %u", a[i]);
-        n += snprintf(src + n, sizeof src - (size_t)n, " ] 0 ]");
+        /* The loader parser has a 512-value block-literal limit, so a large
+         * read reply is emitted as a chain of <=400-byte mk-string blocks. */
+        const uint32_t chunk = 400;
+        uint32_t chunks = al ? (al + chunk - 1) / chunk : 0;
+        for (uint32_t c = 1; c < chunks; c++)
+            n += snprintf(src + n, sizeof src - (size_t)n, "s/+ ");
+        if (chunks == 0) {
+            n += snprintf(src + n, sizeof src - (size_t)n, "mk-string [ ]");
+        } else {
+            for (uint32_t c = 0; c < chunks; c++) {
+                uint32_t start = c * chunk;
+                uint32_t end = start + chunk;
+                if (end > al) end = al;
+                n += snprintf(src + n, sizeof src - (size_t)n, "mk-string [");
+                for (uint32_t i = start; i < end && (size_t)n + 6 < sizeof src; i++)
+                    n += snprintf(src + n, sizeof src - (size_t)n, " %u", a[i]);
+                n += snprintf(src + n, sizeof src - (size_t)n, " ]");
+            }
+        }
+        n += snprintf(src + n, sizeof src - (size_t)n, " 0 ]");
     } else if (status == GLON_IO_OK && op == GLON_IO_OP_WRITE) {
         const uint8_t *a; uint32_t al;
         if (reply_field(frame, len, 0, &a, &al) || al != 4) {
@@ -593,6 +611,13 @@ static void report_io(glon_io_cli *io) {
     fprintf(stderr, "glon: io: handles_open=%u cleanup_closed=%u close_failed=%u\n",
             open, closed, failed);
 }
+
+/* Host pump for the HTTP worker: drain pending asynchronous file requests only
+ * after an HTTP dispatch turn has completed. */
+static int pump_file_io(void *user) {
+    int progress_done = 1;
+    return drain_io((glon_io_cli *)user, NULL, &progress_done, 0, 0, 0);
+}
 #endif /* GLON_MODULE_FILE */
 
 /* ---- main ---------------------------------------------------------------- */
@@ -667,6 +692,26 @@ int main(int argc, char **argv) {
 #endif
     }
 
+#ifdef GLON_MODULE_HTTP
+    /* Start only after every source file has been loaded, and only if the
+     * application actually called http/listen.  The native listener owns the
+     * sockets/TLS/HTTP parser; the loaded Glon handler owns the response. */
+    if (rc == 0) {
+        char http_err[512];
+#ifdef GLON_MODULE_FILE
+        int hr = glon_http_run(&opts.http, opts.http_report,
+                               pump_file_io, io, http_err, sizeof http_err);
+#else
+        int hr = glon_http_run(&opts.http, opts.http_report,
+                               NULL, NULL, http_err, sizeof http_err);
+#endif
+        if (hr != 0) {
+            fprintf(stderr, "glon: http: %s\n", http_err);
+            rc = 2;
+        }
+    }
+#endif
+
 #ifdef GLON_MODULE_FILE
     /* Early errors can leave handles from a job that never reached its
      * per-file report.  Always reclaim them; report only when requested. */
@@ -681,18 +726,5 @@ int main(int argc, char **argv) {
     glon_io_cli_destroy(io);
 #endif
 
-#ifdef GLON_MODULE_HTTP
-    /* Start only after every source file has been loaded, and only if the
-     * application actually called http/listen.  The native listener owns the
-     * sockets/TLS/HTTP parser; the loaded Glon handler owns the response. */
-    if (rc == 0) {
-        char http_err[512];
-        if (glon_http_run(&opts.http, opts.http_report,
-                          http_err, sizeof http_err) != 0) {
-            fprintf(stderr, "glon: http: %s\n", http_err);
-            rc = 2;
-        }
-    }
-#endif
     return rc;
 }

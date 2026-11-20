@@ -1,0 +1,315 @@
+;; examples/https-g3a/reg.glon -- synthetic G3A membership register.
+;;
+;; Load after modules/web.glon, modules/json.glon and slots.glon.  The register
+;; is 160 fixed hash groups of 64 mutable slots (10,240 slots) plus a cons-list
+;; overflow for records whose group is full.  A record is the ordinary string
+;; "id|name|email|status"; there is no concatenated register and no ';'
+;; terminator.  All data is synthetic; there is no authentication.
+;;
+;; FIELD LIMITS (bytes, not characters):
+;;   id     1..64    the hash recursion is bounded by this
+;;   name   1..128
+;;   email  1..128   one '@' with non-empty local/domain parts
+;;   status "active" or "inactive"
+;; id/name/email must be printable ASCII 32..126 and may not contain '|' or
+;; ';'.  These checks are deliberately small and happen before any state
+;; mutation.  The hash adds one byte at a time and subtracts 160 at most once
+;; per byte, which keeps the running value below 160 because id bytes are <=126.
+;;
+;; The helper closures live in one installer context (with a nested installer)
+;; so the fixed 256-binding global context holds only the public vocabulary.
+[
+reg/count: 0
+reg/overflow: none
+reg/capacity: 10240
+reg/field: none
+reg/from-fields: none
+reg/find: none
+reg/add: none
+reg/update: none
+reg/apply: none
+reg/json-member: none
+reg/jpair: none
+
+reg/install: func [] [
+    block-set!: masm 3 [
+        LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A !
+        LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD !
+        ARITY 0 EXIT
+    ]
+
+    ;; Bytes 32..126 except '|' (124) and ';' (59).
+    allowed-set: mk-string reduce [
+        32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54
+        55 56 57 58 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78
+        79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100
+        101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117
+        118 119 120 121 122 123 125 126
+    ]
+    ;; Allowed bytes except '@'; scan-set is an iterative S1 loop, so the
+    ;; email search has no return-stack cost.
+    email-set: mk-string reduce [
+        32 33 34 35 36 37 38 39 40 41 42 43
+        44 45 46 47 48 49 50 51 52 53 54 55
+        56 57 58 60 61 62 63 65 66 67 68 69
+        70 71 72 73 74 75 76 77 78 79 80 81
+        82 83 84 85 86 87 88 89 90 91 92 93
+        94 95 96 97 98 99 100 101 102 103 104 105
+        106 107 108 109 110 111 112 113 114 115 116 117
+        118 119 120 121 122 123 125 126
+    ]
+
+    text-ok?: func [s max] [
+        either > s/length s max [ 0 ] [
+            either > s/length s 0 [
+                = s/scan-set s 0 allowed-set s/length s
+            ] [ 0 ]
+        ]
+    ]
+    id-ok?: func [s] [ text-ok? s 64 ]
+    name-ok?: func [s] [ text-ok? s 128 ]
+    email-ok?: func [s] [
+        either text-ok? s 128 [
+            at: s/scan-set s 0 email-set
+            either < at 1 [ 0 ] [
+                either >= at - s/length s 1 [ 0 ] [
+                    idx: s/scan-set s + at 1 email-set
+                    either >= idx s/length s [ 1 ] [ 0 ]
+                ]
+            ]
+        ] [ 0 ]
+    ]
+    check: func [value pred label] [
+        either = value none [
+            raise create-sin 'app 422 s/+ label " is required"
+        ] [
+            either pred value [ 1 ] [
+                raise create-sin 'app 422 s/+ label " is invalid"
+            ]
+        ]
+    ]
+
+    field-scan: func [rec idx i start] [
+        end: s/scan-set rec start allowed-set
+        either >= end s/length rec [
+            either = i idx [ s/span rec start s/length rec ] [ "" ]
+        ] [
+            either = i idx [
+                s/span rec start end
+            ] [
+                field-scan rec idx + i 1 + end 1
+            ]
+        ]
+    ]
+
+    hash: func [s i h] [
+        either >= i s/length s [ h ] [
+            x: + h s/at s i
+            hash s + i 1 either >= x 160 [ - x 160 ] [ x ]
+        ]
+    ]
+    group-of: func [id] [ block-at reg/slots hash id 0 0 ]
+
+    overflow-find: func [id node] [
+        either = node none [ none ] [
+            rec: block-at node 0
+            either str-eq reg/field rec 0 id [
+                rec
+            ] [
+                overflow-find id block-at node 1
+            ]
+        ]
+    ]
+
+    ;; The second installer keeps this context below the 16-binding limit while
+    ;; the public closures still see the helpers above through their parent.
+    setup2: func [] [
+        ;; Iterative S1 slot scans.  A 64-slot recursive scan is close to the
+        ;; return-stack ceiling while an I/O reply callback is live, so the hot
+        ;; scans loop in masm instead.  SCRATCH_D/E are unused by the string
+        ;; workers; A/B/C/F follow the usual scratch convention.
+        group-index-raw: masm 2 [
+            LIT SCRATCH_C ! LIT SCRATCH_A !
+            LIT SCRATCH_A @ DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_A !
+            LIT SCRATCH_C @ LIT T_STRING SUB LIT SCRATCH_C !
+            LIT SCRATCH_C @ @ LIT SCRATCH_D !
+            LIT 0 LIT SCRATCH_B !
+          gi-loop:
+            LIT SCRATCH_B @ LIT 64 LT ZBRANCH gi-none
+            LIT SCRATCH_A @ LIT SCRATCH_B @ ADD @ LIT SCRATCH_E !
+            LIT SCRATCH_E @ NONE EQ ZBRANCH gi-record
+            BRANCH gi-next
+          gi-record:
+            LIT SCRATCH_E @ LIT T_STRING SUB LIT SCRATCH_E !
+            LIT 0 LIT SCRATCH_F !
+          gi-cmp:
+            LIT SCRATCH_F @ LIT SCRATCH_D @ LT ZBRANCH gi-match
+            LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_F @ ADD @
+            LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_F @ ADD @
+            EQ ZBRANCH gi-next
+            LIT SCRATCH_F @ LIT 1 ADD LIT SCRATCH_F !
+            BRANCH gi-cmp
+          gi-match:
+            LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_D @ ADD @ LIT 124 EQ ZBRANCH gi-next
+            LIT SCRATCH_B @ LIT 16 MUL ARITY 1 EXIT
+          gi-next:
+            LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B !
+            BRANCH gi-loop
+          gi-none:
+            INT -1 ARITY 1 EXIT
+        ]
+        group-free-raw: masm 1 [
+            LIT SCRATCH_A !
+            LIT SCRATCH_A @ DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_A !
+            LIT 0 LIT SCRATCH_B !
+          gf-loop:
+            LIT SCRATCH_B @ LIT 64 LT ZBRANCH gf-none
+            LIT SCRATCH_A @ LIT SCRATCH_B @ ADD @ NONE EQ ZBRANCH gf-next
+            LIT SCRATCH_B @ LIT 16 MUL ARITY 1 EXIT
+          gf-next:
+            LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B !
+            BRANCH gf-loop
+          gf-none:
+            INT -1 ARITY 1 EXIT
+        ]
+
+        group-index: func [group id] [ group-index-raw group id ]
+        group-free: func [group] [ group-free-raw group ]
+        group-find: func [group id] [
+            idx: group-index group id
+            either < idx 0 [ none ] [ block-at group idx ]
+        ]
+
+        status-ok?: func [s] [
+            either str-eq s "active" [
+                1
+            ] [
+                either str-eq s "inactive" [ 1 ] [ 0 ]
+            ]
+        ]
+
+        ;; Rebuild the cons chain, replacing the first matching record.  The
+        ;; caller only uses this after overflow-find has found the id.
+        overflow-replace: func [id rec node] [
+            either = node none [ none ] [
+                old: block-at node 0
+                rest: block-at node 1
+                either str-eq reg/field old 0 id [
+                    reduce [ rec rest ]
+                ] [
+                    reduce [ old overflow-replace id rec rest ]
+                ]
+            ]
+        ]
+
+        ;; Insert a validated record.  A full hash group sends the record to
+        ;; overflow, so 10,240 is the fixed-slot capacity, not a hard refusal.
+        insert: func [rec] [
+            id: reg/field rec 0
+            group: group-of id
+            idx: group-free group
+            either < idx 0 [
+                reg/overflow: reduce [ rec reg/overflow ]
+            ] [
+                block-set! group idx rec
+            ]
+            reg/count: + reg/count 1
+            rec
+        ]
+        replace: func [id rec] [
+            group: group-of id
+            idx: group-index group id
+            either >= idx 0 [
+                block-set! group idx rec
+            ] [
+                reg/overflow: overflow-replace id rec reg/overflow
+            ]
+            rec
+        ]
+
+        reg/field: func [rec idx] [ field-scan rec idx 0 0 ]
+
+        reg/from-fields: func [fields] [
+            id: block-at fields 0
+            name: block-at fields 1
+            email: block-at fields 2
+            status: block-at fields 3
+            check id :id-ok? "id"
+            check name :name-ok? "name"
+            check email :email-ok? "email"
+            check status :status-ok? "status"
+            r: s/+ id "|"
+            r: s/+ r name
+            r: s/+ r "|"
+            r: s/+ r email
+            r: s/+ r "|"
+            s/+ r status
+        ]
+
+        reg/find: func [id] [
+            either id-ok? id [
+                group: group-of id
+                rec: group-find group id
+                either rec [ rec ] [ overflow-find id reg/overflow ]
+            ] [
+                none
+            ]
+        ]
+
+        ;; Used by persistence loading and the initial seed: insert a new id or
+        ;; replace an existing one (last line wins), without duplicate errors.
+        reg/apply: func [rec] [
+            id: reg/field rec 0
+            group: group-of id
+            idx: group-index group id
+            either >= idx 0 [
+                block-set! group idx rec
+                rec
+            ] [
+                either overflow-find id reg/overflow [
+                    replace id rec
+                ] [ insert rec ]
+            ]
+        ]
+
+        reg/add: func [fields] [
+            rec: reg/from-fields fields
+            id: reg/field rec 0
+            either reg/find id [
+                raise create-sin 'app 409 "duplicate id"
+            ] [ none ]
+            insert rec
+        ]
+
+        reg/update: func [id fields] [
+            old: reg/find id
+            either old [
+                rec: reg/from-fields fields
+                rid: reg/field rec 0
+                either str-eq rid id [
+                    replace id rec
+                ] [
+                    raise create-sin 'app 422 "id in body does not match path"
+                ]
+            ] [
+                raise create-sin 'app 404 "member not found"
+            ]
+        ]
+
+        reg/jpair: func [key value rest] [ reduce [ reduce [ key value ] rest ] ]
+
+        reg/json-member: func [rec] [
+            id: reg/field rec 0
+            name: reg/field rec 1
+            email: reg/field rec 2
+            status: reg/field rec 3
+            json/object reg/jpair "id" id
+                reg/jpair "name" name
+                reg/jpair "email" email
+                reg/jpair "status" status none
+        ]
+    ]
+    setup2
+]
+reg/install
+]

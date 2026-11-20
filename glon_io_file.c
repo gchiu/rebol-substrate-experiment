@@ -155,12 +155,13 @@ static int do_open(glon_io_service *svc, const glon_io_request *q,
         q->fields[1].len != 1)
         return GLON_IO_IO_ERROR;
     int mode = q->fields[1].bytes[0];
-    if (mode < GLON_IO_MODE_READ || mode > GLON_IO_MODE_READ_WRITE)
+    if (mode < GLON_IO_MODE_READ || mode > GLON_IO_MODE_APPEND)
         return GLON_IO_UNSUPPORTED;
     int need_read = (mode == GLON_IO_MODE_READ ||
                      mode == GLON_IO_MODE_READ_WRITE);
     int need_write = (mode == GLON_IO_MODE_WRITE ||
-                      mode == GLON_IO_MODE_READ_WRITE);
+                      mode == GLON_IO_MODE_READ_WRITE ||
+                      mode == GLON_IO_MODE_APPEND);
     if ((need_read && !svc->policy.allow_read) ||
         (need_write && !svc->policy.allow_write)) {
         if (errcap) snprintf(err, errcap, "file capability denied");
@@ -249,7 +250,8 @@ static int do_write(glon_io_service *svc, const glon_io_request *q,
         return GLON_IO_IO_ERROR;
     glon_io_slot *s = find_slot(svc, h.value, h.generation, NULL);
     if (!s) return GLON_IO_INVALID_HANDLE;
-    if (s->mode != GLON_IO_MODE_WRITE && s->mode != GLON_IO_MODE_READ_WRITE)
+    if (s->mode != GLON_IO_MODE_WRITE && s->mode != GLON_IO_MODE_READ_WRITE &&
+        s->mode != GLON_IO_MODE_APPEND)
         return GLON_IO_PERMISSION;
     if (q->fields[1].len == 0) return GLON_IO_IO_ERROR;
     if (q->fields[1].len > svc->policy.max_chunk) return GLON_IO_TOO_LARGE;

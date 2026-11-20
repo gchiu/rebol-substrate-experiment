@@ -47,6 +47,7 @@ typedef struct {
     unsigned request_timeout_ms;   /* per-connection idle timeout */
     unsigned max_request_size;     /* CivetWeb header/request bound */
     unsigned max_body;             /* request body cap; 1..4096, default 2048 */
+    int keep_alive;                /* 0 = close after each response */
 } glon_http_config;
 
 void glon_http_config_default(glon_http_config *cfg);
@@ -60,7 +61,10 @@ int glon_http_take_listen(int *port, char *err, size_t errcap);
  * configured"), -1 on a startup/runtime failure.  A configured listener with a
  * missing or unusable certificate is a failure: there is no insecure fallback.
  * `report` prints request/GC counters at shutdown. */
+typedef int (*glon_http_pump_fn)(void *user);
+
 int glon_http_run(const glon_http_config *cfg, int report,
+                  glon_http_pump_fn pump, void *pump_user,
                   char *err, size_t errcap);
 
 #endif /* GLON_HTTP_H */

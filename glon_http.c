@@ -40,6 +40,8 @@ typedef struct {
 
 typedef struct {
     glon_http_config cfg;
+    glon_http_pump_fn pump;
+    void *pump_user;
     pthread_mutex_t lock;
     volatile int stop_requested;      /* read by the main polling loop */
     volatile int fatal;               /* read by the main polling loop */
@@ -416,7 +418,8 @@ static int http_send_response(struct mg_connection *conn,
     if (mg_response_header_start(conn, r->status) < 0) return -1;
     if (mg_response_header_add(conn, "Content-Type", r->ctype, -1) < 0) return -1;
     if (mg_response_header_add(conn, "Content-Length", len, -1) < 0) return -1;
-    if (mg_response_header_add(conn, "Connection", "close", -1) < 0) return -1;
+    if (!http.cfg.keep_alive &&
+        mg_response_header_add(conn, "Connection", "close", -1) < 0) return -1;
     if (mg_response_header_add(conn, "Cache-Control", "no-store", -1) < 0) return -1;
     for (unsigned i = 0; i < r->header_count; i++) {
         if (http_header_managed(r->header_names[i])) continue;
@@ -533,6 +536,14 @@ static int http_begin_request(struct mg_connection *conn) {
     http.current_id = 0;
     pthread_mutex_unlock(&http.lock);
 
+    /* Optional host pump (the file module's asynchronous request queue).  It
+     * runs only after the HTTP dispatch turn has completed, so it never enters
+     * the Glon evaluator concurrently. */
+    if (http.pump && http.pump(http.pump_user) != 0) {
+        http.errors++;
+        http.fatal = 1;
+    }
+
     return reply_status;
 }
 
@@ -548,9 +559,11 @@ void glon_http_config_default(glon_http_config *cfg) {
     cfg->request_timeout_ms = 10000;
     cfg->max_request_size = 8192;
     cfg->max_body = GLON_HTTP_REQUEST_BODY_DEFAULT;
+    cfg->keep_alive = 0;
 }
 
 int glon_http_run(const glon_http_config *cfg, int report,
+                  glon_http_pump_fn pump, void *pump_user,
                   char *err, size_t errcap) {
     int port = 0;
     int lr = glon_http_take_listen(&port, err, errcap);
@@ -565,6 +578,8 @@ int glon_http_run(const glon_http_config *cfg, int report,
 
     memset(&http, 0, sizeof http);
     http.cfg = *cfg;
+    http.pump = pump;
+    http.pump_user = pump_user;
     pthread_mutex_init(&http.lock, NULL);
 
     char ports[256];
@@ -573,11 +588,12 @@ int glon_http_run(const glon_http_config *cfg, int report,
     char timeout[32], maxreq[32];
     snprintf(timeout, sizeof timeout, "%u", cfg->request_timeout_ms);
     snprintf(maxreq, sizeof maxreq, "%u", cfg->max_request_size);
+    int keep_alive = cfg->keep_alive;
 
     const char *options[] = {
         "listening_ports", ports,
         "num_threads", "1",              /* one Glon evaluator owner */
-        "enable_keep_alive", "no",
+        "enable_keep_alive", keep_alive ? "yes" : "no",
         "request_timeout_ms", timeout,
         "max_request_size", maxreq,
         "ssl_certificate", cfg->cert,
@@ -618,6 +634,10 @@ int glon_http_run(const glon_http_config *cfg, int report,
     mg_stop(ctx);
     sigaction(SIGINT, &old_int, NULL);
     sigaction(SIGTERM, &old_term, NULL);
+    if (pump && pump(pump_user) != 0) {
+        http.errors++;
+        http.fatal = 1;
+    }
     pthread_mutex_destroy(&http.lock);
 
     if (report) {

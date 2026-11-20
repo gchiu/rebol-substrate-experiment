@@ -1339,8 +1339,8 @@ static void emit_mark_value(void) {
     e_cell(GC_T1); asm_call(r_trace_ctx); asm_exit();        /* M1 stack ctx (root) */
     asm_patch_here(j_not_m12);
     asm_patch_here(j_not_m1);
-    /* loader [R0S1_HEAP_BASE, R0S1_HEAP_LIMIT) */
-    e_cell(GC_T1); asm_lit(R0S1_HEAP_BASE); asm_host(HOST_GE);
+    /* loader [R0S1_LOAD_BASE, R0S1_HEAP_LIMIT) */
+    e_cell(GC_T1); asm_lit(R0S1_LOAD_BASE); asm_host(HOST_GE);
     cell j_ldr1 = asm_zbranch_fwd();
     e_cell(GC_T1); asm_lit(R0S1_HEAP_LIMIT); asm_host(HOST_LT);
     cell j_ldr2 = asm_zbranch_fwd();
@@ -1435,12 +1435,16 @@ static void emit_mark_value(void) {
     asm_patch_here(j_a);
     asm_patch_here(j_h);
     asm_host(HOST_DUMP); asm_halt();                        /* corrupt managed pointer */
-    /* p >= GC_HEAP_LIMIT: permanent loader block? */
+    /* p >= GC_HEAP_LIMIT: permanent loader block?  The worklist region
+     * [GC_HEAP_LIMIT, R0S1_LOAD_BASE) is not a loader block. */
     asm_patch_here(j_not_managed);
+    e_cell(GC_T1); asm_lit(R0S1_LOAD_BASE); asm_host(HOST_GE);
+    cell j_loader_low = asm_zbranch_fwd();                  /* p < LOAD_BASE -> corrupt */
     e_cell(GC_T1); asm_lit(R0S1_HEAP_LIMIT); asm_host(HOST_LT);
     cell j_not_loader = asm_zbranch_fwd();                  /* p >= R0S1_HEAP_LIMIT -> corrupt */
     asm_exit();                                             /* loader block: no children */
     asm_patch_here(j_not_loader);
+    asm_patch_here(j_loader_low);
     asm_patch_here(j_below);
     asm_host(HOST_DUMP); asm_halt();                        /* out-of-range T_BLOCK */
     asm_patch_here(j_nb);
@@ -3784,7 +3788,7 @@ static void emit_main(void) {
 /* ============================ public API =============================== */
 
 cell r0_s1_init(void) {
-    M[GC_LOADER_HP] = R0S1_HEAP_BASE;
+    M[GC_LOADER_HP] = R0S1_LOAD_BASE;
     nsyms = 0;
     n_subexpr = 0; n_block_eval = 0;
     n_invoke = 0;

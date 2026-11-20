@@ -1,0 +1,237 @@
+;; tests/json/tests.glon -- focused tests for modules/json.glon.
+;;
+;; Run with the minimal CLI after strings-ext.glon and modules/json.glon:
+;;   ./glon glon-lib/strings-ext.glon modules/json.glon tests/json/tests.glon
+;; (or `make json-test`).  A failed check raises SIN! 'test and the run exits
+;; nonzero; all checks passing prints the final line JSON_TESTS PASS.
+
+[
+t/pass: 0
+t/fail: 0
+
+t/ok: func [name] [ t/pass: + t/pass 1 ]
+t/bad: func [name] [
+    t/fail: + t/fail 1
+    s/print s/+ "FAIL " name
+]
+
+t/num: func [name got want] [
+    either = got want [ t/ok name ] [
+        t/bad name
+        print got
+        print want
+    ]
+]
+
+t/str: func [name got want] [
+    either s/= got want [ t/ok name ] [
+        t/bad name
+        s/print s/+ "  got:  " got
+        s/print s/+ "  want: " want
+    ]
+]
+
+t/sin: func [name e type id] [
+    either sin? e [
+        either either = sin-type e type [ = sin-id e id ] [ 0 ] [
+            t/ok name
+        ] [ t/bad name ]
+    ] [ t/bad name ]
+]
+
+t/q: mk-string reduce [ 34 ]
+t/bs: mk-string reduce [ 92 ]
+
+;; t/cat: join the strings in a managed block (a small recursion).
+t/list-len: func [p] [ either = p none [ 0 ] [ + 1 t/list-len block-at p 1 ] ]
+
+t/cat: func [parts i] [
+    either >= i block-len parts [
+        ""
+    ] [
+        s/+ block-at parts i t/cat parts + i 1
+    ]
+]
+
+;; t/jstr: wrap a STRING! in JSON double quotes.
+t/jstr: func [s] [ s/+ t/q s/+ s t/q ]
+
+;; nested arrays: n=1 gives "[0]", n=0 gives "0"
+t/nest: func [n] [
+    either = n 0 [ "0" ] [ s/+ "[" s/+ t/nest - n 1 "]" ]
+]
+
+;; n zero items separated by commas (no trailing comma)
+t/zeros: func [n] [
+    either = n 1 [ "0" ] [ s/+ "0," s/+ t/zeros - n 1 "" ]
+]
+
+;; ---- A. every value type, predicates, number text ----------------------
+do [
+t/num "A1 integer" json/decode "42" 42
+t/num "A2 negative integer" json/decode "-17" -17
+t/num "A3 zero" json/decode "0" 0
+t/num "A4 minus zero is integer zero" json/decode "-0" 0
+t/num "A5 integer predicate" json/integer? json/decode "42" 1
+t/num "A6 integer is a number" json/number? json/decode "42" 1
+t/num "A7 fraction is not an integer" json/integer? json/decode "1.5" 0
+t/num "A8 fraction is a number" json/number? json/decode "1.5" 1
+t/str "A9 number text is exact" json/number-text json/decode "1.2300e+4" "1.2300e+4"
+t/str "A10 encode preserves number text" json/encode json/decode "1.2300e+4" "1.2300e+4"
+t/str "A11 large integer text is exact" json/number-text json/decode "123456789012345678901234567890" "123456789012345678901234567890"
+t/num "A12 large integer is not Glon integer" json/integer? json/decode "123456789012345678901234567890" 0
+t/num "A13 true" json/bool? json/decode "true" 1
+t/str "A14 true encodes" json/encode json/decode "true" "true"
+t/str "A15 false encodes" json/encode json/decode "false" "false"
+t/num "A16 null" json/null? json/decode "null" 1
+t/str "A17 null encodes" json/encode json/decode "null" "null"
+t/num "A18 string predicate" json/string? json/decode t/jstr "x" 1
+t/num "A19 null is not none" = json/decode "null" none 0
+t/str "A20 number text of an integer" json/number-text json/decode "7" "7"
+t/str "A20b positive exponent" json/number-text json/decode "1e+2" "1e+2"
+t/str "A20c negative exponent" json/number-text json/decode "-1.5E-3" "-1.5E-3"
+t/str "A21 json/true constructor" json/encode json/true "true"
+t/str "A22 json/false constructor" json/encode json/false "false"
+t/str "A23 json/null constructor" json/encode json/null "null"
+t/str "A24 json/integer constructor" json/encode json/integer 5 "5"
+t/str "A25 json/string constructor" json/encode json/string "x" t/jstr "x"
+t/str "A26 json/number constructor" json/encode json/number "1.0e2" "1.0e2"
+t/str "A27 json/array constructor" json/encode json/array reduce [ 1 none ] "[1]"
+t/str "A28 json/object constructor" json/encode json/object reduce [ reduce [ "a" 1 ] none ] t/cat reduce [ "{" t/q "a" t/q ":1}" ] 0
+]
+
+;; ---- B. strings, escapes, unicode --------------------------------------
+do [
+t/str "B1 plain string" json/decode t/jstr "hello" "hello"
+t/str "B2 empty string" json/decode t/jstr "" ""
+t/str "B3 escaped quote" json/decode t/cat reduce [ t/q t/bs t/q t/q ] 0 t/q
+t/str "B4 escaped backslash" json/decode t/cat reduce [ t/q t/bs t/bs t/q ] 0 t/bs
+t/str "B5 \\u0041" json/decode t/jstr "\u0041" "A"
+t/str "B6 \\u00e9 is UTF-8 C3 A9" json/decode t/jstr "\u00e9" mk-string reduce [ 195 169 ]
+t/str "B7 surrogate pair is U+1F600" json/decode t/jstr "\uD83D\uDE00" mk-string reduce [ 240 159 152 128 ]
+t/str "B8 encoded emoji is raw UTF-8" json/encode json/decode t/jstr "\uD83D\uDE00" t/jstr mk-string reduce [ 240 159 152 128 ]
+
+t/esc-doc: t/cat reduce [
+    t/q "a" t/bs "n" "b" t/bs "t" t/bs t/q "c"
+    t/bs t/bs "d" t/bs "/" "e" t/bs "b" t/bs "f" t/bs "r" t/q
+] 0
+t/str "B9 all simple escapes" json/decode t/esc-doc mk-string reduce [
+    97 10 98 9 34 99 92 100 47 101 8 12 13
+]
+
+t/sin "B10 raw control byte is rejected" judge [
+    json/decode t/jstr mk-string reduce [ 1 ]
+] 'json 'bad-token
+t/sin "B11 unterminated string" judge [
+    json/decode t/cat reduce [ t/q "abc" ] 0
+] 'json 'unterminated-string
+t/sin "B12 bad escape" judge [
+    json/decode t/jstr "\q"
+] 'json 'bad-escape
+t/sin "B13 lone high surrogate" judge [
+    json/decode t/jstr "\uD83D"
+] 'json 'bad-unicode
+t/sin "B14 lone low surrogate" judge [
+    json/decode t/jstr "\uDE00"
+] 'json 'bad-unicode
+t/sin "B15 non-hex \\u escape" judge [
+    json/decode t/jstr "\u12G4"
+] 'json 'bad-unicode
+t/sin "B16 invalid UTF-8 overlong" judge [
+    json/decode t/jstr mk-string reduce [ 192 128 ]
+] 'json 'bad-utf8
+t/sin "B17 invalid UTF-8 surrogate" judge [
+    json/decode t/jstr mk-string reduce [ 237 160 128 ]
+] 'json 'bad-utf8
+t/sin "B18 invalid UTF-8 above U+10FFFF" judge [
+    json/decode t/jstr mk-string reduce [ 244 144 128 128 ]
+] 'json 'bad-utf8
+t/sin "B19 truncated UTF-8" judge [
+    json/decode t/jstr mk-string reduce [ 226 130 ]
+] 'json 'bad-utf8
+]
+
+;; ---- C. arrays and objects --------------------------------------------
+do [
+t/num "C1 empty object is an object" json/object? json/decode "{}" 1
+t/num "C2 empty object is not an array" json/array? json/decode "{}" 0
+t/num "C3 empty array is an array" json/array? json/decode "[]" 1
+t/num "C4 empty array is not an object" json/object? json/decode "[]" 0
+t/str "C5 empty object encodes" json/encode json/decode "{}" "{}"
+t/str "C6 empty array encodes" json/encode json/decode "[]" "[]"
+
+t/rt-doc: t/cat reduce [
+    "{" t/q "a" t/q ":" "[" "1," "2," "{"
+    t/q "b" t/q ":" "true" "}" "," "null" "]"
+    "," t/q "c" t/q ":" t/q "x" t/q "}"
+] 0
+t/str "C7 nested document round-trips" json/encode json/decode t/rt-doc t/rt-doc
+t/num "C8 nested object-get" json/object? json/object-get json/decode t/rt-doc "a" 0
+t/num "C9 nested array-get" json/array? json/object-get json/decode t/rt-doc "a" 1
+
+t/num "C10 null field is present" json/null? json/object-get json/decode t/cat reduce [ "{" t/q "a" t/q ":null}" ] 0 "a" 1
+t/num "C11 missing field is none" = json/object-get json/decode t/cat reduce [ "{" t/q "a" t/q ":null}" ] 0 "z" none 1
+
+t/order-doc: t/cat reduce [ "{" t/q "b" t/q ":1," t/q "a" t/q ":2}" ] 0
+t/str "C12 key order is preserved" json/encode json/decode t/order-doc t/order-doc
+
+t/arr: json/array-values json/decode "[1,2]"
+t/num "C13 array-values length" t/list-len t/arr 2
+t/num "C14 array-values first" block-at t/arr 0 1
+t/num "C15 array-values second" block-at block-at t/arr 1 0 2
+
+t/dup-doc: t/cat reduce [
+    "{" t/q "a" t/q ":1," t/q "a" t/q ":2}"
+] 0
+t/sin "C16 duplicate key" judge [ json/decode t/dup-doc ] 'json 'duplicate-key
+t/num "C17 empty array items are none" = json/array-values json/decode "[]" none 1
+t/num "C18 empty object pairs are none" = json/object-get json/decode "{}" "x" none 1
+]
+
+;; ---- D. whitespace, malformed input, limits ---------------------------
+do [
+t/ws: mk-string reduce [ 32 9 13 10 ]
+t/w-doc: t/cat reduce [ t/ws "[" t/ws "1," t/ws "2" t/ws "]" t/ws ] 0
+t/num "D1 JSON whitespace is skipped" block-len json/array-values json/decode t/w-doc 2
+
+t/sin "D2 leading zero" judge [ json/decode "01" ] 'json 'bad-number
+t/sin "D3 trailing decimal point" judge [ json/decode "1." ] 'json 'bad-number
+t/sin "D4 empty exponent" judge [ json/decode "1e" ] 'json 'bad-number
+t/sin "D5 empty exponent sign" judge [ json/decode "1e+" ] 'json 'bad-number
+t/sin "D6 leading plus" judge [ json/decode "+1" ] 'json 'bad-token
+t/sin "D7 bare minus" judge [ json/decode "-" ] 'json 'bad-number
+t/sin "D8 leading decimal point" judge [ json/decode ".5" ] 'json 'bad-token
+t/sin "D9 trailing array comma" judge [ json/decode "[1,]" ] 'json 'bad-token
+t/sin "D10 trailing object comma" judge [ json/decode t/cat reduce [ "{" t/q "a" t/q ":1,}" ] 0 ] 'json 'bad-token
+t/sin "D11 trailing data" judge [ json/decode "1 2" ] 'json 'trailing-data
+t/sin "D12 trailing data after object" judge [ json/decode "{} x" ] 'json 'trailing-data
+t/sin "D13 incomplete literal" judge [ json/decode "tru" ] 'json 'bad-token
+t/sin "D14 empty input" judge [ json/decode "" ] 'json 'bad-token
+
+t/num "D15 depth 16 is accepted" json/array? json/decode t/nest 16 1
+t/sin "D16 depth 17 is rejected" judge [ json/decode t/nest 17 ] 'json 'too-deep
+t/num "D17 32 items are accepted" t/list-len json/array-values json/decode s/+ "[" s/+ t/zeros 32 "]" 32
+t/sin "D18 33 items are rejected" judge [
+    json/decode s/+ "[" s/+ t/zeros 33 "]"
+] 'json 'too-many-items
+]
+
+;; ---- E. encoder rejection and string escaping -------------------------
+do [
+t/sin "E1 none is not JSON" judge [ json/encode none ] 'json 'not-a-json-value
+t/sin "E2 a word is not JSON" judge [ json/encode 'foo ] 'json 'not-a-json-value
+t/sin "E3 a closure is not JSON" judge [ json/encode json/array reduce [ reduce [ :json/encode none ] ] ] 'json 'not-a-json-value
+t/sin "E4 an untagged block is not JSON" judge [ json/encode [1] ] 'json 'not-a-json-value
+
+t/enc-in: mk-string reduce [ 34 92 1 65 ]
+t/enc-want: t/cat reduce [ t/q t/bs t/q t/bs t/bs "\u0001" "A" t/q ] 0
+t/str "E5 encoder escapes quote, backslash and control" json/encode t/enc-in t/enc-want
+]
+
+either = t/fail 0 [
+    s/print "JSON_TESTS PASS"
+] [
+    raise create-sin 'test 'failed t/fail
+]
+
+]

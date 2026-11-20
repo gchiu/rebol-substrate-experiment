@@ -42,3 +42,8 @@ integrity/build/
 
 # optional module focused test binary
 io-file-c-test
+
+m1-large-test
+
+# generated memory-profile build artifacts
+build/

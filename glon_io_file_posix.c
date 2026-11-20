@@ -149,11 +149,13 @@ int glon_io_posix_open(const char *root_real, const char *name, size_t name_len,
     char resolved[IO_PATH_CAP];
     int st;
     int flags;
-    if (mode == GLON_IO_MODE_WRITE) {
+    if (mode == GLON_IO_MODE_WRITE || mode == GLON_IO_MODE_APPEND) {
         st = resolve_for_write(root_real, joined, resolved, sizeof resolved,
                                err, errcap);
         if (st != GLON_IO_OK) return st;
-        flags = O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW;
+        flags = (mode == GLON_IO_MODE_APPEND
+                 ? O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW
+                 : O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW);
     } else {
         st = resolve_existing(root_real, joined, resolved, sizeof resolved,
                               err, errcap);
