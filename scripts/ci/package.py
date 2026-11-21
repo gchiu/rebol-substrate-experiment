@@ -62,6 +62,20 @@ def main():
                   0o755 if not windows else None)
         for src in sorted((ROOT / "glon-lib").glob("*.glon")):
             copy_file(src, stage / "glon-lib" / src.name)
+        # Never ship a package whose executable cannot find its mandatory
+        # libraries just because a build staging directory was incomplete.
+        lib_sources = {
+            "prelude.glon": ROOT / "jupyter/prelude.glon",
+            "strings.glon": ROOT / "demo/shop/strings.glon",
+            "strings-ext.glon": ROOT / "demo/shop/strings-ext.glon",
+            "file.glon": ROOT / "modules/file.glon",
+            "file-stream.glon": ROOT / "modules/file-stream.glon",
+            "http.glon": ROOT / "modules/http.glon",
+        }
+        for libname, src in lib_sources.items():
+            dst = stage / "glon-lib" / libname
+            if not dst.exists() and src.exists():
+                copy_file(src, dst)
         for src in sorted((ROOT / "modules").glob("*.glon")):
             copy_file(src, stage / "modules" / src.name)
 

@@ -144,20 +144,11 @@ case "$PLATFORM" in
     *) echo "unknown CI_PLATFORM=$PLATFORM" >&2; exit 2 ;;
 esac
 
-for a in "$DIST"/*.tar.gz "$DIST"/*.zip; do
-    [ -e "$a" ] || continue
-    smoke_archive "$a" "$DIST/smoke-$(basename "$a")"
-done
-
 if command -v sha256sum >/dev/null 2>&1; then
     hashcmd=(sha256sum)
 else
     hashcmd=(shasum -a 256)
 fi
-: > "$DIST/SHA256SUMS"
-find "$DIST" -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' \) -print | sort | while IFS= read -r f; do
-    "${hashcmd[@]}" "$f" >> "$DIST/SHA256SUMS"
-done
 if [ "${GLON_D1:-0}" = "1" ]; then
     full="$(find "$DIST" -maxdepth 1 -type f \( -name '*-full.tar.gz' -o -name '*-full.zip' \) | sort | head -n 1)"
     case "$full" in
@@ -170,4 +161,13 @@ if [ "${GLON_D1:-0}" = "1" ]; then
     "${hashcmd[@]}" "$d1" > "$d1.sha256"
     echo "D1_ARTIFACT=$d1"
 fi
+for a in "$DIST"/*.tar.gz "$DIST"/*.zip; do
+    [ -e "$a" ] || continue
+    smoke_archive "$a" "$DIST/smoke-$(basename "$a")"
+done
+
+: > "$DIST/SHA256SUMS"
+find "$DIST" -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' \) -print | sort | while IFS= read -r f; do
+    "${hashcmd[@]}" "$f" >> "$DIST/SHA256SUMS"
+done
 cat "$DIST"/summary-*.md
