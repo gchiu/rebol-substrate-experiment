@@ -98,7 +98,7 @@ smoke_archive() {
     case "$archive" in
         *-full.tar.gz|*-full.zip)
             if [ "$PLATFORM" = windows ]; then
-                (cd "$dir" && pwsh -NoProfile -File ./d1-smoke.ps1)
+                (cd "$dir" && powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./d1-smoke.ps1)
             else
                 (cd "$dir" && ./d1-smoke.sh)
             fi
