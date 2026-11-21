@@ -4,6 +4,7 @@
 MinGW-w64 and on the five-platform native CI matrix. Not a public release.
 **Branch:** `experiment/glon-windows-file-w5`
 **Base:** `a4ee5c900c4ffc306de306369d49aba751bfed99`
+**Implementation commit:** `0e8ea4666eac0c06b8181107a09c25e1f81612d2`
 
 ## 1. Architecture
 
