@@ -18,6 +18,9 @@ import subprocess
 import sys
 import tempfile
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from win_shutdown import create_stop_event, set_stop_event, close_stop_event
 import urllib.parse
 
 HOST = "127.0.0.1"
@@ -62,10 +65,15 @@ class Server:
     def __init__(self, glon, args, cwd, label, ready_timeout=240.0):
         self.label = label
         self.cwd = cwd
+        self.stop_name, self.stop_handle = create_stop_event()
+        argv = [glon]
+        if self.stop_name:
+            argv += ["--http-stop-event", self.stop_name]
+        argv += list(args)
         self.proc = subprocess.Popen(
-            [glon] + args,
+            argv,
             cwd=cwd,
-            stdout=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
         )
@@ -91,13 +99,18 @@ class Server:
 
     def stop(self, timeout=15.0):
         if self.proc.poll() is None:
-            self.proc.send_signal(signal.SIGTERM)
+            if self.stop_handle:
+                set_stop_event(self.stop_handle)
+            else:
+                self.proc.send_signal(signal.SIGTERM)
         try:
             self.proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             self.proc.kill()
             self.proc.wait(timeout=5)
             fail(f"{self.label}: did not stop")
+        close_stop_event(self.stop_handle)
+        self.stop_handle = None
         self.stderr += self.proc.stderr.read()
         return self.proc.returncode
 

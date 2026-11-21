@@ -39,6 +39,8 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <direct.h>
+#include <fcntl.h>
+#include <io.h>
 #elif defined(__APPLE__)
 #include <unistd.h>
 #include <mach-o/dyld.h>
@@ -268,7 +270,8 @@ static void module_usage(void) {
     fprintf(stderr,
         " [--http-cert FILE] [--http-bind ADDR] [--http-max-requests N]\n"
         "            [--http-timeout-ms N] [--http-max-request-size N]\n"
-        "            [--http-max-body N] [--http-keep-alive] [--http-report]");
+        "            [--http-max-body N] [--http-keep-alive] [--http-report]\n"
+        "            [--http-stop-event NAME]");
 #endif
     fprintf(stderr, " FILE...\n");
 }
@@ -337,6 +340,9 @@ static int parse_module_options(int argc, char **argv, int *first_file,
             o->http.keep_alive = 1;
         } else if (!strcmp(a, "--http-report")) {
             o->http_report = 1;
+        } else if (!strcmp(a, "--http-stop-event")) {
+            if (++i >= argc || !argv[i][0]) return -1;
+            o->http.stop_event = argv[i];
         }
 #endif
         else {
@@ -652,6 +658,13 @@ static int pump_file_io(void *user) {
 /* ---- main ---------------------------------------------------------------- */
 
 int main(int argc, char **argv) {
+#ifdef _WIN32
+    /* Glon strings and files are byte sequences.  Keep stdout/stderr in binary
+     * mode so the CLI's output is byte-identical to POSIX, without CRLF
+     * translation by the CRT. */
+    (void)_setmode(_fileno(stdout), _O_BINARY);
+    (void)_setmode(_fileno(stderr), _O_BINARY);
+#endif
 #if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP)
     module_options opts;
     module_options_init(&opts);

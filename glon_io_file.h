@@ -66,6 +66,11 @@ typedef struct {
     uint32_t generation;
 } glon_io_handle;
 
+/* Backend handle.  POSIX uses a small int file descriptor; Windows uses a
+ * HANDLE, which is pointer-sized.  It stays opaque to the service layer. */
+typedef intptr_t glon_io_fd;
+#define GLON_IO_INVALID_FD ((glon_io_fd)-1)
+
 typedef struct {
     const char *root;          /* logical root; canonicalised by service_init */
     int allow_read;
@@ -102,7 +107,7 @@ typedef struct {
 
 typedef struct {
     int open;
-    int fd;
+    glon_io_fd fd;
     int mode;
     uint32_t value;
     uint32_t generation;
@@ -117,8 +122,8 @@ typedef struct {
     unsigned long long source_dev;
     unsigned long long source_ino;
     unsigned long long source_size;
-    long source_mtime_sec;
-    long source_mtime_nsec;
+    long long source_mtime_sec;
+    long long source_mtime_nsec;
     unsigned source_mode;
     int have_source_stat;
 } glon_io_slot;
@@ -159,32 +164,38 @@ uint32_t glon_io_get_u32(const uint8_t *p);
 void glon_io_put_u32(uint8_t *p, uint32_t v);
 const char *glon_io_status_word(unsigned status);
 
-/* POSIX backend (glon_io_file_posix.c).  These return a glon_io_status. */
-int glon_io_posix_open(const char *root_real, const char *name, size_t name_len,
-                       int mode, int *fd, char *err, size_t errcap);
-int glon_io_posix_read(int fd, uint8_t *buf, size_t cap, size_t *got,
-                       char *err, size_t errcap);
-int glon_io_posix_write(int fd, const uint8_t *buf, size_t len, size_t *put,
-                        char *err, size_t errcap);
-int glon_io_posix_close(int fd, char *err, size_t errcap);
-
-/* Protocol v2 POSIX helpers.  They never perform text replacement. */
-int glon_io_posix_make_temp(const char *root_real, const char *name,
-                            size_t name_len, int *fd,
-                            char *temp_path, size_t temp_cap,
-                            char *source_real, size_t source_cap,
-                            char *parent_real, size_t parent_cap,
-                            unsigned long long *dev, unsigned long long *ino,
-                            unsigned long long *size, long *mtime_sec,
-                            long *mtime_nsec, unsigned *mode,
-                            char *err, size_t errcap);
-int glon_io_posix_commit(const char *root_real, const char *target_name,
-                         size_t target_len, const char *temp_path,
-                         const char *parent_real, const char *source_real,
-                         unsigned long long dev, unsigned long long ino,
-                         unsigned long long size, long mtime_sec,
-                         long mtime_nsec, unsigned mode,
+/* Native backend layer.  Exactly one of glon_io_file_posix.c (POSIX) or
+ * glon_io_file_windows.c (Win32) is linked.  Paths are UTF-8 logical names;
+ * the backend owns canonicalisation and OS handle types. */
+int glon_io_backend_root(const char *root, char *out, size_t outcap,
                          char *err, size_t errcap);
-int glon_io_posix_unlink(const char *path, char *err, size_t errcap);
+int glon_io_backend_open(const char *root_real, const char *name, size_t name_len,
+                         int mode, glon_io_fd *fd, char *err, size_t errcap);
+int glon_io_backend_read(glon_io_fd fd, uint8_t *buf, size_t cap, size_t *got,
+                         char *err, size_t errcap);
+int glon_io_backend_write(glon_io_fd fd, const uint8_t *buf, size_t len,
+                          size_t *put, char *err, size_t errcap);
+int glon_io_backend_close(glon_io_fd fd, char *err, size_t errcap);
+int glon_io_backend_set_mode(glon_io_fd fd, unsigned mode,
+                             char *err, size_t errcap);
+
+/* Protocol v2 helpers.  They never perform text replacement. */
+int glon_io_backend_make_temp(const char *root_real, const char *name,
+                              size_t name_len, glon_io_fd *fd,
+                              char *temp_path, size_t temp_cap,
+                              char *source_real, size_t source_cap,
+                              char *parent_real, size_t parent_cap,
+                              unsigned long long *dev, unsigned long long *ino,
+                              unsigned long long *size, long long *mtime_sec,
+                              long long *mtime_nsec, unsigned *mode,
+                              char *err, size_t errcap);
+int glon_io_backend_commit(const char *root_real, const char *target_name,
+                           size_t target_len, const char *temp_path,
+                           const char *parent_real, const char *source_real,
+                           unsigned long long dev, unsigned long long ino,
+                           unsigned long long size, long long mtime_sec,
+                           long long mtime_nsec, unsigned mode,
+                           char *err, size_t errcap);
+int glon_io_backend_unlink(const char *path, char *err, size_t errcap);
 
 #endif /* GLON_IO_FILE_H */

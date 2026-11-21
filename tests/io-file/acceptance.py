@@ -61,6 +61,75 @@ def recipe_case(name, data, expected, flags=(), extra=()):
     td.cleanup()
 
 
+def named_case(name, filename, data):
+    td = tempfile.TemporaryDirectory(prefix="glon-io-name.")
+    root = Path(td.name)
+    source = root / "name.glon"
+    # The filename is a Glon string literal; escape only backslash/quote.
+    lit = filename.replace("\\", "\\\\").replace('"', '\\"')
+    body = data.replace("\\", "\\\\").replace('"', '\\"')
+    source.write_text(
+        '[\n'
+        f'file/write "{lit}" "{body}"\n'
+        '    func [x] [\n'
+        f'        file/read "{lit}"\n'
+        '            func [b] [ s/print b ]\n'
+        '            func [e] [ raise e ]\n'
+        '    ]\n'
+        '    func [e] [ raise e ]\n'
+        ']\n', encoding="utf-8")
+    r = run(GLON, ["--io-root", root, "--allow-file-read", "--allow-file-write",
+                   source])
+    check(r.returncode == 0 and r.stdout == data.encode("utf-8") + b"\n",
+          name, f"rc={r.returncode} out={r.stdout!r} stderr={r.stderr[-300:]!r}")
+    td.cleanup()
+
+
+def append_case():
+    td = tempfile.TemporaryDirectory(prefix="glon-io-append.")
+    root = Path(td.name)
+    source = root / "append.glon"
+    source.write_text(
+        '[\n'
+        'file/write "append.txt" "one"\n'
+        '    func [x] [\n'
+        '        io/open "append.txt" \'append\n'
+        '            func [h] [\n'
+        '                io/write h "two"\n'
+        '                    func [n] [\n'
+        '                        io/close h\n'
+        '                            func [x] [ s/print "APPEND" ]\n'
+        '                            func [e] [ raise e ]\n'
+        '                    ]\n'
+        '                    func [e] [ io/close h func [x] [ raise e ] func [y] [ raise e ] ]\n'
+        '            ]\n'
+        '            func [e] [ raise e ]\n'
+        '    ]\n'
+        '    func [e] [ raise e ]\n'
+        ']\n', encoding="utf-8")
+    r = run(GLON, ["--io-root", root, "--allow-file-read", "--allow-file-write",
+                   source])
+    got = (root / "append.txt").read_bytes() if (root / "append.txt").exists() else None
+    check(r.returncode == 0 and got == b"onetwo" and b"APPEND" in r.stdout,
+          "append preserves existing bytes", f"rc={r.returncode} got={got!r} stderr={r.stderr[-300:]!r}")
+    td.cleanup()
+
+
+def rejected_name_case(name, filename):
+    td = tempfile.TemporaryDirectory(prefix="glon-io-name-bad.")
+    root = Path(td.name)
+    source = root / "name.glon"
+    lit = filename.replace("\\", "\\\\").replace('"', '\\"')
+    source.write_text(
+        '[ file/read "'+lit+'" func [b] [ s/print "UNEXPECTED" ] '
+        'func [e] [ raise e ] ]\n', encoding="utf-8")
+    r = run(GLON, ["--io-root", root, "--allow-file-read", "--allow-file-write",
+                   source])
+    check(r.returncode != 0 and (b"permission" in r.stderr or b"not-found" in r.stderr),
+          name, f"rc={r.returncode} stderr={r.stderr[-300:]!r}")
+    td.cleanup()
+
+
 def failure_case(name, data, flags, source, needle, extra=(), allow=None):
     td, root, r = with_root(data, flags, source, extra, allow)
     check(r.returncode != 0 and needle.encode() in r.stderr,
@@ -128,14 +197,39 @@ def main():
     failure_case("absolute path rejected", b"web site", (),
                  FIXTURES / "absolute.glon", "permission")
 
+    append_case()
+    named_case("space in filename", "space name.txt", "web site")
+    named_case("Unicode filename", "caf\u00e9-\u6587\u4ef6.txt", "web site")
+    named_case("long filename", ("a" * 180) + ".txt", "web site")
+    rejected_name_case("reserved device name rejected", "CON")
+    rejected_name_case("reserved device name with extension rejected", "nul.txt")
+    rejected_name_case("trailing dot rejected", "file.")
+    rejected_name_case("drive path rejected", "C:/Windows/win.ini")
+    rejected_name_case("UNC path rejected", "\\\\server\\share\\x")
+
     td = tempfile.TemporaryDirectory(prefix="glon-io-link.")
     root = Path(td.name)
-    (root / "doc.txt").write_bytes(b"web site")
-    os.symlink("/etc/passwd", root / "link")
-    r = run(GLON, ["--io-root", root, "--allow-file-read", "--allow-file-write",
-                   FIXTURES / "symlink.glon"])
-    check(r.returncode != 0 and b"permission" in r.stderr,
-          "symlink escape rejected", f"rc={r.returncode} stderr={r.stderr[-300:]!r}")
+    outside = Path(tempfile.mkdtemp(prefix="glon-io-outside."))
+    (outside / "secret.txt").write_bytes(b"outside")
+    link = root / "link"
+    made = False
+    if os.name == "nt":
+        m = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(outside)],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        made = m.returncode == 0
+    else:
+        os.symlink(str(outside), str(link))
+        made = True
+    if made:
+        r = run(GLON, ["--io-root", root, "--allow-file-read", "--allow-file-write",
+                       FIXTURES / "symlink.glon"])
+        check(r.returncode != 0 and b"permission" in r.stderr,
+              "junction/symlink escape rejected",
+              f"rc={r.returncode} stderr={r.stderr[-300:]!r}")
+    else:
+        print("SKIP junction/symlink escape (creation requires privilege)")
+    import shutil
+    shutil.rmtree(outside, ignore_errors=True)
     td.cleanup()
 
     failure_case("stale reply id rejected", b"web site", (),

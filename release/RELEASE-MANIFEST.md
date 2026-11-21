@@ -28,7 +28,7 @@
 | Four HTTPS examples | verified | Linux and Windows 1–4 |
 | G3A membership register | Linux only | 200-record restart acceptance |
 | NDJSON persistence | Linux only | restart/malformed/truncated tests |
-| Windows file-enabled membership | **not included** | file module has no Win32 backend |
+| Windows file-enabled membership (W5 branch) | **included/verified locally** | Win32 backend; G3A restart acceptance |
 
 ## Build configurations
 
@@ -74,7 +74,7 @@ Large-profile BSS is approximately 13.2 MB.
 - Android/GCS graphical and 3D tracks: separate toolchains and assets.
 - Desktop/raylib/OpenKTG hosts: separate native dependencies.
 - Experimental browser/PARSE work: not part of the HTTPS release.
-- Windows file-enabled membership: blocked by the POSIX-only file module.
+- Windows file-enabled membership is native in the W5 branch; alpha.2 published artifacts predate it.
 - 10,000-record restore and 100,000-request endurance: attempted/not completed;
   see limitations.
 

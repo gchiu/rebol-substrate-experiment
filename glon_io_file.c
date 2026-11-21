@@ -4,16 +4,12 @@
  * decoded open/read/write/close requests and returns data/status fields; it
  * never sees Glon source, replacement text or application policy.
  */
-#define _POSIX_C_SOURCE 200809L
-#define _XOPEN_SOURCE 700
 #include "glon_io_file.h"
 
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include <sys/stat.h>
 
 void glon_io_policy_default(glon_io_policy *p) {
     memset(p, 0, sizeof *p);
@@ -78,11 +74,9 @@ int glon_io_service_init(glon_io_service *svc, const glon_io_policy *policy,
     }
     svc->next_generation = 1;
 
-    if (!realpath(svc->policy.root, svc->root_real)) {
-        if (errcap) snprintf(err, errcap, "io root: %s: %s",
-                             svc->policy.root, strerror(errno));
+    if (glon_io_backend_root(svc->policy.root, svc->root_real,
+                             sizeof svc->root_real, err, errcap) != GLON_IO_OK)
         return -1;
-    }
     return 0;
 }
 
@@ -119,14 +113,14 @@ unsigned glon_io_service_cleanup(glon_io_service *svc, unsigned *failed_close) {
     for (unsigned i = 0; i < GLON_IO_HARD_MAX_HANDLES; i++) {
         glon_io_slot *s = &svc->slots[i];
         if (!s->open) continue;
-        if (s->fd >= 0) {
-            if (glon_io_posix_close(s->fd, NULL, 0) == GLON_IO_OK) closed++;
+        if (s->fd != GLON_IO_INVALID_FD) {
+            if (glon_io_backend_close(s->fd, NULL, 0) == GLON_IO_OK) closed++;
             else failed++;
         } else closed++;
         if (s->is_temp && s->temp_path[0])
-            (void)glon_io_posix_unlink(s->temp_path, NULL, 0);
+            (void)glon_io_backend_unlink(s->temp_path, NULL, 0);
         s->open = 0;
-        s->fd = -1;
+        s->fd = GLON_IO_INVALID_FD;
         s->is_temp = 0;
         s->temp_path[0] = 0;
     }
@@ -172,8 +166,8 @@ static int do_open(glon_io_service *svc, const glon_io_request *q,
         return GLON_IO_TOO_LARGE;
     }
 
-    int fd = -1;
-    int st = glon_io_posix_open(svc->root_real,
+    glon_io_fd fd = GLON_IO_INVALID_FD;
+    int st = glon_io_backend_open(svc->root_real,
                                 (const char *)q->fields[0].bytes,
                                 q->fields[0].len, mode, &fd, err, errcap);
     if (st != GLON_IO_OK) return st;
@@ -198,7 +192,7 @@ static int do_open(glon_io_service *svc, const glon_io_request *q,
         r->fields[1].len = 4;
         return GLON_IO_OK;
     }
-    (void)glon_io_posix_close(fd, NULL, 0);
+    (void)glon_io_backend_close(fd, NULL, 0);
     return GLON_IO_TOO_LARGE;
 }
 
@@ -219,7 +213,7 @@ static int do_read(glon_io_service *svc, const glon_io_request *q,
         /* Distinguish an exact-size file from a file that exceeds the cap. */
         uint8_t probe;
         size_t got = 0;
-        int st = glon_io_posix_read(s->fd, &probe, 1, &got, err, errcap);
+        int st = glon_io_backend_read(s->fd, &probe, 1, &got, err, errcap);
         if (st != GLON_IO_OK) return st;
         return got == 0 ? GLON_IO_EOF : GLON_IO_TOO_LARGE;
     }
@@ -233,7 +227,7 @@ static int do_read(glon_io_service *svc, const glon_io_request *q,
     if (want == 0) return GLON_IO_TOO_LARGE;
 
     size_t got = 0;
-    int st = glon_io_posix_read(s->fd, svc->reply_data, want, &got, err, errcap);
+    int st = glon_io_backend_read(s->fd, svc->reply_data, want, &got, err, errcap);
     if (st != GLON_IO_OK) return st;
     s->read_total += got;
     if (got == 0) return GLON_IO_EOF;
@@ -264,7 +258,7 @@ static int do_write(glon_io_service *svc, const glon_io_request *q,
     if (svc->policy.short_io && want > svc->policy.short_io)
         want = svc->policy.short_io;
     size_t put = 0;
-    int st = glon_io_posix_write(s->fd, q->fields[1].bytes, want, &put,
+    int st = glon_io_backend_write(s->fd, q->fields[1].bytes, want, &put,
                                  err, errcap);
     if (st != GLON_IO_OK) return st;
     if (put == 0) return GLON_IO_IO_ERROR;
@@ -278,7 +272,7 @@ static int do_write(glon_io_service *svc, const glon_io_request *q,
 
 static void clear_slot(glon_io_slot *s) {
     s->open = 0;
-    s->fd = -1;
+    s->fd = GLON_IO_INVALID_FD;
     s->is_temp = 0;
     s->temp_path[0] = 0;
     s->source_real[0] = 0;
@@ -298,13 +292,13 @@ static int do_temp_open(glon_io_service *svc, const glon_io_request *q,
         if (errcap) snprintf(err, errcap, "maximum open handles reached");
         return GLON_IO_TOO_LARGE;
     }
-    int fd = -1;
+    glon_io_fd fd = GLON_IO_INVALID_FD;
     char temp_path[GLON_IO_PATH_CAP], source_real[GLON_IO_PATH_CAP];
     char parent_real[GLON_IO_PATH_CAP];
     unsigned long long dev = 0, ino = 0, size = 0;
-    long mtime_sec = 0, mtime_nsec = 0;
+    long long mtime_sec = 0, mtime_nsec = 0;
     unsigned mode = 0;
-    int st = glon_io_posix_make_temp(svc->root_real,
+    int st = glon_io_backend_make_temp(svc->root_real,
                                      (const char *)q->fields[0].bytes,
                                      q->fields[0].len, &fd,
                                      temp_path, sizeof temp_path,
@@ -343,8 +337,8 @@ static int do_temp_open(glon_io_service *svc, const glon_io_request *q,
         r->fields[1].len = 4;
         return GLON_IO_OK;
     }
-    (void)glon_io_posix_close(fd, NULL, 0);
-    (void)glon_io_posix_unlink(temp_path, NULL, 0);
+    (void)glon_io_backend_close(fd, NULL, 0);
+    (void)glon_io_backend_unlink(temp_path, NULL, 0);
     return GLON_IO_TOO_LARGE;
 }
 
@@ -361,17 +355,16 @@ static int do_commit(glon_io_service *svc, const glon_io_request *q,
     }
     glon_io_slot *s = find_slot(svc, h.value, h.generation, NULL);
     if (!s || !s->is_temp) return GLON_IO_INVALID_HANDLE;
-    int fd = s->fd;
-    s->fd = -1;
+    glon_io_fd fd = s->fd;
+    s->fd = GLON_IO_INVALID_FD;
     int close_status = GLON_IO_OK;
-    if (fd >= 0) {
-        if (fchmod(fd, (mode_t)(s->source_mode & 07777)) != 0) {
-            if (errcap) snprintf(err, errcap, "temp chmod: %s", strerror(errno));
+    if (fd != GLON_IO_INVALID_FD) {
+        if (glon_io_backend_set_mode(fd, s->source_mode, err, errcap) != GLON_IO_OK) {
             close_status = GLON_IO_IO_ERROR;
-            (void)glon_io_posix_close(fd, NULL, 0);
-            fd = -1;
+            (void)glon_io_backend_close(fd, NULL, 0);
+            fd = GLON_IO_INVALID_FD;
         } else {
-            close_status = glon_io_posix_close(fd, err, errcap);
+            close_status = glon_io_backend_close(fd, err, errcap);
         }
     }
     int st = close_status;
@@ -384,7 +377,7 @@ static int do_commit(glon_io_service *svc, const glon_io_request *q,
         st = GLON_IO_IO_ERROR;
     }
     if (st == GLON_IO_OK) {
-        st = glon_io_posix_commit(svc->root_real,
+        st = glon_io_backend_commit(svc->root_real,
                                   (const char *)q->fields[1].bytes,
                                   q->fields[1].len, s->temp_path,
                                   s->parent_real, s->source_real,
@@ -397,7 +390,7 @@ static int do_commit(glon_io_service *svc, const glon_io_request *q,
     } else {
         /* All-or-nothing commit: on any failure the temp is removed and the
          * original path is untouched. */
-        (void)glon_io_posix_unlink(s->temp_path, NULL, 0);
+        (void)glon_io_backend_unlink(s->temp_path, NULL, 0);
         clear_slot(s);
     }
     return st;
@@ -412,12 +405,12 @@ static int do_discard(glon_io_service *svc, const glon_io_request *q,
     glon_io_slot *s = find_slot(svc, h.value, h.generation, NULL);
     if (!s || !s->is_temp) return GLON_IO_INVALID_HANDLE;
     int st = GLON_IO_OK;
-    if (s->fd >= 0) {
-        int fd = s->fd;
-        s->fd = -1;
-        st = glon_io_posix_close(fd, err, errcap);
+    if (s->fd != GLON_IO_INVALID_FD) {
+        glon_io_fd fd = s->fd;
+        s->fd = GLON_IO_INVALID_FD;
+        st = glon_io_backend_close(fd, err, errcap);
     }
-    int ust = glon_io_posix_unlink(s->temp_path, err, errcap);
+    int ust = glon_io_backend_unlink(s->temp_path, err, errcap);
     if (st == GLON_IO_OK) st = ust;
     clear_slot(s);
     return st;
@@ -431,15 +424,15 @@ static int do_close(glon_io_service *svc, const glon_io_request *q,
         return GLON_IO_IO_ERROR;
     glon_io_slot *s = find_slot(svc, h.value, h.generation, NULL);
     if (!s) return GLON_IO_INVALID_HANDLE;
-    int fd = s->fd;
+    glon_io_fd fd = s->fd;
     s->open = 0;
-    s->fd = -1;
+    s->fd = GLON_IO_INVALID_FD;
     if (svc->policy.fail_close) {
-        (void)glon_io_posix_close(fd, NULL, 0);
+        (void)glon_io_backend_close(fd, NULL, 0);
         if (errcap) snprintf(err, errcap, "injected close failure");
         return GLON_IO_IO_ERROR;
     }
-    return glon_io_posix_close(fd, err, errcap);
+    return glon_io_backend_close(fd, err, errcap);
 }
 
 int glon_io_execute(glon_io_service *svc, const glon_io_request *q,

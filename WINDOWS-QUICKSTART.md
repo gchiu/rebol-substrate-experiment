@@ -1,19 +1,20 @@
 # Glon on Windows x86-64
 
-This preview includes native Windows executables built with MSVC. They do not
-require WSL, Cygwin, a Linux compatibility layer, Python or Node.js.
+This guide covers the W5 native Windows file-I/O and HTTPS builds. The binaries
+are native Win32 x86-64 and do not require WSL, Cygwin, a Linux compatibility
+layer, Python or Node.js to execute.
 
 ## Packages
 
-- `glon-v0.1.0-alpha.2-windows-x86_64-minimal.zip` — interpreter only.
-- `glon-v0.1.0-alpha.2-windows-x86_64-https.zip` — constrained HTTPS (examples 1–3).
-- `glon-v0.1.0-alpha.2-windows-x86_64-https-large.zip` — large HTTPS + JSON
-  (example 4). This package does **not** include file persistence; the current
-  file module has no Win32 backend.
+- minimal — interpreter only.
+- file — constrained file I/O.
+- file+HTTPS — constrained file I/O and HTTPS.
+- full — large-profile file I/O, HTTPS, JSON and the G3A membership examples.
 
-Each package contains `glon.exe`, the required `glon-lib/` vocabulary, a local
-test-certificate script, examples, `AGENTS.md`, `AI-QUICKSTART.md`,
-`VOCABULARY.json` and licence notices.
+The W5 full package includes `glon.exe`, `glon-lib/`, examples, the required
+OpenSSL and MinGW runtime DLLs beside `glon.exe`, licence notices, and the
+native file vocabulary. The published alpha.2 packages predate W5 and do not
+contain the Windows file backend.
 
 ## Extract and run
 
@@ -66,11 +67,15 @@ Stop a running server with Ctrl+C or let `--http-max-requests N` end it.
 
 ## Notes
 
-- The executables are statically linked against the MSVC C runtime (`/MT`).
-- OpenSSL is loaded dynamically from `libssl-3-x64.dll` and
-  `libcrypto-3-x64.dll` shipped in the HTTPS packages.
-- Paths containing spaces are supported when quoted.
-- The current `file` module is POSIX-only. Native Windows file-backed
-  membership persistence is therefore not part of this preview. The Linux
-  `full` package includes it.
+- MSVC builds use `/MT`; MinGW builds carry the required runtime DLLs beside
+  `glon.exe`. Do not rely on Git for Windows, MSYS2 or a development PATH.
+- HTTPS packages must carry their matching OpenSSL DLLs. Do not rename an
+  unrelated OpenSSL DLL to satisfy the loader.
+- Paths containing spaces are supported when quoted. Logical file names are
+  relative and UTF-8; `/` is the separator. Drive letters, UNC paths,
+  backslashes, `..`, reserved device names and reparse-point targets are
+  rejected by the host sandbox.
+- Windows uses ACLs rather than POSIX permission bits.
+- `--http-stop-event NAME` provides an orderly Windows test shutdown. Ctrl+C
+  and `--http-max-requests` are also supported.
 - Do not expose this experimental server directly to the public internet.

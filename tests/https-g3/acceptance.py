@@ -13,6 +13,9 @@ import subprocess
 import sys
 import tempfile
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from win_shutdown import create_stop_event, set_stop_event, close_stop_event
 import urllib.parse
 
 HOST = "127.0.0.1"
@@ -47,7 +50,12 @@ def wait_port_free(timeout=5.0):
 class Server:
     def __init__(self, glon, args, label):
         self.label = label
-        self.proc = subprocess.Popen([glon] + args, stdout=subprocess.PIPE,
+        self.stop_name, self.stop_handle = create_stop_event()
+        argv = [glon]
+        if self.stop_name:
+            argv += ["--http-stop-event", self.stop_name]
+        argv += list(args)
+        self.proc = subprocess.Popen(argv, stdout=subprocess.DEVNULL,
                                      stderr=subprocess.PIPE, text=True)
         self.stderr = ""
 
@@ -73,13 +81,18 @@ class Server:
         while time.time() < deadline and self.proc.poll() is None:
             time.sleep(0.01)
         if self.proc.poll() is None:
-            self.proc.send_signal(signal.SIGTERM)
+            if self.stop_handle:
+                set_stop_event(self.stop_handle)
+            else:
+                self.proc.send_signal(signal.SIGTERM)
         try:
             self.proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             self.proc.kill()
             self.proc.wait(timeout=5)
             fail(f"{self.label}: did not stop")
+        close_stop_event(self.stop_handle)
+        self.stop_handle = None
         self.stderr += self.proc.stderr.read()
         return self.proc.returncode
 
@@ -363,29 +376,22 @@ def main():
         ok("300 bounded mixed reads/updates/rejections succeeded")
 
         rc = srv.stop(timeout=15)
-        if rc != 0 and os.name != "nt":
-            fail(f"server shutdown returned {rc}:\n{srv.stderr}")
         if rc != 0:
-            print("NOTE: Windows terminates the process on SIGTERM; "
-                  "graceful-signal shutdown is not verified on this host")
+            fail(f"server shutdown returned {rc}:\n{srv.stderr}")
         if not wait_port_free():
             fail("listener was not released")
         live = None
-        if os.name == "nt":
-            print("NOTE: Windows SIGTERM terminates the process, so the "
-                  "graceful-shutdown report is unavailable")
-        else:
-            for line in srv.stderr.splitlines():
-                if line.startswith("glon: http: requests="):
-                    print("MEASURE:", line)
-                    m = re.search(r"live_cells=(\d+)", line)
-                    if m:
-                        live = int(m.group(1))
-            if live is None:
-                fail("no shutdown report")
-            if live > 6500:
-                fail(f"unexpected managed heap growth: {live} cells")
-            ok(f"repeated requests leave bounded state ({live} live cells)")
+        for line in srv.stderr.splitlines():
+            if line.startswith("glon: http: requests="):
+                print("MEASURE:", line)
+                m = re.search(r"live_cells=(\d+)", line)
+                if m:
+                    live = int(m.group(1))
+        if live is None:
+            fail("no shutdown report")
+        if live > 6500:
+            fail(f"unexpected managed heap growth: {live} cells")
+        ok(f"repeated requests leave bounded state ({live} live cells)")
     finally:
         if srv.proc.poll() is None:
             srv.proc.kill()

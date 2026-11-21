@@ -42,7 +42,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     name = f"glon-{opts.version}-{opts.platform}-{opts.arch}-{opts.variant}"
     full = opts.variant in ("full", "https-large")
-    file_cap = opts.platform != "windows" and opts.variant == "full"
+    file_cap = opts.variant == "full"
     windows = opts.platform == "windows"
     glon = Path(opts.glon)
     if not glon.exists():
@@ -77,6 +77,8 @@ def main():
             "LICENSING.md": ROOT / "release/LICENSING.md",
             "THIRD-PARTY-NOTICES.md": ROOT / "release/THIRD-PARTY-NOTICES.md",
             "OPENSSL-APACHE-2.0.txt": ROOT / "release/OPENSSL-APACHE-2.0.txt",
+            "MINGW-W64-RUNTIME.txt": ROOT / "ci/licenses/MINGW-W64-RUNTIME.txt",
+            "GLON-WINDOWS-FILE-W5.md": ROOT / "docs/design/GLON-WINDOWS-FILE-W5.md",
         }
         if windows:
             docs["WINDOWS-QUICKSTART.md"] = ROOT / "WINDOWS-QUICKSTART.md"
@@ -92,9 +94,13 @@ def main():
         if opts.lib_dir:
             libdir = Path(opts.lib_dir)
             if libdir.is_dir():
+                # Windows resolves dependent DLLs from the executable's
+                # directory (not a lib/ subdirectory), so place them beside
+                # glon.exe.  macOS uses @executable_path/lib and keeps lib/.
+                target = stage if windows else stage / "lib"
                 for src in sorted(libdir.iterdir()):
                     if src.is_file():
-                        copy_file(src, stage / "lib" / src.name)
+                        copy_file(src, target / src.name)
 
         dep = ROOT / "ci/dependencies" / f"{opts.platform}.txt"
         dep_text = dep.read_text() if dep.exists() else "No dependency manifest supplied.\n"

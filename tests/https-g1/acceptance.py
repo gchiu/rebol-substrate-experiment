@@ -16,6 +16,9 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from win_shutdown import create_stop_event, set_stop_event, close_stop_event
+
 EXPECTED = b"<h1>Served by Glon</h1>"
 CONTENT_TYPE = "text/html; charset=utf-8"
 HOST = "127.0.0.1"
@@ -49,9 +52,14 @@ def wait_port_free(timeout=5.0):
 class Server:
     def __init__(self, glon, args, label):
         self.label = label
+        self.stop_name, self.stop_handle = create_stop_event()
+        argv = [glon]
+        if self.stop_name:
+            argv += ["--http-stop-event", self.stop_name]
+        argv += list(args)
         self.proc = subprocess.Popen(
-            [glon] + args,
-            stdout=subprocess.PIPE,
+            argv,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
         )
@@ -92,13 +100,18 @@ class Server:
         while time.time() < deadline and self.proc.poll() is None:
             time.sleep(0.01)
         if self.proc.poll() is None:
-            self.proc.send_signal(sig)
+            if self.stop_handle:
+                set_stop_event(self.stop_handle)
+            else:
+                self.proc.send_signal(sig)
         try:
             self.proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             self.proc.kill()
             self.proc.wait(timeout=5)
             fail(f"{self.label}: server did not stop after signal")
+        close_stop_event(self.stop_handle)
+        self.stop_handle = None
         self.stderr += self.proc.stderr.read()
         return self.proc.returncode
 
@@ -345,14 +358,11 @@ def main():
 
         peak = srv.peak_rss_kb()
         rc = srv.stop(timeout=10)
-        if rc != 0 and os.name != "nt":
-            fail(f"server shutdown returned {rc}:\n{srv.stderr}")
         if rc != 0:
-            print("NOTE: Windows terminates the process on SIGTERM; "
-                  "graceful-signal shutdown is not verified on this host")
+            fail(f"server shutdown returned {rc}:\n{srv.stderr}")
         if not wait_port_free():
             fail("listener was not released after shutdown")
-        ok("SIGTERM shutdown released the listener and exited cleanly")
+        ok("shutdown request released the listener and exited cleanly")
         if peak is not None:
             print(f"MEASURE: server peak RSS (VmHWM) = {peak} KiB")
         for line in srv.stderr.splitlines():

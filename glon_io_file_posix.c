@@ -141,9 +141,9 @@ static int resolve_for_write(const char *root, const char *joined,
     return GLON_IO_OK;
 }
 
-int glon_io_posix_open(const char *root_real, const char *name, size_t name_len,
-                       int mode, int *fd, char *err, size_t errcap) {
-    *fd = -1;
+int glon_io_backend_open(const char *root_real, const char *name, size_t name_len,
+                         int mode, glon_io_fd *fd, char *err, size_t errcap) {
+    *fd = GLON_IO_INVALID_FD;
     if (!name_ok(name, name_len)) {
         if (errcap) snprintf(err, errcap, "invalid logical file name");
         return GLON_IO_PERMISSION;
@@ -176,14 +176,14 @@ int glon_io_posix_open(const char *root_real, const char *name, size_t name_len,
 
     int f = open(resolved, flags, 0600);
     if (f < 0) return fail(err, errcap, "open", resolved);
-    *fd = f;
+    *fd = (glon_io_fd)f;
     return GLON_IO_OK;
 }
 
-int glon_io_posix_read(int fd, uint8_t *buf, size_t cap, size_t *got,
-                       char *err, size_t errcap) {
+int glon_io_backend_read(glon_io_fd fd, uint8_t *buf, size_t cap, size_t *got,
+                         char *err, size_t errcap) {
     ssize_t n;
-    do { n = read(fd, buf, cap); } while (n < 0 && errno == EINTR);
+    do { n = read((int)fd, buf, cap); } while (n < 0 && errno == EINTR);
     if (n < 0) {
         *got = 0;
         return fail(err, errcap, "read", "handle");
@@ -192,10 +192,10 @@ int glon_io_posix_read(int fd, uint8_t *buf, size_t cap, size_t *got,
     return GLON_IO_OK;
 }
 
-int glon_io_posix_write(int fd, const uint8_t *buf, size_t len, size_t *put,
-                        char *err, size_t errcap) {
+int glon_io_backend_write(glon_io_fd fd, const uint8_t *buf, size_t len,
+                          size_t *put, char *err, size_t errcap) {
     ssize_t n;
-    do { n = write(fd, buf, len); } while (n < 0 && errno == EINTR);
+    do { n = write((int)fd, buf, len); } while (n < 0 && errno == EINTR);
     if (n < 0) {
         *put = 0;
         return fail(err, errcap, "write", "handle");
@@ -204,8 +204,32 @@ int glon_io_posix_write(int fd, const uint8_t *buf, size_t len, size_t *put,
     return GLON_IO_OK;
 }
 
-int glon_io_posix_close(int fd, char *err, size_t errcap) {
-    if (close(fd) != 0) return fail(err, errcap, "close", "handle");
+int glon_io_backend_close(glon_io_fd fd, char *err, size_t errcap) {
+    if (close((int)fd) != 0) return fail(err, errcap, "close", "handle");
+    return GLON_IO_OK;
+}
+
+int glon_io_backend_root(const char *root, char *out, size_t outcap,
+                         char *err, size_t errcap) {
+    char resolved[IO_PATH_CAP];
+    if (!realpath(root, resolved)) {
+        if (errcap) snprintf(err, errcap, "io root: %s: %s", root, strerror(errno));
+        return GLON_IO_IO_ERROR;
+    }
+    if (strlen(resolved) + 1 > outcap) {
+        if (errcap) snprintf(err, errcap, "io root path too long");
+        return GLON_IO_TOO_LARGE;
+    }
+    strcpy(out, resolved);
+    return GLON_IO_OK;
+}
+
+int glon_io_backend_set_mode(glon_io_fd fd, unsigned mode,
+                             char *err, size_t errcap) {
+    if (fchmod((int)fd, (mode_t)(mode & 07777)) != 0) {
+        if (errcap) snprintf(err, errcap, "temp chmod: %s", strerror(errno));
+        return GLON_IO_IO_ERROR;
+    }
     return GLON_IO_OK;
 }
 
@@ -224,16 +248,16 @@ static unsigned long long random_bits(void) {
            ((unsigned long long)getpid() << 16) ^ (++temp_counter);
 }
 
-int glon_io_posix_make_temp(const char *root_real, const char *name,
-                            size_t name_len, int *fd,
+int glon_io_backend_make_temp(const char *root_real, const char *name,
+                              size_t name_len, glon_io_fd *fd,
                             char *temp_path, size_t temp_cap,
                             char *source_real, size_t source_cap,
                             char *parent_real, size_t parent_cap,
                             unsigned long long *dev, unsigned long long *ino,
-                            unsigned long long *size, long *mtime_sec,
-                            long *mtime_nsec, unsigned *mode,
-                            char *err, size_t errcap) {
-    *fd = -1;
+                              unsigned long long *size, long long *mtime_sec,
+                              long long *mtime_nsec, unsigned *mode,
+                              char *err, size_t errcap) {
+    *fd = GLON_IO_INVALID_FD;
     if (!name_ok(name, name_len)) {
         if (errcap) snprintf(err, errcap, "invalid logical file name");
         return GLON_IO_PERMISSION;
@@ -293,12 +317,12 @@ int glon_io_posix_make_temp(const char *root_real, const char *name,
         /* Keep the unfinished file private (0600).  Commit applies the
          * source permission bits only after all data is written and the
          * source has been checked. */
-        *fd = f;
+        *fd = (glon_io_fd)f;
         *dev = (unsigned long long)sb.st_dev;
         *ino = (unsigned long long)sb.st_ino;
         *size = (unsigned long long)sb.st_size;
-        *mtime_sec = (long)GLON_STAT_MTIM(sb).tv_sec;
-        *mtime_nsec = (long)GLON_STAT_MTIM(sb).tv_nsec;
+        *mtime_sec = (long long)GLON_STAT_MTIM(sb).tv_sec;
+        *mtime_nsec = (long long)GLON_STAT_MTIM(sb).tv_nsec;
         *mode = (unsigned)sb.st_mode;
         return GLON_IO_OK;
     }
@@ -306,12 +330,12 @@ int glon_io_posix_make_temp(const char *root_real, const char *name,
     return GLON_IO_IO_ERROR;
 }
 
-int glon_io_posix_commit(const char *root_real, const char *target_name,
+int glon_io_backend_commit(const char *root_real, const char *target_name,
                          size_t target_len, const char *temp_path,
                          const char *parent_real, const char *source_real,
                          unsigned long long dev, unsigned long long ino,
-                         unsigned long long size, long mtime_sec,
-                         long mtime_nsec, unsigned mode,
+                         unsigned long long size, long long mtime_sec,
+                         long long mtime_nsec, unsigned mode,
                          char *err, size_t errcap) {
     if (!name_ok(target_name, target_len)) {
         if (errcap) snprintf(err, errcap, "invalid logical file name");
@@ -364,8 +388,8 @@ int glon_io_posix_commit(const char *root_real, const char *target_name,
     if ((unsigned long long)sb.st_dev != dev ||
         (unsigned long long)sb.st_ino != ino ||
         (unsigned long long)sb.st_size != size ||
-        (long)GLON_STAT_MTIM(sb).tv_sec != mtime_sec ||
-        (long)GLON_STAT_MTIM(sb).tv_nsec != mtime_nsec ||
+        (long long)GLON_STAT_MTIM(sb).tv_sec != mtime_sec ||
+        (long long)GLON_STAT_MTIM(sb).tv_nsec != mtime_nsec ||
         (unsigned)sb.st_mode != mode) {
         if (errcap) snprintf(err, errcap, "source changed during replacement: %s",
                              source_real);
@@ -376,7 +400,7 @@ int glon_io_posix_commit(const char *root_real, const char *target_name,
     return GLON_IO_OK;
 }
 
-int glon_io_posix_unlink(const char *path, char *err, size_t errcap) {
+int glon_io_backend_unlink(const char *path, char *err, size_t errcap) {
     if (unlink(path) == 0 || errno == ENOENT) return GLON_IO_OK;
     return fail(err, errcap, "unlink", path);
 }

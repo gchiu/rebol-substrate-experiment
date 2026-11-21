@@ -556,6 +556,19 @@ static void http_signal_handler(int sig) {
     signal_stop_flag = 1;
 }
 
+#ifdef _WIN32
+/* A named event gives the Windows test driver and an embedding host an orderly
+ * shutdown path that SIGTERM cannot provide (Windows maps SIGTERM to process
+ * termination).  The name is UTF-8 on the Glon command line. */
+static HANDLE http_open_stop_event(const char *name) {
+    WCHAR wname[512];
+    int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, name, -1,
+                                wname, (int)(sizeof wname / sizeof wname[0]));
+    if (n <= 0) return NULL;
+    return OpenEventW(SYNCHRONIZE | EVENT_MODIFY_STATE, FALSE, wname);
+}
+#endif
+
 void glon_http_config_default(glon_http_config *cfg) {
     memset(cfg, 0, sizeof *cfg);
     cfg->bind = "127.0.0.1";
@@ -585,6 +598,18 @@ int glon_http_run(const glon_http_config *cfg, int report,
     http.pump = pump;
     http.pump_user = pump_user;
     pthread_mutex_init(&http.lock, NULL);
+#ifdef _WIN32
+    HANDLE stop_event = NULL;
+    if (cfg->stop_event && cfg->stop_event[0]) {
+        stop_event = http_open_stop_event(cfg->stop_event);
+        if (!stop_event) {
+            snprintf(err, errcap, "cannot open shutdown event (win32 %lu)",
+                     (unsigned long)GetLastError());
+            pthread_mutex_destroy(&http.lock);
+            return -1;
+        }
+    }
+#endif
 
     char ports[256];
     snprintf(ports, sizeof ports, "%s:%d%s", cfg->bind, port, "s");
@@ -636,6 +661,9 @@ int glon_http_run(const glon_http_config *cfg, int report,
         sigaction(SIGINT, &old_int, NULL);
         sigaction(SIGTERM, &old_term, NULL);
 #endif
+#ifdef _WIN32
+        if (stop_event) CloseHandle(stop_event);
+#endif
         pthread_mutex_destroy(&http.lock);
         return -1;
     }
@@ -643,10 +671,17 @@ int glon_http_run(const glon_http_config *cfg, int report,
 
     while (!signal_stop_flag && !http.stop_requested && !http.fatal) {
         if (cfg->max_requests && http.completed >= cfg->max_requests) break;
+#ifdef _WIN32
+        if (stop_event && WaitForSingleObject(stop_event, 0) == WAIT_OBJECT_0)
+            http.stop_requested = 1;
+#endif
         usleep(10000);
     }
 
     mg_stop(ctx);
+#ifdef _WIN32
+    if (stop_event) CloseHandle(stop_event);
+#endif
 #ifdef _WIN32
     signal(SIGINT, SIG_DFL);
     signal(SIGTERM, SIG_DFL);

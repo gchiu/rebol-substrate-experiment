@@ -79,6 +79,8 @@ smoke_archive() {
     dir="$(find "$stage" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
     if [ -z "$dir" ]; then echo "package smoke: no top-level directory" >&2; exit 1; fi
     if [ "$PLATFORM" = windows ]; then
+        python3 scripts/ci/check_windows_deps.py --exe "$dir/glon.exe" --dir "$dir" \
+            --objdump "$(command -v objdump)"
         (cd "$dir" && ./glon.exe glon-lib/strings-ext.glon examples/conformance.glon > conformance.out 2>&1)
     else
         (cd "$dir" && ./glon glon-lib/strings-ext.glon examples/conformance.glon > conformance.out 2>&1)
@@ -99,7 +101,7 @@ case "$PLATFORM" in
         ;;
     windows)
         package_variant minimal MODULES=
-        package_variant https-large MODULES=http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+        package_variant full MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
         ;;
     *) echo "unknown CI_PLATFORM=$PLATFORM" >&2; exit 2 ;;
 esac

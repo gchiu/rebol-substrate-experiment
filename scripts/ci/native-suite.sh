@@ -23,7 +23,7 @@ case "$PLATFORM" in
 esac
 SUPPORT_FILE="${CI_SUPPORT_FILE:-1}"
 if [ "$PLATFORM" = windows ]; then
-    SUPPORT_FILE=0
+    SUPPORT_FILE=1
     # The native CRT maps /tmp/... to <current-drive>:\tmp.  The test harness
     # uses that path for stderr-capture files; create it before the suite.
     mkdir -p /d/tmp 2>/dev/null || true
@@ -71,16 +71,14 @@ conformance() {
 }
 
 https_windows() {
-    make glon MODULES=http
-    echo "https_windows glon_bin=$(glon_bin)" >&2
-    ls -l glon* 2>/dev/null >&2 || true
-    command -v file >/dev/null 2>&1 && file "$(glon_bin)" >&2 || true
+    make glon MODULES=file,http
     bash tests/https-g1/make-cert.sh
-    ls -l tests/https-g1/.cert 2>/dev/null >&2 || true
     python3 tests/https-g1/acceptance.py --glon "$(glon_bin)"
     python3 tests/https-g2/acceptance.py --glon "$(glon_bin)"
     make glon MODULES=http GLON_HTTP_RECLAIM_M1=1
     python3 tests/https-g3/acceptance.py --glon "$(glon_bin)"
+    make glon MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+    python3 tests/https-g3a/acceptance.py --glon "$(glon_bin)"
 }
 
 https_posix() {
@@ -99,14 +97,9 @@ sizes() {
         printf '%s %s\n' "$label" "$bytes" | tee -a "$out"
     }
     record_size minimal MODULES=
-    if [ "$SUPPORT_FILE" = 1 ]; then
-        record_size file MODULES=file
-        record_size combined MODULES=file,http
-        record_size large MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
-    else
-        record_size https MODULES=http
-        record_size https-large MODULES=http MEM_PROFILE=large MEM_LOADER_CELLS=500000
-    fi
+    record_size file MODULES=file
+    record_size combined MODULES=file,http
+    record_size large MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
 }
 
 # ---- frozen substrate and the complete native regression -------------------
@@ -127,9 +120,13 @@ fi
 
 # ---- optional file module --------------------------------------------------
 if [ "$SUPPORT_FILE" = 1 ]; then
-    run_step file-c make io-file-c-test
-    run_step file-acceptance make io-file-test
-    run_step file-inplace make io-file-inplace-test
+    if [ "$PLATFORM" = windows ]; then
+        run_step file-acceptance make io-file-windows-test
+    else
+        run_step file-c make io-file-c-test
+        run_step file-acceptance make io-file-test
+        run_step file-inplace make io-file-inplace-test
+    fi
 fi
 
 # ---- HTTPS G1/G2/G3 (and G3A where the file module is supported) ----------

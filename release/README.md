@@ -34,8 +34,9 @@ membership). The full package is the only one with `run-membership.sh`.
 curl.exe -k https://127.0.0.1:8443/
 ```
 
-See `WINDOWS-QUICKSTART.md`. The Windows file-enabled membership package is not
-included because the current file module has no Win32 backend.
+See `WINDOWS-QUICKSTART.md`. The W5 Windows full package includes the native
+Win32 file backend and G3A membership persistence. The published alpha.2
+Windows packages predate W5 and contain only the HTTP-enabled configurations.
 
 ## Status
 

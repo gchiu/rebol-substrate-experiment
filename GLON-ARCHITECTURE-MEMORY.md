@@ -1175,6 +1175,39 @@ in `glon_http.c`, dynamic CivetWeb OpenSSL loading), release documentation, the
 Shop HTTPS page and distribution packaging. It does not change Glon syntax,
 evaluator/GC semantics or the constrained profile.
 
+### W5 native Windows file I/O and HTTPS persistence (2026-11-21) — [IMPLEMENTED]
+
+**[DECISION] The existing file vocabulary is implemented natively on Win32; no
+new Glon word, dialect or execution semantic is introduced.** The public
+`io/*`, `file/*` and `stream/*` APIs and the framed protocol are unchanged.
+`glon_io_fd` is `intptr_t`, holding a POSIX fd or a Win32 HANDLE. The service
+owns root confinement, generation-checked handles, byte caps, temp/commit slots
+and cleanup; the backend owns canonicalisation and OS I/O.
+
+**[SECURITY]** UTF-8 logical names use `/`; drive/UNC prefixes, backslashes,
+ADS colons, `.`/`..`, empty components, trailing dots/spaces, control
+characters and Windows device names are rejected. Parent directories are
+canonicalised with `GetFinalPathNameByHandleW`; final reparse points
+(symlinks/junctions) are rejected. Temp replacement uses source identity/size/
+write-time checks and `MoveFileExW(REPLACE_EXISTING|WRITE_THROUGH)`. Windows
+ACLs replace POSIX mode bits; this is a proof-of-concept policy with the same
+TOCTOU caveat as the POSIX backend.
+
+**[SHUTDOWN]** Windows accepts `--http-stop-event NAME`; tests signal a named
+event so `mg_stop`, file cleanup and the HTTP report run normally. SIGTERM
+still maps to process termination.
+
+**[VERIFICATION]** MSVC 19.51 and MinGW-w64 GCC 16.2: file acceptance 38/38;
+G1/G2/G3/G3A HTTPS acceptance PASS; G3A restart/malformed/truncated-tail PASS;
+clean-directory runs with only the bundled DLLs PASS; Linux POSIX file and
+HTTPS tests remain PASS. Packaging dependency check rejects a missing DLL.
+Full Windows footprint 7,504,644 bytes (ZIP 2,993,053); MSVC file-only 287,232,
+file+HTTPS/G3A 493,568; MinGW file-only 226,667, combined 409,147.
+
+**[LIMITATION]** No fsync durability, no POSIX mode preservation, 4,096-byte
+UTF-8 path cap, no static OpenSSL link, and per-chunk request overhead is
+measurable (1 MiB streaming ~29 s Windows / ~61 s Linux).
+
 ### Local Windows portability verification (2026-11-21) — [HOST PORTABILITY]
 
 **[MEASUREMENT]** Local native toolchain: MSVC 19.51.36256 x64 (VS 18
@@ -1195,10 +1228,10 @@ explicit across compilers.
 
 **[LOCAL RESULTS]** MSVC D4 passed; G1, G2 and the reclaim-enabled G3 HTTPS
 acceptance passed natively on Windows. The same suite passed on Linux with the
-released large/file+HTTPS binary. Windows file I/O and G3A persistence remain
-unsupported because the file backend is POSIX-only; Windows SIGTERM becomes
-process termination, so graceful-signal shutdown and the shutdown heap report
-are explicitly unverified there.
+released large/file+HTTPS binary. At that checkpoint Windows file I/O and G3A
+persistence were unsupported; W5 later implements them natively. W5 also adds
+`--http-stop-event`, so orderly Windows shutdown and the HTTP report are
+verified rather than skipped.
 
 ### Cross-platform native CI matrix (2026-11-21) — [VERIFICATION INFRASTRUCTURE]
 
@@ -1223,9 +1256,9 @@ Windows CI uses native MinGW-w64 PE builds with the POSIX-oriented C test
 harness adapted through CRT name mappings and `NUL`; the runtime itself is
 unchanged.
 
-**[BLOCKERS]** The file module's path-confinement backend is POSIX-only, so
-Windows file I/O, combined file+HTTPS and G3A persistence are not built or
-claimed. Windows SIGTERM is translated by Python into process termination; the
+**[HISTORICAL BLOCKER, SUPERSEDED BY W5]** The file module's path-confinement
+backend was POSIX-only; W5 implements the native Win32 backend and verifies
+Windows file I/O, combined file+HTTPS and G3A persistence. Windows SIGTERM is translated by Python into process termination; the
 HTTPS acceptance harness therefore verifies TLS/request behavior but records
 graceful-signal shutdown as unverified on Windows. Neither is a Glon dialect or
 a silent semantic change.
@@ -1246,7 +1279,8 @@ release is `v0.1.0-alpha.2`, with the same verified binaries.
 Windows executables use the static MSVC CRT (`/MT`) and dynamically load the
 shipped OpenSSL 3 DLLs. The Windows **file-enabled membership** build is not
 included: `glon_io_file_posix.c`/the file module are POSIX-only and have no
-Win32 backend. Windows HTML, JSON, Hello World and routes examples were tested
+Win32 backend in alpha.2. W5 adds `glon_io_file_windows.c`; alpha.2 remains
+unchanged. Windows HTML, JSON, Hello World and routes examples were tested
 natively; Windows file persistence and the G3A membership app were not.
 
 **[VERIFIED]** G1/G2/G3/G3A suites, frozen S1, JSON tests, file C tests, M1

@@ -48,6 +48,7 @@ typedef struct {
     unsigned max_request_size;     /* CivetWeb header/request bound */
     unsigned max_body;             /* request body cap; 1..4096, default 2048 */
     int keep_alive;                /* 0 = close after each response */
+    const char *stop_event;        /* Windows named event for orderly stop */
 } glon_http_config;
 
 void glon_http_config_default(glon_http_config *cfg);
