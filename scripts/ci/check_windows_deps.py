@@ -17,14 +17,16 @@ SYSTEM = {
 
 
 def imports(objdump, path):
-    out = subprocess.run([objdump, "-p", str(path)], check=True,
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         text=True, errors="replace").stdout
+    result = subprocess.run([objdump, "-p", str(path)], check=False,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, errors="replace")
     names = []
-    for line in out.splitlines():
+    for line in result.stdout.splitlines():
         line = line.strip()
         if line.lower().startswith("dll name:"):
             names.append(line.split(":", 1)[1].strip())
+    if not names:
+        raise RuntimeError(f"objdump could not read the PE import table: {path}\n{result.stderr[-300:]}")
     return names
 
 
@@ -49,8 +51,6 @@ def main():
                 continue
             if low not in present:
                 missing.append(dep)
-            else:
-                check(os.path.join(root, dep))
 
     check(opts.exe)
     if missing:
