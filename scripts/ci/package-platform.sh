@@ -40,7 +40,7 @@ bundle_macos() {
 
 bundle_windows() {
     rm -rf "$BUNDLE"; mkdir -p "$BUNDLE"
-    ldd "$(glon_bin)" | awk '/mingw64/ {print $3}' | while IFS= read -r dll; do
+    ldd "$(glon_bin)" | awk '/(ucrt64|mingw64)/ {print $3}' | while IFS= read -r dll; do
         [ -f "$dll" ] && cp "$dll" "$BUNDLE/"
     done
 }

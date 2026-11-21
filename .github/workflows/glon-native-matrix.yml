@@ -79,7 +79,7 @@ jobs:
             cflags: '-std=c17 -fwrapv -Wall -Wextra -O0 -g'
     steps:
       - name: Checkout source and frozen tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -105,7 +105,7 @@ jobs:
         if: matrix.platform == 'windows'
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: UCRT64
           update: true
           install: >-
             git
@@ -113,17 +113,17 @@ jobs:
             diffutils
             unzip
             zip
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-openssl
-            mingw-w64-x86_64-python
-            mingw-w64-x86_64-zlib
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-zlib
 
       - name: Prepare MSYS2 Python alias
         if: matrix.platform == 'windows'
         shell: 'msys2 {0}'
         run: |
           mkdir -p /usr/local/bin
-          printf '#!/bin/sh\nexec /mingw64/bin/python.exe "$@"\n' > /usr/local/bin/python3
+          printf '#!/bin/sh\nexec /ucrt64/bin/python.exe "$@"\n' > /usr/local/bin/python3
           chmod +x /usr/local/bin/python3
           python3 --version
 
@@ -157,7 +157,7 @@ jobs:
 
       - name: Upload native logs and measurements
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: glon-native-${{ matrix.name }}
           path: ci-logs/${{ matrix.name }}/
@@ -171,7 +171,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Download all native results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: glon-native-*
           path: native-results
@@ -237,7 +237,7 @@ jobs:
             cflags: '-std=c17 -fwrapv -Wall -Wextra -O0 -g'
     steps:
       - name: Checkout source and frozen tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -263,7 +263,7 @@ jobs:
         if: matrix.platform == 'windows'
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: UCRT64
           update: true
           install: >-
             git
@@ -271,17 +271,17 @@ jobs:
             diffutils
             unzip
             zip
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-openssl
-            mingw-w64-x86_64-python
-            mingw-w64-x86_64-zlib
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-zlib
 
       - name: Prepare MSYS2 Python alias
         if: matrix.platform == 'windows'
         shell: 'msys2 {0}'
         run: |
           mkdir -p /usr/local/bin
-          printf '#!/bin/sh\nexec /mingw64/bin/python.exe "$@"\n' > /usr/local/bin/python3
+          printf '#!/bin/sh\nexec /ucrt64/bin/python.exe "$@"\n' > /usr/local/bin/python3
           chmod +x /usr/local/bin/python3
           python3 --version
 
@@ -309,7 +309,7 @@ jobs:
 
       - name: Upload platform distributions
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: glon-test-${{ matrix.name }}
           path: |

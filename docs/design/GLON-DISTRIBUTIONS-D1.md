@@ -7,7 +7,7 @@ provisionally cross-compiled unless an actual device run is recorded.
 
 | Target | Build | Status |
 |---|---|---|
-| Windows x86-64 | MinGW-w64 in GitHub Actions, MSVC local | verified |
+| Windows x86-64 | MSYS2 UCRT64 GCC in GitHub Actions, MSVC local | verified |
 | Linux x86-64 | native GCC/Clang | verified |
 | Linux ARM64 | native arm64 runner | verified |
 | macOS x86-64 | macos-15-intel, bundled OpenSSL dylibs | verified in CI |

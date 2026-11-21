@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
@@ -34,7 +34,7 @@ jobs:
         run: make demo/shop/glon-live.wasm
 
       - name: Upload wasm
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: glon-live-wasm
           path: demo/shop/glon-live.wasm
@@ -45,10 +45,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Fetch the built WASM
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: glon-live-wasm
           path: demo/shop
@@ -82,7 +82,7 @@ jobs:
           Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
 
       - name: Upload the portable ZIP
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: glon-fetch-windows
           path: dist/glon-fetch-windows.zip
@@ -93,7 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download the portable ZIP
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: glon-fetch-windows
           path: dist

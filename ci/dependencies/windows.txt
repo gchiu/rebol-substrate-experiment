@@ -1,8 +1,8 @@
 Runner: GitHub-hosted windows-2025 (x86-64).
-Compiler: MSYS2 MinGW-w64 GCC with C17 support. The executable is a native
+Compiler: MSYS2 UCRT64 GCC with C17 support. The executable is a native
 Windows PE and does not use WSL, Cygwin or the MSYS2 runtime.
 
-HTTPS packages bundle the matching MinGW/OpenSSL runtime DLLs beside glon.exe
+HTTPS packages bundle the matching UCRT64/OpenSSL runtime DLLs beside glon.exe
 (libssl, libcrypto, zlib, winpthread and GCC runtime as required). The W5 local
 package uses OpenSSL 4.1: libssl-4-x64.dll, libcrypto-4-x64.dll and
 libwinpthread-1.dll. All are PE32+ x86-64. Do not rename a different OpenSSL DLL.
