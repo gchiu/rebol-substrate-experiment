@@ -52,9 +52,9 @@ package_variant() {
     if [ "$variant" = full ]; then
         make m1-smoke
         if [ -x ./m1-smoke ]; then
-            extra+=(--extra-file "m1-smoke=$PWD/m1-smoke")
+            extra+=(--extra-file "m1-smoke=./m1-smoke")
         elif [ -f ./m1-smoke.exe ]; then
-            extra+=(--extra-file "m1-smoke.exe=$PWD/m1-smoke.exe")
+            extra+=(--extra-file "m1-smoke.exe=./m1-smoke.exe")
         fi
     fi
     libarg=()
