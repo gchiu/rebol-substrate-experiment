@@ -98,7 +98,10 @@ smoke_archive() {
     case "$archive" in
         *-full.tar.gz|*-full.zip)
             if [ "$PLATFORM" = windows ]; then
-                (cd "$dir" && powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./d1-smoke.ps1)
+                (cd "$dir" && ./glon.exe examples/hello-d1.glon && \
+                 ./glon.exe glon-lib/strings-ext.glon modules/json.glon examples/json-smoke.glon && \
+                 ./glon.exe --io-root . --allow-file-read --allow-file-write examples/file-smoke.glon && \
+                 ./m1-smoke.exe)
             else
                 (cd "$dir" && ./d1-smoke.sh)
             fi
