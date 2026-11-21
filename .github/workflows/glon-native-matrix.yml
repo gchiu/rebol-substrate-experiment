@@ -308,6 +308,7 @@ jobs:
         run: bash scripts/ci/package-platform.sh
 
       - name: Upload platform distributions
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: glon-test-${{ matrix.name }}

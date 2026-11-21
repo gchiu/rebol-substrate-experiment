@@ -82,7 +82,9 @@ smoke_archive() {
     archive="$1"; stage="$2"
     rm -rf "$stage"; mkdir -p "$stage"
     case "$archive" in
-        *.zip) (cd "$stage" && unzip -q "$archive") ;;
+        *.zip)
+            python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$archive" "$stage"
+            ;;
         *)     tar -xzf "$archive" -C "$stage" ;;
     esac
     dir="$(find "$stage" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
