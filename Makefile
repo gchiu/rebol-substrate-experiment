@@ -591,7 +591,7 @@ https-g3a-endurance:
 # native `s1` suite needs repository source fixtures and is not shipped in
 # every platform package.
 m1-smoke: tests/m1_smoke.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c s1.c r0_s1.h s1.h m1_layout.h
-	$(CC) $(CFLAGS) -I. -o $@ tests/m1_smoke.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c s1.c
+	$(CC) $(CFLAGS) -I. -o $@$(if $(filter Windows_NT,$(OS)),.exe,) tests/m1_smoke.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c s1.c
 
 m1-large-test: tests/m1_large_driver.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c $(GLON_PROFILE_DEPS)
 	@test "$(MEM_PROFILE)" = large || { echo "use MEM_PROFILE=large"; exit 2; }

@@ -69,7 +69,7 @@ package_variant() {
     python3 scripts/ci/package.py \
         --platform "$PLATFORM" --arch "$ARCH" --variant "$variant" \
         --version "$VERSION" --commit "$COMMIT" --compiler "$compiler" \
-        --glon "$(glon_bin)" --out "$DIST" "${libarg[@]}" "${extra[@]}" \
+        --glon "$(glon_bin)" --out "$DIST" ${libarg[@]+"${libarg[@]}"} ${extra[@]+"${extra[@]}"} \
         --summary "$DIST/summary-$variant.md"
     if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
         sp="$GITHUB_STEP_SUMMARY"
