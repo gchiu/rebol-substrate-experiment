@@ -94,7 +94,12 @@ smoke_archive() {
     else
         (cd "$dir" && ./glon glon-lib/strings-ext.glon examples/conformance.glon > conformance.out 2>&1)
     fi
-    grep -q 'CONFORMANCE PASS' "$dir/conformance.out"
+    if ! grep -q 'CONFORMANCE PASS' "$dir/conformance.out"; then
+        echo "PACKAGE_CONFORMANCE_FAILED $archive" >&2
+        cat "$dir/conformance.out" >&2
+        ls -l "$dir" "$dir/glon-lib" >&2 || true
+        exit 2
+    fi
     case "$archive" in
         *-full.tar.gz|*-full.zip)
             if [ "$PLATFORM" = windows ]; then
