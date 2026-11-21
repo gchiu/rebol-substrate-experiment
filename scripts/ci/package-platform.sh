@@ -79,7 +79,11 @@ package_variant() {
 }
 
 smoke_archive() {
-    archive="$1"; stage="$2"
+    archive="$1"
+    # Use a short staging directory: the long full-archive filename plus nested
+    # top-level directory can exceed Windows' legacy MAX_PATH during extraction,
+    # silently leaving glon-lib empty even though the archive is complete.
+    stage="$DIST/smoke-$RANDOM$RANDOM"
     rm -rf "$stage"; mkdir -p "$stage"
     case "$archive" in
         *.zip)
