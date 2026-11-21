@@ -48,6 +48,15 @@ bundle_windows() {
 package_variant() {
     variant="$1"; shift
     make glon "$@"
+    extra=()
+    if [ "$variant" = full ]; then
+        make m1-smoke
+        if [ -x ./m1-smoke ]; then
+            extra+=(--extra-file "m1-smoke=$PWD/m1-smoke")
+        elif [ -f ./m1-smoke.exe ]; then
+            extra+=(--extra-file "m1-smoke.exe=$PWD/m1-smoke.exe")
+        fi
+    fi
     libarg=()
     if [ "$PLATFORM" = macos ] && [ "$variant" = full ]; then
         bundle_macos
@@ -60,7 +69,7 @@ package_variant() {
     python3 scripts/ci/package.py \
         --platform "$PLATFORM" --arch "$ARCH" --variant "$variant" \
         --version "$VERSION" --commit "$COMMIT" --compiler "$compiler" \
-        --glon "$(glon_bin)" --out "$DIST" "${libarg[@]}" \
+        --glon "$(glon_bin)" --out "$DIST" "${libarg[@]}" "${extra[@]}" \
         --summary "$DIST/summary-$variant.md"
     if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
         sp="$GITHUB_STEP_SUMMARY"
@@ -86,6 +95,15 @@ smoke_archive() {
         (cd "$dir" && ./glon glon-lib/strings-ext.glon examples/conformance.glon > conformance.out 2>&1)
     fi
     grep -q 'CONFORMANCE PASS' "$dir/conformance.out"
+    case "$archive" in
+        *-full.tar.gz|*-full.zip)
+            if [ "$PLATFORM" = windows ]; then
+                (cd "$dir" && pwsh -NoProfile -File ./d1-smoke.ps1)
+            else
+                (cd "$dir" && ./d1-smoke.sh)
+            fi
+            ;;
+    esac
     echo "PACKAGE_SMOKE_PASS $archive"
 }
 
@@ -120,4 +138,16 @@ fi
 find "$DIST" -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' \) -print | sort | while IFS= read -r f; do
     "${hashcmd[@]}" "$f" >> "$DIST/SHA256SUMS"
 done
+if [ "${GLON_D1:-0}" = "1" ]; then
+    full="$(find "$DIST" -maxdepth 1 -type f \( -name '*-full.tar.gz' -o -name '*-full.zip' \) | sort | head -n 1)"
+    case "$full" in
+        *.tar.gz) ext=tar.gz ;;
+        *.zip) ext=zip ;;
+        *) echo "D1: no full archive produced" >&2; exit 1 ;;
+    esac
+    d1="$DIST/glon-test-$PLATFORM-$ARCH.$ext"
+    cp "$full" "$d1"
+    "${hashcmd[@]}" "$d1" > "$d1.sha256"
+    echo "D1_ARTIFACT=$d1"
+fi
 cat "$DIST"/summary-*.md

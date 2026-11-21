@@ -1,0 +1,2 @@
+;; Minimal Glon executable smoke test.
+s/print "Hello from Glon"

@@ -1,0 +1,12 @@
+;; Requires the file module and --io-root/--allow-file-* grants.
+[
+name: "d1-smoke.txt"
+body: "portable file smoke"
+file/write name body
+    func [x] [
+        file/read name
+            func [b] [ s/print s/+ "file=" b ]
+            func [e] [ raise e ]
+    ]
+    func [e] [ raise e ]
+]

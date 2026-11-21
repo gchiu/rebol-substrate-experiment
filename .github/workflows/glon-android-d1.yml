@@ -1,0 +1,61 @@
+# Provisional Android ARM64 D1 build.  This cross-compiles a native Bionic
+# Termux binary and packages it; it is labelled provisional until executed on
+# an actual Android device.
+name: Glon Android D1 (provisional ARM64)
+on:
+  push:
+    branches: [distribution/glon-d1]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android-arm64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Verify frozen S1
+        run: |
+          git fetch origin '+refs/tags/s1-frozen-v1:refs/tags/s1-frozen-v1'
+          test "$(git rev-parse 's1-frozen-v1^{commit}')" = "f90496c26dc45c7a387d8fc8639cd2781507d3d2"
+          bash check-frozen-s1.sh
+      - name: Locate Android NDK
+        run: |
+          NDK="${ANDROID_NDK_HOME:-}"
+          if [ -z "$NDK" ] || [ ! -d "$NDK" ]; then
+            for root in "${ANDROID_SDK_ROOT:-}" "${ANDROID_HOME:-}" "$HOME/Android/Sdk"; do
+              [ -n "$root" ] || continue
+              if [ -d "$root/ndk" ]; then
+                NDK="$(find "$root/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+                break
+              fi
+            done
+          fi
+          if [ -z "$NDK" ] || [ ! -d "$NDK" ]; then
+            SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+            if [ -n "$SDK" ] && [ -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
+              yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+              "$SDK/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018"
+              NDK="$SDK/ndk/27.2.12479018"
+            fi
+          fi
+          if [ -z "$NDK" ] || [ ! -d "$NDK" ]; then
+            echo "No NDK found; install Android NDK on the runner" >&2
+            exit 1
+          fi
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "Using NDK $NDK"
+          "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang" --version
+      - name: Build Android ARM64 package
+        run: bash scripts/dist/build_android_d1.sh
+      - name: Upload provisional Termux package
+        uses: actions/upload-artifact@v4
+        with:
+          name: glon-test-android-arm64-termux
+          path: |
+            dist/glon-test-android-arm64-termux.tar.gz
+            dist/glon-test-android-arm64-termux.tar.gz.sha256
+          retention-days: 14

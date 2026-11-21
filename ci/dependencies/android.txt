@@ -1,0 +1,9 @@
+Target: Android ARM64 / Bionic, tested for Termux delivery.
+Toolchain: Android NDK clang, aarch64-linux-android24, -fPIE -pie.
+Runtime: Android Bionic libc/libm/libdl and pthread; no glibc, WSL, APK or
+Android Studio project required for the command-line test build.
+Capabilities: minimal and file-enabled Glon, JSON vocabulary, S1/M1 diagnostic
+suite, examples. HTTPS is not included in D1 because Android TLS packaging was
+not verified.
+The Android ARM64 artifact is provisional until executed on a device. The
+equivalent x86_64 Android build was used for emulator verification.

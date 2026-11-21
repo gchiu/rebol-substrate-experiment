@@ -65,3 +65,9 @@ members.ndjson
 ci-logs/
 bundle-libs/
 arch-check
+
+# D1 distribution helper scripts (not build output)
+!scripts/dist/
+!scripts/dist/**
+
+m1-smoke

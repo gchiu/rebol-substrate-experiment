@@ -1,0 +1,6 @@
+;; Requires strings-ext.glon and modules/json.glon loaded before this file.
+[
+obj: json/object reduce [ reduce [ "name" json/string "Ada" ] none ]
+s/print s/+ "json-object=" json/encode obj
+s/print s/+ "json-int=" json/encode json/decode "42"
+]

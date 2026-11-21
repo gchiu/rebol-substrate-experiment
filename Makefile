@@ -131,7 +131,7 @@ clean:
 	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench fib-p10b-bench traffic-bench-o0 traffic-bench-o2 glon-live-native-test demo/shop/glon-live.wasm $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
 	rm -f glon-desktop glon-desktop.exe desktop-test patrol-test kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test kaka-wave-test desktop/glon.wasm desktop/prelude.glon desktop/strings.glon desktop/big.txt
 	rm -rf glon glon-lib
-	rm -f .glon-config .glon-config.tmp io-file-c-test arch-check
+	rm -f .glon-config .glon-config.tmp io-file-c-test arch-check m1-smoke m1-smoke.exe
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
 # Produces web/demo.js (Emscripten runtime + web/glue.js) and web/demo.wasm,
@@ -587,6 +587,12 @@ https-g3a-endurance:
 	python3 tests/https-g3a/endurance.py --glon $(CURDIR)/glon --requests 1000 --workers 1
 .PHONY: https-g3a-endurance
 
+# Focused M1 test binary for portable distribution smoke tests.  The full
+# native `s1` suite needs repository source fixtures and is not shipped in
+# every platform package.
+m1-smoke: tests/m1_smoke.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c s1.c r0_s1.h s1.h m1_layout.h
+	$(CC) $(CFLAGS) -I. -o $@ tests/m1_smoke.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c s1.c
+
 m1-large-test: tests/m1_large_driver.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c $(GLON_PROFILE_DEPS)
 	@test "$(MEM_PROFILE)" = large || { echo "use MEM_PROFILE=large"; exit 2; }
 	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o m1-large-test tests/m1_large_driver.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c $(GLON_S1_SRC)
@@ -824,7 +830,7 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon glon-lib glon-smoke io-file-c-test io-file-test io-file-stream-test io-file-stream-scale io-file-stream-4m io-file-inplace-test io-file-inplace-bench glon-kernel-host host-test kernel-test kernel-install kernelspec-test io-file-windows-test glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test kaka-wave-test kaka-serve wasm-kaka-test kaka-browser-regression kaka-refresh-regression
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon glon-lib glon-smoke io-file-c-test io-file-test io-file-stream-test io-file-stream-scale io-file-stream-4m io-file-inplace-test io-file-inplace-bench glon-kernel-host host-test kernel-test kernel-install kernelspec-test io-file-windows-test m1-smoke glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test kaka-wave-test kaka-serve wasm-kaka-test kaka-browser-regression kaka-refresh-regression
 
 # ---- machine integrity (MACHINE-INTEGRITY-AUDIT.md) ------------------------
 # Machine-level invariants, separate from the functional suite (./s1): the
