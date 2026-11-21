@@ -90,9 +90,19 @@ smoke_archive() {
     if [ "$PLATFORM" = windows ]; then
         python3 scripts/ci/check_windows_deps.py --exe "$dir/glon.exe" --dir "$dir" \
             --objdump "$(command -v objdump)"
-        (cd "$dir" && ./glon.exe glon-lib/strings-ext.glon examples/conformance.glon > conformance.out 2>&1)
+        if ! (cd "$dir" && ./glon.exe glon-lib/strings-ext.glon examples/conformance.glon > conformance.out 2>&1); then
+            echo "PACKAGE_CONFORMANCE_EXEC_FAILED $archive" >&2
+            cat "$dir/conformance.out" >&2
+            ls -l "$dir" "$dir/glon-lib" >&2 || true
+            exit 2
+        fi
     else
-        (cd "$dir" && ./glon glon-lib/strings-ext.glon examples/conformance.glon > conformance.out 2>&1)
+        if ! (cd "$dir" && ./glon glon-lib/strings-ext.glon examples/conformance.glon > conformance.out 2>&1); then
+            echo "PACKAGE_CONFORMANCE_EXEC_FAILED $archive" >&2
+            cat "$dir/conformance.out" >&2
+            ls -l "$dir" "$dir/glon-lib" >&2 || true
+            exit 2
+        fi
     fi
     if ! grep -q 'CONFORMANCE PASS' "$dir/conformance.out"; then
         echo "PACKAGE_CONFORMANCE_FAILED $archive" >&2
