@@ -37,6 +37,9 @@
 #include "glon_sec.h"
 #include <openssl/crypto.h>
 #endif
+#ifdef GLON_MODULE_SQLITE
+#include "glon_sqlite.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,6 +56,11 @@
 #endif
 
 #define MAX_SOURCE (1u << 20)
+
+#ifdef GLON_MODULE_SQLITE
+static glon_sqlite_service sqlite_service;
+static int sqlite_loaded;
+#endif
 
 /* ---- source files -------------------------------------------------------- */
 
@@ -154,10 +162,8 @@ static int load_default_libraries(void) {
         snprintf(path, sizeof path, "%s/glon-lib/%s", exe_dir, names[k]);
         if (load_library(path) != 0) return -1;
     }
-#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_SEC)
-    /* strings-ext supplies s/from-int, used by the HTTP status JSON, file.glon
-     * and sec.glon.  It is staged for every build but loaded only when an
-     * optional module needs it. */
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE)
+    /* strings-ext supplies s/from-int, used by HTTP, file, sec and sqlite. */
     snprintf(path, sizeof path, "%s/glon-lib/strings-ext.glon", exe_dir);
     if (load_library(path) != 0) return -1;
 #endif
@@ -182,6 +188,19 @@ static int load_default_libraries(void) {
 #endif
     return 0;
 }
+
+#ifdef GLON_MODULE_SQLITE
+/* Load SQLite vocabulary only when a source actually references it.  This
+ * keeps a combined binary from spending global bindings in applications (such
+ * as G3B) that never use SQLite. */
+static int load_sqlite_library(void) {
+    char path[4096];
+    snprintf(path, sizeof path, "%s/glon-lib/sqlite.glon", exe_dir);
+    if (load_library(path) != 0) return -1;
+    sqlite_loaded = 1;
+    return 0;
+}
+#endif
 
 /* ---- outcome reporting --------------------------------------------------- */
 
@@ -230,13 +249,13 @@ static void report_outcome(const r0_s1_outcome *out, const char *path) {
     }
 }
 
-#ifdef GLON_MODULE_SEC
+#if defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE)
 #ifdef GLON_MODULE_HTTP
-static int pump_sec(void *user);
+static int pump_pre(void *user);
 #endif
 #endif
 
-#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP)
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_SQLITE)
 /* ---- optional module options -------------------------------------------- */
 
 typedef struct {
@@ -251,8 +270,13 @@ typedef struct {
     glon_http_config http;
     int http_report;
 #endif
+#ifdef GLON_MODULE_SQLITE
+    glon_sqlite_config sqlite;
+    int sqlite_report;
+#endif
 } module_options;
 
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP)
 static int parse_uint_opt(const char *s, unsigned *out) {
     char *end = NULL;
     unsigned long v = strtoul(s, &end, 10);
@@ -260,6 +284,7 @@ static int parse_uint_opt(const char *s, unsigned *out) {
     *out = (unsigned)v;
     return 0;
 }
+#endif
 
 static void module_options_init(module_options *o) {
     memset(o, 0, sizeof *o);
@@ -268,10 +293,14 @@ static void module_options_init(module_options *o) {
 #endif
 #ifdef GLON_MODULE_HTTP
     glon_http_config_default(&o->http);
-#ifdef GLON_MODULE_SEC
-    o->http.pre_pump = pump_sec;
+#if defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE)
+    o->http.pre_pump = pump_pre;
     o->http.pre_pump_user = NULL;
 #endif
+#endif
+#ifdef GLON_MODULE_SQLITE
+    glon_sqlite_config_default(&o->sqlite);
+    o->sqlite_report = 0;
 #endif
 }
 
@@ -291,6 +320,11 @@ static void module_usage(void) {
         "            [--http-timeout-ms N] [--http-max-request-size N]\n"
         "            [--http-max-body N] [--http-keep-alive] [--http-report]\n"
         "            [--http-stop-event NAME]");
+#endif
+#ifdef GLON_MODULE_SQLITE
+    fprintf(stderr,
+        " [--io-root DIR] [--allow-file-read] [--allow-file-write]"
+        " [--sqlite-report]");
 #endif
     fprintf(stderr, " FILE...\n");
 }
@@ -336,6 +370,18 @@ static int parse_module_options(int argc, char **argv, int *first_file,
             o->io_cancel = 1;
         }
 #endif
+#ifdef GLON_MODULE_SQLITE
+        else if (!strcmp(a, "--io-root")) {
+            if (++i >= argc) return -1;
+            o->sqlite.root = argv[i];
+        } else if (!strcmp(a, "--allow-file-read")) {
+            o->sqlite.allow_read = 1;
+        } else if (!strcmp(a, "--allow-file-write")) {
+            o->sqlite.allow_write = 1;
+        } else if (!strcmp(a, "--sqlite-report")) {
+            o->sqlite_report = 1;
+        }
+#endif
 #ifdef GLON_MODULE_HTTP
         else if (!strcmp(a, "--http-cert")) {
             if (++i >= argc) return -1;
@@ -372,9 +418,9 @@ static int parse_module_options(int argc, char **argv, int *first_file,
     *first_file = i;
     return 0;
 }
-#endif /* GLON_MODULE_FILE || GLON_MODULE_HTTP */
+#endif /* GLON_MODULE_FILE || GLON_MODULE_HTTP || GLON_MODULE_SQLITE */
 
-#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_SEC)
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE)
 /* ---- shared host expression runner --------------------------------------- */
 
 static int run_expression(const char *src, r0_s1_outcome *oc) {
@@ -829,16 +875,248 @@ static int drain_sec(char *err, size_t errcap) {
     }
 }
 
+#endif /* GLON_MODULE_SEC */
+
+#ifdef GLON_MODULE_SQLITE
+/* ---- optional SQLite host driver ---------------------------------------- */
+
+#define SQLITE_REPLY_SRC_CAP 65536
+
+static int sqlite_append_bytes_expr(char *src, size_t cap, int *used,
+                                    const unsigned char *bytes, size_t len) {
+    int n = *used;
+    if (n < 0 || (size_t)n >= cap) return -1;
+    n += snprintf(src + n, cap - (size_t)n, "mk-string [");
+    if (n < 0 || (size_t)n >= cap) return -1;
+    for (size_t i = 0; i < len; i++) {
+        n += snprintf(src + n, cap - (size_t)n, " %u", (unsigned)bytes[i]);
+        if (n < 0 || (size_t)n >= cap) return -1;
+    }
+    n += snprintf(src + n, cap - (size_t)n, " ]");
+    if (n < 0 || (size_t)n >= cap) return -1;
+    *used = n;
+    return 0;
+}
+
+static int sqlite_append_row_expr(char *src, size_t cap, int *used,
+                                  const unsigned char *row, size_t len) {
+    if (len < 1) return -1;
+    unsigned ncols = row[0];
+    size_t pos = 1;
+    int n = *used;
+    n += snprintf(src + n, cap - (size_t)n, "reduce [");
+    if (n < 0 || (size_t)n >= cap) return -1;
+    for (unsigned col = 0; col < ncols; col++) {
+        if (pos >= len) return -1;
+        unsigned type = row[pos++];
+        n += snprintf(src + n, cap - (size_t)n, " ");
+        if (type == 0) {
+            n += snprintf(src + n, cap - (size_t)n, "none");
+        } else if (type == 1) {
+            if (pos + 8 > len) return -1;
+            uint64_t u = 0;
+            for (int i = 0; i < 8; i++) u = (u << 8) | row[pos + (size_t)i];
+            pos += 8;
+            long long v = (long long)u;
+            /* Glon native integers are about +-2^59 (WASM is smaller).  Keep
+             * SQLite's full int64 range representable without feeding an
+             * out-of-range source literal to the parser. */
+            if (v > 576460752303423487LL || v < -576460752303423488LL) {
+                char dec[32];
+                int dn = snprintf(dec, sizeof dec, "%lld", v);
+                if (dn < 0 || (size_t)dn >= sizeof dec) return -1;
+                n += snprintf(src + n, cap - (size_t)n, "reduce [ 'big-int ");
+                if (n < 0 || (size_t)n >= cap) return -1;
+                if (sqlite_append_bytes_expr(src, cap, &n,
+                                              (const unsigned char *)dec,
+                                              (size_t)dn) != 0) return -1;
+                n += snprintf(src + n, cap - (size_t)n, " ]");
+                if (n < 0 || (size_t)n >= cap) return -1;
+            } else {
+                n += snprintf(src + n, cap - (size_t)n, "%lld", v);
+            }
+        } else if (type == 2 || type == 3 || type == 4) {
+            if (pos + 4 > len) return -1;
+            uint32_t blen = ((uint32_t)row[pos] << 24) |
+                            ((uint32_t)row[pos + 1] << 16) |
+                            ((uint32_t)row[pos + 2] << 8) |
+                            (uint32_t)row[pos + 3];
+            pos += 4;
+            if (blen > len - pos) return -1;
+            if (type == 2) {
+                if (sqlite_append_bytes_expr(src, cap, &n, row + pos, blen) != 0)
+                    return -1;
+            } else {
+                n += snprintf(src + n, cap - (size_t)n, "reduce [ '%s ",
+                              type == 3 ? "blob" : "real");
+                if (n < 0 || (size_t)n >= cap) return -1;
+                if (sqlite_append_bytes_expr(src, cap, &n, row + pos, blen) != 0)
+                    return -1;
+                n += snprintf(src + n, cap - (size_t)n, " ]");
+            }
+            pos += blen;
+        } else {
+            return -1;
+        }
+        if (n < 0 || (size_t)n >= cap) return -1;
+    }
+    n += snprintf(src + n, cap - (size_t)n, " ]");
+    if (n < 0 || (size_t)n >= cap) return -1;
+    *used = n;
+    return 0;
+}
+
+static int take_sqlite_request(glon_sqlite_request *req, uint32_t *id,
+                               int *pending, char *err, size_t errcap) {
+    static const char expr[] = "[ sqlite/take-request ]";
+    r0_s1_outcome oc;
+    (void)run_expression(expr, &oc);
+    *pending = 0;
+    if (oc.status != R0S1_OUT_OK) {
+        snprintf(err, errcap, "sqlite/take-request failed (status %d)", oc.status);
+        return -1;
+    }
+    if (oc.count <= 0 ||
+        (oc.count == 1 && r0_s1_result(0, oc.count) == R0_NONE))
+        return 0;
+    if (oc.count != 1 || r0_tag(r0_s1_result(0, oc.count)) != T_BLOCK) {
+        snprintf(err, errcap, "sqlite/take-request did not return a BLOCK or NONE");
+        return -1;
+    }
+    cell p = r0_untag(r0_s1_result(0, oc.count));
+    if (M[p] != 3) {
+        snprintf(err, errcap, "sqlite/take-request block shape");
+        return -1;
+    }
+    cell idv = M[p + BLK_DATA];
+    cell opv = M[p + BLK_DATA + 1];
+    cell fields = M[p + BLK_DATA + 2];
+    if (r0_tag(idv) != T_INT || r0_tag(opv) != T_INT ||
+        r0_tag(fields) != T_BLOCK) {
+        snprintf(err, errcap, "sqlite/take-request field types");
+        return -1;
+    }
+    uint32_t rid = (uint32_t)int_val(idv);
+    unsigned op = (unsigned)int_val(opv);
+    if (rid == 0 || op < GLON_SQLITE_OP_OPEN || op > GLON_SQLITE_OP_CLOSE) {
+        snprintf(err, errcap, "sqlite/take-request id/op");
+        return -1;
+    }
+    cell fp = r0_untag(fields);
+    cell nf = M[fp];
+    if (nf < 0 || nf > GLON_SQLITE_MAX_FIELDS) {
+        snprintf(err, errcap, "sqlite/take-request too many fields");
+        return -1;
+    }
+    memset(req, 0, sizeof *req);
+    req->op = op;
+    req->nfields = (unsigned)nf;
+    for (cell i = 0; i < nf; i++) {
+        cell sv = M[fp + BLK_DATA + i];
+        if (r0_tag(sv) != T_STRING) {
+            snprintf(err, errcap, "sqlite field is not a STRING!");
+            return -1;
+        }
+        cell sp = r0_untag(sv);
+        cell sl = M[sp];
+        if (sl < 0 || (size_t)sl > GLON_SQLITE_FIELD_CAP) {
+            snprintf(err, errcap, "sqlite field is too large");
+            return -1;
+        }
+        req->field_len[i] = (size_t)sl;
+        for (cell j = 0; j < sl; j++)
+            req->fields[i][j] = (unsigned char)M[sp + 1 + j];
+    }
+    *id = rid;
+    *pending = 1;
+    return 0;
+}
+
+static int run_sqlite_reply(uint32_t id, int op,
+                            const glon_sqlite_result *result,
+                            char *err, size_t errcap) {
+    char src[SQLITE_REPLY_SRC_CAP];
+    const char *word = glon_sqlite_status_word(result->status);
+    int n = snprintf(src, sizeof src, "[ sqlite/reply %u '%s ", id, word);
+    if (n < 0 || (size_t)n >= sizeof src) return -1;
+    if (result->status == GLON_SQLITE_ROW) {
+        if (sqlite_append_row_expr(src, sizeof src, &n, result->data, result->len) != 0)
+            return -1;
+    } else if (result->status == GLON_SQLITE_OK) {
+        if (sqlite_append_bytes_expr(src, sizeof src, &n, result->data, result->len) != 0)
+            return -1;
+    } else if (result->status == GLON_SQLITE_DONE) {
+        if (sqlite_append_bytes_expr(src, sizeof src, &n, NULL, 0) != 0) return -1;
+    } else {
+        if (sqlite_append_bytes_expr(src, sizeof src, &n,
+                                     (const unsigned char *)result->error,
+                                     strlen(result->error)) != 0) return -1;
+    }
+    n += snprintf(src + n, sizeof src - (size_t)n, " mk-string [ ] ]");
+    if (n < 0 || (size_t)n >= sizeof src) return -1;
+    (void)op;
+    r0_s1_outcome oc;
+    (void)run_expression(src, &oc);
+    if (oc.status != R0S1_OUT_OK) {
+        report_outcome(&oc, "sqlite/reply");
+        snprintf(err, errcap, "sqlite/reply callback failed (status %d)", oc.status);
+        return -1;
+    }
+    return 0;
+}
+
+static int drain_sqlite(glon_sqlite_service *svc, char *err, size_t errcap) {
+    int processed = 0;
+    for (;;) {
+        glon_sqlite_request req;
+        glon_sqlite_result result;
+        uint32_t id = 0;
+        int pending = 0;
+        if (take_sqlite_request(&req, &id, &pending, err, errcap) != 0)
+            return -1;
+        if (!pending)
+            return processed;
+        (void)glon_sqlite_execute(svc, &req, &result, err, errcap);
+        if (run_sqlite_reply(id, req.op, &result, err, errcap) != 0)
+            return -1;
+        processed = 1;
+    }
+}
+#endif /* GLON_MODULE_SQLITE */
+
+#if defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE)
+/* Drain every pre-response service until all queues are empty.  A callback may
+ * enqueue another service, so both are polled again after each turn. */
+static int drain_pre(char *err, size_t errcap) {
+    int any = 0;
+    for (;;) {
+        int did = 0;
+#ifdef GLON_MODULE_SEC
+        int r = drain_sec(err, errcap);
+        if (r < 0) return -1;
+        if (r > 0) { did = 1; any = 1; }
+#endif
+#ifdef GLON_MODULE_SQLITE
+        if (sqlite_loaded) {
+            int q = drain_sqlite(&sqlite_service, err, errcap);
+            if (q < 0) return -1;
+            if (q > 0) { did = 1; any = 1; }
+        }
+#endif
+        if (!did) return any;
+    }
+}
+
 #ifdef GLON_MODULE_HTTP
-static int pump_sec(void *user) {
+static int pump_pre(void *user) {
     (void)user;
     char err[512];
-    int r = drain_sec(err, sizeof err);
-    if (r < 0) fprintf(stderr, "glon: sec: %s\n", err);
+    int r = drain_pre(err, sizeof err);
+    if (r < 0) fprintf(stderr, "glon: pre-service pump: %s\n", err);
     return r;
 }
 #endif
-#endif /* GLON_MODULE_SEC */
+#endif
 
 /* ---- main ---------------------------------------------------------------- */
 
@@ -850,7 +1128,7 @@ int main(int argc, char **argv) {
     (void)_setmode(_fileno(stdout), _O_BINARY);
     (void)_setmode(_fileno(stderr), _O_BINARY);
 #endif
-#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP)
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_SQLITE)
     module_options opts;
     module_options_init(&opts);
     int first_file = 1;
@@ -885,6 +1163,23 @@ int main(int argc, char **argv) {
     }
 #endif
 
+#ifdef GLON_MODULE_SQLITE
+#ifdef GLON_MODULE_FILE
+    /* The file and SQLite modules share one --io-root/capability policy. */
+    opts.sqlite.root = opts.io_policy.root;
+    opts.sqlite.allow_read = opts.io_policy.allow_read;
+    opts.sqlite.allow_write = opts.io_policy.allow_write;
+#endif
+    {
+        char sqlite_err[512];
+        if (glon_sqlite_init(&sqlite_service, &opts.sqlite,
+                             sqlite_err, sizeof sqlite_err) != 0) {
+            fprintf(stderr, "glon: sqlite: %s\n", sqlite_err);
+            return 2;
+        }
+    }
+#endif
+
     int rc = 0;
 #ifdef GLON_MODULE_FILE
     int io_reported = 0;
@@ -894,6 +1189,15 @@ int main(int argc, char **argv) {
         char *src = read_source(argv[i], err, sizeof err);
         if (!src) { fprintf(stderr, "glon: %s: %s\n", argv[i], err); rc = 2; break; }
 
+#ifdef GLON_MODULE_SQLITE
+        if (!sqlite_loaded && strstr(src, "sqlite/")) {
+            if (load_sqlite_library() != 0) {
+                free(src);
+                rc = 2;
+                break;
+            }
+        }
+#endif
         strip_comments(src);
         int perr = 0;
         cell prog = r0_s1_parse(src, &perr);
@@ -918,11 +1222,11 @@ int main(int argc, char **argv) {
         /* minimal build: no file module, no request/reply driver */
 #endif
 
-#ifdef GLON_MODULE_SEC
+#if defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE)
         {
-            char sec_err[512];
-            if (drain_sec(sec_err, sizeof sec_err) < 0) {
-                fprintf(stderr, "glon: sec: %s\n", sec_err);
+            char pre_err[512];
+            if (drain_pre(pre_err, sizeof pre_err) < 0) {
+                fprintf(stderr, "glon: service pump: %s\n", pre_err);
                 rc = 1;
                 break;
             }
@@ -947,6 +1251,16 @@ int main(int argc, char **argv) {
             fprintf(stderr, "glon: http: %s\n", http_err);
             rc = 2;
         }
+    }
+#endif
+
+#ifdef GLON_MODULE_SQLITE
+    {
+        unsigned dbs = 0, stmts = 0;
+        glon_sqlite_destroy(&sqlite_service, &dbs, &stmts);
+        if (opts.sqlite_report)
+            fprintf(stderr, "glon: sqlite: closed_dbs=%u finalized_stmts=%u\n",
+                    dbs, stmts);
     }
 #endif
 

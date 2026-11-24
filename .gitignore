@@ -43,6 +43,7 @@ integrity/build/
 # optional module focused test binary
 io-file-c-test
 sec-test
+sqlite-test
 
 m1-large-test
 

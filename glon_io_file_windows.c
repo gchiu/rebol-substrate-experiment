@@ -237,6 +237,37 @@ int glon_io_backend_root(const char *root, char *out, size_t outcap,
     return GLON_IO_OK;
 }
 
+int glon_io_backend_resolve_path(const char *root_real, const char *name,
+                                   size_t name_len, int create,
+                                   char *out, size_t outcap,
+                                   char *err, size_t errcap) {
+    if (!name_ok(name, name_len)) {
+        if (errcap) snprintf(err, errcap, "invalid logical file name");
+        return GLON_IO_PERMISSION;
+    }
+    WCHAR wroot[WIN_PATH_CAP], wname[WIN_PATH_CAP], joined[WIN_PATH_CAP];
+    WCHAR parent[WIN_PATH_CAP], target[WIN_PATH_CAP];
+    if (utf8_to_wide(root_real, -1, wroot, WIN_PATH_CAP) != 0 ||
+        utf8_to_wide(name, (int)name_len, wname, WIN_PATH_CAP) != 0) {
+        if (errcap) snprintf(err, errcap, "path is not valid UTF-8");
+        return GLON_IO_PERMISSION;
+    }
+    if (join_wide(wroot, wname, joined, WIN_PATH_CAP) != 0) {
+        if (errcap) snprintf(err, errcap, "path too long");
+        return GLON_IO_TOO_LARGE;
+    }
+    int st = create
+        ? resolve_parent(wroot, joined, parent, WIN_PATH_CAP,
+                         target, WIN_PATH_CAP, err, errcap)
+        : resolve_existing(wroot, joined, target, WIN_PATH_CAP, err, errcap);
+    if (st != GLON_IO_OK) return st;
+    if (wide_to_utf8(target, out, outcap) != 0) {
+        if (errcap) snprintf(err, errcap, "resolved path too long");
+        return GLON_IO_TOO_LARGE;
+    }
+    return GLON_IO_OK;
+}
+
 int glon_io_backend_open(const char *root_real, const char *name, size_t name_len,
                          int mode, glon_io_fd *fd, char *err, size_t errcap) {
     *fd = GLON_IO_INVALID_FD;

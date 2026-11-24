@@ -53,7 +53,7 @@ typedef struct {
     int keep_alive;                /* 0 = close after each response */
     const char *stop_event;        /* Windows named event for orderly stop */
     /* Optional synchronous service pump for host-backed operations needed
-     * before the response (currently the security module).  It runs only while
+     * before the response (currently security and SQLite).  It runs only while
      * the current request is active; return 1 if it processed a request, 0 if
      * none, -1 on failure.  The file pump remains post-response. */
     glon_http_pump_fn pre_pump;

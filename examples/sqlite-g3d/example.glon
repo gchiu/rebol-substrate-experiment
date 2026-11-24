@@ -1,0 +1,61 @@
+;; examples/sqlite-g3d/example.glon - bounded SQLite example.
+;; Run with a sandbox root and both file capabilities:
+;;   ./glon --io-root /tmp/demo --allow-file-read --allow-file-write \
+;;     examples/sqlite-g3d/example.glon
+[
+read-all: func [st db] [
+    sqlite/step st
+        func [row] [
+            either = row none [
+                sqlite/finalize st
+                    func [x] [
+                        sqlite/close db
+                            func [y] [ s/print "SQLITE_EXAMPLE_OK" ]
+                            func [e] [ raise e ]
+                    ]
+                    func [e] [ raise e ]
+            ] [
+                s/print s/+ "id=" s/from-int block-at row 0
+                s/print s/+ "name=" block-at row 1
+                s/print s/+ "score=" s/from-int block-at row 2
+                read-all st db
+            ]
+        ]
+        func [e] [ raise e ]
+]
+
+sqlite/open "example.db"
+    func [db] [
+        sqlite/exec db "CREATE TABLE IF NOT EXISTS people(id INTEGER PRIMARY KEY, name TEXT NOT NULL, score INTEGER, payload BLOB)"
+            func [x] [
+                sqlite/prepare db "INSERT INTO people(name,score,payload) VALUES (?,?,?)"
+                    func [ins] [
+                        sqlite/bind-text ins 1 "Ada" func [b1] [
+                            sqlite/bind-int ins 2 42 func [b2] [
+                                sqlite/bind-blob ins 3 mk-string reduce [ 0 1 255 ] func [b3] [
+                                    sqlite/step ins func [done1] [
+                                        sqlite/reset ins func [r1] [
+                                            sqlite/bind-text ins 1 "Grace" func [b4] [
+                                                sqlite/bind-int ins 2 99 func [b5] [
+                                                    sqlite/bind-null ins 3 func [b6] [
+                                                        sqlite/step ins func [done2] [
+                                                            sqlite/finalize ins
+                                                                func [f1] [
+                                                                    sqlite/prepare db "SELECT id,name,score FROM people ORDER BY id"
+                                                                        func [sel] [ read-all sel db ]
+                                                                        func [e] [ raise e ]
+                                                                ]
+                                                                func [e] [ raise e ]
+                                                        ] func [e] [ raise e ]
+                                                    ] func [e] [ raise e ]
+                                                ] func [e] [ raise e ]
+                                            ] func [e] [ raise e ]
+                                        ] func [e] [ raise e ]
+                                    ] func [e] [ raise e ]
+                                ] func [e] [ raise e ]
+                            ] func [e] [ raise e ]
+                        ] func [e] [ raise e ]
+                    ] func [e] [ raise e ]
+            ] func [e] [ raise e ]
+    ] func [e] [ raise e ]
+]

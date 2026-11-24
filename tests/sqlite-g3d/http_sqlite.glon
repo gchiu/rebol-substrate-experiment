@@ -1,0 +1,39 @@
+[
+db: none
+handle: func [request] [
+    sqlite/prepare db "SELECT count(*) FROM items"
+        func [st] [
+            sqlite/step st
+                func [row] [
+                    either = row none [
+                        sqlite/finalize st
+                            func [x] [ http/respond request 500 "text/plain" "no row" ]
+                            func [e] [ raise e ]
+                    ] [
+                        body: s/+ "count=" s/from-int block-at row 0
+                        sqlite/finalize st
+                            func [x] [ http/respond request 200 "text/plain; charset=utf-8" body ]
+                            func [e] [ raise e ]
+                    ]
+                ]
+                func [e] [ raise e ]
+        ]
+        func [e] [ raise e ]
+]
+
+start: func [] [
+    sqlite/open "http.db"
+        func [h] [
+            db: h
+            sqlite/exec db "CREATE TABLE IF NOT EXISTS items(id INTEGER PRIMARY KEY, name TEXT)"
+                func [n] [
+                    sqlite/exec db "INSERT INTO items(name) VALUES ('one')"
+                        func [i] [ http/listen 8443 :handle ]
+                        func [e] [ raise e ]
+                ]
+                func [e] [ raise e ]
+        ]
+        func [e] [ raise e ]
+]
+start
+]

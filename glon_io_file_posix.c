@@ -224,6 +224,35 @@ int glon_io_backend_root(const char *root, char *out, size_t outcap,
     return GLON_IO_OK;
 }
 
+int glon_io_backend_resolve_path(const char *root_real, const char *name,
+                                   size_t name_len, int create,
+                                   char *out, size_t outcap,
+                                   char *err, size_t errcap) {
+    if (!name_ok(name, name_len)) {
+        if (errcap) snprintf(err, errcap, "invalid logical file name");
+        return GLON_IO_PERMISSION;
+    }
+    char joined[IO_PATH_CAP];
+    int n = snprintf(joined, sizeof joined, "%s/%.*s", root_real,
+                     (int)name_len, name);
+    if (n < 0 || (size_t)n >= sizeof joined) {
+        if (errcap) snprintf(err, errcap, "path too long");
+        return GLON_IO_TOO_LARGE;
+    }
+    char resolved[IO_PATH_CAP];
+    int st = create ? resolve_for_write(root_real, joined, resolved,
+                                         sizeof resolved, err, errcap)
+                    : resolve_existing(root_real, joined, resolved,
+                                       sizeof resolved, err, errcap);
+    if (st != GLON_IO_OK) return st;
+    if (strlen(resolved) + 1 > outcap) {
+        if (errcap) snprintf(err, errcap, "resolved path too long");
+        return GLON_IO_TOO_LARGE;
+    }
+    strcpy(out, resolved);
+    return GLON_IO_OK;
+}
+
 int glon_io_backend_set_mode(glon_io_fd fd, unsigned mode,
                              char *err, size_t errcap) {
     if (fchmod((int)fd, (mode_t)(mode & 07777)) != 0) {

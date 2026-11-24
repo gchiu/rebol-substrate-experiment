@@ -131,7 +131,7 @@ clean:
 	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench fib-p10b-bench traffic-bench-o0 traffic-bench-o2 glon-live-native-test demo/shop/glon-live.wasm $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
 	rm -f glon-desktop glon-desktop.exe desktop-test patrol-test kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test kaka-wave-test desktop/glon.wasm desktop/prelude.glon desktop/strings.glon desktop/big.txt
 	rm -rf glon glon-lib
-	rm -f .glon-config .glon-config.tmp io-file-c-test sec-test arch-check m1-smoke m1-smoke.exe
+	rm -f .glon-config .glon-config.tmp io-file-c-test sec-test sqlite-test arch-check m1-smoke m1-smoke.exe
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
 # Produces web/demo.js (Emscripten runtime + web/glue.js) and web/demo.wasm,
@@ -340,15 +340,16 @@ GLON_LIBS = $(GLON_LIB_DIR)/prelude.glon $(GLON_LIB_DIR)/strings.glon $(GLON_LIB
 #   MODULES=file        host-mediated async file module
 #   MODULES=http        optional CivetWeb HTTPS listener + ordinary http.glon
 #   MODULES=sec         optional OpenSSL-backed security primitives + sec.glon
-#   MODULES=file,http,sec   additive selection (any comma-separated subset)
+#   MODULES=sqlite      optional SQLite database/statement vocabulary
+#   MODULES=file,http,sec,sqlite   additive selection
 #
 # Unknown names fail at build time.  Modules are additive: a minimal build
 # never compiles or links any module object, source or Glon library.
 comma := ,
 GLON_MODULE_LIST := $(subst $(comma), ,$(strip $(MODULES)))
-GLON_MODULE_UNKNOWN := $(filter-out file http sec,$(GLON_MODULE_LIST))
+GLON_MODULE_UNKNOWN := $(filter-out file http sec sqlite,$(GLON_MODULE_LIST))
 ifneq ($(strip $(GLON_MODULE_UNKNOWN)),)
-  $(error unknown MODULES='$(MODULES)'; supported values: file, http, sec and combinations)
+  $(error unknown MODULES='$(MODULES)'; supported values: file, http, sec, sqlite and combinations)
 endif
 
 GLON_MODULE_SRCS :=
@@ -377,11 +378,32 @@ endif
 OPENSSL_CFLAGS ?=
 OPENSSL_LIBS ?= -lssl -lcrypto
 
+# SQLite is linked from the standard library; use SQLITE_CFLAGS/SQLITE_LIBS
+# when the development headers/library are not in the default toolchain path.
+SQLITE_CFLAGS ?=
+SQLITE_LIBS ?= -lsqlite3
+
 ifneq ($(filter sec,$(GLON_MODULE_LIST)),)
   GLON_MODULE_SRCS += glon_sec.c
   GLON_MODULE_CFLAGS += -DGLON_MODULE_SEC $(OPENSSL_CFLAGS)
   GLON_MODULE_LIBS += $(GLON_LIB_DIR)/sec.glon
   GLON_MODULE_LDLIBS += $(OPENSSL_LIBS)
+endif
+
+ifneq ($(filter sqlite,$(GLON_MODULE_LIST)),)
+  GLON_MODULE_SRCS += glon_sqlite.c
+  GLON_MODULE_CFLAGS += -DGLON_MODULE_SQLITE $(SQLITE_CFLAGS)
+  GLON_MODULE_LIBS += $(GLON_LIB_DIR)/sqlite.glon
+  GLON_MODULE_LDLIBS += $(SQLITE_LIBS)
+  # The SQLite module reuses the file backend's canonical path confinement.
+  # Compile that small backend when the file module itself is not selected.
+  ifeq ($(filter file,$(GLON_MODULE_LIST)),)
+    ifeq ($(OS),Windows_NT)
+      GLON_MODULE_SRCS += glon_io_file_windows.c
+    else
+      GLON_MODULE_SRCS += glon_io_file_posix.c
+    endif
+  endif
 endif
 
 # The HTTP server does not create M1 tasks.  The G3 application plus the
@@ -469,6 +491,10 @@ $(GLON_LIB_DIR)/sec.glon: modules/sec.glon
 	@mkdir -p $(GLON_LIB_DIR)
 	cp $< $@
 
+$(GLON_LIB_DIR)/sqlite.glon: modules/sqlite.glon
+	@mkdir -p $(GLON_LIB_DIR)
+	cp $< $@
+
 glon-lib: $(GLON_LIBS)
 
 glon-smoke: glon
@@ -478,6 +504,13 @@ glon-smoke: glon
 io-file-c-test: glon_io_file_tests.c glon_io_file.c glon_io_file_posix.c glon_io_file_cli.c glon_io_file.h glon_io_file_cli.h
 	$(CC) $(CFLAGS) -I. -o $@ glon_io_file_tests.c glon_io_file.c glon_io_file_posix.c glon_io_file_cli.c -pthread
 	./io-file-c-test
+
+sqlite-test: tests/sqlite-g3d/sqlite_tests.c glon_sqlite.c glon_sqlite.h glon_io_file_posix.c glon_io_file.h
+	$(CC) $(CFLAGS) $(SQLITE_CFLAGS) -I. -o sqlite-test tests/sqlite-g3d/sqlite_tests.c glon_sqlite.c glon_io_file_posix.c $(SQLITE_LIBS)
+	rm -rf /tmp/glon-sqlite-c-test
+	mkdir -p /tmp/glon-sqlite-c-test
+	./sqlite-test /tmp/glon-sqlite-c-test
+	rm -rf /tmp/glon-sqlite-c-test
 
 sec-test: tests/security-g3c/sec_tests.c glon_sec.c glon_sec.h
 	$(CC) $(CFLAGS) $(OPENSSL_CFLAGS) -I. -o sec-test tests/security-g3c/sec_tests.c glon_sec.c $(OPENSSL_LIBS)
