@@ -1,0 +1,306 @@
+;; examples/glon-worlds-g3b/server.glon - minimal Glon Worlds chat API demo.
+;;
+;; This is ordinary Glon application logic over the existing HTTPS, JSON and
+;; file vocabularies.  It deliberately implements only the read/unauthenticated
+;; development subset:
+;;   GET  /api/groups
+;;   GET  /api/session
+;;   GET  /api/messages?group=general&after=0
+;;   POST /api/messages
+;;
+;; The listener is bound by the CLI (--http-bind 127.0.0.1).  POST is an
+;; explicitly unauthenticated, loopback-only development demonstration; it is
+;; not suitable for public deployment.  The server-derived demo author is never
+;; taken from the request body.
+;;
+;; The NDJSON log is read once at startup, before http/listen is configured.
+;; A POST updates memory and returns immediately; its append is asynchronous and
+;; is drained by the host after the response, matching the host file protocol.
+[
+gw/path: "messages.ndjson"
+gw/created: "2026-01-01T00:00:00+00:00"
+gw/group: "general"
+gw/demo-author: "Glon Demo"
+gw/max-text: 1024
+gw/max-store: 1024
+gw/port: 8443
+gw/messages: none
+gw/next-id: 1
+gw/store-text: ""
+gw/line-set: mk-string reduce [
+        0 1 2 3 4 5 6 7 8 9 11 12 13 14 15 16
+        17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32
+        33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48
+        49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64
+        65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80
+        81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96
+        97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112
+        113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128
+        129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144
+        145 146 147 148 149 150 151 152 153 154 155 156 157 158 159 160
+        161 162 163 164 165 166 167 168 169 170 171 172 173 174 175 176
+        177 178 179 180 181 182 183 184 185 186 187 188 189 190 191 192
+        193 194 195 196 197 198 199 200 201 202 203 204 205 206 207 208
+        209 210 211 212 213 214 215 216 217 218 219 220 221 222 223 224
+        225 226 227 228 229 230 231 232 233 234 235 236 237 238 239 240
+        241 242 243 244 245 246 247 248 249 250 251 252 253 254 255
+    ]
+
+
+gw/jpair: func [key value rest] [ reduce [ reduce [ key value ] rest ] ]
+
+gw/error: func [request status message] [
+    body: json/encode json/object gw/jpair "error" message none
+    http/respond request status "application/json; charset=utf-8" body
+]
+
+gw/ok-json: func [request status body] [
+    http/respond request status "application/json; charset=utf-8" body
+]
+
+
+gw/blank?: func [s i] [
+    either >= i s/length s [
+        1
+    ] [
+        b: s/at s i
+        either either = b 32 [ 1 ] [
+            either = b 9 [ 1 ] [
+                either = b 10 [ 1 ] [
+                    either = b 13 [ 1 ] [ 0 ]
+                ]
+            ]
+        ] [
+            gw/blank? s + i 1
+        ] [
+            0
+        ]
+    ]
+]
+
+gw/parse-int: func [s i n] [
+    either >= i s/length s [
+        n
+    ] [
+        b: s/at s i
+        either either >= b 48 [ <= b 57 ] [ 0 ] [
+            gw/parse-int s + i 1 + * n 10 - b 48
+        ] [
+            -1
+        ]
+    ]
+]
+
+gw/param: func [query key default] [
+    value: wp/form-scan query key 0
+    either = value none [ default ] [ value ]
+]
+
+gw/reverse: func [list acc] [
+    either = list none [
+        acc
+    ] [
+        gw/reverse block-at list 1
+            reduce [ block-at list 0 acc ]
+    ]
+]
+
+gw/filter: func [list group after] [
+    either = list none [
+        none
+    ] [
+        obj: block-at list 0
+        g: json/object-get obj "group"
+        id: json/object-get obj "id"
+        rest: gw/filter block-at list 1 group after
+        either either str-eq g group [ > id after ] [ 0 ] [
+            reduce [ obj rest ]
+        ] [
+            rest
+        ]
+    ]
+]
+
+gw/load-lines: func [s i list max] [
+    either >= i s/length s [
+        reduce [ list max ]
+    ] [
+        j: s/scan-set s i gw/line-set
+        stop: either < j 0 [ s/length s ] [ j ]
+        line: s/span s i stop
+        next: either < j 0 [ s/length s ] [ + j 1 ]
+        either > s/length line 0 [
+            obj: json/decode line
+            either json/object? obj [
+                none
+            ] [
+                raise create-sin 'app 'malformed "store line is not a JSON object"
+            ]
+            id: json/object-get obj "id"
+            gw/load-lines s next
+                reduce [ obj list ]
+                either > id max [ id ] [ max ]
+        ] [
+            gw/load-lines s next list max
+        ]
+    ]
+]
+
+gw/start: func [] [
+    file/read gw/path
+        func [text] [
+            loaded: gw/load-lines text 0 none 0
+            gw/messages: block-at loaded 0
+            gw/next-id: + 1 block-at loaded 1
+            gw/store-text: text
+            http/listen gw/port :gw/handle
+        ]
+        func [e] [
+            either = sin-id e 'not-found [
+                gw/messages: none
+                gw/next-id: 1
+                gw/store-text: ""
+                http/listen gw/port :gw/handle
+            ] [
+                raise e
+            ]
+        ]
+]
+
+gw/group-json: func [] [
+    json/object gw/jpair "id" 1
+        gw/jpair "slug" gw/group
+        gw/jpair "name" gw/group
+        gw/jpair "description" ""
+        gw/jpair "created_at" gw/created none
+]
+
+gw/groups-response: func [] [
+    json/encode json/object gw/jpair "groups" json/array reduce [ gw/group-json none ]
+        gw/jpair "can_create" json/false none
+]
+
+gw/session-response: func [] [
+    json/encode json/object gw/jpair "user" json/null none
+]
+
+gw/message-json: func [id text] [
+    escaped: wp/escape-html text
+    html: s/+ "<p>" s/+ escaped "</p>"
+    json/object gw/jpair "id" id
+        gw/jpair "author" gw/demo-author
+        gw/jpair "text" text
+        gw/jpair "created_at" gw/created
+        gw/jpair "group" gw/group
+        gw/jpair "user_id" json/null
+        gw/jpair "legacy" json/true
+        gw/jpair "preview" json/null
+        gw/jpair "preview_pending" json/false
+        gw/jpair "youtube" json/null
+        gw/jpair "html" html none
+]
+
+gw/get-messages: func [request] [
+    query: http/query request
+    group: gw/param query "group" gw/group
+    after-s: gw/param query "after" "0"
+    after: gw/parse-int after-s 0 0
+    either < after 0 [
+        gw/error request 400 "invalid after"
+    ] [
+        either str-eq group gw/group [
+            ascending: gw/reverse gw/messages none
+            msgs: gw/filter ascending group after
+            gw/ok-json request 200 json/encode json/object gw/jpair "messages" json/array msgs none
+        ] [
+            gw/ok-json request 200 json/encode json/object gw/jpair "messages" json/array none none
+        ]
+    ]
+]
+
+gw/post-message: func [request] [
+    body: http/body request
+    body: either = 0 s/length body [ "{}" ] [ body ]
+    result: judge [
+        obj: json/decode body
+        either json/object? obj [
+            text: json/object-get obj "text"
+            group: json/object-get obj "group"
+            either json/string? text [
+                either either = group none [ 1 ] [ str-eq group gw/group ] [
+                    either either gw/blank? text 0 [ 1 ] [ > s/length text gw/max-text ] [
+                        raise create-sin 'app 400
+                            either gw/blank? text 0 [ "text required" ] [ "text too long" ]
+                    ] [
+                        text
+                    ]
+                ] [
+                    raise create-sin 'app 400 "unknown group"
+                ]
+            ] [
+                raise create-sin 'app 400 "text required"
+            ]
+        ] [
+            raise create-sin 'app 400 "invalid json"
+        ]
+    ]
+    either sin? result [
+        either = sin-id result 400 [
+            gw/error request 400 sin-arg result
+        ] [
+            gw/error request 400 "invalid json"
+        ]
+    ] [
+        id: gw/next-id
+        msg: gw/message-json id result
+        line: s/+ json/encode msg mk-string reduce [ 10 ]
+        either > + s/length gw/store-text s/length line gw/max-store [
+            gw/error request 413 "demo store full"
+        ] [
+            gw/messages: reduce [ msg gw/messages ]
+            gw/next-id: + id 1
+            gw/store-text: s/+ gw/store-text line
+            gw/ok-json request 201 json/encode msg
+            file/write gw/path gw/store-text
+                func [x] [ none ]
+                func [e] [ none ]
+        ]
+    ]
+]
+
+gw/handle: func [request] [
+    method: http/method request
+    path: http/path request
+    either str-eq path "/api/groups" [
+        either str-eq method "GET" [
+            gw/ok-json request 200 gw/groups-response
+        ] [
+            gw/error request 405 "method not allowed"
+        ]
+    ] [
+        either str-eq path "/api/session" [
+            either str-eq method "GET" [
+                gw/ok-json request 200 gw/session-response
+            ] [
+                gw/error request 405 "method not allowed"
+            ]
+        ] [
+            either str-eq path "/api/messages" [
+                either str-eq method "GET" [
+                    gw/get-messages request
+                ] [
+                    either str-eq method "POST" [
+                        gw/post-message request
+                    ] [
+                        gw/error request 405 "method not allowed"
+                    ]
+                ]
+            ] [
+                gw/error request 404 "not found"
+            ]
+        ]
+    ]
+]
+
+gw/start
+]
