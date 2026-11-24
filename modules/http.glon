@@ -4,13 +4,14 @@
 ;; request/reply boundary.  CivetWeb owns sockets, TLS and HTTP parsing; the
 ;; application owns the handler and the response bytes.
 ;;
-;; Host -> Glon:  http/dispatch <id> <method> <path> <query> <body> <headers>
+;; Host -> Glon:  http/dispatch <id> <method> <path> <query> <body> <headers> <peer>
 ;; Glon -> host:  http/take-response
 ;;                => [id status content-type headers body] | NONE
 ;;
 ;; The request passed to the handler is an opaque block
-;; [id method path query body headers].  `body` is a bounded STRING! (empty
-;; when absent); `headers` is a block of alternating STRING! name/value pairs.
+;; [id method path query body headers peer].  `body` is a bounded STRING! (empty
+;; when absent); `headers` is a block of alternating STRING! name/value pairs;
+;; `peer` is the transport remote address (host-provided, not X-Forwarded-For).
 ;; The id is an integer, never a native pointer.  A response is accepted only
 ;; for the request currently being dispatched, so a stale or fabricated handle
 ;; cannot address another connection.  `headers` is NONE or an alternating
@@ -53,6 +54,7 @@ http/take-listen: func [] [
 ;;   http/body    r -> STRING!  request body bytes (empty when absent)
 ;;   http/header  r n -> STRING! value, or NONE (case-insensitive name match)
 ;;   http/content-type r -> STRING! value, or NONE
+;;   http/peer    r -> STRING! remote address, or "" when unavailable
 http/request-field: func [request index] [
     either sin? request [
         raise request
@@ -108,6 +110,7 @@ http/header: func [request name] [
     http/header-scan http/request-field request 5 name 0
 ]
 http/content-type: func [request] [ http/header request "Content-Type" ]
+http/peer: func [request] [ http/request-field request 6 ]
 
 ;; Application response generation.  The body is a STRING! or a nested block
 ;; of STRING!/BLOCK! parts; the host flattens it in order.  The short form sends
@@ -119,6 +122,8 @@ http/respond: func [request status content-type body] [
 ;; Response with additional application headers.  `headers` is NONE or an
 ;; alternating block such as reduce [ "Allow" "GET" ].  The host validates the
 ;; shape and filters headers it owns.
+http/clear-current: func [] [ http/current: none ]
+
 http/respond-with: func [request status content-type headers body] [
     either sin? request [
         raise request
@@ -155,8 +160,8 @@ http/stopped?: func [] [
 
 ;; Called by the host for one completed request.  Handler errors become a 500
 ;; response; the host never loses track of the request id.
-http/dispatch: func [id method path query body headers] [
-    http/current: reduce [ id method path query body headers ]
+http/dispatch: func [id method path query body headers peer] [
+    http/current: reduce [ id method path query body headers peer ]
     http/response: none
     result: judge [ http/handler :http/current ]
     either sin? result [
@@ -168,7 +173,6 @@ http/dispatch: func [id method path query body headers] [
             http/response: reduce [ id 500 "text/plain; charset=utf-8" none "no response" ]
         ]
     ]
-    http/current: none
     none
 ]
 

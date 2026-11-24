@@ -1,0 +1,32 @@
+;; examples/security-g3c/http_sec.glon - minimal HTTP use of the sec vocabulary.
+;; This is a capability demonstration, not an authentication or chat service.
+[
+handle: func [request] [
+    either str-eq http/path request "/bad-header" [
+        http/respond-with request 200 "text/plain; charset=utf-8"
+            reduce [ "X-Test" mk-string reduce [ 13 ] ] "bad header"
+    ] [
+    sec/sha256 "abc"
+        func [digest] [
+            sec/time
+                func [now] [
+                    hex: sec/hex digest
+                    ts: s/from-int now
+                    peer: http/peer request
+                    body: s/+ "sha256=" s/+ hex
+                        s/+ " time=" s/+ ts
+                        s/+ " peer=" peer
+                    http/respond request 200 "text/plain; charset=utf-8" body
+                ]
+                func [e] [
+                    http/respond request 500 "text/plain; charset=utf-8" "security time failed"
+                ]
+        ]
+        func [e] [
+            http/respond request 500 "text/plain; charset=utf-8" "security hash failed"
+        ]
+    ]
+]
+
+http/listen 8443 :handle
+]

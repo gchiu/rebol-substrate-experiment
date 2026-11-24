@@ -44,6 +44,8 @@ typedef struct {
 
 typedef struct {
     glon_http_config cfg;
+    glon_http_pump_fn pre_pump;
+    void *pre_pump_user;
     glon_http_pump_fn pump;
     void *pump_user;
     pthread_mutex_t lock;
@@ -215,7 +217,10 @@ static int http_dispatch(unsigned long id, const char *method,
         hs_byte(&b, ' ');
         hs_string(&b, (const unsigned char *)value, strlen(value));
     }
-    hs_text(&b, " ] ]");
+    hs_text(&b, " ] ");
+    hs_string(&b, (const unsigned char *)(ri && ri->remote_addr ? ri->remote_addr : ""),
+              strlen(ri && ri->remote_addr ? ri->remote_addr : ""));
+    hs_text(&b, " ]");
     if (b.overflow || b.len + 1 >= b.cap) {
         snprintf(err, errcap, "dispatch source is too large");
         return -1;
@@ -242,7 +247,14 @@ static int copy_glon_string(cell v, unsigned char *out, size_t cap,
         snprintf(err, errcap, "response field is too large");
         return -1;
     }
-    for (cell i = 0; i < n; i++) out[i] = (unsigned char)M[p + 1 + i];
+    for (cell i = 0; i < n; i++) {
+        unsigned char c = (unsigned char)M[p + 1 + i];
+        if ((c < 32 && c != 9) || c == 127) {
+            snprintf(err, errcap, "header contains a control byte");
+            return -1;
+        }
+        out[i] = c;
+    }
     *out_len = (size_t)n;
     return 0;
 }
@@ -516,9 +528,24 @@ static int http_begin_request(struct mg_connection *conn) {
         if (http_send_text(conn, 500, "text/plain; charset=utf-8",
                            "Glon dispatch failed") == 0) reply_status = 500;
     } else {
+        if (http.pre_pump) {
+            int pr;
+            do {
+                pr = http.pre_pump(http.pre_pump_user);
+                if (pr < 0) {
+                    fprintf(stderr, "glon: http: security pump failed for request %lu\n", id);
+                    http.errors++;
+                    http.fatal = 1;
+                    break;
+                }
+            } while (pr > 0);
+        }
         http_response r;
         int have = 0;
-        if (http_take_response(id, &r, &have, err, sizeof err) != 0) {
+        if (http.fatal) {
+            if (http_send_text(conn, 500, "text/plain; charset=utf-8",
+                               "Glon security operation failed") == 0) reply_status = 500;
+        } else if (http_take_response(id, &r, &have, err, sizeof err) != 0) {
             fprintf(stderr, "glon: http: response %lu: %s\n", id, err);
             http.errors++;
             http.fatal = 1;
@@ -537,6 +564,10 @@ static int http_begin_request(struct mg_connection *conn) {
         }
     }
     if (!http.fatal && http_app_stopped()) http.stop_requested = 1;
+    {
+        r0_s1_outcome clear_oc;
+        (void)http_run_expression("[ http/clear-current ]", &clear_oc);
+    }
     http.current_id = 0;
     pthread_mutex_unlock(&http.lock);
 
@@ -595,6 +626,8 @@ int glon_http_run(const glon_http_config *cfg, int report,
 
     memset(&http, 0, sizeof http);
     http.cfg = *cfg;
+    http.pre_pump = cfg->pre_pump;
+    http.pre_pump_user = cfg->pre_pump_user;
     http.pump = pump;
     http.pump_user = pump_user;
     pthread_mutex_init(&http.lock, NULL);

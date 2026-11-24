@@ -7,12 +7,13 @@
  *
  * The bridge is the existing persistent-session request/reply pattern:
  *
- *   host -> Glon   [ http/dispatch <id> <method> <path> <query> <body> <headers> ]
+ *   host -> Glon   [ http/dispatch <id> <method> <path> <query> <body> <headers> <peer> ]
  *   Glon -> host   [ http/take-response ]
  *                  => [id status ctype headers body] | NONE
  *
  * Request `body` is a STRING! of at most --http-max-body bytes.  Request
- * `headers` is a block of alternating STRING! name/value pairs (bounded).
+ * `headers` is a block of alternating STRING! name/value pairs (bounded);
+ * `peer` is the transport remote address (not a client-supplied forwarding header).
  * Response `headers` is NONE or the same alternating-block shape.  A response
  * body may be a STRING! or a nested block of STRING!/BLOCK! parts; the host
  * flattens it in order into one bounded transport buffer.  The host adds
@@ -40,6 +41,8 @@
 #define GLON_HTTP_HEADER_VALUE_CAP 256u
 #define GLON_HTTP_MAX_REQUEST_HEADERS 16u
 
+typedef int (*glon_http_pump_fn)(void *user);
+
 typedef struct {
     const char *bind;              /* listening address; default 127.0.0.1 */
     const char *cert;              /* combined PEM certificate + private key */
@@ -49,6 +52,12 @@ typedef struct {
     unsigned max_body;             /* request body cap; 1..4096, default 2048 */
     int keep_alive;                /* 0 = close after each response */
     const char *stop_event;        /* Windows named event for orderly stop */
+    /* Optional synchronous service pump for host-backed operations needed
+     * before the response (currently the security module).  It runs only while
+     * the current request is active; return 1 if it processed a request, 0 if
+     * none, -1 on failure.  The file pump remains post-response. */
+    glon_http_pump_fn pre_pump;
+    void *pre_pump_user;
 } glon_http_config;
 
 void glon_http_config_default(glon_http_config *cfg);
@@ -62,8 +71,6 @@ int glon_http_take_listen(int *port, char *err, size_t errcap);
  * configured"), -1 on a startup/runtime failure.  A configured listener with a
  * missing or unusable certificate is a failure: there is no insecure fallback.
  * `report` prints request/GC counters at shutdown. */
-typedef int (*glon_http_pump_fn)(void *user);
-
 int glon_http_run(const glon_http_config *cfg, int report,
                   glon_http_pump_fn pump, void *pump_user,
                   char *err, size_t errcap);

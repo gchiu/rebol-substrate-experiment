@@ -33,6 +33,10 @@
 #ifdef GLON_MODULE_HTTP
 #include "glon_http.h"
 #endif
+#ifdef GLON_MODULE_SEC
+#include "glon_sec.h"
+#include <openssl/crypto.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -150,10 +154,10 @@ static int load_default_libraries(void) {
         snprintf(path, sizeof path, "%s/glon-lib/%s", exe_dir, names[k]);
         if (load_library(path) != 0) return -1;
     }
-#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP)
-    /* strings-ext supplies s/from-int, used by the HTTP status JSON and by
-     * file.glon's write loop.  It is staged for every build but loaded only
-     * when an optional module needs it. */
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_SEC)
+    /* strings-ext supplies s/from-int, used by the HTTP status JSON, file.glon
+     * and sec.glon.  It is staged for every build but loaded only when an
+     * optional module needs it. */
     snprintf(path, sizeof path, "%s/glon-lib/strings-ext.glon", exe_dir);
     if (load_library(path) != 0) return -1;
 #endif
@@ -169,6 +173,11 @@ static int load_default_libraries(void) {
     /* Ordinary Glon over the host request/reply boundary; never loaded by the
      * minimal binary. */
     snprintf(path, sizeof path, "%s/glon-lib/http.glon", exe_dir);
+    if (load_library(path) != 0) return -1;
+#endif
+#ifdef GLON_MODULE_SEC
+    /* Ordinary Glon over the optional host security service. */
+    snprintf(path, sizeof path, "%s/glon-lib/sec.glon", exe_dir);
     if (load_library(path) != 0) return -1;
 #endif
     return 0;
@@ -221,6 +230,12 @@ static void report_outcome(const r0_s1_outcome *out, const char *path) {
     }
 }
 
+#ifdef GLON_MODULE_SEC
+#ifdef GLON_MODULE_HTTP
+static int pump_sec(void *user);
+#endif
+#endif
+
 #if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP)
 /* ---- optional module options -------------------------------------------- */
 
@@ -253,6 +268,10 @@ static void module_options_init(module_options *o) {
 #endif
 #ifdef GLON_MODULE_HTTP
     glon_http_config_default(&o->http);
+#ifdef GLON_MODULE_SEC
+    o->http.pre_pump = pump_sec;
+    o->http.pre_pump_user = NULL;
+#endif
 #endif
 }
 
@@ -355,10 +374,8 @@ static int parse_module_options(int argc, char **argv, int *first_file,
 }
 #endif /* GLON_MODULE_FILE || GLON_MODULE_HTTP */
 
-#ifdef GLON_MODULE_FILE
-/* ---- optional native file module driver --------------------------------- */
-
-#define IO_REPLY_SRC_CAP 32768
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_SEC)
+/* ---- shared host expression runner --------------------------------------- */
 
 static int run_expression(const char *src, r0_s1_outcome *oc) {
     /* Reply/take sources are transient host-built expressions.  Reclaim their
@@ -377,6 +394,12 @@ static int run_expression(const char *src, r0_s1_outcome *oc) {
     M[GC_LOADER_HP] = save_lhp;
     return r;
 }
+#endif
+
+#ifdef GLON_MODULE_FILE
+/* ---- optional native file module driver --------------------------------- */
+
+#define IO_REPLY_SRC_CAP 32768
 
 static int take_request(uint8_t *buf, size_t cap, size_t *len, int *pending,
                         char *err, size_t errcap) {
@@ -655,6 +678,168 @@ static int pump_file_io(void *user) {
 }
 #endif /* GLON_MODULE_FILE */
 
+
+#ifdef GLON_MODULE_SEC
+/* ---- optional security host driver -------------------------------------- */
+
+#define SEC_REPLY_SRC_CAP 16384
+
+static int append_bytes_expr(char *src, size_t cap, int *used,
+                             const unsigned char *bytes, size_t len) {
+    int n = *used;
+    if (n < 0 || (size_t)n >= cap) return -1;
+    n += snprintf(src + n, cap - (size_t)n, "mk-string [");
+    if (n < 0 || (size_t)n >= cap) return -1;
+    for (size_t i = 0; i < len; i++) {
+        n += snprintf(src + n, cap - (size_t)n, " %u", (unsigned)bytes[i]);
+        if (n < 0 || (size_t)n >= cap) return -1;
+    }
+    n += snprintf(src + n, cap - (size_t)n, " ]");
+    if (n < 0 || (size_t)n >= cap) return -1;
+    *used = n;
+    return 0;
+}
+
+static int take_sec_request(glon_sec_request *req, uint32_t *id, int *pending,
+                            char *err, size_t errcap) {
+    static const char expr[] = "[ sec/take-request ]";
+    r0_s1_outcome oc;
+    (void)run_expression(expr, &oc);
+    *pending = 0;
+    if (oc.status != R0S1_OUT_OK) {
+        snprintf(err, errcap, "sec/take-request failed (status %d)", oc.status);
+        return -1;
+    }
+    if (oc.count <= 0 ||
+        (oc.count == 1 && r0_s1_result(0, oc.count) == R0_NONE))
+        return 0;
+    if (oc.count != 1 || r0_tag(r0_s1_result(0, oc.count)) != T_BLOCK) {
+        snprintf(err, errcap, "sec/take-request did not return a BLOCK or NONE");
+        return -1;
+    }
+    cell p = r0_untag(r0_s1_result(0, oc.count));
+    if (M[p] != 3) {
+        snprintf(err, errcap, "sec/take-request block shape");
+        return -1;
+    }
+    cell idv = M[p + BLK_DATA];
+    cell opv = M[p + BLK_DATA + 1];
+    cell fields = M[p + BLK_DATA + 2];
+    if (r0_tag(idv) != T_INT || r0_tag(opv) != T_INT ||
+        r0_tag(fields) != T_BLOCK) {
+        snprintf(err, errcap, "sec/take-request field types");
+        return -1;
+    }
+    uint32_t rid = (uint32_t)int_val(idv);
+    unsigned op = (unsigned)int_val(opv);
+    if (rid == 0 || op < GLON_SEC_OP_RANDOM || op > GLON_SEC_OP_TIME) {
+        snprintf(err, errcap, "sec/take-request id/op");
+        return -1;
+    }
+    cell fp = r0_untag(fields);
+    cell nf = M[fp];
+    if (nf < 0 || nf > GLON_SEC_MAX_FIELDS) {
+        snprintf(err, errcap, "sec/take-request too many fields");
+        return -1;
+    }
+    memset(req, 0, sizeof *req);
+    req->op = op;
+    req->nfields = (unsigned)nf;
+    for (cell i = 0; i < nf; i++) {
+        cell sv = M[fp + BLK_DATA + i];
+        if (r0_tag(sv) != T_STRING) {
+            snprintf(err, errcap, "sec field is not a STRING!");
+            return -1;
+        }
+        cell sp = r0_untag(sv);
+        cell sl = M[sp];
+        if (sl < 0 || (size_t)sl > GLON_SEC_FIELD_CAP) {
+            snprintf(err, errcap, "sec field is too large");
+            return -1;
+        }
+        req->field_len[i] = (size_t)sl;
+        for (cell j = 0; j < sl; j++)
+            req->fields[i][j] = (unsigned char)M[sp + 1 + j];
+    }
+    *id = rid;
+    *pending = 1;
+    return 0;
+}
+
+static int run_sec_reply(uint32_t id, int ok,
+                         const unsigned char *v1, size_t v1len,
+                         const unsigned char *v2, size_t v2len,
+                         char *err, size_t errcap) {
+    char src[SEC_REPLY_SRC_CAP];
+    int n = snprintf(src, sizeof src, "[ sec/reply %u '%s ",
+                     id, ok ? "ok" : "error");
+    if (n < 0 || (size_t)n >= sizeof src) {
+        snprintf(err, errcap, "sec reply source too large");
+        return -1;
+    }
+    if (append_bytes_expr(src, sizeof src, &n, v1, v1len) != 0 ||
+        (n += snprintf(src + n, sizeof src - (size_t)n, " "), n < 0) ||
+        append_bytes_expr(src, sizeof src, &n, v2, v2len) != 0) {
+        snprintf(err, errcap, "sec reply source too large");
+        return -1;
+    }
+    n += snprintf(src + n, sizeof src - (size_t)n, " ]");
+    if (n < 0 || (size_t)n >= sizeof src) {
+        snprintf(err, errcap, "sec reply source too large");
+        return -1;
+    }
+    r0_s1_outcome oc;
+    (void)run_expression(src, &oc);
+    if (oc.status != R0S1_OUT_OK) {
+        report_outcome(&oc, "sec/reply");
+        snprintf(err, errcap, "sec/reply callback failed (status %d)", oc.status);
+        return -1;
+    }
+    return 0;
+}
+
+/* Returns -1 on an error, 0 when no request was pending, and 1 after at least
+ * one request/reply turn was completed.  The caller may loop until 0. */
+static int drain_sec(char *err, size_t errcap) {
+    int processed = 0;
+    for (;;) {
+        glon_sec_request req;
+        uint32_t id = 0;
+        int pending = 0;
+        if (take_sec_request(&req, &id, &pending, err, errcap) != 0)
+            return -1;
+        if (!pending)
+            return processed;
+        unsigned char out1[GLON_SEC_OUT_CAP];
+        unsigned char out2[GLON_SEC_OUT_CAP];
+        size_t out1_len = 0, out2_len = 0;
+        char op_err[128] = {0};
+        int ok = glon_sec_execute(&req, out1, &out1_len, out2, &out2_len,
+                                  op_err, sizeof op_err) == 0;
+        OPENSSL_cleanse(&req, sizeof req);
+        int rr = ok
+            ? run_sec_reply(id, 1, out1, out1_len, out2, out2_len, err, errcap)
+            : run_sec_reply(id, 0, (const unsigned char *)op_err,
+                            strlen(op_err), NULL, 0, err, errcap);
+        OPENSSL_cleanse(out1, sizeof out1);
+        OPENSSL_cleanse(out2, sizeof out2);
+        if (rr != 0)
+            return -1;
+        processed = 1;
+    }
+}
+
+#ifdef GLON_MODULE_HTTP
+static int pump_sec(void *user) {
+    (void)user;
+    char err[512];
+    int r = drain_sec(err, sizeof err);
+    if (r < 0) fprintf(stderr, "glon: sec: %s\n", err);
+    return r;
+}
+#endif
+#endif /* GLON_MODULE_SEC */
+
 /* ---- main ---------------------------------------------------------------- */
 
 int main(int argc, char **argv) {
@@ -731,6 +916,17 @@ int main(int argc, char **argv) {
         else (void)glon_io_cli_cleanup(io, NULL);
 #else
         /* minimal build: no file module, no request/reply driver */
+#endif
+
+#ifdef GLON_MODULE_SEC
+        {
+            char sec_err[512];
+            if (drain_sec(sec_err, sizeof sec_err) < 0) {
+                fprintf(stderr, "glon: sec: %s\n", sec_err);
+                rc = 1;
+                break;
+            }
+        }
 #endif
     }
 
