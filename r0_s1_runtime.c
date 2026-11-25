@@ -4258,6 +4258,10 @@ void r0_s1_dump_ip(void) {
     const char *nm = (wid >= 0 && wid < 512) ? syms[wid] : NULL;
     fprintf(stderr, "  [word=%ld name=%s ctx=%ld]\n", wid, nm ? nm : "?",
             (long)s1_mem(RV_CTX));
+    cell tw = s1_mem(s1_mem(REG_SP));
+    long twid = (long)word_id(tw);
+    const char *tnm = (twid >= 0 && twid < 512) ? syms[twid] : NULL;
+    fprintf(stderr, "  [top word=%ld name=%s]\n", twid, tnm ? tnm : "?");
 }
 
 /* D2A debug: read-only dump of every non-empty task's saved record and the
