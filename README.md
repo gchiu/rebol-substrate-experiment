@@ -292,6 +292,11 @@ task (IP 11953, reason 0; SP at the arena base, RP in bounds, HP low), not a
 Glon error or stack/heap exhaustion. A minimal proposed correction is recorded
 in `H2E-RESULTS.md`; it is not applied (runtime-contract change).
 
+H2F confirmed the diagnosis and implemented the fix (use the live `REG_SP/RP`
+for the running task in the GC sentry): the first request then succeeds, but
+the added code overflows the fixed 16,128-cell code region, so the fix is
+reverted pending an approved code-limit increase (see `M2F-RESULTS.md`).
+
 To serve the generated browser demo locally:
 
     python3 -m http.server 8000
