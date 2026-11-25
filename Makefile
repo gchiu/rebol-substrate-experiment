@@ -716,6 +716,12 @@ h1-test:
 	python3 tests/h1/acceptance.py --glon $(CURDIR)/glon
 .PHONY: h1-test
 
+# ---- H2Q: async continuation ownership tests -------------------------------
+h2q-test:
+	$(MAKE) --no-print-directory glon MODULES=task MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	python3 tests/h2q/ownership.py --glon $(CURDIR)/glon
+.PHONY: h2q-test
+
 # ---- H2A: bounded asynchronous HTTP request/response bridge ---------------
 # Opt-in --http-bridge: CivetWeb workers enqueue into a bounded table and wait;
 # one interpreter-owner loop runs the Glon application.  Default (non-bridge)

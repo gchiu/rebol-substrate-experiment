@@ -350,6 +350,7 @@ In order:
 | H2O-R: D1 debugger lacks single-step/task-selection; C-side dump used; first divergence at async SQLite resume (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | D2A: C-side read-only task dumper works; suspended task's saved ctx is task-run activation (parent global) missing the helper activation owning `a` (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | H2P: live ctx at lookup = task-run activation -> helper activation popped on return before continuation reads `a` (Case 2); no safe fix applied (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
+| H2Q: ownership tests prove closures capture locals across return+async suspend; uncaptured rejected; fix is app/adapter capture (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | Glon Developer Preview 1 (**public alpha release preparation**) | `v0.1.0-alpha.1` | *(this release commit)* |
 | Glon Developer Preview 1 correction (**public alpha.2 pre-release**) | `v0.1.0-alpha.2` | `5b4dee9` |
 | Cross-platform native CI matrix (**verification infrastructure**) | *(CI branch)* | *(this commit)* |
