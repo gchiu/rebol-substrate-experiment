@@ -323,8 +323,11 @@ defect (see `H2K-RESULTS.md`).
 H2L isolated it: a standalone SQLite mock (task-run+handler+respond, one
 session) PASSES, so SQLite/7-args/respond are not the cause; the host-spawned
 HTTP task resumed in a later pump session loses the helper activation (see
-`H2L-RESULTS.md`). The fix is a runtime activation-restoration change, not
-applied.
+`H2L-RESULTS.md`).
+
+H2M ruled out the session boundary: spawning in one CLI session and running in
+another preserves nested locals (`S=1`), so persistent ownership is not the fix;
+the defect is specific to the host-spawned HTTP task path (see `H2M-RESULTS.md`).
 
 To serve the generated browser demo locally:
 
