@@ -353,6 +353,7 @@ In order:
 | H2Q: ownership tests prove closures capture locals across return+async suspend; uncaptured rejected; fix is app/adapter capture (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | H2S: failing word `a` = wp/ci-loop local (web.glon:71); continuation reads it after helper return; fix at call site (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | H2T: wp/ci-loop activation absent at lookup -> lookup AFTER return (Case B); call site must capture/return (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
+| H2U: fail-stop IP 11953 (r_lookup) word a ctx task-run; source mapping absent -> need debug instr->function map (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | Glon Developer Preview 1 (**public alpha release preparation**) | `v0.1.0-alpha.1` | *(this release commit)* |
 | Glon Developer Preview 1 correction (**public alpha.2 pre-release**) | `v0.1.0-alpha.2` | `5b4dee9` |
 | Cross-platform native CI matrix (**verification infrastructure**) | *(CI branch)* | *(this commit)* |
