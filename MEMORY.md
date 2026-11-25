@@ -336,6 +336,7 @@ In order:
 | H2A bounded async HTTP request/response bridge (--http-bridge, opt-in) (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | H2B cooperative HTTP tasks (--http-tasks, partial; blocked by per-task stack vs M1 arena) (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | H2C task stack audit (measured ~2,500 RS cells/task; recommend ~32k arena, option B) (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
+| H2D configurable task arena (MEM_M1_CELLS; 32k verified for 10 tasks) + HTTP task suspend/resume (delivery blocked) (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | Glon Developer Preview 1 (**public alpha release preparation**) | `v0.1.0-alpha.1` | *(this release commit)* |
 | Glon Developer Preview 1 correction (**public alpha.2 pre-release**) | `v0.1.0-alpha.2` | `5b4dee9` |
 | Cross-platform native CI matrix (**verification infrastructure**) | *(CI branch)* | *(this commit)* |

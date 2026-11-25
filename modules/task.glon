@@ -242,5 +242,18 @@ spawn: func [body] [
     mnew-task body 'task-run 'task-finish
 ]
 
+;; H2D: per-task response slot (a GC-traced block or NONE).
+task-resp-set: raw 1 [
+    LIT M1_CUR_TASK @ LIT TREC_RESP ADD !
+    ARITY 0 EXIT
+]
+task-resp-get: raw [
+    LIT M1_CUR_TASK @ LIT TREC_RESP ADD @ ARITY 1 EXIT
+]
+task-resp-get-for: raw 1 [
+    LIT 16 DIV LIT M1_S0 !
+    LIT M1_S0 @ LIT TREC_RESP ADD @ ARITY 1 EXIT
+]
+
 repeat: func [n b] [ either > n 0 [ do b repeat - n 1 b ] [ none ] ]
 ]

@@ -550,9 +550,9 @@ static int http_bridge_dispatch(http_bridge_req *s, char *err, size_t errcap) {
 static int http_bridge_spawn_task(http_bridge_req *s, char *err, size_t errcap) {
     char body[GLON_HTTP_SRC_CAP];
     http_src b = { body, 0, sizeof body, 0 };
-    hs_text(&b, "[ http/task-run [ ");
+    hs_text(&b, "[ http/task-run ");
     http_bridge_request_args(&b, s);
-    hs_text(&b, " ] ]");
+    hs_text(&b, " ]");
     if (b.overflow || b.len + 1 >= b.cap) {
         snprintf(err, errcap, "task source is too large");
         return -1;
@@ -577,8 +577,8 @@ static int http_bridge_spawn_task(http_bridge_req *s, char *err, size_t errcap) 
  * Returns 1 if a response was stored, 0 if none yet, -1 on error. */
 static int http_bridge_collect(http_bridge_req *s, char *err, size_t errcap) {
     char src[128];
-    if (snprintf(src, sizeof src, "[ http/take-response-for %lu ]", s->id) >=
-        (int)sizeof src)
+    if (snprintf(src, sizeof src, "[ http/take-response-for %lu ]",
+                 (unsigned long)s->id) >= (int)sizeof src)
         return -1;
     r0_s1_outcome oc;
     if (http_run_expression(src, &oc) != 0 || oc.status != R0S1_OUT_OK) {

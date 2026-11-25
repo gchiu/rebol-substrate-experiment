@@ -283,6 +283,10 @@ H2C measured the requirement: the HTTP response path needs ≈2,500 return-stack
 cells/task, so ten tasks need a ≈32,000-cell M1 arena (option B in
 `H2C-RESULTS.md`); the arena increase is an approved scaling change, not applied.
 
+H2D makes the arena configurable (`MEM_M1_CELLS`, default 10,200; 32k verified
+for ten non-HTTP tasks) and fixes the H2B request encoding; the HTTP+SQLite task
+path now suspends/resumes but response delivery still halts (see `H2D-RESULTS.md`).
+
 To serve the generated browser demo locally:
 
     python3 -m http.server 8000

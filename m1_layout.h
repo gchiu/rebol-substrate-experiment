@@ -110,6 +110,7 @@
                            * task that inherited the slot. */
 #define TREC_MINSP  11   /* H2C: per-task data-stack high-water (min SP)     */
 #define TREC_MINRP  12   /* H2C: per-task return-stack high-water (min RP)   */
+#define TREC_RESP   13   /* H2D: per-task response block (GC-traced root)    */
 
 /* task states */
 #define TASK_RUNNABLE 0

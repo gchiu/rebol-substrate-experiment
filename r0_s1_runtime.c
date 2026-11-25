@@ -272,6 +272,7 @@ static const raw_sym_t raw_syms[] = {
     { "TREC_GEN", TREC_GEN },
     { "TREC_MINSP", TREC_MINSP },
     { "TREC_MINRP", TREC_MINRP },
+    { "TREC_RESP", TREC_RESP },
     { "GC_GLOBAL_CTX", GC_GLOBAL_CTX },
     /* M2: task-capacity and state names used by the loadable task vocabulary.
      * These are numeric layout constants only; no scheduling semantics live in
@@ -1577,6 +1578,7 @@ static void emit_collect(void) {
     cell j_skip = asm_zbranch_fwd();
     e_cell(GC_C4); asm_lit(TREC_CTX); asm_host(HOST_ADD); asm_fetch(); asm_call(r_mark_value);
     e_cell(GC_C4); asm_lit(TREC_FRAME); asm_host(HOST_ADD); asm_fetch(); asm_call(r_mark_frame);
+    e_cell(GC_C4); asm_lit(TREC_RESP); asm_host(HOST_ADD); asm_fetch(); asm_call(r_mark_value);
     e_cell(GC_C3); asm_lit(M1_TASK_CELLS); asm_host(HOST_MUL);
     asm_lit(M1_ARENA_BASE); asm_host(HOST_ADD); e_setc(GC_C5);       /* top base */
     /* task stack sentry: a RUNNABLE task's saved SP/RP must lie inside its

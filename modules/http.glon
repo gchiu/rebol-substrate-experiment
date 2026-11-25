@@ -164,13 +164,18 @@ http/respond-with: func [request status content-type headers body] [
     ]
 ]
 
-;; H2B: per-id response lookup for the interpreter-owner loop.  Returns
-;; [id status ctype headers body] and removes it, or NONE.
+;; H2B: per-id response lookup for the interpreter-owner loop.  Returns the
+;; head pair [id status ctype headers body] and removes it when the id matches,
+;; or NONE.  The owner re-polls, so responses are drained in order.
 http/take-response-for: func [id] [
-    pair: http/response-find http/responses id
-    either pair [
-        http/responses: http/response-remove http/responses id
-        pair
+    either http/responses [
+        pair: block-at http/responses 0
+        either - block-at pair 0 id [
+            none
+        ] [
+            http/responses: block-at http/responses 1
+            pair
+        ]
     ] [ none ]
 ]
 http/response-find: func [xs id] [
@@ -194,9 +199,11 @@ http/response-remove: func [xs id] [
     ] [ none ]
 ]
 
-;; H2B: task entry.  Runs the application handler; the handler may suspend on
-;; async I/O (task-wait) and its reply callback calls http/respond (per-id).
-http/task-run: func [request] [
+;; H2B: task entry.  The host passes the seven request fields as evaluated
+;; arguments; the task builds the request block and runs the handler, which may
+;; suspend on async I/O (task-wait) and whose reply callback calls http/respond.
+http/task-run: func [id method path query body headers peer] [
+    request: reduce [ id method path query body headers peer ]
     result: judge [ http/handler :request ]
     either sin? result [
         http/respond request 500 "text/plain; charset=utf-8" "internal error"

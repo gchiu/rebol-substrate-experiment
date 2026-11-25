@@ -463,9 +463,9 @@ GLON_CONFIG = .glon-config
 .PHONY: FORCE
 FORCE:
 $(GLON_CONFIG): FORCE
-	@printf '%s %s %s %s %s %s %s %s %s %s %s' '$(strip $(MODULES))' '$(GLON_HTTP_RECLAIM_M1)' \
+	@printf '%s %s %s %s %s %s %s %s %s %s %s %s' '$(strip $(MODULES))' '$(GLON_HTTP_RECLAIM_M1)' \
 	    '$(MEM_PROFILE)' '$(MEM_MANAGED_CELLS)' '$(MEM_WORKLIST_CELLS)' '$(MEM_LOADER_CELLS)' \
-	    '$(M1_TASKS)' '$(M1_TASK_CELLS)' '$(M1_DS_OFF)' '$(M1_RS_OFF)' '$(M1_WRAPPER_DELTA)' > $@.tmp
+	    '$(M1_TASKS)' '$(M1_TASK_CELLS)' '$(M1_DS_OFF)' '$(M1_RS_OFF)' '$(M1_WRAPPER_DELTA)' '$(MEM_M1_CELLS)' > $@.tmp
 	@if ! cmp -s $@.tmp $@; then mv $@.tmp $@; else rm -f $@.tmp; fi
 
 build/profile:
