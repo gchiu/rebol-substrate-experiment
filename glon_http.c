@@ -62,6 +62,7 @@ typedef struct {
 } http_state;
 
 static http_state http;
+extern int glon_task_dump_enabled;   /* D2A: --task-dump */
 
 /* ---- H2A bounded bridge request table ---------------------------------- *
  * In bridge mode a CivetWeb worker copies the request into a slot and waits
@@ -698,6 +699,7 @@ static void http_bridge_process_tasks(void) {
             http_outcome_text(&oc, err, sizeof err);
             fprintf(stderr, "glon: http: run-tasks: %s\n", err);
             if (oc.status == R0S1_OUT_HALT) r0_s1_dump_ip();
+            if (oc.status == R0S1_OUT_HALT) r0_s1_task_dump();
             http.errors++;
             http.fatal = 1;
         }

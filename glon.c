@@ -218,6 +218,8 @@ static int load_task_library(void) {
 
 /* ---- outcome reporting --------------------------------------------------- */
 
+int glon_task_dump_enabled;
+
 static void report_outcome(const r0_s1_outcome *out, const char *path) {
     switch (out->status) {
     case R0S1_OUT_OK:
@@ -258,6 +260,7 @@ static void report_outcome(const r0_s1_outcome *out, const char *path) {
             fprintf(stderr, "glon: %s: ** halted (reason %d: no SIN!: a machine-level fail-stop)\n",
                     path, r0_s1_halt_reason());
         r0_s1_dump_ip();
+        if (glon_task_dump_enabled) r0_s1_task_dump();
         return;
     default:
         fprintf(stderr, "glon: %s: ** unknown session outcome\n", path);
@@ -290,6 +293,7 @@ typedef struct {
     glon_sqlite_config sqlite;
     int sqlite_report;
 #endif
+    int task_dump;
 } module_options;
 
 #if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_TASK)
@@ -431,6 +435,8 @@ static int parse_module_options(int argc, char **argv, int *first_file,
             o->http.task_mode = 1;
         } else if (!strcmp(a, "--http-report")) {
             o->http_report = 1;
+        } else if (!strcmp(a, "--task-dump")) {
+            o->task_dump = 1;
         } else if (!strcmp(a, "--http-stop-event")) {
             if (++i >= argc || !argv[i][0]) return -1;
             o->http.stop_event = argv[i];
@@ -1214,6 +1220,7 @@ int main(int argc, char **argv) {
 #if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_SQLITE) || defined(GLON_MODULE_TASK)
     module_options opts;
     module_options_init(&opts);
+    glon_task_dump_enabled = opts.task_dump;
     int first_file = 1;
     if (parse_module_options(argc, argv, &first_file, &opts) != 0) {
         module_usage();

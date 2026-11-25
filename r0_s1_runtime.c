@@ -4259,6 +4259,36 @@ void r0_s1_dump_ip(void) {
     fprintf(stderr, "  [word=%ld name=%s ctx=%ld]\n", wid, nm ? nm : "?",
             (long)s1_mem(RV_CTX));
 }
+
+/* D2A debug: read-only dump of every non-empty task's saved record and the
+ * context chain of a suspended (runnable) task.  Never switches into a task. */
+static void task_dump_ctx(cell ctx, int depth) {
+    if (depth > 32 || !ctx) return;
+    cell p = r0_untag(ctx);
+    int count = (int)M[p + CTX_COUNT], cap = (int)M[p + CTX_CAP];
+    if (count < 0 || count > cap || cap > R0S1_CTX_CAP) return;
+    for (int i = 0; i < count; i++) {
+        cell w = M[p + CTX_DATA + 2 * i], v = M[p + CTX_DATA + 2 * i + 1];
+        long wid = (long)word_id(w);
+        const char *nm = (wid >= 0 && wid < 512) ? syms[wid] : NULL;
+        fprintf(stderr, "    [%d] %s = %ld (tag %ld)\n", i, nm ? nm : "?",
+                (long)v, (long)r0_tag(v));
+    }
+    task_dump_ctx(M[p + CTX_PARENT], depth + 1);
+}
+
+void r0_s1_task_dump(void) {
+    for (int i = 0; i < M1_MAX_TASKS; i++) {
+        cell rec = M1_TASK_TABLE + i * M1_TASK_REC_SIZE;
+        int state = (int)M[rec + TREC_STATE];
+        if (state == TASK_EMPTY) continue;
+        fprintf(stderr, "task[%d] state=%d gen=%ld ip=%ld sp=%ld rp=%ld ctx=%ld frame=%ld\n",
+                i, state, (long)M[rec + TREC_GEN], (long)M[rec + TREC_IP],
+                (long)M[rec + TREC_SP], (long)M[rec + TREC_RP],
+                (long)M[rec + TREC_CTX], (long)M[rec + TREC_FRAME]);
+        if (state == TASK_RUNNABLE) task_dump_ctx(M[rec + TREC_CTX], 0);
+    }
+}
 cell r0_s1_sp_start(void) { return sp_start; }
 cell r0_s1_sp_end(void)   { return sp_end; }
 cell r0_s1_rp_start(void) { return rp_start; }
