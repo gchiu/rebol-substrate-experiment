@@ -356,6 +356,7 @@ In order:
 | H2U: fail-stop IP 11953 (r_lookup) word a ctx task-run; source mapping absent -> need debug instr->function map (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | H2V: expression-level trace (RV_BLK/RV_CUR + element dump) added; failing block an `either` control block (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | H2W: idx=-2 = block-entry header state (valid, not corruption); need pre-lookup RV_CUR snapshot for data element (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
+| H2X: r_lookup pops word; halt RV_CUR at header -> exact element needs a debug pre-lookup hook (frozen HOST) (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | Glon Developer Preview 1 (**public alpha release preparation**) | `v0.1.0-alpha.1` | *(this release commit)* |
 | Glon Developer Preview 1 correction (**public alpha.2 pre-release**) | `v0.1.0-alpha.2` | `5b4dee9` |
 | Cross-platform native CI matrix (**verification infrastructure**) | *(CI branch)* | *(this commit)* |
