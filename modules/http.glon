@@ -204,8 +204,7 @@ http/response-remove: func [xs id] [
 ;; suspend on async I/O (task-wait) and whose reply callback calls http/respond.
 http/task-run: func [id method path query body headers peer] [
     request: reduce [ id method path query body headers peer ]
-    result: judge [ http/handler :request ]
-    either sin? result [
+    either sin? judge [ http/handler :request ] [
         http/respond request 500 "text/plain; charset=utf-8" "internal error"
     ] [
         either http/take-response-for (block-at request 0) [

@@ -340,6 +340,7 @@ In order:
 | H2E diagnosis: response-collection halt = collector task-sentry fail-stop on a resumed task (IP 11953, reason 0) (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | H2F sentry fix (live SP/RP for running task) confirmed; blocked by 16,128-cell code-space ceiling (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | H2G: code region enlarged (+256) but halt persists -> real cause is unbound word 3490 in resumed task context (GC-sentry theory disproven) (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
+| H2H: word 3490 = id 218 `result` (then `a`); task context chain not restored across async suspension (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | Glon Developer Preview 1 (**public alpha release preparation**) | `v0.1.0-alpha.1` | *(this release commit)* |
 | Glon Developer Preview 1 correction (**public alpha.2 pre-release**) | `v0.1.0-alpha.2` | `5b4dee9` |
 | Cross-platform native CI matrix (**verification infrastructure**) | *(CI branch)* | *(this commit)* |

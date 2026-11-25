@@ -298,9 +298,15 @@ the added code overflows the fixed 16,128-cell code region, so the fix is
 reverted pending an approved code-limit increase (see `M2F-RESULTS.md`).
 
 H2G enlarged the code region (+256 cells, fits) but the halt persisted: tagging
-every GC fail-stop showed the real cause is an **unbound word (id 3490)** in the
-resumed task's context, not the GC sentry. The H2E/H2F diagnosis is disproven;
+every GC fail-stop showed the real cause is an **unbound word** in the resumed
+task's context, not the GC sentry. The H2E/H2F diagnosis is disproven;
 see `H2G-RESULTS.md`.
+
+H2H resolved the word: id 218 = `result` (a `http/task-run` local), then `a`
+after removing it. The task's restored context does not chain to the
+intermediate activation contexts created across the async suspension, so live
+locals are treated as unbound (see `H2H-RESULTS.md`). The fix is a runtime
+activation-chain restoration change, not applied.
 
 To serve the generated browser demo locally:
 

@@ -4253,6 +4253,11 @@ void r0_s1_dump_ip(void) {
     fprintf(stderr, "  [ip=%ld ops %ld %ld %ld %ld %ld %ld]\n", ip,
             (long)s1_mem(ip - 4), (long)s1_mem(ip - 3), (long)s1_mem(ip - 2),
             (long)s1_mem(ip - 1), (long)s1_mem(ip), (long)s1_mem(ip + 1));
+    cell w = s1_mem(RV_WORD);
+    long wid = (long)word_id(w);
+    const char *nm = (wid >= 0 && wid < 512) ? syms[wid] : NULL;
+    fprintf(stderr, "  [word=%ld name=%s ctx=%ld]\n", wid, nm ? nm : "?",
+            (long)s1_mem(RV_CTX));
 }
 cell r0_s1_sp_start(void) { return sp_start; }
 cell r0_s1_sp_end(void)   { return sp_end; }
