@@ -1,6 +1,3 @@
 [
-io/open "doc.txt" 'read
-    func [h] [ s/print "UNEXPECTED" ]
-    func [e] [ raise e ]
-io/pending-request: reduce [ 1 1 0 ]
+io/queue: reduce [ reduce [ 1 1 0 none none none ] none ]
 ]

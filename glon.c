@@ -1159,7 +1159,11 @@ static int pump_tasks(const module_options *opts, char *err, size_t errcap) {
         r0_s1_outcome oc;
         if (run_expression("[ run-tasks ]", &oc) != 0 ||
             oc.status != R0S1_OUT_OK) {
-            snprintf(err, errcap, "run-tasks failed (status %d)", oc.status);
+            if (oc.status == R0S1_OUT_HALT)
+                snprintf(err, errcap, "run-tasks halted (reason %d)",
+                         r0_s1_halt_reason());
+            else
+                snprintf(err, errcap, "run-tasks failed (status %d)", oc.status);
             return -1;
         }
         int did = 0;

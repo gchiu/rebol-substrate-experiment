@@ -247,6 +247,11 @@ with a host pump; ten tasks can run, yield and suspend on async I/O:
 
     make m2-test
 
+Multiple outstanding async I/O (M3) lets many tasks each have a request pending
+at once (bounded FIFO, id-correlated replies), over the same file/SQLite modules:
+
+    make m3-test
+
 To serve the generated browser demo locally:
 
     python3 -m http.server 8000

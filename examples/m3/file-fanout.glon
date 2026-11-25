@@ -1,0 +1,26 @@
+;; examples/m3/file-fanout.glon -- ten tasks with independent outstanding reads.
+;;
+;; Each task issues its own file/read and suspends (task-wait); the host drains
+;; the requests and each reply resumes its originating task with its own result.
+;; The files f0.txt..f9.txt must exist under the --io-root.
+;;
+;; Run:
+;;   ./glon --io-root DIR --allow-file-read --allow-file-write \
+;;     examples/m3/file-fanout.glon
+[
+r0: none  r1: none  r2: none  r3: none  r4: none
+r5: none  r6: none  r7: none  r8: none  r9: none
+
+spawn [ me: self  file/read "f0.txt" func [c] [ r0: c  task-wake me ] func [e] [ r0: e  task-wake me ]  task-wait  s/print s/+ "R0=" r0 ]
+spawn [ me: self  file/read "f1.txt" func [c] [ r1: c  task-wake me ] func [e] [ r1: e  task-wake me ]  task-wait  s/print s/+ "R1=" r1 ]
+spawn [ me: self  file/read "f2.txt" func [c] [ r2: c  task-wake me ] func [e] [ r2: e  task-wake me ]  task-wait  s/print s/+ "R2=" r2 ]
+spawn [ me: self  file/read "f3.txt" func [c] [ r3: c  task-wake me ] func [e] [ r3: e  task-wake me ]  task-wait  s/print s/+ "R3=" r3 ]
+spawn [ me: self  file/read "f4.txt" func [c] [ r4: c  task-wake me ] func [e] [ r4: e  task-wake me ]  task-wait  s/print s/+ "R4=" r4 ]
+spawn [ me: self  file/read "f5.txt" func [c] [ r5: c  task-wake me ] func [e] [ r5: e  task-wake me ]  task-wait  s/print s/+ "R5=" r5 ]
+spawn [ me: self  file/read "f6.txt" func [c] [ r6: c  task-wake me ] func [e] [ r6: e  task-wake me ]  task-wait  s/print s/+ "R6=" r6 ]
+spawn [ me: self  file/read "f7.txt" func [c] [ r7: c  task-wake me ] func [e] [ r7: e  task-wake me ]  task-wait  s/print s/+ "R7=" r7 ]
+spawn [ me: self  file/read "f8.txt" func [c] [ r8: c  task-wake me ] func [e] [ r8: e  task-wake me ]  task-wait  s/print s/+ "R8=" r8 ]
+spawn [ me: self  file/read "f9.txt" func [c] [ r9: c  task-wake me ] func [e] [ r9: e  task-wake me ]  task-wait  s/print s/+ "R9=" r9 ]
+
+run-tasks
+]

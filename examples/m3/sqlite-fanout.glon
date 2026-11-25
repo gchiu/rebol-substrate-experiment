@@ -1,0 +1,53 @@
+;; examples/m3/sqlite-fanout.glon -- ten tasks with independent outstanding SQL.
+;;
+;; Each task runs a parameterised INSERT and suspends; the host serialises the
+;; statements on the single connection and each reply resumes its own task.
+;; After all tasks finish, the row count is printed.
+;;
+;; Run:
+;;   ./glon --io-root DIR --allow-file-read --allow-file-write \
+;;     examples/m3/sqlite-fanout.glon
+[
+db: none
+count: 0
+
+;; One parameterised insert; the reply resumes the originating task.
+ins: func [me v] [
+    sqlite/prepare db "INSERT INTO m(v) VALUES (?)"
+        func [st] [
+            sqlite/bind-text st 1 v
+                func [b] [
+                    sqlite/step st
+                        func [done] [
+                            sqlite/finalize st
+                                func [f] [ task-wake me ]
+                                func [e] [ task-wake me ]
+                        ]
+                        func [e] [ task-wake me ]
+                ]
+                func [e] [ task-wake me ]
+        ]
+        func [e] [ task-wake me ]
+]
+
+spawn [ me: self  ins me "v0"  task-wait ]
+spawn [ me: self  ins me "v1"  task-wait ]
+spawn [ me: self  ins me "v2"  task-wait ]
+spawn [ me: self  ins me "v3"  task-wait ]
+spawn [ me: self  ins me "v4"  task-wait ]
+spawn [ me: self  ins me "v5"  task-wait ]
+spawn [ me: self  ins me "v6"  task-wait ]
+spawn [ me: self  ins me "v7"  task-wait ]
+spawn [ me: self  ins me "v8"  task-wait ]
+spawn [ me: self  ins me "v9"  task-wait ]
+
+sqlite/open "m3.db"
+    func [h] [
+        db: h
+        sqlite/exec db
+            "CREATE TABLE IF NOT EXISTS m(id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)"
+            func [x] [ run-tasks ]
+            func [e] [ raise e ]
+    ]
+    func [e] [ raise e ]
+]
