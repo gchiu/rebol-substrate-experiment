@@ -4262,6 +4262,20 @@ void r0_s1_dump_ip(void) {
     long twid = (long)word_id(tw);
     const char *tnm = (twid >= 0 && twid < 512) ? syms[twid] : NULL;
     fprintf(stderr, "  [top word=%ld name=%s]\n", twid, tnm ? tnm : "?");
+    /* H2V: Glon expression location -- current block and element index. */
+    cell blk = r0_untag(s1_mem(RV_BLK));
+    cell cur = r0_untag(s1_mem(RV_CUR));
+    long idx = (long)(cur - blk - BLK_DATA);
+    long cnt = (long)M[blk];
+    fprintf(stderr, "  [blk=%ld count=%ld idx=%ld]\n", (long)blk, cnt, idx);
+    for (long k = idx - 2; k <= idx + 2; k++) {
+        if (k < 0 || k >= cnt) continue;
+        cell e = M[blk + BLK_DATA + k];
+        long eid = (long)word_id(e);
+        const char *enm = (eid >= 0 && eid < 512) ? syms[eid] : NULL;
+        fprintf(stderr, "    [%ld] %s (tag %ld)\n", k, enm ? enm : "?",
+                (long)r0_tag(e));
+    }
 }
 
 /* D2A debug: read-only dump of every non-empty task's saved record and the
