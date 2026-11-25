@@ -337,6 +337,11 @@ and continue, but **no single-step and no task selection**, so it cannot step
 across the async resume or attach to the suspended HTTP task; the C-side
 `r0_s1_dump_ip` was the minimal adapter (see `H2O-DEBUG-RESULTS.md`).
 
+D2 added read-only task inspection (`task-ctx`/`task-frame` + D1's `ctx-lookup`),
+but the walk needs ~244 code cells and only 52 are free; raising `R0S1_DS_INIT`
+breaks the main stack sentry, so the extension is blocked by the fixed code-space
+ceiling (see `DEBUGGER-D2-RESULTS.md`).
+
 To serve the generated browser demo locally:
 
     python3 -m http.server 8000
