@@ -60,6 +60,7 @@ typedef struct {
     unsigned max_body;             /* request body cap; 1..4096, default 2048 */
     unsigned num_threads;          /* CivetWeb worker pool; default 1 (serial) */
     int bridge_mode;               /* opt-in: workers enqueue, owner runs Glon */
+    int task_mode;                 /* H2B: each request is a Glon task (implies bridge) */
     int keep_alive;                /* 0 = close after each response */
     const char *stop_event;        /* Windows named event for orderly stop */
     /* Optional synchronous service pump for host-backed operations needed

@@ -726,6 +726,17 @@ h2a-test:
 	python3 tests/h2a/acceptance.py --glon $(CURDIR)/glon
 .PHONY: h2a-test
 
+# ---- H2B: cooperative HTTP request scheduling (partial) -------------------
+# Opt-in --http-tasks spawns a Glon task per request.  The 10-task success
+# criterion is blocked by the per-task return-stack vs. M1-arena limit; this
+# target builds a 3-task config and runs the partial smoke only.  See
+# H2B-RESULTS.md.  G3F/H2A remain the supported HTTPS paths.
+h2b-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,task MEM_PROFILE=large MEM_LOADER_CELLS=500000 M1_TASKS=3 M1_TASK_CELLS=3400 M1_DS_OFF=400 M1_RS_OFF=3400 M1_WRAPPER_DELTA=256
+	tests/https-g1/make-cert.sh
+	python3 tests/h2b/smoke.py
+.PHONY: h2b-test
+
 # Focused M1 test binary for portable distribution smoke tests.  The full
 # native `s1` suite needs repository source fixtures and is not shipped in
 # every platform package.

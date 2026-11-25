@@ -272,6 +272,13 @@ Glon application (default mode is unchanged G3F):
 
     make h2a-test
 
+Cooperative HTTP tasks (H2B) are an opt-in `--http-tasks` experiment. The
+host-side task path is in place, but the 10-task goal is blocked by the per-task
+return-stack vs. M1-arena limit (see `H2B-RESULTS.md`); G3F/H2A remain the
+supported HTTPS paths:
+
+    make h2b-test   # partial smoke only; not a passing 10-task demo
+
 To serve the generated browser demo locally:
 
     python3 -m http.server 8000

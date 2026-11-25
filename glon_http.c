@@ -86,6 +86,7 @@ typedef struct {
     char peer[48];
     http_response resp;
     double deadline;
+    cell task;   /* H2B: Glon task handle (0 = none) */
 } http_bridge_req;
 
 static http_bridge_req http_bridge[GLON_HTTP_MAX_BRIDGE_REQUESTS];
@@ -500,31 +501,37 @@ static double http_now_sec(void) {
     return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
 }
 
+/* Emit the request block contents `<id> <method> <path> <query> <body>
+ * <headers> <peer>` (the argument list for http/dispatch or http/task-run). */
+static void http_bridge_request_args(http_src *b, const http_bridge_req *s) {
+    hs_uint(b, s->id);
+    hs_byte(b, ' ');
+    hs_string(b, (const unsigned char *)s->method, strlen(s->method));
+    hs_byte(b, ' ');
+    hs_string(b, (const unsigned char *)s->path, strlen(s->path));
+    hs_byte(b, ' ');
+    hs_string(b, (const unsigned char *)s->query, strlen(s->query));
+    hs_byte(b, ' ');
+    hs_string(b, s->body, s->body_len);
+    hs_byte(b, ' ');
+    hs_text(b, "reduce [");
+    for (unsigned i = 0; i < s->header_count; i++) {
+        hs_byte(b, ' ');
+        hs_string(b, (const unsigned char *)s->header_names[i],
+                  strlen(s->header_names[i]));
+        hs_byte(b, ' ');
+        hs_string(b, (const unsigned char *)s->header_values[i],
+                  strlen(s->header_values[i]));
+    }
+    hs_text(b, " ] ");
+    hs_string(b, (const unsigned char *)s->peer, strlen(s->peer));
+}
+
 static int http_bridge_dispatch(http_bridge_req *s, char *err, size_t errcap) {
     char src[GLON_HTTP_SRC_CAP];
     http_src b = { src, 0, sizeof src, 0 };
     hs_text(&b, "[ http/dispatch ");
-    hs_uint(&b, s->id);
-    hs_byte(&b, ' ');
-    hs_string(&b, (const unsigned char *)s->method, strlen(s->method));
-    hs_byte(&b, ' ');
-    hs_string(&b, (const unsigned char *)s->path, strlen(s->path));
-    hs_byte(&b, ' ');
-    hs_string(&b, (const unsigned char *)s->query, strlen(s->query));
-    hs_byte(&b, ' ');
-    hs_string(&b, s->body, s->body_len);
-    hs_byte(&b, ' ');
-    hs_text(&b, "reduce [");
-    for (unsigned i = 0; i < s->header_count; i++) {
-        hs_byte(&b, ' ');
-        hs_string(&b, (const unsigned char *)s->header_names[i],
-                  strlen(s->header_names[i]));
-        hs_byte(&b, ' ');
-        hs_string(&b, (const unsigned char *)s->header_values[i],
-                  strlen(s->header_values[i]));
-    }
-    hs_text(&b, " ] ");
-    hs_string(&b, (const unsigned char *)s->peer, strlen(s->peer));
+    http_bridge_request_args(&b, s);
     hs_text(&b, " ]");
     if (b.overflow || b.len + 1 >= b.cap) {
         snprintf(err, errcap, "dispatch source is too large");
@@ -539,8 +546,85 @@ static int http_bridge_dispatch(http_bridge_req *s, char *err, size_t errcap) {
     return 0;
 }
 
-/* Owner loop: run the Glon dispatch + async drains for one queued request and
- * store its response.  Called with http.lock held. */
+/* H2B: spawn a Glon task that runs http/task-run for this request. */
+static int http_bridge_spawn_task(http_bridge_req *s, char *err, size_t errcap) {
+    char body[GLON_HTTP_SRC_CAP];
+    http_src b = { body, 0, sizeof body, 0 };
+    hs_text(&b, "[ http/task-run [ ");
+    http_bridge_request_args(&b, s);
+    hs_text(&b, " ] ]");
+    if (b.overflow || b.len + 1 >= b.cap) {
+        snprintf(err, errcap, "task source is too large");
+        return -1;
+    }
+    body[b.len] = 0;
+    char src[GLON_HTTP_SRC_CAP + 16];
+    if ((size_t)snprintf(src, sizeof src, "[ spawn %s ]", body) >= sizeof src) {
+        snprintf(err, errcap, "spawn source is too large");
+        return -1;
+    }
+    r0_s1_outcome oc;
+    if (http_run_expression(src, &oc) != 0 || oc.status != R0S1_OUT_OK ||
+        oc.count != 1 || r0_tag(r0_s1_result(0, oc.count)) != T_INT) {
+        http_outcome_text(&oc, err, errcap);
+        return -1;
+    }
+    s->task = r0_s1_result(0, oc.count);
+    return 0;
+}
+
+/* H2B: collect a per-id response produced by http/finish into the slot.
+ * Returns 1 if a response was stored, 0 if none yet, -1 on error. */
+static int http_bridge_collect(http_bridge_req *s, char *err, size_t errcap) {
+    char src[128];
+    if (snprintf(src, sizeof src, "[ http/take-response-for %lu ]", s->id) >=
+        (int)sizeof src)
+        return -1;
+    r0_s1_outcome oc;
+    if (http_run_expression(src, &oc) != 0 || oc.status != R0S1_OUT_OK) {
+        http_outcome_text(&oc, err, errcap);
+        return -1;
+    }
+    if (oc.count <= 0 || (oc.count == 1 && r0_s1_result(0, oc.count) == R0_NONE))
+        return 0;
+    if (oc.count != 1 || r0_tag(r0_s1_result(0, oc.count)) != T_BLOCK) {
+        snprintf(err, errcap, "http/take-response-for shape");
+        return -1;
+    }
+    cell v = r0_s1_result(0, oc.count);
+    cell p = r0_untag(v);
+    if (M[p] != 5) { snprintf(err, errcap, "response block shape"); return -1; }
+    cell idv = M[p + BLK_DATA];
+    cell sv = M[p + BLK_DATA + 1];
+    cell tv = M[p + BLK_DATA + 2];
+    cell hv = M[p + BLK_DATA + 3];
+    cell bv = M[p + BLK_DATA + 4];
+    if (r0_tag(idv) != T_INT || r0_tag(sv) != T_INT) {
+        snprintf(err, errcap, "response id/status not integers");
+        return -1;
+    }
+    if ((unsigned long)int_val(idv) != s->id) {
+        snprintf(err, errcap, "response id mismatch");
+        return -1;
+    }
+    http_response *out = &s->resp;
+    memset(out, 0, sizeof *out);
+    long status = (long)int_val(sv);
+    if (status < 100 || status > 599) {
+        snprintf(err, errcap, "response status out of range");
+        return -1;
+    }
+    out->status = (int)status;
+    size_t tlen = 0;
+    if (copy_glon_string(tv, (unsigned char *)out->ctype, GLON_HTTP_CTYPE_CAP - 1,
+                         &tlen, err, errcap) != 0) return -1;
+    out->ctype[tlen] = 0;
+    if (http_take_headers(hv, out, err, errcap) != 0) return -1;
+    if (http_take_body(bv, out, err, errcap) != 0) return -1;
+    return 1;
+}
+
+/* H2A: run one queued request's Glon work to completion (no tasks). */
 static void http_bridge_process_one(http_bridge_req *s) {
     char err[256];
     s->state = BRIDGE_PROCESSING;
@@ -584,7 +668,88 @@ static void http_bridge_process_one(http_bridge_req *s) {
     pthread_cond_signal(&http_bridge_cond);
 }
 
+/* H2B: run the cooperative scheduler and collect per-task responses. */
+static void http_bridge_process_tasks(void) {
+    char err[256];
+    /* 1. spawn a task for each newly queued request */
+    for (unsigned i = 0; i < GLON_HTTP_MAX_BRIDGE_REQUESTS; i++) {
+        http_bridge_req *s = &http_bridge[i];
+        if (s->state != BRIDGE_QUEUED) continue;
+        if (s->deadline < http_now_sec()) {
+            s->state = BRIDGE_CANCELLED;
+            pthread_cond_signal(&http_bridge_cond);
+            continue;
+        }
+        s->state = BRIDGE_PROCESSING;
+        s->task = 0;
+        if (http_bridge_spawn_task(s, err, sizeof err) != 0) {
+            fprintf(stderr, "glon: http: bridge spawn %lu: %s\n", s->id, err);
+            http.errors++;
+            http.fatal = 1;
+            s->state = BRIDGE_CANCELLED;
+            pthread_cond_signal(&http_bridge_cond);
+        }
+    }
+    /* 2. run all runnable Glon tasks (they may suspend on async I/O) */
+    {
+        r0_s1_outcome oc;
+        if (http_run_expression("[ run-tasks ]", &oc) != 0 ||
+            oc.status != R0S1_OUT_OK) {
+            http_outcome_text(&oc, err, sizeof err);
+            fprintf(stderr, "glon: http: run-tasks: %s\n", err);
+            http.errors++;
+            http.fatal = 1;
+        }
+    }
+    /* 3. drain async I/O (callbacks may http/finish + task-wake) */
+    if (http.pre_pump) {
+        int pr;
+        do {
+            pr = http.pre_pump(http.pre_pump_user);
+            if (pr < 0) { http.errors++; http.fatal = 1; break; }
+        } while (pr > 0);
+    }
+    /* 4. collect completed responses; retire finished tasks */
+    for (unsigned i = 0; i < GLON_HTTP_MAX_BRIDGE_REQUESTS; i++) {
+        http_bridge_req *s = &http_bridge[i];
+        if (s->state != BRIDGE_PROCESSING || s->task == 0) continue;
+        int got = http_bridge_collect(s, err, sizeof err);
+        if (got < 0) {
+            fprintf(stderr, "glon: http: bridge collect %lu: %s\n", s->id, err);
+            http.errors++;
+            s->state = BRIDGE_CANCELLED;
+        } else if (got > 0) {
+            s->state = BRIDGE_COMPLETED;
+            http.completed++;
+        } else {
+            /* no response yet: if the task has finished, it produced none */
+            r0_s1_outcome oc;
+            char q[64];
+            snprintf(q, sizeof q, "[ task-state %lu ]", (unsigned long)s->task);
+            if (http_run_expression(q, &oc) == 0 && oc.status == R0S1_OUT_OK &&
+                oc.count == 1 && r0_tag(r0_s1_result(0, oc.count)) == T_INT) {
+                long st = (long)int_val(r0_s1_result(0, oc.count)) / 16;
+                if (st == 1) {   /* TASK_FINISHED with no response */
+                    http.errors++;
+                    s->state = BRIDGE_CANCELLED;
+                }
+            }
+        }
+        if (s->state == BRIDGE_COMPLETED || s->state == BRIDGE_CANCELLED)
+            pthread_cond_signal(&http_bridge_cond);
+    }
+    {
+        r0_s1_outcome clear_oc;
+        (void)http_run_expression("[ http/clear-current ]", &clear_oc);
+    }
+    http.current_id = 0;
+}
+
 static void http_bridge_process(void) {
+    if (http.cfg.task_mode) {
+        http_bridge_process_tasks();
+        return;
+    }
     double now = http_now_sec();
     for (unsigned i = 0; i < GLON_HTTP_MAX_BRIDGE_REQUESTS; i++) {
         http_bridge_req *s = &http_bridge[i];
@@ -922,6 +1087,11 @@ int glon_http_run(const glon_http_config *cfg, int report,
         return -1;
     }
     fprintf(stderr, "glon: http: listening on https://%s:%d\n", cfg->bind, port);
+
+    if (http.cfg.task_mode) {
+        r0_s1_outcome oc;
+        (void)http_run_expression("[ http/task-mode: 1 ]", &oc);
+    }
 
     while (!signal_stop_flag && !http.stop_requested && !http.fatal) {
         if (cfg->max_requests && http.completed >= cfg->max_requests) break;

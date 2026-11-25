@@ -425,6 +425,9 @@ static int parse_module_options(int argc, char **argv, int *first_file,
             o->http.num_threads = v;
         } else if (!strcmp(a, "--http-bridge")) {
             o->http.bridge_mode = 1;
+        } else if (!strcmp(a, "--http-tasks")) {
+            o->http.bridge_mode = 1;
+            o->http.task_mode = 1;
         } else if (!strcmp(a, "--http-report")) {
             o->http_report = 1;
         } else if (!strcmp(a, "--http-stop-event")) {
@@ -1263,6 +1266,11 @@ int main(int argc, char **argv) {
 #endif
 
     int rc = 0;
+#if defined(GLON_MODULE_TASK) && defined(GLON_MODULE_HTTP)
+    /* H2B task mode spawns tasks from the host, so the vocabulary must be
+     * present even if the application source never names a task word. */
+    if (opts.http.task_mode && load_task_library() != 0) return 2;
+#endif
 #ifdef GLON_MODULE_FILE
     int io_reported = 0;
 #endif

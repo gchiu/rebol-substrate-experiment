@@ -270,6 +270,7 @@ static const raw_sym_t raw_syms[] = {
     { "TREC_BLK", TREC_BLK }, { "TREC_FRAME", TREC_FRAME }, { "TREC_STATE", TREC_STATE },
     { "TREC_BLOCKED", TREC_BLOCKED },
     { "TREC_GEN", TREC_GEN },
+    { "GC_GLOBAL_CTX", GC_GLOBAL_CTX },
     /* M2: task-capacity and state names used by the loadable task vocabulary.
      * These are numeric layout constants only; no scheduling semantics live in
      * the runtime (the scheduler is the Glon `task.glon` RAW policy). */

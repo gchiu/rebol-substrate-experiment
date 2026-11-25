@@ -26,6 +26,11 @@ http/handler: none
 http/current: none
 http/response: none
 http/stop-requested: none
+;; H2B: when task-mode is set, each request runs as a Glon task; request-field
+;; trusts the passed request (no global http/current) and responses are stored
+;; per-id in http/responses instead of the single http/response.
+http/task-mode: 0
+http/responses: none
 
 http/listen: func [port handler] [
     either < port 1 [
@@ -59,6 +64,9 @@ http/request-field: func [request index] [
     either sin? request [
         raise request
     ] [
+        either http/task-mode [
+            block-at request index
+        ] [
         either http/current [
             either = block-at request 0 block-at http/current 0 [
                 block-at http/current index
@@ -67,6 +75,7 @@ http/request-field: func [request index] [
             ]
         ] [
             raise create-sin 'http 'no-request request
+        ]
         ]
     ]
 ]
@@ -128,21 +137,74 @@ http/respond-with: func [request status content-type headers body] [
     either sin? request [
         raise request
     ] [
-        either http/current [
-            either = block-at request 0 block-at http/current 0 [
-                either either < status 100 [ 1 ] [ > status 599 ] [
-                    raise create-sin 'http 'bad-status status
-                ] [
+        either either < status 100 [ 1 ] [ > status 599 ] [
+            raise create-sin 'http 'bad-status status
+        ] [
+            either http/task-mode [
+                http/responses: reduce [
+                    reduce [ block-at request 0 status content-type headers body ]
+                    http/responses
+                ]
+                none
+            ] [
+            either http/current [
+                either = block-at request 0 block-at http/current 0 [
                     http/response: reduce [
                         block-at http/current 0 status content-type headers body
                     ]
                     none
+                ] [
+                    raise create-sin 'http 'stale-request request
                 ]
             ] [
-                raise create-sin 'http 'stale-request request
+                raise create-sin 'http 'no-request request
             ]
+            ]
+        ]
+    ]
+]
+
+;; H2B: per-id response lookup for the interpreter-owner loop.  Returns
+;; [id status ctype headers body] and removes it, or NONE.
+http/take-response-for: func [id] [
+    pair: http/response-find http/responses id
+    either pair [
+        http/responses: http/response-remove http/responses id
+        pair
+    ] [ none ]
+]
+http/response-find: func [xs id] [
+    either xs [
+        pair: block-at xs 0
+        either = block-at pair 0 id [
+            pair
         ] [
-            raise create-sin 'http 'no-request request
+            http/response-find block-at xs 1 id
+        ]
+    ] [ none ]
+]
+http/response-remove: func [xs id] [
+    either xs [
+        pair: block-at xs 0
+        either = block-at pair 0 id [
+            block-at xs 1
+        ] [
+            reduce [ pair http/response-remove block-at xs 1 id ]
+        ]
+    ] [ none ]
+]
+
+;; H2B: task entry.  Runs the application handler; the handler may suspend on
+;; async I/O (task-wait) and its reply callback calls http/respond (per-id).
+http/task-run: func [request] [
+    result: judge [ http/handler :request ]
+    either sin? result [
+        http/respond request 500 "text/plain; charset=utf-8" "internal error"
+    ] [
+        either http/take-response-for (block-at request 0) [
+            none
+        ] [
+            http/respond request 500 "text/plain; charset=utf-8" "no response"
         ]
     ]
 ]

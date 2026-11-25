@@ -1,0 +1,81 @@
+;; examples/h2b/tasks.glon -- HTTPS requests as cooperative Glon tasks.
+;;
+;; Run with --http-tasks (implies --http-bridge) and a task-enabled build:
+;;   ./glon --http-tasks --http-threads 10 --http-cert ... \
+;;     --io-root DIR --allow-file-read --allow-file-write \
+;;     modules/web.glon modules/json.glon examples/h2b/tasks.glon
+;;
+;; Each request runs as a Glon task.  The handler enqueues an async SQLite
+;; operation, prints an event trace, and task-waits; the reply callback calls
+;; http/respond (per-id) and task-wake.  The owner loop drains SQLite between
+;; scheduler turns, so one request can be suspended while another runs.
+[
+db: none
+
+handle: func [request] [
+    me: self
+    id: block-at request 0
+    method: http/method request
+    path: http/path request
+    s/print s/+ "start " s/from-int id
+    either str-eq path "/messages" [
+        either str-eq method "POST" [
+            body: http/body request
+            sqlite/prepare db "INSERT INTO m(v) VALUES (?)"
+                func [st] [
+                    sqlite/bind-text st 1 body
+                        func [b] [
+                            sqlite/step st
+                                func [done] [
+                                    sqlite/finalize st
+                                        func [f] [
+                                            http/respond request 201 "text/plain; charset=utf-8" "ok"
+                                            task-wake me
+                                        ]
+                                        func [e] [ http/respond request 500 "text/plain" "err"  task-wake me ]
+                                ]
+                                func [e] [ http/respond request 500 "text/plain" "err"  task-wake me ]
+                        ]
+                        func [e] [ http/respond request 500 "text/plain" "err"  task-wake me ]
+                ]
+                func [e] [ http/respond request 500 "text/plain" "err"  task-wake me ]
+            s/print s/+ "wait " s/from-int id
+            task-wait
+            s/print s/+ "resume " s/from-int id
+        ] [
+            sqlite/prepare db "SELECT count(*) FROM m"
+                func [st] [
+                    sqlite/step st
+                        func [row] [
+                            body: s/from-int block-at row 0
+                            sqlite/finalize st
+                                func [f] [
+                                    http/respond request 200 "text/plain; charset=utf-8" body
+                                    task-wake me
+                                ]
+                                func [e] [ http/respond request 500 "text/plain" "err"  task-wake me ]
+                        ]
+                        func [e] [ http/respond request 500 "text/plain" "err"  task-wake me ]
+                ]
+                func [e] [ http/respond request 500 "text/plain" "err"  task-wake me ]
+            s/print s/+ "wait " s/from-int id
+            task-wait
+            s/print s/+ "resume " s/from-int id
+        ]
+    ] [
+        http/respond request 404 "text/plain; charset=utf-8" "not found"
+    ]
+]
+
+start: func [] [
+    sqlite/open "h2b.db"
+        func [h] [
+            db: h
+            sqlite/exec db "CREATE TABLE IF NOT EXISTS m(id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)"
+                func [x] [ http/listen 8443 :handle ]
+                func [e] [ raise e ]
+        ]
+        func [e] [ raise e ]
+]
+start
+]
