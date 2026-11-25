@@ -227,6 +227,16 @@ Standalone WASM test:
 
     make wasm-standalone-test
 
+HTTPS + SQLite message application (G3E), large profile:
+
+    make glon MODULES=file,http,sqlite MEM_PROFILE=large MEM_LOADER_CELLS=500000
+    tests/https-g1/make-cert.sh
+    python3 tests/https-g3e/acceptance.py --glon ./glon
+
+or, equivalently:
+
+    make https-g3e-test
+
 To serve the generated browser demo locally:
 
     python3 -m http.server 8000

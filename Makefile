@@ -637,6 +637,17 @@ https-g3a-endurance:
 	python3 tests/https-g3a/endurance.py --glon $(CURDIR)/glon --requests 1000 --workers 1
 .PHONY: https-g3a-endurance
 
+# ---- G3E: HTTPS + SQLite message application -------------------------------
+# The app lives in examples/https-g3e and uses the large profile with the
+# file, http and sqlite modules.  The acceptance suite is local-only, bounded
+# and drives keep-alive clients (a fresh connection per request would trigger
+# the documented single-thread accept/keep-alive starvation).
+https-g3e-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	tests/https-g1/make-cert.sh
+	python3 tests/https-g3e/acceptance.py --glon $(CURDIR)/glon
+.PHONY: https-g3e-test
+
 # Focused M1 test binary for portable distribution smoke tests.  The full
 # native `s1` suite needs repository source fixtures and is not shipped in
 # every platform package.

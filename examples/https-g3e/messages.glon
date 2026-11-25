@@ -1,0 +1,273 @@
+;; examples/https-g3e/messages.glon -- HTTPS + SQLite message application.
+;;
+;; Three endpoints, all Glon:
+;;   GET  /messages        stored messages as a JSON array (bounded LIMIT)
+;;   GET  /messages/<id>   one message as a JSON object, or 404
+;;   POST /messages        validate a JSON object and insert a row, or 4xx
+;;
+;; Rows are (id INTEGER PRIMARY KEY AUTOINCREMENT, author TEXT, text TEXT,
+;; ts INTEGER).  Every statement is parameterised; no SQL is built from
+;; request data.  The handler enqueues one SQLite request and returns; the
+;; host pre-response pump runs the statement and the success/failure closure
+;; eventually calls http/respond.  The whole exchange is serialised by the
+;; single Glon process and the single SQLite connection.
+;;
+;; The request body reaches the handler as a `mk-string [byte ...]` block, and
+;; the Glon reader caps a block literal at 511 elements, so the deployment
+;; must pass a --http-max-body at or below ~500.  The host then rejects larger
+;; bodies with 413 before dispatch.  Author/text limits keep a maximum-size
+;; valid body under that ceiling.
+;;
+;; Helpers are hidden in nested installer contexts (each holds at most 16
+;; bindings, the per-context ceiling) so the global context keeps only the
+;; database handle, the limits and `handle`.
+;;
+;; Requires: prelude, strings, strings-ext, http, json, web and sqlite.
+;; Run with both file capabilities and a sandbox root:
+;;   ./glon --io-root /tmp/msgs --allow-file-read --allow-file-write \
+;;     modules/web.glon modules/json.glon examples/https-g3e/messages.glon
+[
+messages/db: none
+messages/limit: 100
+messages/max-author: 64
+messages/max-text: 400
+
+handle: none
+
+app/install: func [] [
+    setup-a: func [] [
+        pair: func [key value rest] [ reduce [ reduce [ key value ] rest ] ]
+
+        respond/json: func [request status body] [
+            http/respond request status "application/json" body
+        ]
+        respond/text: func [request status body] [
+            http/respond request status "text/plain; charset=utf-8" body
+        ]
+        respond/405: func [request allow] [
+            http/respond-with request 405 "text/plain; charset=utf-8"
+                reduce [ "Allow" allow ] "405 Method Not Allowed"
+        ]
+        respond/error: func [request sin] [
+            status: sin-id sin
+            either s/raw-int? status [
+                msg: sin-arg sin
+                text: either s/raw-string? msg [ msg ] [ "application error" ]
+                respond/json request status json/encode json/object pair "error" text none
+            ] [
+                respond/text request 500 "internal application error"
+            ]
+        ]
+
+        msg/json: func [row] [
+            json/encode json/object
+                pair "id" block-at row 0
+                pair "author" block-at row 1
+                pair "text" block-at row 2
+                pair "timestamp" block-at row 3
+                none
+        ]
+
+        parse-id-loop: func [s i acc] [
+            either >= i s/length s [ acc ] [
+                b: s/at s i
+                either either >= b 48 [ <= b 57 ] [ 0 ] [
+                    parse-id-loop s + i 1 + * acc 10 - b 48
+                ] [
+                    raise create-sin 'app 400 "invalid id"
+                ]
+            ]
+        ]
+        parse-id: func [s] [
+            either either = s/length s 0 [ 1 ] [ > s/length s 9 ] [
+                raise create-sin 'app 400 "invalid id"
+            ] [
+                parse-id-loop s 0 0
+            ]
+        ]
+
+        req/json-text: func [obj key] [
+            v: json/object-get obj key
+            either = v none [ none ] [
+                either json/string? v [ v ] [
+                    raise create-sin 'app 422 s/+ key " must be a string"
+                ]
+            ]
+        ]
+        req/json-fields: func [request] [
+            body: http/body request
+            either > s/length body 0 [
+                ct: http/content-type request
+                either wp/ci-prefix? ct "application/json" [
+                    decoded: judge [ json/decode body ]
+                    either sin? decoded [
+                        raise create-sin 'app 400 "malformed JSON body"
+                    ] [
+                        either json/object? decoded [
+                            reduce [
+                                req/json-text decoded "author"
+                                req/json-text decoded "text"
+                            ]
+                        ] [
+                            raise create-sin 'app 400 "JSON body must be an object"
+                        ]
+                    ]
+                ] [
+                    raise create-sin 'app 415 "unsupported content type"
+                ]
+            ] [
+                raise create-sin 'app 400 "empty request body"
+            ]
+        ]
+
+        setup-b: func [] [
+            validate: func [author text] [
+                either = author none [ raise create-sin 'app 422 "author is required" ] [ none ]
+                either = text none [ raise create-sin 'app 422 "text is required" ] [ none ]
+                either = s/length author 0 [ raise create-sin 'app 422 "author must not be empty" ] [ none ]
+                either = s/length text 0 [ raise create-sin 'app 422 "text must not be empty" ] [ none ]
+                either > s/length author messages/max-author [ raise create-sin 'app 422 "author too long" ] [ none ]
+                either > s/length text messages/max-text [ raise create-sin 'app 422 "text too long" ] [ none ]
+                none
+            ]
+
+            db/insert: func [request author text] [
+                sqlite/prepare messages/db
+                    "INSERT INTO messages(author,text,ts) VALUES (?,?,CAST(strftime('%s','now') AS INTEGER)) RETURNING id,author,text,ts"
+                    func [ins] [
+                        sqlite/bind-text ins 1 author
+                            func [b1] [
+                                sqlite/bind-text ins 2 text
+                                    func [b2] [
+                                        sqlite/step ins
+                                            func [row] [
+                                                either = row none [
+                                                    sqlite/finalize ins
+                                                        func [x] [ respond/text request 500 "insert returned no row" ]
+                                                        func [e] [ respond/error request e ]
+                                                ] [
+                                                    body: msg/json row
+                                                    sqlite/finalize ins
+                                                        func [x] [ respond/json request 201 body ]
+                                                        func [e] [ respond/error request e ]
+                                                ]
+                                            ]
+                                            func [e] [ respond/error request e ]
+                                    ]
+                                    func [e] [ respond/error request e ]
+                            ]
+                            func [e] [ respond/error request e ]
+                    ]
+                    func [e] [ respond/error request e ]
+            ]
+            db/load-one: func [request id] [
+                sqlite/prepare messages/db "SELECT id,author,text,ts FROM messages WHERE id = ?"
+                    func [sel] [
+                        sqlite/bind-int sel 1 id
+                            func [b] [
+                                sqlite/step sel
+                                    func [row] [
+                                        either = row none [
+                                            sqlite/finalize sel
+                                                func [x] [ respond/error request create-sin 'app 404 "message not found" ]
+                                                func [e] [ respond/error request e ]
+                                        ] [
+                                            body: msg/json row
+                                            sqlite/finalize sel
+                                                func [x] [ respond/json request 200 body ]
+                                                func [e] [ respond/error request e ]
+                                        ]
+                                    ]
+                                    func [e] [ respond/error request e ]
+                            ]
+                            func [e] [ respond/error request e ]
+                    ]
+                    func [e] [ respond/error request e ]
+            ]
+            list/loop: func [request st acc first] [
+                sqlite/step st
+                    func [row] [
+                        either = row none [
+                            sqlite/finalize st
+                                func [x] [ respond/json request 200 s/+ "[" s/+ acc "]" ]
+                                func [e] [ respond/error request e ]
+                        ] [
+                            piece: msg/json row
+                            sep: either first [ "" ] [ "," ]
+                            list/loop request st s/+ acc s/+ sep piece 0
+                        ]
+                    ]
+                    func [e] [ respond/error request e ]
+            ]
+            db/list: func [request] [
+                sql: s/+ "SELECT id,author,text,ts FROM messages ORDER BY id LIMIT "
+                    s/+ s/from-int messages/limit ""
+                sqlite/prepare messages/db sql
+                    func [sel] [ list/loop request sel "" 1 ]
+                    func [e] [ respond/error request e ]
+            ]
+            post/create: func [request] [
+                result: judge [
+                    fields: req/json-fields request
+                    author: block-at fields 0
+                    text: block-at fields 1
+                    validate author text
+                    reduce [ author text ]
+                ]
+                either sin? result [
+                    respond/error request result
+                ] [
+                    db/insert request block-at result 0 block-at result 1
+                ]
+            ]
+
+            handle: func [request] [
+                method: http/method request
+                path: http/path request
+                either str-eq path "/messages" [
+                    either str-eq method "GET" [
+                        db/list request
+                    ] [
+                        either str-eq method "POST" [
+                            post/create request
+                        ] [
+                            respond/405 request "GET, POST"
+                        ]
+                    ]
+                ] [
+                    either wp/starts-with? path "/messages/" [
+                        result: judge [ parse-id s/span path 10 s/length path ]
+                        either sin? result [
+                            respond/error request result
+                        ] [
+                            either str-eq method "GET" [
+                                db/load-one request result
+                            ] [
+                                respond/405 request "GET"
+                            ]
+                        ]
+                    ] [
+                        respond/text request 404 "not found"
+                    ]
+                ]
+            ]
+        ]
+        setup-b
+    ]
+    setup-a
+]
+app/install
+
+start: func [] [
+    sqlite/open "messages.db"
+        func [db] [
+            messages/db: db
+            sqlite/exec db
+                "CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY AUTOINCREMENT, author TEXT NOT NULL, text TEXT NOT NULL, ts INTEGER NOT NULL)"
+                func [x] [ http/listen 8443 :handle ]
+                func [e] [ raise e ]
+        ]
+        func [e] [ raise e ]
+]
+start
+]
