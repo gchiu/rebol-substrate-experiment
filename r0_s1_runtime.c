@@ -4248,6 +4248,22 @@ int  r0_s1_halt_reason(void) {
 }
 
 /* H2E debug: dump the opcode window around REG_IP (the faulting halt site). */
+/* H2Y debug: bounded recursive dump of a Glon block's elements. */
+static void http_dump_block(cell blk, int depth) {
+    if (depth > 4 || blk == R0_NONE) return;
+    cell p = r0_untag(blk);
+    int cnt = (int)M[p];
+    if (cnt < 0 || cnt > 64) return;
+    for (int i = 0; i < cnt; i++) {
+        cell e = M[p + BLK_DATA + i];
+        long wid = (long)word_id(e);
+        const char *nm = (wid >= 0 && wid < 512) ? syms[wid] : NULL;
+        fprintf(stderr, "      [%d] tag=%ld %s\n", i, (long)r0_tag(e),
+                nm ? nm : "");
+        if (r0_tag(e) == T_BLOCK) http_dump_block(e, depth + 1);
+    }
+}
+
 void r0_s1_dump_ip(void) {
     long ip = (long)s1_mem(REG_IP);
     fprintf(stderr, "  [ip=%ld ops %ld %ld %ld %ld %ld %ld]\n", ip,
@@ -4276,6 +4292,8 @@ void r0_s1_dump_ip(void) {
         fprintf(stderr, "    [%ld] %s (tag %ld)\n", k, enm ? enm : "?",
                 (long)r0_tag(e));
     }
+    fprintf(stderr, "  [full block]\n");
+    http_dump_block(s1_mem(RV_BLK), 0);
 }
 
 /* D2A debug: read-only dump of every non-empty task's saved record and the
