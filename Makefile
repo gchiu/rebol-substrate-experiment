@@ -648,6 +648,17 @@ https-g3e-test:
 	python3 tests/https-g3e/acceptance.py --glon $(CURDIR)/glon
 .PHONY: https-g3e-test
 
+# ---- G3F: HTTPS concurrency via a bounded CivetWeb worker pool --------------
+# Same app as G3E.  --http-threads N (default 1) sizes the connection-level
+# worker pool; exactly one thread is inside the Glon session at a time (the
+# host's evaluator-ownership mutex), so overlapping connections make progress
+# while the single interpreter and SQLite connection stay serialised.
+https-g3f-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	tests/https-g1/make-cert.sh
+	python3 tests/https-g3f/acceptance.py --glon $(CURDIR)/glon
+.PHONY: https-g3f-test
+
 # Focused M1 test binary for portable distribution smoke tests.  The full
 # native `s1` suite needs repository source fixtures and is not shipped in
 # every platform package.

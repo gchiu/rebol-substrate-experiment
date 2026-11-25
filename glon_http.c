@@ -569,15 +569,16 @@ static int http_begin_request(struct mg_connection *conn) {
         (void)http_run_expression("[ http/clear-current ]", &clear_oc);
     }
     http.current_id = 0;
-    pthread_mutex_unlock(&http.lock);
 
     /* Optional host pump (the file module's asynchronous request queue).  It
-     * runs only after the HTTP dispatch turn has completed, so it never enters
-     * the Glon evaluator concurrently. */
+     * enters the Glon evaluator, so it runs under the same lock as dispatch:
+     * with a worker pool this keeps evaluator ownership single-threaded. */
     if (http.pump && http.pump(http.pump_user) != 0) {
         http.errors++;
         http.fatal = 1;
     }
+
+    pthread_mutex_unlock(&http.lock);
 
     return reply_status;
 }
@@ -607,6 +608,7 @@ void glon_http_config_default(glon_http_config *cfg) {
     cfg->request_timeout_ms = 10000;
     cfg->max_request_size = 8192;
     cfg->max_body = GLON_HTTP_REQUEST_BODY_DEFAULT;
+    cfg->num_threads = 1;
     cfg->keep_alive = 0;
 }
 
@@ -647,14 +649,21 @@ int glon_http_run(const glon_http_config *cfg, int report,
     char ports[256];
     snprintf(ports, sizeof ports, "%s:%d%s", cfg->bind, port, "s");
 
-    char timeout[32], maxreq[32];
+    char timeout[32], maxreq[32], nthreads_buf[32];
     snprintf(timeout, sizeof timeout, "%u", cfg->request_timeout_ms);
     snprintf(maxreq, sizeof maxreq, "%u", cfg->max_request_size);
     int keep_alive = cfg->keep_alive;
+    /* Bounded worker pool.  The Glon session stays serialised by http.lock, so
+     * extra workers only add connection-level overlap, never concurrent
+     * evaluator entry.  Default 1 preserves the original behaviour. */
+    unsigned nthreads = cfg->num_threads;
+    if (nthreads == 0) nthreads = 1;
+    if (nthreads > GLON_HTTP_MAX_THREADS) nthreads = GLON_HTTP_MAX_THREADS;
+    snprintf(nthreads_buf, sizeof nthreads_buf, "%u", nthreads);
 
     const char *options[] = {
         "listening_ports", ports,
-        "num_threads", "1",              /* one Glon evaluator owner */
+        "num_threads", nthreads_buf,
         "enable_keep_alive", keep_alive ? "yes" : "no",
         "request_timeout_ms", timeout,
         "max_request_size", maxreq,

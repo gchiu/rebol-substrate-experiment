@@ -328,6 +328,7 @@ In order:
 | MASM `s/slice2` variable-length worker (**experimental, not production**) | *(untagged)* | `87a5ca7` |
 | Cookbook 0004 original-path file replacement (**completed local integration, not deployed**) | *(untagged)* | *(this integration commit)* |
 | HTTPS G1/G2/G3/G3A (**local experiments, not pushed**) | *(untagged)* | `d01dab5`, `c955523`, `9d943c7`, `546de49` |
+| HTTPS G3E (HTTPS + SQLite messages) and G3F (bounded worker-pool concurrency) (**local experiments, not pushed**) | *(untagged)* | G3E `6df83c9`, G3F *(this commit)* |
 | Glon Developer Preview 1 (**public alpha release preparation**) | `v0.1.0-alpha.1` | *(this release commit)* |
 | Glon Developer Preview 1 correction (**public alpha.2 pre-release**) | `v0.1.0-alpha.2` | `5b4dee9` |
 | Cross-platform native CI matrix (**verification infrastructure**) | *(CI branch)* | *(this commit)* |

@@ -318,8 +318,8 @@ static void module_usage(void) {
     fprintf(stderr,
         " [--http-cert FILE] [--http-bind ADDR] [--http-max-requests N]\n"
         "            [--http-timeout-ms N] [--http-max-request-size N]\n"
-        "            [--http-max-body N] [--http-keep-alive] [--http-report]\n"
-        "            [--http-stop-event NAME]");
+        "            [--http-max-body N] [--http-threads N] [--http-keep-alive]\n"
+        "            [--http-report] [--http-stop-event NAME]");
 #endif
 #ifdef GLON_MODULE_SQLITE
     fprintf(stderr,
@@ -403,6 +403,10 @@ static int parse_module_options(int argc, char **argv, int *first_file,
             o->http.max_body = v;
         } else if (!strcmp(a, "--http-keep-alive")) {
             o->http.keep_alive = 1;
+        } else if (!strcmp(a, "--http-threads")) {
+            unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v) ||
+                           v == 0 || v > GLON_HTTP_MAX_THREADS) return -1;
+            o->http.num_threads = v;
         } else if (!strcmp(a, "--http-report")) {
             o->http_report = 1;
         } else if (!strcmp(a, "--http-stop-event")) {

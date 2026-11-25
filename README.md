@@ -237,6 +237,11 @@ or, equivalently:
 
     make https-g3e-test
 
+HTTPS concurrency (G3F) uses a bounded CivetWeb worker pool; one thread at a
+time is inside the Glon session:
+
+    make https-g3f-test
+
 To serve the generated browser demo locally:
 
     python3 -m http.server 8000

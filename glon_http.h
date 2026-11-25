@@ -21,8 +21,14 @@
  *
  * No new S1 primitive, HOST id, parser/evaluator change or parallel error
  * system is introduced.  The request id is an opaque integer; native pointers
- * never cross the boundary.  Only one CivetWeb worker thread is configured, so
- * the Glon evaluator is never entered concurrently.
+ * never cross the boundary.
+ *
+ * Evaluator ownership: exactly one thread may be inside the Glon session at a
+ * time.  The `lock` in glon_http.c is held across dispatch, the pre-response
+ * service pump, response extraction and the post-response pump, so a
+ * configurable CivetWeb worker pool (--http-threads, default 1) can service
+ * overlapping connections while the single Glon interpreter stays serialised.
+ * The default of 1 preserves the original single-worker behaviour.
  */
 #ifndef GLON_HTTP_H
 #define GLON_HTTP_H
@@ -40,6 +46,7 @@
 #define GLON_HTTP_HEADER_NAME_CAP 64u
 #define GLON_HTTP_HEADER_VALUE_CAP 256u
 #define GLON_HTTP_MAX_REQUEST_HEADERS 16u
+#define GLON_HTTP_MAX_THREADS 32u
 
 typedef int (*glon_http_pump_fn)(void *user);
 
@@ -50,6 +57,7 @@ typedef struct {
     unsigned request_timeout_ms;   /* per-connection idle timeout */
     unsigned max_request_size;     /* CivetWeb header/request bound */
     unsigned max_body;             /* request body cap; 1..4096, default 2048 */
+    unsigned num_threads;          /* CivetWeb worker pool; default 1 (serial) */
     int keep_alive;                /* 0 = close after each response */
     const char *stop_event;        /* Windows named event for orderly stop */
     /* Optional synchronous service pump for host-backed operations needed
