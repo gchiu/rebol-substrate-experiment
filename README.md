@@ -332,6 +332,11 @@ H2N ruled out the loader-heap lifetime (a non-restoring spawn expression changes
 nothing); the defect is the activation/context chain across the async SQLite
 resume in the C-spawned HTTP task path (see `H2N-RESULTS.md`).
 
+H2O-R audited the D1 debugger: it has breakpoints, state/frame/ctx inspection
+and continue, but **no single-step and no task selection**, so it cannot step
+across the async resume or attach to the suspended HTTP task; the C-side
+`r0_s1_dump_ip` was the minimal adapter (see `H2O-DEBUG-RESULTS.md`).
+
 To serve the generated browser demo locally:
 
     python3 -m http.server 8000

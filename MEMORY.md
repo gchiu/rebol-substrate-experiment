@@ -347,6 +347,7 @@ In order:
 | H2L: standalone SQLite task-run mock PASSES; host-spawned HTTP task loses helper activation across async resume (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | H2M: cross-session CLI spawn/run preserves locals -> persistent session not the fix; defect specific to host-spawned HTTP task path (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | H2N: loader-heap lifetime ruled out (non-restoring spawn no change); activation/context chain across async SQLite resume remains (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
+| H2O-R: D1 debugger lacks single-step/task-selection; C-side dump used; first divergence at async SQLite resume (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | Glon Developer Preview 1 (**public alpha release preparation**) | `v0.1.0-alpha.1` | *(this release commit)* |
 | Glon Developer Preview 1 correction (**public alpha.2 pre-release**) | `v0.1.0-alpha.2` | `5b4dee9` |
 | Cross-platform native CI matrix (**verification infrastructure**) | *(CI branch)* | *(this commit)* |
