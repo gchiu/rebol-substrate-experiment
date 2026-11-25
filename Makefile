@@ -341,15 +341,16 @@ GLON_LIBS = $(GLON_LIB_DIR)/prelude.glon $(GLON_LIB_DIR)/strings.glon $(GLON_LIB
 #   MODULES=http        optional CivetWeb HTTPS listener + ordinary http.glon
 #   MODULES=sec         optional OpenSSL-backed security primitives + sec.glon
 #   MODULES=sqlite      optional SQLite database/statement vocabulary
-#   MODULES=file,http,sec,sqlite   additive selection
+#   MODULES=task        loadable cooperative multitasking (task.glon) + host pump
+#   MODULES=file,http,sec,sqlite,task   additive selection
 #
 # Unknown names fail at build time.  Modules are additive: a minimal build
 # never compiles or links any module object, source or Glon library.
 comma := ,
 GLON_MODULE_LIST := $(subst $(comma), ,$(strip $(MODULES)))
-GLON_MODULE_UNKNOWN := $(filter-out file http sec sqlite,$(GLON_MODULE_LIST))
+GLON_MODULE_UNKNOWN := $(filter-out file http sec sqlite task,$(GLON_MODULE_LIST))
 ifneq ($(strip $(GLON_MODULE_UNKNOWN)),)
-  $(error unknown MODULES='$(MODULES)'; supported values: file, http, sec, sqlite and combinations)
+  $(error unknown MODULES='$(MODULES)'; supported values: file, http, sec, sqlite, task and combinations)
 endif
 
 GLON_MODULE_SRCS :=
@@ -406,6 +407,25 @@ ifneq ($(filter sqlite,$(GLON_MODULE_LIST)),)
   endif
 endif
 
+# ---- M2: loadable cooperative multitasking ----------------------------------
+# The task module makes the M1 scheduler an ordinary Glon vocabulary
+# (glon-lib/task.glon) and adds a host pump that alternates `run-tasks` with the
+# async file/SQLite drains, so a task can suspend on I/O and be resumed.  The
+# per-task stack budget is configurable; the defaults fit ten tasks in the
+# 10,200-cell M1 arena (10 x 1,000).  The frozen 64K conformance build keeps the
+# original 3-task defaults because it does not select this module.
+M1_TASKS        ?= 10
+M1_TASK_CELLS   ?= 1000
+M1_DS_OFF       ?= 200
+M1_RS_OFF       ?= 1000
+M1_WRAPPER_DELTA ?= 256
+ifneq ($(filter task,$(GLON_MODULE_LIST)),)
+  GLON_MODULE_CFLAGS += -DGLON_MODULE_TASK -DM1_MAX_TASKS=$(M1_TASKS) \
+      -DM1_TASK_CELLS=$(M1_TASK_CELLS) -DM1_DS_OFF=$(M1_DS_OFF) \
+      -DM1_RS_OFF=$(M1_RS_OFF) -DM1_WRAPPER_DELTA=$(M1_WRAPPER_DELTA)
+  GLON_MODULE_LIBS += $(GLON_LIB_DIR)/task.glon
+endif
+
 # The HTTP server does not create M1 tasks.  The G3 application plus the
 # transient per-request source expression outgrow the default 14,800-cell
 # loader heap, so the documented R0S1_HEAP_LIMIT override can reclaim the
@@ -443,8 +463,9 @@ GLON_CONFIG = .glon-config
 .PHONY: FORCE
 FORCE:
 $(GLON_CONFIG): FORCE
-	@printf '%s %s %s %s %s %s' '$(strip $(MODULES))' '$(GLON_HTTP_RECLAIM_M1)' \
-	    '$(MEM_PROFILE)' '$(MEM_MANAGED_CELLS)' '$(MEM_WORKLIST_CELLS)' '$(MEM_LOADER_CELLS)' > $@.tmp
+	@printf '%s %s %s %s %s %s %s %s %s %s %s' '$(strip $(MODULES))' '$(GLON_HTTP_RECLAIM_M1)' \
+	    '$(MEM_PROFILE)' '$(MEM_MANAGED_CELLS)' '$(MEM_WORKLIST_CELLS)' '$(MEM_LOADER_CELLS)' \
+	    '$(M1_TASKS)' '$(M1_TASK_CELLS)' '$(M1_DS_OFF)' '$(M1_RS_OFF)' '$(M1_WRAPPER_DELTA)' > $@.tmp
 	@if ! cmp -s $@.tmp $@; then mv $@.tmp $@; else rm -f $@.tmp; fi
 
 build/profile:
@@ -492,6 +513,10 @@ $(GLON_LIB_DIR)/sec.glon: modules/sec.glon
 	cp $< $@
 
 $(GLON_LIB_DIR)/sqlite.glon: modules/sqlite.glon
+	@mkdir -p $(GLON_LIB_DIR)
+	cp $< $@
+
+$(GLON_LIB_DIR)/task.glon: modules/task.glon
 	@mkdir -p $(GLON_LIB_DIR)
 	cp $< $@
 
@@ -658,6 +683,15 @@ https-g3f-test:
 	tests/https-g1/make-cert.sh
 	python3 tests/https-g3f/acceptance.py --glon $(CURDIR)/glon
 .PHONY: https-g3f-test
+
+# ---- M2: loadable cooperative multitasking ----------------------------------
+# Builds a task-enabled CLI (modules/task.glon + host task pump) with ten task
+# slots, then runs the cooperative-task acceptance suite.  The frozen 64K
+# conformance build is unaffected: it does not select MODULES=task.
+m2-test:
+	$(MAKE) --no-print-directory glon MODULES=file,task MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	python3 tests/m2/acceptance.py --glon $(CURDIR)/glon
+.PHONY: m2-test
 
 # Focused M1 test binary for portable distribution smoke tests.  The full
 # native `s1` suite needs repository source fixtures and is not shipped in

@@ -1,0 +1,12 @@
+;; examples/m2/cancel.glon -- a cancelled task never runs; peers are unaffected.
+[
+t1: spawn [ s/print "M2_CANCEL_BAD" ]
+task-cancel t1
+t2: spawn [ s/print "M2_CANCEL_T2" ]
+run-tasks
+either = task-state t1 1 [
+    s/print "M2_CANCEL_OK"
+] [
+    s/print s/+ "M2_CANCEL_FAIL state=" s/from-int task-state t1
+]
+]

@@ -1,0 +1,20 @@
+;; examples/m2/tasks.glon -- ten cooperative tasks, all run to completion.
+;;
+;; Run with a task-enabled build:
+;;   ./glon examples/m2/tasks.glon
+[
+count: 0
+spawn-n: func [n] [
+    either > n 0 [
+        spawn [ repeat 3 [ count: + count 1  yield ] ]
+        spawn-n - n 1
+    ] [ none ]
+]
+spawn-n 10
+run-tasks
+either = count 30 [
+    s/print "M2_TASKS_OK count=30"
+] [
+    s/print s/+ "M2_TASKS_FAIL count=" s/from-int count
+]
+]

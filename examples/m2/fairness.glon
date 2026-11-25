@@ -1,0 +1,15 @@
+;; examples/m2/fairness.glon -- round-robin fairness across three tasks.
+;;
+;; Each task yields three times; the scheduler must interleave them A,B,C.
+[
+trace: 0
+t1: spawn [ repeat 3 [ trace: + * trace 10 1  yield ] ]
+t2: spawn [ repeat 3 [ trace: + * trace 10 2  yield ] ]
+t3: spawn [ repeat 3 [ trace: + * trace 10 3  yield ] ]
+run-tasks
+either = trace 123123123 [
+    s/print "M2_FAIR_OK 123123123"
+] [
+    s/print s/+ "M2_FAIR_FAIL " s/from-int trace
+]
+]

@@ -1,0 +1,16 @@
+;; examples/m2/failure.glon -- one task raises; the scheduler and peers survive.
+;;
+;; The task body runs under `judge` (via task-run), so the SIN! is recorded in
+;; tasks/error and the task finishes instead of corrupting the scheduler.  A
+;; peer that runs afterwards captures tasks/error before it is overwritten.
+[
+captured: none
+t1: spawn [ raise create-sin 'app 'boom 0 ]
+t2: spawn [ captured: tasks/error  s/print "M2_FAIL_ISO_T2" ]
+run-tasks
+either sin? captured [
+    s/print "M2_FAIL_ISO_OK"
+] [
+    s/print "M2_FAIL_ISO_FAIL"
+]
+]

@@ -242,6 +242,11 @@ time is inside the Glon session:
 
     make https-g3f-test
 
+Cooperative multitasking (M2) is an ordinary Glon vocabulary (`modules/task.glon`)
+with a host pump; ten tasks can run, yield and suspend on async I/O:
+
+    make m2-test
+
 To serve the generated browser demo locally:
 
     python3 -m http.server 8000

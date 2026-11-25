@@ -162,7 +162,7 @@ static int load_default_libraries(void) {
         snprintf(path, sizeof path, "%s/glon-lib/%s", exe_dir, names[k]);
         if (load_library(path) != 0) return -1;
     }
-#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE)
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE) || defined(GLON_MODULE_TASK)
     /* strings-ext supplies s/from-int, used by HTTP, file, sec and sqlite. */
     snprintf(path, sizeof path, "%s/glon-lib/strings-ext.glon", exe_dir);
     if (load_library(path) != 0) return -1;
@@ -198,6 +198,20 @@ static int load_sqlite_library(void) {
     snprintf(path, sizeof path, "%s/glon-lib/sqlite.glon", exe_dir);
     if (load_library(path) != 0) return -1;
     sqlite_loaded = 1;
+    return 0;
+}
+#endif
+
+#ifdef GLON_MODULE_TASK
+/* Load the cooperative-task vocabulary only when a source references it, so a
+ * combined binary does not spend global bindings in applications that never
+ * spawn tasks. */
+static int task_loaded;
+static int load_task_library(void) {
+    char path[4096];
+    snprintf(path, sizeof path, "%s/glon-lib/task.glon", exe_dir);
+    if (load_library(path) != 0) return -1;
+    task_loaded = 1;
     return 0;
 }
 #endif
@@ -241,7 +255,8 @@ static void report_outcome(const r0_s1_outcome *out, const char *path) {
         if (out->detail == R0S1_DETAIL_CONTEXT_FULL)
             fprintf(stderr, "glon: %s: ** halted: context full (no SIN!: a machine-level fail-stop)\n", path);
         else
-            fprintf(stderr, "glon: %s: ** halted (no SIN!: a machine-level fail-stop)\n", path);
+            fprintf(stderr, "glon: %s: ** halted (reason %d: no SIN!: a machine-level fail-stop)\n",
+                    path, r0_s1_halt_reason());
         return;
     default:
         fprintf(stderr, "glon: %s: ** unknown session outcome\n", path);
@@ -255,7 +270,7 @@ static int pump_pre(void *user);
 #endif
 #endif
 
-#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_SQLITE)
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_SQLITE) || defined(GLON_MODULE_TASK)
 /* ---- optional module options -------------------------------------------- */
 
 typedef struct {
@@ -276,7 +291,7 @@ typedef struct {
 #endif
 } module_options;
 
-#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP)
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_TASK)
 static int parse_uint_opt(const char *s, unsigned *out) {
     char *end = NULL;
     unsigned long v = strtoul(s, &end, 10);
@@ -422,9 +437,9 @@ static int parse_module_options(int argc, char **argv, int *first_file,
     *first_file = i;
     return 0;
 }
-#endif /* GLON_MODULE_FILE || GLON_MODULE_HTTP || GLON_MODULE_SQLITE */
+#endif /* GLON_MODULE_FILE || GLON_MODULE_HTTP || GLON_MODULE_SQLITE || GLON_MODULE_TASK */
 
-#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE)
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE) || defined(GLON_MODULE_TASK)
 /* ---- shared host expression runner --------------------------------------- */
 
 static int run_expression(const char *src, r0_s1_outcome *oc) {
@@ -679,16 +694,17 @@ static int drain_io(glon_io_cli *io, const char *progress,
             return -1;
         }
 
-        if (progress && !*progress_done) {
+        if (!*progress_done) {
             *progress_done = 1;
-            if (run_source(progress) != 0) {
+            if (progress && run_source(progress) != 0) {
                 fprintf(stderr, "glon: io: progress job failed\n");
                 glon_io_cli_cancel(io);
                 (void)glon_io_cli_wait(io, rep, sizeof rep, &rep_len, err, sizeof err);
                 return -1;
             }
-            fprintf(stderr, "glon: io: progress job completed while request %u was pending\n",
-                    q.request_id);
+            if (progress)
+                fprintf(stderr, "glon: io: progress job completed while request %u was pending\n",
+                        q.request_id);
         }
 
         if (cancel_before_reply) {
@@ -1122,6 +1138,56 @@ static int pump_pre(void *user) {
 #endif
 #endif
 
+#ifdef GLON_MODULE_TASK
+/* M2 host pump: run the cooperative scheduler, then drain asynchronous
+ * file/SQLite requests, and repeat until nothing makes progress.  A task that
+ * suspended on I/O (task-wait) is woken by the reply callback (task-wake), so
+ * the next run-tasks resumes it.  This is the only host-side scheduling help;
+ * all policy stays in task.glon. */
+#ifdef GLON_MODULE_FILE
+static glon_io_cli *g_task_io;
+#endif
+static int tasks_pending(void) {
+    r0_s1_outcome oc;
+    if (run_expression("[ tasks/pending? ]", &oc) != 0 ||
+        oc.status != R0S1_OUT_OK || oc.count != 1) return 0;
+    cell v = r0_s1_result(0, oc.count);
+    return (r0_tag(v) == T_INT && int_val(v) != 0) ? 1 : 0;
+}
+static int pump_tasks(const module_options *opts, char *err, size_t errcap) {
+    for (long guard = 0; guard < 1000000; guard++) {
+        r0_s1_outcome oc;
+        if (run_expression("[ run-tasks ]", &oc) != 0 ||
+            oc.status != R0S1_OUT_OK) {
+            snprintf(err, errcap, "run-tasks failed (status %d)", oc.status);
+            return -1;
+        }
+        int did = 0;
+#ifdef GLON_MODULE_FILE
+        {
+            int pd = 0;
+            if (drain_io(g_task_io, opts->io_progress, &pd, opts->io_report,
+                         opts->io_gc_report, opts->io_cancel) != 0) {
+                snprintf(err, errcap, "file drain failed");
+                return -1;
+            }
+            if (pd) did = 1;
+        }
+#endif
+#if defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE)
+        {
+            char pe[512];
+            int pr = drain_pre(pe, sizeof pe);
+            if (pr < 0) { snprintf(err, errcap, "%s", pe); return -1; }
+            if (pr > 0) did = 1;
+        }
+#endif
+        if (!did) break;
+    }
+    return 0;
+}
+#endif
+
 /* ---- main ---------------------------------------------------------------- */
 
 int main(int argc, char **argv) {
@@ -1132,7 +1198,7 @@ int main(int argc, char **argv) {
     (void)_setmode(_fileno(stdout), _O_BINARY);
     (void)_setmode(_fileno(stderr), _O_BINARY);
 #endif
-#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_SQLITE)
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_SQLITE) || defined(GLON_MODULE_TASK)
     module_options opts;
     module_options_init(&opts);
     int first_file = 1;
@@ -1165,6 +1231,9 @@ int main(int argc, char **argv) {
         fprintf(stderr, "glon: io: %s\n", io_err);
         return 2;
     }
+#ifdef GLON_MODULE_TASK
+    g_task_io = io;
+#endif
 #endif
 
 #ifdef GLON_MODULE_SQLITE
@@ -1203,6 +1272,16 @@ int main(int argc, char **argv) {
         }
 #endif
         strip_comments(src);
+#ifdef GLON_MODULE_TASK
+        if (!task_loaded && (strstr(src, "spawn") || strstr(src, "run-tasks") ||
+                             strstr(src, "task-wait") || strstr(src, "tasks/"))) {
+            if (load_task_library() != 0) {
+                free(src);
+                rc = 2;
+                break;
+            }
+        }
+#endif
         int perr = 0;
         cell prog = r0_s1_parse(src, &perr);
         free(src);
@@ -1237,6 +1316,18 @@ int main(int argc, char **argv) {
         }
 #endif
     }
+
+#ifdef GLON_MODULE_TASK
+    /* Run spawned cooperative tasks to completion, draining async I/O between
+     * scheduler turns so a task can suspend on I/O and be resumed. */
+    if (rc == 0 && task_loaded && tasks_pending()) {
+        char terr[512];
+        if (pump_tasks(&opts, terr, sizeof terr) != 0) {
+            fprintf(stderr, "glon: task: %s\n", terr);
+            rc = 1;
+        }
+    }
+#endif
 
 #ifdef GLON_MODULE_HTTP
     /* Start only after every source file has been loaded, and only if the

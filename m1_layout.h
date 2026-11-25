@@ -102,6 +102,9 @@
 #define TREC_BLK   6
 #define TREC_FRAME 7
 #define TREC_STATE 8
+#define TREC_BLOCKED 9   /* M2: 1 = suspended on an async wait; scheduler skips.
+                           * The state stays TASK_RUNNABLE so the collector still
+                           * traces the saved stacks/closures as roots. */
 
 /* task states */
 #define TASK_RUNNABLE 0

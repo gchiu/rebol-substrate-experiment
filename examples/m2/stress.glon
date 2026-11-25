@@ -1,0 +1,15 @@
+;; examples/m2/stress.glon -- many cooperative context switches.
+;;
+;; Ten tasks each yield five times; the shared counter records every switch.
+;; The per-task return/data stack is bounded (ten tasks share the M1 arena), so
+;; the recursion stays shallow.
+[
+switches: 0
+bump: func [] [ switches: + switches 1 ]
+spawn-n: func [k] [
+    either > k 0 [ spawn [ repeat 5 [ bump  yield ] ]  spawn-n - k 1 ] [ none ]
+]
+spawn-n 10
+run-tasks
+s/print s/+ "M2_STRESS_OK switches=" s/from-int switches
+]

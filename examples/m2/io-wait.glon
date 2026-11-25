@@ -1,0 +1,27 @@
+;; examples/m2/io-wait.glon -- a task suspends on asynchronous file I/O.
+;;
+;; The task enqueues file/read (one outstanding host request), calls task-wait
+;; (blocked, but still GC-traced), and is resumed by the reply callback's
+;; task-wake.  The host pump alternates run-tasks with the file drain, so other
+;; runnable tasks would make progress while this one waits.
+;;
+;; Run with a file-enabled, task-enabled build and a sandbox root containing
+;; m2io.txt:
+;;   ./glon --io-root DIR --allow-file-read --allow-file-write \
+;;     examples/m2/io-wait.glon
+[
+result: none
+t1: spawn [
+    me: self
+    file/read "m2io.txt"
+        func [c] [ result: c  task-wake me ]
+        func [e] [ result: e  task-wake me ]
+    task-wait
+    either s/raw-string? result [
+        s/print s/+ "M2_IO_WAIT_OK " result
+    ] [
+        s/print "M2_IO_WAIT_FAIL"
+    ]
+]
+none
+]
