@@ -318,8 +318,13 @@ passes, but H2B spawns in the dispatch turn and first runs in a later pump turn
 H2K made spawn+first-run happen in one session; the first run then succeeds, but
 the task still halts on an unbound helper local (`a`) after the async SQLite
 resume, so the activation chain across the async suspension is the remaining
-defect (see `H2K-RESULTS.md`). The fix is a runtime activation-restoration
-change, not applied.
+defect (see `H2K-RESULTS.md`).
+
+H2L isolated it: a standalone SQLite mock (task-run+handler+respond, one
+session) PASSES, so SQLite/7-args/respond are not the cause; the host-spawned
+HTTP task resumed in a later pump session loses the helper activation (see
+`H2L-RESULTS.md`). The fix is a runtime activation-restoration change, not
+applied.
 
 To serve the generated browser demo locally:
 

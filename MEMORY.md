@@ -344,6 +344,7 @@ In order:
 | H2I: context model sound for nested tasks (yield+async file pass); failure specific to HTTP task-run/handler/SQLite-callback path (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | H2J: matrix isolates 2 triggers - reduce-built task body, and cross-session spawn(dispatch)/run(pump) boundary (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | H2K: same-session spawn+run fixes first run but unbound helper local persists after async SQLite resume -> activation-chain restoration is the remaining defect (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
+| H2L: standalone SQLite task-run mock PASSES; host-spawned HTTP task loses helper activation across async resume (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | Glon Developer Preview 1 (**public alpha release preparation**) | `v0.1.0-alpha.1` | *(this release commit)* |
 | Glon Developer Preview 1 correction (**public alpha.2 pre-release**) | `v0.1.0-alpha.2` | `5b4dee9` |
 | Cross-platform native CI matrix (**verification infrastructure**) | *(CI branch)* | *(this commit)* |
