@@ -287,6 +287,11 @@ H2D makes the arena configurable (`MEM_M1_CELLS`, default 10,200; 32k verified
 for ten non-HTTP tasks) and fixes the H2B request encoding; the HTTP+SQLite task
 path now suspends/resumes but response delivery still halts (see `H2D-RESULTS.md`).
 
+H2E diagnosed that halt: it is a collector task-sentry fail-stop on a resumed
+task (IP 11953, reason 0; SP at the arena base, RP in bounds, HP low), not a
+Glon error or stack/heap exhaustion. A minimal proposed correction is recorded
+in `H2E-RESULTS.md`; it is not applied (runtime-contract change).
+
 To serve the generated browser demo locally:
 
     python3 -m http.server 8000

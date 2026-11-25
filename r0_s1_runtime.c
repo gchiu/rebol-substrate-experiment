@@ -4246,6 +4246,14 @@ void r0_s1_global_usage(cell *count, cell *cap) {
 int  r0_s1_halt_reason(void) {
     return r0_s1_ran_cleanly() ? R0S1_HALT_NONE : (int)M[RV_HALTWHY];
 }
+
+/* H2E debug: dump the opcode window around REG_IP (the faulting halt site). */
+void r0_s1_dump_ip(void) {
+    long ip = (long)s1_mem(REG_IP);
+    fprintf(stderr, "  [ip=%ld ops %ld %ld %ld %ld %ld %ld]\n", ip,
+            (long)s1_mem(ip - 4), (long)s1_mem(ip - 3), (long)s1_mem(ip - 2),
+            (long)s1_mem(ip - 1), (long)s1_mem(ip), (long)s1_mem(ip + 1));
+}
 cell r0_s1_sp_start(void) { return sp_start; }
 cell r0_s1_sp_end(void)   { return sp_end; }
 cell r0_s1_rp_start(void) { return rp_start; }

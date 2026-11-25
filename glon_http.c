@@ -697,6 +697,7 @@ static void http_bridge_process_tasks(void) {
             oc.status != R0S1_OUT_OK) {
             http_outcome_text(&oc, err, sizeof err);
             fprintf(stderr, "glon: http: run-tasks: %s\n", err);
+            if (oc.status == R0S1_OUT_HALT) r0_s1_dump_ip();
             http.errors++;
             http.fatal = 1;
         }

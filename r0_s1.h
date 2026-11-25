@@ -573,6 +573,7 @@ int  r0_s1_stack_sentry_fired(void);  /* 1 iff the last run violated SP/RP bound
 /* R0S1_HALT_* reason the last run fail-stopped (R0S1_HALT_NONE after a clean
  * run, an uncaught SIN!, or a halt with no recorded reason). */
 int  r0_s1_halt_reason(void);
+void r0_s1_dump_ip(void);       /* H2E debug: opcode window at REG_IP */
 cell r0_s1_sp_start(void), r0_s1_sp_end(void);
 cell r0_s1_rp_start(void), r0_s1_rp_end(void);
 cell r0_s1_rp_min(void);   /* min RP observed (max return depth) */
