@@ -305,8 +305,13 @@ see `H2G-RESULTS.md`.
 H2H resolved the word: id 218 = `result` (a `http/task-run` local), then `a`
 after removing it. The task's restored context does not chain to the
 intermediate activation contexts created across the async suspension, so live
-locals are treated as unbound (see `H2H-RESULTS.md`). The fix is a runtime
-activation-chain restoration change, not applied.
+locals are treated as unbound (see `H2H-RESULTS.md`).
+
+H2I showed the context model is sound for ordinary nested tasks (locals survive
+`yield` and async file I/O); the failure is specific to the HTTP `task-run`/
+handler/SQLite-callback path, where the resumed task's context chain does not
+reach the entry/handler activations (see `H2I-RESULTS.md`). The fix is a targeted
+HTTP-task context-restoration change, not applied.
 
 To serve the generated browser demo locally:
 
