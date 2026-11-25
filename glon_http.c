@@ -23,6 +23,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <strings.h>
+#include <time.h>
 #include <unistd.h>
 #endif
 #include <stdio.h>
@@ -61,6 +62,34 @@ typedef struct {
 } http_state;
 
 static http_state http;
+
+/* ---- H2A bounded bridge request table ---------------------------------- *
+ * In bridge mode a CivetWeb worker copies the request into a slot and waits
+ * (without the lock) while the single interpreter-owner loop runs the Glon
+ * dispatch and drains async I/O.  The worker then sends the stored response.
+ * No worker ever enters the Glon evaluator. */
+enum { BRIDGE_EMPTY = 0, BRIDGE_QUEUED, BRIDGE_PROCESSING,
+       BRIDGE_COMPLETED, BRIDGE_CANCELLED };
+
+typedef struct {
+    int state;
+    unsigned long id;
+    struct mg_connection *conn;
+    char method[GLON_HTTP_METHOD_CAP];
+    char path[GLON_HTTP_URI_CAP];
+    char query[GLON_HTTP_QUERY_CAP];
+    size_t body_len;
+    unsigned char body[GLON_HTTP_REQUEST_BODY_HARD];
+    unsigned header_count;
+    char header_names[GLON_HTTP_MAX_REQUEST_HEADERS][GLON_HTTP_HEADER_NAME_CAP];
+    char header_values[GLON_HTTP_MAX_REQUEST_HEADERS][GLON_HTTP_HEADER_VALUE_CAP];
+    char peer[48];
+    http_response resp;
+    double deadline;
+} http_bridge_req;
+
+static http_bridge_req http_bridge[GLON_HTTP_MAX_BRIDGE_REQUESTS];
+static pthread_cond_t http_bridge_cond;
 
 static volatile sig_atomic_t signal_stop_flag;
 
@@ -463,6 +492,182 @@ static int http_send_text(struct mg_connection *conn, int status,
     return http_send_response(conn, &r);
 }
 
+/* ---- H2A bridge: owner dispatch + worker wait -------------------------- */
+
+static double http_now_sec(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+}
+
+static int http_bridge_dispatch(http_bridge_req *s, char *err, size_t errcap) {
+    char src[GLON_HTTP_SRC_CAP];
+    http_src b = { src, 0, sizeof src, 0 };
+    hs_text(&b, "[ http/dispatch ");
+    hs_uint(&b, s->id);
+    hs_byte(&b, ' ');
+    hs_string(&b, (const unsigned char *)s->method, strlen(s->method));
+    hs_byte(&b, ' ');
+    hs_string(&b, (const unsigned char *)s->path, strlen(s->path));
+    hs_byte(&b, ' ');
+    hs_string(&b, (const unsigned char *)s->query, strlen(s->query));
+    hs_byte(&b, ' ');
+    hs_string(&b, s->body, s->body_len);
+    hs_byte(&b, ' ');
+    hs_text(&b, "reduce [");
+    for (unsigned i = 0; i < s->header_count; i++) {
+        hs_byte(&b, ' ');
+        hs_string(&b, (const unsigned char *)s->header_names[i],
+                  strlen(s->header_names[i]));
+        hs_byte(&b, ' ');
+        hs_string(&b, (const unsigned char *)s->header_values[i],
+                  strlen(s->header_values[i]));
+    }
+    hs_text(&b, " ] ");
+    hs_string(&b, (const unsigned char *)s->peer, strlen(s->peer));
+    hs_text(&b, " ]");
+    if (b.overflow || b.len + 1 >= b.cap) {
+        snprintf(err, errcap, "dispatch source is too large");
+        return -1;
+    }
+    src[b.len] = 0;
+    r0_s1_outcome oc;
+    if (http_run_expression(src, &oc) != 0 || oc.status != R0S1_OUT_OK) {
+        http_outcome_text(&oc, err, errcap);
+        return -1;
+    }
+    return 0;
+}
+
+/* Owner loop: run the Glon dispatch + async drains for one queued request and
+ * store its response.  Called with http.lock held. */
+static void http_bridge_process_one(http_bridge_req *s) {
+    char err[256];
+    s->state = BRIDGE_PROCESSING;
+    if (http_bridge_dispatch(s, err, sizeof err) != 0) {
+        fprintf(stderr, "glon: http: bridge dispatch %lu: %s\n", s->id, err);
+        http.errors++;
+        http.fatal = 1;
+        s->state = BRIDGE_CANCELLED;
+        pthread_cond_signal(&http_bridge_cond);
+        return;
+    }
+    if (http.pre_pump) {
+        int pr;
+        do {
+            pr = http.pre_pump(http.pre_pump_user);
+            if (pr < 0) { http.errors++; http.fatal = 1; break; }
+        } while (pr > 0);
+    }
+    http_response r;
+    int have = 0;
+    if (http.fatal) {
+        s->state = BRIDGE_CANCELLED;
+    } else if (http_take_response(s->id, &r, &have, err, sizeof err) != 0) {
+        fprintf(stderr, "glon: http: bridge response %lu: %s\n", s->id, err);
+        http.errors++;
+        http.fatal = 1;
+        s->state = BRIDGE_CANCELLED;
+    } else if (!have) {
+        http.errors++;
+        s->state = BRIDGE_CANCELLED;
+    } else {
+        s->resp = r;
+        s->state = BRIDGE_COMPLETED;
+        http.completed++;
+    }
+    {
+        r0_s1_outcome clear_oc;
+        (void)http_run_expression("[ http/clear-current ]", &clear_oc);
+    }
+    http.current_id = 0;
+    pthread_cond_signal(&http_bridge_cond);
+}
+
+static void http_bridge_process(void) {
+    double now = http_now_sec();
+    for (unsigned i = 0; i < GLON_HTTP_MAX_BRIDGE_REQUESTS; i++) {
+        http_bridge_req *s = &http_bridge[i];
+        if (s->state != BRIDGE_QUEUED) continue;
+        if (s->deadline < now) {
+            s->state = BRIDGE_CANCELLED;
+            pthread_cond_signal(&http_bridge_cond);
+            continue;
+        }
+        http_bridge_process_one(s);
+    }
+}
+
+static int http_bridge_begin(struct mg_connection *conn,
+                             const struct mg_request_info *ri,
+                             const char *method, const char *path,
+                             const char *query,
+                             const unsigned char *body, size_t body_len) {
+    int idx = -1;
+    pthread_mutex_lock(&http.lock);
+    for (unsigned i = 0; i < GLON_HTTP_MAX_BRIDGE_REQUESTS; i++) {
+        if (http_bridge[i].state == BRIDGE_EMPTY) { idx = (int)i; break; }
+    }
+    if (idx < 0) {
+        pthread_mutex_unlock(&http.lock);
+        http.rejected++;
+        return http_send_text(conn, 503, "text/plain; charset=utf-8",
+                              "bridge queue full") == 0 ? 503 : 500;
+    }
+    http_bridge_req *s = &http_bridge[idx];
+    memset(s, 0, sizeof *s);
+    s->state = BRIDGE_QUEUED;
+    s->id = ++http.next_id;
+    if (s->id == 0) s->id = ++http.next_id;
+    s->conn = conn;
+    snprintf(s->method, sizeof s->method, "%s", method);
+    snprintf(s->path, sizeof s->path, "%s", path);
+    snprintf(s->query, sizeof s->query, "%s", query);
+    s->body_len = body_len;
+    if (body_len > sizeof s->body) body_len = sizeof s->body;
+    memcpy(s->body, body, body_len);
+    s->header_count = ri ? ri->num_headers : 0;
+    if (s->header_count > GLON_HTTP_MAX_REQUEST_HEADERS)
+        s->header_count = GLON_HTTP_MAX_REQUEST_HEADERS;
+    for (unsigned i = 0; i < s->header_count; i++) {
+        snprintf(s->header_names[i], sizeof s->header_names[i], "%s",
+                 ri->http_headers[i].name ? ri->http_headers[i].name : "");
+        snprintf(s->header_values[i], sizeof s->header_values[i], "%s",
+                 ri->http_headers[i].value ? ri->http_headers[i].value : "");
+    }
+    snprintf(s->peer, sizeof s->peer, "%s",
+             (ri && ri->remote_addr) ? ri->remote_addr : "");
+    s->deadline = http_now_sec() + (double)http.cfg.request_timeout_ms / 1000.0;
+    http.requests++;
+    pthread_cond_signal(&http_bridge_cond);
+    pthread_mutex_unlock(&http.lock);
+
+    pthread_mutex_lock(&http.lock);
+    while (s->state == BRIDGE_QUEUED || s->state == BRIDGE_PROCESSING) {
+        double rem = s->deadline - http_now_sec();
+        if (rem <= 0) { s->state = BRIDGE_CANCELLED; break; }
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += (time_t)rem;
+        ts.tv_nsec += (long)((rem - (double)(time_t)rem) * 1e9);
+        if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
+        pthread_cond_timedwait(&http_bridge_cond, &http.lock, &ts);
+    }
+    int st = s->state;
+    http_response r = s->resp;
+    int has_resp = (st == BRIDGE_COMPLETED);
+    s->state = BRIDGE_EMPTY;
+    s->conn = NULL;
+    pthread_mutex_unlock(&http.lock);
+
+    if (has_resp) {
+        if (http_send_response(conn, &r) != 0) http.write_failures++;
+        return r.status;
+    }
+    return http_send_text(conn, 503, "text/plain; charset=utf-8",
+                          "bridge request cancelled") == 0 ? 503 : 500;
+}
+
 static int http_begin_request(struct mg_connection *conn) {
     const struct mg_request_info *ri = mg_get_request_info(conn);
     if (!ri) return 0;
@@ -511,6 +716,12 @@ static int http_begin_request(struct mg_connection *conn) {
         }
         body_len += (size_t)n;
     }
+
+    /* H2A bridge mode: copy the request into a bounded slot and wait for the
+     * interpreter-owner loop to produce the response.  The worker never enters
+     * the Glon evaluator and does not hold the lock while waiting. */
+    if (http.cfg.bridge_mode)
+        return http_bridge_begin(conn, ri, method, path, query, body, body_len);
 
     int reply_status = 500;
     pthread_mutex_lock(&http.lock);
@@ -633,6 +844,7 @@ int glon_http_run(const glon_http_config *cfg, int report,
     http.pump = pump;
     http.pump_user = pump_user;
     pthread_mutex_init(&http.lock, NULL);
+    pthread_cond_init(&http_bridge_cond, NULL);
 #ifdef _WIN32
     HANDLE stop_event = NULL;
     if (cfg->stop_event && cfg->stop_event[0]) {
@@ -717,7 +929,27 @@ int glon_http_run(const glon_http_config *cfg, int report,
         if (stop_event && WaitForSingleObject(stop_event, 0) == WAIT_OBJECT_0)
             http.stop_requested = 1;
 #endif
-        usleep(10000);
+        if (http.cfg.bridge_mode) {
+            /* Interpreter-owner loop: run queued requests, then async drains. */
+            pthread_mutex_lock(&http.lock);
+            http_bridge_process();
+            pthread_mutex_unlock(&http.lock);
+            usleep(1000);
+        } else {
+            usleep(10000);
+        }
+    }
+
+    if (http.cfg.bridge_mode) {
+        /* Release any workers still waiting: cancel their requests. */
+        pthread_mutex_lock(&http.lock);
+        for (unsigned i = 0; i < GLON_HTTP_MAX_BRIDGE_REQUESTS; i++) {
+            if (http_bridge[i].state == BRIDGE_QUEUED ||
+                http_bridge[i].state == BRIDGE_PROCESSING)
+                http_bridge[i].state = BRIDGE_CANCELLED;
+        }
+        pthread_cond_broadcast(&http_bridge_cond);
+        pthread_mutex_unlock(&http.lock);
     }
 
     mg_stop(ctx);
@@ -736,6 +968,7 @@ int glon_http_run(const glon_http_config *cfg, int report,
         http.fatal = 1;
     }
     pthread_mutex_destroy(&http.lock);
+    pthread_cond_destroy(&http_bridge_cond);
 
     if (report) {
         fprintf(stderr,

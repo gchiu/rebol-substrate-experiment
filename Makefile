@@ -716,6 +716,16 @@ h1-test:
 	python3 tests/h1/acceptance.py --glon $(CURDIR)/glon
 .PHONY: h1-test
 
+# ---- H2A: bounded asynchronous HTTP request/response bridge ---------------
+# Opt-in --http-bridge: CivetWeb workers enqueue into a bounded table and wait;
+# one interpreter-owner loop runs the Glon application.  Default (non-bridge)
+# G1-G3F behaviour is unchanged.
+h2a-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	tests/https-g1/make-cert.sh
+	python3 tests/h2a/acceptance.py --glon $(CURDIR)/glon
+.PHONY: h2a-test
+
 # Focused M1 test binary for portable distribution smoke tests.  The full
 # native `s1` suite needs repository source fixtures and is not shipped in
 # every platform package.

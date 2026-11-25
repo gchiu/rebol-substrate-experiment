@@ -265,6 +265,13 @@ scheduler-level interleave demonstration and documents the obstacle (see
 
     make h1-test
 
+Bounded asynchronous HTTP bridge (H2A) decouples receiving a request from
+executing its Glon logic: an opt-in `--http-bridge` mode has CivetWeb workers
+enqueue into a bounded table and wait while one interpreter-owner loop runs the
+Glon application (default mode is unchanged G3F):
+
+    make h2a-test
+
 To serve the generated browser demo locally:
 
     python3 -m http.server 8000

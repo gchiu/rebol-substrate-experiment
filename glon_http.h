@@ -47,6 +47,7 @@
 #define GLON_HTTP_HEADER_VALUE_CAP 256u
 #define GLON_HTTP_MAX_REQUEST_HEADERS 16u
 #define GLON_HTTP_MAX_THREADS 32u
+#define GLON_HTTP_MAX_BRIDGE_REQUESTS 16u
 
 typedef int (*glon_http_pump_fn)(void *user);
 
@@ -58,6 +59,7 @@ typedef struct {
     unsigned max_request_size;     /* CivetWeb header/request bound */
     unsigned max_body;             /* request body cap; 1..4096, default 2048 */
     unsigned num_threads;          /* CivetWeb worker pool; default 1 (serial) */
+    int bridge_mode;               /* opt-in: workers enqueue, owner runs Glon */
     int keep_alive;                /* 0 = close after each response */
     const char *stop_event;        /* Windows named event for orderly stop */
     /* Optional synchronous service pump for host-backed operations needed
