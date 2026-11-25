@@ -359,6 +359,7 @@ In order:
 | H2X: r_lookup pops word; halt RV_CUR at header -> exact element needs a debug pre-lookup hook (frozen HOST) (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | H2Y: block 1130000 = http/task-run body, no word a -> block inspection insufficient; need pre-lookup hook (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | H2Z: provenance capture found word 218 = '(block-at' (stray paren, http.glon:210); fixed -> GET suspends/resumes, 2 clients OK (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
+| H3A: consolidated GET task suspends/resumes + 2 clients OK; POST returns 0 (empty method in task entry) (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | Glon Developer Preview 1 (**public alpha release preparation**) | `v0.1.0-alpha.1` | *(this release commit)* |
 | Glon Developer Preview 1 correction (**public alpha.2 pre-release**) | `v0.1.0-alpha.2` | `5b4dee9` |
 | Cross-platform native CI matrix (**verification infrastructure**) | *(CI branch)* | *(this commit)* |
