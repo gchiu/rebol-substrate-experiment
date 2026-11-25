@@ -326,8 +326,11 @@ HTTP task resumed in a later pump session loses the helper activation (see
 `H2L-RESULTS.md`).
 
 H2M ruled out the session boundary: spawning in one CLI session and running in
-another preserves nested locals (`S=1`), so persistent ownership is not the fix;
-the defect is specific to the host-spawned HTTP task path (see `H2M-RESULTS.md`).
+another preserves nested locals (`S=1`), so persistent ownership is not the fix.
+
+H2N ruled out the loader-heap lifetime (a non-restoring spawn expression changes
+nothing); the defect is the activation/context chain across the async SQLite
+resume in the C-spawned HTTP task path (see `H2N-RESULTS.md`).
 
 To serve the generated browser demo locally:
 
