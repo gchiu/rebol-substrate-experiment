@@ -312,9 +312,14 @@ H2I showed the context model is sound for ordinary nested tasks (locals survive
 handler/SQLite-callback path (see `H2I-RESULTS.md`).
 
 H2J isolated it: the mock `task-run`+handler+respond (spawn+run in one session)
-passes, but H2B spawns in the HTTP dispatch turn and first runs in a later pump
-turn — a cross-session boundary the task's activation chain does not survive.
-A reduce-built task body is a separate failing case (see `H2J-RESULTS.md`).
+passes, but H2B spawns in the dispatch turn and first runs in a later pump turn
+(see `H2J-RESULTS.md`).
+
+H2K made spawn+first-run happen in one session; the first run then succeeds, but
+the task still halts on an unbound helper local (`a`) after the async SQLite
+resume, so the activation chain across the async suspension is the remaining
+defect (see `H2K-RESULTS.md`). The fix is a runtime activation-restoration
+change, not applied.
 
 To serve the generated browser demo locally:
 
