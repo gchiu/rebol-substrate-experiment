@@ -331,6 +331,7 @@ In order:
 | HTTPS G3E (HTTPS + SQLite messages) and G3F (bounded worker-pool concurrency) (**local experiments, not pushed**) | *(untagged)* | G3E `6df83c9`, G3F `5205806` |
 | M2 loadable cooperative multitasking (`modules/task.glon` + host task pump) (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | M3 multiple outstanding async I/O (bounded FIFO in file/sqlite modules) (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
+| M4 reusable tasks / slot recycling with generation-tagged handles (**local experiment, not pushed**) | *(untagged)* | *(this commit)* |
 | Glon Developer Preview 1 (**public alpha release preparation**) | `v0.1.0-alpha.1` | *(this release commit)* |
 | Glon Developer Preview 1 correction (**public alpha.2 pre-release**) | `v0.1.0-alpha.2` | `5b4dee9` |
 | Cross-platform native CI matrix (**verification infrastructure**) | *(CI branch)* | *(this commit)* |

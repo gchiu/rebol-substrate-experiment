@@ -1222,8 +1222,10 @@ int main(int argc, char **argv) {
     M[M1_MAIN_ENTRY_CELL] = main_entry;
     M[M1_CURSOR] = 0;
     M[M1_STRESS_CNT] = 0;
-    for (int i = 0; i < M1_MAX_TASKS; i++)
+    for (int i = 0; i < M1_MAX_TASKS; i++) {
         M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
+        M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_GEN] = 0;
+    }
 
     if (load_default_libraries() != 0) return 2;
 

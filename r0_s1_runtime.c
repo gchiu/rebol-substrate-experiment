@@ -269,6 +269,7 @@ static const raw_sym_t raw_syms[] = {
     { "TREC_CUR", TREC_CUR }, { "TREC_END", TREC_END }, { "TREC_CTX", TREC_CTX },
     { "TREC_BLK", TREC_BLK }, { "TREC_FRAME", TREC_FRAME }, { "TREC_STATE", TREC_STATE },
     { "TREC_BLOCKED", TREC_BLOCKED },
+    { "TREC_GEN", TREC_GEN },
     /* M2: task-capacity and state names used by the loadable task vocabulary.
      * These are numeric layout constants only; no scheduling semantics live in
      * the runtime (the scheduler is the Glon `task.glon` RAW policy). */
@@ -3896,8 +3897,10 @@ cell r0_s1_init(void) {
      * unconditionally, so seed every slot EMPTY and the scheduler stacks empty
      * so plain (non-multitasking) runs scan to nothing. */
     M[GC_GLOBAL_CTX] = global_ctx;
-    for (int i = 0; i < M1_MAX_TASKS; i++)
+    for (int i = 0; i < M1_MAX_TASKS; i++) {
         M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
+        M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_GEN] = 0;
+    }
     M[M1_SCHED_REC + 1] = R0S1_DS_INIT;   /* scheduler DS: empty range */
     M[M1_SCHED_REC + 2] = R0S1_RS_INIT;   /* scheduler RS: empty range */
     M[GC_COLLECT_CNT] = 0;

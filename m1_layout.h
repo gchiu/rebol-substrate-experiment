@@ -105,6 +105,9 @@
 #define TREC_BLOCKED 9   /* M2: 1 = suspended on an async wait; scheduler skips.
                            * The state stays TASK_RUNNABLE so the collector still
                            * traces the saved stacks/closures as roots. */
+#define TREC_GEN    10   /* M4: reuse generation; bumped every time the slot is
+                           * recycled so a stale handle cannot address the new
+                           * task that inherited the slot. */
 
 /* task states */
 #define TASK_RUNNABLE 0

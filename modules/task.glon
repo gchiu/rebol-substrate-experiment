@@ -11,19 +11,25 @@
 ;; task capacity is the build's M1_MAX_TASKS (default 3; the M2 build raises it).
 ;;
 ;; Vocabulary:
-;;   spawn body            -> task handle (a tagged integer; opaque)
+;;   spawn body            -> task handle (a generation-tagged integer; opaque)
 ;;   yield                 suspend the current task (voluntary)
 ;;   run-tasks             run runnable tasks round-robin until none remain
 ;;   self                  -> the current task's handle
 ;;   task-wait             suspend the current task until task-wake (async wait)
-;;   task-wake handle      mark a waiting task runnable again
-;;   task-cancel handle    mark a task finished without resuming it
-;;   task-state handle     -> task state integer (0 run, 1 finished, 2 empty)
+;;   task-wake handle      mark a waiting task runnable again (generation-checked)
+;;   task-cancel handle    retire a task without resuming it (generation-checked)
+;;   task-state handle     -> task state (0 run, 1 finished, 2 empty) or -1 stale
 ;;   tasks/pending?        -> 1 if any task is still runnable (incl. waiting)
 ;;   tasks/error           the last task result, or the SIN! a task raised
 ;;
 ;; A task body is run under `judge`, so one task raising a SIN! does not corrupt
 ;; the scheduler or other tasks; the SIN! is left in tasks/error.
+;;
+;; M4 lifecycle: a finished, failed or cancelled task's slot is recycled.  The
+;; handle carries a per-slot reuse generation, so a late I/O reply that names a
+;; retired task is discarded instead of resuming whoever inherited the slot.
+;; Task creation is bounded by the number of *simultaneously active* slots
+;; (M1_MAX_TASKS), not by the total number of tasks ever created.
 [
 tasks/error: none
 
@@ -36,7 +42,9 @@ mnew-task: raw 3 [
   Lfind:
     LIT M1_S3 @ LIT M1_MAX_TASKS LT ZBRANCH Lfull
     LIT M1_S3 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S4 !
-    LIT M1_S4 @ LIT TREC_STATE ADD @ LIT TASK_EMPTY EQ ZBRANCH Lnext
+    LIT M1_S4 @ LIT TREC_STATE ADD @ LIT TASK_EMPTY EQ
+    LIT M1_S4 @ LIT TREC_STATE ADD @ LIT TASK_FINISHED EQ
+    ADD ZBRANCH Lnext
     BRANCH Lmake
   Lnext:
     LIT M1_S3 @ LIT 1 ADD LIT M1_S3 !
@@ -60,7 +68,12 @@ mnew-task: raw 3 [
     LIT 0 LIT M1_S4 @ LIT TREC_FRAME ADD !
     LIT TASK_RUNNABLE LIT M1_S4 @ LIT TREC_STATE ADD !
     LIT 0 LIT M1_S4 @ LIT TREC_BLOCKED ADD !
-    LIT M1_S4 @ LIT 16 MUL ARITY 1 EXIT
+    ;; M4: bump the slot's reuse generation and build a generation-tagged
+    ;; handle = ((gen * 16) + slot) * 16 (a tagged Glon integer).  A handle
+    ;; from a previous life decodes to an old generation and is rejected.
+    LIT M1_S4 @ LIT TREC_GEN ADD @ LIT 1 ADD LIT M1_S0 !
+    LIT M1_S0 @ LIT M1_S4 @ LIT TREC_GEN ADD !
+    LIT M1_S0 @ LIT 16 MUL LIT M1_S3 @ ADD LIT 16 MUL ARITY 1 EXIT
 ]
 
 yield: raw [
@@ -153,7 +166,11 @@ run-tasks: raw [
     LIT M1_CUR_TASK @ LIT TREC_IP ADD @ LIT REG_IP !
 ]
 
-self: raw [ LIT M1_CUR_TASK @ LIT 16 MUL ARITY 1 EXIT ]
+self: raw [
+    LIT M1_CUR_TASK @ LIT M1_TASK_TABLE SUB LIT 16 DIV LIT M1_S0 !
+    LIT M1_CUR_TASK @ LIT TREC_GEN ADD @ LIT M1_S1 !
+    LIT M1_S1 @ LIT 16 MUL LIT M1_S0 @ ADD LIT 16 MUL ARITY 1 EXIT
+]
 
 ;; task-body (RAW, arity 0): the wrapped body block of the current task.  The
 ;; body lives in the task's wrapper block (elem1), which the collector traces
@@ -169,22 +186,41 @@ task-run: func [] [
     tasks/error: judge task-body
 ]
 
+;; task-wake: decode (slot, gen) from the handle; only clear blocked if the
+;; slot's current generation matches, so a late reply to a retired task cannot
+;; wake the new task that inherited its slot.
 task-wake: raw 1 [
     LIT 16 DIV LIT M1_S0 !
-    LIT 0 LIT M1_S0 @ LIT TREC_BLOCKED ADD !
+    LIT M1_S0 @ LIT 16 MOD LIT M1_S1 !
+    LIT M1_S0 @ LIT 16 DIV LIT M1_S2 !
+    LIT M1_S1 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S3 !
+    LIT M1_S3 @ LIT TREC_GEN ADD @ LIT M1_S2 @ EQ ZBRANCH Ldone
+    LIT 0 LIT M1_S3 @ LIT TREC_BLOCKED ADD !
+  Ldone:
     ARITY 0 EXIT
 ]
 
 task-cancel: raw 1 [
     LIT 16 DIV LIT M1_S0 !
-    LIT TASK_FINISHED LIT M1_S0 @ LIT TREC_STATE ADD !
-    LIT 1 LIT M1_S0 @ LIT TREC_BLOCKED ADD !
+    LIT M1_S0 @ LIT 16 MOD LIT M1_S1 !
+    LIT M1_S0 @ LIT 16 DIV LIT M1_S2 !
+    LIT M1_S1 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S3 !
+    LIT M1_S3 @ LIT TREC_GEN ADD @ LIT M1_S2 @ EQ ZBRANCH Ldone
+    LIT TASK_FINISHED LIT M1_S3 @ LIT TREC_STATE ADD !
+    LIT 1 LIT M1_S3 @ LIT TREC_BLOCKED ADD !
+  Ldone:
     ARITY 0 EXIT
 ]
 
 task-state: raw 1 [
     LIT 16 DIV LIT M1_S0 !
-    LIT M1_S0 @ LIT TREC_STATE ADD @ LIT 16 MUL ARITY 1 EXIT
+    LIT M1_S0 @ LIT 16 MOD LIT M1_S1 !
+    LIT M1_S0 @ LIT 16 DIV LIT M1_S2 !
+    LIT M1_S1 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S3 !
+    LIT M1_S3 @ LIT TREC_GEN ADD @ LIT M1_S2 @ EQ ZBRANCH Lstale
+    LIT M1_S3 @ LIT TREC_STATE ADD @ LIT 16 MUL ARITY 1 EXIT
+  Lstale:
+    LIT -1 LIT 16 MUL ARITY 1 EXIT
 ]
 
 tasks/pending?: raw [

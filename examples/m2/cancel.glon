@@ -1,12 +1,17 @@
 ;; examples/m2/cancel.glon -- a cancelled task never runs; peers are unaffected.
+;;
+;; M4 recycles a finished/cancelled slot, so the cancelled task's state is read
+;; before a peer is spawned (which may reuse the slot and invalidate the old
+;; handle by design).
 [
 t1: spawn [ s/print "M2_CANCEL_BAD" ]
 task-cancel t1
+st: task-state t1
 t2: spawn [ s/print "M2_CANCEL_T2" ]
 run-tasks
-either = task-state t1 1 [
+either = st 1 [
     s/print "M2_CANCEL_OK"
 ] [
-    s/print s/+ "M2_CANCEL_FAIL state=" s/from-int task-state t1
+    s/print s/+ "M2_CANCEL_FAIL state=" s/from-int st
 ]
 ]

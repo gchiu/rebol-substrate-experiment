@@ -1,0 +1,19 @@
+;; examples/m4/endurance.glon -- 10,000 task creations with one active slot.
+;;
+;; The driver chain creates and completes `limit` tasks while a single slot is
+;; recycled.  This is the M4 endurance demonstration: creation is limited by
+;; the number of simultaneously active slots, not by the total task count.
+;;
+;; Run:
+;;   ./glon examples/m4/endurance.glon
+[
+made: 0
+limit: 10000
+driver: func [] [
+    made: + made 1
+    either < made limit [ spawn [ driver ] ] [ none ]
+]
+spawn [ driver ]
+run-tasks
+s/print s/+ "MADE=" s/from-int made
+]

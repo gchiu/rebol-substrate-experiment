@@ -1,0 +1,20 @@
+;; examples/m4/recycle.glon -- task-slot recycling.
+;;
+;; A single "driver" task spawns its own replacement and then finishes, so the
+;; chain advances one task at a time.  Only one slot is active at any moment,
+;; yet `limit` tasks are created and completed in total: creation is bounded by
+;; the number of simultaneously active slots, not by the total ever created.
+;;
+;; Run:
+;;   ./glon examples/m4/recycle.glon
+[
+made: 0
+limit: 50
+driver: func [] [
+    made: + made 1
+    either < made limit [ spawn [ driver ] ] [ none ]
+]
+spawn [ driver ]
+run-tasks
+s/print s/+ "MADE=" s/from-int made
+]

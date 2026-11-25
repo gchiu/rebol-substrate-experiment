@@ -1,0 +1,18 @@
+;; examples/m4/generation.glon -- stale handles cannot wake a recycled task.
+;;
+;; Task A finishes; task B recycles A's slot (generation bump).  Waking A's old
+;; handle must be discarded, so B (blocked in task-wait) is not resumed.
+;;
+;; Run:
+;;   ./glon examples/m4/generation.glon
+[
+t1: spawn [ none ]
+run-tasks
+old: t1
+t2: spawn [ task-wait  s/print "BAD-WOKEN" ]
+run-tasks
+task-wake old
+run-tasks
+task-cancel t2
+s/print "STALE-OK"
+]

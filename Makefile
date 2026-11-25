@@ -700,6 +700,13 @@ m3-test:
 	python3 tests/m3/acceptance.py --glon $(CURDIR)/glon
 .PHONY: m3-test
 
+# ---- M4: reusable tasks and reliable lifecycle management -------------------
+# Builds a file+task CLI and runs the bounded recycling/endurance suite.
+m4-test:
+	$(MAKE) --no-print-directory glon MODULES=file,task MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	python3 tests/m4/acceptance.py --glon $(CURDIR)/glon
+.PHONY: m4-test
+
 # Focused M1 test binary for portable distribution smoke tests.  The full
 # native `s1` suite needs repository source fixtures and is not shipped in
 # every platform package.

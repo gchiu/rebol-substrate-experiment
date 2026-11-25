@@ -252,6 +252,12 @@ at once (bounded FIFO, id-correlated replies), over the same file/SQLite modules
 
     make m3-test
 
+Task-slot recycling (M4) lets finished/failed/cancelled tasks release their slots
+with generation-tagged handles, so a process can create unlimited tasks with a
+bounded number simultaneously active:
+
+    make m4-test
+
 To serve the generated browser demo locally:
 
     python3 -m http.server 8000
