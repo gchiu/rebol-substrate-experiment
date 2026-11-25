@@ -309,9 +309,12 @@ locals are treated as unbound (see `H2H-RESULTS.md`).
 
 H2I showed the context model is sound for ordinary nested tasks (locals survive
 `yield` and async file I/O); the failure is specific to the HTTP `task-run`/
-handler/SQLite-callback path, where the resumed task's context chain does not
-reach the entry/handler activations (see `H2I-RESULTS.md`). The fix is a targeted
-HTTP-task context-restoration change, not applied.
+handler/SQLite-callback path (see `H2I-RESULTS.md`).
+
+H2J isolated it: the mock `task-run`+handler+respond (spawn+run in one session)
+passes, but H2B spawns in the HTTP dispatch turn and first runs in a later pump
+turn — a cross-session boundary the task's activation chain does not survive.
+A reduce-built task body is a separate failing case (see `H2J-RESULTS.md`).
 
 To serve the generated browser demo locally:
 
