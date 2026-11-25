@@ -297,6 +297,11 @@ for the running task in the GC sentry): the first request then succeeds, but
 the added code overflows the fixed 16,128-cell code region, so the fix is
 reverted pending an approved code-limit increase (see `M2F-RESULTS.md`).
 
+H2G enlarged the code region (+256 cells, fits) but the halt persisted: tagging
+every GC fail-stop showed the real cause is an **unbound word (id 3490)** in the
+resumed task's context, not the GC sentry. The H2E/H2F diagnosis is disproven;
+see `H2G-RESULTS.md`.
+
 To serve the generated browser demo locally:
 
     python3 -m http.server 8000
