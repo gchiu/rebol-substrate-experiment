@@ -2085,10 +2085,14 @@ static void emit_reduce(void) {
  * hash index (O(1) average); otherwise fall back to the ordered linear scan. */
 static void emit_lookup(void) {
     r_lookup = asm_here();
+    /* H2Z debug: capture the originating block/cursor at word selection. */
+    e_cell(RV_BLK); asm_lit(25040); asm_store();
+    e_cell(RV_CUR); asm_lit(25041); asm_store();
 #ifdef R0_S1_PROFILE
     pf_incr(PF_LOOKUP);          /* one logical word lookup */
 #endif
     e_pop_to(RV_T1);
+    e_cell(RV_T1); asm_lit(25042); asm_store();
     e_cell(RV_CTX);
     cell outer = asm_here();
     e_dup(); asm_lit(R0_NONE); asm_host(HOST_EQ);
@@ -4294,6 +4298,13 @@ void r0_s1_dump_ip(void) {
     }
     fprintf(stderr, "  [full block]\n");
     http_dump_block(s1_mem(RV_BLK), 0);
+    /* H2Z: word-lookup provenance captured at r_lookup entry. */
+    cell ob = s1_mem(25040), oc = s1_mem(25041), ow = s1_mem(25042);
+    long oidx = (long)(oc - ob - BLK_DATA - 1);
+    long owid = (long)word_id(ow);
+    const char *ownm = (owid >= 0 && owid < 512) ? syms[owid] : NULL;
+    fprintf(stderr, "  [origin blk=%ld idx=%ld word=%ld name=%s]\n", (long)ob,
+            oidx, owid, ownm ? ownm : "?");
 }
 
 /* D2A debug: read-only dump of every non-empty task's saved record and the
