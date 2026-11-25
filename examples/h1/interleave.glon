@@ -1,0 +1,31 @@
+;; examples/h1/interleave.glon -- cooperative I/O-bound interleaving (scheduler).
+;;
+;; This demonstrates the *scheduler-level* capability that H1 would build on:
+;; task A suspends on an asynchronous file read (task-wait) while task B (CPU)
+;; runs to completion, and only then does A's reply resume it.  B-done is
+;; printed before A-done.
+;;
+;; It is NOT an HTTP test: the CivetWeb begin_request boundary is synchronous
+;; (see H1-RESULTS.md), so HTTP requests cannot yet be suspended as tasks.
+;;
+;; Run with a file-enabled, task-enabled build and a slow host I/O delay so the
+;; overlap is observable:
+;;   ./glon --io-delay-ms 200 --io-root DIR --allow-file-read --allow-file-write \
+;;     examples/h1/interleave.glon
+[
+tA: spawn [
+    me: self
+    file/read "f.txt"
+        func [c] [ task-wake me ]
+        func [e] [ task-wake me ]
+    task-wait
+    s/print "A-done"
+]
+tB: spawn [
+    s/print "B-start"
+    yield
+    yield
+    s/print "B-done"
+]
+run-tasks
+]

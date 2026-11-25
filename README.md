@@ -258,6 +258,13 @@ bounded number simultaneously active:
 
     make m4-test
 
+HTTPS requests as cooperative tasks (H1) is an investigation: CivetWeb's
+synchronous `begin_request` prevents safe request suspension, so this runs the
+scheduler-level interleave demonstration and documents the obstacle (see
+`H1-RESULTS.md`). G1–G3F remain the supported HTTPS path:
+
+    make h1-test
+
 To serve the generated browser demo locally:
 
     python3 -m http.server 8000

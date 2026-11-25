@@ -707,6 +707,15 @@ m4-test:
 	python3 tests/m4/acceptance.py --glon $(CURDIR)/glon
 .PHONY: m4-test
 
+# ---- H1: HTTPS requests as cooperative tasks (investigation) ---------------
+# The CivetWeb begin_request boundary is synchronous, so this runs the
+# scheduler-level interleave demonstration and documents the obstacle; see
+# H1-RESULTS.md.  G1-G3F remain the supported HTTPS path.
+h1-test:
+	$(MAKE) --no-print-directory glon MODULES=file,task MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	python3 tests/h1/acceptance.py --glon $(CURDIR)/glon
+.PHONY: h1-test
+
 # Focused M1 test binary for portable distribution smoke tests.  The full
 # native `s1` suite needs repository source fixtures and is not shipped in
 # every platform package.
