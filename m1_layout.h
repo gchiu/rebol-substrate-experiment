@@ -108,6 +108,8 @@
 #define TREC_GEN    10   /* M4: reuse generation; bumped every time the slot is
                            * recycled so a stale handle cannot address the new
                            * task that inherited the slot. */
+#define TREC_MINSP  11   /* H2C: per-task data-stack high-water (min SP)     */
+#define TREC_MINRP  12   /* H2C: per-task return-stack high-water (min RP)   */
 
 /* task states */
 #define TASK_RUNNABLE 0

@@ -279,6 +279,10 @@ supported HTTPS paths:
 
     make h2b-test   # partial smoke only; not a passing 10-task demo
 
+H2C measured the requirement: the HTTP response path needs ≈2,500 return-stack
+cells/task, so ten tasks need a ≈32,000-cell M1 arena (option B in
+`H2C-RESULTS.md`); the arena increase is an approved scaling change, not applied.
+
 To serve the generated browser demo locally:
 
     python3 -m http.server 8000
