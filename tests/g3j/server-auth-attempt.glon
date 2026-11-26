@@ -378,11 +378,17 @@ app/install: func [] [
                         func [db] [
                             gw/users-db: db
                             sqlite/exec db
-                                s/+ "CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL);"
-                                s/+ "CREATE TABLE IF NOT EXISTS user_passwords(user_id INTEGER PRIMARY KEY, algo TEXT NOT NULL, salt BLOB NOT NULL, hash BLOB NOT NULL, n INTEGER NOT NULL, r INTEGER NOT NULL, p INTEGER NOT NULL);"
-                                s/+ "CREATE TABLE IF NOT EXISTS sessions(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, token_hash BLOB NOT NULL UNIQUE, csrf_hash BLOB NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER)"
-                                func [x] [ http/listen gw/port :handle ]
-                                func [e] [ raise e ]
+                                "CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL)"
+                                func [x] [
+                                    sqlite/exec db
+                                        "CREATE TABLE IF NOT EXISTS user_passwords(user_id INTEGER PRIMARY KEY, algo TEXT NOT NULL, salt BLOB NOT NULL, hash BLOB NOT NULL, n INTEGER NOT NULL, r INTEGER NOT NULL, p INTEGER NOT NULL)"
+                                        func [y] [
+                                            sqlite/exec db
+                                                "CREATE TABLE IF NOT EXISTS sessions(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, token_hash BLOB NOT NULL UNIQUE, csrf_hash BLOB NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER)"
+                                                func [z] [ http/listen gw/port :handle ]
+                                                func [e] [ raise e ]
+                                        ] func [e] [ raise e ]
+                                ] func [e] [ raise e ]
                         ]
                         func [e] [ raise e ]
                 ]
