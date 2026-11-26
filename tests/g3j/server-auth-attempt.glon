@@ -518,26 +518,30 @@ app/install: func [] [
                                                 gw/error request 404 "unknown user"
                                             ] [
                                                 uid: block-at urow 0
-                                                sec/random 16 func [salt] [
-                                                    sec/scrypt block-at result 1 salt auth/n auth/r auth/p 32 func [hash] [
-                                                        sqlite/prepare gw/users-db "INSERT OR REPLACE INTO user_passwords(user_id,algo,salt,hash,n,r,p) VALUES (?,'scrypt',?,?,?,?,?)"
-                                                            func [st] [
-                                                                sqlite/bind-int st 1 uid func [b1] [
-                                                                    sqlite/bind-blob st 2 salt func [b2] [
-                                                                        sqlite/bind-blob st 3 hash func [b3] [
-                                                                            sqlite/bind-int st 4 auth/n func [b4] [
-                                                                                sqlite/bind-int st 5 auth/r func [b5] [
-                                                                                    sqlite/bind-int st 6 auth/p func [b6] [
-                                                                                        sqlite/step st func [row] [ sqlite/finalize st func [x] [ gw/ok-json request 201 json/encode json/object pair "user_id" uid none ] func [e] [ gw/error request 500 "store failed" ] ] func [e] [ gw/error request 500 "store failed" ]
+                                                sec/random 16 func [salt-raw] [
+                                                    sec/hex salt-raw func [salt] [
+                                                        sec/scrypt block-at result 1 salt auth/n auth/r auth/p 32 func [hash] [
+                                                            sec/hex hash func [hash-hex] [
+                                                                sqlite/prepare gw/users-db "INSERT OR REPLACE INTO user_passwords(user_id,algo,salt,hash,n,r,p) VALUES (?,'scrypt',?,?,?,?,?)"
+                                                                    func [st] [
+                                                                        sqlite/bind-int st 1 uid func [b1] [
+                                                                            sqlite/bind-text st 2 salt func [b2] [
+                                                                                sqlite/bind-text st 3 hash-hex func [b3] [
+                                                                                    sqlite/bind-int st 4 auth/n func [b4] [
+                                                                                        sqlite/bind-int st 5 auth/r func [b5] [
+                                                                                            sqlite/bind-int st 6 auth/p func [b6] [
+                                                                                                sqlite/step st func [row] [ sqlite/finalize st func [x] [ gw/ok-json request 201 json/encode json/object pair "user_id" uid none ] func [e] [ gw/error request 500 "store failed" ] ] func [e] [ gw/error request 500 "store failed" ]
+                                                                                            ] func [e] [ gw/error request 500 "bind failed" ]
+                                                                                        ] func [e] [ gw/error request 500 "bind failed" ]
                                                                                     ] func [e] [ gw/error request 500 "bind failed" ]
                                                                                 ] func [e] [ gw/error request 500 "bind failed" ]
                                                                             ] func [e] [ gw/error request 500 "bind failed" ]
                                                                         ] func [e] [ gw/error request 500 "bind failed" ]
-                                                                    ] func [e] [ gw/error request 500 "bind failed" ]
-                                                                ] func [e] [ gw/error request 500 "bind failed" ]
-                                                            ] func [e] [ gw/error request 500 "prepare failed" ]
-                                                    ] func [e] [ gw/error request 500 "scrypt failed" ]
-                                                ] func [e] [ gw/error request 500 "random failed" ]
+                                                                    ] func [e] [ gw/error request 500 "prepare failed" ]
+                                                                ] func [e] [ gw/error request 500 "hash hex failed" ]
+                                                            ] func [e] [ gw/error request 500 "scrypt failed" ]
+                                                        ] func [e] [ gw/error request 500 "salt hex failed" ]
+                                                    ] func [e] [ gw/error request 500 "random failed" ]
                                             ]
                                         ] func [e] [ gw/error request 500 "lookup failed" ]
                                 ]
@@ -569,7 +573,8 @@ app/install: func [] [
                                                             stored: block-at prow 2
                                                             sec/scrypt password salt block-at prow 3 block-at prow 4 block-at prow 5 32
                                                                 func [hash] [
-                                                                    sec/ct-eq hash stored func [eq] [
+                                                                    sec/hex hash func [hash-hex] [
+                                                                        sec/ct-eq hash-hex stored func [eq] [
                                                                         either = eq 0 [
                                                                             auth/fails: + auth/fails 1
                                                                             auth/deny request
@@ -579,17 +584,22 @@ app/install: func [] [
                                                                                 sec/sha256 token func [th] [
                                                                                     sec/random 16 func [csrf] [
                                                                                         sec/sha256 csrf func [ch] [
-                                                                                            db/new-session uid th ch
-                                                                                                func [] [
+                                                                                            sec/hex th func [th-hex] [
+                                                                                                sec/hex ch func [ch-hex] [
+                                                                                                    db/new-session uid th-hex ch-hex
+                                                                                                        func [] [
                                                                                                     cookie: s/+ "gw_session=" s/+ token "; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=" s/from-int auth/ttl
                                                                                                     body: json/encode json/object pair "user" json/object pair "id" uid pair "username" block-at urow 1 pair "display_name" block-at urow 2 pair "role" block-at urow 3 none pair "csrf" csrf none
                                                                                                     http/respond-with request 200 "application/json; charset=utf-8" reduce [ "Set-Cookie" cookie ] body
                                                                                                 ]
+                                                                                            ] func [e] [ gw/error request 500 "ch hex failed" ]
+                                                                                        ] func [e] [ gw/error request 500 "th hex failed" ]
                                                                                         ] func [e] [ gw/error request 500 "csrf failed" ]
                                                                                     ] func [e] [ gw/error request 500 "random failed" ]
                                                                                 ] func [e] [ gw/error request 500 "hash failed" ]
                                                                             ] func [e] [ gw/error request 500 "random failed" ]
                                                                         ] func [e] [ gw/error request 500 "scrypt failed" ]
+                                                                    ] func [e] [ gw/error request 500 "hash hex failed" ]
                                                                 ] func [e] [ gw/error request 500 "scrypt failed" ]
                                                         ]
                                                     ]
@@ -621,7 +631,8 @@ app/install: func [] [
                                 gw/ok-json request 200 json/encode json/object pair "user" json/null none
                             ] [
                                 sec/sha256 token func [th] [
-                                    db/session th
+                                    sec/hex th func [th-hex] [
+                                        db/session th-hex
                                         func [srow] [
                                             either = srow none [
                                                 gw/ok-json request 200 json/encode json/object pair "user" json/null none
@@ -646,6 +657,7 @@ app/install: func [] [
                                                 ]
                                             ]
                                         ] func [e] [ gw/error request 500 "lookup failed" ]
+                                    ] func [e] [ gw/error request 500 "th hex failed" ]
                                 ] func [e] [ gw/error request 500 "hash failed" ]
                             ]
                         ]
@@ -656,8 +668,10 @@ app/install: func [] [
                                 cookie-clear request 200 json/encode json/object pair "ok" json/true none
                             ] [
                                 sec/sha256 token func [th] [
-                                    db/revoke th
-                                    cookie-clear request 200 json/encode json/object pair "ok" json/true none
+                                    sec/hex th func [th-hex] [
+                                        db/revoke th-hex
+                                        cookie-clear request 200 json/encode json/object pair "ok" json/true none
+                                    ] func [e] [ cookie-clear request 200 json/encode json/object pair "ok" json/true none ]
                                 ] func [e] [ cookie-clear request 200 json/encode json/object pair "ok" json/true none ]
                             ]
                         ]
