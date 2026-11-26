@@ -4285,6 +4285,18 @@ void r0_s1_dump_ip(void) {
     long twid = (long)word_id(tw);
     const char *tnm = (twid >= 0 && twid < SYM_CAP) ? syms[twid] : NULL;
     fprintf(stderr, "  [top word=%ld name=%s]\n", twid, tnm ? tnm : "?");
+    /* G3J.1/MEM-M27: read-only context occupancy + stack state at the halt. */
+    {
+        cell dctx = s1_mem(RV_CTX);
+        long dcount = (r0_tag(dctx) == T_CONTEXT)
+                          ? (long)M[r0_untag(dctx) + CTX_COUNT] : -1;
+        long dcap = (r0_tag(dctx) == T_CONTEXT)
+                        ? (long)M[r0_untag(dctx) + CTX_CAP] : -1;
+        fprintf(stderr,
+                "  [ctx=%ld count=%ld cap=%ld frame=%ld sp=%ld rp=%ld]\n",
+                (long)dctx, dcount, dcap, (long)s1_mem(RV_FRAME),
+                (long)s1_mem(REG_SP), (long)s1_mem(REG_RP));
+    }
     /* H2V: Glon expression location -- current block and element index. */
     cell blk = r0_untag(s1_mem(RV_BLK));
     cell cur = r0_untag(s1_mem(RV_CUR));
