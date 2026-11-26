@@ -775,6 +775,16 @@ g3h-test:
 	python3 tests/glon-worlds-g3h/smoke.py
 .PHONY: g3h-test
 
+# G3J: password auth is BLOCKED by the fixed 512-symbol interpreter table
+# (SYM_CAP) when the G3H server + http/json/sqlite/sec/web libraries are loaded.
+# This target builds with sec and documents the blocker deterministically.
+# See G3J-RESULTS.md.
+g3j-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,sec MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	tests/https-g1/make-cert.sh
+	python3 tests/g3j/blocker_check.py
+.PHONY: g3j-test
+
 # Focused M1 test binary for portable distribution smoke tests.  The full
 # native `s1` suite needs repository source fixtures and is not shipped in
 # every platform package.
