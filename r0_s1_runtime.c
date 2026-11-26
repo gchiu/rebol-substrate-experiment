@@ -31,6 +31,7 @@ static int stack_sentry_fired;           /* stack sentry: last run violated boun
 static cell ip_start, ip_end, sp_start, sp_end, rp_start, rp_end;
 static cell code_begin, code_end;
 extern cell g_halt_pos[]; extern int g_halt_n;
+int g_halt_tag = -1;
 
 /* G1: forward declarations for the managed-heap entry points referenced by the
  * RAW assembler's symbolic CALL targets (alloc/collect/lookup). Defined later
@@ -3493,7 +3494,7 @@ static void emit_return(void) {
     e_cell(RV_BLK); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch(); emit_decode_site(); e_setc(RV_SITE);
     e_cell(RV_SITE); asm_lit(0); asm_host(HOST_EQ);
     cell j_ok = asm_zbranch_fwd();
-    asm_host(HOST_DUMP); asm_halt();                 /* return outside function */
+        g_halt_tag = 3495; asm_host(HOST_DUMP); asm_halt();                 /* return outside function */
     asm_patch_here(j_ok);
     /* evaluate the return argument (one sub-expression) -> [r.., N] */
     to_subexpr[n_subexpr++] = emit_call_fwd();
@@ -3514,7 +3515,7 @@ static void emit_return(void) {
     cell find_loop = asm_here();
     e_cell(RV_T2); asm_lit(0); asm_host(HOST_EQ);
     cell j_nonzero = asm_zbranch_fwd();
-    asm_host(HOST_DUMP); asm_halt();                 /* no matching activation */
+        g_halt_tag = 3516; asm_host(HOST_DUMP); asm_halt();                 /* no matching activation */
     asm_patch_here(j_nonzero);
     e_cell(RV_T2); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_fetch();
     e_cell(RV_SITE); asm_host(HOST_EQ);
@@ -4297,7 +4298,7 @@ void r0_s1_dump_ip(void) {
                 "  [ctx=%ld count=%ld cap=%ld frame=%ld sp=%ld rp=%ld]\n",
                 (long)dctx, dcount, dcap, (long)s1_mem(RV_FRAME),
                 (long)s1_mem(REG_SP), (long)s1_mem(REG_RP));
-        fprintf(stderr, "  [halt-emitters=%d executed-ip=%ld:", g_halt_n, ip);
+        fprintf(stderr, "  [halt-emitters=%d executed-ip=%ld tag=%d:", g_halt_n, ip, g_halt_tag);
         for (int k = 0; k < g_halt_n; k++)
             fprintf(stderr, " %ld", (long)g_halt_pos[k]);
         fprintf(stderr, "]\n");
