@@ -743,6 +743,14 @@ h2b-test:
 	python3 tests/h2b/smoke.py
 .PHONY: h2b-test
 
+# H3C: HTTP method propagation into cooperative Glon tasks (method echo,
+# POST/SQLite effect, and mixed-method interleaving).  See H3C-RESULTS.md.
+h3c-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,task MEM_PROFILE=large MEM_LOADER_CELLS=500000 M1_TASKS=3 M1_TASK_CELLS=3400 M1_DS_OFF=400 M1_RS_OFF=3400 M1_WRAPPER_DELTA=256
+	tests/https-g1/make-cert.sh
+	python3 tests/h3c/acceptance.py
+.PHONY: h3c-test
+
 # Focused M1 test binary for portable distribution smoke tests.  The full
 # native `s1` suite needs repository source fixtures and is not shipped in
 # every platform package.

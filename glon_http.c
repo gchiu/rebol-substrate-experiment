@@ -133,7 +133,7 @@ static void hs_string(http_src *b, const unsigned char *bytes, size_t n) {
 
 /* ---- one session turn ---------------------------------------------------- */
 
-static int http_run_expression(const char *src, r0_s1_outcome *oc) {
+static int http_run_expression_ex(const char *src, r0_s1_outcome *oc, int hold) {
     cell save_lhp = M[GC_LOADER_HP];
     int perr = 0;
     cell prog = r0_s1_parse(src, &perr);
@@ -143,8 +143,15 @@ static int http_run_expression(const char *src, r0_s1_outcome *oc) {
         return -1;
     }
     int r = r0_s1_session_run_block(prog, oc);
-    M[GC_LOADER_HP] = save_lhp;
+    /* hold=1 keeps the just-parsed block (and any nested blocks) alive in the
+     * loader so a spawned task can still read its body block after this call;
+     * the caller reclaims the loader once the task has consumed the body. */
+    if (!hold) M[GC_LOADER_HP] = save_lhp;
     return r;
+}
+
+static int http_run_expression(const char *src, r0_s1_outcome *oc) {
+    return http_run_expression_ex(src, oc, 0);
 }
 
 static void http_outcome_text(const r0_s1_outcome *oc, char *err, size_t errcap) {
@@ -565,7 +572,7 @@ static int http_bridge_spawn_task(http_bridge_req *s, char *err, size_t errcap) 
         return -1;
     }
     r0_s1_outcome oc;
-    if (http_run_expression(src, &oc) != 0 || oc.status != R0S1_OUT_OK ||
+    if (http_run_expression_ex(src, &oc, 1) != 0 || oc.status != R0S1_OUT_OK ||
         oc.count != 1 || r0_tag(r0_s1_result(0, oc.count)) != T_INT) {
         http_outcome_text(&oc, err, errcap);
         return -1;
@@ -672,6 +679,11 @@ static void http_bridge_process_one(http_bridge_req *s) {
 /* H2B: run the cooperative scheduler and collect per-task responses. */
 static void http_bridge_process_tasks(void) {
     char err[256];
+    /* The spawn body block is parsed into the loader area; a spawned task keeps
+     * a reference to it and only consumes it during the run-tasks slice below.
+     * Hold the loader frontier across spawn+run-tasks, then reclaim it so the
+     * per-request loader space does not accumulate. */
+    cell lhp_ckpt = M[GC_LOADER_HP];
     /* 1. spawn a task for each newly queued request */
     for (unsigned i = 0; i < GLON_HTTP_MAX_BRIDGE_REQUESTS; i++) {
         http_bridge_req *s = &http_bridge[i];
@@ -704,6 +716,9 @@ static void http_bridge_process_tasks(void) {
             http.fatal = 1;
         }
     }
+    /* 2b. the spawned tasks have consumed their body blocks; reclaim the
+     * per-request loader space now that no live task references it. */
+    M[GC_LOADER_HP] = lhp_ckpt;
     /* 3. drain async I/O (callbacks may http/finish + task-wake) */
     if (http.pre_pump) {
         int pr;
