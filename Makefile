@@ -751,6 +751,14 @@ h3c-test:
 	python3 tests/h3c/acceptance.py
 .PHONY: h3c-test
 
+# H3D: HTTP task lifetime, cancellation and loader reclamation (1,000-request
+# stress, disconnects, capacity, error isolation, restart).  See H3D-RESULTS.md.
+h3d-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,task MEM_PROFILE=large MEM_LOADER_CELLS=500000 M1_TASKS=3 M1_TASK_CELLS=3400 M1_DS_OFF=400 M1_RS_OFF=3400 M1_WRAPPER_DELTA=256
+	tests/https-g1/make-cert.sh
+	python3 tests/h3d/acceptance.py
+.PHONY: h3d-test
+
 # Focused M1 test binary for portable distribution smoke tests.  The full
 # native `s1` suite needs repository source fixtures and is not shipped in
 # every platform package.

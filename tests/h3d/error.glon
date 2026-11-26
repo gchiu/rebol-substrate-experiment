@@ -1,0 +1,39 @@
+;; H3D: like examples/h2b/tasks.glon but raises a SIN! for /boom, to verify a
+;; task error is isolated (500) while other tasks keep running.  Success path
+;; uses the same async-callback shape (respond in a callback after task-wait).
+[
+db: none
+
+handle: func [request] [
+    me: self
+    either str-eq http/path request "/boom" [
+        raise create-sin 'test 'boom
+    ] [
+        sqlite/prepare db "SELECT 1"
+            func [st] [
+                sqlite/step st
+                    func [row] [
+                        sqlite/finalize st
+                            func [f] [
+                                http/respond request 200 "text/plain; charset=utf-8" "ok"
+                                task-wake me
+                            ]
+                            func [e] [ http/respond request 500 "text/plain" "err"  task-wake me ]
+                    ]
+                    func [e] [ http/respond request 500 "text/plain" "err"  task-wake me ]
+            ]
+            func [e] [ http/respond request 500 "text/plain" "err"  task-wake me ]
+        task-wait
+    ]
+]
+
+start: func [] [
+    sqlite/open "error.db"
+        func [h] [
+            db: h
+            http/listen 8443 :handle
+        ]
+        func [e] [ raise e ]
+]
+start
+]
