@@ -30,6 +30,7 @@ static int stack_sentry_fired;           /* stack sentry: last run violated boun
 /* instrumentation */
 static cell ip_start, ip_end, sp_start, sp_end, rp_start, rp_end;
 static cell code_begin, code_end;
+extern cell g_halt_pos[]; extern int g_halt_n;
 
 /* G1: forward declarations for the managed-heap entry points referenced by the
  * RAW assembler's symbolic CALL targets (alloc/collect/lookup). Defined later
@@ -4296,6 +4297,10 @@ void r0_s1_dump_ip(void) {
                 "  [ctx=%ld count=%ld cap=%ld frame=%ld sp=%ld rp=%ld]\n",
                 (long)dctx, dcount, dcap, (long)s1_mem(RV_FRAME),
                 (long)s1_mem(REG_SP), (long)s1_mem(REG_RP));
+        fprintf(stderr, "  [halt-emitters=%d executed-ip=%ld:", g_halt_n, ip);
+        for (int k = 0; k < g_halt_n; k++)
+            fprintf(stderr, " %ld", (long)g_halt_pos[k]);
+        fprintf(stderr, "]\n");
     }
     /* H2V: Glon expression location -- current block and element index. */
     cell blk = r0_untag(s1_mem(RV_BLK));

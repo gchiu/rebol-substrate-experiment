@@ -44,7 +44,8 @@ void asm_dup(void)   { emit(OP_DUP); }
 void asm_drop(void)  { emit(OP_DROP); }
 void asm_fetch(void) { emit(OP_FETCH); }
 void asm_store(void) { emit(OP_STORE); }
-void asm_halt(void)  { emit(OP_HALT); }
+cell g_halt_pos[256]; int g_halt_n;
+void asm_halt(void)  { if (g_halt_n < 256) g_halt_pos[g_halt_n++] = here; emit(OP_HALT); }
 void asm_host(int id){ emit(OP_HOST); emit(id); }
 
 void asm_add(void){ asm_host(HOST_ADD); } void asm_sub(void){ asm_host(HOST_SUB); }
