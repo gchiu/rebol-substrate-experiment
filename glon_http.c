@@ -29,6 +29,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #define GLON_HTTP_SRC_CAP 65536
 #define GLON_HTTP_CTYPE_CAP ((size_t)GLON_HTTP_TYPE_CAP)
@@ -129,6 +133,116 @@ static void hs_string(http_src *b, const unsigned char *bytes, size_t n) {
         hs_uint(b, (unsigned long)bytes[i]);
     }
     hs_text(b, " ]");
+}
+
+/* ---- optional persistent activity log (G3G) -----------------------------
+ *
+ * Small, opt-in, append-only access/error log with size-based rotation.  It is
+ * compiled into the HTTP host (never the frozen S1) and does nothing unless
+ * --http-log is supplied.  Only the request method, the cleaned path (no query
+ * string), the response status and explicit error/startup/shutdown events are
+ * recorded.  Credentials, cookies, request headers, request/response bodies and
+ * private message text are never passed to the log.
+ */
+static FILE *http_log_fp;
+static char http_log_path[1024];
+static unsigned long http_log_size;
+static unsigned long http_log_max = 5UL * 1024UL * 1024UL; /* 5 MiB */
+static unsigned http_log_backups = 3;
+static pthread_mutex_t http_log_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void http_log_mkdir(const char *path) {
+    char tmp[1024];
+    snprintf(tmp, sizeof tmp, "%s", path);
+    char *slash = strrchr(tmp, '/');
+    if (!slash || slash == tmp) return;
+    *slash = 0;
+    if (tmp[0]) (void)mkdir(tmp, 0755); /* ignore EEXIST */
+}
+
+static void http_log_rotate(void) {
+    char from[1100], to[1100];
+    if (http_log_fp) { fclose(http_log_fp); http_log_fp = NULL; }
+    for (int i = (int)http_log_backups - 1; i >= 1; i--) {
+        snprintf(from, sizeof from, "%s.%d", http_log_path, i);
+        snprintf(to, sizeof to, "%s.%d", http_log_path, i + 1);
+        (void)rename(from, to);
+    }
+    snprintf(to, sizeof to, "%s.1", http_log_path);
+    (void)rename(http_log_path, to);
+    http_log_fp = fopen(http_log_path, "a");
+    http_log_size = 0;
+}
+
+static void http_log_open(const char *path, unsigned long max_bytes,
+                          unsigned backups) {
+    snprintf(http_log_path, sizeof http_log_path, "%s", path);
+    http_log_max = max_bytes ? max_bytes : 5UL * 1024UL * 1024UL;
+    http_log_backups = backups ? backups : 3;
+    http_log_mkdir(http_log_path);
+    http_log_fp = fopen(http_log_path, "a");
+    if (http_log_fp) {
+        (void)fseek(http_log_fp, 0, SEEK_END);
+        http_log_size = (unsigned long)ftell(http_log_fp);
+    }
+}
+
+static void http_log_emit(const char *fmt, ...) {
+    pthread_mutex_lock(&http_log_lock);
+    if (!http_log_fp) { pthread_mutex_unlock(&http_log_lock); return; }
+    char line[1024];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(line, sizeof line, fmt, ap);
+    va_end(ap);
+    if (n < 0) { pthread_mutex_unlock(&http_log_lock); return; }
+    char ts[32];
+    time_t t = time(NULL);
+    struct tm tmv;
+    struct tm *tp = gmtime(&t);
+    if (tp) { tmv = *tp; strftime(ts, sizeof ts, "%Y-%m-%dT%H:%M:%SZ", &tmv); }
+    else snprintf(ts, sizeof ts, "1970-01-01T00:00:00Z");
+    char out[1100];
+    int m = snprintf(out, sizeof out, "%s %s\n", ts, line);
+    if (m < 0) { pthread_mutex_unlock(&http_log_lock); return; }
+    size_t olen = (size_t)m < sizeof out ? (size_t)m : sizeof out - 1;
+    if (http_log_size > 0 && http_log_size + olen > http_log_max)
+        http_log_rotate();
+    if (http_log_fp) {
+        (void)fwrite(out, 1, olen, http_log_fp);
+        (void)fflush(http_log_fp);
+        http_log_size += olen;
+    }
+    pthread_mutex_unlock(&http_log_lock);
+}
+
+/* CivetWeb log_access callback: record a sanitised request line and suppress
+ * CivetWeb's own access file (we manage rotation ourselves). */
+static int http_log_access(const struct mg_connection *conn,
+                           const char *message) {
+    (void)message;
+    const struct mg_request_info *ri = mg_get_request_info(conn);
+    const char *method = (ri && ri->request_method) ? ri->request_method : "-";
+    const char *path = (ri && ri->local_uri) ? ri->local_uri
+                     : (ri && ri->request_uri) ? ri->request_uri : "-";
+    char clean[512];
+    snprintf(clean, sizeof clean, "%s", path);
+    char *q = strchr(clean, '?');
+    if (q) *q = 0; /* never log the query string */
+    /* The status is not exposed through a server-side accessor, so take it
+     * from CivetWeb's formatted access line: after the quoted request line. */
+    int status = 0;
+    const char *q1 = strchr(message, '"');
+    if (q1) {
+        const char *q2 = strchr(q1 + 1, '"');
+        if (q2) {
+            const char *sp = q2 + 1;
+            while (*sp == ' ') sp++;
+            status = atoi(sp);
+        }
+    }
+    http_log_emit("access method=%s path=%s status=%d", method, clean, status);
+    return 1;
 }
 
 /* ---- one session turn ---------------------------------------------------- */
@@ -638,6 +752,7 @@ static void http_bridge_process_one(http_bridge_req *s) {
     s->state = BRIDGE_PROCESSING;
     if (http_bridge_dispatch(s, err, sizeof err) != 0) {
         fprintf(stderr, "glon: http: bridge dispatch %lu: %s\n", s->id, err);
+        http_log_emit("error dispatch id=%lu: %s", (unsigned long)s->id, err);
         http.errors++;
         http.fatal = 1;
         s->state = BRIDGE_CANCELLED;
@@ -657,6 +772,7 @@ static void http_bridge_process_one(http_bridge_req *s) {
         s->state = BRIDGE_CANCELLED;
     } else if (http_take_response(s->id, &r, &have, err, sizeof err) != 0) {
         fprintf(stderr, "glon: http: bridge response %lu: %s\n", s->id, err);
+        http_log_emit("error response id=%lu: %s", (unsigned long)s->id, err);
         http.errors++;
         http.fatal = 1;
         s->state = BRIDGE_CANCELLED;
@@ -697,6 +813,7 @@ static void http_bridge_process_tasks(void) {
         s->task = 0;
         if (http_bridge_spawn_task(s, err, sizeof err) != 0) {
             fprintf(stderr, "glon: http: bridge spawn %lu: %s\n", s->id, err);
+            http_log_emit("error spawn id=%lu: %s", (unsigned long)s->id, err);
             http.errors++;
             http.fatal = 1;
             s->state = BRIDGE_CANCELLED;
@@ -710,6 +827,7 @@ static void http_bridge_process_tasks(void) {
             oc.status != R0S1_OUT_OK) {
             http_outcome_text(&oc, err, sizeof err);
             fprintf(stderr, "glon: http: run-tasks: %s\n", err);
+            http_log_emit("error run-tasks: %s", err);
             if (oc.status == R0S1_OUT_HALT) r0_s1_dump_ip();
             if (oc.status == R0S1_OUT_HALT) r0_s1_task_dump();
             http.errors++;
@@ -734,6 +852,7 @@ static void http_bridge_process_tasks(void) {
         int got = http_bridge_collect(s, err, sizeof err);
         if (got < 0) {
             fprintf(stderr, "glon: http: bridge collect %lu: %s\n", s->id, err);
+            http_log_emit("error collect id=%lu: %s", (unsigned long)s->id, err);
             http.errors++;
             s->state = BRIDGE_CANCELLED;
         } else if (got > 0) {
@@ -1026,6 +1145,8 @@ int glon_http_run(const glon_http_config *cfg, int report,
     http.pre_pump_user = cfg->pre_pump_user;
     http.pump = pump;
     http.pump_user = pump_user;
+    if (cfg->log_path && cfg->log_path[0])
+        http_log_open(cfg->log_path, cfg->log_max_bytes, cfg->log_backups);
     pthread_mutex_init(&http.lock, NULL);
     pthread_cond_init(&http_bridge_cond, NULL);
 #ifdef _WIN32
@@ -1071,6 +1192,7 @@ int glon_http_run(const glon_http_config *cfg, int report,
     struct mg_callbacks callbacks;
     memset(&callbacks, 0, sizeof callbacks);
     callbacks.begin_request = http_begin_request;
+    callbacks.log_access = http_log_access;
 
 #ifdef _WIN32
     signal(SIGINT, http_signal_handler);
@@ -1105,6 +1227,7 @@ int glon_http_run(const glon_http_config *cfg, int report,
         return -1;
     }
     fprintf(stderr, "glon: http: listening on https://%s:%d\n", cfg->bind, port);
+    http_log_emit("startup bind=%s port=%d", cfg->bind, port);
 
     if (http.cfg.task_mode) {
         r0_s1_outcome oc;
@@ -1140,6 +1263,7 @@ int glon_http_run(const glon_http_config *cfg, int report,
         pthread_mutex_unlock(&http.lock);
     }
 
+    http_log_emit("shutdown completed=%d errors=%d", http.completed, http.errors);
     mg_stop(ctx);
 #ifdef _WIN32
     if (stop_event) CloseHandle(stop_event);

@@ -759,6 +759,14 @@ h3d-test:
 	python3 tests/h3d/acceptance.py
 .PHONY: h3d-test
 
+# G3G: persistent rotating activity log for the native Glon Worlds demo.
+# See G3G-RESULTS.md.
+g3g-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	tests/https-g1/make-cert.sh
+	python3 tests/glon-worlds-g3g/smoke.py
+.PHONY: g3g-test
+
 # Focused M1 test binary for portable distribution smoke tests.  The full
 # native `s1` suite needs repository source fixtures and is not shipped in
 # every platform package.

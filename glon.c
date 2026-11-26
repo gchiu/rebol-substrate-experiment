@@ -340,6 +340,8 @@ static void module_usage(void) {
         "            [--http-timeout-ms N] [--http-max-request-size N]\n"
         "            [--http-max-body N] [--http-threads N] [--http-bridge]\n"
         "            [--http-keep-alive]\n"
+        "            [--http-log FILE] [--http-log-max-bytes N]\n"
+        "            [--http-log-backups N]\n"
         "            [--http-report] [--http-stop-event NAME]");
 #endif
 #ifdef GLON_MODULE_SQLITE
@@ -440,6 +442,15 @@ static int parse_module_options(int argc, char **argv, int *first_file,
         } else if (!strcmp(a, "--http-stop-event")) {
             if (++i >= argc || !argv[i][0]) return -1;
             o->http.stop_event = argv[i];
+        } else if (!strcmp(a, "--http-log")) {
+            if (++i >= argc || !argv[i][0]) return -1;
+            o->http.log_path = argv[i];
+        } else if (!strcmp(a, "--http-log-max-bytes")) {
+            unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v) || v == 0) return -1;
+            o->http.log_max_bytes = v;
+        } else if (!strcmp(a, "--http-log-backups")) {
+            unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v)) return -1;
+            o->http.log_backups = v;
         }
 #endif
         else {

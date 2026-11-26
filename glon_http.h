@@ -69,6 +69,12 @@ typedef struct {
      * none, -1 on failure.  The file pump remains post-response. */
     glon_http_pump_fn pre_pump;
     void *pre_pump_user;
+    /* G3G: optional persistent access/error log.  log_path == NULL disables
+     * file logging (default, preserves prior behaviour).  log_max_bytes 0
+     * selects the 5 MiB default; log_backups 0 selects 3 rotated backups. */
+    const char *log_path;
+    unsigned long log_max_bytes;
+    unsigned log_backups;
 } glon_http_config;
 
 void glon_http_config_default(glon_http_config *cfg);
