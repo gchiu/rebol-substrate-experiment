@@ -428,6 +428,12 @@ experimental are different things:
   hash, which only broke once a configurable capacity exceeded 256. Write
   capacity assumptions as static asserts. See `GLON-S1-CLAUDE-D1-RESULTS.md`.
 
+- **HTTP-H3E (2026-11-26):** immediate task-mode responses were lost
+  because `http/task-run` checked for a response with a *consuming* call. A
+  second host bug (a tagged handle encoded twice) hid the loss as a timeout.
+  Ownership rules should be stated once and enforced in one place. See
+  `GLON-HTTP-H3E-RESULTS.md`.
+
 ## 7. Roadmap
 
 ```text

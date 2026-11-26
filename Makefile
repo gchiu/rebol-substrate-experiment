@@ -792,6 +792,16 @@ h3d-test:
 	python3 tests/h3d/acceptance.py
 .PHONY: h3d-test
 
+# H3E: task-mode HTTP response lifecycle (immediate + async responses, overlap,
+# failures, capacity wait, disconnects).  Uses the expanded code cap: the default
+# 16,384-cell cap no longer fits task.glon (see GLON-S1-CLAUDE-D1-RESULTS.md).
+# See GLON-HTTP-H3E-RESULTS.md.
+h3e-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,task MEM_PROFILE=large MEM_LOADER_CELLS=500000 MEM_CODE_CAP=20480 MEM_GLOBAL_CONTEXT_CAP=512 CODE_RESERVE=128 M1_TASKS=3 M1_TASK_CELLS=3400 M1_DS_OFF=400 M1_RS_OFF=3400 M1_WRAPPER_DELTA=256
+	tests/https-g1/make-cert.sh
+	python3 tests/h3e/acceptance.py
+.PHONY: h3e-test
+
 # G3G: persistent rotating activity log for the native Glon Worlds demo.
 # See G3G-RESULTS.md.
 g3g-test:

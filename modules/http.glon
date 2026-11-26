@@ -31,6 +31,28 @@ http/stop-requested: none
 ;; per-id in http/responses instead of the single http/response.
 http/task-mode: 0
 http/responses: none
+;; H3E: task-mode response ownership.  http/open-ids lists the ids of requests
+;; whose response has not yet been collected by the host or closed.  A response
+;; is stored only for an open id that has none yet (the first response wins);
+;; it stays in http/responses until the host takes it (take-response-for, which
+;; also closes the id) or the request ends (close-request).  Responses for a
+;; closed id -- collected, timed out, disconnected -- are dropped, so a late
+;; async reply can never be delivered twice or to another request.
+http/open-ids: none
+http/id-member?: func [xs id] [
+    either xs [
+        either = block-at xs 0 id [ 1 ] [ http/id-member? block-at xs 1 id ]
+    ] [ 0 ]
+]
+http/id-remove: func [xs id] [
+    either xs [
+        either = block-at xs 0 id [
+            block-at xs 1
+        ] [
+            reduce [ block-at xs 0 http/id-remove block-at xs 1 id ]
+        ]
+    ] [ none ]
+]
 
 http/listen: func [port handler] [
     either < port 1 [
@@ -141,11 +163,17 @@ http/respond-with: func [request status content-type headers body] [
             raise create-sin 'http 'bad-status status
         ] [
             either http/task-mode [
-                http/responses: reduce [
-                    reduce [ block-at request 0 status content-type headers body ]
-                    http/responses
-                ]
-                none
+                either http/id-member? http/open-ids block-at request 0 [
+                    either http/response-find http/responses block-at request 0 [
+                        none
+                    ] [
+                        http/responses: reduce [
+                            reduce [ block-at request 0 status content-type headers body ]
+                            http/responses
+                        ]
+                        none
+                    ]
+                ] [ none ]
             ] [
             either http/current [
                 either = block-at request 0 block-at http/current 0 [
@@ -164,25 +192,24 @@ http/respond-with: func [request status content-type headers body] [
     ]
 ]
 
-;; H2B: per-id response lookup for the interpreter-owner loop.  Returns the
-;; head pair [id status ctype headers body] and removes it when the id matches,
-;; or NONE.  The owner re-polls, so responses are drained in order.
+;; H2B/H3E: per-id response collection for the interpreter-owner loop.  The
+;; response for `id` is found anywhere in http/responses (not only at the head,
+;; so another request's uncollected response cannot block it), removed, and the
+;; id is closed so no later response for it is stored.  Returns the response
+;; [id status ctype headers body], or NONE when there is none yet.
 http/take-response-for: func [id] [
-    either http/responses [
-        pair: block-at http/responses 0
-        either - block-at pair 0 id [
-            none
-        ] [
-            http/responses: block-at http/responses 1
-            pair
-        ]
+    either http/response-find http/responses id [
+        http/take-found: http/response-find http/responses id
+        http/responses: http/response-remove http/responses id
+        http/open-ids: http/id-remove http/open-ids id
+        http/take-found
     ] [ none ]
 ]
+http/take-found: none
 http/response-find: func [xs id] [
     either xs [
-        pair: block-at xs 0
-        either = block-at pair 0 id [
-            pair
+        either = block-at block-at xs 0 0 id [
+            block-at xs 0
         ] [
             http/response-find block-at xs 1 id
         ]
@@ -190,29 +217,42 @@ http/response-find: func [xs id] [
 ]
 http/response-remove: func [xs id] [
     either xs [
-        pair: block-at xs 0
-        either = block-at pair 0 id [
+        either = block-at block-at xs 0 0 id [
             block-at xs 1
         ] [
-            reduce [ pair http/response-remove block-at xs 1 id ]
+            reduce [ block-at xs 0 http/response-remove block-at xs 1 id ]
         ]
     ] [ none ]
+]
+;; H3E: the host ends request `id` (its worker has replied, timed out or the
+;; client went away).  Close the id and drop any uncollected response.  `tk` is
+;; the task of an ABANDONED request (timeout, disconnect, shutdown), or NONE:
+;; it is cancelled if still live, so an abandoned wait does not hold a task
+;; slot.  A task whose response was delivered is left to run to its end.
+http/close-request: func [id tk] [
+    http/open-ids: http/id-remove http/open-ids id
+    http/responses: http/response-remove http/responses id
+    either tk [
+        either = 0 task-state tk [ task-cancel tk ] [ none ]
+    ] [ none ]
+    none
 ]
 
 ;; H2B: task entry.  The host passes the seven request fields as evaluated
 ;; arguments; the task builds the request block and runs the handler, which may
 ;; suspend on async I/O (task-wait) and whose reply callback calls http/respond.
+;;
+;; H3E: the task never consumes its own response.  A handler that raises gets a
+;; 500 unless it had already responded (respond keeps the first response).  A
+;; handler that returns without responding may still be answered by an async
+;; callback; the host decides "no response" once the task has finished and all
+;; async work has drained.
 http/task-run: func [id method path query body headers peer] [
     request: reduce [ id method path query body headers peer ]
+    http/open-ids: reduce [ id http/open-ids ]
     either sin? judge [ http/handler :request ] [
         http/respond request 500 "text/plain; charset=utf-8" "internal error"
-    ] [
-        either http/take-response-for block-at request 0 [
-            none
-        ] [
-            http/respond request 500 "text/plain; charset=utf-8" "no response"
-        ]
-    ]
+    ] [ none ]
 ]
 
 ;; Ask the host to stop after the current response.  The host polls this flag

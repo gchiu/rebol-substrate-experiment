@@ -1313,6 +1313,20 @@ MEM_GLOBAL_CONTEXT_CAP=512 CODE_RESERVE=128`, M1 3x3400):
 - `g_halt_tag` is assigned at emit time and does not identify a runtime halt.
 See `GLON-S1-CLAUDE-D1-RESULTS.md`.
 
+### HTTP-H3E: task-mode response lifecycle (2026-11-26) — [FIXED, LOCAL]
+
+Rule: a response stays in `http/responses` until the host collects it or the
+request ends; it is stored only for an open id with no response yet (first
+wins). `http/task-run` no longer consumes its own response; collection
+searches the whole list and closes the id; the host decides "no response"
+once the task has finished and the file/SQLite/sec drains are idle; workers
+mark finished slots CLOSING and the owner runs `http/close-request`, which
+cancels only abandoned tasks. Task mode now pumps file I/O. Measured
+(expanded build, M1 3x3400): `make h3e-test` PASS; G3H task mode 7/9 routes,
+with `GET /api/messages` exhausting a 3,400-cell task's return stack in
+`j/encode-string-loop` (9/9 with 10,000-cell tasks; not committed: capacity
+change). See `GLON-HTTP-H3E-RESULTS.md`.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

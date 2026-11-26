@@ -74,7 +74,13 @@ extern int glon_task_dump_enabled;   /* D2A: --task-dump */
  * dispatch and drains async I/O.  The worker then sends the stored response.
  * No worker ever enters the Glon evaluator. */
 enum { BRIDGE_EMPTY = 0, BRIDGE_QUEUED, BRIDGE_PROCESSING,
-       BRIDGE_COMPLETED, BRIDGE_CANCELLED };
+       BRIDGE_COMPLETED, BRIDGE_CANCELLED,
+       /* H3E (task mode): the task finished, every async queue has drained and
+        * no response was stored -> the worker sends 500 "no response". */
+       BRIDGE_NO_RESPONSE,
+       /* H3E (task mode): the worker has finished with the slot; the owner must
+        * close the request in Glon (http/close-request) before reusing it. */
+       BRIDGE_CLOSING };
 
 typedef struct {
     int state;
@@ -92,6 +98,8 @@ typedef struct {
     http_response resp;
     double deadline;
     cell task;   /* H2B: Glon task handle (0 = none) */
+    int abandoned; /* H3E: ended without a delivered response (timeout,
+                    * disconnect, shutdown): cancel its task when closing */
 } http_bridge_req;
 
 static http_bridge_req http_bridge[GLON_HTTP_MAX_BRIDGE_REQUESTS];
@@ -668,7 +676,9 @@ static int http_bridge_dispatch(http_bridge_req *s, char *err, size_t errcap) {
     return 0;
 }
 
-/* H2B: spawn a Glon task that runs http/task-run for this request. */
+/* H2B: spawn a Glon task that runs http/task-run for this request.
+ * Returns 0 when spawned, 1 when every task slot is in use (H3E: the request
+ * stays queued until a slot frees or its deadline passes), -1 on error. */
 static int http_bridge_spawn_task(http_bridge_req *s, char *err, size_t errcap) {
     char body[GLON_HTTP_SRC_CAP];
     http_src b = { body, 0, sizeof body, 0 };
@@ -692,6 +702,10 @@ static int http_bridge_spawn_task(http_bridge_req *s, char *err, size_t errcap) 
         return -1;
     }
     s->task = r0_s1_result(0, oc.count);
+    if (int_val(s->task) < 0) {   /* mnew-task: no free slot (-1) */
+        s->task = 0;
+        return 1;
+    }
     return 0;
 }
 
@@ -756,7 +770,7 @@ static void http_bridge_process_one(http_bridge_req *s) {
         http.errors++;
         http.fatal = 1;
         s->state = BRIDGE_CANCELLED;
-        pthread_cond_signal(&http_bridge_cond);
+        pthread_cond_broadcast(&http_bridge_cond);
         return;
     }
     if (http.pre_pump) {
@@ -789,7 +803,7 @@ static void http_bridge_process_one(http_bridge_req *s) {
         (void)http_run_expression("[ http/clear-current ]", &clear_oc);
     }
     http.current_id = 0;
-    pthread_cond_signal(&http_bridge_cond);
+    pthread_cond_broadcast(&http_bridge_cond);
 }
 
 /* H2B: run the cooperative scheduler and collect per-task responses. */
@@ -800,24 +814,56 @@ static void http_bridge_process_tasks(void) {
      * Hold the loader frontier across spawn+run-tasks, then reclaim it so the
      * per-request loader space does not accumulate. */
     cell lhp_ckpt = M[GC_LOADER_HP];
+    /* 0. H3E: close requests whose worker has finished (replied, timed out or
+     * lost its client): drop any uncollected response, close the id so a late
+     * async reply is discarded, cancel the task of an abandoned request (one
+     * that ended without a delivered response), then free the slot.
+     * Workers never enter the evaluator, so the owner does this. */
+    for (unsigned i = 0; i < GLON_HTTP_MAX_BRIDGE_REQUESTS; i++) {
+        http_bridge_req *s = &http_bridge[i];
+        if (s->state != BRIDGE_CLOSING) continue;
+        char q[128];
+        /* A task whose response was delivered (or that finished) is left to
+         * run to its end; only an abandoned request's task is cancelled. */
+        if (s->task && s->abandoned)
+            snprintf(q, sizeof q, "[ http/close-request %lu %ld ]",
+                     (unsigned long)s->id, (long)int_val(s->task));
+        else
+            snprintf(q, sizeof q, "[ http/close-request %lu none ]",
+                     (unsigned long)s->id);
+        r0_s1_outcome oc;
+        if (http_run_expression(q, &oc) != 0 || oc.status != R0S1_OUT_OK) {
+            http_outcome_text(&oc, err, sizeof err);
+            fprintf(stderr, "glon: http: close %lu: %s\n", s->id, err);
+            http_log_emit("error close id=%lu: %s", (unsigned long)s->id, err);
+            http.errors++;
+        }
+        s->task = 0;
+        s->state = BRIDGE_EMPTY;
+    }
     /* 1. spawn a task for each newly queued request */
     for (unsigned i = 0; i < GLON_HTTP_MAX_BRIDGE_REQUESTS; i++) {
         http_bridge_req *s = &http_bridge[i];
         if (s->state != BRIDGE_QUEUED) continue;
         if (s->deadline < http_now_sec()) {
             s->state = BRIDGE_CANCELLED;
-            pthread_cond_signal(&http_bridge_cond);
+            pthread_cond_broadcast(&http_bridge_cond);
             continue;
         }
         s->state = BRIDGE_PROCESSING;
         s->task = 0;
-        if (http_bridge_spawn_task(s, err, sizeof err) != 0) {
+        int sp = http_bridge_spawn_task(s, err, sizeof err);
+        if (sp == 1) {              /* all task slots busy: retry next turn */
+            s->state = BRIDGE_QUEUED;
+            continue;
+        }
+        if (sp != 0) {
             fprintf(stderr, "glon: http: bridge spawn %lu: %s\n", s->id, err);
             http_log_emit("error spawn id=%lu: %s", (unsigned long)s->id, err);
             http.errors++;
             http.fatal = 1;
             s->state = BRIDGE_CANCELLED;
-            pthread_cond_signal(&http_bridge_cond);
+            pthread_cond_broadcast(&http_bridge_cond);
         }
     }
     /* 2. run all runnable Glon tasks (they may suspend on async I/O) */
@@ -837,11 +883,18 @@ static void http_bridge_process_tasks(void) {
     /* 2b. the spawned tasks have consumed their body blocks; reclaim the
      * per-request loader space now that no live task references it. */
     M[GC_LOADER_HP] = lhp_ckpt;
-    /* 3. drain async I/O (callbacks may http/finish + task-wake) */
-    if (http.pre_pump) {
-        int pr;
+    /* 3. drain async I/O (callbacks may respond + task-wake).  H3E: the file
+     * pump is drained here too (before, task mode never pumped file I/O while
+     * serving).  Both drains run every queued operation and its callback to
+     * completion; a callback may enqueue more work on either queue, so repeat
+     * until the pre-response services make no progress. */
+    {
+        int pr = 0;
         do {
-            pr = http.pre_pump(http.pre_pump_user);
+            if (http.pump && http.pump(http.pump_user) != 0) {
+                http.errors++; http.fatal = 1; break;
+            }
+            pr = http.pre_pump ? http.pre_pump(http.pre_pump_user) : 0;
             if (pr < 0) { http.errors++; http.fatal = 1; break; }
         } while (pr > 0);
     }
@@ -859,21 +912,33 @@ static void http_bridge_process_tasks(void) {
             s->state = BRIDGE_COMPLETED;
             http.completed++;
         } else {
-            /* no response yet: if the task has finished, it produced none */
+            /* No response yet.  H3E: every async queue has drained (step 3), so
+             * if the task is no longer runnable nothing can answer this request
+             * any more: report "no response".  A task waiting for a wake-up is
+             * still runnable (TASK_RUNNABLE, blocked) and keeps the request
+             * pending until a callback answers it or the deadline passes.
+             * (Before H3E the state was divided by 16 a second time, so a
+             * finished task was never detected and the request hung until its
+             * deadline.)  task-state answers 0 runnable, 1 finished, 2 empty,
+             * -1 stale; anything but 0 means the task is gone.  The handle is
+             * passed as its Glon integer value (before H3E the raw tagged cell
+             * was printed, i.e. the handle times 16, which decodes to another
+             * slot/generation). */
             r0_s1_outcome oc;
             char q[64];
-            snprintf(q, sizeof q, "[ task-state %lu ]", (unsigned long)s->task);
+            snprintf(q, sizeof q, "[ task-state %ld ]", (long)int_val(s->task));
             if (http_run_expression(q, &oc) == 0 && oc.status == R0S1_OUT_OK &&
                 oc.count == 1 && r0_tag(r0_s1_result(0, oc.count)) == T_INT) {
-                long st = (long)int_val(r0_s1_result(0, oc.count)) / 16;
-                if (st == 1) {   /* TASK_FINISHED with no response */
+                long st = (long)int_val(r0_s1_result(0, oc.count));
+                if (st != 0) {
                     http.errors++;
-                    s->state = BRIDGE_CANCELLED;
+                    s->state = BRIDGE_NO_RESPONSE;
                 }
             }
         }
-        if (s->state == BRIDGE_COMPLETED || s->state == BRIDGE_CANCELLED)
-            pthread_cond_signal(&http_bridge_cond);
+        if (s->state == BRIDGE_COMPLETED || s->state == BRIDGE_CANCELLED ||
+            s->state == BRIDGE_NO_RESPONSE)
+            pthread_cond_broadcast(&http_bridge_cond);
     }
     {
         r0_s1_outcome clear_oc;
@@ -893,7 +958,7 @@ static void http_bridge_process(void) {
         if (s->state != BRIDGE_QUEUED) continue;
         if (s->deadline < now) {
             s->state = BRIDGE_CANCELLED;
-            pthread_cond_signal(&http_bridge_cond);
+            pthread_cond_broadcast(&http_bridge_cond);
             continue;
         }
         http_bridge_process_one(s);
@@ -941,7 +1006,7 @@ static int http_bridge_begin(struct mg_connection *conn,
              (ri && ri->remote_addr) ? ri->remote_addr : "");
     s->deadline = http_now_sec() + (double)http.cfg.request_timeout_ms / 1000.0;
     http.requests++;
-    pthread_cond_signal(&http_bridge_cond);
+    pthread_cond_broadcast(&http_bridge_cond);
     pthread_mutex_unlock(&http.lock);
 
     pthread_mutex_lock(&http.lock);
@@ -958,13 +1023,20 @@ static int http_bridge_begin(struct mg_connection *conn,
     int st = s->state;
     http_response r = s->resp;
     int has_resp = (st == BRIDGE_COMPLETED);
-    s->state = BRIDGE_EMPTY;
+    /* H3E: in task mode the owner must close the request in Glon before the
+     * slot is reused (the worker never enters the evaluator). */
+    s->abandoned = !(st == BRIDGE_COMPLETED || st == BRIDGE_NO_RESPONSE);
+    s->state = http.cfg.task_mode ? BRIDGE_CLOSING : BRIDGE_EMPTY;
     s->conn = NULL;
     pthread_mutex_unlock(&http.lock);
 
     if (has_resp) {
         if (http_send_response(conn, &r) != 0) http.write_failures++;
         return r.status;
+    }
+    if (st == BRIDGE_NO_RESPONSE) {
+        (void)http_send_text(conn, 500, "text/plain; charset=utf-8", "no response");
+        return 500;
     }
     return http_send_text(conn, 503, "text/plain; charset=utf-8",
                           "bridge request cancelled") == 0 ? 503 : 500;
