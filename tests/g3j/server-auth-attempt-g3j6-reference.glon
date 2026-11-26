@@ -1,0 +1,736 @@
+;; G3J.1 ARTIFACT: with SYM_CAP raised 512->1024 this file now PARSES (the
+;; symbol table no longer overflows) but the startup chain does not reach
+;; http/listen — a bracket/structure defect in this generated auth code, not an
+;; architectural limit. Reference implementation; needs the auth nesting fixed.
+;; examples/glon-worlds-g3b/server.glon - minimal Glon Worlds chat API demo.
+;;
+;; This is ordinary Glon application logic over the existing HTTPS, JSON and
+;; file vocabularies.  It deliberately implements only the read/unauthenticated
+;; development subset:
+;;   GET  /api/groups
+;;   GET  /api/session
+;;   GET  /api/messages?group=general&after=0
+;;   POST /api/messages
+;;
+;; G3H adds a loopback-only SQLite user registry:
+;;   GET  /api/users            list users
+;;   GET  /api/users?id=N       one user by stable id
+;;   POST /api/users            create a user (username, display_name, role)
+;;   POST /api/users/disable    disable a user by id (never deletes records)
+;; The registry lives in users.db under the --io-root; the NDJSON message store
+;; is untouched.  No passwords, tokens or sessions are stored.
+;;
+;; The global context is small (cap 256) and is shared with the loaded
+;; libraries (http, json, sqlite, file).  To leave room, all helpers live in
+;; nested installer contexts (each <= 16 bindings); the global context keeps
+;; only the users db handle and the dispatcher.
+[
+gw/users-db: none
+handle: none
+
+app/install: func [] [
+    setup-a: func [] [
+        gw/path: "messages.ndjson"
+        gw/created: "2026-01-01T00:00:00+00:00"
+        gw/group: "general"
+        gw/demo-author: "Glon Demo"
+        gw/max-text: 1024
+        gw/max-store: 1024
+        gw/port: 8443
+        gw/messages: none
+        gw/next-id: 1
+        gw/store-text: ""
+        gw/line-set: mk-string reduce [
+            0 1 2 3 4 5 6 7 8 9 11 12 13 14 15 16
+            17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32
+            33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48
+            49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64
+            65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80
+            81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96
+            97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112
+            113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128
+            129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144
+            145 146 147 148 149 150 151 152 153 154 155 156 157 158 159 160
+            161 162 163 164 165 166 167 168 169 170 171 172 173 174 175 176
+            177 178 179 180 181 182 183 184 185 186 187 188 189 190 191 192
+            193 194 195 196 197 198 199 200 201 202 203 204 205 206 207 208
+            209 210 211 212 213 214 215 216 217 218 219 220 221 222 223 224
+            225 226 227 228 229 230 231 232 233 234 235 236 237 238 239 240
+            241 242 243 244 245 246 247 248 249 250 251 252 253 254 255
+        ]
+        pair: func [key value rest] [ reduce [ reduce [ key value ] rest ] ]
+
+        setup-b: func [] [
+            gw/jpair: func [key value rest] [ reduce [ reduce [ key value ] rest ] ]
+            gw/error: func [request status message] [
+                body: json/encode json/object gw/jpair "error" message none
+                http/respond request status "application/json; charset=utf-8" body
+            ]
+            gw/ok-json: func [request status body] [
+                http/respond request status "application/json; charset=utf-8" body
+            ]
+            gw/blank?: func [s i] [
+                either >= i s/length s [ 1 ] [
+                    b: s/at s i
+                    either either = b 32 [ 1 ] [ either = b 9 [ 1 ] [ either = b 10 [ 1 ] [ either = b 13 [ 1 ] [ 0 ] ] ] ] [
+                        gw/blank? s + i 1
+                    ] [ 0 ]
+                ]
+            ]
+            gw/parse-int: func [s i n] [
+                either >= i s/length s [ n ] [
+                    b: s/at s i
+                    either either >= b 48 [ <= b 57 ] [ 0 ] [
+                        gw/parse-int s + i 1 + * n 10 - b 48
+                    ] [ -1 ]
+                ]
+            ]
+            gw/param: func [query key default] [
+                value: wp/form-scan query key 0
+                either = value none [ default ] [ value ]
+            ]
+            gw/reverse: func [list acc] [
+                either = list none [ acc ] [
+                    gw/reverse block-at list 1 reduce [ block-at list 0 acc ]
+                ]
+            ]
+            gw/filter: func [list group after] [
+                either = list none [ none ] [
+                    obj: block-at list 0
+                    g: json/object-get obj "group"
+                    id: json/object-get obj "id"
+                    rest: gw/filter block-at list 1 group after
+                    either either str-eq g group [ > id after ] [ 0 ] [
+                        reduce [ obj rest ]
+                    ] [ rest ]
+                ]
+            ]
+            gw/load-lines: func [s i list max] [
+                either >= i s/length s [ reduce [ list max ] ] [
+                    j: s/scan-set s i gw/line-set
+                    stop: either < j 0 [ s/length s ] [ j ]
+                    line: s/span s i stop
+                    next: either < j 0 [ s/length s ] [ + j 1 ]
+                    either > s/length line 0 [
+                        obj: json/decode line
+                        either json/object? obj [ none ] [
+                            raise create-sin 'app 'malformed "store line is not a JSON object"
+                        ]
+                        id: json/object-get obj "id"
+                        gw/load-lines s next reduce [ obj list ] either > id max [ id ] [ max ]
+                    ] [ gw/load-lines s next list max ]
+                ]
+            ]
+            gw/group-json: func [] [
+                json/object gw/jpair "id" 1
+                    gw/jpair "slug" gw/group gw/jpair "name" gw/group
+                    gw/jpair "description" "" gw/jpair "created_at" gw/created none
+            ]
+            gw/groups-response: func [] [
+                json/encode json/object gw/jpair "groups" json/array reduce [ gw/group-json none ]
+                    gw/jpair "can_create" json/false none
+            ]
+            gw/session-response: func [] [
+                json/encode json/object gw/jpair "user" json/null none
+            ]
+            gw/message-json: func [id text] [
+                escaped: wp/escape-html text
+                html: s/+ "<p>" s/+ escaped "</p>"
+                json/object gw/jpair "id" id gw/jpair "author" gw/demo-author
+                    gw/jpair "text" text gw/jpair "created_at" gw/created
+                    gw/jpair "group" gw/group gw/jpair "user_id" json/null
+                    gw/jpair "legacy" json/true gw/jpair "preview" json/null
+                    gw/jpair "preview_pending" json/false gw/jpair "youtube" json/null
+                    gw/jpair "html" html none
+            ]
+
+            setup-c: func [] [
+                gw/get-messages: func [request] [
+                    query: http/query request
+                    group: gw/param query "group" gw/group
+                    after-s: gw/param query "after" "0"
+                    after: gw/parse-int after-s 0 0
+                    either < after 0 [
+                        gw/error request 400 "invalid after"
+                    ] [
+                        either str-eq group gw/group [
+                            ascending: gw/reverse gw/messages none
+                            msgs: gw/filter ascending group after
+                            gw/ok-json request 200 json/encode json/object gw/jpair "messages" json/array msgs none
+                        ] [
+                            gw/ok-json request 200 json/encode json/object gw/jpair "messages" json/array none none
+                        ]
+                    ]
+                ]
+                gw/post-message: func [request] [
+                    body: http/body request
+                    body: either = 0 s/length body [ "{}" ] [ body ]
+                    result: judge [
+                        obj: json/decode body
+                        either json/object? obj [
+                            text: json/object-get obj "text"
+                            group: json/object-get obj "group"
+                            either json/string? text [
+                                either either = group none [ 1 ] [ str-eq group gw/group ] [
+                                    either either gw/blank? text 0 [ 1 ] [ > s/length text gw/max-text ] [
+                                        raise create-sin 'app 400 either gw/blank? text 0 [ "text required" ] [ "text too long" ]
+                                    ] [ text ]
+                                ] [ raise create-sin 'app 400 "unknown group" ]
+                            ] [ raise create-sin 'app 400 "text required" ]
+                        ] [ raise create-sin 'app 400 "invalid json" ]
+                    ]
+                    either sin? result [
+                        either = sin-id result 400 [ gw/error request 400 sin-arg result ] [ gw/error request 400 "invalid json" ]
+                    ] [
+                        id: gw/next-id
+                        msg: gw/message-json id result
+                        line: s/+ json/encode msg mk-string reduce [ 10 ]
+                        either > + s/length gw/store-text s/length line gw/max-store [
+                            gw/error request 413 "demo store full"
+                        ] [
+                            gw/messages: reduce [ msg gw/messages ]
+                            gw/next-id: + id 1
+                            gw/store-text: s/+ gw/store-text line
+                            gw/ok-json request 201 json/encode msg
+                            file/write gw/path gw/store-text func [x] [ none ] func [e] [ none ]
+                        ]
+                    ]
+                ]
+
+                setup-d: func [] [
+                ;; ---- loopback-only SQLite user registry ----
+                loopback?: func [peer] [
+                    either str-eq peer "127.0.0.1" [ 1 ] [
+                        either str-eq peer "::1" [ 1 ] [
+                            either str-eq peer "::ffff:127.0.0.1" [ 1 ] [ 0 ]
+                        ]
+                    ]
+                ]
+                user/json: func [row] [
+                    json/encode json/object
+                        pair "id" block-at row 0 pair "username" block-at row 1
+                        pair "display_name" block-at row 2 pair "role" block-at row 3
+                        pair "status" block-at row 4 pair "created_at" block-at row 5 none
+                ]
+                users-cols: "id,username,display_name,role,status,created_at"
+                db/create: func [request username display role] [
+                    sqlite/prepare gw/users-db
+                        s/+ "INSERT INTO users(username,display_name,role,status,created_at) VALUES (?,?,?,'active','2026-01-01T00:00:00+00:00') RETURNING " users-cols
+                        func [ins] [
+                            sqlite/bind-text ins 1 username func [b1] [
+                                sqlite/bind-text ins 2 display func [b2] [
+                                    sqlite/bind-text ins 3 role func [b3] [
+                                        sqlite/step ins
+                                            func [row] [
+                                                sqlite/finalize ins
+                                                    func [x] [ gw/ok-json request 201 user/json row ]
+                                                    func [e] [ gw/error request 500 "finalize failed" ]
+                                            ]
+                                            func [e] [ gw/error request 409 "duplicate username" ]
+                                    ] func [e] [ gw/error request 500 "bind failed" ]
+                                ] func [e] [ gw/error request 500 "bind failed" ]
+                            ] func [e] [ gw/error request 500 "bind failed" ]
+                        ] func [e] [ gw/error request 500 "prepare failed" ]
+                ]
+                list/loop: func [request st acc first] [
+                    sqlite/step st
+                        func [row] [
+                            either = row none [
+                                sqlite/finalize st
+                                    func [x] [ gw/ok-json request 200 s/+ "[" s/+ acc "]" ]
+                                    func [e] [ gw/error request 500 "finalize failed" ]
+                            ] [
+                                piece: user/json row
+                                sep: either first [ "" ] [ "," ]
+                                list/loop request st s/+ acc s/+ sep piece 0
+                            ]
+                        ] func [e] [ gw/error request 500 "step failed" ]
+                ]
+                db/list: func [request] [
+                    sqlite/prepare gw/users-db s/+ "SELECT " s/+ users-cols " FROM users ORDER BY id"
+                        func [sel] [ list/loop request sel "" 1 ]
+                        func [e] [ gw/error request 500 "prepare failed" ]
+                ]
+                db/get: func [request id] [
+                    sqlite/prepare gw/users-db s/+ "SELECT " s/+ users-cols " FROM users WHERE id = ?"
+                        func [sel] [
+                            sqlite/bind-int sel 1 id func [b] [
+                                sqlite/step sel
+                                    func [row] [
+                                        either = row none [
+                                            sqlite/finalize sel func [x] [ gw/error request 404 "user not found" ] func [e] [ gw/error request 500 "finalize failed" ]
+                                        ] [
+                                            body: user/json row
+                                            sqlite/finalize sel func [x] [ gw/ok-json request 200 body ] func [e] [ gw/error request 500 "finalize failed" ]
+                                        ]
+                                    ] func [e] [ gw/error request 500 "step failed" ]
+                            ] func [e] [ gw/error request 500 "bind failed" ]
+                        ] func [e] [ gw/error request 500 "prepare failed" ]
+                ]
+                db/disable: func [request id] [
+                    sqlite/prepare gw/users-db s/+ "UPDATE users SET status='disabled' WHERE id=? RETURNING " users-cols
+                        func [st] [
+                            sqlite/bind-int st 1 id func [b] [
+                                sqlite/step st
+                                    func [row] [
+                                        either = row none [
+                                            sqlite/finalize st func [x] [ gw/error request 404 "user not found" ] func [e] [ gw/error request 500 "finalize failed" ]
+                                        ] [
+                                            body: user/json row
+                                            sqlite/finalize st func [x] [ gw/ok-json request 200 body ] func [e] [ gw/error request 500 "finalize failed" ]
+                                        ]
+                                    ] func [e] [ gw/error request 500 "step failed" ]
+                            ] func [e] [ gw/error request 500 "bind failed" ]
+                        ] func [e] [ gw/error request 500 "prepare failed" ]
+                ]
+                users/create: func [request] [
+                    body: http/body request
+                    body: either = 0 s/length body [ "{}" ] [ body ]
+                    result: judge [
+                        obj: json/decode body
+                        either json/object? obj [
+                            username: json/object-get obj "username"
+                            display: json/object-get obj "display_name"
+                            role: json/object-get obj "role"
+                            either json/string? username [
+                                either gw/blank? username 0 [ raise create-sin 'app 400 "username required" ] [
+                                    either > s/length username 64 [ raise create-sin 'app 400 "username too long" ] [
+                                        either json/string? display [
+                                            role: either json/string? role [ role ] [ "user" ]
+                                            either either str-eq role "user" [ 1 ] [ str-eq role "admin" ] [
+                                                reduce [ username display role ]
+                                            ] [ raise create-sin 'app 400 "invalid role" ]
+                                        ] [ raise create-sin 'app 400 "display_name required" ]
+                                    ]
+                                ]
+                            ] [ raise create-sin 'app 400 "username required" ]
+                        ] [ raise create-sin 'app 400 "invalid json" ]
+                    ]
+                    either sin? result [
+                        gw/error request 400 sin-arg result
+                    ] [
+                        db/create request block-at result 0 block-at result 1 block-at result 2
+                    ]
+                ]
+                users/get: func [request query] [
+                    id: gw/parse-int wp/form-scan query "id" 0 0 0
+                    either < id 0 [ gw/error request 400 "invalid id" ] [ db/get request id ]
+                ]
+                users/disable: func [request] [
+                    body: http/body request
+                    body: either = 0 s/length body [ "{}" ] [ body ]
+                    result: judge [
+                        obj: json/decode body
+                        either json/object? obj [
+                            id: json/object-get obj "id"
+                            either s/raw-int? id [ id ] [ raise create-sin 'app 400 "invalid id" ]
+                        ] [ raise create-sin 'app 400 "invalid json" ]
+                    ]
+                    either sin? result [
+                        gw/error request 400 sin-arg result
+                    ] [
+                        db/disable request result
+                    ]
+                ]
+
+                gw/users-handle: func [request] [
+                    either loopback? http/peer request [
+                        method: http/method request
+                        path: http/path request
+                        either str-eq path "/api/users" [
+                            either str-eq method "GET" [
+                                either = wp/form-scan http/query request "id" 0 none [
+                                    db/list request
+                                ] [ users/get request http/query request ]
+                            ] [
+                                either str-eq method "POST" [ users/create request ] [
+                                    gw/error request 405 "method not allowed"
+                                ]
+                            ]
+                        ] [
+                            either str-eq path "/api/users/disable" [
+                                either str-eq method "POST" [ users/disable request ] [
+                                    gw/error request 405 "method not allowed"
+                                ]
+                            ] [ gw/error request 404 "not found" ]
+                        ]
+                    ] [ gw/error request 403 "admin access requires loopback" ]
+                ]
+
+                gw/start: func [] [
+                    file/read gw/path
+                        func [text] [
+                            loaded: gw/load-lines text 0 none 0
+                            gw/messages: block-at loaded 0
+                            gw/next-id: + 1 block-at loaded 1
+                            gw/store-text: text
+                            gw/open-users
+                        ]
+                        func [e] [
+                            either = sin-id e 'not-found [
+                                gw/messages: none gw/next-id: 1 gw/store-text: ""
+                                gw/open-users
+                            ] [ raise e ]
+                        ]
+                ]
+                gw/open-users: func [] [
+                    sqlite/open "users.db"
+                        func [db] [
+                            gw/users-db: db
+                            sqlite/exec db
+                                "CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL)"
+                                func [x] [
+                                    sqlite/exec db
+                                        "CREATE TABLE IF NOT EXISTS user_passwords(user_id INTEGER PRIMARY KEY, algo TEXT NOT NULL, salt BLOB NOT NULL, hash BLOB NOT NULL, n INTEGER NOT NULL, r INTEGER NOT NULL, p INTEGER NOT NULL)"
+                                        func [y] [
+                                            sqlite/exec db
+                                                "CREATE TABLE IF NOT EXISTS sessions(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, token_hash BLOB NOT NULL UNIQUE, csrf_hash BLOB NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER)"
+                                                func [z] [ http/listen gw/port :handle ]
+                                                func [e] [ raise e ]
+                                        ] func [e] [ raise e ]
+                                ] func [e] [ raise e ]
+                        ]
+                        func [e] [ raise e ]
+                ]
+
+                setup-e: func [] [
+                    auth/ttl: 3600
+                    auth/n: 16384
+                    auth/r: 8
+                    auth/p: 1
+                    auth/max-fails: 5
+                    auth/fails: 0
+
+                    cookie-scan: func [h i] [
+                        either >= i s/length h [ none ] [
+                            either wp/match-at? h i "gw_session=" [
+                                start: + i 11
+                                end: wp/find-byte h start 59
+                                either < end 0 [ end: s/length h ] [ none ]
+                                s/span h start end
+                            ] [
+                                semi: wp/find-byte h i 59
+                                either < semi 0 [ none ] [ cookie-scan h + semi 1 ]
+                            ]
+                        ]
+                    ]
+                    cookie-token: func [request] [
+                        h: http/header request "Cookie"
+                        either = h none [ none ] [ cookie-scan h 0 ]
+                    ]
+                    cookie-clear: func [request status body] [
+                        http/respond-with request status "application/json; charset=utf-8"
+                            reduce [ "Set-Cookie" "gw_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0" ] body
+                    ]
+                    auth/deny: func [request] [
+                        gw/error request 401 "invalid credentials"
+                    ]
+                    db/user-by-name: func [username success failure] [
+                        sqlite/prepare gw/users-db "SELECT id,username,display_name,role,status FROM users WHERE username = ?"
+                            func [st] [
+                                sqlite/bind-text st 1 username func [b] [
+                                    sqlite/step st func [row] [ sqlite/finalize st func [x] [ success row ] failure ] failure
+                                ] failure
+                            ] failure
+                    ]
+                    db/password: func [user-id success failure] [
+                        sqlite/prepare gw/users-db "SELECT algo,salt,hash,n,r,p FROM user_passwords WHERE user_id = ?"
+                            func [st] [
+                                sqlite/bind-int st 1 user-id func [b] [
+                                    sqlite/step st func [row] [ sqlite/finalize st func [x] [ success row ] failure ] failure
+                                ] failure
+                            ] failure
+                    ]
+                    db/session: func [token-hash success failure] [
+                        sqlite/prepare gw/users-db "SELECT id,user_id,csrf_hash,expires_at,revoked_at FROM sessions WHERE token_hash = ?"
+                            func [st] [
+                                sqlite/bind-blob st 1 token-hash func [b] [
+                                    sqlite/step st func [row] [ sqlite/finalize st func [x] [ success row ] failure ] failure
+                                ] failure
+                            ] failure
+                    ]
+                    db/user-by-id: func [user-id success failure] [
+                        sqlite/prepare gw/users-db "SELECT id,username,display_name,role,status FROM users WHERE id = ?"
+                            func [st] [
+                                sqlite/bind-int st 1 user-id func [b] [
+                                    sqlite/step st func [row] [ sqlite/finalize st func [x] [ success row ] failure ] failure
+                                ] failure
+                            ] failure
+                    ]
+
+                    setup-f: func [] [
+                        db/new-session: func [user-id token-hash csrf-hash success] [
+                            sec/time func [now] [
+                                exp: + now auth/ttl
+                                sqlite/prepare gw/users-db "INSERT INTO sessions(user_id,token_hash,csrf_hash,created_at,expires_at,revoked_at) VALUES (?,?,?,?,?,NULL)"
+                                    func [st] [
+                                        sqlite/bind-int st 1 user-id func [b1] [
+                                            sqlite/bind-blob st 2 token-hash func [b2] [
+                                                sqlite/bind-blob st 3 csrf-hash func [b3] [
+                                                    sqlite/bind-int st 4 now func [b4] [
+                                                        sqlite/bind-int st 5 exp func [b5] [
+                                                            sqlite/step st func [row] [ sqlite/finalize st func [x] [ success ] func [e] [ success ] ] func [e] [ success ]
+                                                        ] func [e] [ success ]
+                                                    ] func [e] [ success ]
+                                                ] func [e] [ success ]
+                                            ] func [e] [ success ]
+                                        ] func [e] [ success ]
+                                    ] func [e] [ success ]
+                            ] func [e] [ success ]
+                        ]
+                        db/revoke: func [token-hash] [
+                            sec/time func [now] [
+                                sqlite/prepare gw/users-db "UPDATE sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL"
+                                    func [st] [
+                                        sqlite/bind-int st 1 now func [b1] [
+                                            sqlite/bind-blob st 2 token-hash func [b2] [
+                                                sqlite/step st func [row] [ sqlite/finalize st func [x] [ none ] func [e] [ none ] ] func [e] [ none ]
+                                            ] func [e] [ none ]
+                                        ] func [e] [ none ]
+                                    ] func [e] [ none ]
+                            ] func [e] [ none ]
+                        ]
+
+                        auth/setup: func [request] [
+                            either loopback? http/peer request [
+                                body: http/body request
+                                body: either = 0 s/length body [ "{}" ] [ body ]
+                                result: judge [
+                                    obj: json/decode body
+                                    either json/object? obj [
+                                        username: json/object-get obj "username"
+                                        password: json/object-get obj "password"
+                                        either json/string? username [
+                                            either json/string? password [
+                                                either either = 0 s/length password [ 1 ] [ < s/length password 8 ] [
+                                                    raise create-sin 'app 400 "password too short"
+                                                ] [ reduce [ username password ] ]
+                                            ] [ raise create-sin 'app 400 "password required" ]
+                                        ] [ raise create-sin 'app 400 "username required" ]
+                                    ] [ raise create-sin 'app 400 "invalid json" ]
+                                ]
+                                either sin? result [
+                                    gw/error request 400 sin-arg result
+                                ] [
+                                    s/print s/+ "DBG argstr=" s/from-int s/raw-string? block-at result 0
+                                    db/user-by-name "alice"
+                                        func [urow] [
+                                            either = urow none [
+                                                gw/error request 404 "unknown user"
+                                            ] [
+                                                uid: block-at urow 0
+                                                sec/random 16 func [salt-raw] [
+                                                    sec/hex salt-raw func [salt] [
+                                                        sec/scrypt block-at result 1 salt auth/n auth/r auth/p 32 func [hash] [
+                                                            sec/hex hash func [hash-hex] [
+                                                                sqlite/prepare gw/users-db "INSERT OR REPLACE INTO user_passwords(user_id,algo,salt,hash,n,r,p) VALUES (?,'scrypt',?,?,?,?,?)"
+                                                                    func [st] [
+                                                                        sqlite/bind-int st 1 uid func [b1] [
+                                                                            sqlite/bind-text st 2 salt func [b2] [
+                                                                                sqlite/bind-text st 3 hash-hex func [b3] [
+                                                                                    sqlite/bind-int st 4 auth/n func [b4] [
+                                                                                        sqlite/bind-int st 5 auth/r func [b5] [
+                                                                                            sqlite/bind-int st 6 auth/p func [b6] [
+                                                                                                sqlite/step st func [row] [ sqlite/finalize st func [x] [ gw/ok-json request 201 json/encode json/object pair "user_id" uid none ] func [e] [ gw/error request 500 "store failed" ] ] func [e] [ gw/error request 500 "store failed" ]
+                                                                                            ] func [e] [ gw/error request 500 "bind failed" ]
+                                                                                        ] func [e] [ gw/error request 500 "bind failed" ]
+                                                                                    ] func [e] [ gw/error request 500 "bind failed" ]
+                                                                                ] func [e] [ gw/error request 500 "bind failed" ]
+                                                                            ] func [e] [ gw/error request 500 "bind failed" ]
+                                                                        ] func [e] [ gw/error request 500 "bind failed" ]
+                                                                    ] func [e] [ gw/error request 500 "prepare failed" ]
+                                                                ] func [e] [ gw/error request 500 "hash hex failed" ]
+                                                            ] func [e] [ gw/error request 500 "scrypt failed" ]
+                                                        ] func [e] [ gw/error request 500 "salt hex failed" ]
+                                                    ] func [e] [ gw/error request 500 "random failed" ]
+                                            ]
+                                        ] func [e] [ s/print s/+ "G3J6-SETUP-LOOKUP id=" either s/raw-string? sin-id e [ sin-id e ] [ "nonstr" ]  gw/error request 500 "lookup failed" ]
+                                ]
+                            ] [ gw/error request 403 "admin access requires loopback" ]
+                        ]
+
+                        auth/login-user: func [request username password] [
+                            either >= auth/fails auth/max-fails [
+                                gw/error request 429 "too many attempts"
+                            ] [
+                                db/user-by-name username
+                                    func [urow] [
+                                        either = urow none [
+                                            auth/fails: + auth/fails 1
+                                            sec/scrypt password "dummy-salt" auth/n auth/r auth/p 32 func [h] [ auth/deny request ] func [e] [ auth/deny request ]
+                                        ] [
+                                            either = block-at urow 4 "disabled" [
+                                                auth/fails: + auth/fails 1
+                                                auth/deny request
+                                            ] [
+                                                uid: block-at urow 0
+                                                db/password uid
+                                                    func [prow] [
+                                                        either = prow none [
+                                                            auth/fails: + auth/fails 1
+                                                            sec/scrypt password "dummy-salt" auth/n auth/r auth/p 32 func [h] [ auth/deny request ] func [e] [ auth/deny request ]
+                                                        ] [
+                                                            salt: block-at prow 1
+                                                            stored: block-at prow 2
+                                                            sec/scrypt password salt block-at prow 3 block-at prow 4 block-at prow 5 32
+                                                                func [hash] [
+                                                                    sec/hex hash func [hash-hex] [
+                                                                        sec/ct-eq hash-hex stored func [eq] [
+                                                                        either = eq 0 [
+                                                                            auth/fails: + auth/fails 1
+                                                                            auth/deny request
+                                                                        ] [
+                                                                            auth/fails: 0
+                                                                            sec/random 32 func [token] [
+                                                                                sec/sha256 token func [th] [
+                                                                                    sec/random 16 func [csrf] [
+                                                                                        sec/sha256 csrf func [ch] [
+                                                                                            sec/hex th func [th-hex] [
+                                                                                                sec/hex ch func [ch-hex] [
+                                                                                                    db/new-session uid th-hex ch-hex
+                                                                                                        func [] [
+                                                                                                    cookie: s/+ "gw_session=" s/+ token "; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=" s/from-int auth/ttl
+                                                                                                    body: json/encode json/object pair "user" json/object pair "id" uid pair "username" block-at urow 1 pair "display_name" block-at urow 2 pair "role" block-at urow 3 none pair "csrf" csrf none
+                                                                                                    http/respond-with request 200 "application/json; charset=utf-8" reduce [ "Set-Cookie" cookie ] body
+                                                                                                ]
+                                                                                            ] func [e] [ gw/error request 500 "ch hex failed" ]
+                                                                                        ] func [e] [ gw/error request 500 "th hex failed" ]
+                                                                                        ] func [e] [ gw/error request 500 "csrf failed" ]
+                                                                                    ] func [e] [ gw/error request 500 "random failed" ]
+                                                                                ] func [e] [ gw/error request 500 "hash failed" ]
+                                                                            ] func [e] [ gw/error request 500 "random failed" ]
+                                                                        ] func [e] [ gw/error request 500 "scrypt failed" ]
+                                                                    ] func [e] [ gw/error request 500 "hash hex failed" ]
+                                                                ] func [e] [ gw/error request 500 "scrypt failed" ]
+                                                        ]
+                                                    ]
+                                        ] func [e] [ s/print s/+ "DBG lookup err=" either s/raw-string? sin-id e [ sin-id e ] [ "nonstr" ]  gw/error request 500 "lookup failed" ]
+                                            ]
+                                        ]
+                                    ] func [e] [ s/print s/+ "DBG outer lookup err=" either s/raw-string? sin-id e [ sin-id e ] [ "nonstr" ]  gw/error request 500 "lookup failed" ]
+                            ]
+                        ]
+                        auth/login: func [request] [
+                            body: http/body request
+                            body: either = 0 s/length body [ "{}" ] [ body ]
+                            result: judge [
+                                obj: json/decode body
+                                either json/object? obj [
+                                    username: json/object-get obj "username"
+                                    password: json/object-get obj "password"
+                                    either json/string? username [
+                                        either json/string? password [ reduce [ username password ] ] [ raise create-sin 'app 400 "password required" ]
+                                    ] [ raise create-sin 'app 400 "username required" ]
+                                ] [ raise create-sin 'app 400 "invalid json" ]
+                            ]
+                            either sin? result [ gw/error request 400 sin-arg result ] [ auth/login-user request block-at result 0 block-at result 1 ]
+                        ]
+
+                        auth/session: func [request] [
+                            token: cookie-token request
+                            either = token none [
+                                gw/ok-json request 200 json/encode json/object pair "user" json/null none
+                            ] [
+                                sec/sha256 token func [th] [
+                                    sec/hex th func [th-hex] [
+                                        db/session th-hex
+                                        func [srow] [
+                                            either = srow none [
+                                                gw/ok-json request 200 json/encode json/object pair "user" json/null none
+                                            ] [
+                                                either = block-at srow 4 none [
+                                                    sec/time func [now] [
+                                                        either > now block-at srow 3 [
+                                                            gw/ok-json request 200 json/encode json/object pair "user" json/null none
+                                                        ] [
+                                                            db/user-by-id block-at srow 1
+                                                                func [urow] [
+                                                                    either either = urow none [ 1 ] [ = block-at urow 4 "disabled" ] [
+                                                                        gw/ok-json request 200 json/encode json/object pair "user" json/null none
+                                                                    ] [
+                                                                        gw/ok-json request 200 json/encode json/object pair "user" json/object pair "id" block-at urow 0 pair "username" block-at urow 1 pair "display_name" block-at urow 2 pair "role" block-at urow 3 none
+                                                                    ]
+                                                                ] func [e] [ gw/ok-json request 200 json/encode json/object pair "user" json/null none ]
+                                                        ]
+                                                    ] func [e] [ gw/ok-json request 200 json/encode json/object pair "user" json/null none ] [
+                                                        gw/ok-json request 200 json/encode json/object pair "user" json/null none
+                                                    ]
+                                                ]
+                                            ]
+                                        ] func [e] [ gw/error request 500 "lookup failed" ]
+                                    ] func [e] [ gw/error request 500 "th hex failed" ]
+                                ] func [e] [ gw/error request 500 "hash failed" ]
+                            ]
+                        ]
+
+                        auth/logout: func [request] [
+                            token: cookie-token request
+                            either = token none [
+                                cookie-clear request 200 json/encode json/object pair "ok" json/true none
+                            ] [
+                                sec/sha256 token func [th] [
+                                    sec/hex th func [th-hex] [
+                                        db/revoke th-hex
+                                        cookie-clear request 200 json/encode json/object pair "ok" json/true none
+                                    ] func [e] [ cookie-clear request 200 json/encode json/object pair "ok" json/true none ]
+                                ] func [e] [ cookie-clear request 200 json/encode json/object pair "ok" json/true none ]
+                            ]
+                        ]
+
+                        handle: func [request] [
+                            method: http/method request
+                            path: http/path request
+                            either str-eq path "/api/auth/setup" [
+                                either str-eq method "POST" [ auth/setup request ] [ gw/error request 405 "method not allowed" ]
+                            ] [
+                                either str-eq path "/api/auth/login" [
+                                    either str-eq method "POST" [ auth/login request ] [ gw/error request 405 "method not allowed" ]
+                                ] [
+                                    either str-eq path "/api/auth/session" [
+                                        either str-eq method "GET" [ auth/session request ] [ gw/error request 405 "method not allowed" ]
+                                    ] [
+                                        either str-eq path "/api/auth/logout" [
+                                            either str-eq method "POST" [ auth/logout request ] [ gw/error request 405 "method not allowed" ]
+                                        ] [
+                                            either str-eq path "/api/users" [
+                                                gw/users-handle request
+                                            ] [
+                                                either str-eq path "/api/users/disable" [
+                                                    gw/users-handle request
+                                                ] [
+                                                    either str-eq path "/api/groups" [
+                                                        either str-eq method "GET" [ gw/ok-json request 200 gw/groups-response ] [ gw/error request 405 "method not allowed" ]
+                                                    ] [
+                                                        either str-eq path "/api/session" [
+                                                            either str-eq method "GET" [ gw/ok-json request 200 gw/session-response ] [ gw/error request 405 "method not allowed" ]
+                                                        ] [
+                                                            either str-eq path "/api/messages" [
+                                                                either str-eq method "GET" [ gw/get-messages request ] [
+                                                                    either str-eq method "POST" [ gw/post-message request ] [ gw/error request 405 "method not allowed" ]
+                                                                ]
+                                                            ] [ gw/error request 404 "not found" ]
+                                                        ]
+                                                    ]
+                                                ]
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                        gw/start
+                    ]
+                    setup-f
+                ]
+                setup-e
+            ]
+            setup-d
+        ]
+        setup-c
+    ]
+    setup-b
+]
+setup-a
+]
+app/install
+]

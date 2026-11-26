@@ -1,0 +1,36 @@
+;; G3J.6 minimal reproducer: isolate db/user-by-name SELECT ... WHERE username = ?
+;; Fixed markers only; no sin-id, no value stringification.  Run under the HTTP
+;; host (MODULES=file,http,sqlite) so the async SQLite queue is drained.
+[
+db: none
+
+handle: func [request] [
+    sqlite/prepare db "SELECT id,username,display_name,role,status FROM users WHERE username = ?"
+        func [st] [
+            sqlite/bind-text st 1 "alice" func [b] [
+                sqlite/step st
+                    func [row] [
+                        either = row none [
+                            sqlite/finalize st func [x] [ http/respond request 200 "text/plain; charset=utf-8" "LOOKUP-NONE" ] func [e] [ http/respond request 200 "text/plain; charset=utf-8" "FINALIZE-FAIL" ]
+                        ] [
+                            sqlite/finalize st func [x] [ http/respond request 200 "text/plain; charset=utf-8" "LOOKUP-SUCCESS" ] func [e] [ http/respond request 200 "text/plain; charset=utf-8" "FINALIZE-FAIL" ]
+                        ]
+                    ] func [e] [ http/respond request 200 "text/plain; charset=utf-8" "STEP-FAIL" ]
+            ] func [e] [ http/respond request 200 "text/plain; charset=utf-8" "BIND-FAIL" ]
+        ] func [e] [ http/respond request 200 "text/plain; charset=utf-8" "PREPARE-FAIL" ]
+]
+
+start: func [] [
+    sqlite/open "repro.db"
+        func [d] [
+            db: d
+            sqlite/exec db "CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL)"
+                func [x] [
+                    sqlite/exec db "INSERT INTO users(username,display_name,role,status,created_at) VALUES ('alice','Alice','user','active','2026-01-01T00:00:00+00:00')"
+                        func [y] [ http/listen 8443 :handle ]
+                        func [e] [ raise e ]
+                ] func [e] [ raise e ]
+        ] func [e] [ raise e ]
+]
+start
+]
