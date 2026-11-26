@@ -703,11 +703,13 @@ app/install: func [] [
                 ]
                 setup-e
             ]
-            setup-c
+            setup-d
         ]
-        setup-b
+        setup-c
     ]
-    setup-a
+    setup-b
+]
+setup-a
 ]
 app/install
-]]
+]
