@@ -60,10 +60,11 @@ r0_s1_p4_tests.o: r0_s1_p4_tests.c r0_s1.h s1.h
 r0_s1_p5_tests.o: r0_s1_p5_tests.c r0_s1.h s1.h
 main.o: main.c s1.h
 
-test: s1 gc-worklist-overflow-test
+test: s1 gc-worklist-overflow-test global-ctx-hash-test
 	./check-frozen-s1.sh
 	./s1
 	./gc-worklist-overflow-test
+	./global-ctx-hash-test
 	python3 demo/shop/build-primer.py --check
 
 # GC worklist overflow: a SEPARATE enlarged-heap TEST build (never shipped),
@@ -75,6 +76,13 @@ test: s1 gc-worklist-overflow-test
 GC_OVERFLOW_TEST_FLAGS = -DR0S1_GC_OVERFLOW_TEST_BUILD
 gc-worklist-overflow-test: gc_worklist_overflow_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c s1.c r0_s1.h s1.h m1_layout.h
 	$(CC) $(CFLAGS) $(GC_OVERFLOW_TEST_FLAGS) -I. -o $@ gc_worklist_overflow_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c s1.c
+
+# GLON-S1-CLAUDE-D1: the context hash index must encode slots >= 256. A
+# SEPARATE TEST BUILD of the frozen 64K map with the expanded server profile's
+# global-context capacity (512), which fills the global context past 256
+# bindings and checks every lookup. See GLON-S1-CLAUDE-D1-RESULTS.md.
+global-ctx-hash-test: global_ctx_hash_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c s1.c r0_s1.h s1.h m1_layout.h
+	$(CC) $(CFLAGS) -DGLOBAL_CTX_CAP=512 -I. -o $@ global_ctx_hash_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c s1.c
 
 # ---- FIB-PROFILE-P1: Fibonacci profiler (instrumented + baseline builds) ---
 # fib-profiler : counters + trace (compiles runtime AND driver with -DR0_S1_PROFILE)

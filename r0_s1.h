@@ -395,13 +395,22 @@ _Static_assert(GC_WORKLIST_CAP >= (GC_HEAP_LIMIT - GC_HEAP_BASE) / GC_MIN_EXTENT
 #define PF_HASH_FALLBACK_SLOTS 24684 /* P5 slots examined by fallback linear scan  */
 
 /* context layout: [parent, count, cap, (word,value)*cap, hash[cap]].
- * FIB-OPT-P5: the hash index maps word_id -> slot. hash[i] = word_id*256 + slot
- * (occupied) or -1 (empty); h(word_id) = word_id % cap. The index is a fast
- * path only; the ordered (word,value) pairs remain authoritative. */
+ * FIB-OPT-P5: the hash index maps word_id -> slot.
+ * hash[i] = word_id*R0S1_HASH_RADIX + slot (occupied) or -1 (empty);
+ * h(word_id) = word_id % cap. The index is a fast path only; the ordered
+ * (word,value) pairs remain authoritative.
+ *
+ * GLON-S1-CLAUDE-D1: the radix was 256, which silently assumed that no
+ * context holds more than 256 bindings. A global context larger than 256
+ * (GLOBAL_CTX_CAP=512, MEM-M2.1) stored slot s >= 256 as
+ * (word_id+1)*256 + (s-256): the word itself then missed (unbound-word
+ * fail-stop) and the word with the next id could resolve to the wrong slot.
+ * The radix must exceed every context capacity; the runtime asserts it. */
 enum { CTX_PARENT = 0, CTX_COUNT = 1, CTX_CAP = 2, CTX_DATA = 3 };
 #define CTX_HASH      (CTX_DATA + 2 * R0S1_CTX_CAP)  /* hash index offset (35) */
 #define R0S1_CTX_CELLS 64    /* 16-aligned stack-context size (3+32+16=51 -> 64) */
 #define HASH_EMPTY    (-1)   /* empty hash bucket sentinel */
+#define R0S1_HASH_RADIX 65536L /* hash entry = word_id * radix + slot; slot < radix */
 
 /* closure layout: [spec, body, captured-context, func-site-id, depth-bias]
  * CLOSURE_BIAS is the "Guard of Binding" depth offset: 0 for a hand-written

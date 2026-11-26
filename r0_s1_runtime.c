@@ -105,6 +105,13 @@ static cell make_block(cell cap) {
 #ifndef GLOBAL_CTX_CAP
 #define GLOBAL_CTX_CAP 256
 #endif
+/* A hash entry packs (word_id, slot) as word_id * R0S1_HASH_RADIX + slot, so
+ * every slot of every context must be below the radix, and the largest entry
+ * must fit a 32-bit cell (the WASM build). */
+_Static_assert(GLOBAL_CTX_CAP <= R0S1_HASH_RADIX, "global context exceeds the hash slot radix");
+_Static_assert(R0S1_CTX_CAP <= R0S1_HASH_RADIX, "child context exceeds the hash slot radix");
+_Static_assert((long long)(sizeof syms / sizeof syms[0]) * R0S1_HASH_RADIX <= 2147483647LL,
+               "hash entries must fit a 32-bit cell");
 static cell make_context(cell parent, cell cap) {
     cell p = lalloc(CTX_DATA + 3 * (int)cap);   /* data(2*cap) + hash(cap) */
     if (p < 0) return R0_NONE;                   /* only r0_s1_init calls this */
@@ -130,7 +137,7 @@ static void bind(cell ctx, cell word, cell value) {
         for (cell k = 0; k < cap; k++) {
             cell idx = (h + k) % cap;
             cell e = M[p + ho + idx];
-            if (e == HASH_EMPTY || e / 256 == id) { M[p + ho + idx] = id * 256 + n; break; }
+            if (e == HASH_EMPTY || e / R0S1_HASH_RADIX == id) { M[p + ho + idx] = id * R0S1_HASH_RADIX + n; break; }
         }
     }
 }
@@ -2151,10 +2158,10 @@ static void emit_lookup(void) {
 #endif
     cell fw_miss = asm_branch_fwd();
     asm_patch_here(j_notempty);
-    asm_dup(); asm_lit(256); asm_host(HOST_DIV);                                /* [ctx, e, key] */
+    asm_dup(); asm_lit(R0S1_HASH_RADIX); asm_host(HOST_DIV);                    /* [ctx, e, key] */
     e_cell(RV_T4); asm_host(HOST_EQ);                                           /* [ctx, e, key==id] */
     cell j_hcollide = asm_zbranch_fwd();
-    asm_lit(256); asm_host(HOST_MOD);                                           /* [ctx, slot] (slot = e % 256) */
+    asm_lit(R0S1_HASH_RADIX); asm_host(HOST_MOD);                               /* [ctx, slot] (slot = e % radix) */
     e_setc(RV_T5);                                                              /* [ctx] */
 #ifdef R0_S1_PROFILE
     pf_incr(PF_HASH_HITS);
@@ -2351,7 +2358,7 @@ static void emit_hash_insert(void) {
     asm_dup(); asm_lit(HASH_EMPTY); asm_host(HOST_EQ);                                /* [e, empty?] */
     cell j_notempty = asm_zbranch_fwd();
     asm_drop();                                                                       /* [] */
-    e_cell(RV_T5); asm_lit(256); asm_host(HOST_MUL); e_cell(RV_T3); asm_host(HOST_ADD); /* id*256+slot */
+    e_cell(RV_T5); asm_lit(R0S1_HASH_RADIX); asm_host(HOST_MUL); e_cell(RV_T3); asm_host(HOST_ADD); /* id*radix+slot */
     e_cell(RV_T2); asm_lit(CTX_DATA); asm_host(HOST_ADD);
     e_cell(RV_T1); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);
     e_cell(RV_T6); asm_host(HOST_ADD); asm_store();                                   /* M[ho+idx] = entry */
