@@ -1141,6 +1141,18 @@ json-j1-test:
 	printf '%s\n' "$$out" | grep -v '^#\[func\]$$'; exit $$status
 .PHONY: json-j1-test
 
+# GLON-JSON-J2: bounded-stack decoder -- results and errors against the frozen
+# original decoder (tests/json-j2/reference.glon), every escape form, surrogate
+# pairs, malformed input, hundreds of consecutive escapes, 1,000/4,000/10,000-
+# character strings, containers, duplicate keys, stack growth and round trips.
+# Takes about three minutes (decoding costs ~4 ms per escape in this
+# interpreter).  See GLON-JSON-J2-RESULTS.md.
+json-j2-test:
+	$(MAKE) --no-print-directory glon MODULES= MEM_PROFILE=large
+	@out=$$(./glon glon-lib/strings-ext.glon modules/json.glon tests/json-j2/reference.glon tests/json-j2/tests.glon); status=$$?; \
+	printf '%s\n' "$$out" | grep -v '^#\[func\]$$'; exit $$status
+.PHONY: json-j2-test
+
 # ---- Cross-platform CI probes (host portability, no language change) -------
 # arch-check prints the cell width, alignment, pointer width and the exact
 # boundary constants used by the frozen 64K map; the CI matrix requires a

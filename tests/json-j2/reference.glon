@@ -1,0 +1,339 @@
+;; tests/json-j2/reference.glon -- the ORIGINAL json.glon decoder (before
+;; GLON-JSON-J2), frozen under jold2/ names as the reference for exact
+;; comparison of results and errors.  It recurses once per escape and once per
+;; array item / object pair.  It shares the cursor j/src / j/pos and the
+;; helpers it did not define (j/hex4, j/utf8, j/raw-special-at, ...) with
+;; modules/json.glon.  Load after modules/json.glon.
+[
+;; ---- string decoding ----------------------------------------------------
+jold2/simple-escape: func [e] [
+    either = e 34 [ mk-string reduce [ 34 ] ] [
+        either = e 92 [ mk-string reduce [ 92 ] ] [
+            either = e 47 [ mk-string reduce [ 47 ] ] [
+                either = e 98 [ mk-string reduce [ 8 ] ] [
+                    either = e 102 [ mk-string reduce [ 12 ] ] [
+                        either = e 110 [ mk-string reduce [ 10 ] ] [
+                            either = e 114 [ mk-string reduce [ 13 ] ] [
+                                either = e 116 [ mk-string reduce [ 9 ] ] [ none ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+]
+
+jold2/parse-unicode: func [out] [
+    h: j/hex4 + j/pos 2
+    either < h 0 [ j/error 'bad-unicode j/pos ] [
+        either either >= h 55296 [ <= h 56319 ] [ 0 ] [
+            p: + j/pos 6
+            either either = s/at j/src p 92 [ = s/at j/src + p 1 117 ] [ 0 ] [
+                l: j/hex4 + p 2
+                either < l 0 [ j/error 'bad-unicode p ] [
+                    either either >= l 56320 [ <= l 57343 ] [ 0 ] [
+                        cp: + 65536 + * - h 55296 1024 - l 56320
+                        j/pos: + p 6
+                        s/+ out j/utf8 cp
+                    ] [ j/error 'bad-unicode p ]
+                ]
+            ] [ j/error 'bad-unicode j/pos ]
+        ] [
+            either either >= h 56320 [ <= h 57343 ] [ 0 ] [
+                j/error 'bad-unicode j/pos
+            ] [
+                j/pos: + j/pos 6
+                s/+ out j/utf8 h
+            ]
+        ]
+    ]
+]
+
+jold2/parse-escape: func [out] [
+    e: s/at j/src + j/pos 1
+    either = e none [ j/error 'unterminated-string j/pos ] [
+        either = e 117 [ jold2/parse-unicode out ] [
+            piece: jold2/simple-escape e
+            either = piece none [ j/error 'bad-escape j/pos ] [
+                j/pos: + j/pos 2
+                s/+ out piece
+            ]
+        ]
+    ]
+]
+
+jold2/parse-string-loop: func [out] [
+    start: j/pos
+    j: j/raw-special-at j/src start
+    out2: either > j start [ s/+ out s/span j/src start j ] [ out ]
+    b: s/at j/src j
+    either = b none [ j/error 'unterminated-string j/pos ] [
+        j/pos: j
+        either = b 34 [
+            j/pos: + j/pos 1
+            out2
+        ] [
+            either = b 92 [
+                jold2/parse-string-loop jold2/parse-escape out2
+            ] [
+                j/error 'bad-token j/pos
+            ]
+        ]
+    ]
+]
+
+jold2/parse-string: func [] [
+    j/pos: + j/pos 1
+    jold2/parse-string-loop ""
+]
+
+;; ---- number grammar and value conversion --------------------------------
+jold2/exp?: func [b] [
+    either = b none [ 0 ] [ either = b 101 [ 1 ] [ = b 69 ] ]
+]
+
+jold2/num-tail: func [tok i n] [
+    either >= i n [ 1 ] [
+        either = s/at tok i 46 [
+            j: + i 1
+            either j/digit? s/at tok j [
+                j2: s/scan-set tok j j/digits
+                either >= j2 n [ 1 ] [
+                    either jold2/exp? s/at tok j2 [ jold2/num-exp tok j2 n ] [ 0 ]
+                ]
+            ] [ 0 ]
+        ] [
+            either jold2/exp? s/at tok i [ jold2/num-exp tok i n ] [ 0 ]
+        ]
+    ]
+]
+
+jold2/num-exp: func [tok i n] [
+    j2: + i 1
+    either either = s/at tok j2 43 [ 1 ] [ = s/at tok j2 45 ] [
+        j2: + j2 1
+    ] [ none ]
+    either j/digit? s/at tok j2 [
+        >= s/scan-set tok j2 j/digits n
+    ] [ 0 ]
+]
+
+jold2/valid-number?: func [tok] [
+    n: s/length tok
+    either < n 1 [ 0 ] [
+        i: either = s/at tok 0 45 [ 1 ] [ 0 ]
+        either >= i n [ 0 ] [
+            b: s/at tok i
+            either = b 48 [
+                either j/digit? s/at tok + i 1 [ 0 ] [ jold2/num-tail tok + i 1 n ]
+            ] [
+                either j/digit19? b [
+                    jold2/num-tail tok s/scan-set tok i j/digits n
+                ] [ 0 ]
+            ]
+        ]
+    ]
+]
+
+jold2/int-token?: func [tok] [ = s/scan-set tok 0 j/int-set s/length tok ]
+
+jold2/int-digits: func [tok] [
+    either = s/at tok 0 45 [ - s/length tok 1 ] [ s/length tok ]
+]
+
+jold2/parse-int: func [tok start end] [
+    either >= start end [ 0 ] [
+        + * 10 jold2/parse-int tok start - end 1 - s/at tok - end 1 48
+    ]
+]
+
+jold2/token-zero?: func [tok] [
+    either = s/length tok 1 [ = s/at tok 0 48 ] [
+        either = s/length tok 2 [
+            either = s/at tok 0 45 [ = s/at tok 1 48 ] [ 0 ]
+        ] [ 0 ]
+    ]
+]
+
+;; An exact integer, or NONE when the token is too long or does not round-trip
+;; (an overflowed/unsupported build range).  NONE is safe here: JSON null is a
+;; tagged block, never NONE.
+jold2/int-value: func [tok] [
+    either > jold2/int-digits tok 18 [ none ] [
+        either jold2/token-zero? tok [ 0 ] [
+            neg: = s/at tok 0 45
+            n: jold2/parse-int tok either neg [ 1 ] [ 0 ] s/length tok
+            either neg [ n: - 0 n ] [ none ]
+            either s/= s/from-int n tok [ n ] [ none ]
+        ]
+    ]
+]
+
+jold2/number-start?: func [b] [
+    either = b none [ 0 ] [
+        either = b 45 [ 1 ] [ j/digit? b ]
+    ]
+]
+
+jold2/parse-number: func [] [
+    start: j/pos
+    end: s/scan-set j/src start j/num-set
+    tok: s/span j/src start end
+    either jold2/valid-number? tok [
+        j/pos: end
+        either jold2/int-token? tok [
+            n: jold2/int-value tok
+            either = n none [ reduce [ 'json-number tok ] ] [ n ]
+        ] [ reduce [ 'json-number tok ] ]
+    ] [ j/error 'bad-number start ]
+]
+
+;; ---- literals and container decoding ------------------------------------
+jold2/literal: func [text value] [
+    len: s/length text
+    either > + j/pos len s/length j/src [ j/error 'bad-token j/pos ] [
+        either s/= s/span j/src j/pos + j/pos len text [
+            j/pos: + j/pos len
+            value
+        ] [ j/error 'bad-token j/pos ]
+    ]
+]
+
+jold2/skip-ws: func [] [
+    j/pos: s/scan-set j/src j/pos j/ws-set
+]
+
+jold2/pair-has-key?: func [pairs key] [
+    either = pairs none [ 0 ] [
+        either either j/block? pairs [ = block-len pairs 2 ] [ 0 ] [
+            pair: block-at pairs 0
+            either either j/block? pair [ = block-len pair 2 ] [ 0 ] [
+                either s/= block-at pair 0 key [
+                    1
+                ] [ jold2/pair-has-key? block-at pairs 1 key ]
+            ] [ j/error 'bad-token j/pos ]
+        ] [ j/error 'bad-token j/pos ]
+    ]
+]
+
+jold2/array-rest: func [depth count] [
+    jold2/skip-ws
+    b: s/at j/src j/pos
+    either = b none [ j/error 'bad-token j/pos ] [
+        either = b 93 [
+            j/pos: + j/pos 1
+            none
+        ] [
+            either >= count json/max-items [ j/error 'too-many-items count ] [
+                v: jold2/parse-value + depth 1
+                jold2/skip-ws
+                d: s/at j/src j/pos
+                either = d 44 [
+                    j/pos: + j/pos 1
+                    jold2/skip-ws
+                    either = s/at j/src j/pos 93 [ j/error 'bad-token j/pos ] [
+                        rest: jold2/array-rest depth + count 1
+                        reduce [ v rest ]
+                    ]
+                ] [
+                    either = d 93 [
+                        j/pos: + j/pos 1
+                        reduce [ v none ]
+                    ] [ j/error 'bad-token j/pos ]
+                ]
+            ]
+        ]
+    ]
+]
+
+jold2/object-rest: func [depth count] [
+    jold2/skip-ws
+    b: s/at j/src j/pos
+    either = b none [ j/error 'bad-token j/pos ] [
+        either = b 125 [
+            j/pos: + j/pos 1
+            none
+        ] [
+            either >= count json/max-items [ j/error 'too-many-items count ] [
+                either = b 34 [
+                    key: jold2/parse-string
+                    jold2/skip-ws
+                    either = s/at j/src j/pos 58 [
+                        j/pos: + j/pos 1
+                        jold2/skip-ws
+                        val: jold2/parse-value + depth 1
+                        jold2/skip-ws
+                        d: s/at j/src j/pos
+                        either = d 44 [
+                            j/pos: + j/pos 1
+                            jold2/skip-ws
+                            either = s/at j/src j/pos 125 [ j/error 'bad-token j/pos ] [
+                                rest: jold2/object-rest depth + count 1
+                                either jold2/pair-has-key? rest key [
+                                    j/error 'duplicate-key key
+                                ] [
+                                    reduce [ reduce [ key val ] rest ]
+                                ]
+                            ]
+                        ] [
+                            either = d 125 [
+                                j/pos: + j/pos 1
+                                reduce [ reduce [ key val ] none ]
+                            ] [ j/error 'bad-token j/pos ]
+                        ]
+                    ] [ j/error 'bad-token j/pos ]
+                ] [ j/error 'bad-token j/pos ]
+            ]
+        ]
+    ]
+]
+
+jold2/parse-value: func [depth] [
+    b: s/at j/src j/pos
+    either = b none [ j/error 'bad-token j/pos ] [
+        either = b 34 [ jold2/parse-string ] [
+            either = b 123 [
+                either > depth json/max-depth [ j/error 'too-deep depth ] [
+                    j/pos: + j/pos 1
+                    reduce [ 'json-object jold2/object-rest depth 0 ]
+                ]
+            ] [
+                either = b 91 [
+                    either > depth json/max-depth [ j/error 'too-deep depth ] [
+                        j/pos: + j/pos 1
+                        reduce [ 'json-array jold2/array-rest depth 0 ]
+                    ]
+                ] [
+                    either = b 116 [ jold2/literal "true" json/true ] [
+                        either = b 102 [ jold2/literal "false" json/false ] [
+                            either = b 110 [ jold2/literal "null" json/null ] [
+                                either jold2/number-start? b [
+                                    jold2/parse-number
+                                ] [ j/error 'bad-token j/pos ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+]
+
+jold2/top: func [text] [
+    either j/string? text [
+        j/src: text
+        j/pos: 0
+        either j/raw-utf8? text [
+            jold2/skip-ws
+            v: jold2/parse-value 1
+            jold2/skip-ws
+            either = j/pos s/length text [
+                v
+            ] [ j/error 'trailing-data j/pos ]
+        ] [ j/error 'bad-utf8 0 ]
+    ] [ raise create-sin 'type 'jold2/top text ]
+]
+
+none
+]
