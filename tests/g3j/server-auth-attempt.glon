@@ -512,7 +512,7 @@ app/install: func [] [
                                 either sin? result [
                                     gw/error request 400 sin-arg result
                                 ] [
-                                    db/user-by-name block-at result 0
+                                    ul/user-by-name gw/users-db block-at result 0
                                         func [urow] [
                                             either = urow none [
                                                 gw/error request 404 "unknown user"
@@ -543,7 +543,7 @@ app/install: func [] [
                                                         ] func [e] [ gw/error request 500 "salt hex failed" ]
                                                     ] func [e] [ gw/error request 500 "random failed" ]
                                             ]
-                                        ] func [e] [ gw/error request 500 "lookup failed" ]
+                                        ] func [e] [ s/print s/+ "G3J6-SETUP-LOOKUP id=" either s/raw-string? sin-id e [ sin-id e ] [ "nonstr" ]  gw/error request 500 "lookup failed" ]
                                 ]
                             ] [ gw/error request 403 "admin access requires loopback" ]
                         ]
@@ -603,10 +603,10 @@ app/install: func [] [
                                                                 ] func [e] [ gw/error request 500 "scrypt failed" ]
                                                         ]
                                                     ]
-                                                    ] func [e] [ gw/error request 500 "lookup failed" ]
+                                        ] func [e] [ s/print s/+ "DBG lookup err=" either s/raw-string? sin-id e [ sin-id e ] [ "nonstr" ]  gw/error request 500 "lookup failed" ]
                                             ]
                                         ]
-                                    ] func [e] [ gw/error request 500 "lookup failed" ]
+                                    ] func [e] [ s/print s/+ "DBG outer lookup err=" either s/raw-string? sin-id e [ sin-id e ] [ "nonstr" ]  gw/error request 500 "lookup failed" ]
                             ]
                         ]
                         auth/login: func [request] [
