@@ -3509,7 +3509,7 @@ static void emit_invoke_closure(void) {
  * return address. Intermediate activations' epilogues never run. */
 static void emit_return(void) {
     r_return = asm_here();
-    e_cell(RV_FRAME); e_cell(RV_SITE); e_cell(RV_FRAME); asm_lit(FRAME_IP); asm_host(HOST_ADD); asm_fetch(); asm_lit(2); asm_host(HOST_TRACE_FRAME);
+    e_cell(RV_FRAME); e_cell(RV_SITE); asm_lit(0); asm_lit(2); asm_host(HOST_TRACE_FRAME);
     /* site_id = M[RV_BLK + BLK_SITE] */
     e_cell(RV_BLK); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch(); emit_decode_site(); e_setc(RV_SITE);
     e_cell(RV_SITE); asm_lit(0); asm_host(HOST_EQ);
