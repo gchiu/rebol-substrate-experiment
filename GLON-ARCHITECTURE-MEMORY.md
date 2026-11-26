@@ -1327,6 +1327,16 @@ with `GET /api/messages` exhausting a 3,400-cell task's return stack in
 `j/encode-string-loop` (9/9 with 10,000-cell tasks; not committed: capacity
 change). See `GLON-HTTP-H3E-RESULTS.md`.
 
+### JSON-J1: bounded-stack JSON encoder (2026-11-26) — [FIXED, LOCAL]
+
+`json/encode` no longer recurses per escaped byte (masm `j/raw-escape`) or per
+container element (a `do`-block walk over the activation's locals, ~9 cells
+per level against ~95 for a closure activation). Measured main-stack depth:
+strings constant at 391 cells for any length/content (before: ~112 per
+escaped byte, exhausted at 64 quotes); G3H `{"messages":[msg]}` 2,868 -> 1,815.
+G3H task mode now serves all 9 routes with M1 3x3400. The decoder still
+recurses per escape (~112 cells each). See `GLON-JSON-J1-RESULTS.md`.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling

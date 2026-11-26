@@ -1131,6 +1131,16 @@ json-test:
 	printf '%s\n' "$$out" | grep -v '^#\[func\]$$'; exit $$status
 .PHONY: json-test
 
+# GLON-JSON-J1: bounded-stack encoder -- byte-for-byte agreement with the
+# frozen original encoder (tests/json-j1/reference.glon), escapes, malformed
+# UTF-8, 1,000/4,000/10,000-byte strings, constant stack depth, errors and
+# round trips.  See GLON-JSON-J1-RESULTS.md.
+json-j1-test:
+	$(MAKE) --no-print-directory glon MODULES= MEM_PROFILE=large
+	@out=$$(./glon glon-lib/strings-ext.glon modules/json.glon tests/json-j1/reference.glon tests/json-j1/tests.glon); status=$$?; \
+	printf '%s\n' "$$out" | grep -v '^#\[func\]$$'; exit $$status
+.PHONY: json-j1-test
+
 # ---- Cross-platform CI probes (host portability, no language change) -------
 # arch-check prints the cell width, alignment, pointer width and the exact
 # boundary constants used by the frozen 64K map; the CI matrix requires a

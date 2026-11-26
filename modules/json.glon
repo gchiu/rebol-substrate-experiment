@@ -658,64 +658,141 @@ json/number-text: func [v] [
 ]
 
 ;; ---- encoder -----------------------------------------------------------
-j/hex-char: func [n] [
-    either < n 10 [ + 48 n ] [ + 87 n ]
-]
-j/hex2: func [n] [
-    mk-string reduce [ j/hex-char / n 16 j/hex-char j/mod n 16 ]
-]
+;;
+;; GLON-JSON-J1: bounded return-stack encoding.  Escaping a string is one masm
+;; loop (no recursion at all, whatever the length or content).  The items of
+;; an array and the pairs of an object are walked by re-entering a `do` block
+;; over the activation's own locals (about 9 return-stack cells per element,
+;; bounded by json/max-items) instead of one closure activation per element
+;; (about 128 cells).  One closure activation remains per nesting level,
+;; bounded by json/max-depth.  Output is byte-identical to the previous
+;; encoder (tests/json-j1).
 
-j/encode-string-loop: func [s i] [
-    j: j/raw-special-at s i
-    piece: either > j i [ s/span s i j ] [ "" ]
-    b: s/at s j
-    either = b none [ piece ] [
-        esc: either = b 34 [
-            s/+ j/backslash j/quote
-        ] [
-            either = b 92 [
-                s/+ j/backslash j/backslash
-            ] [ s/+ "\u00" j/hex2 b ]
-        ]
-        s/+ piece s/+ esc j/encode-string-loop s + j 1
-    ]
+;; j/raw-escape ( string! -> string! ): the bytes of s with JSON escapes and no
+;; surrounding quotes.  34 -> \" , 92 -> \\ , a byte below 32 -> \u00xx (lower
+;; case hex); every other byte is copied.  Pass 1 sizes the result, pass 2
+;; fills it.  s stays on the data stack (a GC root) across the allocation, as
+;; in s/raw-cat; the result is pushed (rooted) before it is filled.  Uses the
+;; safe scratch cells A/B/C/F only.
+j/raw-escape: masm 1 [
+    LIT SCRATCH_A !
+    LIT SCRATCH_A @ LIT T_STRING SUB LIT SCRATCH_B !
+    LIT SCRATCH_B @ @ LIT SCRATCH_C !
+    LIT SCRATCH_C @ LIT SCRATCH_F !
+  je-size:
+    LIT SCRATCH_C @ ZBRANCH je-sized
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B !
+    LIT SCRATCH_B @ @
+    DUP LIT 32 LT ZBRANCH je-size-notctl
+    DROP LIT SCRATCH_F @ LIT 5 ADD LIT SCRATCH_F !
+    BRANCH je-size-next
+  je-size-notctl:
+    DUP LIT 34 EQ ZBRANCH je-size-notq
+    DROP LIT SCRATCH_F @ LIT 1 ADD LIT SCRATCH_F !
+    BRANCH je-size-next
+  je-size-notq:
+    LIT 92 EQ ZBRANCH je-size-next
+    LIT SCRATCH_F @ LIT 1 ADD LIT SCRATCH_F !
+  je-size-next:
+    LIT SCRATCH_C @ LIT 1 SUB LIT SCRATCH_C !
+    BRANCH je-size
+  je-sized:
+    LIT SCRATCH_A @
+    LIT SCRATCH_F @ LIT 16 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT SCRATCH_A !
+    LIT SCRATCH_F @ LIT SCRATCH_C @ !
+    LIT SCRATCH_C @ LIT T_STRING ADD
+    LIT SCRATCH_A @ LIT T_STRING SUB LIT SCRATCH_B !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  je-fill:
+    LIT SCRATCH_F @ ZBRANCH je-done
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B !
+    LIT SCRATCH_B @ @
+    DUP LIT 32 LT ZBRANCH je-fill-notctl
+    LIT 92 LIT SCRATCH_C @ LIT 1 ADD DUP LIT SCRATCH_C ! !
+    LIT 117 LIT SCRATCH_C @ LIT 1 ADD DUP LIT SCRATCH_C ! !
+    LIT 48 LIT SCRATCH_C @ LIT 1 ADD DUP LIT SCRATCH_C ! !
+    LIT 48 LIT SCRATCH_C @ LIT 1 ADD DUP LIT SCRATCH_C ! !
+    DUP LIT 16 DIV LIT 48 ADD LIT SCRATCH_C @ LIT 1 ADD DUP LIT SCRATCH_C ! !
+    LIT 16 MOD
+    DUP LIT 10 LT ZBRANCH je-hex-alpha
+    LIT 48 ADD
+    BRANCH je-hex-emit
+  je-hex-alpha:
+    LIT 87 ADD
+  je-hex-emit:
+    LIT SCRATCH_C @ LIT 1 ADD DUP LIT SCRATCH_C ! !
+    BRANCH je-fill-next
+  je-fill-notctl:
+    DUP LIT 34 EQ ZBRANCH je-fill-notq
+    LIT 92 LIT SCRATCH_C @ LIT 1 ADD DUP LIT SCRATCH_C ! !
+    BRANCH je-fill-byte
+  je-fill-notq:
+    DUP LIT 92 EQ ZBRANCH je-fill-byte
+    LIT 92 LIT SCRATCH_C @ LIT 1 ADD DUP LIT SCRATCH_C ! !
+  je-fill-byte:
+    LIT SCRATCH_C @ LIT 1 ADD DUP LIT SCRATCH_C ! !
+  je-fill-next:
+    LIT SCRATCH_F @ LIT 1 SUB LIT SCRATCH_F !
+    BRANCH je-fill
+  je-done:
+    ARITY 1 EXIT
 ]
 
 j/encode-string: func [s] [
     either j/raw-utf8? s [
-        s/+ j/quote s/+ j/encode-string-loop s 0 j/quote
+        s/+ j/quote s/+ j/raw-escape s j/quote
     ] [ j/error 'bad-utf8 s ]
 ]
 
+;; The element walks below keep their state in locals named j/ei-* / j/ep-*
+;; (no such globals exist), so each nested container has its own cursor and
+;; the walk is re-entrant.  Same checks, error ids/args and order as before:
+;; each element is encoded before the next list cell is examined.
 j/encode-items: func [items depth count] [
-    either = items none [ "" ] [
-        either either j/block? items [ = block-len items 2 ] [ 0 ] [
-            either >= count json/max-items [ j/error 'too-many-items count ] [
-                rest: block-at items 1
-                s/+ j/encode block-at items 0 + depth 1
-                    either = rest none [ "" ] [ s/+ "," j/encode-items rest depth + count 1 ]
-            ]
-        ] [ j/error 'not-a-json-value items ]
+    j/ei-out: ""
+    j/ei-xs: items
+    j/ei-n: count
+    j/ei-step: [
+        either = j/ei-xs none [ j/ei-out ] [
+            either either j/block? j/ei-xs [ = block-len j/ei-xs 2 ] [ 0 ] [
+                either >= j/ei-n json/max-items [ j/error 'too-many-items j/ei-n ] [
+                    j/ei-out: s/+ j/ei-out s/+ either = j/ei-n count [ "" ] [ "," ]
+                        j/encode block-at j/ei-xs 0 + depth 1
+                    j/ei-xs: block-at j/ei-xs 1
+                    j/ei-n: + j/ei-n 1
+                    do j/ei-step
+                ]
+            ] [ j/error 'not-a-json-value j/ei-xs ]
+        ]
     ]
+    do j/ei-step
 ]
 
 j/encode-pairs: func [pairs depth count] [
-    either = pairs none [ "" ] [
-        either either j/block? pairs [ = block-len pairs 2 ] [ 0 ] [
-            either >= count json/max-items [ j/error 'too-many-items count ] [
-                pair: block-at pairs 0
-                either either j/block? pair [ = block-len pair 2 ] [ 0 ] [
-                    key: block-at pair 0
-                    either j/string? key [
-                        rest: block-at pairs 1
-                        s/+ s/+ j/encode-string key ":"
-                            s/+ j/encode block-at pair 1 + depth 1
-                                either = rest none [ "" ] [ s/+ "," j/encode-pairs rest depth + count 1 ]
-                    ] [ j/error 'not-a-json-value pair ]
-                ] [ j/error 'not-a-json-value pairs ]
-            ]
-        ] [ j/error 'not-a-json-value pairs ]
+    j/ep-out: ""
+    j/ep-xs: pairs
+    j/ep-n: count
+    j/ep-step: [
+        either = j/ep-xs none [ j/ep-out ] [
+            either either j/block? j/ep-xs [ = block-len j/ep-xs 2 ] [ 0 ] [
+                either >= j/ep-n json/max-items [ j/error 'too-many-items j/ep-n ] [
+                    j/ep-pair: block-at j/ep-xs 0
+                    either either j/block? j/ep-pair [ = block-len j/ep-pair 2 ] [ 0 ] [
+                        either j/string? block-at j/ep-pair 0 [
+                            j/ep-out: s/+ j/ep-out s/+ either = j/ep-n count [ "" ] [ "," ]
+                                s/+ s/+ j/encode-string block-at j/ep-pair 0 ":"
+                                    j/encode block-at j/ep-pair 1 + depth 1
+                            j/ep-xs: block-at j/ep-xs 1
+                            j/ep-n: + j/ep-n 1
+                            do j/ep-step
+                        ] [ j/error 'not-a-json-value j/ep-pair ]
+                    ] [ j/error 'not-a-json-value j/ep-xs ]
+                ]
+            ] [ j/error 'not-a-json-value j/ep-xs ]
+        ]
     ]
+    do j/ep-step
 ]
 
 j/encode-block: func [v depth] [

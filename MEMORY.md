@@ -434,6 +434,13 @@ experimental are different things:
   Ownership rules should be stated once and enforced in one place. See
   `GLON-HTTP-H3E-RESULTS.md`.
 
+- **JSON-J1 (2026-11-26):** the frame at a stack-exhaustion halt is where the
+  stack ran out, not what used it. Measure depth per input shape before
+  choosing a fix: here containers, not strings, exhausted G3H's task stack.
+  In Glon, `do` of a block costs ~9 return-stack cells per level against ~95
+  for a closure call, so it is the cheap iteration form. See
+  `GLON-JSON-J1-RESULTS.md`.
+
 ## 7. Roadmap
 
 ```text
