@@ -1,0 +1,109 @@
+;; G3J.9 minimal authentication app (flat, independently testable).
+;;   POST /setup {username,password}  set the password for the seeded user
+;;   POST /login {username,password}  verify and return 200/401
+;; One seeded user (id 1, "alice").  Loopback-only.  Hex credential storage.
+[
+db: none
+
+parse-creds: func [request] [
+    body: http/body request
+    body: either = 0 s/length body [ "{}" ] [ body ]
+    judge [
+        obj: json/decode body
+        either json/object? obj [
+            u: json/object-get obj "username"
+            p: json/object-get obj "password"
+            either json/string? u [
+                either json/string? p [ reduce [ u p ] ] [ raise create-sin 'app 400 "password required" ]
+            ] [ raise create-sin 'app 400 "username required" ]
+        ] [ raise create-sin 'app 400 "invalid json" ]
+    ]
+]
+
+do-setup: func [request] [
+    r: parse-creds request
+    either sin? r [
+        gw-err request 400 sin-arg r
+    ] [
+        sec/random 16 func [salt-raw] [
+            sec/hex salt-raw func [salt] [
+                sec/scrypt block-at r 1 salt 16384 8 1 32 func [hash] [
+                    sec/hex hash func [hash-hex] [
+                        sqlite/prepare db "INSERT OR REPLACE INTO user_passwords(user_id,algo,salt,hash,n,r,p) VALUES (1,'scrypt',?,?,16384,8,1)"
+                            func [st] [
+                                sqlite/bind-text st 1 salt func [b1] [
+                                    sqlite/bind-text st 2 hash-hex func [b2] [
+                                        sqlite/step st func [row] [ sqlite/finalize st func [x] [ http/respond request 200 "text/plain; charset=utf-8" "SETUP-OK" ] func [e] [ http/respond request 500 "text/plain" "fin" ] ] func [e] [ http/respond request 409 "text/plain" "dup" ]
+                                    ] func [e] [ http/respond request 500 "text/plain" "bind" ]
+                                ] func [e] [ http/respond request 500 "text/plain" "bind" ]
+                            ] func [e] [ http/respond request 500 "text/plain" "prep" ]
+                    ] func [e] [ http/respond request 500 "text/plain" "hex" ]
+                ] func [e] [ http/respond request 500 "text/plain" "scrypt" ]
+            ] func [e] [ http/respond request 500 "text/plain" "hex" ]
+        ] func [e] [ http/respond request 500 "text/plain" "rand" ]
+    ]
+]
+
+do-login: func [request] [
+    r: parse-creds request
+    either sin? r [
+        gw-err request 400 sin-arg r
+    ] [
+        sqlite/prepare db "SELECT salt,hash,n,r,p FROM user_passwords WHERE user_id = 1"
+            func [st] [
+                sqlite/step st
+                    func [row] [
+                        either = row none [
+                            sqlite/finalize st func [x] [ http/respond request 401 "text/plain; charset=utf-8" "unauthorized" ] func [e] [ http/respond request 401 "text/plain; charset=utf-8" "unauthorized" ]
+                        ] [
+                            salt: block-at row 0
+                                            stored: block-at row 1
+                                            sec/scrypt block-at r 1 salt block-at row 2 block-at row 3 block-at row 4 32
+                                                func [hash] [
+                                                    sec/hex hash func [hash-hex] [
+                                                        sec/ct-eq hash-hex stored func [eq] [
+                                                            either = eq 0 [
+                                                                http/respond request 401 "text/plain; charset=utf-8" "unauthorized"
+                                                                sqlite/finalize st func [x] [ none ] func [e] [ none ]
+                                                            ] [
+                                                                sqlite/finalize st func [x] [ http/respond request 200 "text/plain; charset=utf-8" "LOGIN-OK" ] func [e] [ http/respond request 500 "text/plain" "fin" ]
+                                                            ]
+                                                        ] func [e] [ http/respond request 500 "text/plain" "ct" ]
+                                                    ] func [e] [ http/respond request 500 "text/plain" "hex" ]
+                                                ] func [e] [ http/respond request 500 "text/plain" "scrypt" ]
+                        ]
+                    ] func [e] [ http/respond request 500 "text/plain" "step" ]
+            ] func [e] [ http/respond request 500 "text/plain" "prep" ]
+    ]
+]
+
+gw-err: func [request status msg] [
+    http/respond request status "text/plain; charset=utf-8" msg
+]
+
+handle: func [request] [
+    p: http/path request
+    either str-eq p "/setup" [
+        either str-eq http/method request "POST" [ do-setup request ] [ gw-err request 405 "method" ]
+    ] [
+        either str-eq p "/login" [
+            either str-eq http/method request "POST" [ do-login request ] [ gw-err request 405 "method" ]
+        ] [ gw-err request 404 "not found" ]
+    ]
+]
+
+start: func [] [
+    sqlite/open "min.db"
+        func [d] [
+            db: d
+            sqlite/exec db "CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS user_passwords(user_id INTEGER PRIMARY KEY, algo TEXT NOT NULL, salt BLOB NOT NULL, hash BLOB NOT NULL, n INTEGER NOT NULL, r INTEGER NOT NULL, p INTEGER NOT NULL)"
+                func [x] [
+                    sqlite/exec db "INSERT OR IGNORE INTO users(id,username,display_name,role,status,created_at) VALUES (1,'alice','Alice','user','active','2026-01-01T00:00:00+00:00')"
+                        func [y] [ http/listen 8443 :handle ]
+                        func [e] [ raise e ]
+                ]
+                func [e] [ raise e ]
+        ] func [e] [ raise e ]
+]
+start
+]
