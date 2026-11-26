@@ -3437,6 +3437,7 @@ static void emit_invoke_closure(void) {
     e_cell(RV_T6); asm_lit(REG_RP); asm_store();          /* RP = frame base (one adjustment) */
     e_cell(RV_FRAME); e_cell(RV_T6); asm_lit(FRAME_PREV); asm_host(HOST_ADD); asm_store();   /* +0 = prev (old frame) */
     e_cell(RV_T6); e_setc(RV_FRAME);                       /* RV_FRAME = frame base (16-aligned) */
+    e_cell(RV_FRAME); e_cell(RV_SITE); asm_lit(3); asm_host(HOST_TRACE_FRAME);
     e_cell(RV_CLOSURE); asm_lit(CLOSURE_SITE); asm_host(HOST_ADD); asm_fetch();
         e_cell(RV_T6); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_store();               /* +1 = site */
     asm_lit(REG_SP); asm_fetch(); e_cell(RV_T6); asm_lit(FRAME_SP); asm_host(HOST_ADD); asm_store();   /* +2 = SP */
@@ -3481,6 +3482,7 @@ static void emit_invoke_closure(void) {
     e_cell(RV_FRAME); asm_lit(FRAME_RP); asm_host(HOST_ADD); asm_fetch(); asm_lit(1); asm_host(HOST_SUB);
     asm_lit(REG_RP); asm_store();
     e_cell(RV_FRAME); asm_fetch(); e_setc(RV_FRAME);
+    e_cell(RV_FRAME); e_cell(RV_SITE); asm_lit(4); asm_host(HOST_TRACE_FRAME);
     asm_lit(0); e_setc(RV_CHILD);                    /* M2: child context now dead */
     asm_lit(0); e_setc(RV_CLOSURE);                  /* M2: closure now dead */
 #ifdef R0_S1_PROFILE
