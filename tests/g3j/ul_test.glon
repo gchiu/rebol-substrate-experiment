@@ -1,0 +1,24 @@
+;; G3J.8: verify ul/user-by-name (from userlookup.glon) works in an HTTP handler.
+[
+db: none
+handle: func [request] [
+    ul/user-by-name db "alice"
+        func [row] [
+            either = row none [
+                http/respond request 200 "text/plain; charset=utf-8" "LOOKUP-NONE"
+            ] [
+                http/respond request 200 "text/plain; charset=utf-8" "LOOKUP-OK"
+            ]
+        ] func [e] [ http/respond request 200 "text/plain; charset=utf-8" "LOOKUP-FAIL" ]
+]
+start: func [] [
+    sqlite/open "ul.db"
+        func [d] [
+            db: d
+            sqlite/exec db "CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL); INSERT OR IGNORE INTO users(username,display_name,role,status,created_at) VALUES ('alice','Alice','user','active','2026-01-01T00:00:00+00:00')"
+                func [x] [ http/listen 8443 :handle ]
+                func [e] [ raise e ]
+        ] func [e] [ raise e ]
+]
+start
+]

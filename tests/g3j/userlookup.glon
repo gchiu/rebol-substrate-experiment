@@ -1,0 +1,12 @@
+;; userlookup.glon - parameterised user lookup by username (G3J.8 library).
+;; Requires: prelude, strings, sqlite.  Publishes ul/user-by-name.
+[
+ul/user-by-name: func [db username success failure] [
+    sqlite/prepare db "SELECT id,username,display_name,role,status FROM users WHERE username = ?"
+        func [st] [
+            sqlite/bind-text st 1 username func [b] [
+                sqlite/step st func [row] [ sqlite/finalize st func [x] [ success row ] failure ] failure
+            ] failure
+        ] failure
+]
+]
