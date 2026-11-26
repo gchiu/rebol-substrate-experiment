@@ -767,6 +767,14 @@ g3g-test:
 	python3 tests/glon-worlds-g3g/smoke.py
 .PHONY: g3g-test
 
+# G3H: loopback-only SQLite user registry for the native Glon Worlds demo.
+# See G3H-RESULTS.md.
+g3h-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	tests/https-g1/make-cert.sh
+	python3 tests/glon-worlds-g3h/smoke.py
+.PHONY: g3h-test
+
 # Focused M1 test binary for portable distribution smoke tests.  The full
 # native `s1` suite needs repository source fixtures and is not shipped in
 # every platform package.
