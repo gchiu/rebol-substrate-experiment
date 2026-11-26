@@ -152,6 +152,15 @@ static void host(cell id) {
     }
     case HOST_PUTCHAR: { putchar((int)pop()); fflush(stdout); break; }
     case HOST_PRINT:   { printf("%ld\n", (long)pop()); fflush(stdout); break; }
+    case HOST_TRACE_FRAME: {
+        extern void http_trace_frame(long tag, long ip, long sp, long rp,
+                                     long frame, long site);
+        long tag = (long)pop();
+        long site = (long)pop();
+        long frame = (long)pop();
+        http_trace_frame(tag, (long)IP, (long)SP, (long)RP, frame, site);
+        break;
+    }
     case HOST_DUMP: {
         fprintf(stderr, "[dump] IP=%ld SP=%ld RP=%ld HP=%ld top=%ld\n",
                 (long)IP, (long)SP, (long)RP, (long)HP, (long)M[SP]);

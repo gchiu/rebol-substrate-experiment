@@ -32,6 +32,21 @@ static cell ip_start, ip_end, sp_start, sp_end, rp_start, rp_end;
 static cell code_begin, code_end;
 extern cell g_halt_pos[]; extern int g_halt_n;
 int g_halt_tag = -1;
+/* G3J.2: bounded runtime frame-transition trace (HOST_TRACE_FRAME). */
+#define HTTP_TRACE_N 128
+struct http_trace_rec { long tag, ip, sp, rp, frame, site; };
+static struct http_trace_rec http_trace[HTTP_TRACE_N];
+static int http_trace_n, http_trace_ov;
+void http_trace_frame(long tag, long ip, long sp, long rp, long frame, long site) {
+    if (http_trace_n < HTTP_TRACE_N) {
+        http_trace[http_trace_n].tag = tag; http_trace[http_trace_n].ip = ip;
+        http_trace[http_trace_n].sp = sp; http_trace[http_trace_n].rp = rp;
+        http_trace[http_trace_n].frame = frame; http_trace[http_trace_n].site = site;
+        http_trace_n++;
+    } else {
+        http_trace_ov = 1;
+    }
+}
 
 /* G1: forward declarations for the managed-heap entry points referenced by the
  * RAW assembler's symbolic CALL targets (alloc/collect/lookup). Defined later
@@ -1005,6 +1020,7 @@ static void emit_call_indirect(cell c) {
     asm_lit(0);
     cell cont = asm_here() - 1;
     asm_toR();
+    e_cell(RV_FRAME); e_cell(RV_SITE); asm_lit(1); asm_host(HOST_TRACE_FRAME);
     e_cell(c);
     asm_lit(REG_IP); asm_store();
     s1_set_mem(cont, asm_here());
@@ -3490,6 +3506,7 @@ static void emit_invoke_closure(void) {
  * return address. Intermediate activations' epilogues never run. */
 static void emit_return(void) {
     r_return = asm_here();
+    e_cell(RV_FRAME); e_cell(RV_SITE); asm_lit(2); asm_host(HOST_TRACE_FRAME);
     /* site_id = M[RV_BLK + BLK_SITE] */
     e_cell(RV_BLK); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch(); emit_decode_site(); e_setc(RV_SITE);
     e_cell(RV_SITE); asm_lit(0); asm_host(HOST_EQ);
@@ -4301,6 +4318,12 @@ void r0_s1_dump_ip(void) {
         fprintf(stderr, "  [halt-emitters=%d executed-ip=%ld tag=%d:", g_halt_n, ip, g_halt_tag);
         for (int k = 0; k < g_halt_n; k++)
             fprintf(stderr, " %ld", (long)g_halt_pos[k]);
+        fprintf(stderr, "]\n");
+        fprintf(stderr, "  [frame-trace n=%d ov=%d:", http_trace_n, http_trace_ov);
+        for (int k = 0; k < http_trace_n; k++)
+            fprintf(stderr, " {t=%ld ip=%ld sp=%ld rp=%ld f=%ld s=%ld}",
+                    http_trace[k].tag, http_trace[k].ip, http_trace[k].sp,
+                    http_trace[k].rp, http_trace[k].frame, http_trace[k].site);
         fprintf(stderr, "]\n");
     }
     /* H2V: Glon expression location -- current block and element index. */

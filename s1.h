@@ -45,7 +45,7 @@ enum {
 enum {
     HOST_ADD = 0, HOST_SUB, HOST_MUL, HOST_DIV, HOST_MOD, HOST_NEG,
     HOST_EQ, HOST_NE, HOST_LT, HOST_GT, HOST_LE, HOST_GE,
-    HOST_ALLOC, HOST_PUTCHAR, HOST_PRINT, HOST_DUMP
+    HOST_ALLOC, HOST_PUTCHAR, HOST_PRINT, HOST_TRACE_FRAME, HOST_DUMP
 };
 
 /* --- assembler API ----------------------------------------------------- */
