@@ -308,19 +308,26 @@ MEM_LOADER_CELLS ?= 200000
 MEM_M1_CELLS ?= 10200
 MEM_TOTAL ?= 65536
 CODE_RESERVE ?= 256
+MEM_CODE_CAP ?= 16384
 GLON_MEMORY_CFLAGS :=
 GLON_PROFILE_DEPS :=
 GLON_S1_SRC := s1.c
 ifeq ($(MEM_PROFILE),constrained)
 else ifeq ($(MEM_PROFILE),large)
-  MEM_MANAGED_END := $(shell expr 32768 + $(MEM_MANAGED_CELLS))
+  MEM_SHIFT := $(shell expr $(MEM_CODE_CAP) - 16384)
+  MEM_RS_INIT := $(shell expr 24576 + $(MEM_SHIFT))
+  MEM_HEAP_BASE := $(shell expr 32768 + $(MEM_SHIFT))
+  MEM_MANAGED_END := $(shell expr $(MEM_HEAP_BASE) + $(MEM_MANAGED_CELLS))
   MEM_LOAD_BASE := $(shell expr $(MEM_MANAGED_END) + $(MEM_WORKLIST_CELLS))
   MEM_M1_BASE := $(shell expr $(MEM_LOAD_BASE) + $(MEM_LOADER_CELLS))
   MEM_TASK_TABLE := $(shell expr $(MEM_M1_BASE) + $(MEM_M1_CELLS))
   MEM_TOTAL := $(shell expr $(MEM_TASK_TABLE) + 536 + 1024)
-  GLON_MEMORY_CFLAGS := -DR0S1_HEAP_BASE=$(MEM_MANAGED_END) \
+  GLON_MEMORY_CFLAGS := -DR0S1_DS_INIT=$(MEM_CODE_CAP) \
+      -DR0S1_RS_INIT=$(MEM_RS_INIT) \
+      -DR0S1_HEAP_BASE=$(MEM_MANAGED_END) \
       -DR0S1_LOAD_BASE=$(MEM_LOAD_BASE) \
       -DR0S1_HEAP_LIMIT=$(MEM_M1_BASE) \
+      -DGC_HEAP_BASE=$(MEM_HEAP_BASE) \
       -DGC_WORKLIST=$(MEM_MANAGED_END) \
       -DGC_WORKLIST_CAP=$(MEM_WORKLIST_CELLS) \
       -DM1_ARENA_BASE=$(MEM_M1_BASE) \
@@ -478,7 +485,11 @@ build/profile/s1_profile.h: s1.h Makefile $(GLON_CONFIG) | build/profile
 	@mv $@.tmp $@
 
 build/profile/s1_profile.c: s1.c Makefile $(GLON_CONFIG) | build/profile
-	@sed 's/^#include "s1.h"$$/#include "s1_profile.h"/' $< > $@.tmp
+	@sed -e 's/^#include "s1.h"$$/#include "s1_profile.h"/' \
+	      -e 's/^#define DS_INIT  *16384$$/#define DS_INIT    $(MEM_CODE_CAP)/' \
+	      -e 's/^#define RS_INIT  *24576$$/#define RS_INIT    $(MEM_RS_INIT)/' \
+	      -e 's/^#define HEAP_BASE  *32768$$/#define HEAP_BASE  $(MEM_HEAP_BASE)/' \
+	      $< > $@.tmp
 	@mv $@.tmp $@
 
 glon: $(GLON_SRCS) $(GLON_MODULE_SRCS) $(GLON_MODULE_OBJS) $(GLON_PROFILE_DEPS) r0_s1.h s1.h m1_layout.h $(GLON_CONFIG) $(GLON_TARGET_LIBS)

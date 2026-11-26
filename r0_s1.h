@@ -237,14 +237,20 @@ enum {
  * [R0S1_HEAP_BASE, R0S1_HEAP_LIMIT) is traced but never swept.  See
  * M2-GC-DESIGN.md. */
 
+#ifndef GC_HEAP_BASE
 #define GC_HEAP_BASE   32768L   /* == s1.c HEAP_BASE (managed runtime heap) */
+#endif
 #define GC_HEAP_LIMIT  R0S1_HEAP_BASE   /* managed heap ends where the loader heap starts (40000) */
 _Static_assert(GC_HEAP_LIMIT == R0S1_HEAP_BASE,
                "the managed heap must end exactly where the loader heap begins");
 
 /* standard S1 stack tops (also used to locate the scheduler/main world) */
+#ifndef R0S1_DS_INIT
 #define R0S1_DS_INIT   16384L
+#endif
+#ifndef R0S1_RS_INIT
 #define R0S1_RS_INIT   24576L
+#endif
 /* Code-space bound for masm library code (2026-11-09). Emitted code grows up
  * from CODE_BASE towards the main data stack, which grows down from
  * R0S1_DS_INIT. The masm assembler refuses a block whose emitted cells would
