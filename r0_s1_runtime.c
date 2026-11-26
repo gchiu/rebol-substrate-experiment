@@ -84,6 +84,9 @@ static cell make_block(cell cap) {
     M[p + BLK_SITE] = 0;
     return mk_block(p);
 }
+#ifndef GLOBAL_CTX_CAP
+#define GLOBAL_CTX_CAP 256
+#endif
 static cell make_context(cell parent, cell cap) {
     cell p = lalloc(CTX_DATA + 3 * (int)cap);   /* data(2*cap) + hash(cap) */
     if (p < 0) return R0_NONE;                   /* only r0_s1_init calls this */
@@ -3869,7 +3872,7 @@ cell r0_s1_init(void) {
      * routes, and the hoisted str-N string bindings). The regenerated shop
      * bundle has 129 top-level set-words + 13 natives = 142 bindings, so the
      * cap must exceed 142. */
-    global_ctx = make_context(R0_NONE, 256);
+    global_ctx = make_context(R0_NONE, GLOBAL_CTX_CAP);
     if (global_ctx == R0_NONE) {             /* a fresh loader heap always fits it */
         fprintf(stderr, "r0_s1: no room for the global context\n");
         abort();
