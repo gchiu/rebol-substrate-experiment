@@ -1,7 +1,7 @@
-;; BLOCKED ARTIFACT (G3J): this server does not load — the fixed 512-symbol
-;; interpreter table (SYM_CAP) is exhausted by the G3H server + http/json/sqlite/
-;; sec/web before the auth vocabulary interns (resource error: symbol_table_full).
-;; Kept as the reference implementation for when the capacity is approved.
+;; G3J.1 ARTIFACT: with SYM_CAP raised 512->1024 this file now PARSES (the
+;; symbol table no longer overflows) but the startup chain does not reach
+;; http/listen — a bracket/structure defect in this generated auth code, not an
+;; architectural limit. Reference implementation; needs the auth nesting fixed.
 ;; examples/glon-worlds-g3b/server.glon - minimal Glon Worlds chat API demo.
 ;;
 ;; This is ordinary Glon application logic over the existing HTTPS, JSON and
@@ -586,6 +586,7 @@ app/install: func [] [
                                                                         ] func [e] [ gw/error request 500 "scrypt failed" ]
                                                                 ] func [e] [ gw/error request 500 "scrypt failed" ]
                                                         ]
+                                                    ]
                                                     ] func [e] [ gw/error request 500 "lookup failed" ]
                                             ]
                                         ]
@@ -709,4 +710,4 @@ app/install: func [] [
     setup-a
 ]
 app/install
-]
+]]

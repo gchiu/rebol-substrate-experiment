@@ -19,7 +19,7 @@
 
 /* ============================= loader state ============================ */
 
-static const char *syms[512];            /* interner: sym_id -> spelling */
+static const char *syms[1024];           /* interner: sym_id -> spelling */
 static int nsyms;
 static cell global_ctx;                  /* tagged CONTEXT value */
 static cell main_entry;                  /* top-level S1 entry point */
@@ -4261,7 +4261,7 @@ static void http_dump_block(cell blk, int depth) {
     for (int i = 0; i < cnt; i++) {
         cell e = M[p + BLK_DATA + i];
         long wid = (long)word_id(e);
-        const char *nm = (wid >= 0 && wid < 512) ? syms[wid] : NULL;
+        const char *nm = (wid >= 0 && wid < SYM_CAP) ? syms[wid] : NULL;
         fprintf(stderr, "      [%d] tag=%ld %s\n", i, (long)r0_tag(e),
                 nm ? nm : "");
         if (r0_tag(e) == T_BLOCK) http_dump_block(e, depth + 1);
@@ -4275,12 +4275,12 @@ void r0_s1_dump_ip(void) {
             (long)s1_mem(ip - 1), (long)s1_mem(ip), (long)s1_mem(ip + 1));
     cell w = s1_mem(RV_WORD);
     long wid = (long)word_id(w);
-    const char *nm = (wid >= 0 && wid < 512) ? syms[wid] : NULL;
+    const char *nm = (wid >= 0 && wid < SYM_CAP) ? syms[wid] : NULL;
     fprintf(stderr, "  [word=%ld name=%s ctx=%ld]\n", wid, nm ? nm : "?",
             (long)s1_mem(RV_CTX));
     cell tw = s1_mem(s1_mem(REG_SP));
     long twid = (long)word_id(tw);
-    const char *tnm = (twid >= 0 && twid < 512) ? syms[twid] : NULL;
+    const char *tnm = (twid >= 0 && twid < SYM_CAP) ? syms[twid] : NULL;
     fprintf(stderr, "  [top word=%ld name=%s]\n", twid, tnm ? tnm : "?");
     /* H2V: Glon expression location -- current block and element index. */
     cell blk = r0_untag(s1_mem(RV_BLK));
@@ -4292,7 +4292,7 @@ void r0_s1_dump_ip(void) {
         if (k < 0 || k >= cnt) continue;
         cell e = M[blk + BLK_DATA + k];
         long eid = (long)word_id(e);
-        const char *enm = (eid >= 0 && eid < 512) ? syms[eid] : NULL;
+        const char *enm = (eid >= 0 && eid < SYM_CAP) ? syms[eid] : NULL;
         fprintf(stderr, "    [%ld] %s (tag %ld)\n", k, enm ? enm : "?",
                 (long)r0_tag(e));
     }
@@ -4302,7 +4302,7 @@ void r0_s1_dump_ip(void) {
     cell ob = s1_mem(25040), oc = s1_mem(25041), ow = s1_mem(25042);
     long oidx = (long)(oc - ob - BLK_DATA - 1);
     long owid = (long)word_id(ow);
-    const char *ownm = (owid >= 0 && owid < 512) ? syms[owid] : NULL;
+    const char *ownm = (owid >= 0 && owid < SYM_CAP) ? syms[owid] : NULL;
     fprintf(stderr, "  [origin blk=%ld idx=%ld word=%ld name=%s]\n", (long)ob,
             oidx, owid, ownm ? ownm : "?");
 }
@@ -4317,7 +4317,7 @@ static void task_dump_ctx(cell ctx, int depth) {
     for (int i = 0; i < count; i++) {
         cell w = M[p + CTX_DATA + 2 * i], v = M[p + CTX_DATA + 2 * i + 1];
         long wid = (long)word_id(w);
-        const char *nm = (wid >= 0 && wid < 512) ? syms[wid] : NULL;
+        const char *nm = (wid >= 0 && wid < SYM_CAP) ? syms[wid] : NULL;
         fprintf(stderr, "    [%d] %s = %ld (tag %ld)\n", i, nm ? nm : "?",
                 (long)v, (long)r0_tag(v));
     }
