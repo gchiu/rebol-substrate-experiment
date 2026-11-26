@@ -251,6 +251,14 @@ _Static_assert(GC_HEAP_LIMIT == R0S1_HEAP_BASE,
 #ifndef R0S1_RS_INIT
 #define R0S1_RS_INIT   24576L
 #endif
+/* GLON-S1-CLAUDE-D1: the main return stack [R0S1_DS_INIT, R0S1_RS_INIT) must
+ * end at or below the first fixed runtime-state cell (GC_META = 24576; the RV_*,
+ * GC_*, M1_* cells follow it). Every return-stack guard and the stack sentry
+ * use R0S1_DS_INIT as the floor, so a return stack reaching over that state
+ * would corrupt it silently instead of fail-stopping. */
+_Static_assert(R0S1_RS_INIT <= 24576L,
+               "the main return stack must not overlap the fixed runtime-state cells at 24576");
+_Static_assert(R0S1_DS_INIT < R0S1_RS_INIT, "the main return stack must be non-empty");
 /* Code-space bound for masm library code (2026-11-09). Emitted code grows up
  * from CODE_BASE towards the main data stack, which grows down from
  * R0S1_DS_INIT. The masm assembler refuses a block whose emitted cells would

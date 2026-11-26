@@ -323,9 +323,19 @@ GLON_PROFILE_DEPS :=
 GLON_S1_SRC := s1.c
 ifeq ($(MEM_PROFILE),constrained)
 else ifeq ($(MEM_PROFILE),large)
+  # GLON-S1-CLAUDE-D1: only the code/data-stack boundary moves.  The fixed
+  # runtime-state cells (RV_*, GC_*, M1_*, M3 tables, G1 buffers, site table)
+  # live at absolute addresses in [24576, 32768), directly above the main
+  # return stack.  MEM-M2 shifted RS_INIT and HEAP_BASE up by MEM_SHIFT, which
+  # put the main return stack [MEM_CODE_CAP, 24576+shift) on top of that state:
+  # closure recursion ~37 deep overwrote the GC/RV cells and hung the machine.
+  # A larger code cap therefore costs return-stack cells (8192 - shift).
   MEM_SHIFT := $(shell expr $(MEM_CODE_CAP) - 16384)
-  MEM_RS_INIT := $(shell expr 24576 + $(MEM_SHIFT))
-  MEM_HEAP_BASE := $(shell expr 32768 + $(MEM_SHIFT))
+  MEM_RS_INIT := 24576
+  MEM_HEAP_BASE := 32768
+  ifneq ($(shell test $(MEM_SHIFT) -ge 0 -a $(MEM_SHIFT) -le 6144 && echo ok),ok)
+    $(error MEM_CODE_CAP=$(MEM_CODE_CAP) must lie in [16384, 22528] so that the main return stack from MEM_CODE_CAP to 24576 keeps at least 2048 cells)
+  endif
   MEM_MANAGED_END := $(shell expr $(MEM_HEAP_BASE) + $(MEM_MANAGED_CELLS))
   MEM_LOAD_BASE := $(shell expr $(MEM_MANAGED_END) + $(MEM_WORKLIST_CELLS))
   MEM_M1_BASE := $(shell expr $(MEM_LOAD_BASE) + $(MEM_LOADER_CELLS))

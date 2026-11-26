@@ -421,6 +421,13 @@ experimental are different things:
   M1 task arena to be enlarged (see `FIB-OPT-P3-CONTEXTS.md`); P5's 64-cell
   context still fits the 30-deep multitasking regression.
 
+- **S1-CLAUDE-D1 (2026-11-26):** a 46-step investigation chased an
+  `emit_return` halt that never happened, because the halt tag was a C
+  variable set during code generation, not at run time. Map the halt IP to
+  its emitter first. The real defect was an 8-bit slot field in the context
+  hash, which only broke once a configurable capacity exceeded 256. Write
+  capacity assumptions as static asserts. See `GLON-S1-CLAUDE-D1-RESULTS.md`.
+
 ## 7. Roadmap
 
 ```text

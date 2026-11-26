@@ -1297,6 +1297,22 @@ and checksums are prepared locally. Do not treat the public release as
 published until the prepared branch/tag is pushed and the GitHub pre-release
 and Pages deployment are verified.
 
+### S1-CLAUDE-D1: hash slot radix and expanded-profile RS layout (2026-11-26) — [FIXED, LOCAL]
+
+Measured with the expanded profile (`MEM_PROFILE=large MEM_CODE_CAP=20480
+MEM_GLOBAL_CONTEXT_CAP=512 CODE_RESERVE=128`, M1 3x3400):
+- The context hash entry `word_id*256 + slot` broke at slot >= 256
+  (unbound-word halts, and silently wrong values). With `task.glon` the
+  G3H global context holds 267–270 bindings (non-task: 252). The radix is now
+  `R0S1_HASH_RADIX` = 65536, statically asserted to exceed every context capacity.
+- MEM-M2 shifted `RS_INIT`/`HEAP_BASE` up with the code cap, which put the main
+  return stack over the fixed RV/GC/M1 cells at 24576+. Closure recursion 37
+  deep hung the machine. The large profile now keeps `RS_INIT=24576` and
+  `HEAP_BASE=32768`; a larger code cap costs return-stack cells (4096 left at
+  cap 20480). `r0_s1.h` asserts `R0S1_RS_INIT <= 24576`.
+- `g_halt_tag` is assigned at emit time and does not identify a runtime halt.
+See `GLON-S1-CLAUDE-D1-RESULTS.md`.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling
