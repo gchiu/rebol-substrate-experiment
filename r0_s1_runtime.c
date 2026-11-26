@@ -34,14 +34,15 @@ extern cell g_halt_pos[]; extern int g_halt_n;
 int g_halt_tag = -1;
 /* G3J.2: bounded runtime frame-transition trace (HOST_TRACE_FRAME). */
 #define HTTP_TRACE_N 128
-struct http_trace_rec { long tag, ip, sp, rp, frame, site; };
+struct http_trace_rec { long tag, ip, sp, rp, frame, site, retip; };
 static struct http_trace_rec http_trace[HTTP_TRACE_N];
 static int http_trace_n, http_trace_ov;
-void http_trace_frame(long tag, long ip, long sp, long rp, long frame, long site) {
+void http_trace_frame(long tag, long ip, long sp, long rp, long frame, long site, long retip) {
     if (http_trace_n < HTTP_TRACE_N) {
         http_trace[http_trace_n].tag = tag; http_trace[http_trace_n].ip = ip;
         http_trace[http_trace_n].sp = sp; http_trace[http_trace_n].rp = rp;
         http_trace[http_trace_n].frame = frame; http_trace[http_trace_n].site = site;
+        http_trace[http_trace_n].retip = retip;
         http_trace_n++;
     } else {
         http_trace_ov = 1;
@@ -1020,7 +1021,7 @@ static void emit_call_indirect(cell c) {
     asm_lit(0);
     cell cont = asm_here() - 1;
     asm_toR();
-    e_cell(RV_FRAME); e_cell(RV_SITE); asm_lit(1); asm_host(HOST_TRACE_FRAME);
+    e_cell(RV_FRAME); e_cell(RV_SITE); asm_lit(0); asm_lit(1); asm_host(HOST_TRACE_FRAME);
     e_cell(c);
     asm_lit(REG_IP); asm_store();
     s1_set_mem(cont, asm_here());
@@ -3437,7 +3438,7 @@ static void emit_invoke_closure(void) {
     e_cell(RV_T6); asm_lit(REG_RP); asm_store();          /* RP = frame base (one adjustment) */
     e_cell(RV_FRAME); e_cell(RV_T6); asm_lit(FRAME_PREV); asm_host(HOST_ADD); asm_store();   /* +0 = prev (old frame) */
     e_cell(RV_T6); e_setc(RV_FRAME);                       /* RV_FRAME = frame base (16-aligned) */
-    e_cell(RV_FRAME); e_cell(RV_SITE); asm_lit(3); asm_host(HOST_TRACE_FRAME);
+    e_cell(RV_FRAME); e_cell(RV_SITE); e_cell(RV_FRAME); asm_lit(FRAME_IP); asm_host(HOST_ADD); asm_fetch(); asm_lit(3); asm_host(HOST_TRACE_FRAME);
     e_cell(RV_CLOSURE); asm_lit(CLOSURE_SITE); asm_host(HOST_ADD); asm_fetch();
         e_cell(RV_T6); asm_lit(FRAME_SITE); asm_host(HOST_ADD); asm_store();               /* +1 = site */
     asm_lit(REG_SP); asm_fetch(); e_cell(RV_T6); asm_lit(FRAME_SP); asm_host(HOST_ADD); asm_store();   /* +2 = SP */
@@ -3482,7 +3483,7 @@ static void emit_invoke_closure(void) {
     e_cell(RV_FRAME); asm_lit(FRAME_RP); asm_host(HOST_ADD); asm_fetch(); asm_lit(1); asm_host(HOST_SUB);
     asm_lit(REG_RP); asm_store();
     e_cell(RV_FRAME); asm_fetch(); e_setc(RV_FRAME);
-    e_cell(RV_FRAME); e_cell(RV_SITE); asm_lit(4); asm_host(HOST_TRACE_FRAME);
+    e_cell(RV_FRAME); e_cell(RV_SITE); asm_lit(0); asm_lit(4); asm_host(HOST_TRACE_FRAME);
     asm_lit(0); e_setc(RV_CHILD);                    /* M2: child context now dead */
     asm_lit(0); e_setc(RV_CLOSURE);                  /* M2: closure now dead */
 #ifdef R0_S1_PROFILE
@@ -3508,7 +3509,7 @@ static void emit_invoke_closure(void) {
  * return address. Intermediate activations' epilogues never run. */
 static void emit_return(void) {
     r_return = asm_here();
-    e_cell(RV_FRAME); e_cell(RV_SITE); asm_lit(2); asm_host(HOST_TRACE_FRAME);
+    e_cell(RV_FRAME); e_cell(RV_SITE); e_cell(RV_FRAME); asm_lit(FRAME_IP); asm_host(HOST_ADD); asm_fetch(); asm_lit(2); asm_host(HOST_TRACE_FRAME);
     /* site_id = M[RV_BLK + BLK_SITE] */
     e_cell(RV_BLK); asm_lit(BLK_SITE); asm_host(HOST_ADD); asm_fetch(); emit_decode_site(); e_setc(RV_SITE);
     e_cell(RV_SITE); asm_lit(0); asm_host(HOST_EQ);
@@ -4323,9 +4324,10 @@ void r0_s1_dump_ip(void) {
         fprintf(stderr, "]\n");
         fprintf(stderr, "  [frame-trace n=%d ov=%d:", http_trace_n, http_trace_ov);
         for (int k = 0; k < http_trace_n; k++)
-            fprintf(stderr, " {t=%ld ip=%ld sp=%ld rp=%ld f=%ld s=%ld}",
+            fprintf(stderr, " {t=%ld ip=%ld sp=%ld rp=%ld f=%ld s=%ld ret=%ld}",
                     http_trace[k].tag, http_trace[k].ip, http_trace[k].sp,
-                    http_trace[k].rp, http_trace[k].frame, http_trace[k].site);
+                    http_trace[k].rp, http_trace[k].frame, http_trace[k].site,
+                    http_trace[k].retip);
         fprintf(stderr, "]\n");
     }
     /* H2V: Glon expression location -- current block and element index. */
