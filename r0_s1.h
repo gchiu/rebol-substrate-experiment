@@ -251,7 +251,9 @@ _Static_assert(GC_HEAP_LIMIT == R0S1_HEAP_BASE,
  * end above R0S1_CODE_LIMIT, so R0S1_DS_RESERVE cells always remain for the
  * data stack (the deepest use measured in every workload was 87 cells,
  * experiments/glon-masm). Not a memory-map change: no region moves. */
+#ifndef R0S1_DS_RESERVE
 #define R0S1_DS_RESERVE 256L
+#endif
 #define R0S1_CODE_LIMIT (R0S1_DS_INIT - R0S1_DS_RESERVE)
 /* Data-stack guard (2026-11-10). Every evaluation step enters the
  * evaluator's SUBEXPR routine; on entry it fail-stops (R0S1_HALT_DS_EXHAUSTED)
