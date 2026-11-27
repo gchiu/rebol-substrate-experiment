@@ -798,6 +798,12 @@ modules-check:
 	sh tests/core-v2/modules_check.sh
 .PHONY: modules-check
 
+# GLON-VIEW-CORE-V2: static audit of lexical-binding divergence and duplicate
+# definitions over the C2 module / shared library sessions.
+library-audit:
+	sh tests/core-v2/library_audit.sh
+.PHONY: library-audit
+
 profile-common-test:
 	sh tests/core-c2/common_check.sh
 
