@@ -1,0 +1,2 @@
+a/b: func [] [ 1 ]
+a/b/c: func [] [ 2 ]

@@ -42,6 +42,7 @@ check nested-shadow $D/shadow.expect $D/shadow.glon
 check outer-levels $D/outer2.expect $D/outer2.glon
 known forward-relative $D/forward-relative.expect $D/forward-relative.glon
 known forward-qualified $D/forward-qualified.expect $D/forward-qualified.glon
+known adopt-deep $D/adopt-deep.expect $D/adopt-deep-1.glon $D/adopt-deep-2.glon $D/adopt-deep.glon
 # the literal-block GC hazard (GLON-LANG-1 2.4), unresolved, and its control
 check managed-block-gc $D/managed-block-gc.expect $D/managed-block-gc.glon
 known literal-block-gc $D/literal-block-gc.expect $D/literal-block-gc.glon
