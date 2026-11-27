@@ -1,0 +1,16 @@
+;; GLON-VIEW-CORE-V2: the literal-block GC hazard program (tests/core-v1/
+;; literal_block_gc.glon) with the SHARED block-set! (demo/shop/block.glon)
+;; instead of its own raw masm store: the store into the literal block is
+;; refused (SIN! 'escape 'block-set!), so nothing unmarked is kept there and
+;; the collections cannot corrupt it.  Expected: the SIN!, then 0 (the
+;; literal's item unchanged).
+gc/collect: masm 0 [ CALL collect ARITY 0 EXIT ]
+holder: func [] [ [ 0 ] ]
+keep: func [v] [ block-set! holder 0 v ]
+e: judge [ keep reduce [ s/+ "glo" "n" 1 2 3 ] ]
+churn: func [n] [ either = n 0 [ 0 ] [ reduce [ s/+ "xxxxxxxx" "yyyyyyyy" 1 2 3 4 5 6 ]  churn - n 1 ] ]
+gc/collect
+churn 40
+gc/collect
+churn 40
+values [ e  block-at holder 0 ]

@@ -1,0 +1,1 @@
+#[SIN! escape block-set! [ "glon" 1 2 3 ]] 0

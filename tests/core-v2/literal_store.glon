@@ -1,0 +1,27 @@
+;; GLON-VIEW-CORE-V2: block-set! literal safety (demo/shop/block.glon).
+;; A managed value may be stored only into a managed block; immediates and
+;; permanent values go anywhere; a refused store raises SIN! 'escape
+;; 'block-set! and changes nothing; a stored closure is stored, not called.
+;; Checked by tests/core-v2/literal_store.sh against literal_store.expect.
+gc/collect: masm 0 [ CALL collect ARITY 0 EXIT ]
+lit: func [] [ [ 0 0 ] ]
+m: reduce [ 0 0 ]
+s: s/+ "a" "b"
+f: func [x] [ + x 1 ]
+k1: block-store-ok? m s
+k2: block-store-ok? lit s
+k3: block-store-ok? lit 5
+k4: block-store-ok? lit 'w
+k5: block-store-ok? lit lit
+k6: block-store-ok? lit :f
+block-set! m 0 s
+block-set! m 1 :f
+block-set! lit 0 5
+block-set! lit 1 'w
+e1: judge [ block-set! lit 1 s ]
+e2: judge [ block-set! lit 0 :f ]
+block-set! lit 0 lit
+churn: func [n] [ either = n 0 [ 0 ] [ reduce [ s/+ "xxxxxxxx" "yyyyyyyy" 1 2 3 ]  churn - n 1 ] ]
+gc/collect  churn 40  gc/collect  churn 40  gc/collect
+g: block-at m 1
+values [ k1 k2 k3 k4 k5 k6  block-at m 0  g 41  block-at lit 1  e1  e2  = block-at lit 0 lit ]

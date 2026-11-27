@@ -63,7 +63,11 @@
 ;; local of its own: state is held in parameters, which are always local.
 ;;
 ;; Requires the prelude (block-at, block-len), strings.glon, and value-tag and
-;; block-set! (demo/shop/block.glon, or view/glon/core_words.glon in Glon/View).
+;; block-set-raw! (demo/shop/block.glon, or view/glon/core_words.glon in
+;; Glon/View).  list.glon stores only into blocks it made itself (the list,
+;; its nodes, loop/collect's result: all reduced, managed), so it uses the
+;; unchecked store; block-set!'s literal-safety check (GLON-VIEW-CORE-V2)
+;; would never refuse here and would cost about a quarter of a list workload.
 ;; One masm word (the check every operation makes): 131 code cells.
 [
 ;; blocks of 0 to 64 zeros: a fresh block of n items is reduce of one of
@@ -181,21 +185,21 @@ list/get: func [node span i] [
     either = span 1 [ block-at node i ] [ list/get block-at node / i span  / span 64  - i * / i span span ]
 ]
 list/store: func [l i v] [
-    either = block-at l 2 1 [ block-set! block-at l 3 i v ] [ list/set block-at l 3 block-at l 2 i v ]
+    either = block-at l 2 1 [ block-set-raw! block-at l 3 i v ] [ list/set block-at l 3 block-at l 2 i v ]
 ]
 list/set: func [node span i v] [
-    either = span 1 [ block-set! node i v ] [
+    either = span 1 [ block-set-raw! node i v ] [
         list/set list/child node / i span  / span 64  - i * / i span span  v
     ]
 ]
 ;; child k of an inner node, made when it is missing
 list/child: func [node k] [ either = block-at node k 0 [ list/made node k list/node ] [ block-at node k ] ]
-list/made: func [node k c] [ block-set! node k c  c ]
+list/made: func [node k c] [ block-set-raw! node k c  c ]
 ;; full: another level above the root (or the first leaf)
 list/grow: func [l] [
-    either = block-at l 2 0 [ block-set! l 3 list/node  block-set! l 2 1 ] [ list/deepen l list/node ]
+    either = block-at l 2 0 [ block-set-raw! l 3 list/node  block-set-raw! l 2 1 ] [ list/deepen l list/node ]
 ]
-list/deepen: func [l top] [ block-set! top 0 block-at l 3  block-set! l 3 top  block-set! l 2 * 64 block-at l 2 ]
+list/deepen: func [l top] [ block-set-raw! top 0 block-at l 3  block-set-raw! l 3 top  block-set-raw! l 2 * 64 block-at l 2 ]
 
 ;; ---- loops ----
 ;; f i for lo <= i < hi, halving the range; stops when f answers truthy, and
@@ -241,8 +245,8 @@ list/length: func [l] [ block-at list/check l 'list/length 1 ]
 list/append: func [l v] [ list/push list/check l 'list/append v ]
 list/push: func [l v] [
     either < block-at l 1 * 64 block-at l 2 [ 0 ] [ list/grow l ]
-    either = block-at l 2 1 [ block-set! block-at l 3 block-at l 1 v ] [ list/set block-at l 3 block-at l 2 block-at l 1 v ]
-    block-set! l 1 + block-at l 1 1
+    either = block-at l 2 1 [ block-set-raw! block-at l 3 block-at l 1 v ] [ list/set block-at l 3 block-at l 2 block-at l 1 v ]
+    block-set-raw! l 1 + block-at l 1 1
     l
 ]
 ;; (list/at, list/put and list/remove make the one masm check inline: in a
@@ -265,12 +269,12 @@ list/remove: func [l i] [
 list/remove-at: func [l i v] [
     list/range func [k] [ list/store l k list/item l + k 1  0 ] i - block-at l 1 1
     list/store l - block-at l 1 1 0
-    block-set! l 1 - block-at l 1 1
+    block-set-raw! l 1 - block-at l 1 1
     v
 ]
 list/clear: func [l] [
     list/check l 'list/clear
-    block-set! l 1 0  block-set! l 2 0  block-set! l 3 0
+    block-set-raw! l 1 0  block-set-raw! l 2 0  block-set-raw! l 3 0
     l
 ]
 ;; a new block of the items, for a function that takes a block (face/add-rows,
@@ -288,7 +292,7 @@ loop/collect: func [lo hi f] [
         loop/collect-in reduce block-at list/templates - hi lo lo hi :f
     ] [ raise create-sin 'range 'loop/collect reduce [ lo hi ] ]
 ]
-loop/collect-in: func [b lo hi f] [ list/range func [i] [ block-set! b - i lo f i  0 ] lo hi  b ]
+loop/collect-in: func [b lo hi f] [ list/range func [i] [ block-set-raw! b - i lo f i  0 ] lo hi  b ]
 ;; the n items from i, as a new list: 0 <= i, 0 <= n, i + n <= length, else 'range
 list/slice: func [l i n] [
     list/check l 'list/slice
@@ -308,7 +312,7 @@ list/truncate: func [l n] [
     list/check l 'list/truncate
     either either = value-tag n 0 [ either >= n 0 [ <= n block-at l 1 ] [ 0 ] ] [ 0 ] [
         list/range func [k] [ list/store l k 0  0 ] n block-at l 1
-        block-set! l 1 n
+        block-set-raw! l 1 n
         l
     ] [ raise create-sin 'range 'list/truncate n ]
 ]

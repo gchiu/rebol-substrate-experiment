@@ -1,22 +1,64 @@
-;; demo/shop/block.glon -- the two raw words list.glon needs, for sessions
-;; that do not load the View libraries (GLON-LIB-1).
+;; demo/shop/block.glon -- the raw block words list.glon needs, for sessions
+;; that do not load the View libraries (GLON-LIB-1; GLON-VIEW-CORE-V2).
 ;;
 ;;   value-tag v          the type tag of any value: 0 INTEGER!, 6 BLOCK!,
 ;;                        8 closure, 12 STRING! (r0_s1.h). Reads no memory, so
 ;;                        it is safe for every value.
-;;   block-set! b i v     store v as item i of block b. UNCHECKED: b must be a
-;;                        BLOCK! and 0 <= i < block-len b, or it writes outside
-;;                        the block. For library code behind checks (list.glon);
-;;                        applications use list/put.
+;;   block-set! b i v     store v as item i of block b, CHECKED for literal
+;;                        safety: a managed value (a block, string, closure,
+;;                        context, user value or SIN! in the managed heap) may
+;;                        be stored only into a managed block.  Storing one into
+;;                        a literal (loader) block -- which the collector does
+;;                        not trace -- raises SIN! 'escape 'block-set! with the
+;;                        value as the arg, and stores nothing.  Immediate
+;;                        values (integers, none, words) and permanent values
+;;                        are stored anywhere, as before.  Still UNCHECKED for
+;;                        the type of b and for 0 <= i < block-len b.
+;;                        Answers none (the raw store answers no value).
+;;   block-set-raw! b i v the unchecked store (the former block-set!), for
+;;                        library code that stores only into blocks it
+;;                        allocated itself (list.glon); applications use
+;;                        block-set! or list/put.
+;;   block-store-ok? b v  1 if block-set! would store v into b, else 0.
+;;   managed-ref? x       1 if x's payload lies in the managed heap, else 0.
 ;;
-;; The same two words are defined in Glon/View sessions by
-;; view/glon/core_words.glon, from words those sessions already have (so the
-;; code is not assembled twice). Wrapped in [ ] because it contains masm.
+;; The literal-block GC hazard (GLON-LANG-1 2.4; GLON-VIEW-CORE-V1 5.2): a
+;; managed value stored into a literal block is not marked, and its cells are
+;; reused after a collection.  The check is the GLON-VIEW-CORE-V2 decision: of
+;; the two rules considered, refusing EVERY store into a literal block would
+;; break the demos that keep simulation state in literal blocks of integers
+;; (traffic, newell, nasch, ovm, merchant-flow, tuple-space); refusing only
+;; managed values breaks no program measured.  A block is managed when its
+;; payload lies in [GC_HEAP_BASE, the heap frontier REG_HP): the managed heap
+;; starts at the frozen S1 HEAP_BASE 32768 in every profile (C2), and nothing
+;; managed lies at or above the frontier.  No collector or memory-map change.
+;;
+;; The same words are defined in Glon/View sessions by
+;; view/glon/core_words.glon. Wrapped in [ ] because it contains masm.
 [
 value-tag: masm 1 [ LIT 16 MOD LIT 16 MUL ARITY 1 EXIT ]
-block-set!: masm 3 [
+block-set-raw!: masm 3 [
     LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A !
     LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD !
     ARITY 0 EXIT
+]
+;; managed-ref? x: 1 if x's payload address lies in the managed heap
+;; [GC_HEAP_BASE 32768, the frontier REG_HP), else 0, as
+;; (addr * (addr < REG_HP)) >= 32768 so that the address is read once (no
+;; scratch cell).  Meaningful for reference tags (>= 6); natives, raw code and
+;; bound references never address the managed heap, so for them it answers 0.
+;; 42 code cells.
+managed-ref?: masm 1 [
+    DUP LIT 16 MOD SUB DUP LIT REG_HP @ LT MUL LIT 32768 GE
+    LIT 16 MUL ARITY 1 EXIT
+]
+;; 1 unless v is a managed reference and b is not a managed block.  Ordinary
+;; Glon: no code space beyond managed-ref?.
+block-store-ok?: func [b v] [
+    either >= value-tag :v 6 [ either = 1 managed-ref? :v [ managed-ref? b ] [ 1 ] ] [ 1 ]
+]
+;; v is passed on as :v: a closure value must be stored, not called.
+block-set!: func [b i v] [
+    either = 1 block-store-ok? b :v [ block-set-raw! b i :v  none ] [ raise create-sin 'escape 'block-set! :v ]
 ]
 ]

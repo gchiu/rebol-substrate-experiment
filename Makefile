@@ -804,6 +804,25 @@ library-audit:
 	sh tests/core-v2/library_audit.sh
 .PHONY: library-audit
 
+# GLON-VIEW-CORE-V2: the shared block-set! refuses a managed value stored into
+# a literal (loader) block, in the 64K, 1M and 4M profiles.
+literal-store-check:
+	sh tests/core-v2/literal_store.sh $(LITERAL_GC_PROFILES)
+.PHONY: literal-store-check
+
+# GLON-VIEW-CORE-V2: the shared collection and text libraries (list.glon,
+# strings-text.glon, with block.glon) in a plain session, per profile
+# (tests/core-v2/lib1_tests.c, ported from glon-gui-f2 view/tests/lib1_tests.c).
+LIB1_PROFILES ?= constrained desktop-1m desktop-4m
+lib1-one: tests/core-v2/lib1_tests.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c $(R0S1_RUNTIME_HEADERS) $(GLON_PROFILE_DEPS)
+	@mkdir -p build/core-v2
+	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o build/core-v2/lib1-$(MEM_PROFILE) tests/core-v2/lib1_tests.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c $(GLON_S1_SRC) -lm
+lib1-test:
+	@set -e; for p in $(LIB1_PROFILES); do $(MAKE) --no-print-directory lib1-one MEM_PROFILE=$$p >/dev/null; rc=0; \
+	  timeout 900 ./build/core-v2/lib1-$$p . > build/core-v2/lib1-$$p.txt 2>&1 || rc=$$?; \
+	  grep -v '^\[dump\]' build/core-v2/lib1-$$p.txt | tail -n 3; echo "lib1 $$p: exit $$rc"; [ $$rc -eq 0 ]; done
+.PHONY: lib1-one lib1-test
+
 profile-common-test:
 	sh tests/core-c2/common_check.sh
 
