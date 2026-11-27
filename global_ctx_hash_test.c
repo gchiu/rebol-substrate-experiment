@@ -110,7 +110,11 @@ int main(void) {
     printf("  global context at start: %ld / %ld\n", (long)count0, (long)cap);
     CHECK(cap == R0S1_GLOBAL_CAP, "the global context has the profile capacity");
     CHECK(R0S1_HASH_RADIX == R0S1_GLOBAL_CAP, "the hash radix is the global-context capacity");
-#if R0S1_GLOBAL_CAP == 256
+    /* GLON-VIEW-CORE-V5: the reference identity is checked in the reference
+     * build itself (no generated profile header).  A profile with 256 globals
+     * may declare more symbols (server: 1,024): the encoding word_id*256 + slot
+     * is the same, and the W check below verifies it cell by cell. */
+#if R0S1_GLOBAL_CAP == 256 && !defined(GLON_PROFILE_NAME)
     CHECK(R0S1_HASH_RADIX == 256 && R0S1_SYM_CAP == 512,
           "constrained reference: radix 256, 512 symbols (the original encoding)");
 #endif
