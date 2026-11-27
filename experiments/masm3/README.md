@@ -17,7 +17,7 @@ MASM-2 baselines are unchanged. Nothing here is published vocabulary.
   definitions) used by the streaming benchmark. The full library's extra
   helper closures are permanent GC roots and measurably increase every
   collection; see the report.
-- `file-stream-masm3.glon` — experimental streaming copy: MASM `s/find`,
+- `file-stream-masm3.glon` — experimental streaming copy: MASM `s/index-of` (formerly `s/find`),
   `s/slice2`, and a zero-carry fast path that writes the chunk directly.
 - `slice2_cases.py` — differential, error, max-size, allocation-lifetime and
   cooperative-task tests.

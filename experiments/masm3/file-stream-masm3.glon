@@ -13,7 +13,8 @@
 ;;      extracted directly from the two sources with `s/slice2`, one allocation
 ;;      each instead of materialise-then-slice.
 ;;
-;; Search still uses the MASM `s/find` from experiments/masm-vocabulary.
+;; Search still uses the MASM `s/index-of` (formerly `s/find`) from
+;; experiments/masm-vocabulary.
 ;; IO-3, MASM-1 and MASM-2 files are unchanged.
 [
 stream/empty: ""
@@ -85,17 +86,17 @@ stream/find-combined: func [carry chunk old] [
     chunk-len: s/length chunk
     combined-len: + carry-len chunk-len
     either = 0 carry-len [
-        s/find chunk old
+        s/index-of chunk old
     ] [
         pat-len: s/length old
         keep: - pat-len 1
         bound-len: either > + carry-len keep combined-len [ combined-len ] [ + carry-len keep ]
         boundary: s/slice2 carry chunk 0 bound-len
-        bi: s/find boundary old
+        bi: s/index-of boundary old
         either either >= bi 0 [ < bi carry-len ] [ 0 ] [
             bi
         ] [
-            ci: s/find chunk old
+            ci: s/index-of chunk old
             either < ci 0 [ -1 ] [ + carry-len ci ]
         ]
     ]
@@ -125,7 +126,7 @@ stream/step: func [in out carry done old new success failure] [
                     chunk-len: s/length chunk
                     combined-len: + carry-len chunk-len
                     idx: either = 0 carry-len [
-                        s/find chunk old
+                        s/index-of chunk old
                     ] [
                         stream/find-combined carry chunk old
                     ]

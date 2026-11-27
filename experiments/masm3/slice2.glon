@@ -37,9 +37,13 @@
 ;;   - Non-reentrant and non-yielding, like other MASM workers.  Cooperative
 ;;     tasks are safe because the worker never yields or allocates after the
 ;;     first allocation; arbitrary preemption/reentry is not supported.
+;; GLON-VIEW-CORE-V2: the definitions are members of the s vocabulary
+;; (reopened here), as GLON-VOCAB-1 requires; s/ references inside the body
+;; resolve to its members, and the public names are unchanged.
 [
+vocabulary s [
 ;; Ordinary reference: materialise then slice, with the same checks/errors.
-s/slice2-glon: func [a b start n] [
+slice2-glon: func [a b start n] [
     either s/slice2-valid? a b start n [
         s/slice s/+ a b start n
     ] [
@@ -48,7 +52,7 @@ s/slice2-glon: func [a b start n] [
 ]
 
 ;; ( string! string! integer! integer! -> string! ) unchecked.
-s/raw-slice2: masm 4 [
+raw-slice2: masm 4 [
     LIT 16 DIV LIT SCRATCH_F !                 ;; n (raw)
     LIT 16 DIV LIT SCRATCH_B !                 ;; start (raw)
     LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL
@@ -124,7 +128,7 @@ s/raw-slice2: masm 4 [
 
 ;; Shared validation.  The valid path is one helper call; error classification
 ;; runs only when the call fails.
-s/slice2-valid?: func [a b start n] [
+slice2-valid?: func [a b start n] [
     either either s/raw-string? a [ s/raw-string? b ] [ 0 ] [
         either either s/raw-int? start [ s/raw-int? n ] [ 0 ] [
             either either >= start 0 [ >= n 0 ] [ 0 ] [
@@ -135,7 +139,7 @@ s/slice2-valid?: func [a b start n] [
     ] [ 0 ]
 ]
 
-s/slice2-error: func [a b start n] [
+slice2-error: func [a b start n] [
     either s/raw-string? a [
         either s/raw-string? b [
             either s/raw-int? start [
@@ -147,7 +151,7 @@ s/slice2-error: func [a b start n] [
     ] [ raise create-sin 'type 's/slice2 a ]
 ]
 
-s/slice2-masm: func [a b start n] [
+slice2-masm: func [a b start n] [
     either s/slice2-valid? a b start n [
         s/raw-slice2 a b start n
     ] [
@@ -156,5 +160,6 @@ s/slice2-masm: func [a b start n] [
 ]
 
 ;; Selected implementation for the experiment.  The reference stays callable.
-s/slice2: :s/slice2-masm
+slice2: :slice2-masm
+]
 ]

@@ -1,6 +1,6 @@
 ;; experiments/masm-vocabulary/file-stream-masm.glon -- experimental IO-3 copy
-;; using the MASM s/find for first-match search.  The original IO-3 library is
-;; unchanged.
+;; using the MASM s/index-of (formerly s/find) for first-match search.  The
+;; original IO-3 library is unchanged.
 ;;
 ;; Recipe 0004 semantics without constructing the complete file:
 ;;   source -> [read 400, carry at most len(old)-1, write safe prefix]*
@@ -14,12 +14,12 @@
 ;; gap between bytes.  A failure after the output file is opened may leave a
 ;; partial output file; no atomic replace or truncate-on-failure is provided.
 [
-;; Experimental IO-3 streaming copy: use the MASM s/find for the first-match
+;; Experimental IO-3 streaming copy: use the MASM s/index-of for the first-match
 ;; search.  This file is loaded after modules/file-stream.glon and overrides
 ;; stream/find-first.  The original IO-3 implementation is unchanged.
 stream/find-first: func [text pattern i text-len pat-len] [
     either = i 0 [
-        s/find text pattern
+        s/index-of text pattern
     ] [
         raise create-sin 'stream 'unsupported-start i
     ]

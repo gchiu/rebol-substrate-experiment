@@ -1,17 +1,26 @@
 ;; experiments/masm-vocabulary/find.glon
 ;;
-;; `s/find text pattern` -- first byte offset, or -1.
+;; `s/index-of text pattern` -- first byte offset, or -1.
 ;; The public wrappers require STRING! arguments; the MASM worker assumes the
 ;; wrappers' checks.  Empty pattern returns 0, including for empty text.
 ;;
 ;; `s/find-glon` is the portable ordinary-Glon reference.  `s/find-masm` is the
-;; accelerated implementation.  `s/find` is the selected implementation.
+;; accelerated implementation.  `s/index-of` is the selected implementation.
+;;
+;; GLON-VIEW-CORE-V2: until then this file defined `s/find text pattern`.  The
+;; shared s vocabulary (demo/shop/strings-text.glon, GLON-VOCAB-1) defines
+;; `s/find s i p` -- a different operation: a start index, and the length (not
+;; -1) when absent -- so the two-argument search is now `s/index-of`, with the
+;; same results; a non-string raises SIN! 'type with the id 's/index-of.  The
+;; definitions are members of the s vocabulary (reopened here), as GLON-VOCAB-1
+;; requires; qualified s/ references inside the body resolve to its members.
 [
+vocabulary s [
 ;; ---- portable Glon reference -------------------------------------------
 ;; Bounded segments keep recursive stack depth independent of text length.
 ;; A match starting in a segment may read past that segment; only candidate
 ;; starts are segmented.
-s/find-glon-small: func [text pattern i end text-len pat-len] [
+find-glon-small: func [text pattern i end text-len pat-len] [
     either either >= i end [ 1 ] [ > + i pat-len text-len ] [
         -1
     ] [
@@ -28,7 +37,7 @@ s/find-glon-small: func [text pattern i end text-len pat-len] [
     ]
 ]
 
-s/find-glon-at: func [text pattern i text-len pat-len j] [
+find-glon-at: func [text pattern i text-len pat-len j] [
     either >= j pat-len [
         i
     ] [
@@ -40,7 +49,7 @@ s/find-glon-at: func [text pattern i text-len pat-len j] [
     ]
 ]
 
-s/find-glon-range: func [text pattern base end text-len pat-len] [
+find-glon-range: func [text pattern base end text-len pat-len] [
     either >= base end [
         -1
     ] [
@@ -54,7 +63,7 @@ s/find-glon-range: func [text pattern base end text-len pat-len] [
     ]
 ]
 
-s/find-glon: func [text pattern] [
+find-glon: func [text pattern] [
     either s/raw-string? text [
         either s/raw-string? pattern [
             text-len: s/length text
@@ -65,15 +74,15 @@ s/find-glon: func [text pattern] [
                 limit: + 1 - text-len pat-len
                 s/find-glon-range text pattern 0 either < limit 0 [ 0 ] [ limit ] text-len pat-len
             ]
-        ] [ raise create-sin 'type 's/find pattern ]
-    ] [ raise create-sin 'type 's/find text ]
+        ] [ raise create-sin 'type 's/index-of pattern ]
+    ] [ raise create-sin 'type 's/index-of text ]
 ]
 
 ;; ---- MASM implementation ------------------------------------------------
 ;; Scratch A/B hold text/pattern payload pointers; C/F hold the current text
 ;; and pattern cursors.  The candidate start is the only return-stack local.
 ;; The routine allocates no managed memory and writes neither string.
-s/raw-find: masm 2 [
+raw-find: masm 2 [
     LIT T_STRING SUB LIT SCRATCH_B !          ;; pattern payload
     LIT T_STRING SUB LIT SCRATCH_A !          ;; text payload
     LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_C ! ;; text cursor = first text byte
@@ -104,15 +113,16 @@ s/raw-find: masm 2 [
     LIT -1 LIT 16 MUL ARITY 1 EXIT
 ]
 
-s/find-masm: func [text pattern] [
+find-masm: func [text pattern] [
     either s/raw-string? text [
         either s/raw-string? pattern [
             s/raw-find text pattern
-        ] [ raise create-sin 'type 's/find pattern ]
-    ] [ raise create-sin 'type 's/find text ]
+        ] [ raise create-sin 'type 's/index-of pattern ]
+    ] [ raise create-sin 'type 's/index-of text ]
 ]
 
 ;; Selected implementation.  The reference remains callable for differential
 ;; tests and as the portable fallback.
-s/find: :s/find-masm
+index-of: :find-masm
+]
 ]

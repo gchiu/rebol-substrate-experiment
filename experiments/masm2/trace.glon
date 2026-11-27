@@ -1,6 +1,8 @@
 ;; IO-4 vocabulary trace wrappers.  Load after the normal libraries and after
-;; MASM s/find, before the application.  These wrappers count invocations only;
-;; they are not a performance build.
+;; MASM s/index-of (formerly s/find), before the application.  These wrappers
+;; count invocations only; they are not a performance build.  GLON-VIEW-CORE-V2:
+;; an s/ member is not redefined from outside the s vocabulary (GLON-VOCAB-1),
+;; so each wrapper is a trace/ function and the member is ASSIGNED to it.
 [
 cnt-mk-string: 0
 cnt-s-plus: 0
@@ -20,19 +22,24 @@ orig-mk-string: :mk-string
 mk-string: func [b] [ cnt-mk-string: + cnt-mk-string 1 orig-mk-string b ]
 
 orig-s-plus: :s/+
-s/+: func [a b] [ cnt-s-plus: + cnt-s-plus 1 orig-s-plus a b ]
+trace/s-plus: func [a b] [ cnt-s-plus: + cnt-s-plus 1 orig-s-plus a b ]
+s/+: :trace/s-plus
 
 orig-s-slice: :s/slice
-s/slice: func [a b c] [ cnt-s-slice: + cnt-s-slice 1 orig-s-slice a b c ]
+trace/s-slice: func [a b c] [ cnt-s-slice: + cnt-s-slice 1 orig-s-slice a b c ]
+s/slice: :trace/s-slice
 
 orig-s-length: :s/length
-s/length: func [a] [ cnt-s-length: + cnt-s-length 1 orig-s-length a ]
+trace/s-length: func [a] [ cnt-s-length: + cnt-s-length 1 orig-s-length a ]
+s/length: :trace/s-length
 
 orig-s-raw-at: :s/raw-at
-s/raw-at: func [a b] [ cnt-s-raw-at: + cnt-s-raw-at 1 orig-s-raw-at a b ]
+trace/s-raw-at: func [a b] [ cnt-s-raw-at: + cnt-s-raw-at 1 orig-s-raw-at a b ]
+s/raw-at: :trace/s-raw-at
 
 orig-s-eq: :s/=
-s/=: func [a b] [ cnt-s-eq: + cnt-s-eq 1 orig-s-eq a b ]
+trace/s-eq: func [a b] [ cnt-s-eq: + cnt-s-eq 1 orig-s-eq a b ]
+s/=: :trace/s-eq
 
 orig-block-at: :block-at
 block-at: func [b i] [ cnt-block-at: + cnt-block-at 1 orig-block-at b i ]
@@ -58,6 +65,7 @@ io/reply: func [id status v1 v2] [
     orig-io-reply id status v1 v2
 ]
 
-orig-s-find: :s/find
-s/find: func [text pattern] [ cnt-s-find: + cnt-s-find 1 orig-s-find text pattern ]
+orig-s-find: :s/index-of
+trace/s-index-of: func [text pattern] [ cnt-s-find: + cnt-s-find 1 orig-s-find text pattern ]
+s/index-of: :trace/s-index-of
 ]

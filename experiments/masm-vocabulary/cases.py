@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Generate and verify shared s/find cases for Glon reference, MASM, and C."""
+"""Generate and verify shared s/index-of cases (formerly s/find; GLON-VIEW-CORE-V2)
+for Glon reference, MASM, and C."""
 import argparse
 import os
 from pathlib import Path
@@ -140,7 +141,7 @@ def main():
     # newline-free so the line-oriented capture is unambiguous.
     text = b"\x00abc\x80\xff"
     pat = b"abc"
-    src = ("[" + f"r: s/find {glon_repr(text)} {glon_repr(pat)} "
+    src = ("[" + f"r: s/index-of {glon_repr(text)} {glon_repr(pat)} "
            f"s/print {glon_repr(text)} s/print {glon_repr(pat)} ]")
     fd, path = tempfile.mkstemp(prefix="find-immut.", suffix=".glon")
     os.close(fd); Path(path).write_text(src + "\n")
@@ -159,7 +160,7 @@ def main():
     print("PASS input immutability")
 
     # Invalid argument type: both implementations must raise SIN! 'type.
-    src = ("[ e: judge [ s/find 42 \"x\" ] values [ e ] ]")
+    src = ("[ e: judge [ s/index-of 42 \"x\" ] values [ e ] ]")
     fd, path = tempfile.mkstemp(prefix="find-invalid.", suffix=".glon")
     os.close(fd); Path(path).write_text(src + "\n")
     try:

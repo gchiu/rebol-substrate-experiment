@@ -780,6 +780,19 @@ intent7-set-check:
 	sh tests/core-v1/intent7_set.sh $(INTENT7_PROFILES)
 .PHONY: intent7-set-check
 
+# GLON-VIEW-CORE-V2: library-load runner (a bare session, no default
+# libraries), built per memory profile: build/core-v2/libload-<profile>.
+libload-one: tests/core-v2/libload.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c $(R0S1_RUNTIME_HEADERS) $(GLON_PROFILE_DEPS)
+	@mkdir -p build/core-v2
+	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o build/core-v2/libload-$(MEM_PROFILE) tests/core-v2/libload.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c $(GLON_S1_SRC)
+.PHONY: libload-one
+
+# GLON-VIEW-CORE-V2: s/index-of (C2's two-argument search, formerly s/find)
+# and the shared s/find s i p, separately and together.
+s-find-check:
+	sh tests/core-v2/s_find_check.sh
+.PHONY: s-find-check
+
 profile-common-test:
 	sh tests/core-c2/common_check.sh
 

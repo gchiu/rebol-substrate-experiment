@@ -6,9 +6,10 @@ evaluator, the parser, GC, M1 or the IO-3 implementation.
 ## Files
 
 - `find.glon` — ordinary Glon `s/find-glon`, MASM `s/find-masm`, selected
-  `s/find` alias.
+  `s/index-of` alias (named `s/find` until GLON-VIEW-CORE-V2; the shared `s`
+  vocabulary's `s/find s i p` is a different operation).
 - `file-stream-masm.glon` — copy of IO-3 `modules/file-stream.glon` with only
-  `stream/find-first` replaced by `s/find`; the original is unchanged.
+  `stream/find-first` replaced by `s/index-of`; the original is unchanged.
 - `c_find.c` — standalone native C reference/benchmark (not linked to Glon).
 - `cases.py` — shared conformance/differential tests for Glon reference, MASM
   and C.
@@ -44,4 +45,4 @@ make glon MODULES=file
   tests/io-file/fixtures/stream_recipe.glon
 ```
 
-`s/find` is experimental and is not added to the published Glon vocabulary.
+`s/index-of` is experimental and is not added to the published Glon vocabulary.

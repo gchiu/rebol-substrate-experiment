@@ -2,8 +2,12 @@
 ;; deployment into the experimental streaming copy.  The richer reference and
 ;; test helpers live in slice2.glon; each global closure is a permanent GC root
 ;; and adds measurable per-collection cost (see the MASM-3 report).
+;; GLON-VIEW-CORE-V2: the definitions are members of the s vocabulary
+;; (reopened here), as GLON-VOCAB-1 requires; s/ references inside the body
+;; resolve to its members, and the public names are unchanged.
 [
-s/raw-slice2: masm 4 [
+vocabulary s [
+raw-slice2: masm 4 [
     LIT 16 DIV LIT SCRATCH_F !                 ;; n (raw)
     LIT 16 DIV LIT SCRATCH_B !                 ;; start (raw)
     LIT SCRATCH_F @ LIT 1 ADD LIT 15 ADD LIT 16 DIV LIT 16 MUL
@@ -78,7 +82,7 @@ s/raw-slice2: masm 4 [
 ]
 
 
-s/slice2: func [a b start n] [
+slice2: func [a b start n] [
     either s/raw-string? a [
         either s/raw-string? b [
             either s/raw-int? start [
@@ -95,4 +99,5 @@ s/slice2: func [a b start n] [
     ] [ raise create-sin 'type 's/slice2 a ]
 ]
 
+]
 ]
