@@ -1,0 +1,111 @@
+;; view/glon/intent_windows_demo.glon -- GLON-INST-3B: layout instances in
+;; native windows of their own, one Glon session.
+;;
+;;   make -C view windows-demo
+;;
+;; The main window (mw/search) finds and selects a member.  "Open in a
+;; window" opens a NEW native window with an instance of the details layout
+;; (mw/details-spec) for that member: open two (or more) and each window has
+;; its own fields, unsaved edits, focus, size and lifecycle.  Save writes the
+;; member back and updates the main window's table; the other windows keep
+;; their own edits.  Close (or the window's close button) closes only that
+;; window.
+;;
+;; The declarative syntax is the existing one: the only new word is
+;; intent/open-window-at.  Every handler is written once and finds its
+;; instance from its own widget (face/layout self).  The members are
+;; synthetic.
+[
+mw/members: list/from reduce [
+    reduce [ "M00001" "Kwok Alice" "Petone" ]
+    reduce [ "M00002" "Fong Susan" "Porirua" ]
+    reduce [ "M00003" "Ng Henry" "Porirua" ]
+    reduce [ "M00004" "Fong Helen" "Wainuiomata" ]
+    reduce [ "M00005" "Ng Helen" "Wainuiomata" ]
+    reduce [ "M00006" "Chan Peter" "Karori" ]
+    reduce [ "M00007" "Lee Grace" "Newtown" ]
+    reduce [ "M00008" "Wong David" "Johnsonville" ]
+]
+mw/rows: list/to-block mw/members
+mw/matching: func [q] [
+    list/to-block list/filter mw/members func [m] [ s/starts-with? s/lower block-at m 1 q ]
+]
+mw/index-of: func [id] [ list/find mw/members func [m] [ s/= block-at m 0 id ] ]
+
+;; ---- the main window: search and selection ---------------------------------------
+mw/search-spec: [
+    heading "Find a member"
+    across
+    label 8 "Search" right   search: field 20 on-change mw/search-changed
+    return
+    members: table [ "ID" 7 "Name" 16 "Village" 12 ] 8 key 1 rows mw/rows
+    return
+    open: button "Open in a window" on-click mw/open-details
+    status: label 40 ""
+]
+mw/search-changed: func [self event] [
+    face/set-rows form/field face/form self 'members mw/matching s/lower face/value self
+]
+mw/status: func [s] [ face/set-text form/field intent/root-form mw/search 'status s ]
+;; a new window with an instance of the details layout for the selected member
+mw/open-details: func [self event] [
+    id: face/value form/field face/form self 'members
+    either = id none [ mw/status "Select a member first." ] [
+        r: judge [ intent/open-window-at mw/details-spec 470 280 s/+ "Member " id ]
+        either sin? r [ mw/status "No window opened (window limit or memory)." ] [ mw/fill r id ]
+    ]
+]
+mw/fill: func [d id] [
+    f: intent/root-form d
+    m: list/at mw/members mw/index-of id
+    form/load f reduce [ 'id block-at m 0 'name block-at m 1 'village block-at m 2 ]
+    face/set-enabled form/field f 'id 0
+    ;; this instance's own state: which member, and whether edited
+    form/set-data f reduce [ id 0 ]
+    mw/status s/+ "Opened " id
+]
+
+;; ---- a details window (one definition, any number of windows) --------------------
+mw/details-spec: [
+    heading "Member details"
+    across
+    label 8 "ID" right        id: field 10
+    return
+    label 8 "Name" right      name: field 24 on-change mw/edited
+    return
+    label 8 "Village" right   village: field 16 on-change mw/edited
+    return
+    save: button "Save" on-click mw/save
+    close: button "Close" on-click mw/close-details
+    return
+    note: label 40 ""
+]
+;; [ member-id edited? ], kept in the instance's root form
+mw/state: func [self] [ form/data intent/root-form face/layout self ]
+mw/edited: func [self event] [
+    st: mw/state self
+    either = st none [ 0 ] [
+        form/set-data intent/root-form face/layout self reduce [ block-at st 0 1 ]
+        face/set-text form/field face/form self 'note "Unsaved changes."
+    ]
+]
+mw/save: func [self event] [
+    f: face/form self
+    st: mw/state self
+    list/put mw/members mw/index-of block-at st 0 reduce [ block-at st 0 face/value form/field f 'name face/value form/field f 'village ]
+    form/set-data f reduce [ block-at st 0 0 ]
+    face/set-text form/field f 'note s/+ "Saved " block-at st 0
+    ;; the main window's table, through its own handle
+    a: intent/root-form mw/search
+    face/set-rows form/field a 'members mw/matching s/lower face/value form/field a 'search
+]
+mw/close-details: func [self event] [ intent/close face/layout self ]
+;; (an application that asks before closing a window with unsaved edits
+;; would set intent/on-window-close; the tests use this one)
+mw/keep-open: func [lay] [ mw/status "Kept open." ]
+;; a window the host could not open (the native window refused)
+intent/on-window-failed func [lay value] [ mw/status "A window could not be opened." ]
+
+mw/search: layout mw/search-spec
+view mw/search
+]

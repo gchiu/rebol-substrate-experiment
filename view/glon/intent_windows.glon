@@ -1,0 +1,212 @@
+;; view/glon/intent_windows.glon -- GLON-INST-3B: Intent layouts in native
+;; windows of their own, one Glon session (GLON-INST-3B.md).
+;;
+;; Loaded after intent.glon, only in sessions that open windows (the
+;; runner's --windows; gv_glon_host_use_windows): intent.glon keeps only the
+;; hooks a single-window session reaches.
+;;
+;; A layout instance can be shown in a native window of its own
+;; (intent/open-window), beside the main window's instance.  Every instance
+;; shown in a window is live at once; the layout engine's state is that of
+;; one of them, intent/current, and an event for another makes it current
+;; (intent/activate: the state saved and loaded, no node touched).  The main
+;; window shows intent/primary.  Keys, text and resizes go to the instance
+;; of the window the host last named (view-window, intent/event-window).
+;; Layout slot 28: 0 (the main window) or the window [gid w h lay title].
+[
+vocabulary intent [
+
+main-w: 0
+main-h: 0
+window-w: 480
+window-h: 420
+max-windows: 15
+;; the heap's room as the host last reported it (-1: not yet), its size,
+;; and what windows opened since are reckoned to have used
+heap-free: -1
+heap-total: 0
+heap-pending: 0
+window-cost: 8192
+heap-watching: 0
+;; the application's hooks: on-window-close (func [lay], 0: close it) and
+;; on-window-failed (func [lay value], value the host's "gid reason"; 0: nothing)
+window-hooks: 0
+hooks-ready: func [] [ either = window-hooks 0 [ intent/window-hooks: reduce [ 0 0 ] ] [ 0 ] ]
+on-window-close: func [f] [ hooks-ready  vid/set-block! window-hooks 0 :f ]
+on-window-failed: func [f] [ hooks-ready  vid/set-block! window-hooks 1 :f ]
+hook: func [k] [ either = window-hooks 0 [ 0 ] [ block-at window-hooks k ] ]
+call-1: func [f a] [ f a ]
+call-2: func [f a b] [ f a b ]
+
+deactivate: func [] [
+    either = current 0 [ 0 ] [ deactivate-from current block-at current 28 ]
+]
+deactivate-from: func [c wr] [
+    either = block-at c 17 1 [ engine-save c ] [ 0 ]
+    either = wr 0 [ intent/main-w: lay/w  intent/main-h: lay/h ] [ vid/set-block! wr 1 lay/w  vid/set-block! wr 2 lay/h ]
+    intent/current: 0
+    either = main-w 0 [ 0 ] [ lay/w: main-w  lay/h: main-h ]
+]
+activate: func [o] [
+    either = o current [ o ] [
+        deactivate
+        either = o 0 [ 0 ] [ activate-load o block-at o 28 ]
+    ]
+]
+activate-load: func [o wr] [
+    either = tag block-at o 22 6 [ engine-load block-at o 22  vid/set-block! o 22 0 ] [ engine-fresh ]
+    either = wr 0 [ 0 ] [ lay/w: block-at wr 1  lay/h: block-at wr 2 ]
+    intent/current: o
+    o
+]
+;; after the main window's instance closes: the last main-window instance
+;; still open
+show-last-main: func [] [
+    m: list/filter opened func [x] [ = block-at x 28 0 ]
+    either > list/length m 0 [ switch-to list/at m - list/length m 1 ] [ 0 ]
+]
+
+;; ---- intent/window: the record of each native window [gid w h layout title]
+vocabulary window [
+    ;; the record of the window whose root is gid, or 0
+    record: func [g] [
+        k: either = windows 0 [ -1 ] [ list/find windows func [x] [ = block-at x 0 g ] ]
+        either < k 0 [ 0 ] [ list/at windows k ]
+    ]
+    ;; the instance shown in it, or 0
+    instance: func [g] [
+        wr: record g
+        either = wr 0 [ 0 ] [ block-at wr 3 ]
+    ]
+    ;; the node a window instance's build hangs its root group on: its own
+    ;; window, asked of the host here with an id of the instance's own
+    parent: func [wr] [
+        either = block-at wr 0 0 [
+            vid/set-block! wr 0 view/next-id
+            create block-at wr 0 block-at wr 1 block-at wr 2 block-at wr 4
+        ] [ 0 ]
+        block-at wr 0
+    ]
+    create: func [g w h title] [
+        view/send s/+ s/raw-cat "window-new " s/raw-cat s/from-int g s/raw-cat " " s/raw-cat s/from-int w s/raw-cat " " s/raw-cat s/from-int h " " title
+    ]
+    destroy: func [wr] [
+        either = block-at wr 0 0 [ 0 ] [
+            view/send s/raw-cat "window-close " s/from-int block-at wr 0
+            forget block-at wr 0
+            vid/set-block! wr 0 0
+        ]
+    ]
+    forget: func [g] [
+        k: either = windows 0 [ -1 ] [ list/find windows func [x] [ = block-at x 0 g ] ]
+        either < k 0 [ 0 ] [ list/remove windows k ]
+    ]
+]
+
+;; ---- opening and closing -------------------------------------------------------
+open-window: func [spec] [ open-window-at spec window-w window-h "Glon" ]
+open-window-at: func [spec w h title] [
+    either = tag title 12 [ 0 ] [ raise create-sin 'intent 'window-title-needs-string 'intent/open-window ] [ 0 ]
+    window-open layout spec w h title current
+]
+;; refused before anything is made: the window limit, a size, or too little
+;; heap left (the host's last report, less what windows opened since are
+;; reckoned to use, must keep a sixteenth of the heap besides this one)
+window-check: func [w h] [
+    either >= window-count max-windows [ raise create-sin 'intent 'window-limit 'intent/open-window ] [ 0 ]
+    either either < w 1 [ 1 ] [ < h 1 ] [ raise create-sin 'intent 'window-size 'intent/open-window ] [ 0 ]
+    either < heap-free 0 [ 0 ] [
+        either < - heap-free heap-pending + window-cost / heap-total 16 [
+            raise create-sin 'intent 'window-heap 'intent/open-window
+        ] [ 0 ]
+    ]
+]
+window-open: func [n w h title prev] [
+    window-check w h
+    either = windows 0 [ intent/windows: list/new ] [ 0 ]
+    either = heap-watching 0 [ view/send "heap-watch 1"  intent/heap-watching: 1 ] [ 0 ]
+    vid/set-block! n 28 reduce [ 0 w h n title ]
+    deactivate
+    engine-fresh
+    intent/current: n
+    lay/w: w  lay/h: h
+    window-built n judge [ build n ] prev
+]
+window-built: func [n r prev] [
+    either sin? r [ window-undo n prev  raise r ] [
+        either = windows 0 [ intent/windows: list/new ] [ 0 ]
+        list/append windows block-at n 28
+        intent/heap-pending: + heap-pending window-cost
+        n
+    ]
+]
+window-undo: func [n prev] [
+    teardown n
+    window/destroy block-at n 28
+    intent/current: 0
+    restore-main-size
+    activate prev
+]
+restore-main-size: func [] [ either = main-w 0 [ 0 ] [ lay/w: main-w  lay/h: main-h ] ]
+;; its instance torn down and its window closed; the others are untouched
+close-window: func [o] [
+    either = block-at o 17 1 [
+        teardown o
+        window/destroy block-at o 28
+        either = o current [
+            intent/current: 0
+            restore-main-size
+            activate primary
+        ] [ 0 ]
+    ] [ unregister o ]
+]
+show-window: func [o] [
+    either = block-at o 17 1 [
+        view/send s/raw-cat "window-raise " s/from-int block-at block-at o 28 0
+        activate o
+    ] [ window-reopen o block-at o 28 ]
+]
+window-reopen: func [o wr] [ window-open o block-at wr 1 block-at wr 2 block-at wr 4 current ]
+window-of: func [lay] [
+    either = block-at check-layout lay 'intent/window-of 28 0 [ 1 ] [ block-at block-at lay 28 0 ]
+]
+set-window-title: func [lay title] [
+    either = block-at lay 28 0 [ 0 ] [
+        vid/set-block! block-at lay 28 4 title
+        view/send s/+ s/raw-cat "window-title " s/raw-cat s/from-int block-at block-at lay 28 0 " " title
+    ]
+    lay
+]
+
+;; ---- events from the host ------------------------------------------------------
+window-event?: func [ev] [
+    either = ev 'view-window [ 1 ] [ either = ev 'window-close [ 1 ] [ either = ev 'window-failed [ 1 ] [ = ev 'view-heap ] ] ]
+]
+window-event: func [ev value] [
+    either = ev 'view-heap [ heap-event value ] [
+        either = ev 'view-window [ intent/event-window: parse-int value  key-target ] [
+            window-event-for ev value window/instance parse-int value
+        ]
+    ]
+]
+window-event-for: func [ev value o] [
+    either = o 0 [ 0 ] [
+        either = ev 'window-close [
+            either = tag hook 0 8 [ call-1 hook 0 o ] [ close o ]
+        ] [
+            ;; "gid reason": the host could not open it; what was built goes
+            close-window o
+            either = tag hook 1 8 [
+                call-2 hook 1 o value
+            ] [ 0 ]
+        ]
+    ]
+]
+;; "free total"
+heap-event: func [value] [
+    intent/heap-free: parse-int value
+    intent/heap-total: parse-int-at value + s/scan-set value 0 "0123456789" 1 0
+    intent/heap-pending: 0
+]
+]
+]
