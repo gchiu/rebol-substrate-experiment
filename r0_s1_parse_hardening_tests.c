@@ -220,6 +220,50 @@ int run_r0_s1_parse_hardening_tests(void) {
               "E4: non-empty tokens keep their meaning (set/get words, `-` as a word, integers)");
     }
 
+    /* O: a block (or top-level program) that crosses its 512-cell limit by
+     * way of a construct that adds more than one cell -- a string literal
+     * (2: mk-string + bytes), a func with a literal body (3: func spec
+     * body) or a computed one (2: func spec), a masm (1, unchecked before)
+     * -- must fail as TOO_LARGE, not overrun the parser's stack buffer.
+     * At most 511 cells fit, as for plain elements. */
+    {
+        static const char *tail[] = { "\"ab\"", "func [n] [ n ]", "func [n] b", "masm 1 [ ARITY 1 EXIT ]" };
+        static const int cost[] = { 2, 3, 3, 1 };    /* func [n] b: func, spec, b */
+        static const char *names[] = { "a string", "a func with a literal body", "a func with a computed body", "a masm" };
+        char *src = big;
+        for (int t = 0; t < 4; t++)
+            for (int bracket = 0; bracket < 2; bracket++) {
+                int ok = 1;
+                char detail[96] = "";
+                for (int k = 504; k <= 511; k++) {
+                    int n = 0;
+                    if (bracket) n += sprintf(src + n, "[ ");
+                    for (int i = 0; i < k; i++) n += sprintf(src + n, "0 ");
+                    n += sprintf(src + n, "%s%s", tail[t], bracket ? " ]" : "");
+                    unsigned long hp = (unsigned long)M[GC_LOADER_HP];
+                    int err = 0;
+                    (void)r0_s1_parse(src, &err);
+                    int kind = r0_s1_parse_error_kind();
+                    unsigned long after = (unsigned long)M[GC_LOADER_HP];
+                    /* the block is not run: give its cells back (not after a masm:
+                     * its emitted code refers to its loader cells) */
+                    if (!err && t != 3) M[GC_LOADER_HP] = (cell)hp;
+                    int want_fail = k + cost[t] > 511;
+                    if (want_fail ? !(err && kind == R0S1_PARSE_TOO_LARGE) : (err != 0)) {
+                        ok = 0;
+                        snprintf(detail, sizeof detail, " (k=%d: err %d kind %d)", k, err, kind);
+                    }
+                    if (err && after != hp) { ok = 0; snprintf(detail, sizeof detail, " (k=%d: loader heap moved)", k); }
+                }
+                char msg[200];
+                snprintf(msg, sizeof msg, "O%d: %s %s, after 504..511 plain cells: parses while it fits, else TOO_LARGE "
+                         "(rolled back), never an overrun%s", t * 2 + bracket + 1, bracket ? "in a block" : "at top level",
+                         names[t], detail);
+                CHECK(ok, msg);
+            }
+        CHECK(cellv("[ g: func [n] [ * n 2 ]  g 21 ]") == 42, "O9: the session still parses and runs after the boundary failures (42)");
+    }
+
     if (failures == 0) printf("all parse hardening tests passed\n");
     return failures;
 }

@@ -764,6 +764,13 @@ static int parse_masm(parser_t *P, cell *out) {
     return 0;
 }
 
+/* A block (and a top-level program) holds at most 511 cells.  Each append
+ * of k cells is checked BEFORE it is made: a string literal adds 2, a func
+ * up to 3, so a check after the append (as it was) let them write past
+ * tmp[511] -- a stack overrun instead of TOO_LARGE.  A failed parse is
+ * rolled back completely (r0_s1_parse), so failing here is safe. */
+#define PB_ROOM(k) if (n + (k) > 511) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; break; }
+
 static cell parse_block(parser_t *P, int is_body) {
     P->pos++; /* '[' */
     cell tmp[512];
@@ -778,9 +785,9 @@ static cell parse_block(parser_t *P, int is_body) {
         if (parse_fail) { P->err = 1; break; }   /* a resource failure ends the parse */
         /* quoted string literal: expand to `mk-string [bytes]` (two forms). */
         if (c == '"') {
+            PB_ROOM(2)
             tmp[n++] = intern("mk-string");
             tmp[n++] = parse_string_literal(P);
-            if (n >= 512) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; break; }
             continue;
         }
         /* `func` keyword: assign a func-site-id; parse spec normally, parse
@@ -791,6 +798,7 @@ static cell parse_block(parser_t *P, int is_body) {
                    && P->s[P->pos] != '[' && P->s[P->pos] != ']') P->pos++;
             int len = P->pos - start;
             if (len == 4 && strncmp(P->s + start, "func", 4) == 0) {
+                PB_ROOM(2)                            /* func + spec at least */
                 int sid = next_site++;
                 if (sid < SITE_PARENT_CAP)
                     M[SITE_PARENT_BASE + sid] = site_depth > 0 ? site_stack[site_depth - 1] : 0;
@@ -817,6 +825,7 @@ static cell parse_block(parser_t *P, int is_body) {
                     tmp[n++] = spec;
                     continue;
                 }
+                PB_ROOM(2)                            /* spec + literal body */
                 lex_push();                               /* new lexical scope */
                 if (r0_tag(spec) == T_BLOCK) {
                     /* collect the spec's parameter words.  The bind loop in
@@ -849,12 +858,14 @@ static cell parse_block(parser_t *P, int is_body) {
             if ((len == 3 && strncmp(P->s + start, "raw", 3) == 0) ||
                 (len == 4 && strncmp(P->s + start, "masm", 4) == 0)) {
                 cell v;
+                PB_ROOM(1)
                 if (parse_masm(P, &v) < 0) break;
                 tmp[n++] = v;
                 continue;
             }
             P->pos = start;
         }
+        PB_ROOM(1)
         {
             cell form = parse_form(P);
             /* Escape-time binding law: mark the block activation-dependent if
@@ -872,7 +883,6 @@ static cell parse_block(parser_t *P, int is_body) {
             }
             tmp[n++] = form;
         }
-        if (n >= 512) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; break; }
     }
     cell b = make_block((cell)n);
     if (b == R0_NONE) { P->err = 1; last_block_dep = 0; return R0_NONE; }
@@ -4155,9 +4165,9 @@ static cell parse_program(parser_t *P) {
         skip_ws(P);
         if (!P->s[P->pos]) break;
         if (P->s[P->pos] == '"') {
+            PB_ROOM(2)
             tmp[n++] = intern("mk-string");
             tmp[n++] = parse_string_literal(P);
-            if (n >= 512) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; break; }
             continue;
         }
         {   /* `masm`/`raw`: the same definition form as inside a block */
@@ -4170,16 +4180,16 @@ static cell parse_program(parser_t *P) {
                 if ((len == 3 && strncmp(P->s + start, "raw", 3) == 0) ||
                     (len == 4 && strncmp(P->s + start, "masm", 4) == 0)) {
                     cell v;
+                    PB_ROOM(1)
                     if (parse_masm(P, &v) < 0) break;
                     tmp[n++] = v;
-                    if (n >= 512) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; break; }
                     continue;
                 }
                 P->pos = start;
             }
         }
+        PB_ROOM(1)
         tmp[n++] = parse_form(P);
-        if (n >= 512) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; break; }
     }
     cell b = make_block((cell)n);
     if (b == R0_NONE) { P->err = 1; return R0_NONE; }
