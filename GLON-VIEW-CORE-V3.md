@@ -1,87 +1,137 @@
-# GLON-VIEW-CORE-V3 — stopped at the code-space gate
+# GLON-VIEW-CORE-V3 — View, VID, Intent, components, layouts and native windows on C2
 
-Date: 2026-11-27.
+Date: 2026-11-28.
 
 | | |
 |---|---|
-| **Branch** | `integration/c2-view` after V2 `e14455aa` |
-| **Status** | **Stopped before importing View, as the V3 brief requires.** No View, VID, Intent or native-window code is imported. Nothing else changed: runtime, memory map, profiles, hash encoding, GLON-VOCAB-1 semantics and frozen S1 are all as in V2. Committed locally only. |
+| **Branch** | `integration/c2-view` |
+| **Status** | Committed locally only. Nothing pushed or merged. |
 
-**The gate.** Measure the combined runtime's code-space headroom with the literal-safety check loaded, and stop if fewer than 20 code cells remain.
+**Preserved:**
+- frozen S1 (`f90496c…`);
+- C2's core, memory-map architecture, profiles and fixed-radix hash encoding;
+- the GLON-VOCAB-1 binding semantics;
+- the checked `block-set!`.
 
-## 1. Measurement [M]
+**Evidence tags:**
 
-**Runtime and libraries:**
-- V2 runtime (12,890 emitted cells; `R0S1_CODE_LIMIT` 16,128) in `desktop-1m` and `desktop-4m`.
-- The bare-session runner `tests/core-v2/libload.c`.
-- The Intent session's library list exactly as `gv_glon_host_load_desktop_vid` loads it, then `intent_windows.glon` and the c1 acceptance application.
-  - Shared `demo/shop` libraries: V2.
-  - View libraries: read from glon-gui-f2 `17b819db`.
-  - `view/glon/core_words.glon`: replaced by the V3 version below.
+| Tag | Meaning |
+|---|---|
+| **[M]** | Measured |
+| **[S]** | A source fact |
+| **[A]** | An assumption |
 
-**The V3 `core_words.glon` probed:**
+Logs are in `/mnt/d/repos/diagnostics/core-v3/` (`stage1b`, `stage2`, `stage3`, `c1-accept`, `rspeak.out`, `variant-*.log`, `export-*`).
 
-```
-value-tag: masm 1 [ LIT 16 MOD LIT 16 MUL ARITY 1 EXIT ]
-block-set-raw!: :vid/set-block!            ; internal raw store, no code of its own
-managed-ref?: masm 1 [ DUP LIT 16 MOD SUB DUP LIT REG_HP @ LT MUL LIT 32768 GE
-                       LIT 16 MUL ARITY 1 EXIT ]            ; 42 cells
-block-store-ok?: func [b v] [ ... ]          ; ordinary Glon, as demo/shop/block.glon
-block-set!: func [b i v] [ ... checked ... ] ; as demo/shop/block.glon (V2)
-```
+## 1. History of this milestone
 
-**Results** (both profiles give the same code figures):
+1. **Stopped at the code-space gate** (`7f08549c`). With the checked `block-set!` in View's `core_words.glon`, the full Intent stack left 10 code cells (< 20).
+2. **Capacity resolved through C2's profiles** (`d2ee64b6`, `GLON-VIEW-CORE-CODECAP.md`). The three desktop profiles went from `CODE_CAP` 16,384 to 17,408 (approved Option 1).
+3. **Gate re-measured** on the committed profiles, with the checked `block-set!` and the `block-set-raw!` alias: **1,034 code cells free** (desktop-1m and desktop-4m) [M]. That passes.
+4. **A C2 header defect found and fixed** (`ef594432`). In a generated-profile build, `M` was declared with the 64K size but defined with the profile's. View's `-O2` exposed it as undefined behaviour (array-bounds warnings at offsets above 65,536). Stage-1 tests failed until it was fixed.
+5. **Staged import** (§2). The first two stage commits were rebuilt once: C2's root `.gitignore` pattern `glon` (the CLI binary) also matched the source directory `view/glon/`, so they lacked their Glon sources. `.gitignore` now re-includes `view/glon/`. Each rebuilt commit was then **verified from a clean `git archive` export** (§4).
 
-| Point | Globals | Sites | Code cells free |
-|---|---:|---:|---:|
-| after `core_words.glon` | 108 | 53 | 1,441 |
-| after `intent.glon` | 955 | 809 | **10** |
-| after `intent_windows.glon` + c1 application | 1,009 | 849 | **10** |
-| (V1/V2 reference, unchecked `core_words`) | 1,006 | 847 | 52 |
+## 2. Commits
 
-**10 < 20: the gate fails.** The checked `block-set!` costs exactly its 42-cell `managed-ref?` (52 → 10). No other code changed.
+| Commit | Stage |
+|---|---|
+| `d2ee64b6` | desktop profiles `CODE_CAP` 17,408 (separate capacity change) |
+| `ef594432` | `r0_s1.h`: `M` declared with the generated profile's size |
+| `02f008b2` | **1/4 View engine and VID** on C2's desktop profiles; `core_words.glon` with the checked `block-set!` |
+| `112a0417` | **2/4 Intent, reusable components and multiple layouts** |
+| `cce84384` | **3/4 native windows** (the optional Intent window library) |
+| `5e664e30` | **4/4 the C1 acceptance suite** and its application |
+| (this commit) | report |
 
-**Code cells assembled per library in the Intent session:**
+**Source.** Everything comes from glon-gui-f2 `17b819db` (`view/`, `experiments/gui-f1b`). View's 3.1 MB of historical evidence screenshots were not imported.
 
-| Library | Cells |
+### 2.1 Changes made to the imported View code
+
+- **Build (`view/Makefile`, 78 recipes).**
+  - The 1M / 4M / 256K runtimes are C2's generated desktop profiles: the profile header force-included, the root runtime sources and the profile's `s1_profile.c`.
+  - The 64K runtime is the constrained reference.
+  - Profile files are generated by C2's generator (the root rule's command).
+  - `experiments/ms1` is no longer used.
+  - `test_gui_f1b.sh`, `test_vocab_v1.sh` and `build_deps_test.sh` were adapted the same way.
+- **Tests.** The managed-heap size is read as `GC_HEAP_LIMIT − GC_HEAP_BASE` (was `GV_MANAGED_CELLS`). The 64K site-capacity case is the fixed 640-site slot.
+- **`view/glon/core_words.glon`:**
+  - `block-set!` is the **public, checked** store (GLON-VIEW-CORE-V2 §5): a managed value only into a managed block, else SIN! `'escape 'block-set!`.
+  - `block-set-raw!` is the **internal, unchecked** store. It is an alias of VID's existing `vid/set-block!`, so it has no code of its own. Its preconditions are documented in the file: a BLOCK! target with an index in range, and either a managed target allocated by the library itself or a non-managed value.
+  - `managed-ref?` is 42 code cells; `block-store-ok?` is ordinary Glon.
+- **`view/glon/intent.glon`:** Intent's two id-table stores use `block-set-raw!`. Their targets are Intent's own managed tables (`loop/collect` of `list/blank 64`), so the preconditions hold [S]. **No public or literal store is unchecked.**
+
+Not modified:
+- the View C sources (`view/src`, `view/include`): `gv_glon_host.c`'s heap-size fallback is already C2's expression;
+- every other View Glon library;
+- the C1 acceptance script.
+
+## 3. Capacity [M]
+
+**Membership application session** (`intent7-eval`), with the checked `block-set!` loaded:
+
+| | 1M | 4M |
+|---|---|---|
+| code cells free below 17,152 | **1,034** | **1,034** |
+| globals | 1,067 / 4,096 | 1,067 / 16,384 |
+| sites | 889 / 4,096 | 889 / 8,192 |
+| loader heap end | 424,649 | 1,276,617 |
+
+For comparison, glon-gui-f2 at VOCAB-1 had 58 code cells free, 1,064 globals and 887 sites.
+
+**c1 application** (`c1-accept`, window library loaded): **849 sites and 1,011 globals at the start**, against 847 / 1,008 at PREP-1. Its 20 window cycles keep sites 849, globals 1,015, `view/id` 183 and 128 free ids. Without the window library (`c1-no-windows`): 813 / 967, against 811 / 964. The +2 sites and +3 globals are the checked `block-set!`'s words.
+
+**Main return-stack peak at run time.** Measured in a scratch export by instrumenting the View host (the lowest `RV_RPMIN` over every Glon run of the process):
+
+| Case (1M and 4M identical) | Peak return-stack cells |
 |---|---:|
-| `view_cmd.glon` (12 masm words) | 992 |
-| `jupyter/prelude.glon` | 416 |
-| `strings-ext.glon` | 504 |
-| `strings.glon` | 304 |
-| `view_lib.glon` | 248 |
-| `strings-text.glon` | 170 |
-| `intent.glon` | 138 |
-| `list.glon` | 131 |
-| `core_words.glon` (value-tag 27 + managed-ref? 42) | 69 |
-| every other View library | 0 |
+| `inst1-components` | **4,124** |
+| `c1-accept` | 3,964 |
+| `inst2-instances` | 3,164 |
+| membership (`intent6-*`, `intent7-*`) | 1,122 – 1,932 |
+| `win3-windows` | 1,122 |
 
-The emitted runtime uses 12,890 of the 15,872 cells between code base 256 and the 16,128 limit. That leaves 2,982 for libraries; they use 2,972, leaving 10.
+The return stack is 7,168 cells, so the measured margin is **3,044 cells (about 31 activations)**.
 
-## 2. What was not done
+## 4. Tests [M]
 
-- **The safety check was not removed or weakened.** Per the V3 brief, View does not keep an unchecked public `block-set!`.
-- **C2's memory layout and profiles were not changed.**
-- **View was not imported.** `make -C view test-c1-accept` and the 1M/4M membership suites were not run on the combined runtime, and no single-window or WSLg verification was attempted.
+**Every View test runs under the SDL dummy video driver with synthetic events.** No window was opened on the user's WSLg desktop, and no input was sent to it.
 
-## 3. Options for a decision
+| Stage | Tests | Result |
+|---|---|---|
+| 1 | `test` (backend, View core, tables, Glon/VID, host tables, table data, VID widgets), `test-lib1`, `test-vid-load-64k`, `test-gui-f1b`, `test-wg-runner`, `test-vg-runner`, `test-widget-gallery`, `test-gui-core`, `test-gui3`, `test-gui4`, `test-gui4-scroll`, `test-gui4b2c`, `test-gui-f2`, `test-global-capacity-profiles`, `test-vocab` | all exit 0 |
+| 2 | `test-gui-p2`, `test-intent`, `test-inst1`, `test-inst2`, `test-inst3`, `test-members` (4M), `test-members-1m`, `test-intent7`, `test-site-capacity-profiles`, `test-global-capacity`, `test-build-deps` | all exit 0 |
+| 3 | `test-win3` (windows, lifecycle and failure in 4M and 1M; heap 1M; scale 4M), and the 10 membership cases with the window library loaded (4M) | all exit 0 |
+| clean exports | `02f008b2`: `test`, `test-gui-core`, `test-vg-runner`. `112a0417`: `test-intent`, `test-site-capacity-profiles`, `test-build-deps` | all exit 0 |
+| 4 | **`make -C view test-c1-accept`** | **C1 ACCEPTANCE: PASS, 22/22 steps exit 0** (below) |
+| variants | `mem2-alloc-diff`, `mem5-closure-diff`, `intent7-set-diff` (the suite's `C1_ACCEPT_VARIANTS` section) | exit 0. Heap layouts are identical to the old allocator scan, the old closure check and the linear set-word search in 64K / 256K / 1M / 4M; GC interior tests pass 14/14. |
 
-None is implemented. Each needs approval.
+**The 22 acceptance steps**, with their duration in seconds:
 
-| # | Option | Code cells gained | Who decides / what it changes |
-|---|---|---|---|
-| 1 | **Raise `CODE_CAP` in the desktop profiles.** C2 already supports it: `server-https` uses 20,480. For example, 16,384 → 17,408 for desktop-256k / 1m / 4m. | +1,024 (any amount; the main return stack shrinks by the same, here 8,192 → 7,168, still above the 4,096 minimum `r0_s1_layout.h` enforces) | C2 owner: a declared profile change, no runtime change. Recursion-depth headroom must be re-measured (View's deepest paths, the membership tests). |
-| 2 | `R0S1_DS_RESERVE` 256 → 192 (GLON-MEM-4 §7) | +64 | C2 owner: a runtime constant (the data-stack guard). |
-| 3 | Reduce library `masm` code: shared workers between `view_cmd.glon` (992) and `strings-ext.glon` / `strings-text.glon`, or fewer `EXIT`s (17 cells each) in multi-exit words | likely tens [A], unmeasured | View/library change; performance-sensitive code (GLON-MEM-*, INTENT-7 measured paths). |
-| 4 | Put `managed-ref?` in the runtime as a native or `CALL` target | the 42 cells move into emitted code, so no gain unless it is much smaller there | C2 owner: a runtime change. |
+| Step | s | Step | s | Step | s | Step | s |
+|---|---:|---|---:|---|---:|---|---:|
+| build | 0 | lib1 | 21 | inst1 | 5 | members-1m | 97 |
+| frozen-s1 | 0 | view-test | 1 | inst2 | 22 | intent7-4m | 17 |
+| root-test | 403 | gui-p2 | 78 | inst3 | 13 | members-winlib-4m | 34 |
+| build-deps | 6 | gui-f1b | 5 | win3 | 39 | site-capacity | 2 |
+| | | intent | 34 | c1-accept-4m | 3 | global-capacity | 2 |
+| | | | | c1-accept-1m | 5 | vid-load-64k | 0 |
+| | | | | members-4m | 53 | | |
 
-**Recommendation [A].** Option 1 gives the most room for the least risk: C2's generator, layout checks and `server-https` precedent already cover it, and nothing in the runtime changes. It needs the C2 owner's agreement, because it changes three declared desktop profiles and their main return-stack depth. After that change, V3 resumes with the `core_words.glon` above, and the gate is re-measured.
+**About these steps:**
+- `root-test` is `make -C .. test`: C2's S1 suite, the GC worklist and global-hash tests, the primer, and VOCAB-1.
+- **Single-window compatibility:**
+  - `c1-no-windows` (in both c1-accept steps) runs the same application without the window library;
+  - the membership application in 4M and 1M is a single-window Intent application;
+  - `test-gui-p2` covers the single-window VID and Intent cases.
 
-## 4. Reproduce
+**Not run, and not claimed:**
+- **Manual WSLg verification:** the three-window membership demonstration (`windows-demo`, `members-app`) on the user's desktop. No window was opened without consent.
+- **The suite's optional X11 section** (`C1_ACCEPT_X11`): the real X11 editor and the WebKitGTK browser.
+- **Windows, WASM and HTTPS targets.**
 
-```sh
-make libload-one MEM_PROFILE=desktop-1m
-build/core-v2/libload-desktop-1m <the file list in diagnostics/core-v3-headroom.*/files.txt>
-```
+## 5. Remaining limitations
 
-The probe copy of `core_words.glon`, the file list and the per-library table are in `/mnt/d/repos/diagnostics/core-v3-headroom.*`.
+- **Desktop profiles** are still marked `provisional` in `profiles/*.profile`, although they now pass C2's profile suites and the View acceptance suite. Promoting them to `verified` is a C2-owner decision.
+- **Return stack.** The measured peak is 4,124 of 7,168 cells. A further `CODE_CAP` increase (GLON-VIEW-CORE-CODECAP §3) would cut that margin: about 2,000 cells at 18,432, and about 1,000 at 19,456.
+- **Raw stores.** VID's 356 `vid/set-block!` stores and Intent's two id-table stores use the internal raw store by design (their targets are library-allocated managed blocks [S]). They are covered by the documented preconditions, not by a runtime check.
+- **Open defects, unchanged:** the known vocabulary defects V1–V4, the `get` / `intent/get` collision, and the raw-`masm` literal-store path (`literal-block-gc-check`).

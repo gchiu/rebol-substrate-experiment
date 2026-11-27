@@ -581,11 +581,12 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
   16,384 -> 17,408 (code 16,896 cells, main return stack 7,168, recursion
   limit 84 -> 73); Intent stack with the checked `block-set!` 10 -> 1,034 code
   cells free; `make code-capacity-check`; range 16,384-20,480 measured.
-- `GLON-VIEW-CORE-V3.md` — 2026-11-27: STOPPED at the code-space gate. With
-  the checked `block-set!` in View's `core_words.glon` (42-cell `managed-ref?`),
-  the full Intent stack leaves 10 code cells (< 20 required); View not
-  imported. Options (desktop `CODE_CAP`, `R0S1_DS_RESERVE`, library masm
-  reduction) await a decision.
+- `GLON-VIEW-CORE-V3.md` — 2026-11-28: View, VID, Intent, components,
+  layouts and native windows on C2 (staged commits 02f008b2..5e664e30), with
+  the checked `block-set!` and the internal `block-set-raw!`; after the
+  desktop `CODE_CAP` change (`GLON-VIEW-CORE-CODECAP.md`) and the `r0_s1.h` M
+  declaration fix. `make -C view test-c1-accept`: PASS, 22/22. Code headroom
+  1,034 cells; return-stack peak 4,124 / 7,168. SDL dummy only; no WSLg run.
 - `GLON-VIEW-CORE-V2.md` — 2026-11-27, `integration/c2-view`: C2's
   two-argument search is `s/index-of` (the shared `s/find s i p` unchanged);
   `modules/strings.glon` and `file-replace.glon` as `s` members

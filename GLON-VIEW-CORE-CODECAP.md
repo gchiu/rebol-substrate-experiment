@@ -74,6 +74,13 @@ Evidence: `/mnt/d/repos/diagnostics/codecap.*` (variants, recursion probes) and 
 
 **Available range and recommendation [A].** Any `CODE_CAP` from 16,384 to 20,480 satisfies the layout invariants. **17,408** restores roughly 1,000 cells of code headroom for the View stack (100× what remains at 16,384) while keeping 73 levels of recursion. That is above C2's own 70-level `limits.glon` floor, and within 10 levels of the original 84. Go further (18,432 for about 2,000 free cells and 62 levels) only if V3's measured View/Intent run-time return-stack peak leaves margin at 6,144 cells.
 
+**V3 measurement, added after the View import [M]:**
+- The View/Intent run-time return-stack peak is **4,124 cells** (`inst1-components`; `c1-accept` 3,964; membership at most 1,932).
+- The margin is **3,044 cells at 17,408**, about 2,020 at 18,432, and about 1,000 at 19,456.
+- In the membership session, the code headroom is 1,034 cells at 17,408 (GLON-VIEW-CORE-V3.md §3).
+
+**Recommendation: keep 17,408.** It leaves about 1,000 free cells on both the code side and the return-stack side, and it passes the full View acceptance suite.
+
 ## 4. Tests
 
 All steps ran sequentially with exit statuses recorded (`diagnostics/codecap-suite`). **Every step exits 0 except `build-deps-check`:**
