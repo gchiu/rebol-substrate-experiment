@@ -83,6 +83,26 @@ before cutover.
   `https://worlds.tungjung.nz/` still serves the 190-byte landing page;
   `glon-worlds.service` is inactive/not installed.
 
+## 4a. Deployment-instruction audit corrections
+
+The first W5.1 deployment draft had material path/permission errors. Corrected:
+
+- The stage now includes `deploy/`, so the installed invitation tool exists at
+  `/opt/glon-worlds/deploy/glon-worlds/glon-worlds-invite.py`.
+- Developer and root commands are separated. `developer` has no sudo and only
+  builds/stages; installation, systemd and Caddy commands run in a root shell.
+- Staging copies only the required Worlds app source/assets and `glon-lib`,
+  `modules`, `deploy`; local test `users.db`/`messages.ndjson` are excluded.
+- The loopback certificate helper previously made `localhost.pem` mode 0600
+  `root:glon-worlds`, which the service could not read. It is now 0640
+  `root:glon-worlds`; separate key/cert files remain root-only 0600.
+- Persistent state remains only under `/var/lib/glon-worlds`; `/opt` is
+  root-owned application code and contains no runtime data.
+- Invitation, Caddy and rollback commands use installed absolute paths.
+- Private browser acceptance uses either a direct loopback tunnel (local
+  bootstrap path) or a temporary loopback Caddy proxy on 8444 to exercise the
+  invitation/combined proxy header path without touching active Caddy.
+
 ## 5. Tests
 
 | Test | Result |
@@ -107,61 +127,124 @@ leaves the invitation usable; successful retry consumes it; forged
 `X-Glon-Client-IP` is a distinct rate-limit key; Caddy config overwrites both
 forwarding headers; no machine halt.
 
-## 6. Proposed deployment commands (NOT RUN)
+## 6. Corrected deployment commands (NOT RUN)
 
-These are for review only. Do not run without explicit approval.
+Run build/stage as `developer`; run installation and Caddy commands in a root
+shell. Full procedure: `deploy/glon-worlds/README.md`.
+
+Developer build/stage:
 
 ```sh
-# Build and install application (on the VPS, from the repository checkout)
+cd /home/developer/projects/glon-worlds-w3
+git switch integration/glon-worlds-w5.1
 make glon MODULES=file,http,sqlite,sec,task MEM_PROFILE=server-https
-sudo install -d -o root -g root /opt/glon-worlds
-sudo install -m 0755 glon /opt/glon-worlds/glon
-sudo cp -a glon-lib modules examples /opt/glon-worlds/
-
-# Unprivileged service user and persistent state
-sudo useradd --system --home /var/lib/glon-worlds --shell /usr/sbin/nologin glon-worlds || true
-sudo install -d -o glon-worlds -g glon-worlds -m 0700 /var/lib/glon-worlds/web
-sudo install -m 0644 examples/glon-worlds-g3b/web/index.html /var/lib/glon-worlds/web/index.html
-
-# Loopback-only Glon certificate (does not touch Caddy's certificate)
-sudo install -d -o root -g glon-worlds -m 0750 /etc/glon-worlds
-sudo ./deploy/glon-worlds/make-local-cert.sh /etc/glon-worlds
-
-# Install and start the loopback service
-sudo install -m 0644 deploy/glon-worlds/glon-worlds.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl start glon-worlds
-sudo systemctl status glon-worlds --no-pager
-curl -k --resolve worlds.tungjung.nz:8443:127.0.0.1 \
-  https://worlds.tungjung.nz:8443/api/groups
-
-# Create a pilot invitation
-sudo -u glon-worlds python3 /opt/glon-worlds/deploy/glon-worlds/glon-worlds-invite.py \
-  --db /var/lib/glon-worlds/users.db --label pilot-1 --days 7
-
-# Caddy cutover (after approval only)
-sudo cp -a /etc/caddy/Caddyfile \
-  /etc/caddy/Caddyfile.pre-glon-worlds-$(date +%Y%m%d%H%M%S)
-sudo install -m 0644 deploy/glon-worlds/Caddyfile.worlds /etc/caddy/Caddyfile
-sudo caddy validate --config /etc/caddy/Caddyfile
-sudo systemctl reload caddy
-sudo systemctl enable glon-worlds
+STAGE=/tmp/glon-worlds-stage
+rm -rf "$STAGE"
+install -d "$STAGE/glon-lib" "$STAGE/modules" "$STAGE/deploy" \
+  "$STAGE/examples/glon-worlds-g3b/web"
+install -m 0755 glon "$STAGE/glon"
+cp -a glon-lib/. "$STAGE/glon-lib/"
+cp -a modules/. "$STAGE/modules/"
+cp -a deploy/. "$STAGE/deploy/"
+install -m 0644 examples/glon-worlds-g3b/server.glon \
+  "$STAGE/examples/glon-worlds-g3b/server.glon"
+install -m 0644 examples/glon-worlds-g3b/web/index.html \
+  "$STAGE/examples/glon-worlds-g3b/web/index.html"
+find "$STAGE" -type f \( -name users.db -o -name messages.ndjson \) -print -quit
+chmod -R a+rX "$STAGE"
 ```
 
-## 7. Proposed rollback commands (NOT RUN)
+Root install/start (root shell, no sudo prefix):
 
 ```sh
-# Restore the previous landing-page Caddy config
-sudo cp -a /etc/caddy/Caddyfile.pre-glon-worlds-<timestamp> /etc/caddy/Caddyfile
-sudo caddy validate --config /etc/caddy/Caddyfile
-sudo systemctl reload caddy
+set -euo pipefail
+STAGE=/tmp/glon-worlds-stage
+test -x "$STAGE/glon"
+getent group glon-worlds >/dev/null || groupadd --system glon-worlds
+getent passwd glon-worlds >/dev/null || useradd --system \
+  --gid glon-worlds --home-dir /var/lib/glon-worlds \
+  --shell /usr/sbin/nologin glon-worlds
 
-# Stop and disable the Glon service
-sudo systemctl stop glon-worlds
-sudo systemctl disable glon-worlds
+install -d -o root -g root -m 0755 /opt/glon-worlds
+cp -a "$STAGE/." /opt/glon-worlds/
+chown -R root:root /opt/glon-worlds
+find /opt/glon-worlds -type d -exec chmod 0755 {} +
+find /opt/glon-worlds -type f -exec chmod 0644 {} +
+chmod 0755 /opt/glon-worlds/glon
+chmod 0755 /opt/glon-worlds/deploy/glon-worlds/glon-worlds-invite.py
+chmod 0755 /opt/glon-worlds/deploy/glon-worlds/make-local-cert.sh
+if find /opt/glon-worlds -type f \( -name users.db -o -name messages.ndjson \) | grep -q .; then
+  echo "ERROR: runtime data staged under /opt" >&2; exit 1
+fi
 
-# Preserve /var/lib/glon-worlds (users.db, messages.ndjson) unless a separate
-# data-retention decision says otherwise.
+install -d -o glon-worlds -g glon-worlds -m 0700 \
+  /var/lib/glon-worlds /var/lib/glon-worlds/web
+install -m 0644 -o glon-worlds -g glon-worlds \
+  "$STAGE/examples/glon-worlds-g3b/web/index.html" \
+  /var/lib/glon-worlds/web/index.html
+
+install -d -o root -g glon-worlds -m 0750 /etc/glon-worlds
+/opt/glon-worlds/deploy/glon-worlds/make-local-cert.sh /etc/glon-worlds
+
+install -m 0644 "$STAGE/deploy/glon-worlds/glon-worlds.service" \
+  /etc/systemd/system/glon-worlds.service
+systemctl daemon-reload
+systemd-analyze verify /etc/systemd/system/glon-worlds.service
+systemctl start glon-worlds
+systemctl status glon-worlds --no-pager
+journalctl -u glon-worlds -n 50 --no-pager
+runuser -u glon-worlds -- test -r /etc/glon-worlds/localhost.pem
+ss -ltnp | grep ':8443'   # must be 127.0.0.1:8443 only
+curl -k --resolve worlds.tungjung.nz:8443:127.0.0.1 \
+  https://worlds.tungjung.nz:8443/api/groups
+stat -c '%U:%G %a %n' /var/lib/glon-worlds \
+  /var/lib/glon-worlds/users.db /var/lib/glon-worlds/messages.ndjson \
+  /var/lib/glon-worlds/web/index.html /etc/glon-worlds/localhost.pem
+
+runuser -u glon-worlds -- python3 \
+  /opt/glon-worlds/deploy/glon-worlds/glon-worlds-invite.py \
+  --db /var/lib/glon-worlds/users.db --label pilot-1 --days 7
+```
+
+Private browser acceptance: use
+`tests/glon-worlds-w5.1/MANUAL-BROWSER-ACCEPTANCE.md`. Direct SSH tunnel
+`-L 8443:127.0.0.1:8443` exercises the local bootstrap path; a temporary
+loopback Caddy proxy on 8444 (same `header_up` rules, `tls internal`) exercises
+the invitation/trusted-proxy path without touching active Caddy. Both are
+reviewed, not executed.
+
+Caddy cutover (root shell, only after approval):
+
+```sh
+set -euo pipefail
+BACKUP=/etc/caddy/Caddyfile.pre-glon-worlds-$(date +%Y%m%d%H%M%S)
+cp -a /etc/caddy/Caddyfile "$BACKUP"
+echo "Caddy backup: $BACKUP"
+install -m 0644 /opt/glon-worlds/deploy/glon-worlds/Caddyfile.worlds \
+  /etc/caddy/Caddyfile
+caddy validate --config /etc/caddy/Caddyfile
+systemctl reload caddy
+systemctl enable glon-worlds
+curl -fsS https://worlds.tungjung.nz/ | head -20
+curl -sS -o /dev/null -w '%{http_code}\n' https://worlds.tungjung.nz/api/groups
+curl -sS -o /dev/null -w '%{http_code}\n' https://worlds.tungjung.nz/api/users
+ss -ltnp | grep ':8443'
+```
+
+## 7. Corrected rollback commands (NOT RUN)
+
+```sh
+set -euo pipefail
+BACKUP=$(ls -1t /etc/caddy/Caddyfile.pre-glon-worlds-* | head -n 1)
+test -n "$BACKUP"
+echo "Restoring $BACKUP"
+cp -a "$BACKUP" /etc/caddy/Caddyfile
+caddy validate --config /etc/caddy/Caddyfile
+systemctl reload caddy
+systemctl stop glon-worlds
+systemctl disable glon-worlds
+curl -fsS https://worlds.tungjung.nz/ | head -20
+# Preserve /var/lib/glon-worlds unless a separate retention decision says otherwise.
 ```
 
 ## 8. Remaining limitations

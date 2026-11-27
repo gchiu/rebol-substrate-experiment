@@ -20,8 +20,12 @@ openssl req -x509 -newkey rsa:2048 -nodes \
     -keyout "$dir/key.pem" -out "$dir/cert.pem" -days 3650 \
     -config "$tmp" >/dev/null 2>&1
 cat "$dir/cert.pem" "$dir/key.pem" > "$dir/localhost.pem"
-chmod 600 "$dir/key.pem" "$dir/localhost.pem"
+chmod 600 "$dir/cert.pem" "$dir/key.pem"
+chmod 640 "$dir/localhost.pem"
 if [ "$(id -u)" -eq 0 ]; then
-    chown root:glon-worlds "$dir/cert.pem" "$dir/key.pem" "$dir/localhost.pem" 2>/dev/null || true
+    # The service user must read the combined cert+key file. The separate
+    # key/cert files stay root-only.
+    chown root:root "$dir/cert.pem" "$dir/key.pem"
+    chown root:glon-worlds "$dir/localhost.pem"
 fi
 echo "wrote $dir/localhost.pem" >&2

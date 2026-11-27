@@ -8,17 +8,23 @@ Use two independent real browser profiles (for example a normal window and a
 private window), both pointed at the **loopback/staging** service, never at the
 public landing page until cutover is approved.
 
-1. Create two single-use invitation codes on the staging host:
+A direct SSH tunnel to `127.0.0.1:8443` uses the app's local bootstrap path, so
+it does not prove the invitation gate. To test the public proxy path, use the
+temporary loopback Caddy proxy on port 8444 from `deploy/glon-worlds/README.md`
+and open `https://localhost:8444/`. Complete both checks if possible.
+
+1. Create two single-use invitation codes on the staging host (root shell):
 
    ```sh
-   sudo -u glon-worlds python3 /opt/glon-worlds/deploy/glon-worlds/glon-worlds-invite.py \
+   runuser -u glon-worlds -- python3 /opt/glon-worlds/deploy/glon-worlds/glon-worlds-invite.py \
      --db /var/lib/glon-worlds/users.db --label manual-a --days 1
-   sudo -u glon-worlds python3 /opt/glon-worlds/deploy/glon-worlds/glon-worlds-invite.py \
+   runuser -u glon-worlds -- python3 /opt/glon-worlds/deploy/glon-worlds/glon-worlds-invite.py \
      --db /var/lib/glon-worlds/users.db --label manual-b --days 1
    ```
 
 2. In browser A, open the staging URL. Confirm the Sign in and Register panels
-   are visible and the chat/send controls are hidden.
+   are visible and the chat/send controls are hidden. Through the temporary
+   proxy, also confirm registration without an invitation is rejected.
 
 3. Register user A with the first invitation code. Confirm invalid/blank codes
    are rejected and a successful registration leads to the sign-in step.
