@@ -61,6 +61,7 @@
     <h2>Register</h2>
     <label>Username<input id="reg-username" autocomplete="username" maxlength="64" required></label>
     <label>Display name<input id="reg-display" maxlength="64"></label>
+    <label>Invitation code<input id="reg-invite" autocomplete="off" maxlength="128" required></label>
     <label>Password<input id="reg-password" type="password" autocomplete="new-password" maxlength="1024" required></label>
     <button type="submit" id="register-button">Create account</button>
   </form>
@@ -92,6 +93,7 @@ let pollInFlight = false;
 let pollFailures = 0;
 let pollHadError = false;
 let currentUser = null;
+let csrfToken = null;
 let authBusy = false;
 
 const statusEl = document.getElementById("status");
@@ -112,6 +114,7 @@ const loginBtn = document.getElementById("login-button");
 const registerEl = document.getElementById("register");
 const regUserEl = document.getElementById("reg-username");
 const regDisplayEl = document.getElementById("reg-display");
+const regInviteEl = document.getElementById("reg-invite");
 const regPassEl = document.getElementById("reg-password");
 const regBtn = document.getElementById("register-button");
 
@@ -294,6 +297,7 @@ function setBusy(value) {
 
 function setUser(user) {
   currentUser = user || null;
+  if (!currentUser) csrfToken = null;
   userEl.textContent = currentUser
     ? String(currentUser.display_name || currentUser.username || "") : "";
   logoutEl.hidden = !currentUser;
@@ -314,8 +318,9 @@ function stopChat(message, kind) {
   if (message) status(message, kind || null);
 }
 
-async function startChat(user) {
+async function startChat(user, csrf) {
   setUser(user);
+  csrfToken = csrf || null;
   byId.clear();
   windowStart = 0;
   pollFailures = 0;
@@ -331,7 +336,7 @@ async function checkSession() {
     });
     if (!res.ok) throw await parseError(res);
     const data = await res.json();
-    if (data && data.user) await startChat(data.user);
+    if (data && data.user) await startChat(data.user, data.csrf);
     else {
       setUser(null);
       status("Sign in or register to continue.", null);
@@ -361,7 +366,7 @@ async function doLogin(username, password) {
     if (!res.ok) throw await parseError(res);
     const data = await res.json();
     loginEl.reset();
-    await startChat(data.user);
+    await startChat(data.user, data.csrf);
     status("Signed in.", "success");
   } catch (e) {
     status(String(e.message || e), "error");
@@ -380,6 +385,7 @@ async function doRegister(username, displayName, password) {
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         username, password,
+        invite: regInviteEl.value,
         display_name: displayName.length ? displayName : username
       })
     });
@@ -402,7 +408,11 @@ async function doLogout() {
   logoutEl.disabled = true;
   try {
     await fetch("/api/auth/logout", {
-      method: "POST", headers: { Accept: "application/json" }
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "X-CSRF-Token": String(csrfToken || "")
+      }
     });
   } catch (_) { /* clear locally regardless */ }
   logoutEl.disabled = false;
@@ -461,7 +471,10 @@ async function send() {
   try {
     const res = await fetch(`/api/messages`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json", Accept: "application/json",
+        "X-CSRF-Token": String(csrfToken || "")
+      },
       body: JSON.stringify({ text, group: GROUP })
     });
     if (!res.ok) throw await parseError(res);

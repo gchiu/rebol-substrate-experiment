@@ -18,6 +18,7 @@ p = subprocess.Popen(["./glon", "--http-tasks", "--http-bind", "127.0.0.1", "--h
      "modules/web.glon", "modules/json.glon", "examples/glon-worlds-g3b/server.glon"],
      stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
 COOKIE = None
+CSRF = None
 ctx = ssl._create_unverified_context()
 def req(method, path, body=None):
     global COOKIE
@@ -26,6 +27,8 @@ def req(method, path, body=None):
         headers = {"Content-Type": "application/json"} if body else {}
         if COOKIE:
             headers["Cookie"] = COOKIE
+        if CSRF:
+            headers["X-CSRF-Token"] = CSRF
         c.request(method, path, body=body, headers=headers)
         r = c.getresponse()
         sc = r.getheader("Set-Cookie")
@@ -44,6 +47,9 @@ if st != 201:
 st, data = req("POST", "/api/auth/login", '{"username":"j2user","password":"password123"}')
 if st != 200 or not COOKIE:
     print("FAIL login:", st, data[:80]); sys.exit(1)
+CSRF = json.loads(data).get("csrf")
+if not CSRF:
+    print("FAIL login: no csrf token"); sys.exit(1)
 ok = True
 def check(name, cond, info=""):
     global ok

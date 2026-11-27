@@ -5,6 +5,7 @@ Local-only HTTPS acceptance over a temporary SQLite database and NDJSON store.
 Requires make w4-test.
 """
 
+import hashlib
 import http.client
 import json
 import os
@@ -121,11 +122,14 @@ class Client:
     def __init__(self, name):
         self.name = name
         self.cookie = None
+        self.csrf = None
 
     def req(self, method, path, body=None, headers=None, timeout=60):
         h = dict(headers or {})
         if self.cookie:
             h["Cookie"] = self.cookie
+        if self.csrf:
+            h["X-CSRF-Token"] = self.csrf
         st, sc, data = raw_req(method, path, body, h, timeout)
         if sc:
             first = sc.split(";", 1)[0]
@@ -142,10 +146,15 @@ class Client:
     def login(self, username, password):
         st, data = self.req("POST", "/api/auth/login",
                             json.dumps({"username": username, "password": password}))
-        return st, (json.loads(data) if data else None)
+        parsed = json.loads(data) if data else None
+        if st == 200 and parsed:
+            self.csrf = parsed.get("csrf")
+        return st, parsed
 
     def logout(self):
-        return self.req("POST", "/api/auth/logout", "")
+        st, data = self.req("POST", "/api/auth/logout", "")
+        self.csrf = None
+        return st, data
 
     def session(self):
         st, data = self.req("GET", "/api/auth/session")
@@ -321,7 +330,7 @@ def main():
         # Expire B's server-side session in the temporary database.
         token_b = b.cookie.split("=", 1)[1]
         con = sqlite3.connect(db_path)
-        con.execute("UPDATE auth_sessions SET expires_at=1 WHERE token=?", (token_b,))
+        con.execute("UPDATE auth_sessions_v2 SET expires_at=1 WHERE token_hash=?", (hashlib.sha256(token_b.encode()).hexdigest(),))
         con.commit()
         con.close()
         st, expired = b.session()

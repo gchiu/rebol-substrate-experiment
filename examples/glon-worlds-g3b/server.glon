@@ -18,16 +18,20 @@
 ;;   POST /api/users            create a user (username, display_name, role)
 ;;   POST /api/users/disable    disable a user by id (never deletes records)
 ;;
-;; W4 authentication:
-;;   POST /api/auth/register    loopback-only; salted scrypt password verifier
+;; W5 authentication / invited pilot:
+;;   POST /api/auth/register    remote requires a single-use invitation code;
+;;                              direct loopback bootstrap may omit it
 ;;   POST /api/auth/login       sets gw_session (HttpOnly/Secure/SameSite=Lax)
-;;   GET  /api/auth/session     current user, or {user:null}
-;;   POST /api/auth/logout      revokes the session and clears the cookie
+;;                              and returns a per-session CSRF token
+;;   GET  /api/auth/session     current user + CSRF token, or {user:null}
+;;   POST /api/auth/logout      CSRF-protected session revocation
+;;   POST /api/messages         requires the session CSRF header
 ;;
-;; users.db under --io-root keeps users, user_passwords and auth_sessions.  The
-;; NDJSON message store is separate and unchanged.  Passwords are stored only as
-;; hex salt + scrypt verifier, never plaintext.  The server remains loopback-only
-;; for development and must not be exposed publicly.
+;; users.db under --io-root keeps users, user_passwords, hashed-token sessions,
+;; invitations and login-rate state.  The NDJSON message store is separate and
+;; unchanged.  Passwords are stored only as hex salt + scrypt verifier, never
+;; plaintext.  Session bearer tokens are stored only as SHA-256 hashes.  The
+;; server remains loopback-only behind a TLS reverse proxy for the pilot.
 [
 ;; W2: stream the NDJSON store.  The message history is never loaded into one
 ;; Glon string/list: startup scans it to find the last id and byte count, and a
@@ -274,7 +278,15 @@ gw/auth-loopback?: func [peer] [
         ]
     ]
 ]
-gw/auth-fails: 0
+gw/auth-client-key: func [request] [
+    xff: http/header request "X-Forwarded-For"
+    either = xff none [ s/+ "ip:" http/peer request ] [ s/+ "ip:" xff ]
+]
+gw/auth-local-bootstrap?: func [request] [
+    either gw/auth-loopback? http/peer request [
+        either = http/header request "X-Forwarded-For" none [ 1 ] [ 0 ]
+    ] [ 0 ]
+]
 gw/auth-hex: func [s] [ sec/hex s ]
 gw/auth-cookie-token: func [request] [
     h: http/header request "Cookie"
@@ -294,185 +306,408 @@ gw/auth-user-value: func [row] [
         gw/auth-pair "display_name" block-at row 2 gw/auth-pair "role" block-at row 3
         none
 ]
-gw/auth-get-messages: func [request] [
-    token: gw/auth-cookie-token request
-    either = token none [
-        gw/auth-error request 401 "authentication required"
+gw/auth-cache: none
+gw/auth-cache-get: func [xs token] [
+    either xs [
+        rec: block-at xs 0
+        either str-eq block-at rec 0 token [ block-at rec 1 ] [ gw/auth-cache-get block-at xs 1 token ]
+    ] [ none ]
+]
+gw/auth-cache-put: func [xs token sid] [
+    either >= block-len xs 128 [
+        reduce [ reduce [ token sid ] ]
     ] [
-        sqlite/prepare gw/users-db "SELECT user_id FROM auth_sessions WHERE token = ? AND revoked_at IS NULL AND expires_at > strftime('%s','now')"
-            func [st] [
-                sqlite/bind-text st 1 token func [b] [
-                    sqlite/step st
-                        func [row] [
-                            either = row none [
-                                sqlite/finalize st
-                                    func [x] [ gw/auth-error request 401 "authentication required" ]
-                                    func [e] [ gw/auth-error request 401 "authentication required" ]
-                            ] [
-                                sqlite/finalize st
-                                    func [x] [ gw/get-messages request ]
-                                    func [e] [ gw/auth-error request 500 "lookup failed" ]
-                            ]
-                        ]
-                        func [e] [ gw/auth-error request 500 "lookup failed" ]
-                ] func [e] [ gw/auth-error request 500 "bind failed" ]
-            ] func [e] [ gw/auth-error request 500 "prepare failed" ]
+        reduce [ reduce [ token sid ] xs ]
     ]
 ]
-gw/auth-post-message: func [request] [
-    token: gw/auth-cookie-token request
-    either = token none [
-        gw/auth-error request 401 "authentication required"
+gw/auth-fail: func [request action] [
+    either = action 3 [
+        gw/auth-ok request 200 json/encode json/object gw/auth-pair "user" json/null gw/auth-pair "csrf" json/null none
     ] [
-        sqlite/prepare gw/users-db "SELECT u.id,u.username FROM auth_sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.revoked_at IS NULL AND s.expires_at > strftime('%s','now') AND u.status = 'active'"
-            func [st] [
-                sqlite/bind-text st 1 token func [b] [
-                    sqlite/step st
-                        func [row] [
-                            either = row none [
+        either = action 4 [
+            gw/auth-cookie-clear request 200 json/encode json/object gw/auth-pair "ok" json/true none
+        ] [
+            gw/auth-error request 401 "authentication required"
+        ]
+    ]
+]
+gw/auth-session-respond: func [request urow] [
+    user-obj: gw/auth-user-value urow
+    gw/auth-ok request 200 json/encode json/object gw/auth-pair "user" user-obj gw/auth-pair "csrf" block-at urow 5 none
+]
+gw/auth-require-csrf: func [request urow] [
+    given: http/header request "X-CSRF-Token"
+    either = given none [
+        gw/auth-error request 403 "csrf token required"
+    ] [
+        either sec/pending [
+            gw/auth-error request 503 "authentication busy"
+        ] [
+            sec/ct-eq given block-at urow 5 func [eq] [
+                either = eq 0 [
+                    gw/auth-error request 403 "invalid csrf token"
+                ] [
+                    gw/post-message request block-at urow 1 block-at urow 0
+                ]
+            ] func [e] [ gw/auth-error request 500 "csrf check failed" ]
+        ]
+    ]
+]
+gw/auth-logout-session: func [request urow] [
+    given: http/header request "X-CSRF-Token"
+    either = given none [
+        gw/auth-error request 403 "csrf token required"
+    ] [
+        either sec/pending [
+            gw/auth-error request 503 "authentication busy"
+        ] [
+            sec/ct-eq given block-at urow 5 func [eq] [
+                either = eq 0 [
+                    gw/auth-error request 403 "invalid csrf token"
+                ] [
+                    sqlite/prepare gw/users-db "UPDATE auth_sessions_v2 SET revoked_at = strftime('%s','now') WHERE id = ? AND revoked_at IS NULL"
+                        func [st] [
+                            sqlite/bind-int st 1 block-at urow 6 func [b] [
+                                sqlite/step st
+                                    func [row] [
+                                        sqlite/finalize st
+                                            func [x] [ gw/auth-cookie-clear request 200 json/encode json/object gw/auth-pair "ok" json/true none ]
+                                            func [e] [ gw/auth-error request 500 "logout failed" ]
+                                    ]
+                                    func [e] [ gw/auth-error request 500 "logout failed" ]
+                            ] func [e] [ gw/auth-error request 500 "bind failed" ]
+                        ] func [e] [ gw/auth-error request 500 "prepare failed" ]
+                ]
+            ] func [e] [ gw/auth-error request 500 "csrf check failed" ]
+        ]
+    ]
+]
+gw/auth-after-check: func [request action urow] [
+    either = urow none [
+        gw/auth-fail request action
+    ] [
+        either = action 1 [
+            gw/get-messages request
+        ] [
+            either = action 2 [
+                gw/auth-require-csrf request urow
+            ] [
+                either = action 3 [
+                    gw/auth-session-respond request urow
+                ] [
+                    either = action 4 [
+                        gw/auth-logout-session request urow
+                    ] [ gw/auth-fail request action ]
+                ]
+            ]
+        ]
+    ]
+]
+gw/auth-check-sid: func [request action sid] [
+    sqlite/prepare gw/users-db "SELECT u.id,u.username,u.display_name,u.role,u.status,s.csrf_token,s.id FROM auth_sessions_v2 s JOIN users u ON u.id = s.user_id WHERE s.id = ? AND s.revoked_at IS NULL AND s.expires_at > strftime('%s','now') AND u.status = 'active'"
+        func [st] [
+            sqlite/bind-int st 1 sid func [b] [
+                sqlite/step st
+                    func [row] [
+                        either = row none [
+                            sqlite/finalize st
+                                func [x] [ gw/auth-fail request action ]
+                                func [e] [ gw/auth-fail request action ]
+                        ] [
+                            either = action 1 [
                                 sqlite/finalize st
-                                    func [x] [ gw/auth-error request 401 "authentication required" ]
-                                    func [e] [ gw/auth-error request 401 "authentication required" ]
+                                    func [x] [ gw/get-messages request ]
+                                    func [e] [ gw/auth-error request 500 "session lookup failed" ]
                             ] [
-                                uid: block-at row 0
-                                author: block-at row 1
+                                ucopy: reduce [ block-at row 0 block-at row 1 block-at row 2 block-at row 3 block-at row 4 block-at row 5 block-at row 6 ]
                                 sqlite/finalize st
-                                    func [x] [ gw/post-message request author uid ]
-                                    func [e] [ gw/auth-error request 500 "lookup failed" ]
+                                    func [x] [
+                                        either = action 2 [ gw/auth-require-csrf request ucopy ] [
+                                            gw/auth-after-check request action ucopy
+                                        ]
+                                    ]
+                                    func [e] [ gw/auth-error request 500 "session lookup failed" ]
                             ]
                         ]
-                        func [e] [ gw/auth-error request 500 "lookup failed" ]
-                ] func [e] [ gw/auth-error request 500 "bind failed" ]
-            ] func [e] [ gw/auth-error request 500 "prepare failed" ]
+                    ]
+                    func [e] [ gw/auth-error request 500 "session lookup failed" ]
+            ] func [e] [ gw/auth-error request 500 "bind failed" ]
+        ] func [e] [ gw/auth-error request 500 "prepare failed" ]
+]
+gw/auth-check-token: func [request action token] [
+    either sec/pending [
+        gw/auth-error request 503 "authentication busy"
+    ] [
+        sec/sha256 token func [bytes] [
+            th: gw/auth-hex bytes
+            sqlite/prepare gw/users-db "SELECT u.id,u.username,u.display_name,u.role,u.status,s.csrf_token,s.id FROM auth_sessions_v2 s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > strftime('%s','now') AND u.status = 'active'"
+                func [st] [
+                    sqlite/bind-text st 1 th func [b] [
+                        sqlite/step st
+                            func [row] [
+                                either = row none [
+                                    sqlite/finalize st
+                                        func [x] [ gw/auth-fail request action ]
+                                        func [e] [ gw/auth-fail request action ]
+                                ] [
+                                    sid: block-at row 6
+                                    gw/auth-cache: gw/auth-cache-put gw/auth-cache token sid
+                                    either = action 1 [
+                                        sqlite/finalize st
+                                            func [x] [ gw/get-messages request ]
+                                            func [e] [ gw/auth-error request 500 "session lookup failed" ]
+                                    ] [
+                                        ucopy: reduce [ block-at row 0 block-at row 1 block-at row 2 block-at row 3 block-at row 4 block-at row 5 block-at row 6 ]
+                                        sqlite/finalize st
+                                            func [x] [
+                                                either = action 2 [ gw/auth-require-csrf request ucopy ] [
+                                                    gw/auth-after-check request action ucopy
+                                                ]
+                                            ]
+                                            func [e] [ gw/auth-error request 500 "session lookup failed" ]
+                                    ]
+                                ]
+                            ]
+                            func [e] [ gw/auth-error request 500 "session lookup failed" ]
+                    ] func [e] [ gw/auth-error request 500 "bind failed" ]
+                ] func [e] [ gw/auth-error request 500 "prepare failed" ]
+        ] func [e] [ gw/auth-error request 500 "token hash failed" ]
+    ]
+]
+gw/auth-check: func [request action] [
+    token: gw/auth-cookie-token request
+    either = token none [
+        gw/auth-fail request action
+    ] [
+        sid: gw/auth-cache-get gw/auth-cache token
+        either = sid none [
+            gw/auth-check-token request action token
+        ] [
+            gw/auth-check-sid request action sid
+        ]
     ]
 ]
 
 gw/auth-register-start: func [request u p d] [
-    sec/random 16 func [salt-raw] [
-        salt: gw/auth-hex salt-raw
-        sec/scrypt p salt 16384 8 1 32
-            func [hash-raw] [
-                hash-hex: gw/auth-hex hash-raw
-                sqlite/prepare gw/users-db
-                    "INSERT INTO users(username,display_name,role,status,created_at) VALUES (?,?,'user','active','2026-01-01T00:00:00+00:00') RETURNING id,username,display_name,role,status,created_at"
-                    func [ins] [
-                        sqlite/bind-text ins 1 u func [b1] [
-                            sqlite/bind-text ins 2 d func [b2] [
-                                sqlite/step ins
-                                    func [row] [
-                                        either = row none [
-                                            sqlite/finalize ins func [x] [ gw/auth-error request 409 "duplicate username" ] func [e] [ gw/auth-error request 409 "duplicate username" ]
-                                        ] [
-                                            uid: block-at row 0
-                                            body: json/encode gw/auth-user-value row
-                                            sqlite/finalize ins
-                                                func [x] [
-                                                    sqlite/prepare gw/users-db "INSERT OR REPLACE INTO user_passwords(user_id,algo,salt,hash,n,r,p) VALUES (?,'scrypt',?,?,16384,8,1)"
-                                                        func [st] [
-                                                            sqlite/bind-int st 1 uid func [b3] [
-                                                                sqlite/bind-text st 2 salt func [b4] [
-                                                                    sqlite/bind-text st 3 hash-hex func [b5] [
-                                                                        sqlite/step st
-                                                                            func [r] [
-                                                                                sqlite/finalize st
-                                                                                    func [y] [ gw/auth-ok request 201 body ]
-                                                                                    func [e] [ gw/auth-error request 500 "password store failed" ]
-                                                                            ]
-                                                                            func [e] [ gw/auth-error request 500 "password store failed" ]
+    either sec/pending [
+        gw/auth-error request 503 "authentication busy"
+    ] [
+        sec/random 16 func [salt-raw] [
+            salt: gw/auth-hex salt-raw
+            sec/scrypt p salt 16384 8 1 32
+                func [hash-raw] [
+                    hash-hex: gw/auth-hex hash-raw
+                    sqlite/prepare gw/users-db
+                        "INSERT INTO users(username,display_name,role,status,created_at) VALUES (?,?,'user','active','2026-01-01T00:00:00+00:00') RETURNING id,username,display_name,role,status,created_at"
+                        func [ins] [
+                            sqlite/bind-text ins 1 u func [b1] [
+                                sqlite/bind-text ins 2 d func [b2] [
+                                    sqlite/step ins
+                                        func [row] [
+                                            either = row none [
+                                                sqlite/finalize ins func [x] [ gw/auth-error request 409 "duplicate username" ] func [e] [ gw/auth-error request 409 "duplicate username" ]
+                                            ] [
+                                                uid: block-at row 0
+                                                body: json/encode gw/auth-user-value row
+                                                sqlite/finalize ins
+                                                    func [x] [
+                                                        sqlite/prepare gw/users-db "INSERT OR REPLACE INTO user_passwords(user_id,algo,salt,hash,n,r,p) VALUES (?,'scrypt',?,?,16384,8,1)"
+                                                            func [st] [
+                                                                sqlite/bind-int st 1 uid func [b3] [
+                                                                    sqlite/bind-text st 2 salt func [b4] [
+                                                                        sqlite/bind-text st 3 hash-hex func [b5] [
+                                                                            sqlite/step st
+                                                                                func [r] [
+                                                                                    sqlite/finalize st
+                                                                                        func [y] [ gw/auth-ok request 201 body ]
+                                                                                        func [e] [ gw/auth-error request 500 "password store failed" ]
+                                                                                ]
+                                                                                func [e] [ gw/auth-error request 500 "password store failed" ]
+                                                                        ] func [e] [ gw/auth-error request 500 "bind failed" ]
                                                                     ] func [e] [ gw/auth-error request 500 "bind failed" ]
                                                                 ] func [e] [ gw/auth-error request 500 "bind failed" ]
-                                                            ] func [e] [ gw/auth-error request 500 "bind failed" ]
-                                                        ] func [e] [ gw/auth-error request 500 "prepare failed" ]
-                                                ]
-                                                func [e] [ gw/auth-error request 500 "finalize failed" ]
+                                                            ] func [e] [ gw/auth-error request 500 "prepare failed" ]
+                                                    ]
+                                                    func [e] [ gw/auth-error request 500 "finalize failed" ]
+                                            ]
                                         ]
-                                    ]
-                                    func [e] [ gw/auth-error request 409 "duplicate username" ]
+                                        func [e] [ gw/auth-error request 409 "duplicate username" ]
+                                ] func [e] [ gw/auth-error request 500 "bind failed" ]
                             ] func [e] [ gw/auth-error request 500 "bind failed" ]
-                        ] func [e] [ gw/auth-error request 500 "bind failed" ]
-                    ] func [e] [ gw/auth-error request 500 "prepare failed" ]
-            ] func [e] [ gw/auth-error request 500 "password hashing failed" ]
-    ] func [e] [ gw/auth-error request 500 "random failed" ]
+                        ] func [e] [ gw/auth-error request 500 "prepare failed" ]
+                ] func [e] [ gw/auth-error request 500 "password hashing failed" ]
+        ] func [e] [ gw/auth-error request 500 "random failed" ]
+    ]
 ]
-
-gw/auth-register: func [request] [
-    either gw/auth-loopback? http/peer request [
-        body: http/body request
-        body: either = 0 s/length body [ "{}" ] [ body ]
-        result: judge [
-            obj: json/decode body
-            either json/object? obj [
-                username: json/object-get obj "username"
-                password: json/object-get obj "password"
-                display: json/object-get obj "display_name"
-                either json/string? username [
-                    either json/string? password [
-                        either gw/auth-blank? username 0 [
-                            raise create-sin 'app 400 "username required"
+gw/auth-invite-consume: func [request u p d code-hash] [
+    sqlite/prepare gw/users-db "UPDATE auth_invites SET used_at = strftime('%s','now') WHERE code_hash = ? AND used_at IS NULL AND expires_at > strftime('%s','now') RETURNING id"
+        func [st] [
+            sqlite/bind-text st 1 code-hash func [b] [
+                sqlite/step st
+                    func [row] [
+                        either = row none [
+                            sqlite/finalize st
+                                func [x] [ gw/auth-error request 403 "invalid or used invitation" ]
+                                func [e] [ gw/auth-error request 403 "invalid or used invitation" ]
                         ] [
-                            either < s/length username 3 [
-                                raise create-sin 'app 400 "username too short"
+                            sqlite/finalize st
+                                func [x] [ gw/auth-register-start request u p d ]
+                                func [e] [ gw/auth-error request 500 "invitation finalize failed" ]
+                        ]
+                    ]
+                    func [e] [ gw/auth-error request 500 "invitation lookup failed" ]
+            ] func [e] [ gw/auth-error request 500 "bind failed" ]
+        ] func [e] [ gw/auth-error request 500 "prepare failed" ]
+]
+gw/auth-invite-start: func [request u p d code] [
+    either sec/pending [
+        gw/auth-error request 503 "authentication busy"
+    ] [
+        sec/sha256 code func [bytes] [
+            ch: gw/auth-hex bytes
+            gw/auth-invite-consume request u p d ch
+        ] func [e] [ gw/auth-error request 500 "invite hash failed" ]
+    ]
+]
+gw/auth-register: func [request] [
+    body: http/body request
+    body: either = 0 s/length body [ "{}" ] [ body ]
+    result: judge [
+        obj: json/decode body
+        either json/object? obj [
+            username: json/object-get obj "username"
+            password: json/object-get obj "password"
+            display: json/object-get obj "display_name"
+            invite: json/object-get obj "invite"
+            either json/string? username [
+                either json/string? password [
+                    either gw/auth-blank? username 0 [
+                        raise create-sin 'app 400 "username required"
+                    ] [
+                        either < s/length username 3 [
+                            raise create-sin 'app 400 "username too short"
+                        ] [
+                            either > s/length username 64 [
+                                raise create-sin 'app 400 "username too long"
                             ] [
-                                either > s/length username 64 [
-                                    raise create-sin 'app 400 "username too long"
+                                either < s/length password 8 [
+                                    raise create-sin 'app 400 "password too short"
                                 ] [
-                                    either < s/length password 8 [
-                                        raise create-sin 'app 400 "password too short"
+                                    either > s/length password 1024 [
+                                        raise create-sin 'app 400 "password too long"
                                     ] [
-                                        either > s/length password 1024 [
-                                            raise create-sin 'app 400 "password too long"
-                                        ] [
-                                            reduce [ username password either json/string? display [ display ] [ username ] ]
-                                        ]
+                                        either either = invite none [ 1 ] [ json/string? invite ] [
+                                            invite: either = invite none [
+                                                none
+                                            ] [
+                                                either = 0 s/length invite [ none ] [ invite ]
+                                            ]
+                                            reduce [ username password either json/string? display [ display ] [ username ] invite ]
+                                        ] [ raise create-sin 'app 400 "invalid invitation" ]
                                     ]
                                 ]
                             ]
                         ]
-                    ] [ raise create-sin 'app 400 "password required" ]
-                ] [ raise create-sin 'app 400 "username required" ]
-            ] [ raise create-sin 'app 400 "invalid json" ]
-        ]
-        either sin? result [
-            gw/auth-error request 400 sin-arg result
+                    ]
+                ] [ raise create-sin 'app 400 "password required" ]
+            ] [ raise create-sin 'app 400 "username required" ]
+        ] [ raise create-sin 'app 400 "invalid json" ]
+    ]
+    either sin? result [
+        gw/auth-error request 400 sin-arg result
+    ] [
+        u: block-at result 0
+        p: block-at result 1
+        d: block-at result 2
+        invite: block-at result 3
+        either = invite none [
+            either gw/auth-local-bootstrap? request [
+                gw/auth-register-start request u p d
+            ] [ gw/auth-error request 403 "invitation required" ]
         ] [
-            gw/auth-register-start request block-at result 0 block-at result 1 block-at result 2
+            either either < s/length invite 8 [ 1 ] [ > s/length invite 128 ] [
+                gw/auth-error request 400 "invalid invitation"
+            ] [
+                gw/auth-invite-start request u p d invite
+            ]
         ]
-    ] [ gw/auth-error request 403 "registration requires loopback" ]
+    ]
 ]
 
-gw/auth-dummy-deny: func [request password] [
+gw/auth-dummy-deny: func [request username password] [
     sec/scrypt password "dummy-salt" 16384 8 1 32
-        func [h] [ gw/auth-error request 401 "invalid credentials" ]
-        func [e] [ gw/auth-error request 401 "invalid credentials" ]
+        func [h] [ gw/auth-rate-fail request username ]
+        func [e] [ gw/auth-rate-fail request username ]
 ]
-gw/auth-login-respond: func [request urow token] [
-    body: json/encode json/object gw/auth-pair "user" gw/auth-user-value urow none
+gw/auth-login-respond: func [request urow token csrf] [
+    body: json/encode json/object gw/auth-pair "user" gw/auth-user-value urow gw/auth-pair "csrf" csrf none
     cookie: s/+ "gw_session=" s/+ token "; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=3600"
     http/respond-with request 200 "application/json; charset=utf-8" reduce [ "Set-Cookie" cookie ] body
 ]
-gw/auth-login-success: func [request urow] [
-    sec/random 32 func [token-raw] [
-        token: gw/auth-hex token-raw
-        sqlite/prepare gw/users-db "INSERT INTO auth_sessions(user_id,token,created_at,expires_at,revoked_at) VALUES (?,?,strftime('%s','now'),strftime('%s','now') + 3600,NULL)"
-            func [st] [
-                sqlite/bind-int st 1 block-at urow 0 func [b1] [
-                    sqlite/bind-text st 2 token func [b2] [
+gw/auth-login-session: func [request urow token csrf th] [
+    sqlite/prepare gw/users-db "INSERT INTO auth_sessions_v2(user_id,token_hash,csrf_token,created_at,expires_at,revoked_at) VALUES (?,?,?,strftime('%s','now'),strftime('%s','now') + 3600,NULL) RETURNING id"
+        func [st] [
+            sqlite/bind-int st 1 block-at urow 0 func [b1] [
+                sqlite/bind-text st 2 th func [b2] [
+                    sqlite/bind-text st 3 csrf func [b3] [
                         sqlite/step st
                             func [row] [
-                                sqlite/finalize st
-                                    func [x] [ gw/auth-login-respond request urow token ]
-                                    func [e] [ gw/auth-error request 500 "session store failed" ]
+                                either = row none [
+                                    sqlite/finalize st
+                                        func [x] [ gw/auth-error request 500 "session store failed" ]
+                                        func [e] [ gw/auth-error request 500 "session store failed" ]
+                                ] [
+                                    sid: block-at row 0
+                                    gw/auth-cache: gw/auth-cache-put gw/auth-cache token sid
+                                    sqlite/finalize st
+                                        func [x] [ gw/auth-login-respond request urow token csrf ]
+                                        func [e] [ gw/auth-error request 500 "session finalize failed" ]
+                                ]
                             ]
                             func [e] [ gw/auth-error request 500 "session store failed" ]
                     ] func [e] [ gw/auth-error request 500 "bind failed" ]
                 ] func [e] [ gw/auth-error request 500 "bind failed" ]
-            ] func [e] [ gw/auth-error request 500 "prepare failed" ]
-    ] func [e] [ gw/auth-error request 500 "random failed" ]
+            ] func [e] [ gw/auth-error request 500 "bind failed" ]
+        ] func [e] [ gw/auth-error request 500 "prepare failed" ]
+]
+gw/auth-login-success: func [request urow] [
+    either sec/pending [
+        gw/auth-error request 503 "authentication busy"
+    ] [
+        sec/random 48 func [bytes] [
+            token-raw: s/slice bytes 0 32
+            csrf-raw: s/slice bytes 32 16
+            token: gw/auth-hex token-raw
+            csrf: gw/auth-hex csrf-raw
+            sec/sha256 token func [th-raw] [
+                th: gw/auth-hex th-raw
+                gw/auth-login-session request urow token csrf th
+            ] func [e] [ gw/auth-error request 500 "token hash failed" ]
+        ] func [e] [ gw/auth-error request 500 "random failed" ]
+    ]
+]
+gw/auth-rate-key2: func [username] [ s/+ "u:" username ]
+gw/auth-rate-clear: func [request urow] [
+    key1: gw/auth-client-key request
+    key2: gw/auth-rate-key2 block-at urow 1
+    sqlite/prepare gw/users-db "DELETE FROM auth_rate WHERE key IN (?,?)"
+        func [st] [
+            sqlite/bind-text st 1 key1 func [b1] [
+                sqlite/bind-text st 2 key2 func [b2] [
+                    sqlite/step st
+                        func [row] [
+                            sqlite/finalize st
+                                func [x] [ gw/auth-login-success request urow ]
+                                func [e] [ gw/auth-login-success request urow ]
+                        ]
+                        func [e] [ gw/auth-login-success request urow ]
+                ] func [e] [ gw/auth-login-success request urow ]
+            ] func [e] [ gw/auth-login-success request urow ]
+        ] func [e] [ gw/auth-login-success request urow ]
 ]
 gw/auth-login-password-row: func [request username password urow prow] [
     either = prow none [
-        gw/auth-fails: + gw/auth-fails 1
-        gw/auth-dummy-deny request password
+        gw/auth-dummy-deny request username password
     ] [
         salt: block-at prow 1
         stored: block-at prow 2
@@ -482,25 +717,21 @@ gw/auth-login-password-row: func [request username password urow prow] [
                     hash-hex: gw/auth-hex hash-raw
                     sec/ct-eq hash-hex stored func [eq] [
                         either = eq 0 [
-                            gw/auth-fails: + gw/auth-fails 1
-                            gw/auth-error request 401 "invalid credentials"
+                            gw/auth-rate-fail request username
                         ] [
-                            gw/auth-fails: 0
-                            gw/auth-login-success request urow
+                            gw/auth-rate-clear request urow
                         ]
                     ] func [e] [ gw/auth-error request 500 "compare failed" ]
                 ] func [e] [ gw/auth-error request 500 "password hashing failed" ]
-        ] [ gw/auth-error request 401 "invalid credentials" ]
+        ] [ gw/auth-rate-fail request username ]
     ]
 ]
 gw/auth-login-user-row: func [request username password urow] [
     either = urow none [
-        gw/auth-fails: + gw/auth-fails 1
-        gw/auth-dummy-deny request password
+        gw/auth-dummy-deny request username password
     ] [
         either = block-at urow 4 "disabled" [
-            gw/auth-fails: + gw/auth-fails 1
-            gw/auth-dummy-deny request password
+            gw/auth-dummy-deny request username password
         ] [
             sqlite/prepare gw/users-db "SELECT algo,salt,hash,n,r,p FROM user_passwords WHERE user_id = ?"
                 func [st] [
@@ -525,8 +756,8 @@ gw/auth-login-user-row: func [request username password urow] [
     ]
 ]
 gw/auth-login-user: func [request username password] [
-    either >= gw/auth-fails 5 [
-        gw/auth-error request 429 "too many attempts"
+    either sec/pending [
+        gw/auth-error request 503 "authentication busy"
     ] [
         sqlite/prepare gw/users-db "SELECT id,username,display_name,role,status FROM users WHERE username = ?"
             func [st] [
@@ -549,6 +780,61 @@ gw/auth-login-user: func [request username password] [
             ] func [e] [ gw/auth-error request 500 "prepare failed" ]
     ]
 ]
+gw/auth-rate-check: func [request username password] [
+    key1: gw/auth-client-key request
+    key2: gw/auth-rate-key2 username
+    sqlite/prepare gw/users-db "SELECT failures FROM auth_rate WHERE key IN (?,?) AND expires_at > strftime('%s','now') AND failures >= 5 LIMIT 1"
+        func [st] [
+            sqlite/bind-text st 1 key1 func [b1] [
+                sqlite/bind-text st 2 key2 func [b2] [
+                    sqlite/step st
+                        func [row] [
+                            sqlite/finalize st
+                                func [x] [
+                                    either = row none [
+                                        gw/auth-login-user request username password
+                                    ] [ gw/auth-error request 429 "too many attempts" ]
+                                ]
+                                func [e] [ gw/auth-error request 500 "rate lookup failed" ]
+                        ]
+                        func [e] [ gw/auth-error request 500 "rate lookup failed" ]
+                ] func [e] [ gw/auth-error request 500 "bind failed" ]
+            ] func [e] [ gw/auth-error request 500 "bind failed" ]
+        ] func [e] [ gw/auth-error request 500 "prepare failed" ]
+]
+gw/auth-rate-fail: func [request username] [
+    key1: gw/auth-client-key request
+    key2: gw/auth-rate-key2 username
+    sqlite/prepare gw/users-db "DELETE FROM auth_rate WHERE key IN (?,?) AND expires_at <= strftime('%s','now')"
+        func [del] [
+            sqlite/bind-text del 1 key1 func [d1] [
+                sqlite/bind-text del 2 key2 func [d2] [
+                    sqlite/step del
+                        func [r1] [
+                            sqlite/finalize del
+                                func [x] [
+                                    sqlite/prepare gw/users-db "INSERT INTO auth_rate(key,failures,expires_at) VALUES (?,1,strftime('%s','now') + 300),(?,1,strftime('%s','now') + 300) ON CONFLICT(key) DO UPDATE SET failures = auth_rate.failures + 1, expires_at = strftime('%s','now') + 300"
+                                        func [ins] [
+                                            sqlite/bind-text ins 1 key1 func [i1] [
+                                                sqlite/bind-text ins 2 key2 func [i2] [
+                                                    sqlite/step ins
+                                                        func [r2] [
+                                                            sqlite/finalize ins
+                                                                func [y] [ gw/auth-error request 401 "invalid credentials" ]
+                                                                func [e] [ gw/auth-error request 401 "invalid credentials" ]
+                                                        ]
+                                                        func [e] [ gw/auth-error request 401 "invalid credentials" ]
+                                                ] func [e] [ gw/auth-error request 401 "invalid credentials" ]
+                                            ] func [e] [ gw/auth-error request 401 "invalid credentials" ]
+                                        ] func [e] [ gw/auth-error request 401 "invalid credentials" ]
+                                ]
+                                func [e] [ gw/auth-error request 401 "invalid credentials" ]
+                        ]
+                        func [e] [ gw/auth-error request 401 "invalid credentials" ]
+                ] func [e] [ gw/auth-error request 401 "invalid credentials" ]
+            ] func [e] [ gw/auth-error request 401 "invalid credentials" ]
+        ] func [e] [ gw/auth-error request 401 "invalid credentials" ]
+]
 gw/auth-login: func [request] [
     body: http/body request
     body: either = 0 s/length body [ "{}" ] [ body ]
@@ -567,56 +853,15 @@ gw/auth-login: func [request] [
     either sin? result [
         gw/auth-error request 400 sin-arg result
     ] [
-        gw/auth-login-user request block-at result 0 block-at result 1
+        gw/auth-rate-check request block-at result 0 block-at result 1
     ]
 ]
 gw/auth-session: func [request] [
-    token: gw/auth-cookie-token request
-    either = token none [
-        gw/auth-ok request 200 json/encode json/object gw/auth-pair "user" json/null none
-    ] [
-        sqlite/prepare gw/users-db "SELECT u.id,u.username,u.display_name,u.role,u.status FROM auth_sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.revoked_at IS NULL AND s.expires_at > strftime('%s','now') AND u.status = 'active'"
-            func [st] [
-                sqlite/bind-text st 1 token func [b] [
-                    sqlite/step st
-                        func [row] [
-                            either = row none [
-                                sqlite/finalize st
-                                    func [x] [ gw/auth-ok request 200 json/encode json/object gw/auth-pair "user" json/null none ]
-                                    func [e] [ gw/auth-ok request 200 json/encode json/object gw/auth-pair "user" json/null none ]
-                            ] [
-                                uobj: gw/auth-user-value row
-                                sqlite/finalize st
-                                    func [x] [ gw/auth-ok request 200 json/encode json/object gw/auth-pair "user" uobj none ]
-                                    func [e] [ gw/auth-error request 500 "lookup failed" ]
-                            ]
-                        ]
-                        func [e] [ gw/auth-error request 500 "lookup failed" ]
-                ] func [e] [ gw/auth-error request 500 "bind failed" ]
-            ] func [e] [ gw/auth-error request 500 "prepare failed" ]
-    ]
+    gw/auth-check request 3
 ]
-
 gw/auth-logout: func [request] [
-    token: gw/auth-cookie-token request
-    either = token none [
-        gw/auth-cookie-clear request 200 json/encode json/object gw/auth-pair "ok" json/true none
-    ] [
-        sqlite/prepare gw/users-db "UPDATE auth_sessions SET revoked_at = strftime('%s','now') WHERE token = ? AND revoked_at IS NULL"
-            func [st] [
-                sqlite/bind-text st 1 token func [b] [
-                    sqlite/step st
-                        func [row] [
-                            sqlite/finalize st
-                                func [x] [ gw/auth-cookie-clear request 200 json/encode json/object gw/auth-pair "ok" json/true none ]
-                                func [e] [ gw/auth-cookie-clear request 200 json/encode json/object gw/auth-pair "ok" json/true none ]
-                        ]
-                        func [e] [ gw/auth-cookie-clear request 200 json/encode json/object gw/auth-pair "ok" json/true none ]
-                ] func [e] [ gw/auth-cookie-clear request 200 json/encode json/object gw/auth-pair "ok" json/true none ]
-            ] func [e] [ gw/auth-cookie-clear request 200 json/encode json/object gw/auth-pair "ok" json/true none ]
-    ]
+    gw/auth-check request 4
 ]
-
 gw/get-messages: none
 gw/post-message: none
 gw/users-db: none
@@ -908,7 +1153,7 @@ app/install: func [] [
                 ]
 
                 gw/users-handle: func [request] [
-                    either loopback? http/peer request [
+                    either either loopback? http/peer request [ = http/header request "X-Forwarded-For" none ] [ 0 ] [
                         method: http/method request
                         path: http/path request
                         either str-eq path "/api/users" [
@@ -928,7 +1173,7 @@ app/install: func [] [
                                 ]
                             ] [ gw/error request 404 "not found" ]
                         ]
-                    ] [ gw/error request 403 "admin access requires loopback" ]
+                    ] [ gw/error request 403 "admin access requires direct loopback" ]
                 ]
 
                 gw/start: func [] [
@@ -951,9 +1196,17 @@ app/install: func [] [
                                         "CREATE TABLE IF NOT EXISTS user_passwords(user_id INTEGER PRIMARY KEY, algo TEXT NOT NULL, salt TEXT NOT NULL, hash TEXT NOT NULL, n INTEGER NOT NULL, r INTEGER NOT NULL, p INTEGER NOT NULL)"
                                         func [y] [
                                             sqlite/exec db
-                                                "CREATE TABLE IF NOT EXISTS auth_sessions(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, token TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER)"
-                                                func [z] [ http/listen gw/port :handle ]
-                                                func [e] [ raise e ]
+                                                "CREATE TABLE IF NOT EXISTS auth_sessions_v2(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, token_hash TEXT NOT NULL UNIQUE, csrf_token TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER)"
+                                                func [z] [
+                                                    sqlite/exec db
+                                                        "CREATE TABLE IF NOT EXISTS auth_invites(id INTEGER PRIMARY KEY AUTOINCREMENT, code_hash TEXT NOT NULL UNIQUE, label TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, used_by INTEGER)"
+                                                        func [w] [
+                                                            sqlite/exec db
+                                                                "CREATE TABLE IF NOT EXISTS auth_rate(key TEXT PRIMARY KEY, failures INTEGER NOT NULL, expires_at INTEGER NOT NULL)"
+                                                                func [v] [ http/listen gw/port :handle ]
+                                                                func [e] [ raise e ]
+                                                        ] func [e] [ raise e ]
+                                                ] func [e] [ raise e ]
                                         ] func [e] [ raise e ]
                                 ]
                                 func [e] [ raise e ]
@@ -985,7 +1238,7 @@ app/install: func [] [
                                         either str-eq method "GET" [ gw/auth-session request ] [ gw/error request 405 "method not allowed" ]
                                     ] [
                                         either str-eq path "/api/auth/logout" [
-                                            either str-eq method "POST" [ gw/auth-logout request ] [ gw/error request 405 "method not allowed" ]
+                                            either str-eq method "POST" [ gw/auth-check request 4 ] [ gw/error request 405 "method not allowed" ]
                                         ] [
                                             either str-eq path "/api/groups" [
                                                 either str-eq method "GET" [ gw/ok-json request 200 gw/groups-response ] [ gw/error request 405 "method not allowed" ]
@@ -995,10 +1248,10 @@ app/install: func [] [
                                                 ] [
                                                     either str-eq path "/api/messages" [
                                                         either str-eq method "GET" [
-                                                            gw/auth-get-messages request
+                                                            gw/auth-check request 1
                                                         ] [
                                                             either str-eq method "POST" [
-                                                                gw/auth-post-message request
+                                                                gw/auth-check request 2
                                                             ] [ gw/error request 405 "method not allowed" ]
                                                         ]
                                                     ] [ gw/error request 404 "not found" ]

@@ -28,6 +28,7 @@ CERT = ROOT / "tests" / "https-g1" / ".cert" / "server.pem"
 APP = ROOT / "examples" / "glon-worlds-g3b" / "server.glon"
 LIBS = [str(ROOT / "modules" / "web.glon"), str(ROOT / "modules" / "json.glon")]
 COOKIE = None
+CSRF = None
 
 
 def fail(msg):
@@ -99,6 +100,8 @@ def req(method, path, body=None):
         headers = {"Content-Type": "application/json"} if body else {}
         if COOKIE:
             headers["Cookie"] = COOKIE
+        if CSRF:
+            headers["X-CSRF-Token"] = CSRF
         c.request(method, path, body=body, headers=headers)
         r = c.getresponse()
         sc = r.getheader("Set-Cookie")
@@ -112,6 +115,7 @@ def req(method, path, body=None):
 
 
 def auth_setup():
+    global CSRF
     st, body = req("POST", "/api/auth/register",
                    json.dumps({"username": "w0user", "password": "password123"}))
     if st != 201:
@@ -120,6 +124,9 @@ def auth_setup():
                    json.dumps({"username": "w0user", "password": "password123"}))
     if st != 200 or not COOKIE:
         fail(f"login w0user: {st} {body[:120]}")
+    CSRF = json.loads(body).get("csrf")
+    if not CSRF:
+        fail("login returned no csrf token")
 
 
 def main():

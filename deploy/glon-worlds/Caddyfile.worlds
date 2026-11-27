@@ -1,0 +1,15 @@
+# Staged Caddy configuration for the Glon Worlds pilot.
+# Do not apply until explicitly approved. Caddy continues to own the public
+# certificate for worlds.tungjung.nz; this only changes the upstream.
+worlds.tungjung.nz {
+	# Never expose the legacy admin registry through the public proxy. The
+	# Glon app also rejects /api/users* whenever X-Forwarded-For is present.
+	@admin path /api/users*
+	respond @admin 404
+
+	reverse_proxy https://127.0.0.1:8443 {
+		transport http {
+			tls_insecure_skip_verify
+		}
+	}
+}

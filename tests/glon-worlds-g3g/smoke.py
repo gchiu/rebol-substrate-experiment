@@ -13,6 +13,7 @@ Local-only.  Requires a build with MODULES=file,http (make glon MODULES=file,htt
 """
 
 import http.client
+import json
 import os
 import pathlib
 import signal
@@ -28,6 +29,7 @@ HOST, PORT = "127.0.0.1", 8443
 CERT = ROOT / "tests" / "https-g1" / ".cert" / "server.pem"
 APP = ROOT / "examples" / "glon-worlds-g3b" / "server.glon"
 COOKIE = None
+CSRF = None
 LIBS = [str(ROOT / "glon-lib" / "strings-ext.glon"),
         str(ROOT / "modules" / "web.glon"),
         str(ROOT / "modules" / "json.glon")]
@@ -88,6 +90,8 @@ def req(method, path, body=None):
         headers = {"Content-Type": "application/json"} if body else {}
         if COOKIE:
             headers["Cookie"] = COOKIE
+        if CSRF:
+            headers["X-CSRF-Token"] = CSRF
         c.request(method, path, body=body, headers=headers)
         r = c.getresponse()
         sc = r.getheader("Set-Cookie")
@@ -101,6 +105,7 @@ def req(method, path, body=None):
 
 
 def auth_setup():
+    global CSRF
     s, b = req("POST", "/api/auth/register",
                '{"username":"g3guser","password":"password123"}')
     if s != 201:
@@ -109,6 +114,9 @@ def auth_setup():
                '{"username":"g3guser","password":"password123"}')
     if s != 200 or not COOKIE:
         fail(f"login g3guser: {s} {b[:80]}")
+    CSRF = json.loads(b).get("csrf")
+    if not CSRF:
+        fail("login returned no csrf token")
 
 
 def all_log_text(log_dir):
