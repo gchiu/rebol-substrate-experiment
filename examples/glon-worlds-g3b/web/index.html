@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glon Worlds</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.45 system-ui, sans-serif; background: #10161d; color: #e8eef5; }
+  header { padding: 1rem; background: #172331; border-bottom: 1px solid #2b3d50; display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 1.35rem; }
+  #group { padding: .15rem .55rem; border-radius: 999px; background: #27445d; color: #cfe6ff; }
+  main { max-width: 55rem; margin: 0 auto; padding: 1rem; }
+  #status { max-width: 55rem; margin: 1rem auto 0; padding: .6rem .9rem; border-radius: .5rem; background: #1b2a38; color: #b9cce0; }
+  #status[data-kind="error"] { background: #4a2024; color: #ffd6da; }
+  #status[data-kind="success"] { background: #1d3a2a; color: #c9f6d5; }
+  #messages { display: flex; flex-direction: column; gap: .65rem; min-height: 5rem; }
+  article { background: #182635; border: 1px solid #2b3d50; border-radius: .6rem; padding: .7rem .85rem; }
+  article header { all: unset; display: flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; color: #9bb4cc; font-size: .85rem; }
+  article .author { color: #8fd3ff; font-weight: 600; }
+  article .text { margin-top: .35rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .empty { color: #9bb4cc; font-style: italic; }
+  .bar { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin: 1rem auto; max-width: 55rem; }
+  button, textarea { font: inherit; }
+  button { cursor: pointer; border: 1px solid #3a6488; background: #24415a; color: #e8eef5; border-radius: .45rem; padding: .55rem .8rem; }
+  button:disabled { opacity: .55; cursor: default; }
+  #older { background: #1c2c3b; }
+  form { display: grid; gap: .55rem; grid-template-columns: 1fr auto; max-width: 55rem; margin: 0 auto 1rem; padding: 0 1rem; }
+  textarea { min-height: 3.2rem; resize: vertical; padding: .6rem .7rem; border-radius: .5rem; border: 1px solid #3a6488; background: #0d151d; color: #e8eef5; }
+  button[type="submit"] { align-self: end; }
+  @media (max-width: 34rem) { form { grid-template-columns: 1fr; } button[type="submit"] { width: 100%; } }
+</style>
+</head>
+<body>
+<header><h1>Glon Worlds</h1><span id="group">general</span></header>
+<div id="status" aria-live="polite">Loading messages…</div>
+<main>
+  <div class="bar">
+    <button id="older" type="button" disabled>Load older</button>
+    <button id="refresh" type="button">Refresh</button>
+  </div>
+  <div id="messages"></div>
+</main>
+<form id="send">
+  <textarea id="text" maxlength="1024" placeholder="Write a message…" aria-label="Message"></textarea>
+  <button type="submit" id="send-button">Send</button>
+</form>
+<script>
+"use strict";
+const GROUP = "general";
+const PAGE = 9;                 /* W2 server maximum page size */
+const byId = new Map();
+let windowStart = 0;
+let busy = false;
+let autoRefresh = null;
+
+const statusEl = document.getElementById("status");
+const messagesEl = document.getElementById("messages");
+const olderEl = document.getElementById("older");
+const refreshEl = document.getElementById("refresh");
+const formEl = document.getElementById("send");
+const textEl = document.getElementById("text");
+const sendEl = document.getElementById("send-button");
+
+function status(message, kind) {
+  statusEl.textContent = message;
+  if (kind) statusEl.dataset.kind = kind; else delete statusEl.dataset.kind;
+}
+
+function sorted() {
+  return Array.from(byId.values()).sort((a, b) => a.id - b.id);
+}
+
+function addMessages(messages) {
+  let added = 0;
+  for (const m of messages) {
+    if (m && Number.isInteger(m.id) && !byId.has(m.id)) {
+      byId.set(m.id, m);
+      added++;
+    }
+  }
+  return added;
+}
+
+function render() {
+  const all = sorted();
+  const end = Math.min(all.length, windowStart + PAGE);
+  messagesEl.replaceChildren();
+  if (all.length === 0) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "No messages in this group yet.";
+    messagesEl.append(p);
+  } else {
+    for (const m of all.slice(windowStart, end)) {
+      const card = document.createElement("article");
+      const head = document.createElement("header");
+      const author = document.createElement("span");
+      author.className = "author";
+      author.textContent = String(m.author ?? "unknown");
+      const id = document.createElement("span");
+      id.textContent = "#" + String(m.id);
+      const time = document.createElement("time");
+      const when = new Date(String(m.created_at ?? ""));
+      time.textContent = Number.isNaN(when.getTime())
+        ? String(m.created_at ?? "") : when.toLocaleString();
+      head.append(author, id, time);
+      const body = document.createElement("div");
+      body.className = "text";
+      /* Message text is untrusted: assign text content only. */
+      body.textContent = String(m.text ?? "");
+      card.append(head, body);
+      messagesEl.append(card);
+    }
+  }
+  olderEl.disabled = busy || windowStart <= 0;
+  if (all.length === 0) status("No messages yet.", null);
+  else status(`${all.length} message${all.length === 1 ? "" : "s"} loaded; showing ${windowStart + 1}–${end}.`, null);
+}
+
+async function parseError(res) {
+  let detail = "";
+  try {
+    const data = await res.json();
+    detail = data && data.error ? String(data.error) : "";
+  } catch (_) { /* non-JSON error */ }
+  if (res.status === 503) {
+    throw new Error(detail || "History is busy; try again shortly.");
+  }
+  if (res.status === 400) {
+    throw new Error(detail || "The request was rejected.");
+  }
+  throw new Error(detail || `Request failed (HTTP ${res.status}).`);
+}
+
+async function fetchPage(after, limit) {
+  const url = `/api/messages?group=${encodeURIComponent(GROUP)}` +
+              `&after=${encodeURIComponent(String(after))}` +
+              `&limit=${encodeURIComponent(String(limit))}`;
+  const res = await fetch(url, { cache: "no-store", headers: { Accept: "application/json" } });
+  if (!res.ok) throw await parseError(res);
+  const data = await res.json();
+  if (!Array.isArray(data.messages)) throw new Error("Malformed message page.");
+  return data;
+}
+
+async function fetchAll(after) {
+  let cursor = after;
+  let added = 0;
+  for (let guard = 0; guard < 1000; guard++) {
+    const data = await fetchPage(cursor, PAGE);
+    added += addMessages(data.messages);
+    if (!data.has_more) return added;
+    const next = Number(data.next_after);
+    if (!Number.isInteger(next) || next <= cursor) throw new Error("Pagination did not advance.");
+    cursor = next;
+  }
+  throw new Error("Too many history pages.");
+}
+
+function setBusy(value) {
+  busy = value;
+  sendEl.disabled = value;
+  refreshEl.disabled = value;
+  olderEl.disabled = value || windowStart <= 0;
+}
+
+async function initial() {
+  if (busy) return;
+  setBusy(true);
+  status("Loading messages…");
+  try {
+    byId.clear();
+    await fetchAll(0);
+    windowStart = Math.max(0, sorted().length - PAGE);
+    render();
+  } catch (e) {
+    status(String(e.message || e), "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function refresh() {
+  if (busy) return;
+  setBusy(true);
+  status("Refreshing…");
+  try {
+    const all = sorted();
+    const newest = all.length ? all[all.length - 1].id : 0;
+    const added = await fetchAll(newest);
+    windowStart = Math.max(0, sorted().length - PAGE);
+    render();
+    if (added) status(`Loaded ${added} new message${added === 1 ? "" : "s"}.`, "success");
+    else status("Already up to date.", null);
+  } catch (e) {
+    status(String(e.message || e), "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function older() {
+  if (busy || windowStart <= 0) return;
+  windowStart = Math.max(0, windowStart - PAGE);
+  render();
+}
+
+async function send() {
+  const text = textEl.value;
+  if (text.length === 0) { status("Enter a message first.", "error"); return; }
+  if (text.length > 1024) { status("Message is longer than 1,024 bytes.", "error"); return; }
+  setBusy(true);
+  status("Sending…");
+  try {
+    const res = await fetch(`/api/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ text, group: GROUP })
+    });
+    if (!res.ok) throw await parseError(res);
+    const m = await res.json();
+    addMessages([m]);
+    windowStart = Math.max(0, sorted().length - PAGE);
+    textEl.value = "";
+    render();
+    status("Message sent.", "success");
+  } catch (e) {
+    status(String(e.message || e), "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+olderEl.addEventListener("click", older);
+refreshEl.addEventListener("click", refresh);
+formEl.addEventListener("submit", (ev) => { ev.preventDefault(); send(); });
+textEl.addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); send(); }
+});
+initial();
+autoRefresh = setInterval(refresh, 15000);
+window.addEventListener("beforeunload", () => { if (autoRefresh) clearInterval(autoRefresh); });
+</script>
+</body>
+</html>

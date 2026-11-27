@@ -214,12 +214,44 @@ gw/append-line: func [path line success failure] [
         :failure
 ]
 
+gw/read-asset-loop: func [h acc max success failure] [
+    io/read h 400
+        func [chunk] [
+            either = 0 s/length chunk [
+                io/close h func [x] [ success acc ] :failure
+            ] [
+                either > + s/length acc s/length chunk max [
+                    io/close h func [x] [ failure create-sin 'app 413 "asset too large" ] :failure
+                ] [
+                    gw/read-asset-loop h s/+ acc chunk max :success :failure
+                ]
+            ]
+        ]
+        func [e] [ io/close h func [x] [ failure e ] :failure ]
+]
+gw/read-asset: func [path max success failure] [
+    io/open path 'read
+        func [h] [ gw/read-asset-loop h "" max :success :failure ]
+        :failure
+]
+gw/serve-index: func [request path max] [
+    gw/read-asset path max
+        func [text] [
+            http/respond request 200 "text/html; charset=utf-8" text
+        ]
+        func [e] [
+            http/respond request 404 "text/plain; charset=utf-8" "browser client not found"
+        ]
+]
+
 gw/users-db: none
 handle: none
 
 app/install: func [] [
     setup-a: func [] [
         gw/path: "messages.ndjson"
+        gw/web-index: "web/index.html"
+        gw/max-asset: 65536
         gw/created: "2026-01-01T00:00:00+00:00"
         gw/group: "general"
         gw/demo-author: "Glon Demo"
@@ -548,6 +580,11 @@ app/install: func [] [
                 handle: func [request] [
                     method: http/method request
                     path: http/path request
+                    either either str-eq path "/" [ 1 ] [ str-eq path "/index.html" ] [
+                        either str-eq method "GET" [
+                            gw/serve-index request gw/web-index gw/max-asset
+                        ] [ gw/error request 405 "method not allowed" ]
+                    ] [
                     either str-eq path "/api/users" [
                         gw/users-handle request
                     ] [
@@ -568,6 +605,7 @@ app/install: func [] [
                                 ]
                             ]
                         ]
+                    ]
                     ]
                 ]
                 gw/start
