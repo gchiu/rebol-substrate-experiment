@@ -254,6 +254,54 @@ unsigned int strlen(const char *s) {
     return (unsigned int)(p - s);
 }
 
+/* GLON-VIEW-CORE-V4: the GLON-VOCAB-1 loader (r0_s1_runtime.c) also uses
+ * memchr, strchr and snprintf -- the latter only with literal text, %s and %c
+ * (qualified names and refusal messages) -- so the WASM builds provide them
+ * too.  snprintf writes at most cap-1 bytes and always terminates the buffer
+ * (cap > 0); it returns the length it would have written, as C's does. */
+void *memchr(const void *s, int c, unsigned int n) {
+    const unsigned char *p = (const unsigned char *)s;
+    for (; n; n--, p++) if (*p == (unsigned char)c) return (void *)p;
+    return (void *)0;
+}
+
+char *strchr(const char *s, int c) {
+    for (;; s++) {
+        if (*s == (char)c) return (char *)s;
+        if (!*s) return (char *)0;
+    }
+}
+
+static void sn_put(char *buf, unsigned int cap, unsigned int *n, char ch) {
+    if (cap && *n + 1 < cap) buf[*n] = ch;
+    (*n)++;
+}
+
+int snprintf(char *buf, unsigned int cap, const char *fmt, ...) {
+    va_list ap;
+    unsigned int n = 0;
+    va_start(ap, fmt);
+    for (; *fmt; fmt++) {
+        if (*fmt != '%') { sn_put(buf, cap, &n, *fmt); continue; }
+        fmt++;
+        if (*fmt == 'l') fmt++;
+        if (*fmt == 's') { const char *s = va_arg(ap, const char *); while (s && *s) sn_put(buf, cap, &n, *s++); }
+        else if (*fmt == 'c') sn_put(buf, cap, &n, (char)va_arg(ap, int));
+        else if (*fmt == 'd' || *fmt == 'i') {
+            long v = va_arg(ap, long); char tmp[24]; int k = 0;
+            unsigned long u = v < 0 ? (unsigned long)(-(v + 1)) + 1 : (unsigned long)v;
+            if (v < 0) sn_put(buf, cap, &n, '-');
+            do { tmp[k++] = (char)('0' + u % 10); u /= 10; } while (u);
+            while (k) sn_put(buf, cap, &n, tmp[--k]);
+        }
+        else if (*fmt == '%') sn_put(buf, cap, &n, '%');
+        else { sn_put(buf, cap, &n, '%'); if (*fmt) sn_put(buf, cap, &n, *fmt); else break; }
+    }
+    va_end(ap);
+    if (cap) buf[n < cap ? n : cap - 1] = 0;
+    return (int)n;
+}
+
 int isspace(int c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'; }
 int isdigit(int c) { return c >= '0' && c <= '9'; }
 
