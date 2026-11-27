@@ -581,6 +581,12 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
   16,384 -> 17,408 (code 16,896 cells, main return stack 7,168, recursion
   limit 84 -> 73); Intent stack with the checked `block-set!` 10 -> 1,034 code
   cells free; `make code-capacity-check`; range 16,384-20,480 measured.
+- `GLON-VIEW-CORE-V4.md` — 2026-11-28: unified core acceptance at 97b0fcd0.
+  make -C view test-c1-accept PASS 25/25; root, View, ASan, Kaka, patrol,
+  JSON / file modules pass; WASM 10/11 as on C2 (after the no-libc shim);
+  Glon Worlds GlonBot 51/51 on the integrated core. HTTPS, Windows and
+  Android are blocked here (no OpenSSL headers / MinGW / NDK). Stopped
+  for review.
 - `GLON-VIEW-CORE-V3.md` — 2026-11-28: View, VID, Intent, components,
   layouts and native windows on C2 (staged commits 02f008b2..5e664e30), with
   the checked `block-set!` and the internal `block-set-raw!`; after the
