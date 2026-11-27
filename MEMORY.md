@@ -581,6 +581,12 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
   16,384 -> 17,408 (code 16,896 cells, main return stack 7,168, recursion
   limit 84 -> 73); Intent stack with the checked `block-set!` 10 -> 1,034 code
   cells free; `make code-capacity-check`; range 16,384-20,480 measured.
+- `GLON-VIEW-CORE-V5.md` — 2026-11-28: cross-platform verification at
+  ff39c17b. WASM 11/11 (standalone rule links r0_s1_g1a.c); HTTPS G1-G3A
+  pass on the integrated core with libssl-dev (server SYM_CAP 512 -> 1,024:
+  decorated locals, G3A needs 638 symbols); vocabulary forward references and
+  deep adoption fixed; CI native suite 22/22 on Linux; test-c1-accept 25/25
+  from a clean worktree. Windows/macOS/ARM64 CI not run (needs a push).
 - `GLON-VIEW-CORE-V4.md` — 2026-11-28: unified core acceptance at 97b0fcd0.
   make -C view test-c1-accept PASS 25/25; root, View, ASan, Kaka, patrol,
   JSON / file modules pass; WASM 10/11 as on C2 (after the no-libc shim);
