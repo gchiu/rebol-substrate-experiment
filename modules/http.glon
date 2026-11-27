@@ -4,13 +4,14 @@
 ;; request/reply boundary.  CivetWeb owns sockets, TLS and HTTP parsing; the
 ;; application owns the handler and the response bytes.
 ;;
-;; Host -> Glon:  http/dispatch <id> <method> <path> <query> <body> <headers>
+;; Host -> Glon:  http/dispatch <id> <method> <path> <query> <body> <headers> <peer>
 ;; Glon -> host:  http/take-response
 ;;                => [id status content-type headers body] | NONE
 ;;
 ;; The request passed to the handler is an opaque block
-;; [id method path query body headers].  `body` is a bounded STRING! (empty
-;; when absent); `headers` is a block of alternating STRING! name/value pairs.
+;; [id method path query body headers peer].  `body` is a bounded STRING! (empty
+;; when absent); `headers` is a block of alternating STRING! name/value pairs;
+;; `peer` is the transport remote address (host-provided, not X-Forwarded-For).
 ;; The id is an integer, never a native pointer.  A response is accepted only
 ;; for the request currently being dispatched, so a stale or fabricated handle
 ;; cannot address another connection.  `headers` is NONE or an alternating
@@ -25,6 +26,33 @@ http/handler: none
 http/current: none
 http/response: none
 http/stop-requested: none
+;; H2B: when task-mode is set, each request runs as a Glon task; request-field
+;; trusts the passed request (no global http/current) and responses are stored
+;; per-id in http/responses instead of the single http/response.
+http/task-mode: 0
+http/responses: none
+;; H3E: task-mode response ownership.  http/open-ids lists the ids of requests
+;; whose response has not yet been collected by the host or closed.  A response
+;; is stored only for an open id that has none yet (the first response wins);
+;; it stays in http/responses until the host takes it (take-response-for, which
+;; also closes the id) or the request ends (close-request).  Responses for a
+;; closed id -- collected, timed out, disconnected -- are dropped, so a late
+;; async reply can never be delivered twice or to another request.
+http/open-ids: none
+http/id-member?: func [xs id] [
+    either xs [
+        either = block-at xs 0 id [ 1 ] [ http/id-member? block-at xs 1 id ]
+    ] [ 0 ]
+]
+http/id-remove: func [xs id] [
+    either xs [
+        either = block-at xs 0 id [
+            block-at xs 1
+        ] [
+            reduce [ block-at xs 0 http/id-remove block-at xs 1 id ]
+        ]
+    ] [ none ]
+]
 
 http/listen: func [port handler] [
     either < port 1 [
@@ -53,10 +81,14 @@ http/take-listen: func [] [
 ;;   http/body    r -> STRING!  request body bytes (empty when absent)
 ;;   http/header  r n -> STRING! value, or NONE (case-insensitive name match)
 ;;   http/content-type r -> STRING! value, or NONE
+;;   http/peer    r -> STRING! remote address, or "" when unavailable
 http/request-field: func [request index] [
     either sin? request [
         raise request
     ] [
+        either http/task-mode [
+            block-at request index
+        ] [
         either http/current [
             either = block-at request 0 block-at http/current 0 [
                 block-at http/current index
@@ -65,6 +97,7 @@ http/request-field: func [request index] [
             ]
         ] [
             raise create-sin 'http 'no-request request
+        ]
         ]
     ]
 ]
@@ -108,6 +141,7 @@ http/header: func [request name] [
     http/header-scan http/request-field request 5 name 0
 ]
 http/content-type: func [request] [ http/header request "Content-Type" ]
+http/peer: func [request] [ http/request-field request 6 ]
 
 ;; Application response generation.  The body is a STRING! or a nested block
 ;; of STRING!/BLOCK! parts; the host flattens it in order.  The short form sends
@@ -119,27 +153,106 @@ http/respond: func [request status content-type body] [
 ;; Response with additional application headers.  `headers` is NONE or an
 ;; alternating block such as reduce [ "Allow" "GET" ].  The host validates the
 ;; shape and filters headers it owns.
+http/clear-current: func [] [ http/current: none ]
+
 http/respond-with: func [request status content-type headers body] [
     either sin? request [
         raise request
     ] [
-        either http/current [
-            either = block-at request 0 block-at http/current 0 [
-                either either < status 100 [ 1 ] [ > status 599 ] [
-                    raise create-sin 'http 'bad-status status
-                ] [
+        either either < status 100 [ 1 ] [ > status 599 ] [
+            raise create-sin 'http 'bad-status status
+        ] [
+            either http/task-mode [
+                either http/id-member? http/open-ids block-at request 0 [
+                    either http/response-find http/responses block-at request 0 [
+                        none
+                    ] [
+                        http/responses: reduce [
+                            reduce [ block-at request 0 status content-type headers body ]
+                            http/responses
+                        ]
+                        none
+                    ]
+                ] [ none ]
+            ] [
+            either http/current [
+                either = block-at request 0 block-at http/current 0 [
                     http/response: reduce [
                         block-at http/current 0 status content-type headers body
                     ]
                     none
+                ] [
+                    raise create-sin 'http 'stale-request request
                 ]
             ] [
-                raise create-sin 'http 'stale-request request
+                raise create-sin 'http 'no-request request
             ]
-        ] [
-            raise create-sin 'http 'no-request request
+            ]
         ]
     ]
+]
+
+;; H2B/H3E: per-id response collection for the interpreter-owner loop.  The
+;; response for `id` is found anywhere in http/responses (not only at the head,
+;; so another request's uncollected response cannot block it), removed, and the
+;; id is closed so no later response for it is stored.  Returns the response
+;; [id status ctype headers body], or NONE when there is none yet.
+http/take-response-for: func [id] [
+    either http/response-find http/responses id [
+        http/take-found: http/response-find http/responses id
+        http/responses: http/response-remove http/responses id
+        http/open-ids: http/id-remove http/open-ids id
+        http/take-found
+    ] [ none ]
+]
+http/take-found: none
+http/response-find: func [xs id] [
+    either xs [
+        either = block-at block-at xs 0 0 id [
+            block-at xs 0
+        ] [
+            http/response-find block-at xs 1 id
+        ]
+    ] [ none ]
+]
+http/response-remove: func [xs id] [
+    either xs [
+        either = block-at block-at xs 0 0 id [
+            block-at xs 1
+        ] [
+            reduce [ block-at xs 0 http/response-remove block-at xs 1 id ]
+        ]
+    ] [ none ]
+]
+;; H3E: the host ends request `id` (its worker has replied, timed out or the
+;; client went away).  Close the id and drop any uncollected response.  `tk` is
+;; the task of an ABANDONED request (timeout, disconnect, shutdown), or NONE:
+;; it is cancelled if still live, so an abandoned wait does not hold a task
+;; slot.  A task whose response was delivered is left to run to its end.
+http/close-request: func [id tk] [
+    http/open-ids: http/id-remove http/open-ids id
+    http/responses: http/response-remove http/responses id
+    either tk [
+        either = 0 task-state tk [ task-cancel tk ] [ none ]
+    ] [ none ]
+    none
+]
+
+;; H2B: task entry.  The host passes the seven request fields as evaluated
+;; arguments; the task builds the request block and runs the handler, which may
+;; suspend on async I/O (task-wait) and whose reply callback calls http/respond.
+;;
+;; H3E: the task never consumes its own response.  A handler that raises gets a
+;; 500 unless it had already responded (respond keeps the first response).  A
+;; handler that returns without responding may still be answered by an async
+;; callback; the host decides "no response" once the task has finished and all
+;; async work has drained.
+http/task-run: func [id method path query body headers peer] [
+    request: reduce [ id method path query body headers peer ]
+    http/open-ids: reduce [ id http/open-ids ]
+    either sin? judge [ http/handler :request ] [
+        http/respond request 500 "text/plain; charset=utf-8" "internal error"
+    ] [ none ]
 ]
 
 ;; Ask the host to stop after the current response.  The host polls this flag
@@ -155,8 +268,8 @@ http/stopped?: func [] [
 
 ;; Called by the host for one completed request.  Handler errors become a 500
 ;; response; the host never loses track of the request id.
-http/dispatch: func [id method path query body headers] [
-    http/current: reduce [ id method path query body headers ]
+http/dispatch: func [id method path query body headers peer] [
+    http/current: reduce [ id method path query body headers peer ]
     http/response: none
     result: judge [ http/handler :http/current ]
     either sin? result [
@@ -168,7 +281,6 @@ http/dispatch: func [id method path query body headers] [
             http/response: reduce [ id 500 "text/plain; charset=utf-8" none "no response" ]
         ]
     ]
-    http/current: none
     none
 ]
 

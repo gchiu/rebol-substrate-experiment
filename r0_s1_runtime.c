@@ -269,6 +269,18 @@ static const raw_sym_t raw_syms[] = {
     { "TREC_IP", TREC_IP }, { "TREC_SP", TREC_SP }, { "TREC_RP", TREC_RP },
     { "TREC_CUR", TREC_CUR }, { "TREC_END", TREC_END }, { "TREC_CTX", TREC_CTX },
     { "TREC_BLK", TREC_BLK }, { "TREC_FRAME", TREC_FRAME }, { "TREC_STATE", TREC_STATE },
+    { "TREC_BLOCKED", TREC_BLOCKED },
+    { "TREC_GEN", TREC_GEN },
+    { "TREC_MINSP", TREC_MINSP },
+    { "TREC_MINRP", TREC_MINRP },
+    { "TREC_RESP", TREC_RESP },
+    { "GC_GLOBAL_CTX", GC_GLOBAL_CTX },
+    /* M2: task-capacity and state names used by the loadable task vocabulary.
+     * These are numeric layout constants only; no scheduling semantics live in
+     * the runtime (the scheduler is the Glon `task.glon` RAW policy). */
+    { "M1_MAX_TASKS", M1_MAX_TASKS }, { "M1_STRESS_CNT", M1_STRESS_CNT },
+    { "TASK_RUNNABLE", TASK_RUNNABLE }, { "TASK_FINISHED", TASK_FINISHED },
+    { "TASK_EMPTY", TASK_EMPTY },
 };
 #define N_RAW_SYMS ((int)(sizeof raw_syms / sizeof raw_syms[0]))
 
@@ -1567,6 +1579,7 @@ static void emit_collect(void) {
     cell j_skip = asm_zbranch_fwd();
     e_cell(GC_C4); asm_lit(TREC_CTX); asm_host(HOST_ADD); asm_fetch(); asm_call(r_mark_value);
     e_cell(GC_C4); asm_lit(TREC_FRAME); asm_host(HOST_ADD); asm_fetch(); asm_call(r_mark_frame);
+    e_cell(GC_C4); asm_lit(TREC_RESP); asm_host(HOST_ADD); asm_fetch(); asm_call(r_mark_value);
     e_cell(GC_C3); asm_lit(M1_TASK_CELLS); asm_host(HOST_MUL);
     asm_lit(M1_ARENA_BASE); asm_host(HOST_ADD); e_setc(GC_C5);       /* top base */
     /* task stack sentry: a RUNNABLE task's saved SP/RP must lie inside its
@@ -3890,8 +3903,10 @@ cell r0_s1_init(void) {
      * unconditionally, so seed every slot EMPTY and the scheduler stacks empty
      * so plain (non-multitasking) runs scan to nothing. */
     M[GC_GLOBAL_CTX] = global_ctx;
-    for (int i = 0; i < M1_MAX_TASKS; i++)
+    for (int i = 0; i < M1_MAX_TASKS; i++) {
         M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
+        M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_GEN] = 0;
+    }
     M[M1_SCHED_REC + 1] = R0S1_DS_INIT;   /* scheduler DS: empty range */
     M[M1_SCHED_REC + 2] = R0S1_RS_INIT;   /* scheduler RS: empty range */
     M[GC_COLLECT_CNT] = 0;

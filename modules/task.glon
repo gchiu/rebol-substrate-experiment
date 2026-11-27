@@ -1,0 +1,259 @@
+;; modules/task.glon -- cooperative multitasking vocabulary for ordinary Glon.
+;;
+;; This is the loadable form of the M1 prototype (examples/multitasking.r0 and
+;; r0_s1_m1_tests.c).  The scheduler is the same RAW/S1 mechanism: a task is a
+;; suspended execution world saved in a fixed task record; `run-tasks` is a
+;; round-robin loop; `yield` suspends the current task.  No task semantics live
+;; in the C runtime -- the collector only treats saved tasks as GC roots.
+;;
+;; Layout constants (M1_*, TREC_*, TASK_*) are resolved by the RAW assembler
+;; from m1_layout.h, so this file is independent of the memory profile.  The
+;; task capacity is the build's M1_MAX_TASKS (default 3; the M2 build raises it).
+;;
+;; Vocabulary:
+;;   spawn body            -> task handle (a generation-tagged integer; opaque)
+;;   yield                 suspend the current task (voluntary)
+;;   run-tasks             run runnable tasks round-robin until none remain
+;;   self                  -> the current task's handle
+;;   task-wait             suspend the current task until task-wake (async wait)
+;;   task-wake handle      mark a waiting task runnable again (generation-checked)
+;;   task-cancel handle    retire a task without resuming it (generation-checked)
+;;   task-state handle     -> task state (0 run, 1 finished, 2 empty) or -1 stale
+;;   tasks/pending?        -> 1 if any task is still runnable (incl. waiting)
+;;   tasks/error           the last task result, or the SIN! a task raised
+;;
+;; A task body is run under `judge`, so one task raising a SIN! does not corrupt
+;; the scheduler or other tasks; the SIN! is left in tasks/error.
+;;
+;; M4 lifecycle: a finished, failed or cancelled task's slot is recycled.  The
+;; handle carries a per-slot reuse generation, so a late I/O reply that names a
+;; retired task is discarded instead of resuming whoever inherited the slot.
+;; Task creation is bounded by the number of *simultaneously active* slots
+;; (M1_MAX_TASKS), not by the total number of tasks ever created.
+[
+tasks/error: none
+
+mnew-task: raw 3 [
+    LIT M1_S2 !
+    LIT M1_S1 !
+    CALL ESC_TRANSPORT
+    DUP LIT 16 MOD SUB LIT M1_S0 !
+    LIT 0 LIT M1_S3 !
+  Lfind:
+    LIT M1_S3 @ LIT M1_MAX_TASKS LT ZBRANCH Lfull
+    LIT M1_S3 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S4 !
+    LIT M1_S4 @ LIT TREC_STATE ADD @ LIT TASK_EMPTY EQ
+    LIT M1_S4 @ LIT TREC_STATE ADD @ LIT TASK_FINISHED EQ
+    ADD ZBRANCH Lnext
+    BRANCH Lmake
+  Lnext:
+    LIT M1_S3 @ LIT 1 ADD LIT M1_S3 !
+    BRANCH Lfind
+  Lfull:
+    LIT -1 LIT 16 MUL ARITY 1 EXIT
+  Lmake:
+    LIT M1_S4 @ LIT M1_WRAPPER_DELTA ADD LIT M1_S5 !
+    LIT 3 LIT M1_S5 @ !
+    LIT 0 LIT M1_S5 @ LIT 1 ADD !
+    LIT M1_S1 @ LIT M1_S5 @ LIT 2 ADD !
+    LIT M1_S0 @ LIT 6 ADD LIT M1_S5 @ LIT 3 ADD !
+    LIT M1_S2 @ LIT M1_S5 @ LIT 4 ADD !
+    LIT M1_MAIN_ENTRY_CELL @ LIT M1_S4 @ !
+    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_DS_OFF ADD LIT M1_S4 @ LIT TREC_SP ADD !
+    LIT M1_S3 @ LIT M1_TASK_CELLS MUL LIT M1_ARENA_BASE ADD LIT M1_RS_OFF ADD LIT M1_S4 @ LIT TREC_RP ADD !
+    LIT M1_S5 @ LIT 2 ADD LIT M1_S4 @ LIT TREC_CUR ADD !
+    LIT M1_S5 @ LIT 5 ADD LIT M1_S4 @ LIT TREC_END ADD !
+    LIT GC_GLOBAL_CTX @ LIT M1_S4 @ LIT TREC_CTX ADD !
+    LIT M1_S5 @ LIT M1_S4 @ LIT TREC_BLK ADD !
+    LIT 0 LIT M1_S4 @ LIT TREC_FRAME ADD !
+    LIT TASK_RUNNABLE LIT M1_S4 @ LIT TREC_STATE ADD !
+    LIT 0 LIT M1_S4 @ LIT TREC_BLOCKED ADD !
+    ;; M4: bump the slot's reuse generation and build a generation-tagged
+    ;; handle = ((gen * 16) + slot) * 16 (a tagged Glon integer).  A handle
+    ;; from a previous life decodes to an old generation and is rejected.
+    LIT M1_S4 @ LIT TREC_GEN ADD @ LIT 1 ADD LIT M1_S0 !
+    LIT M1_S0 @ LIT M1_S4 @ LIT TREC_GEN ADD !
+    LIT M1_S0 @ LIT 16 MUL LIT M1_S3 @ ADD LIT 16 MUL ARITY 1 EXIT
+]
+
+yield: raw [
+    NONE LIT 16
+    LIT REG_RP @ @ LIT M1_CUR_TASK @ LIT TREC_IP ADD !
+    LIT REG_SP @ LIT M1_CUR_TASK @ LIT TREC_SP ADD !
+    LIT REG_RP @ LIT M1_CUR_TASK @ LIT TREC_RP ADD !
+    LIT RV_CUR @ LIT M1_CUR_TASK @ LIT TREC_CUR ADD !
+    LIT RV_END @ LIT M1_CUR_TASK @ LIT TREC_END ADD !
+    LIT RV_CTX @ LIT M1_CUR_TASK @ LIT TREC_CTX ADD !
+    LIT RV_BLK @ LIT M1_CUR_TASK @ LIT TREC_BLK ADD !
+    LIT RV_FRAME @ LIT M1_CUR_TASK @ LIT TREC_FRAME ADD !
+    LIT M1_SCHED_REC LIT 1 ADD @ LIT REG_SP !
+    LIT M1_SCHED_REC LIT 2 ADD @ LIT REG_RP !
+    LIT M1_SCHED_REC LIT 3 ADD @ LIT RV_CUR !
+    LIT M1_SCHED_REC LIT 4 ADD @ LIT RV_END !
+    LIT M1_SCHED_REC LIT 5 ADD @ LIT RV_CTX !
+    LIT M1_SCHED_REC LIT 6 ADD @ LIT RV_BLK !
+    LIT M1_SCHED_REC LIT 7 ADD @ LIT RV_FRAME !
+    LIT M1_SCHED_REC LIT 0 ADD @ LIT REG_IP !
+]
+
+task-finish: raw [
+    LIT TASK_FINISHED LIT M1_CUR_TASK @ LIT TREC_STATE ADD !
+    LIT M1_SCHED_REC LIT 1 ADD @ LIT REG_SP !
+    LIT M1_SCHED_REC LIT 2 ADD @ LIT REG_RP !
+    LIT M1_SCHED_REC LIT 3 ADD @ LIT RV_CUR !
+    LIT M1_SCHED_REC LIT 4 ADD @ LIT RV_END !
+    LIT M1_SCHED_REC LIT 5 ADD @ LIT RV_CTX !
+    LIT M1_SCHED_REC LIT 6 ADD @ LIT RV_BLK !
+    LIT M1_SCHED_REC LIT 7 ADD @ LIT RV_FRAME !
+    LIT M1_SCHED_REC LIT 0 ADD @ LIT REG_IP !
+]
+
+task-wait: raw [
+    LIT 1 LIT M1_CUR_TASK @ LIT TREC_BLOCKED ADD !
+    NONE LIT 16
+    LIT REG_RP @ @ LIT M1_CUR_TASK @ LIT TREC_IP ADD !
+    LIT REG_SP @ LIT M1_CUR_TASK @ LIT TREC_SP ADD !
+    LIT REG_RP @ LIT M1_CUR_TASK @ LIT TREC_RP ADD !
+    LIT RV_CUR @ LIT M1_CUR_TASK @ LIT TREC_CUR ADD !
+    LIT RV_END @ LIT M1_CUR_TASK @ LIT TREC_END ADD !
+    LIT RV_CTX @ LIT M1_CUR_TASK @ LIT TREC_CTX ADD !
+    LIT RV_BLK @ LIT M1_CUR_TASK @ LIT TREC_BLK ADD !
+    LIT RV_FRAME @ LIT M1_CUR_TASK @ LIT TREC_FRAME ADD !
+    LIT M1_SCHED_REC LIT 1 ADD @ LIT REG_SP !
+    LIT M1_SCHED_REC LIT 2 ADD @ LIT REG_RP !
+    LIT M1_SCHED_REC LIT 3 ADD @ LIT RV_CUR !
+    LIT M1_SCHED_REC LIT 4 ADD @ LIT RV_END !
+    LIT M1_SCHED_REC LIT 5 ADD @ LIT RV_CTX !
+    LIT M1_SCHED_REC LIT 6 ADD @ LIT RV_BLK !
+    LIT M1_SCHED_REC LIT 7 ADD @ LIT RV_FRAME !
+    LIT M1_SCHED_REC LIT 0 ADD @ LIT REG_IP !
+]
+
+run-tasks: raw [
+    LIT REG_IP @ LIT 11 ADD LIT M1_SCHED_REC LIT 0 ADD !
+    LIT REG_SP @ LIT M1_SCHED_REC LIT 1 ADD !
+    LIT REG_RP @ LIT M1_SCHED_REC LIT 2 ADD !
+    LIT RV_CUR @ LIT M1_SCHED_REC LIT 3 ADD !
+    LIT RV_END @ LIT M1_SCHED_REC LIT 4 ADD !
+    LIT RV_CTX @ LIT M1_SCHED_REC LIT 5 ADD !
+    LIT RV_BLK @ LIT M1_SCHED_REC LIT 6 ADD !
+    LIT RV_FRAME @ LIT M1_SCHED_REC LIT 7 ADD !
+    LIT M1_CURSOR @ LIT M1_S7 !
+    LIT 0 LIT M1_S8 !
+  Lscan:
+    LIT M1_S8 @ LIT M1_MAX_TASKS LT ZBRANCH Ldone
+    LIT M1_S7 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S6 !
+    LIT M1_S6 @ LIT TREC_STATE ADD @ LIT TASK_RUNNABLE EQ
+    LIT M1_S6 @ LIT TREC_BLOCKED ADD @ LIT TASK_RUNNABLE EQ
+    MUL ZBRANCH Lskip
+    BRANCH Lfound
+  Lskip:
+    LIT M1_S7 @ LIT 1 ADD LIT M1_MAX_TASKS MOD LIT M1_S7 !
+    LIT M1_S8 @ LIT 1 ADD LIT M1_S8 !
+    BRANCH Lscan
+  Ldone:
+    NONE LIT 16 EXIT
+  Lfound:
+    LIT M1_S6 @ LIT M1_CUR_TASK !
+    LIT M1_S7 @ LIT 1 ADD LIT M1_MAX_TASKS MOD LIT M1_CURSOR !
+    LIT M1_CUR_TASK @ LIT TREC_SP ADD @ LIT REG_SP !
+    LIT M1_CUR_TASK @ LIT TREC_RP ADD @ LIT REG_RP !
+    LIT M1_CUR_TASK @ LIT TREC_CUR ADD @ LIT RV_CUR !
+    LIT M1_CUR_TASK @ LIT TREC_END ADD @ LIT RV_END !
+    LIT M1_CUR_TASK @ LIT TREC_CTX ADD @ LIT RV_CTX !
+    LIT M1_CUR_TASK @ LIT TREC_BLK ADD @ LIT RV_BLK !
+    LIT M1_CUR_TASK @ LIT TREC_FRAME ADD @ LIT RV_FRAME !
+    LIT M1_CUR_TASK @ LIT TREC_IP ADD @ LIT REG_IP !
+]
+
+self: raw [
+    LIT M1_CUR_TASK @ LIT M1_TASK_TABLE SUB LIT 16 DIV LIT M1_S0 !
+    LIT M1_CUR_TASK @ LIT TREC_GEN ADD @ LIT M1_S1 !
+    LIT M1_S1 @ LIT 16 MUL LIT M1_S0 @ ADD LIT 16 MUL ARITY 1 EXIT
+]
+
+;; task-body (RAW, arity 0): the wrapped body block of the current task.  The
+;; body lives in the task's wrapper block (elem1), which the collector traces
+;; through TREC_BLK, so it stays alive while the task is suspended.
+task-body: raw [
+    LIT M1_CUR_TASK @ LIT TREC_BLK ADD @ LIT 3 ADD @ ARITY 1 EXIT
+]
+
+;; task-run is the task entry word (the wrapper's elem0).  It runs the body
+;; under `judge`, so a task that raises a SIN! records it in tasks/error and
+;; finishes instead of corrupting the scheduler or other tasks.
+task-run: func [] [
+    tasks/error: judge task-body
+]
+
+;; task-wake: decode (slot, gen) from the handle; only clear blocked if the
+;; slot's current generation matches, so a late reply to a retired task cannot
+;; wake the new task that inherited its slot.
+task-wake: raw 1 [
+    LIT 16 DIV LIT M1_S0 !
+    LIT M1_S0 @ LIT 16 MOD LIT M1_S1 !
+    LIT M1_S0 @ LIT 16 DIV LIT M1_S2 !
+    LIT M1_S1 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S3 !
+    LIT M1_S3 @ LIT TREC_GEN ADD @ LIT M1_S2 @ EQ ZBRANCH Ldone
+    LIT 0 LIT M1_S3 @ LIT TREC_BLOCKED ADD !
+  Ldone:
+    ARITY 0 EXIT
+]
+
+task-cancel: raw 1 [
+    LIT 16 DIV LIT M1_S0 !
+    LIT M1_S0 @ LIT 16 MOD LIT M1_S1 !
+    LIT M1_S0 @ LIT 16 DIV LIT M1_S2 !
+    LIT M1_S1 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S3 !
+    LIT M1_S3 @ LIT TREC_GEN ADD @ LIT M1_S2 @ EQ ZBRANCH Ldone
+    LIT TASK_FINISHED LIT M1_S3 @ LIT TREC_STATE ADD !
+    LIT 1 LIT M1_S3 @ LIT TREC_BLOCKED ADD !
+  Ldone:
+    ARITY 0 EXIT
+]
+
+task-state: raw 1 [
+    LIT 16 DIV LIT M1_S0 !
+    LIT M1_S0 @ LIT 16 MOD LIT M1_S1 !
+    LIT M1_S0 @ LIT 16 DIV LIT M1_S2 !
+    LIT M1_S1 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S3 !
+    LIT M1_S3 @ LIT TREC_GEN ADD @ LIT M1_S2 @ EQ ZBRANCH Lstale
+    LIT M1_S3 @ LIT TREC_STATE ADD @ LIT 16 MUL ARITY 1 EXIT
+  Lstale:
+    LIT -1 LIT 16 MUL ARITY 1 EXIT
+]
+
+tasks/pending?: raw [
+    LIT 0 LIT M1_S3 !
+    LIT 0 LIT M1_S8 !
+  Pscan:
+    LIT M1_S8 @ LIT M1_MAX_TASKS LT ZBRANCH Pdone
+    LIT M1_S8 @ LIT 16 MUL LIT M1_TASK_TABLE ADD LIT M1_S6 !
+    LIT M1_S6 @ LIT TREC_STATE ADD @ LIT TASK_RUNNABLE EQ ZBRANCH Pnext
+    LIT 1 LIT M1_S3 !
+  Pnext:
+    LIT M1_S8 @ LIT 1 ADD LIT M1_S8 !
+    BRANCH Pscan
+  Pdone:
+    LIT M1_S3 @ LIT 16 MUL ARITY 1 EXIT
+]
+
+spawn: func [body] [
+    mnew-task body 'task-run 'task-finish
+]
+
+;; H2D: per-task response slot (a GC-traced block or NONE).
+task-resp-set: raw 1 [
+    LIT M1_CUR_TASK @ LIT TREC_RESP ADD !
+    ARITY 0 EXIT
+]
+task-resp-get: raw [
+    LIT M1_CUR_TASK @ LIT TREC_RESP ADD @ ARITY 1 EXIT
+]
+task-resp-get-for: raw 1 [
+    LIT 16 DIV LIT M1_S0 !
+    LIT M1_S0 @ LIT TREC_RESP ADD @ ARITY 1 EXIT
+]
+
+repeat: func [n b] [ either > n 0 [ do b repeat - n 1 b ] [ none ] ]
+]

@@ -1,0 +1,50 @@
+;; Focused Glon-level test for the optional sec vocabulary.
+;; Run only with a MODULES=sec build; sec.glon is loaded automatically.
+[
+fail: func [e] [ raise e ]
+check: func [ok msg] [
+    either ok [ none ] [ raise create-sin 'g3c 'test msg ]
+]
+
+sha-expected: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+scrypt-expected: "b632b4ded46f123a8270fc2682d75d324823957ae4f14fdbf6b22f7de04c2827"
+
+sec/sha256 "abc"
+    func [d] [
+        got: sec/hex d
+        check str-eq got sha-expected "sha256 mismatch"
+        sec/random 16
+            func [r1] [
+                sec/random 16
+                    func [r2] [
+                        same: str-eq r1 r2
+                        check = 0 same "random repeat"
+                        sec/scrypt "correct horse battery staple" "0123456789abcdef" 16384 8 1 32
+                            func [h] [
+                                got: sec/hex h
+                                check str-eq got scrypt-expected "scrypt mismatch"
+                                sec/ct-eq "same" "same"
+                                    func [eq] [
+                                        check eq "ct-eq equal failed"
+                                        sec/ct-eq "same" "diff"
+                                            func [eq2] [
+                                                check = 0 eq2 "ct-eq diff failed"
+                                                sec/time
+                                                    func [t] [
+                                                        check > t 1700000000 "time not sane"
+                                                        s/print "G3C_SEC_GLON_OK"
+                                                    ]
+                                                    :fail
+                                            ]
+                                            :fail
+                                    ]
+                                    :fail
+                            ]
+                            :fail
+                    ]
+                    :fail
+            ]
+            :fail
+    ]
+    :fail
+]

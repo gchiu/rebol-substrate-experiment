@@ -1,0 +1,117 @@
+;; modules/sec.glon - optional general-purpose security primitives.
+;;
+;; Host protocol (decoded by glon_sec.c):
+;;   sec/take-request -> [id op fields] | NONE
+;;   sec/reply id status v1 v2
+;;
+;; Operations (fields are STRING! values):
+;;   1 random  [count]                       -> v1 random bytes
+;;   2 sha256  [bytes]                       -> v1 32-byte digest
+;;   3 scrypt  [password salt N r p dklen]   -> v1 derived bytes
+;;   4 ct-eq   [a b]                         -> v1 8-byte big-endian 0/1
+;;   5 time    []                            -> v1 8-byte big-endian epoch seconds
+;;
+;; This is a host capability boundary, not an authentication policy.  Only one
+;; request may be outstanding.  Callbacks run when the host drains the queue;
+;; a callback may queue the next operation.  No secret is logged here.
+;;
+;; Requires prelude, strings and strings-ext (s/at, s/from-int).
+[
+sec/next-id: 0
+sec/pending: none
+sec/pending-id: 0
+sec/pending-op: 0
+sec/pending-record: none
+sec/pending-request: none
+
+sec/request: func [op fields success failure] [
+    either sec/pending [
+        raise create-sin 'sec 'busy none
+    ] [
+        sec/next-id: + sec/next-id 1
+        sec/pending-id: sec/next-id
+        sec/pending-op: op
+        sec/pending-record: reduce [ sec/next-id op :success :failure ]
+        sec/pending-request: reduce [ sec/next-id op fields ]
+        sec/pending: 1
+        none
+    ]
+]
+
+sec/take-request: func [] [
+    either sec/pending [ sec/pending-request ] [ none ]
+]
+
+sec/be64-int: func [s i acc] [
+    either >= i 8 [
+        acc
+    ] [
+        sec/be64-int s + i 1 + * acc 256 s/at s i
+    ]
+]
+
+sec/be64->int: func [s] [ sec/be64-int s 0 0 ]
+
+sec/hex-digit: func [n] [
+    mk-string reduce [ either < n 10 [ + 48 n ] [ + 87 n ] ]
+]
+
+sec/hex-loop: func [s i out] [
+    either >= i s/length s [
+        out
+    ] [
+        b: s/at s i
+        sec/hex-loop s + i 1
+            s/+ out s/+ sec/hex-digit / b 16
+                sec/hex-digit - b * 16 / b 16
+    ]
+]
+
+sec/hex: func [s] [ sec/hex-loop s 0 "" ]
+
+sec/reply: func [id status v1 v2] [
+    either either sec/pending [ = id sec/pending-id ] [ 0 ] [
+        op: sec/pending-op
+        success: block-at sec/pending-record 2
+        failure: block-at sec/pending-record 3
+        sec/pending: none
+        sec/pending-id: 0
+        sec/pending-op: 0
+        sec/pending-record: none
+        sec/pending-request: none
+        either = status 'ok [
+            either either = op 4 [ 1 ] [ = op 5 ] [
+                success sec/be64->int v1
+            ] [
+                success v1
+            ]
+        ] [
+            failure create-sin 'sec 'error v1
+        ]
+    ] [
+        raise create-sin 'sec 'stale-reply id
+    ]
+]
+
+sec/random: func [n success failure] [
+    sec/request 1 reduce [ s/from-int n ] :success :failure
+]
+
+sec/sha256: func [bytes success failure] [
+    sec/request 2 reduce [ bytes ] :success :failure
+]
+
+sec/scrypt: func [password salt n r p dklen success failure] [
+    sec/request 3 reduce [
+        password salt s/from-int n s/from-int r s/from-int p s/from-int dklen
+    ] :success :failure
+]
+
+sec/ct-eq: func [a b success failure] [
+    sec/request 4 reduce [ a b ] :success :failure
+]
+
+sec/time: func [success failure] [
+    sec/request 5 reduce [] :success :failure
+]
+]

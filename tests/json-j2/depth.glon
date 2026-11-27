@@ -1,0 +1,37 @@
+;; tests/json-j2/depth.glon -- return-stack depth of json/decode (GLON-JSON-J2).
+;; Prints "label depth": main return-stack cells below the probe's call depth
+;; (RV_RPMIN = RV_BASE + 20 = 24615, the evaluator's min-RP register).
+[
+jd/reset: masm [ LIT 99999999 LIT 24615 ! NONE LIT 16 EXIT ]
+jd/rpmin: masm [ LIT 24615 @ LIT 16 MUL ARITY 1 EXIT ]
+jd/rp: masm [ LIT REG_RP @ LIT 16 MUL ARITY 1 EXIT ]
+jd/base: jd/rp
+jd/double: func [x n] [ either = n 0 [ x ] [ jd/double s/+ x x - n 1 ] ]
+jd/measure: func [label text] [
+    jd/reset
+    jd/out: judge [ json/decode text ]
+    s/print s/+ label s/+ " " s/+ s/from-int - jd/base jd/rpmin
+        either sin? jd/out [ s/+ " SIN " s/from-int sin-arg jd/out ] [ "" ]
+]
+jd/esc: func [n] [ json/encode jd/double j/quote n ]
+jd/list: func [n x] [ either = n 1 [ x ] [ s/+ x s/+ "," jd/list - n 1 x ] ]
+jd/q: func [x] [ s/+ j/quote s/+ x j/quote ]
+jd/obj: func [n] [
+    either = n 1 [ s/+ jd/q "k1" ":1" ] [ s/+ jd/q s/+ "k" s/from-int n s/+ ":1," jd/obj - n 1 ]
+]
+
+jd/measure "esc-1" jd/esc 0
+jd/measure "esc-4" jd/esc 2
+jd/measure "esc-16" jd/esc 4
+jd/measure "plain-10240" json/encode jd/double "abcdefghij" 10
+jd/measure "array-1" "[1]"
+jd/measure "array-8" s/+ "[" s/+ jd/list 8 "1" "]"
+jd/measure "array-32" s/+ "[" s/+ jd/list 32 "1" "]"
+jd/measure "object-1" s/+ "{" s/+ jd/obj 1 "}"
+jd/measure "object-8" s/+ "{" s/+ jd/obj 8 "}"
+jd/measure "object-32" s/+ "{" s/+ jd/obj 32 "}"
+jd/measure "g3h-post" s/+ "{" s/+ jd/q "text" s/+ ":" s/+ jd/q "hello" "}"
+jd/measure "nest-4" "[[[[1]]]]"
+jd/measure "esc-64" jd/esc 6
+jd/measure "esc-1024" jd/esc 10
+]

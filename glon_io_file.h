@@ -169,6 +169,17 @@ const char *glon_io_status_word(unsigned status);
  * the backend owns canonicalisation and OS handle types. */
 int glon_io_backend_root(const char *root, char *out, size_t outcap,
                          char *err, size_t errcap);
+
+/* Resolve an existing (create=0) or creatable (create=1) logical name under
+ * the canonical root.  This is the same confinement used by the file module;
+ * callers such as the optional SQLite module use it to obtain a real path
+ * without opening a file.  The final component is not opened here, so callers
+ * that open it later still need the platform's no-follow policy where
+ * available. */
+int glon_io_backend_resolve_path(const char *root_real, const char *name,
+                                 size_t name_len, int create,
+                                 char *out, size_t outcap,
+                                 char *err, size_t errcap);
 int glon_io_backend_open(const char *root_real, const char *name, size_t name_len,
                          int mode, glon_io_fd *fd, char *err, size_t errcap);
 int glon_io_backend_read(glon_io_fd fd, uint8_t *buf, size_t cap, size_t *got,

@@ -162,7 +162,7 @@ clean:
 	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench fib-p10b-bench traffic-bench-o0 traffic-bench-o2 glon-live-native-test demo/shop/glon-live.wasm $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
 	rm -f glon-desktop glon-desktop.exe desktop-test patrol-test kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test kaka-wave-test desktop/glon.wasm desktop/prelude.glon desktop/strings.glon desktop/big.txt
 	rm -rf glon glon-lib
-	rm -f .glon-config .glon-config.tmp io-file-c-test arch-check m1-smoke m1-smoke.exe
+	rm -f .glon-config .glon-config.tmp io-file-c-test arch-check m1-smoke m1-smoke.exe sqlite-test sec-test
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
 # Produces web/demo.js (Emscripten runtime + web/glue.js) and web/demo.wasm,
@@ -407,15 +407,18 @@ GLON_LIBS = $(GLON_LIB_DIR)/prelude.glon $(GLON_LIB_DIR)/strings.glon $(GLON_LIB
 #
 #   MODULES=file        host-mediated async file module
 #   MODULES=http        optional CivetWeb HTTPS listener + ordinary http.glon
-#   MODULES=file,http   both optional modules
+#   MODULES=sec         optional OpenSSL-backed security primitives + sec.glon
+#   MODULES=sqlite      optional SQLite database/statement vocabulary
+#   MODULES=task        cooperative multitasking (task.glon) + host task pump
+#   MODULES=file,http,sec,sqlite,task   additive selection
 #
 # Unknown names fail at build time.  Modules are additive: a minimal build
 # never compiles or links any module object, source or Glon library.
 comma := ,
 GLON_MODULE_LIST := $(subst $(comma), ,$(strip $(MODULES)))
-GLON_MODULE_UNKNOWN := $(filter-out file http,$(GLON_MODULE_LIST))
+GLON_MODULE_UNKNOWN := $(filter-out file http sec sqlite task,$(GLON_MODULE_LIST))
 ifneq ($(strip $(GLON_MODULE_UNKNOWN)),)
-  $(error unknown MODULES='$(MODULES)'; supported values: file, http, file,http)
+  $(error unknown MODULES='$(MODULES)'; supported values: file, http, sec, sqlite, task and combinations)
 endif
 
 GLON_MODULE_SRCS :=
@@ -442,6 +445,43 @@ endif
 # point at an unpacked development package without editing the Makefile.
 OPENSSL_CFLAGS ?=
 OPENSSL_LIBS ?= -lssl -lcrypto
+
+# SQLite is linked from the standard library; use SQLITE_CFLAGS/SQLITE_LIBS
+# when the development headers/library are not in the default toolchain path.
+SQLITE_CFLAGS ?=
+SQLITE_LIBS ?= -lsqlite3
+
+ifneq ($(filter sec,$(GLON_MODULE_LIST)),)
+  GLON_MODULE_SRCS += glon_sec.c
+  GLON_MODULE_CFLAGS += -DGLON_MODULE_SEC $(OPENSSL_CFLAGS)
+  GLON_MODULE_LIBS += $(GLON_LIB_DIR)/sec.glon
+  GLON_MODULE_LDLIBS += $(OPENSSL_LIBS)
+endif
+
+ifneq ($(filter sqlite,$(GLON_MODULE_LIST)),)
+  GLON_MODULE_SRCS += glon_sqlite.c
+  GLON_MODULE_CFLAGS += -DGLON_MODULE_SQLITE $(SQLITE_CFLAGS)
+  GLON_MODULE_LIBS += $(GLON_LIB_DIR)/sqlite.glon
+  GLON_MODULE_LDLIBS += $(SQLITE_LIBS)
+  # The SQLite module reuses the file backend's canonical path confinement.
+  # Compile that small backend when the file module itself is not selected.
+  ifeq ($(filter file,$(GLON_MODULE_LIST)),)
+    ifeq ($(OS),Windows_NT)
+      GLON_MODULE_SRCS += glon_io_file_windows.c
+    else
+      GLON_MODULE_SRCS += glon_io_file_posix.c
+    endif
+  endif
+endif
+
+# Cooperative multitasking is ordinary Glon policy over RAW/S1 mechanism.  The
+# task capacity and stack layout come from the selected memory profile
+# (M1_MAX_TASKS, M1_TASK_CELLS, M1_DS_OFF, M1_RS_OFF, M1_WRAPPER_DELTA), not
+# from separate build overrides.
+ifneq ($(filter task,$(GLON_MODULE_LIST)),)
+  GLON_MODULE_CFLAGS += -DGLON_MODULE_TASK
+  GLON_MODULE_LIBS += $(GLON_LIB_DIR)/task.glon
+endif
 
 # The HTTP server does not create M1 tasks.  The G3 application plus the
 # transient per-request source expression outgrow the default 14,800-cell
@@ -529,6 +569,18 @@ $(GLON_LIB_DIR)/file-stream.glon: modules/file-stream.glon
 	cp $< $@
 
 $(GLON_LIB_DIR)/http.glon: modules/http.glon
+	@mkdir -p $(GLON_LIB_DIR)
+	cp $< $@
+
+$(GLON_LIB_DIR)/sec.glon: modules/sec.glon
+	@mkdir -p $(GLON_LIB_DIR)
+	cp $< $@
+
+$(GLON_LIB_DIR)/sqlite.glon: modules/sqlite.glon
+	@mkdir -p $(GLON_LIB_DIR)
+	cp $< $@
+
+$(GLON_LIB_DIR)/task.glon: modules/task.glon
 	@mkdir -p $(GLON_LIB_DIR)
 	cp $< $@
 
@@ -642,23 +694,25 @@ https-g3-test:
 	$(MAKE) --no-print-directory glon MODULES=http MEM_PROFILE=constrained-notask
 
 # ---- G3A: grouped membership register with NDJSON persistence --------------
-# The app lives in examples/https-g3a and uses the large profile.  The caller
+# The app lives in examples/https-g3a.  W0 uses desktop-1m because the restored
+# HTTP vocabulary no longer fits the server profile's 512-symbol table; no
+# profile capacity was changed.  The caller
 # supplies the local OpenSSL C_INCLUDE_PATH/LIBRARY_PATH (see the build notes),
 # or installs libssl-dev.  The acceptance suite is local-only and bounded.
 https-g3a-test:
-	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=server
+	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=desktop-1m
 	tests/https-g1/make-cert.sh
 	python3 tests/https-g3a/acceptance.py --glon $(CURDIR)/glon
 .PHONY: https-g3a-test
 
 https-g3a-scale:
-	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=server
+	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=desktop-1m
 	tests/https-g1/make-cert.sh
 	python3 tests/https-g3a/scale.py --glon $(CURDIR)/glon --sizes 10,100,1000
 .PHONY: https-g3a-scale
 
 https-g3a-endurance:
-	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=server
+	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=desktop-1m
 	tests/https-g1/make-cert.sh
 	python3 tests/https-g3a/endurance.py --glon $(CURDIR)/glon --requests 1000 --workers 1
 .PHONY: https-g3a-endurance
@@ -999,6 +1053,72 @@ machine-integrity-wasm: integrity/build/glon.wasm glon
 	@echo "machine-integrity-wasm: PASS (native and WASM output as expected, identical)"
 
 .PHONY: machine-integrity machine-integrity-wasm
+
+sqlite-test: tests/sqlite-g3d/sqlite_tests.c glon_sqlite.c glon_sqlite.h glon_io_file_posix.c glon_io_file.h
+	$(CC) $(CFLAGS) $(SQLITE_CFLAGS) -I. -o sqlite-test tests/sqlite-g3d/sqlite_tests.c glon_sqlite.c glon_io_file_posix.c $(SQLITE_LIBS)
+	rm -rf /tmp/glon-sqlite-c-test
+	mkdir -p /tmp/glon-sqlite-c-test
+	./sqlite-test /tmp/glon-sqlite-c-test
+	rm -rf /tmp/glon-sqlite-c-test
+.PHONY: sqlite-test
+
+sec-test: tests/security-g3c/sec_tests.c glon_sec.c glon_sec.h
+	$(CC) $(CFLAGS) $(OPENSSL_CFLAGS) -I. -o sec-test tests/security-g3c/sec_tests.c glon_sec.c $(OPENSSL_LIBS)
+	./sec-test
+.PHONY: sec-test
+
+# ---- GLON-WORLDS-CORE-W0: restored HTTPS, tasks, JSON and G3H --------------
+# H3C/H3E exercise cooperative task-mode HTTP.  server-https is the C2 profile
+# with the code cap, 512-global context and 3 x 3,400-cell task stacks these
+# suites were verified with (previously spelled MEM_CODE_CAP=20480
+# MEM_GLOBAL_CONTEXT_CAP=512 M1_TASKS=3 M1_TASK_CELLS=3400).
+h3c-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,task MEM_PROFILE=server-https
+	tests/https-g1/make-cert.sh
+	python3 tests/h3c/acceptance.py
+.PHONY: h3c-test
+
+h3e-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,task MEM_PROFILE=server-https
+	tests/https-g1/make-cert.sh
+	python3 tests/h3e/acceptance.py
+.PHONY: h3e-test
+
+g3g-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite MEM_PROFILE=server-https
+	tests/https-g1/make-cert.sh
+	python3 tests/glon-worlds-g3g/smoke.py
+.PHONY: g3g-test
+
+g3h-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite MEM_PROFILE=server-https
+	tests/https-g1/make-cert.sh
+	python3 tests/glon-worlds-g3h/smoke.py
+.PHONY: g3h-test
+
+json-j1-test:
+	$(MAKE) --no-print-directory glon MODULES= MEM_PROFILE=large
+	@out=$$(./glon glon-lib/strings-ext.glon modules/json.glon tests/json-j1/reference.glon tests/json-j1/tests.glon); status=$$?; \
+	printf '%s\n' "$$out" | grep -v '^#\[func\]$$'; exit $$status
+.PHONY: json-j1-test
+
+json-j2-test:
+	$(MAKE) --no-print-directory glon MODULES= MEM_PROFILE=large
+	@out=$$(./glon glon-lib/strings-ext.glon modules/json.glon tests/json-j2/reference.glon tests/json-j2/tests.glon); status=$$?; \
+	printf '%s\n' "$$out" | grep -v '^#\[func\]$$'; exit $$status
+.PHONY: json-j2-test
+
+json-j2-g3h-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,sec,task MEM_PROFILE=server-https
+	tests/https-g1/make-cert.sh
+	python3 tests/json-j2/g3h_task.py
+.PHONY: json-j2-g3h-test
+
+w0-routes-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,task MEM_PROFILE=server-https
+	tests/https-g1/make-cert.sh
+	python3 tests/glon-worlds-w0/routes_task.py
+.PHONY: w0-routes-test
 
 # ---- JSON vocabulary tests (ordinary Glon; no OpenSSL) ---------------------
 # The general JSON module and its full focused suite exceed the constrained

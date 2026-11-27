@@ -1,0 +1,23 @@
+[
+sqlite/open "transaction.db"
+    func [db] [
+        sqlite/exec db "CREATE TABLE tx(id INTEGER PRIMARY KEY, name TEXT)"
+            func [x] [
+                sqlite/exec db "BEGIN" func [b] [
+                    sqlite/exec db "INSERT INTO tx(name) VALUES ('rolled')" func [i] [
+                        sqlite/exec db "ROLLBACK" func [r] [
+                            sqlite/exec db "INSERT INTO tx(name) VALUES ('kept')" func [k] [
+                                sqlite/exec db "BEGIN" func [b2] [
+                                    sqlite/exec db "INSERT INTO tx(name) VALUES ('committed')" func [i2] [
+                                        sqlite/exec db "COMMIT" func [c] [
+                                            sqlite/close db func [z] [ s/print "SQLITE_TX_OK" ] func [e] [ raise e ]
+                                        ] func [e] [ raise e ]
+                                    ] func [e] [ raise e ]
+                                ] func [e] [ raise e ]
+                            ] func [e] [ raise e ]
+                        ] func [e] [ raise e ]
+                    ] func [e] [ raise e ]
+                ] func [e] [ raise e ]
+            ] func [e] [ raise e ]
+    ] func [e] [ raise e ]
+]

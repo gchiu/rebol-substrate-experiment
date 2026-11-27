@@ -1,0 +1,5 @@
+[
+sqlite/open "../escape.db"
+    func [db] [ s/print "SQLITE_BADPATH_UNEXPECTED" ]
+    func [e] [ s/print "SQLITE_BADPATH_REJECTED" ]
+]

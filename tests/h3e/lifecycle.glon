@@ -1,0 +1,92 @@
+;; tests/h3e/lifecycle.glon -- task-mode HTTP response lifecycle (GLON-HTTP-H3E).
+;; Run with --http-tasks on a task+sqlite build.  One route per case:
+;;   /now          responds immediately (no async work)
+;;   /wait         async SQLite count; the callback responds; the task task-waits,
+;;                 then counts its resumption (work after the response must run)
+;;   /nowait       async SQLite count; the callback responds; the handler returns
+;;                 without waiting (the G3H style)
+;;   /twice        responds twice; only the first response may be delivered
+;;   /fail         raises a SIN! before responding -> 500 "internal error"
+;;   /fail-after   responds 200, then raises -> the 200 is kept
+;;   /none         returns without responding -> 500 "no response"
+;;   /hang         task-waits and is never woken (client disconnect / timeout)
+;;   /echo?x       responds immediately with the query (overlap correlation)
+;;   /state        "responses=R open=O resumed=N": uncollected responses, open
+;;                 request ids other than this one (both 0 when idle), and how
+;;                 many /wait tasks have resumed after task-wait
+[
+h3e/resumed: 0
+h3e/len: func [xs] [ either xs [ + 1 h3e/len block-at xs 1 ] [ 0 ] ]
+
+h3e/db: none
+
+h3e/count: func [request me] [
+    sqlite/prepare h3e/db "SELECT count(*) FROM m"
+        func [st] [
+            sqlite/step st
+                func [row] [
+                    h3e/body: s/+ "count " s/from-int block-at row 0
+                    sqlite/finalize st
+                        func [f] [
+                            http/respond request 200 "text/plain; charset=utf-8" h3e/body
+                            either me [ task-wake me ] [ none ]
+                        ]
+                        func [e] [ http/respond request 500 "text/plain" "finalize" ]
+                ]
+                func [e] [ http/respond request 500 "text/plain" "step" ]
+        ]
+        func [e] [ http/respond request 500 "text/plain" "prepare" ]
+]
+
+h3e/handle: func [request] [
+    path: http/path request
+    either str-eq path "/now" [
+        http/respond request 200 "text/plain; charset=utf-8" "now"
+    ] [
+    either str-eq path "/wait" [
+        h3e/count request self
+        task-wait
+        h3e/resumed: + h3e/resumed 1
+    ] [
+    either str-eq path "/nowait" [
+        h3e/count request none
+    ] [
+    either str-eq path "/twice" [
+        http/respond request 200 "text/plain; charset=utf-8" "first"
+        http/respond request 201 "text/plain; charset=utf-8" "second"
+    ] [
+    either str-eq path "/fail" [
+        raise create-sin 'h3e 'boom none
+    ] [
+    either str-eq path "/fail-after" [
+        http/respond request 200 "text/plain; charset=utf-8" "kept"
+        raise create-sin 'h3e 'boom none
+    ] [
+    either str-eq path "/none" [
+        none
+    ] [
+    either str-eq path "/hang" [
+        task-wait
+    ] [
+    either str-eq path "/echo" [
+        http/respond request 200 "text/plain; charset=utf-8" http/query request
+    ] [
+    either str-eq path "/state" [
+        http/respond request 200 "text/plain; charset=utf-8"
+            s/+ s/+ "responses=" s/from-int h3e/len http/responses
+                s/+ s/+ " open=" s/from-int - h3e/len http/open-ids 1
+                    s/+ " resumed=" s/from-int h3e/resumed
+    ] [
+        http/respond request 404 "text/plain; charset=utf-8" "not found"
+    ] ] ] ] ] ] ] ] ] ]
+]
+
+sqlite/open "h3e.db"
+    func [h] [
+        h3e/db: h
+        sqlite/exec h3e/db "CREATE TABLE IF NOT EXISTS m(id INTEGER PRIMARY KEY, v TEXT)"
+            func [x] [ http/listen 8443 :h3e/handle ]
+            func [e] [ raise e ]
+    ]
+    func [e] [ raise e ]
+]

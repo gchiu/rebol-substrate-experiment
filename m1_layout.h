@@ -102,6 +102,15 @@
 #define TREC_BLK   6
 #define TREC_FRAME 7
 #define TREC_STATE 8
+#define TREC_BLOCKED 9   /* M2: 1 = suspended on an async wait; scheduler skips.
+                           * The state stays TASK_RUNNABLE so the collector still
+                           * traces the saved stacks/closures as roots. */
+#define TREC_GEN    10   /* M4: reuse generation; bumped every time the slot is
+                           * recycled so a stale handle cannot address the new
+                           * task that inherited the slot. */
+#define TREC_MINSP  11   /* H2C: per-task data-stack high-water (min SP)     */
+#define TREC_MINRP  12   /* H2C: per-task return-stack high-water (min RP)   */
+#define TREC_RESP   13   /* H2D: per-task response block (GC-traced root)    */
 
 /* task states */
 #define TASK_RUNNABLE 0

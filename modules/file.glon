@@ -8,20 +8,20 @@
 ;;   field    = length:u32be bytes[length]
 ;; The host owns paths, file descriptors and bytes.  Replacement stays in Glon.
 ;;
-;; Only one request may be outstanding.  `io/take-request` returns a structured
-;; [id op fields] block (or NONE); the host encodes the v1 frame in C.  The
-;; host calls `io/reply id status v1 v2` when the worker finishes.  A callback
-;; may issue the next request before returning.
+;; Multiple requests may be outstanding (bounded by io/max-pending).  Each is a
+;; record [id op fields success failure arg] held in a FIFO queue; the host
+;; takes one at a time with `io/take-request` and feeds each reply back with
+;; `io/reply id status v1 v2`, which correlates by id and delivers to the
+;; originating task's success/failure closure.  The host serialises execution
+;; (one outstanding host request), but many Glon tasks can be pending at once.
 ;;
 ;; Requires the shipped prelude/strings libraries and strings-ext (s/slice).
 [
 io/next-id: 0
-io/pending: none
-io/pending-id: 0
-io/pending-op: 0
-io/pending-arg: none
-io/pending-request: none
-io/pending-record: none
+io/count: 0
+io/max-pending: 16
+io/queue: none      ;; FIFO of records not yet taken by the host
+io/inflight: none   ;; records taken by the host, awaiting their reply
 
 ;; Big-endian u32 as exactly four bytes.  No bitwise or MOD word is used.
 io/u32: func [n] [
@@ -60,65 +60,87 @@ io/mode-byte: func [mode] [
     ]
 ]
 
+;; ---- bounded FIFO of pending requests ------------------------------------
+io/find: func [xs id] [
+    either xs [
+        rec: block-at xs 0
+        either = block-at rec 0 id [ rec ] [ io/find block-at xs 1 id ]
+    ] [ none ]
+]
+io/remove: func [xs id] [
+    either xs [
+        rec: block-at xs 0
+        either = block-at rec 0 id [
+            block-at xs 1
+        ] [
+            reduce [ rec io/remove block-at xs 1 id ]
+        ]
+    ] [ none ]
+]
+
 ;; Queue one request.  Request construction and callback retention are Glon
-;; state; the returned frame is consumed by the host driver.
+;; state; the returned frame is consumed by the host driver.  A full queue is
+;; rejected without touching existing requests.
 io/request: func [op fields success failure arg] [
-    either io/pending [
-        raise create-sin 'io 'busy arg
+    either >= io/count io/max-pending [
+        raise create-sin 'io 'capacity arg
     ] [
         io/next-id: + io/next-id 1
-        io/pending-id: io/next-id
-        io/pending-op: op
-        io/pending-record: reduce [ io/next-id op :success :failure arg ]
-        io/pending-arg: arg
-        io/pending-request: reduce [ io/next-id op fields ]
-        io/pending: 1
+        rec: reduce [ io/next-id op fields :success :failure arg ]
+        io/queue: reduce [ rec io/queue ]
+        io/count: + io/count 1
         none
     ]
 ]
 
+;; Pop the head request for the host and keep its record in `inflight` (so the
+;; collector still roots the callbacks until the reply arrives).
 io/take-request: func [] [
-    either io/pending [ io/pending-request ] [ none ]
+    either io/queue [
+        rec: block-at io/queue 0
+        io/queue: block-at io/queue 1
+        io/inflight: reduce [ rec io/inflight ]
+        reduce [ block-at rec 0 block-at rec 1 block-at rec 2 ]
+    ] [ none ]
 ]
 
 ;; The host feeds one bounded reply back.  Unknown/stale ids are a job failure,
 ;; not a recoverable file error.  Recoverable statuses become SIN! values in
 ;; the failure closure.  A judge in the original caller cannot span this turn.
-io/reply: func [id status v1 v2] [
-    either either io/pending [ = id io/pending-id ] [ 0 ] [
-        op: block-at io/pending-record 1
-        success: block-at io/pending-record 2
-        failure: block-at io/pending-record 3
-        arg: block-at io/pending-record 4
-        io/pending: none
-        io/pending-record: none
-        io/pending-request: none
-        io/pending-arg: none
-        either = status 'ok [
-            either = op 1 [
-                success reduce [ v1 v2 ]
+io/deliver: func [op success failure arg status v1 v2] [
+    either = status 'ok [
+        either = op 1 [
+            success reduce [ v1 v2 ]
+        ] [
+            either = op 2 [
+                success v1
             ] [
-                either = op 2 [
+                either = op 3 [
                     success v1
                 ] [
-                    either = op 3 [
-                        success v1
-                    ] [
-                        either = op 5 [ success reduce [ v1 v2 ] ] [ success none ]
-                    ]
+                    either = op 5 [ success reduce [ v1 v2 ] ] [ success none ]
                 ]
             ]
-        ] [
-            either = status 'eof [
-                either = op 2 [
-                    success ""
-                ] [
-                    failure create-sin 'io status arg
-                ]
+        ]
+    ] [
+        either = status 'eof [
+            either = op 2 [
+                success ""
             ] [
                 failure create-sin 'io status arg
             ]
+        ] [
+            failure create-sin 'io status arg
         ]
+    ]
+]
+io/reply: func [id status v1 v2] [
+    rec: io/find io/inflight id
+    either rec [
+        io/inflight: io/remove io/inflight id
+        io/count: - io/count 1
+        io/deliver block-at rec 1 block-at rec 3 block-at rec 4 block-at rec 5
+            status v1 v2
     ] [
         raise create-sin 'io 'stale-reply id
     ]

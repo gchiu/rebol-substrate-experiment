@@ -47,6 +47,8 @@ integrity/build/
 io-file-c-test
 
 m1-large-test
+sqlite-test
+sec-test
 
 # Kaka native harness binaries
 kaka-test

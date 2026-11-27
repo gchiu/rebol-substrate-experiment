@@ -33,6 +33,13 @@
 #ifdef GLON_MODULE_HTTP
 #include "glon_http.h"
 #endif
+#ifdef GLON_MODULE_SEC
+#include "glon_sec.h"
+#include <openssl/crypto.h>
+#endif
+#ifdef GLON_MODULE_SQLITE
+#include "glon_sqlite.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,6 +56,11 @@
 #endif
 
 #define MAX_SOURCE (1u << 20)
+
+#ifdef GLON_MODULE_SQLITE
+static glon_sqlite_service sqlite_service;
+static int sqlite_loaded;
+#endif
 
 /* ---- source files -------------------------------------------------------- */
 
@@ -150,10 +162,8 @@ static int load_default_libraries(void) {
         snprintf(path, sizeof path, "%s/glon-lib/%s", exe_dir, names[k]);
         if (load_library(path) != 0) return -1;
     }
-#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP)
-    /* strings-ext supplies s/from-int, used by the HTTP status JSON and by
-     * file.glon's write loop.  It is staged for every build but loaded only
-     * when an optional module needs it. */
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE) || defined(GLON_MODULE_TASK)
+    /* strings-ext supplies s/from-int, used by HTTP, file, sec and sqlite. */
     snprintf(path, sizeof path, "%s/glon-lib/strings-ext.glon", exe_dir);
     if (load_library(path) != 0) return -1;
 #endif
@@ -171,8 +181,40 @@ static int load_default_libraries(void) {
     snprintf(path, sizeof path, "%s/glon-lib/http.glon", exe_dir);
     if (load_library(path) != 0) return -1;
 #endif
+#ifdef GLON_MODULE_SEC
+    /* Ordinary Glon over the optional host security service. */
+    snprintf(path, sizeof path, "%s/glon-lib/sec.glon", exe_dir);
+    if (load_library(path) != 0) return -1;
+#endif
     return 0;
 }
+
+#ifdef GLON_MODULE_SQLITE
+/* Load SQLite vocabulary only when a source actually references it.  This
+ * keeps a combined binary from spending global bindings in applications (such
+ * as G3B) that never use SQLite. */
+static int load_sqlite_library(void) {
+    char path[4096];
+    snprintf(path, sizeof path, "%s/glon-lib/sqlite.glon", exe_dir);
+    if (load_library(path) != 0) return -1;
+    sqlite_loaded = 1;
+    return 0;
+}
+#endif
+
+#ifdef GLON_MODULE_TASK
+/* Load the cooperative-task vocabulary only when a source references it, so a
+ * combined binary does not spend global bindings in applications that never
+ * spawn tasks. */
+static int task_loaded;
+static int load_task_library(void) {
+    char path[4096];
+    snprintf(path, sizeof path, "%s/glon-lib/task.glon", exe_dir);
+    if (load_library(path) != 0) return -1;
+    task_loaded = 1;
+    return 0;
+}
+#endif
 
 /* ---- outcome reporting --------------------------------------------------- */
 
@@ -213,7 +255,8 @@ static void report_outcome(const r0_s1_outcome *out, const char *path) {
         if (out->detail == R0S1_DETAIL_CONTEXT_FULL)
             fprintf(stderr, "glon: %s: ** halted: context full (no SIN!: a machine-level fail-stop)\n", path);
         else
-            fprintf(stderr, "glon: %s: ** halted (no SIN!: a machine-level fail-stop)\n", path);
+            fprintf(stderr, "glon: %s: ** halted (reason %d: no SIN!: a machine-level fail-stop)\n",
+                    path, r0_s1_halt_reason());
         return;
     default:
         fprintf(stderr, "glon: %s: ** unknown session outcome\n", path);
@@ -221,7 +264,13 @@ static void report_outcome(const r0_s1_outcome *out, const char *path) {
     }
 }
 
-#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP)
+#if defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE)
+#ifdef GLON_MODULE_HTTP
+static int pump_pre(void *user);
+#endif
+#endif
+
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_SQLITE) || defined(GLON_MODULE_TASK)
 /* ---- optional module options -------------------------------------------- */
 
 typedef struct {
@@ -236,8 +285,13 @@ typedef struct {
     glon_http_config http;
     int http_report;
 #endif
+#ifdef GLON_MODULE_SQLITE
+    glon_sqlite_config sqlite;
+    int sqlite_report;
+#endif
 } module_options;
 
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_TASK)
 static int parse_uint_opt(const char *s, unsigned *out) {
     char *end = NULL;
     unsigned long v = strtoul(s, &end, 10);
@@ -245,6 +299,7 @@ static int parse_uint_opt(const char *s, unsigned *out) {
     *out = (unsigned)v;
     return 0;
 }
+#endif
 
 static void module_options_init(module_options *o) {
     memset(o, 0, sizeof *o);
@@ -253,6 +308,14 @@ static void module_options_init(module_options *o) {
 #endif
 #ifdef GLON_MODULE_HTTP
     glon_http_config_default(&o->http);
+#if defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE)
+    o->http.pre_pump = pump_pre;
+    o->http.pre_pump_user = NULL;
+#endif
+#endif
+#ifdef GLON_MODULE_SQLITE
+    glon_sqlite_config_default(&o->sqlite);
+    o->sqlite_report = 0;
 #endif
 }
 
@@ -270,8 +333,16 @@ static void module_usage(void) {
     fprintf(stderr,
         " [--http-cert FILE] [--http-bind ADDR] [--http-max-requests N]\n"
         "            [--http-timeout-ms N] [--http-max-request-size N]\n"
-        "            [--http-max-body N] [--http-keep-alive] [--http-report]\n"
-        "            [--http-stop-event NAME]");
+        "            [--http-max-body N] [--http-threads N] [--http-bridge]\n"
+        "            [--http-keep-alive]\n"
+        "            [--http-log FILE] [--http-log-max-bytes N]\n"
+        "            [--http-log-backups N]\n"
+        "            [--http-report] [--http-stop-event NAME]");
+#endif
+#ifdef GLON_MODULE_SQLITE
+    fprintf(stderr,
+        " [--io-root DIR] [--allow-file-read] [--allow-file-write]"
+        " [--sqlite-report]");
 #endif
     fprintf(stderr, " FILE...\n");
 }
@@ -317,6 +388,18 @@ static int parse_module_options(int argc, char **argv, int *first_file,
             o->io_cancel = 1;
         }
 #endif
+#ifdef GLON_MODULE_SQLITE
+        else if (!strcmp(a, "--io-root")) {
+            if (++i >= argc) return -1;
+            o->sqlite.root = argv[i];
+        } else if (!strcmp(a, "--allow-file-read")) {
+            o->sqlite.allow_read = 1;
+        } else if (!strcmp(a, "--allow-file-write")) {
+            o->sqlite.allow_write = 1;
+        } else if (!strcmp(a, "--sqlite-report")) {
+            o->sqlite_report = 1;
+        }
+#endif
 #ifdef GLON_MODULE_HTTP
         else if (!strcmp(a, "--http-cert")) {
             if (++i >= argc) return -1;
@@ -338,11 +421,29 @@ static int parse_module_options(int argc, char **argv, int *first_file,
             o->http.max_body = v;
         } else if (!strcmp(a, "--http-keep-alive")) {
             o->http.keep_alive = 1;
+        } else if (!strcmp(a, "--http-threads")) {
+            unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v) ||
+                           v == 0 || v > GLON_HTTP_MAX_THREADS) return -1;
+            o->http.num_threads = v;
+        } else if (!strcmp(a, "--http-bridge")) {
+            o->http.bridge_mode = 1;
+        } else if (!strcmp(a, "--http-tasks")) {
+            o->http.bridge_mode = 1;
+            o->http.task_mode = 1;
         } else if (!strcmp(a, "--http-report")) {
             o->http_report = 1;
         } else if (!strcmp(a, "--http-stop-event")) {
             if (++i >= argc || !argv[i][0]) return -1;
             o->http.stop_event = argv[i];
+        } else if (!strcmp(a, "--http-log")) {
+            if (++i >= argc || !argv[i][0]) return -1;
+            o->http.log_path = argv[i];
+        } else if (!strcmp(a, "--http-log-max-bytes")) {
+            unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v) || v == 0) return -1;
+            o->http.log_max_bytes = v;
+        } else if (!strcmp(a, "--http-log-backups")) {
+            unsigned v; if (++i >= argc || parse_uint_opt(argv[i], &v)) return -1;
+            o->http.log_backups = v;
         }
 #endif
         else {
@@ -353,12 +454,10 @@ static int parse_module_options(int argc, char **argv, int *first_file,
     *first_file = i;
     return 0;
 }
-#endif /* GLON_MODULE_FILE || GLON_MODULE_HTTP */
+#endif /* GLON_MODULE_FILE || GLON_MODULE_HTTP || GLON_MODULE_SQLITE || GLON_MODULE_TASK */
 
-#ifdef GLON_MODULE_FILE
-/* ---- optional native file module driver --------------------------------- */
-
-#define IO_REPLY_SRC_CAP 32768
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE) || defined(GLON_MODULE_TASK)
+/* ---- shared host expression runner --------------------------------------- */
 
 static int run_expression(const char *src, r0_s1_outcome *oc) {
     /* Reply/take sources are transient host-built expressions.  Reclaim their
@@ -377,6 +476,12 @@ static int run_expression(const char *src, r0_s1_outcome *oc) {
     M[GC_LOADER_HP] = save_lhp;
     return r;
 }
+#endif
+
+#ifdef GLON_MODULE_FILE
+/* ---- optional native file module driver --------------------------------- */
+
+#define IO_REPLY_SRC_CAP 32768
 
 static int take_request(uint8_t *buf, size_t cap, size_t *len, int *pending,
                         char *err, size_t errcap) {
@@ -606,16 +711,17 @@ static int drain_io(glon_io_cli *io, const char *progress,
             return -1;
         }
 
-        if (progress && !*progress_done) {
+        if (!*progress_done) {
             *progress_done = 1;
-            if (run_source(progress) != 0) {
+            if (progress && run_source(progress) != 0) {
                 fprintf(stderr, "glon: io: progress job failed\n");
                 glon_io_cli_cancel(io);
                 (void)glon_io_cli_wait(io, rep, sizeof rep, &rep_len, err, sizeof err);
                 return -1;
             }
-            fprintf(stderr, "glon: io: progress job completed while request %u was pending\n",
-                    q.request_id);
+            if (progress)
+                fprintf(stderr, "glon: io: progress job completed while request %u was pending\n",
+                        q.request_id);
         }
 
         if (cancel_before_reply) {
@@ -655,6 +761,455 @@ static int pump_file_io(void *user) {
 }
 #endif /* GLON_MODULE_FILE */
 
+
+#ifdef GLON_MODULE_SEC
+/* ---- optional security host driver -------------------------------------- */
+
+#define SEC_REPLY_SRC_CAP 16384
+
+static int append_bytes_expr(char *src, size_t cap, int *used,
+                             const unsigned char *bytes, size_t len) {
+    int n = *used;
+    if (n < 0 || (size_t)n >= cap) return -1;
+    n += snprintf(src + n, cap - (size_t)n, "mk-string [");
+    if (n < 0 || (size_t)n >= cap) return -1;
+    for (size_t i = 0; i < len; i++) {
+        n += snprintf(src + n, cap - (size_t)n, " %u", (unsigned)bytes[i]);
+        if (n < 0 || (size_t)n >= cap) return -1;
+    }
+    n += snprintf(src + n, cap - (size_t)n, " ]");
+    if (n < 0 || (size_t)n >= cap) return -1;
+    *used = n;
+    return 0;
+}
+
+static int take_sec_request(glon_sec_request *req, uint32_t *id, int *pending,
+                            char *err, size_t errcap) {
+    static const char expr[] = "[ sec/take-request ]";
+    r0_s1_outcome oc;
+    (void)run_expression(expr, &oc);
+    *pending = 0;
+    if (oc.status != R0S1_OUT_OK) {
+        snprintf(err, errcap, "sec/take-request failed (status %d)", oc.status);
+        return -1;
+    }
+    if (oc.count <= 0 ||
+        (oc.count == 1 && r0_s1_result(0, oc.count) == R0_NONE))
+        return 0;
+    if (oc.count != 1 || r0_tag(r0_s1_result(0, oc.count)) != T_BLOCK) {
+        snprintf(err, errcap, "sec/take-request did not return a BLOCK or NONE");
+        return -1;
+    }
+    cell p = r0_untag(r0_s1_result(0, oc.count));
+    if (M[p] != 3) {
+        snprintf(err, errcap, "sec/take-request block shape");
+        return -1;
+    }
+    cell idv = M[p + BLK_DATA];
+    cell opv = M[p + BLK_DATA + 1];
+    cell fields = M[p + BLK_DATA + 2];
+    if (r0_tag(idv) != T_INT || r0_tag(opv) != T_INT ||
+        r0_tag(fields) != T_BLOCK) {
+        snprintf(err, errcap, "sec/take-request field types");
+        return -1;
+    }
+    uint32_t rid = (uint32_t)int_val(idv);
+    unsigned op = (unsigned)int_val(opv);
+    if (rid == 0 || op < GLON_SEC_OP_RANDOM || op > GLON_SEC_OP_TIME) {
+        snprintf(err, errcap, "sec/take-request id/op");
+        return -1;
+    }
+    cell fp = r0_untag(fields);
+    cell nf = M[fp];
+    if (nf < 0 || nf > GLON_SEC_MAX_FIELDS) {
+        snprintf(err, errcap, "sec/take-request too many fields");
+        return -1;
+    }
+    memset(req, 0, sizeof *req);
+    req->op = op;
+    req->nfields = (unsigned)nf;
+    for (cell i = 0; i < nf; i++) {
+        cell sv = M[fp + BLK_DATA + i];
+        if (r0_tag(sv) != T_STRING) {
+            snprintf(err, errcap, "sec field is not a STRING!");
+            return -1;
+        }
+        cell sp = r0_untag(sv);
+        cell sl = M[sp];
+        if (sl < 0 || (size_t)sl > GLON_SEC_FIELD_CAP) {
+            snprintf(err, errcap, "sec field is too large");
+            return -1;
+        }
+        req->field_len[i] = (size_t)sl;
+        for (cell j = 0; j < sl; j++)
+            req->fields[i][j] = (unsigned char)M[sp + 1 + j];
+    }
+    *id = rid;
+    *pending = 1;
+    return 0;
+}
+
+static int run_sec_reply(uint32_t id, int ok,
+                         const unsigned char *v1, size_t v1len,
+                         const unsigned char *v2, size_t v2len,
+                         char *err, size_t errcap) {
+    char src[SEC_REPLY_SRC_CAP];
+    int n = snprintf(src, sizeof src, "[ sec/reply %u '%s ",
+                     id, ok ? "ok" : "error");
+    if (n < 0 || (size_t)n >= sizeof src) {
+        snprintf(err, errcap, "sec reply source too large");
+        return -1;
+    }
+    if (append_bytes_expr(src, sizeof src, &n, v1, v1len) != 0 ||
+        (n += snprintf(src + n, sizeof src - (size_t)n, " "), n < 0) ||
+        append_bytes_expr(src, sizeof src, &n, v2, v2len) != 0) {
+        snprintf(err, errcap, "sec reply source too large");
+        return -1;
+    }
+    n += snprintf(src + n, sizeof src - (size_t)n, " ]");
+    if (n < 0 || (size_t)n >= sizeof src) {
+        snprintf(err, errcap, "sec reply source too large");
+        return -1;
+    }
+    r0_s1_outcome oc;
+    (void)run_expression(src, &oc);
+    if (oc.status != R0S1_OUT_OK) {
+        report_outcome(&oc, "sec/reply");
+        snprintf(err, errcap, "sec/reply callback failed (status %d)", oc.status);
+        return -1;
+    }
+    return 0;
+}
+
+/* Returns -1 on an error, 0 when no request was pending, and 1 after at least
+ * one request/reply turn was completed.  The caller may loop until 0. */
+static int drain_sec(char *err, size_t errcap) {
+    int processed = 0;
+    for (;;) {
+        glon_sec_request req;
+        uint32_t id = 0;
+        int pending = 0;
+        if (take_sec_request(&req, &id, &pending, err, errcap) != 0)
+            return -1;
+        if (!pending)
+            return processed;
+        unsigned char out1[GLON_SEC_OUT_CAP];
+        unsigned char out2[GLON_SEC_OUT_CAP];
+        size_t out1_len = 0, out2_len = 0;
+        char op_err[128] = {0};
+        int ok = glon_sec_execute(&req, out1, &out1_len, out2, &out2_len,
+                                  op_err, sizeof op_err) == 0;
+        OPENSSL_cleanse(&req, sizeof req);
+        int rr = ok
+            ? run_sec_reply(id, 1, out1, out1_len, out2, out2_len, err, errcap)
+            : run_sec_reply(id, 0, (const unsigned char *)op_err,
+                            strlen(op_err), NULL, 0, err, errcap);
+        OPENSSL_cleanse(out1, sizeof out1);
+        OPENSSL_cleanse(out2, sizeof out2);
+        if (rr != 0)
+            return -1;
+        processed = 1;
+    }
+}
+
+#endif /* GLON_MODULE_SEC */
+
+#ifdef GLON_MODULE_SQLITE
+/* ---- optional SQLite host driver ---------------------------------------- */
+
+#define SQLITE_REPLY_SRC_CAP 65536
+
+static int sqlite_append_bytes_expr(char *src, size_t cap, int *used,
+                                    const unsigned char *bytes, size_t len) {
+    int n = *used;
+    if (n < 0 || (size_t)n >= cap) return -1;
+    n += snprintf(src + n, cap - (size_t)n, "mk-string [");
+    if (n < 0 || (size_t)n >= cap) return -1;
+    for (size_t i = 0; i < len; i++) {
+        n += snprintf(src + n, cap - (size_t)n, " %u", (unsigned)bytes[i]);
+        if (n < 0 || (size_t)n >= cap) return -1;
+    }
+    n += snprintf(src + n, cap - (size_t)n, " ]");
+    if (n < 0 || (size_t)n >= cap) return -1;
+    *used = n;
+    return 0;
+}
+
+static int sqlite_append_row_expr(char *src, size_t cap, int *used,
+                                  const unsigned char *row, size_t len) {
+    if (len < 1) return -1;
+    unsigned ncols = row[0];
+    size_t pos = 1;
+    int n = *used;
+    n += snprintf(src + n, cap - (size_t)n, "reduce [");
+    if (n < 0 || (size_t)n >= cap) return -1;
+    for (unsigned col = 0; col < ncols; col++) {
+        if (pos >= len) return -1;
+        unsigned type = row[pos++];
+        n += snprintf(src + n, cap - (size_t)n, " ");
+        if (type == 0) {
+            n += snprintf(src + n, cap - (size_t)n, "none");
+        } else if (type == 1) {
+            if (pos + 8 > len) return -1;
+            uint64_t u = 0;
+            for (int i = 0; i < 8; i++) u = (u << 8) | row[pos + (size_t)i];
+            pos += 8;
+            long long v = (long long)u;
+            /* Glon native integers are about +-2^59 (WASM is smaller).  Keep
+             * SQLite's full int64 range representable without feeding an
+             * out-of-range source literal to the parser. */
+            if (v > 576460752303423487LL || v < -576460752303423488LL) {
+                char dec[32];
+                int dn = snprintf(dec, sizeof dec, "%lld", v);
+                if (dn < 0 || (size_t)dn >= sizeof dec) return -1;
+                n += snprintf(src + n, cap - (size_t)n, "reduce [ 'big-int ");
+                if (n < 0 || (size_t)n >= cap) return -1;
+                if (sqlite_append_bytes_expr(src, cap, &n,
+                                              (const unsigned char *)dec,
+                                              (size_t)dn) != 0) return -1;
+                n += snprintf(src + n, cap - (size_t)n, " ]");
+                if (n < 0 || (size_t)n >= cap) return -1;
+            } else {
+                n += snprintf(src + n, cap - (size_t)n, "%lld", v);
+            }
+        } else if (type == 2 || type == 3 || type == 4) {
+            if (pos + 4 > len) return -1;
+            uint32_t blen = ((uint32_t)row[pos] << 24) |
+                            ((uint32_t)row[pos + 1] << 16) |
+                            ((uint32_t)row[pos + 2] << 8) |
+                            (uint32_t)row[pos + 3];
+            pos += 4;
+            if (blen > len - pos) return -1;
+            if (type == 2) {
+                if (sqlite_append_bytes_expr(src, cap, &n, row + pos, blen) != 0)
+                    return -1;
+            } else {
+                n += snprintf(src + n, cap - (size_t)n, "reduce [ '%s ",
+                              type == 3 ? "blob" : "real");
+                if (n < 0 || (size_t)n >= cap) return -1;
+                if (sqlite_append_bytes_expr(src, cap, &n, row + pos, blen) != 0)
+                    return -1;
+                n += snprintf(src + n, cap - (size_t)n, " ]");
+            }
+            pos += blen;
+        } else {
+            return -1;
+        }
+        if (n < 0 || (size_t)n >= cap) return -1;
+    }
+    n += snprintf(src + n, cap - (size_t)n, " ]");
+    if (n < 0 || (size_t)n >= cap) return -1;
+    *used = n;
+    return 0;
+}
+
+static int take_sqlite_request(glon_sqlite_request *req, uint32_t *id,
+                               int *pending, char *err, size_t errcap) {
+    static const char expr[] = "[ sqlite/take-request ]";
+    r0_s1_outcome oc;
+    (void)run_expression(expr, &oc);
+    *pending = 0;
+    if (oc.status != R0S1_OUT_OK) {
+        snprintf(err, errcap, "sqlite/take-request failed (status %d)", oc.status);
+        return -1;
+    }
+    if (oc.count <= 0 ||
+        (oc.count == 1 && r0_s1_result(0, oc.count) == R0_NONE))
+        return 0;
+    if (oc.count != 1 || r0_tag(r0_s1_result(0, oc.count)) != T_BLOCK) {
+        snprintf(err, errcap, "sqlite/take-request did not return a BLOCK or NONE");
+        return -1;
+    }
+    cell p = r0_untag(r0_s1_result(0, oc.count));
+    if (M[p] != 3) {
+        snprintf(err, errcap, "sqlite/take-request block shape");
+        return -1;
+    }
+    cell idv = M[p + BLK_DATA];
+    cell opv = M[p + BLK_DATA + 1];
+    cell fields = M[p + BLK_DATA + 2];
+    if (r0_tag(idv) != T_INT || r0_tag(opv) != T_INT ||
+        r0_tag(fields) != T_BLOCK) {
+        snprintf(err, errcap, "sqlite/take-request field types");
+        return -1;
+    }
+    uint32_t rid = (uint32_t)int_val(idv);
+    unsigned op = (unsigned)int_val(opv);
+    if (rid == 0 || op < GLON_SQLITE_OP_OPEN || op > GLON_SQLITE_OP_CLOSE) {
+        snprintf(err, errcap, "sqlite/take-request id/op");
+        return -1;
+    }
+    cell fp = r0_untag(fields);
+    cell nf = M[fp];
+    if (nf < 0 || nf > GLON_SQLITE_MAX_FIELDS) {
+        snprintf(err, errcap, "sqlite/take-request too many fields");
+        return -1;
+    }
+    memset(req, 0, sizeof *req);
+    req->op = op;
+    req->nfields = (unsigned)nf;
+    for (cell i = 0; i < nf; i++) {
+        cell sv = M[fp + BLK_DATA + i];
+        if (r0_tag(sv) != T_STRING) {
+            snprintf(err, errcap, "sqlite field is not a STRING!");
+            return -1;
+        }
+        cell sp = r0_untag(sv);
+        cell sl = M[sp];
+        if (sl < 0 || (size_t)sl > GLON_SQLITE_FIELD_CAP) {
+            snprintf(err, errcap, "sqlite field is too large");
+            return -1;
+        }
+        req->field_len[i] = (size_t)sl;
+        for (cell j = 0; j < sl; j++)
+            req->fields[i][j] = (unsigned char)M[sp + 1 + j];
+    }
+    *id = rid;
+    *pending = 1;
+    return 0;
+}
+
+static int run_sqlite_reply(uint32_t id, int op,
+                            const glon_sqlite_result *result,
+                            char *err, size_t errcap) {
+    char src[SQLITE_REPLY_SRC_CAP];
+    const char *word = glon_sqlite_status_word(result->status);
+    int n = snprintf(src, sizeof src, "[ sqlite/reply %u '%s ", id, word);
+    if (n < 0 || (size_t)n >= sizeof src) return -1;
+    if (result->status == GLON_SQLITE_ROW) {
+        if (sqlite_append_row_expr(src, sizeof src, &n, result->data, result->len) != 0)
+            return -1;
+    } else if (result->status == GLON_SQLITE_OK) {
+        if (sqlite_append_bytes_expr(src, sizeof src, &n, result->data, result->len) != 0)
+            return -1;
+    } else if (result->status == GLON_SQLITE_DONE) {
+        if (sqlite_append_bytes_expr(src, sizeof src, &n, NULL, 0) != 0) return -1;
+    } else {
+        if (sqlite_append_bytes_expr(src, sizeof src, &n,
+                                     (const unsigned char *)result->error,
+                                     strlen(result->error)) != 0) return -1;
+    }
+    n += snprintf(src + n, sizeof src - (size_t)n, " mk-string [ ] ]");
+    if (n < 0 || (size_t)n >= sizeof src) return -1;
+    (void)op;
+    r0_s1_outcome oc;
+    (void)run_expression(src, &oc);
+    if (oc.status != R0S1_OUT_OK) {
+        report_outcome(&oc, "sqlite/reply");
+        snprintf(err, errcap, "sqlite/reply callback failed (status %d)", oc.status);
+        return -1;
+    }
+    return 0;
+}
+
+static int drain_sqlite(glon_sqlite_service *svc, char *err, size_t errcap) {
+    int processed = 0;
+    for (;;) {
+        glon_sqlite_request req;
+        glon_sqlite_result result;
+        uint32_t id = 0;
+        int pending = 0;
+        if (take_sqlite_request(&req, &id, &pending, err, errcap) != 0)
+            return -1;
+        if (!pending)
+            return processed;
+        (void)glon_sqlite_execute(svc, &req, &result, err, errcap);
+        if (run_sqlite_reply(id, req.op, &result, err, errcap) != 0)
+            return -1;
+        processed = 1;
+    }
+}
+#endif /* GLON_MODULE_SQLITE */
+
+#if defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE)
+/* Drain every pre-response service until all queues are empty.  A callback may
+ * enqueue another service, so both are polled again after each turn. */
+static int drain_pre(char *err, size_t errcap) {
+    int any = 0;
+    for (;;) {
+        int did = 0;
+#ifdef GLON_MODULE_SEC
+        int r = drain_sec(err, errcap);
+        if (r < 0) return -1;
+        if (r > 0) { did = 1; any = 1; }
+#endif
+#ifdef GLON_MODULE_SQLITE
+        if (sqlite_loaded) {
+            int q = drain_sqlite(&sqlite_service, err, errcap);
+            if (q < 0) return -1;
+            if (q > 0) { did = 1; any = 1; }
+        }
+#endif
+        if (!did) return any;
+    }
+}
+
+#ifdef GLON_MODULE_HTTP
+static int pump_pre(void *user) {
+    (void)user;
+    char err[512];
+    int r = drain_pre(err, sizeof err);
+    if (r < 0) fprintf(stderr, "glon: pre-service pump: %s\n", err);
+    return r;
+}
+#endif
+#endif
+
+#ifdef GLON_MODULE_TASK
+/* M2 host pump: run the cooperative scheduler, then drain asynchronous
+ * file/SQLite requests, and repeat until nothing makes progress.  A task that
+ * suspended on I/O (task-wait) is woken by the reply callback (task-wake), so
+ * the next run-tasks resumes it.  This is the only host-side scheduling help;
+ * all policy stays in task.glon. */
+#ifdef GLON_MODULE_FILE
+static glon_io_cli *g_task_io;
+#endif
+static int tasks_pending(void) {
+    r0_s1_outcome oc;
+    if (run_expression("[ tasks/pending? ]", &oc) != 0 ||
+        oc.status != R0S1_OUT_OK || oc.count != 1) return 0;
+    cell v = r0_s1_result(0, oc.count);
+    return (r0_tag(v) == T_INT && int_val(v) != 0) ? 1 : 0;
+}
+static int pump_tasks(const module_options *opts, char *err, size_t errcap) {
+    for (long guard = 0; guard < 1000000; guard++) {
+        r0_s1_outcome oc;
+        if (run_expression("[ run-tasks ]", &oc) != 0 ||
+            oc.status != R0S1_OUT_OK) {
+            if (oc.status == R0S1_OUT_HALT) {
+                snprintf(err, errcap, "run-tasks halted (reason %d)",
+                         r0_s1_halt_reason());
+            } else {
+                snprintf(err, errcap, "run-tasks failed (status %d)", oc.status);
+            }
+            return -1;
+        }
+        int did = 0;
+#ifdef GLON_MODULE_FILE
+        {
+            int pd = 0;
+            if (drain_io(g_task_io, opts->io_progress, &pd, opts->io_report,
+                         opts->io_gc_report, opts->io_cancel) != 0) {
+                snprintf(err, errcap, "file drain failed");
+                return -1;
+            }
+            if (pd) did = 1;
+        }
+#endif
+#if defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE)
+        {
+            char pe[512];
+            int pr = drain_pre(pe, sizeof pe);
+            if (pr < 0) { snprintf(err, errcap, "%s", pe); return -1; }
+            if (pr > 0) did = 1;
+        }
+#endif
+        if (!did) break;
+    }
+    return 0;
+}
+#endif
+
 /* ---- main ---------------------------------------------------------------- */
 
 int main(int argc, char **argv) {
@@ -665,7 +1220,7 @@ int main(int argc, char **argv) {
     (void)_setmode(_fileno(stdout), _O_BINARY);
     (void)_setmode(_fileno(stderr), _O_BINARY);
 #endif
-#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP)
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_SQLITE) || defined(GLON_MODULE_TASK)
     module_options opts;
     module_options_init(&opts);
     int first_file = 1;
@@ -685,8 +1240,10 @@ int main(int argc, char **argv) {
     M[M1_MAIN_ENTRY_CELL] = main_entry;
     M[M1_CURSOR] = 0;
     M[M1_STRESS_CNT] = 0;
-    for (int i = 0; i < M1_MAX_TASKS; i++)
+    for (int i = 0; i < M1_MAX_TASKS; i++) {
         M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
+        M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_GEN] = 0;
+    }
 
     if (load_default_libraries() != 0) return 2;
 
@@ -698,9 +1255,34 @@ int main(int argc, char **argv) {
         fprintf(stderr, "glon: io: %s\n", io_err);
         return 2;
     }
+#ifdef GLON_MODULE_TASK
+    g_task_io = io;
+#endif
+#endif
+
+#ifdef GLON_MODULE_SQLITE
+#ifdef GLON_MODULE_FILE
+    /* The file and SQLite modules share one --io-root/capability policy. */
+    opts.sqlite.root = opts.io_policy.root;
+    opts.sqlite.allow_read = opts.io_policy.allow_read;
+    opts.sqlite.allow_write = opts.io_policy.allow_write;
+#endif
+    {
+        char sqlite_err[512];
+        if (glon_sqlite_init(&sqlite_service, &opts.sqlite,
+                             sqlite_err, sizeof sqlite_err) != 0) {
+            fprintf(stderr, "glon: sqlite: %s\n", sqlite_err);
+            return 2;
+        }
+    }
 #endif
 
     int rc = 0;
+#if defined(GLON_MODULE_TASK) && defined(GLON_MODULE_HTTP)
+    /* H2B task mode spawns tasks from the host, so the vocabulary must be
+     * present even if the application source never names a task word. */
+    if (opts.http.task_mode && load_task_library() != 0) return 2;
+#endif
 #ifdef GLON_MODULE_FILE
     int io_reported = 0;
 #endif
@@ -709,7 +1291,26 @@ int main(int argc, char **argv) {
         char *src = read_source(argv[i], err, sizeof err);
         if (!src) { fprintf(stderr, "glon: %s: %s\n", argv[i], err); rc = 2; break; }
 
+#ifdef GLON_MODULE_SQLITE
+        if (!sqlite_loaded && strstr(src, "sqlite/")) {
+            if (load_sqlite_library() != 0) {
+                free(src);
+                rc = 2;
+                break;
+            }
+        }
+#endif
         strip_comments(src);
+#ifdef GLON_MODULE_TASK
+        if (!task_loaded && (strstr(src, "spawn") || strstr(src, "run-tasks") ||
+                             strstr(src, "task-wait") || strstr(src, "tasks/"))) {
+            if (load_task_library() != 0) {
+                free(src);
+                rc = 2;
+                break;
+            }
+        }
+#endif
         int perr = 0;
         cell prog = r0_s1_parse(src, &perr);
         free(src);
@@ -732,7 +1333,30 @@ int main(int argc, char **argv) {
 #else
         /* minimal build: no file module, no request/reply driver */
 #endif
+
+#if defined(GLON_MODULE_SEC) || defined(GLON_MODULE_SQLITE)
+        {
+            char pre_err[512];
+            if (drain_pre(pre_err, sizeof pre_err) < 0) {
+                fprintf(stderr, "glon: service pump: %s\n", pre_err);
+                rc = 1;
+                break;
+            }
+        }
+#endif
     }
+
+#ifdef GLON_MODULE_TASK
+    /* Run spawned cooperative tasks to completion, draining async I/O between
+     * scheduler turns so a task can suspend on I/O and be resumed. */
+    if (rc == 0 && task_loaded && tasks_pending()) {
+        char terr[512];
+        if (pump_tasks(&opts, terr, sizeof terr) != 0) {
+            fprintf(stderr, "glon: task: %s\n", terr);
+            rc = 1;
+        }
+    }
+#endif
 
 #ifdef GLON_MODULE_HTTP
     /* Start only after every source file has been loaded, and only if the
@@ -751,6 +1375,16 @@ int main(int argc, char **argv) {
             fprintf(stderr, "glon: http: %s\n", http_err);
             rc = 2;
         }
+    }
+#endif
+
+#ifdef GLON_MODULE_SQLITE
+    {
+        unsigned dbs = 0, stmts = 0;
+        glon_sqlite_destroy(&sqlite_service, &dbs, &stmts);
+        if (opts.sqlite_report)
+            fprintf(stderr, "glon: sqlite: closed_dbs=%u finalized_stmts=%u\n",
+                    dbs, stmts);
     }
 #endif
 

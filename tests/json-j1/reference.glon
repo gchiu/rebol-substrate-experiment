@@ -1,0 +1,125 @@
+;; tests/json-j1/reference.glon -- the ORIGINAL json.glon encoder (before
+;; GLON-JSON-J1), frozen under jold/ names as the reference for byte-for-byte
+;; comparison.  It recurses once per escaped byte and once per array item /
+;; object pair.  Load after modules/json.glon (it reuses j/ helpers).
+[
+  ;; ---- original encoder -----------------------------------------------------------
+jold/hex-char: func [n] [
+    either < n 10 [ + 48 n ] [ + 87 n ]
+]
+jold/hex2: func [n] [
+    mk-string reduce [ jold/hex-char / n 16 jold/hex-char j/mod n 16 ]
+]
+
+jold/encode-string-loop: func [s i] [
+    j: j/raw-special-at s i
+    piece: either > j i [ s/span s i j ] [ "" ]
+    b: s/at s j
+    either = b none [ piece ] [
+        esc: either = b 34 [
+            s/+ j/backslash j/quote
+        ] [
+            either = b 92 [
+                s/+ j/backslash j/backslash
+            ] [ s/+ "\u00" jold/hex2 b ]
+        ]
+        s/+ piece s/+ esc jold/encode-string-loop s + j 1
+    ]
+]
+
+jold/encode-string: func [s] [
+    either j/raw-utf8? s [
+        s/+ j/quote s/+ jold/encode-string-loop s 0 j/quote
+    ] [ j/error 'bad-utf8 s ]
+]
+
+jold/encode-items: func [items depth count] [
+    either = items none [ "" ] [
+        either either j/block? items [ = block-len items 2 ] [ 0 ] [
+            either >= count json/max-items [ j/error 'too-many-items count ] [
+                rest: block-at items 1
+                s/+ jold/encode block-at items 0 + depth 1
+                    either = rest none [ "" ] [ s/+ "," jold/encode-items rest depth + count 1 ]
+            ]
+        ] [ j/error 'not-a-json-value items ]
+    ]
+]
+
+jold/encode-pairs: func [pairs depth count] [
+    either = pairs none [ "" ] [
+        either either j/block? pairs [ = block-len pairs 2 ] [ 0 ] [
+            either >= count json/max-items [ j/error 'too-many-items count ] [
+                pair: block-at pairs 0
+                either either j/block? pair [ = block-len pair 2 ] [ 0 ] [
+                    key: block-at pair 0
+                    either j/string? key [
+                        rest: block-at pairs 1
+                        s/+ s/+ jold/encode-string key ":"
+                            s/+ jold/encode block-at pair 1 + depth 1
+                                either = rest none [ "" ] [ s/+ "," jold/encode-pairs rest depth + count 1 ]
+                    ] [ j/error 'not-a-json-value pair ]
+                ] [ j/error 'not-a-json-value pairs ]
+            ]
+        ] [ j/error 'not-a-json-value pairs ]
+    ]
+]
+
+jold/encode-block: func [v depth] [
+    n: block-len v
+    head: block-at v 0
+    either = head 'json-null [
+        either = n 1 [ "null" ] [ j/error 'not-a-json-value v ]
+    ] [
+        either = head 'json-bool [
+            either = n 2 [
+                either = block-at v 1 1 [
+                    "true"
+                ] [
+                    either = block-at v 1 0 [ "false" ] [ j/error 'not-a-json-value v ]
+                ]
+            ] [ j/error 'not-a-json-value v ]
+        ] [
+            either = head 'json-number [
+                either = n 2 [
+                    tok: block-at v 1
+                    either j/string? tok [
+                        either j/valid-number? tok [ tok ] [ j/error 'bad-number tok ]
+                    ] [ j/error 'not-a-json-value v ]
+                ] [ j/error 'not-a-json-value v ]
+            ] [
+                either = head 'json-array [
+                    either = n 2 [
+                        either > depth json/max-depth [ j/error 'too-deep depth ] [
+                            s/+ "[" s/+ jold/encode-items block-at v 1 + depth 1 0 "]"
+                        ]
+                    ] [ j/error 'not-a-json-value v ]
+                ] [
+                    either = head 'json-object [
+                        either = n 2 [
+                            either > depth json/max-depth [ j/error 'too-deep depth ] [
+                                s/+ "{" s/+ jold/encode-pairs block-at v 1 + depth 1 0 "}"
+                            ]
+                        ] [ j/error 'not-a-json-value v ]
+                    ] [ j/error 'not-a-json-value v ]
+                ]
+            ]
+        ]
+    ]
+]
+
+jold/encode: func [v depth] [
+    either j/string? v [
+        jold/encode-string v
+    ] [
+        either j/int? v [
+            s/from-int v
+        ] [
+            either j/block? v [
+                jold/encode-block v depth
+            ] [ j/error 'not-a-json-value v ]
+        ]
+    ]
+]
+
+jold/top: func [value] [ jold/encode value 1 ]
+]

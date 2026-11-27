@@ -1,0 +1,20 @@
+[
+sqlite/open "example.db"
+    func [db] [
+        sqlite/prepare db "SELECT count(*) FROM people"
+            func [st] [
+                sqlite/step st
+                    func [row] [
+                        either = row none [ raise create-sin 'g3d 'test "missing count" ] [
+                            s/print s/+ "SQLITE_RESTART_COUNT=" s/from-int block-at row 0
+                            sqlite/finalize st
+                                func [x] [ sqlite/close db func [y] [ none ] func [e] [ raise e ] ]
+                                func [e] [ raise e ]
+                        ]
+                    ]
+                    func [e] [ raise e ]
+            ]
+            func [e] [ raise e ]
+    ]
+    func [e] [ raise e ]
+]

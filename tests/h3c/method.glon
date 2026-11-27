@@ -1,0 +1,38 @@
+;; H3C: echo the request method so a test can verify the method that reached
+;; Glon inside a cooperative task (not inferred from the HTTP status).  Uses the
+;; same async-callback shape as examples/h2b/tasks.glon: the reply is produced
+;; in a callback after task-wait, so the host collects it before the task
+;; resumes.
+[
+db: none
+
+handle: func [request] [
+    me: self
+    m: http/method request
+    sqlite/prepare db "SELECT 1"
+        func [st] [
+            sqlite/step st
+                func [row] [
+                    sqlite/finalize st
+                        func [f] [
+                            http/respond request 200 "text/plain; charset=utf-8" m
+                            task-wake me
+                        ]
+                        func [e] [ http/respond request 500 "text/plain" "err"  task-wake me ]
+                ]
+                func [e] [ http/respond request 500 "text/plain" "err"  task-wake me ]
+        ]
+        func [e] [ http/respond request 500 "text/plain" "err"  task-wake me ]
+    task-wait
+]
+
+start: func [] [
+    sqlite/open "method.db"
+        func [h] [
+            db: h
+            http/listen 8443 :handle
+        ]
+        func [e] [ raise e ]
+]
+start
+]

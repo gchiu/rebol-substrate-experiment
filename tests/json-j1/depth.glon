@@ -1,0 +1,41 @@
+;; tests/json-j1/depth.glon -- return-stack depth of json/encode (GLON-JSON-J1).
+;; Prints "label depth" lines: depth = main return-stack cells used below the
+;; probe's own call depth (RV_RPMIN is the evaluator's min-RP register,
+;; RV_BASE + 20 = 24615; the main return stack top is 24576).
+[
+jd/reset: masm [ LIT 99999999 LIT 24615 ! NONE LIT 16 EXIT ]
+jd/rpmin: masm [ LIT 24615 @ LIT 16 MUL ARITY 1 EXIT ]
+jd/rp: masm [ LIT REG_RP @ LIT 16 MUL ARITY 1 EXIT ]
+jd/base: jd/rp
+jd/measure: func [label v] [
+    jd/reset
+    jd/out: json/encode v
+    s/print s/+ label s/+ " " s/+ s/from-int - jd/base jd/rpmin
+        s/+ " len=" s/from-int s/length jd/out
+]
+jd/double: func [x n] [ either = n 0 [ x ] [ jd/double s/+ x x - n 1 ] ]
+jd/pair: func [k v rest] [ reduce [ reduce [ k v ] rest ] ]
+
+jd/measure "plain-10" "abcdefghij"
+jd/measure "plain-1280" jd/double "abcdefghij" 7
+jd/measure "plain-10240" jd/double "abcdefghij" 10
+jd/measure "quotes-4" jd/double j/quote 2
+jd/measure "quotes-16" jd/double j/quote 4
+jd/measure "pairs-1" json/object jd/pair "a" "x" none
+jd/measure "pairs-4" json/object jd/pair "a" "x" jd/pair "b" "x" jd/pair "c" "x" jd/pair "d" "x" none
+jd/measure "pairs-8" json/object jd/pair "a" "x" jd/pair "b" "x" jd/pair "c" "x" jd/pair "d" "x"
+    jd/pair "e" "x" jd/pair "f" "x" jd/pair "g" "x" jd/pair "h" "x" none
+jd/msg: json/object jd/pair "id" 1 jd/pair "author" "Glon Demo"
+    jd/pair "text" "hi" jd/pair "created_at" "2026-01-01T00:00:00+00:00"
+    jd/pair "group" "general" jd/pair "user_id" json/null
+    jd/pair "legacy" json/true jd/pair "preview" json/null
+    jd/pair "preview_pending" json/false jd/pair "youtube" json/null
+    jd/pair "html" "<p>hi</p>" none
+jd/measure "g3h-message" jd/msg
+jd/measure "g3h-messages-1" json/object jd/pair "messages" json/array reduce [ jd/msg none ] none
+jd/measure "g3h-messages-2" json/object jd/pair "messages" json/array reduce [ jd/msg reduce [ jd/msg none ] ] none
+jd/measure "ctl-16" jd/double mk-string reduce [ 10 ] 4
+jd/measure "quotes-64" jd/double j/quote 6
+jd/measure "quotes-1024" jd/double j/quote 10
+jd/measure "mixed-10240" jd/double s/+ "abc" s/+ j/quote s/+ j/backslash mk-string reduce [ 9 10 1 ] 10
+]
