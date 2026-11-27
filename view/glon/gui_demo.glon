@@ -1,0 +1,174 @@
+[
+v/field-text: ""
+gui/state: reduce [ 'dark 0 0 0 0 0 0 0 0 ]
+
+gui/set-status: func [text] [
+    either > block-at gui/state 7 0 [ view/text block-at gui/state 7 text ] [ 0 ]
+    text
+]
+
+gui/draw-button: func [face] [
+    node: sc/get face gui/prop/node
+    style: sc/get face gui/prop/style
+    state: sc/get face gui/prop/state
+    w: sc/get face gui/prop/w
+    h: sc/get face gui/prop/h
+    bg: style/get style state
+    bg: either = bg 0 [ style/get style 'bg ] [ bg ]
+    bg: either = bg 0 [ reduce [ 42 48 58 255 ] ] [ bg ]
+    view/draw-clear node
+    view/draw-rect node 0 0 w h block-at bg 0 block-at bg 1 block-at bg 2 block-at bg 3
+    view/draw-text node 10 8 14 235 238 242 255 sc/get face gui/prop/text
+]
+
+gui/actor: func [face event value] [
+    case [
+        [ = event 'click ] [
+            case [
+                [ = face block-at gui/state 3 ] [
+                    enabled: sc/get block-at gui/state 3 gui/prop/enabled
+                    gui/set-enabled block-at gui/state 3 either = enabled 1 [ 0 ] [ 1 ]
+                    gui/draw block-at gui/state 3
+                    gui/set-status either = enabled 1 [ "Beta disabled" ] [ "Beta enabled" ]
+                ]
+                [ = face block-at gui/state 5 ] [
+                    old: block-at gui/state 2
+                    gui/destroy old
+                    vid/set-block! gui/state 2 gui/new-block reduce [ either = block-at gui/state 0 'dark [ 'button-dark ] [ 'button-light ] block-at gui/state 1 20 20 180 34 "Alpha" ]
+                    sc/set block-at gui/state 2 gui/prop/handler [ gui/actor ]
+                    gui/draw block-at gui/state 2
+                    gui/set-status "Alpha recreated"
+                ]
+                [ = face block-at gui/state 6 ] [
+                    vid/set-block! gui/state 0 either = block-at gui/state 0 'dark [ 'light ] [ 'dark ]
+                    gui/build
+                    gui/set-status either = block-at gui/state 0 'dark [ "Dark theme" ] [ "Light theme" ]
+                ]
+                [ 1 ] [
+                    gui/set-status "Button activated"
+                    gui/draw face
+                ]
+            ]
+        ]
+        [ = event 'hover ] [ sc/set face gui/prop/state 'hover  gui/draw face ]
+        [ = event 'down ] [ sc/set face gui/prop/state 'pressed  gui/draw face ]
+        [ = event 'up ] [ sc/set face gui/prop/state 'hover  gui/draw face ]
+        [ = event 'focus ] [ sc/set face gui/prop/state 'focused  gui/draw face ]
+        [ = event 'blur ] [ sc/set face gui/prop/state 'normal  gui/draw face ]
+        [ 1 ] [ 0 ]
+    ]
+]
+
+gui/build: func [] [
+    style/new 'base-dark [
+        [ 'bg [42 48 58 255] ]
+        [ 'fg [235 238 242 255] ]
+        [ 'font 14 ]
+        [ 'draw none ]
+    ]
+    style/derive 'root-dark 'base-dark [ [ 'bg [24 26 30 255] ] ]
+    style/derive 'button-dark 'base-dark [
+        [ 'bg [40 100 180 255] ]
+        [ 'hover/bg [60 120 200 255] ]
+        [ 'pressed/bg [30 80 150 255] ]
+        [ 'focused/bg [50 110 190 255] ]
+        [ 'disabled/bg [60 64 70 255] ]
+        [ 'draw gui/draw-button ]
+    ]
+    style/derive 'button-danger-dark 'base-dark [
+        [ 'bg [160 40 40 255] ]
+        [ 'hover/bg [190 60 60 255] ]
+        [ 'pressed/bg [120 30 30 255] ]
+        [ 'focused/bg [180 50 50 255] ]
+        [ 'draw gui/draw-button ]
+    ]
+    style/new 'base-light [
+        [ 'bg [245 246 248 255] ]
+        [ 'fg [32 36 42 255] ]
+        [ 'font 14 ]
+        [ 'draw none ]
+    ]
+    style/derive 'root-light 'base-light [ [ 'bg [255 255 255 255] ] ]
+    style/derive 'button-light 'base-light [
+        [ 'bg [40 100 180 255] ]
+        [ 'hover/bg [60 120 200 255] ]
+        [ 'pressed/bg [30 80 150 255] ]
+        [ 'focused/bg [50 110 190 255] ]
+        [ 'disabled/bg [200 202 206 255] ]
+        [ 'draw gui/draw-button ]
+    ]
+    style/derive 'button-danger-light 'base-light [
+        [ 'bg [180 40 40 255] ]
+        [ 'hover/bg [200 60 60 255] ]
+        [ 'pressed/bg [140 30 30 255] ]
+        [ 'focused/bg [190 50 50 255] ]
+        [ 'draw gui/draw-button ]
+    ]
+
+    either = block-at gui/state 1 0 [
+        view/create 1 0 view/type-window 0 0 600 400 1 0 0 0
+    ] [
+        gui/destroy block-at gui/state 1
+    ]
+    either = block-at gui/state 0 'dark [
+        view/draw-clear 1
+        view/draw-rect 1 0 0 600 400 24 26 30 255
+    ] [
+        view/draw-clear 1
+        view/draw-rect 1 0 0 600 400 255 255 255 255
+    ]
+
+    root-style: either = block-at gui/state 0 'dark [ 'root-dark ] [ 'root-light ]
+    vid/set-block! gui/state 1 gui/new-block reduce [ root-style 0 0 0 600 400 "" ]
+    view/reparent sc/get block-at gui/state 1 gui/prop/node 1
+
+    button-style: either = block-at gui/state 0 'dark [ 'button-dark ] [ 'button-light ]
+    danger-style: either = block-at gui/state 0 'dark [ 'button-danger-dark ] [ 'button-danger-light ]
+    vid/set-block! gui/state 2 gui/new-block reduce [ button-style block-at gui/state 1 20 20 180 34 "Alpha" ]
+    sc/set block-at gui/state 2 gui/prop/handler [ gui/actor ]
+    vid/set-block! gui/state 3 gui/new-block reduce [ danger-style block-at gui/state 1 20 70 180 34 "Beta" ]
+    sc/set block-at gui/state 3 gui/prop/handler [ gui/actor ]
+    vid/set-block! gui/state 4 gui/new-block reduce [ button-style block-at gui/state 1 20 120 180 34 "Toggle" ]
+    sc/set block-at gui/state 4 gui/prop/handler [ gui/actor ]
+    vid/set-block! gui/state 5 gui/new-block reduce [ button-style block-at gui/state 1 20 170 180 34 "Recreate" ]
+    sc/set block-at gui/state 5 gui/prop/handler [ gui/actor ]
+    vid/set-block! gui/state 6 gui/new-block reduce [ button-style block-at gui/state 1 20 220 180 34 "Theme" ]
+    sc/set block-at gui/state 6 gui/prop/handler [ gui/actor ]
+
+    status: view/next-id
+    view/create status 1 view/type-text 20 280 500 24 1 1 0 0
+    view/text status "Ready"
+    vid/set-block! gui/state 7 status
+
+    gui/draw block-at gui/state 2
+    gui/draw block-at gui/state 3
+    gui/draw block-at gui/state 4
+    gui/draw block-at gui/state 5
+    gui/draw block-at gui/state 6
+    gui/set-status "Ready"
+]
+
+gui/event: func [] [
+    handle: func [event value] [
+        either = event 'view-build [ gui/build ] [
+            either = event 'view-click [
+                id: parse-int value
+                vocab/call3 gui-vocab 'dispatch id 'click id
+            ] [
+                either = event 'view-focus [
+                    id: parse-int value
+                    vocab/call3 gui-vocab 'dispatch id 'focus id
+                ] [
+                    either = event 'view-blur [
+                        id: parse-int value
+                        vocab/call3 gui-vocab 'dispatch id 'blur id
+                    ] [ 0 ]
+                ]
+            ]
+        ]
+    ]
+    handle current-event current-value
+    widget/flush
+]
+do-event: [ gui/event ]
+]

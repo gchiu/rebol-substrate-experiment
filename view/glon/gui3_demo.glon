@@ -1,0 +1,215 @@
+[
+v/field-text: ""
+gui3/app: reduce [ 'dark 0 0 0 0 0 0 0 0 0 0 0 ]
+gui3/resize-hook: [ gui3/app-resize ]
+gui3/build-hook: [ gui3/app-build ]
+gui3/check-state: 'unchecked
+gui3/radio-state: 0
+gc/collect: masm 0 [ CALL collect ARITY 0 EXIT ]
+
+gui3/app-styles: func [theme] [
+    either = theme 'dark [
+        style/new 'base-dark [
+            [ 'bg [40 44 52 255] ]
+            [ 'fg [235 238 242 255] ]
+            [ 'font 14 ]
+            [ 'border [70 76 86 255] ]
+            [ 'box [24 26 30 255] ]
+            [ 'focus [90 160 255 255] ]
+        ]
+        style/derive 'root-dark 'base-dark [ [ 'bg [24 26 30 255] ] ]
+        style/derive 'panel-dark 'base-dark [ [ 'bg [32 36 44 255] ] ]
+        style/derive 'label-dark 'base-dark [ [ 'bg [0 0 0 0] ] ]
+        style/derive 'field-dark 'base-dark [
+            [ 'bg [24 26 30 255] ]
+            [ 'focused/bg [30 34 42 255] ]
+        ]
+        style/derive 'button-dark 'base-dark [
+            [ 'bg [40 100 180 255] ]
+            [ 'hover/bg [60 120 200 255] ]
+            [ 'pressed/bg [30 80 150 255] ]
+            [ 'focused/bg [50 110 190 255] ]
+            [ 'disabled/bg [60 64 70 255] ]
+        ]
+        style/derive 'button-danger-dark 'base-dark [
+            [ 'bg [160 40 40 255] ]
+            [ 'hover/bg [190 60 60 255] ]
+            [ 'pressed/bg [120 30 30 255] ]
+            [ 'focused/bg [180 50 50 255] ]
+        ]
+        style/derive 'checkbox-dark 'base-dark [
+            [ 'bg [32 36 44 255] ]
+            [ 'box [24 26 30 255] ]
+        ]
+        style/derive 'radio-dark 'base-dark [
+            [ 'bg [32 36 44 255] ]
+            [ 'box [24 26 30 255] ]
+        ]
+    ] [
+        style/new 'base-light [
+            [ 'bg [245 246 248 255] ]
+            [ 'fg [32 36 42 255] ]
+            [ 'font 14 ]
+            [ 'border [180 184 192 255] ]
+            [ 'box [255 255 255 255] ]
+            [ 'focus [30 100 220 255] ]
+        ]
+        style/derive 'root-light 'base-light [ [ 'bg [255 255 255 255] ] ]
+        style/derive 'panel-light 'base-light [ [ 'bg [236 238 242 255] ] ]
+        style/derive 'label-light 'base-light [ [ 'bg [0 0 0 0] ] ]
+        style/derive 'field-light 'base-light [
+            [ 'bg [255 255 255 255] ]
+            [ 'focused/bg [232 240 255 255] ]
+        ]
+        style/derive 'button-light 'base-light [
+            [ 'bg [40 100 180 255] ]
+            [ 'hover/bg [60 120 200 255] ]
+            [ 'pressed/bg [30 80 150 255] ]
+            [ 'focused/bg [50 110 190 255] ]
+            [ 'disabled/bg [200 202 206 255] ]
+        ]
+        style/derive 'button-danger-light 'base-light [
+            [ 'bg [180 40 40 255] ]
+            [ 'hover/bg [200 60 60 255] ]
+            [ 'pressed/bg [140 30 30 255] ]
+            [ 'focused/bg [190 50 50 255] ]
+        ]
+        style/derive 'checkbox-light 'base-light [
+            [ 'bg [236 238 242 255] ]
+            [ 'box [255 255 255 255] ]
+        ]
+        style/derive 'radio-light 'base-light [
+            [ 'bg [236 238 242 255] ]
+            [ 'box [255 255 255 255] ]
+        ]
+    ]
+
+    style/derive 'root either = theme 'dark [ 'root-dark ] [ 'root-light ] []
+    style/derive 'panel either = theme 'dark [ 'panel-dark ] [ 'panel-light ] []
+    style/derive 'label either = theme 'dark [ 'label-dark ] [ 'label-light ] []
+    style/derive 'field either = theme 'dark [ 'field-dark ] [ 'field-light ] []
+    style/derive 'button either = theme 'dark [ 'button-dark ] [ 'button-light ] []
+    style/derive 'button-danger either = theme 'dark [ 'button-danger-dark ] [ 'button-danger-light ] []
+    style/derive 'checkbox either = theme 'dark [ 'checkbox-dark ] [ 'checkbox-light ] []
+    style/derive 'radio either = theme 'dark [ 'radio-dark ] [ 'radio-light ] []
+]
+
+gui3/app-resize: func [value] [
+    w: parse-int value
+    start: + s/length s/from-int w 1
+    rest: s/slice value start - s/length value start
+    h: parse-int rest
+    view/rect block-at gui3/app 1 0 0 w h
+]
+
+gui3/app-disable: func [node] [
+    gui3/set-enabled node 0
+    gui3/focusables: gui3/remove-node gui3/focusables node
+]
+
+gui3/app-action: func [node] [
+    state: gui3/state node
+    key: block-at state 4
+    case [
+        [ = key 'ok ] [
+            field-state: gui3/state block-at gui3/app 2
+            gui3/set-status s/+ "OK: " block-at field-state 5
+        ]
+        [ = key 'cancel ] [
+            gui3/field-set block-at gui3/app 2 ""
+            gui3/set-status "Cancelled"
+        ]
+        [ = key 'theme ] [
+            vid/set-block! gui3/app 0 either = block-at gui3/app 0 'dark [ 'light ] [ 'dark ]
+            gui3/app-build
+            gui3/set-checked block-at gui3/app 3 either = gui3/check-state 'checked [ 1 ] [ 0 ]
+            either = gui3/radio-state 0 [ 0 ] [
+                r1state: gui3/state block-at gui3/app 4
+                rgroup: block-at r1state 2
+                gui3/radio-select rgroup gui3/radio-state
+            ]
+            gui3/set-status either = block-at gui3/app 0 'dark [ "Dark theme" ] [ "Light theme" ]
+        ]
+        [ = key 'subscribe ] [
+            gui3/check-state: either = block-at state 6 1 [ 'checked ] [ 'unchecked ]
+            gui3/set-status either = block-at state 6 1 [ "Subscribed" ] [ "Not subscribed" ]
+        ]
+        [ = key 'one ] [
+            gui3/radio-state: 'one
+            gui3/set-status "Option: one"
+        ]
+        [ = key 'two ] [
+gui3/radio-state: 'two
+            gui3/set-status "Option: two"
+        ]
+        [ 1 ] [ 0 ]
+    ]
+]
+
+gui3/app-capture: func [] [
+    old-field: block-at gui3/app 2
+    field-text: either > old-field 0 [
+        fs: gui3/state old-field
+        either = fs 0 [ "Ada" ] [ block-at fs 5 ]
+    ] [ "Ada" ]
+    old-check: block-at gui3/app 3
+    check-checked: either > old-check 0 [
+        cs: gui3/state old-check
+        either = cs 0 [ 0 ] [ block-at cs 6 ]
+    ] [ 0 ]
+    old-r1: block-at gui3/app 4
+    old-r2: block-at gui3/app 5
+    radio-key: 0
+    either > old-r1 0 [
+        rs: gui3/state old-r1
+        either = rs 0 [ 0 ] [ either = block-at rs 6 1 [ radio-key: 'one ] [ 0 ] ]
+    ] [ 0 ]
+    either > old-r2 0 [
+        rs: gui3/state old-r2
+        either = rs 0 [ 0 ] [ either = block-at rs 6 1 [ radio-key: 'two ] [ 0 ] ]
+    ] [ 0 ]
+    reduce [ field-text check-checked radio-key ]
+]
+
+gui3/app-build: func [] [
+    prev: gui3/app-capture
+    key: gui3/focus-key
+    gui3/reset-lists
+    either > block-at gui3/app 1 0 [ gui3/destroy-face block-at gui3/app 1 ] [ 0 ]
+    vid/set-block! gui3/app 1 0
+    gui3/app-styles block-at gui3/app 0
+    root: gui3/window 'root 800 500
+    vid/set-block! gui3/app 1 root
+    gui3/label root 'label "GUI-3 Form"
+
+    top: gui3/container root 'panel view/layout-h 0 12 12
+    left: gui3/container top 'panel view/layout-v 0 8 8
+    gui3/label left 'label "Name"
+    field: gui3/field left 'field block-at prev 0 'field
+    vid/set-block! gui3/app 2 field
+    check-node: gui3/checkbox left 'checkbox "Subscribe" 'subscribe 0
+    vid/set-block! gui3/app 3 check-node
+    either = block-at prev 1 1 [ gui3/set-checked check-node 1 ] [ 0 ]
+    right: gui3/container top 'panel view/layout-v 0 8 8
+    gui3/label right 'label "Options"
+    group: gui3/container right 'panel view/layout-v 0 2 2
+    r1: gui3/radio group 'radio "One" 'one group 0
+    vid/set-block! gui3/app 4 r1
+    r2: gui3/radio group 'radio "Two" 'two group 0
+    vid/set-block! gui3/app 5 r2
+    either = block-at prev 2 0 [ 0 ] [ gui3/radio-select group block-at prev 2 ]
+
+    bottom: gui3/container root 'panel view/layout-h 1 8 8
+    gui3/button bottom 'button "OK" 'ok 0
+    gui3/button bottom 'button-danger "Cancel" 'cancel 0
+    gui3/button bottom 'button "Theme" 'theme 0
+    status: gui3/label root 'label "Ready"
+    gui3/status: status
+    gui3/focus-key: key
+    either = key 0 [ 0 ] [ gui3/focus-by-key key ]
+    gui3/focus-set block-at gui3/app 2
+    gui3/set-status "Ready"
+]
+
+do-event: [ gui3/handle ]
+]

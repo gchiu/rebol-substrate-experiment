@@ -1,0 +1,30 @@
+;; view/glon/int_text_cache.glon -- memoised decimal text for small integers.
+;;
+;; Every View command is text, and s/from-int (strings-ext.glon) builds each
+;; decimal digit with reduce + mk-string + s/+: about 3 ms for a 5-digit
+;; number at 1M.  Desktop GUI sessions format the same small integers (node
+;; ids, coordinates, colours) over and over, so this file redefines
+;; s/from-int to keep the text of 0..1023 in a two-level managed table
+;; (32 rows of 32, rows made on first use; the GUI-F2 table pattern), filled
+;; lazily.  Strings are immutable, so sharing them is safe.  Other integers
+;; use the original definition.  Loaded only by the desktop (1M) GUI loaders,
+;; not by the 64K VID stack (it costs 4 globals and managed heap).
+[
+it/raw: :s/from-int
+it/row: func [] [ reduce [ none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none ] ]
+it/tab: it/row
+it/from-int: func [n] [
+    either either s/raw-int? n [ either < n 0 [ 0 ] [ < n 1024 ] ] [ 0 ] [
+        r: / n 32
+        row: block-at it/tab r
+        either = row none [ row: it/row  vid/set-block! it/tab r row ] [ 0 ]
+        k: - n * r 32
+        t: block-at row k
+        either = t none [ t: it/raw n  vid/set-block! row k t ] [ 0 ]
+        t
+    ] [ it/raw n ]
+]
+;; GLON-VOCAB-1: s/from-int is a member of the s vocabulary; it is replaced
+;; here by assignment (a library cannot define another vocabulary's member)
+s/from-int: :it/from-int
+]

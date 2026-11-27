@@ -1,0 +1,118 @@
+;; view/glon/theme_lib.glon -- reusable VID themes (the VID design tokens).
+;;
+;; Themes are ordinary Glon data.  Widgets read colours, metrics and flags from
+;; the selected theme; no widget policy is in C.
+;;
+;; Slot map (block-at theme N).  A colour is four slots r g b a starting at N,
+;; so colour slots are always 1 + 4k.  Reading at any other index mixes two
+;; colours (the cause of the pre-WG-3 green text and red focus blocks).
+;;
+;;   0 dark/light flag       1 window background     5 pane surface
+;;   9 primary text         13 accent              17 border
+;;  21 input background     25 input text          29 secondary text
+;;  33 hover surface        37 raised / header      41 accent hover
+;;  45 accent pressed       49 disabled surface     53 table selection
+;;  57 table focus          61 shadow               65 highlight
+;;  69 body font            70 small font           71 padding  72 gap
+;;  73 selected row         77 clear                81 text on accent
+;;  85 accent subtle        89 sunken (code) bg     93 disabled text
+;;  97 danger              101 danger hover        105 focus ring
+;; 109 control surface     113 control hover       117 control pressed
+;; 121 heading text        125 divider             129 alternate row
+;; 133 heading font        134 title font
+;; INTENT-4B-5A metrics (read by VID and Intent; a look may change them):
+;; 135 border width (px)     136 corner radius (px)
+;; 137 font style (bit 0 bold; bits 1-2 family: 0 sans, 1 serif, 2 monospace)
+;; 138 control height (px)   139 control width (px, 0 = from the content)
+;;
+;; Contrast (INTENT-4B-5A, WCAG 2 ratios, checked by test_gui_p2 theme-contrast):
+;; text on every surface >= 4.5; text on accent / danger >= 4.5; borders,
+;; focus ring and the checked box against their surfaces >= 3; disabled text
+;; on the disabled surface >= 3.  The dark theme keeps its look; only its
+;; borders, accent, disabled text and pressed surface were corrected.
+[
+theme/dark: [
+    0
+    22 24 28 255
+    31 34 40 255
+    226 229 234 255
+    52 108 206 255
+    104 111 124 255
+    25 27 32 255
+    226 229 234 255
+    146 153 164 255
+    41 45 53 255
+    38 42 49 255
+    56 114 212 255
+    40 88 176 255
+    35 38 44 255
+    48 74 118 255
+    64 125 230 255
+    0 0 0 90
+    255 255 255 16
+    14
+    12
+    8
+    12
+    40 58 88 255
+    0 0 0 0
+    255 255 255 255
+    44 66 104 255
+    24 26 31 255
+    118 125 136 255
+    205 72 72 255
+    224 92 92 255
+    96 156 255 255
+    44 48 56 255
+    52 57 66 255
+    30 33 39 255
+    242 244 247 255
+    66 71 81 255
+    35 38 45 255
+    16
+    18
+    1 0 0 30 0
+]
+theme/light: [
+    1
+    235 237 241 255
+    250 250 252 255
+    30 34 40 255
+    37 99 205 255
+    128 135 146 255
+    255 255 255 255
+    30 34 40 255
+    96 103 114 255
+    236 239 244 255
+    242 244 247 255
+    52 114 222 255
+    29 82 176 255
+    241 242 244 255
+    214 228 250 255
+    37 99 205 255
+    0 0 0 28
+    255 255 255 140
+    14
+    12
+    8
+    12
+    222 233 251 255
+    0 0 0 0
+    255 255 255 255
+    205 222 248 255
+    246 247 249 255
+    122 128 138 255
+    196 48 48 255
+    214 64 64 255
+    37 99 205 255
+    255 255 255 255
+    234 238 244 255
+    231 234 239 255
+    17 20 25 255
+    198 202 209 255
+    247 248 250 255
+    16
+    18
+    1 0 0 30 0
+]
+]

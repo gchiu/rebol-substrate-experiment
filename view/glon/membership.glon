@@ -1,0 +1,204 @@
+;; view/glon/membership.glon -- synthetic membership administration.
+;;
+;; Entire application in ordinary Glon.  The table is the host-backed C table;
+;; all policy, form state and event decisions are Glon.
+[
+v/field-text: ""
+v/table-id: 0
+v/table-sort-col: -1
+v/table-sort-dir: 1
+v/table-filter: ""
+v/table-select-row: -1
+v/form-id: 0
+v/form-widget: 0
+v/status-node: 0
+v/filter-node: 0
+v/fields: []
+v/focus-row: 0
+v/focus-col: 0
+v/status: "Ready"
+v/filter-text: ""
+v/tick: 0
+v/editing: 0
+v/form-children: 0
+v/main-children: 0
+v/main-id: 0
+v/filter-widget: 0
+v/table-widget: 0
+main: 0
+form: 0
+f1: 0
+f2: 0
+f3: 0
+f4: 0
+f5: 0
+f6: 0
+f7: 0
+f8: 0
+b1: 0
+b2: 0
+b3: 0
+b4: 0
+b5: 0
+b6: 0
+
+set-status: func [text] [
+    v/status: text
+    view/text v/status-node text
+]
+
+field-at: func [i] [ block-at v/fields i ]
+event-states: func [states i] [
+    either < i block-len states [
+        vid/event block-at states i
+        event-states states + i 1
+    ] [ none ]
+]
+field-set: func [i text] [
+    f: field-at i
+    vid/field/set-text f text
+]
+
+build-ui: func [] [
+    build-shell
+    build-form
+    build-status
+]
+
+build-shell: func [] [
+    vid/window theme/dark 1000 650
+    main: vid/panel theme/dark 1 0 0 1000 650 0 0 0 0 []
+    main-id: block-at main 1
+    v/main-id: main-id
+    filter: vid/field theme/dark main-id 20 20 300 28 "Filter name or city" 0
+    v/filter-node: block-at filter 3
+    v/filter-widget: filter
+    t: vid/table theme/dark main-id 20 60 960 260
+        "Name:140:0;Chinese:100:0;Address:200:0;City:100:0;Paternal:100:0;Maternal:100:0;Status:80:0;Donation:80:2"
+        "Alice|阿明|123 Queen St|Wellington|Village A|Village B|Active|10;Bob|小波|456 Lambton Quay|Auckland|Village C|Village D|Lapsed|20;Cara|小美|789 Cuba St|Christchurch|Village E|Village F|Active|30;Dan|大伟|12 Willis St|Dunedin|Village G|Village H|Lapsed|40;Eve|小怡|34 Courtenay Pl|Hamilton|Village I|Village J|Active|50"
+    v/table-id: block-at t 1
+    v/table-widget: t
+]
+
+build-form: func [] [
+    v/form-widget: vid/panel theme/dark v/main-id 20 340 960 160 0 0 0 0 []
+    v/form-id: block-at v/form-widget 1
+
+    f1: vid/field theme/dark v/form-id 10 10 220 28 "Name" 0
+    f2: vid/field theme/dark v/form-id 240 10 220 28 "Chinese" 0
+    f3: vid/field theme/dark v/form-id 470 10 220 28 "Address" 0
+    f4: vid/field theme/dark v/form-id 700 10 220 28 "City" 0
+    f5: vid/field theme/dark v/form-id 10 50 220 28 "Paternal" 0
+    f6: vid/field theme/dark v/form-id 240 50 220 28 "Maternal" 0
+    f7: vid/field theme/dark v/form-id 470 50 220 28 "Status" 0
+    f8: vid/field theme/dark v/form-id 700 50 220 28 "Donation" 0
+    v/fields: reduce [ f1 f2 f3 f4 f5 f6 f7 f8 ]
+
+    b1: vid/button theme/dark v/form-id 10 100 100 30 "Add"
+    b2: vid/button theme/dark v/form-id 120 100 100 30 "Save"
+    b3: vid/button theme/dark v/form-id 230 100 100 30 "Delete"
+    b4: vid/button theme/dark v/form-id 340 100 100 30 "Clear"
+    b5: vid/button theme/dark v/form-id 450 100 100 30 "Sort"
+    b6: vid/button theme/dark v/form-id 560 100 100 30 "Filter"
+
+    v/form-children: reduce [ f1 f2 f3 f4 f5 f6 f7 f8 b1 b2 b3 b4 b5 b6 ]
+    v/form-widget: reduce [ vid/kind-panel v/form-id none ]
+    vid/set-block! v/form-widget 2 v/form-children
+    form: v/form-widget
+]
+
+build-status: func [] [
+    status: vid/label theme/dark v/main-id 20 610 960 24 "Ready"
+    v/status-node: block-at status 1
+    v/main-children: reduce [ v/filter-widget v/table-widget none none ]
+    vid/set-block! v/main-children 2 form
+    vid/set-block! v/main-children 3 status
+    main: reduce [ vid/kind-panel v/main-id none ]
+    vid/set-block! main 2 v/main-children
+]
+
+
+table/populate-fields: func [cells] [
+    field-set 0 block-at cells 0
+    field-set 1 block-at cells 1
+    field-set 2 block-at cells 2
+    field-set 3 block-at cells 3
+    field-set 4 block-at cells 4
+    field-set 5 block-at cells 5
+    field-set 6 block-at cells 6
+    field-set 7 block-at cells 7
+]
+
+table/add-focused: func [] [
+    table/row v/table-id "New|New Member|Village|0|Active|0"
+    set-status "Added member"
+]
+
+table/save-focused: func [] [
+    cells: s/+ vid/field/get-text f1 s/+ "|" s/+ vid/field/get-text f2 s/+ "|" s/+ vid/field/get-text f3 s/+ "|" s/+ vid/field/get-text f4 s/+ "|" s/+ vid/field/get-text f5 s/+ "|" s/+ vid/field/get-text f6 s/+ "|" s/+ vid/field/get-text f7 s/+ "|" vid/field/get-text f8
+    table/set-row v/table-id v/focus-row cells
+    set-status "Saved member"
+]
+
+do-event: [
+    either = current-event 'view-build [
+        build-ui
+    ] [
+        event-states v/fields 0
+        event-states reduce [ filter b1 b2 b3 b4 b5 b6 ] 0
+    ]
+
+    either = current-event 'view-click [
+        id: parse-int current-value
+        either = id block-at b1 1 [ table/add-focused ] [ none ]
+        either = id block-at b2 1 [ table/save-focused ] [ none ]
+        either = id block-at b3 1 [ table/delete v/table-id v/focus-row  set-status "Deleted member" ] [ none ]
+        either = id block-at b4 1 [ vid/clear-fields form  set-status "Form cleared" ] [ none ]
+        either = id block-at b5 1 [ table/sort v/table-id 0 1  set-status "Sorted" ] [ none ]
+        either = id block-at b6 1 [ table/filter v/table-id v/filter-text  set-status "Filtered" ] [ none ]
+    ] [ none ]
+
+    either = current-event 'table-click [
+        parts: split3 current-value
+        v/focus-row: block-at parts 1
+        v/focus-col: block-at parts 2
+        table/focus v/table-id v/focus-row v/focus-col
+        table/get v/table-id v/focus-row 0 1
+        table/get v/table-id v/focus-row 1 2
+        table/get v/table-id v/focus-row 2 3
+        table/get v/table-id v/focus-row 3 4
+        table/get v/table-id v/focus-row 4 5
+        table/get v/table-id v/focus-row 5 6
+        table/get v/table-id v/focus-row 6 7
+        table/get v/table-id v/focus-row 7 8
+        set-status "Member selected"
+    ] [ none ]
+
+    either = current-event 'view-set-text [
+        v/filter-text: current-value
+        vid/field/set-text v/filter-node current-value
+    ] [ none ]
+
+    either = current-event 'view-key [
+        key: parse-int current-value
+        either = key 1024 [ v/focus-row: - v/focus-row 1  table/focus v/table-id v/focus-row v/focus-col ] [ none ]
+        either = key 1025 [ v/focus-row: + v/focus-row 1  table/focus v/table-id v/focus-row v/focus-col ] [ none ]
+        either = key 1026 [ v/focus-col: - v/focus-col 1  table/focus v/table-id v/focus-row v/focus-col ] [ none ]
+        either = key 1027 [ v/focus-col: + v/focus-col 1  table/focus v/table-id v/focus-row v/focus-col ] [ none ]
+    ] [ none ]
+
+    either = current-event 'table-cell [
+        q: parse-int s/slice current-value 0 1
+        text: s/slice current-value 2 - s/length current-value 2
+        field-set - q 1 text
+        set-status s/+ "Cell " s/from-int q s/+ ": " text
+    ] [ none ]
+
+    either = current-event 'view-tick [
+        v/tick: + v/tick 1
+        set-status s/+ "Ready; tick " s/from-int v/tick
+    ] [ none ]
+
+    widget/flush
+]
+]

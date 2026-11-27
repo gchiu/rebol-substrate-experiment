@@ -1,0 +1,13 @@
+[
+bench-vocab: vocab/new [
+    [ op0 + ] [ op1 + ] [ op2 + ] [ op3 + ]
+]
+
+bench: func [n i] [
+    either < i n [
+        either vocab/lookup bench-vocab 'op0 [ bench n + i 1 ] [ 0 ]
+    ] [ 0 ]
+]
+
+0
+]

@@ -1,0 +1,55 @@
+--- view/glon/view_lib.glon	2026-11-23 17:05:07.482816327 +1300
++++ experiments/gui-f1b/view_lib_p3.glon	2026-11-23 17:05:05.098591645 +1300
+@@ -23,15 +23,25 @@
+ 
+ emit-clear: masm [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
+ emit-byte: masm 1 [
++    LIT SCRATCH_E @ LIT 4095 LT ZBRANCH eb-full
+     LIT SCRATCH_E @ LIT G1_OUT_DATA ADD !
+     LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+     ARITY 0 EXIT
++  eb-full:
++    DROP LIT 8192 LIT SCRATCH_E ! ARITY 0 EXIT
++]
++emit-finish: masm [
++    LIT SCRATCH_E @ LIT 4095 GT ZBRANCH ef-ok
++    LIT 0 LIT G1_OUT ! NONE ARITY 1 EXIT
++  ef-ok:
++    LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT
+ ]
+-emit-finish: masm [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
+ emit-text: masm 1 [
+     DUP LIT 16 MOD SUB LIT SCRATCH_B !
+     LIT 0 LIT SCRATCH_A !
+     LIT SCRATCH_B @ @ LIT SCRATCH_F !
++    LIT SCRATCH_E @ LIT SCRATCH_F @ ADD LIT 4095 GT ZBRANCH emit-text-loop
++    LIT 8192 LIT SCRATCH_E ! ARITY 0 EXIT
+   emit-text-loop:
+     LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH emit-text-done
+     LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL
+@@ -53,12 +63,22 @@
+     emit-finish
+ ]
+ 
+-view/send: func [cmd] [ v/batch: s/+ v/batch s/+ "view " s/+ cmd nl ]
++v/sealed: 0
++v/out: 0
++view/send: func [cmd] [
++    line: s/+ "view " s/+ cmd nl
++    either > + s/length v/batch s/length line 4000 [
++        v/sealed: reduce [ v/batch v/sealed ]
++        v/batch: line
++    ] [ v/batch: s/+ v/batch line ]
++]
+ widget/flush: func [] [
+-    tmp: v/batch
++    v/out: reduce [ reduce [ v/batch v/sealed ] v/out ]
+     v/batch: ""
+-    emit-host-call "batch" tmp
++    v/sealed: 0
++    emit-host-call "batch-ref" ""
+ ]
++widget/take: func [] [ o: v/out v/out: 0 o ]
+ 
+ join-block: func [b i] [
+     either < i block-len b [

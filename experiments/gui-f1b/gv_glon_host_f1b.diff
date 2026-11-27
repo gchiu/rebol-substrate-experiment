@@ -1,0 +1,110 @@
+--- src/gv_glon_host.c	2026-11-23 17:01:25.294560225 +1300
++++ ../experiments/gui-f1b/gv_glon_host_f1b.c	2026-11-23 17:05:21.755466534 +1300
+@@ -55,6 +55,10 @@
+     int view_batch;
+     int last_batch_len;
+     int max_batch_len;
++    int take_pending;         /* F1B: last fragment was "batch-ref" */
++    int ref_chunks;           /* F1B: chunks applied from references */
++    int ref_takes;            /* F1B: widget/take runs */
++    int ref_errors;           /* F1B: rejected reference batches */
+     int view_caps_pending;
+     int view_query_pending;
+     int view_query_id;
+@@ -537,6 +541,80 @@
+         gv_glon_table_command(h, arg, arg_len);
+     else if (op_len == 5 && strncmp(op, "batch", 5) == 0)
+         gv_glon_batch_command(h, arg, arg_len);
++    else if (op_len == 9 && strncmp(op, "batch-ref", 9) == 0)
++        h->take_pending = 1;              /* F1B: fetch after the dispatch */
++}
++
++/* F1B experiment: by-reference batch transport.  After a dispatch whose final
++ * fragment was "batch-ref", run the existing Glon function widget/take, which
++ * returns (and forgets) the published chunk lists.  The value is read with the
++ * runtime's result API; nothing is written into Glon memory.  The structure is
++ * validated completely before any command is applied (all or nothing). */
++#define F1B_MAX_CHUNKS 1024
++#define F1B_MAX_BYTES  (1L << 20)
++static int f1b_is(cell v, int tag) { return r0_tag(v) == tag; }
++static int f1b_take(gv_glon_host *h) {
++    h->take_pending = 0;
++    h->ref_takes++;
++    cell saved_lh = M[GC_LOADER_HP];
++    int perr = 0;
++    cell prog = r0_s1_parse("[ widget/take ]", &perr);
++    int n = perr ? 0 : r0_s1_run_persistent(prog);
++    M[GC_LOADER_HP] = saved_lh;
++    if (perr || n < 1 || !r0_s1_ran_cleanly()) { h->ref_errors++; return -1; }
++    cell v = r0_s1_result(0, n);
++    static cell flushes[F1B_MAX_CHUNKS], chunks[F1B_MAX_CHUNKS];
++    int nf = 0, nc = 0;
++    long bytes = 0;
++    /* outer list (newest flush first): [ inner older-outer ] ... 0 */
++    while (!(r0_tag(v) == 0 && v == 0)) {
++        if (!f1b_is(v, T_BLOCK) || M[r0_untag(v)] != 2 || nf >= F1B_MAX_CHUNKS) goto bad;
++        flushes[nf++] = M[r0_untag(v) + BLK_DATA];
++        v = M[r0_untag(v) + BLK_DATA + 1];
++    }
++    /* oldest flush first; inner lists are newest chunk first */
++    for (int f = nf - 1; f >= 0; f--) {
++        int first = nc;
++        cell w = flushes[f];
++        while (!(w == 0)) {
++            if (!f1b_is(w, T_BLOCK) || M[r0_untag(w)] != 2 || nc >= F1B_MAX_CHUNKS) goto bad;
++            cell sv = M[r0_untag(w) + BLK_DATA];
++            if (!f1b_is(sv, T_STRING)) goto bad;
++            cell len = M[r0_untag(sv)];
++            if (len < 0 || len >= 32768) goto bad;
++            if (len > 0 && M[r0_untag(sv) + len] != '\n') goto bad;   /* ends on a command */
++            bytes += len;
++            if (bytes > F1B_MAX_BYTES) goto bad;
++            if (len > 0) chunks[nc++] = sv;                       /* empty: nothing queued */
++            w = M[r0_untag(w) + BLK_DATA + 1];
++        }
++        for (int a = first, b = nc - 1; a < b; a++, b--) { cell t = chunks[a]; chunks[a] = chunks[b]; chunks[b] = t; }
++    }
++    static char buf[32768];
++    for (int c = 0; c < nc; c++) {
++        cell p = r0_untag(chunks[c]);
++        cell len = M[p];
++        for (cell i = 0; i < len; i++) {
++            cell byte = M[p + 1 + i];
++            if (byte <= 0 || byte > 255) goto bad;                 /* no NUL / non-byte */
++            buf[i] = (char)byte;
++        }
++        buf[len] = 0;
++        if (getenv("F1B_TRACE"))
++            fprintf(stderr, "[f1b] chunk %d/%d bytes=%ld first=\"%.24s\"\n", c + 1, nc, (long)len, buf);
++        gv_glon_batch_command(h, buf, (int)len);
++        h->ref_chunks++;
++    }
++    return 0;
++bad:
++    fprintf(stderr, "gv-glon: rejected batch-ref structure\n");
++    h->ref_errors++;
++    h->error = 1;
++    return -1;
++}
++
++void gv_glon_host_f1b_stats(gv_glon_host *h, int *takes, int *chunks, int *errors) {
++    *takes = h->ref_takes; *chunks = h->ref_chunks; *errors = h->ref_errors;
+ }
+ 
+ int gv_glon_host_load(gv_glon_host *h, const char *root) {
+@@ -1512,6 +1590,7 @@
+ 
+ static int gv_send_text(gv_glon_host *h, const char *token, const char *text) {
+     char out[256]; int out_len = 0;
++    h->take_pending = 0;
+     int rc = r0_s1_g1a_live_event_bytes(token, (const unsigned char *)text,
+                                         (unsigned int)strlen(text), out,
+                                         sizeof out, &out_len);
+@@ -1530,6 +1609,7 @@
+                 rc, r0_s1_ran_cleanly(), r0_s1_halt_reason(), detail);
+         h->error = 1; return -1;
+     }
++    if (h->take_pending && f1b_take(h) != 0) return -1;   /* F1B */
+     return 0;
+ }
+ 

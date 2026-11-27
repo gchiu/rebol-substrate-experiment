@@ -1,0 +1,345 @@
+;; view/glon/vid_layout.glon -- GUI-P2: responsive layout for VID applications.
+;;
+;; A layout RULE places one node inside its parent's box (pw x ph):
+;;
+;;     x = x0 + fx * pw / 1000          y = y0 + fy * ph / 1000
+;;     w = max( minw, w0 + fw * pw / 1000 )
+;;     h = max( minh, h0 + fh * ph / 1000 )
+;;
+;; (fx .. fh in thousandths, so "stretch with the parent" is 1000 and "keep a
+;; fixed size" is 0).  Rules are applied in the order they were added, so a
+;; parent's rule comes before its children's; a rule's own w x h is the box of
+;; the rules that name it as parent.  Parent -1 is the window.  Applying the
+;; rules sends a View rect only for nodes whose geometry changed: a window
+;; resize costs a handful of commands, never a rebuild, so every widget keeps
+;; its state (text, selection, focus, theme, scroll offsets).
+;;
+;; Node shapes (lay/add's kind):
+;;   0  one node
+;;   1  a VID panel given by its content id: outer group, border, background
+;;      and content group (vid/panel makes them as cid-3 .. cid)
+;;   2  a VID border-rect (drawn one pixel outside the box)
+;;   3  a viewport with a scroll record (lay/scroll); its camera is clamped
+;;      to the new size
+;;   4  a VID button given by its state record (vid/button-styled answers
+;;      it): group, focus ring, border, background and centred label all
+;;      follow the new size
+;;   5  VID tabs given by their state record (vid_tabs.glon): the strip
+;;      shares the width, content panel and pages take the height
+;;   6  a VID field given by its state record (vid/field answers it): group,
+;;      focus ring, border, input surface and inset text follow the new size
+;;      (its text, caret and focus are untouched)
+;;   7  a node with a resize hook, given as [ node hook ]: the node is placed,
+;;      then hook is called as ( w h ) -- for parts only the application
+;;      knows how to resize (an Intent box redraws itself)
+;;
+;; Scroll records keep a viewport's content size and offset, for the wheel
+;; (lay/wheel, the host's "vp|dx|dy" view-wheel value) and focus reveal
+;; (lay/reveal; the answer comes back as view-get 7002, lay/view-get).  A
+;; wheel step a viewport cannot take goes on to its parent scroll.  Offsets
+;; are remembered by ROLE across lay/reset, so an application that rebuilds
+;; its UI (a theme switch) gets its scroll positions back.
+;;
+;; Loaded by the desktop VID loader (gv_glon_host_load_vocab_vid_app) after
+;; vid_widgets.glon.
+[
+lay/max-rules: 96
+lay/rules: 0
+lay/count: 0
+lay/w: 0
+lay/h: 0
+lay/new-rules: func [] [
+    reduce [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+             0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+             0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+             0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+]
+;; scroll records: [ vp cw ch x y vw vh parent-scroll role content-rule
+;; view-rule thumb-v thumb-h ], up to 8; content-rule >= 0 means the content
+;; is that rule's box; view-rule (or -1) places the viewport, for thumbs
+lay/scrolls: reduce [ 0 0 0 0 0 0 0 0 ]
+lay/nscroll: 0
+;; offsets by role (0..7) kept across lay/reset: [ x y ] or 0
+lay/saved: reduce [ 0 0 0 0 0 0 0 0 ]
+
+;; drop the rules added after the first n (a rebuilt part of the UI, such
+;; as one preview among several, re-adds its own)
+lay/truncate: func [n] [ either < n lay/count [ lay/count: n ] [ 0 ] ]
+
+;; forget every rule and scroll record (before an application rebuilds its
+;; UI); scroll offsets are kept by role
+lay/reset: func [] [
+    lay/save-offsets 0
+    lay/rules: lay/new-rules
+    lay/count: 0
+    lay/scrolls: reduce [ 0 0 0 0 0 0 0 0 ]
+    lay/nscroll: 0
+]
+lay/save-offsets: func [i] [
+    either < i lay/nscroll [
+        r: block-at lay/scrolls i
+        vid/set-block! lay/saved block-at r 8 reduce [ block-at r 3 block-at r 4 ]
+        lay/save-offsets + i 1
+    ] [ 0 ]
+]
+
+;; lay/add node kind parent x0 fx y0 fy w0 fw h0 fh minw minh -> rule index
+;; (parent: a rule index, or -1 for the window)
+lay/add: func [node kind parent x0 fx y0 fy w0 fw h0 fh minw minh] [
+    either = lay/rules 0 [ lay/rules: lay/new-rules ] [ 0 ]
+    either < lay/count lay/max-rules [
+        i: lay/count
+        vid/set-block! lay/rules i reduce [ node kind parent x0 fx y0 fy w0 fw h0 fh minw minh -1 -1 -1 -1 ]
+        lay/count: + i 1
+        i
+    ] [ raise create-sin 'layout 'too-many-rules node ]
+]
+;; the box (w h) of rule i, or of the window for -1
+lay/box-w: func [i] [ either < i 0 [ lay/w ] [ block-at block-at lay/rules i 15 ] ]
+lay/box-h: func [i] [ either < i 0 [ lay/h ] [ block-at block-at lay/rules i 16 ] ]
+
+lay/clamp-min: func [v m] [ either < v m [ m ] [ v ] ]
+
+;; place every rule for a window of w x h
+lay/apply: func [w h] [
+    lay/w: w
+    lay/h: h
+    lay/apply-from 0
+    lay/clamp-scrolls 0
+]
+lay/apply-from: func [i] [
+    either < i lay/count [
+        r: block-at lay/rules i
+        pw: lay/box-w block-at r 2
+        ph: lay/box-h block-at r 2
+        x: + block-at r 3 / * block-at r 4 pw 1000
+        y: + block-at r 5 / * block-at r 6 ph 1000
+        nw: lay/clamp-min + block-at r 7 / * block-at r 8 pw 1000 block-at r 11
+        nh: lay/clamp-min + block-at r 9 / * block-at r 10 ph 1000 block-at r 12
+        either either = x block-at r 13 [ either = y block-at r 14 [ either = nw block-at r 15 [ = nh block-at r 16 ] [ 0 ] ] [ 0 ] ] [ 0 ] [ 0 ] [
+            vid/set-block! r 13 x
+            vid/set-block! r 14 y
+            vid/set-block! r 15 nw
+            vid/set-block! r 16 nh
+            lay/place block-at r 0 block-at r 1 x y nw nh
+        ]
+        lay/apply-from + i 1
+    ] [ 0 ]
+]
+lay/place: func [node kind x y w h] [
+    either = kind 1 [
+        view/rect - node 3 x y w h
+        view/rect - node 2 -1 -1 + w 2 + h 2
+        view/rect - node 1 0 0 w h
+        view/rect node 0 0 w h
+    ] [
+        either = kind 2 [ view/rect node - x 1 - y 1 + w 2 + h 2 ] [
+            either = kind 7 [
+                view/rect block-at node 0 x y w h
+                hook: block-at node 1
+                hook w h
+            ] [
+            view/rect either either = kind 4 [ 1 ] [ either = kind 5 [ 1 ] [ = kind 6 ] ] [ block-at node 1 ] [ node ] x y w h
+            either = kind 3 [ lay/scroll-resized node w h ] [
+                either = kind 4 [ lay/button-size node w h ] [
+                    either = kind 5 [ vid/tabs/size node w h ] [
+                        either = kind 6 [ lay/field-size node w h ] [ 0 ]
+                    ]
+                ]
+            ]
+            ]
+        ]
+    ]
+]
+
+;; a VID button's parts from its state [ kind id bg tx theme _ enabled
+;; pressed hovered ring style border ]; the label is centred vertically as
+;; vid/text-node places it (font: theme slot 69)
+lay/button-size: func [st w h] [
+    font: block-at block-at st 4 69
+    ty: / - h + font 6 2
+    view/rect block-at st 9 -2 -2 + w 4 + h 4
+    view/rect block-at st 11 0 0 w h
+    view/rect block-at st 2 1 1 - w 2 - h 2
+    view/rect block-at st 3 0 either < ty 0 [ 0 ] [ ty ] w + font 6
+]
+;; a VID field's parts from its state [ kind id box tx readonly text theme
+;; border 0 ring ]: the text keeps its 8-pixel insets and is centred
+;; vertically as vid/text-node places it
+lay/field-size: func [st w h] [
+    font: block-at block-at st 6 69
+    ty: / - h + font 6 2
+    view/rect block-at st 9 -2 -2 + w 4 + h 4
+    view/rect block-at st 7 0 0 w h
+    view/rect block-at st 2 1 1 - w 2 - h 2
+    view/rect block-at st 3 8 either < ty 0 [ 0 ] [ ty ] - w 16 + font 6
+]
+;; ---- scrolling ------------------------------------------------------------------
+
+;; lay/scroll vp crule cw ch parent-scroll role -> scroll index: vp scrolls
+;; content of cw x ch, or of rule crule's box when crule >= 0 (parent-scroll:
+;; the index that takes the wheel steps vp cannot, or -1).  The offset saved
+;; for role (if any) is restored at the next lay/apply.
+lay/scroll: func [vp crule cw ch parent role] [
+    i: lay/nscroll
+    saved: block-at lay/saved role
+    vid/set-block! lay/scrolls i reduce [ vp cw ch
+        either = saved 0 [ 0 ] [ block-at saved 0 ] either = saved 0 [ 0 ] [ block-at saved 1 ]
+        0 0 parent role crule -1 0 0 ]
+    lay/nscroll: + i 1
+    i
+]
+lay/scroll-find: func [vp i] [
+    either < i lay/nscroll [
+        either = block-at block-at lay/scrolls i 0 vp [ i ] [ lay/scroll-find vp + i 1 ]
+    ] [ -1 ]
+]
+;; a viewport's new size (from its rule); its offset is brought back into
+;; range by lay/clamp-scrolls once every rule is placed
+lay/scroll-resized: func [vp w h] [
+    i: lay/scroll-find vp 0
+    either < i 0 [ 0 ] [
+        r: block-at lay/scrolls i
+        vid/set-block! r 5 w
+        vid/set-block! r 6 h
+    ]
+]
+lay/clamp-scrolls: func [i] [
+    either < i lay/nscroll [
+        r: block-at lay/scrolls i
+        c: block-at r 9
+        either < c 0 [ 0 ] [
+            vid/set-block! r 1 lay/box-w c
+            vid/set-block! r 2 lay/box-h c
+        ]
+        lay/scroll-sync i
+        lay/clamp-scrolls + i 1
+    ] [ 0 ]
+]
+;; clamp the recorded offset and (re)send the camera: the viewport may be
+;; new (a rebuild), so the camera is sent even if the offset is unchanged
+lay/scroll-sync: func [i] [
+    r: block-at lay/scrolls i
+    x: block-at r 3
+    y: block-at r 4
+    vid/set-block! r 3 -1
+    lay/scroll-to i x y
+]
+;; the content size of scroll i changed (a new preview)
+lay/scroll-content: func [i cw ch] [
+    r: block-at lay/scrolls i
+    vid/set-block! r 1 cw
+    vid/set-block! r 2 ch
+    lay/scroll-to i 0 0
+]
+;; set the offset of scroll i (clamped); answers 1 when it moved
+lay/scroll-to: func [i x y] [
+    r: block-at lay/scrolls i
+    mx: - block-at r 1 block-at r 5
+    my: - block-at r 2 block-at r 6
+    mx: either < mx 0 [ 0 ] [ mx ]
+    my: either < my 0 [ 0 ] [ my ]
+    nx: either < x 0 [ 0 ] [ either > x mx [ mx ] [ x ] ]
+    ny: either < y 0 [ 0 ] [ either > y my [ my ] [ y ] ]
+    either either = nx block-at r 3 [ = ny block-at r 4 ] [ 0 ] [ 0 ] [
+        vid/set-block! r 3 nx
+        vid/set-block! r 4 ny
+        view/viewport block-at r 0 nx ny
+        lay/thumb-update r
+        1
+    ]
+]
+
+;; lay/thumbs i view-rule parent theme: two thin position thumbs over the
+;; right and bottom edges of scroll i's viewport, made in the viewport's
+;; parent (whose rule view-rule places the viewport) in the secondary text
+;; colour; drawn only while the content is larger than the viewport.  Not
+;; pickable: they show where the view is, the wheel moves it.
+lay/thumbs: func [i vrule parent theme] [
+    r: block-at lay/scrolls i
+    vid/set-block! r 10 vrule
+    vid/set-block! r 11 vid/rect theme parent 0 0 0 0 29
+    vid/set-block! r 12 vid/rect theme parent 0 0 0 0 29
+    i
+]
+lay/thumb-update: func [r] [
+    vr: block-at r 10
+    either < vr 0 [ 0 ] [
+        q: block-at lay/rules vr
+        vx: block-at q 13
+        vy: block-at q 14
+        vw: block-at q 15
+        vh: block-at q 16
+        cw: block-at r 1
+        ch: block-at r 2
+        either > ch vh [
+            len: lay/clamp-min / * vh vh ch 24
+            view/rect block-at r 11 - + vx vw 6 + vy / * - vh len block-at r 4 - ch vh 4 len
+        ] [ view/rect block-at r 11 0 0 0 0 ]
+        either > cw vw [
+            len: lay/clamp-min / * vw vw cw 24
+            view/rect block-at r 12 + vx / * - vw len block-at r 3 - cw vw - + vy vh 6 len 4
+        ] [ view/rect block-at r 12 0 0 0 0 ]
+    ]
+]
+lay/scroll-by: func [i dx dy depth] [
+    either either < i 0 [ 1 ] [ > depth 8 ] [ 0 ] [
+        r: block-at lay/scrolls i
+        either = lay/scroll-to i + block-at r 3 dx + block-at r 4 dy 1 [ 1 ] [
+            lay/scroll-by block-at r 7 dx dy + depth 1
+        ]
+    ]
+]
+;; signed integer at byte i of s
+lay/int-at: func [s i] [
+    either = s/at s i 45 [ - 0 parse-int-at s + i 1 0 ] [ parse-int-at s i 0 ]
+]
+lay/bar: func [s i] [ either < i s/length s [ either = s/at s i 124 [ i ] [ lay/bar s + i 1 ] ] [ i ] ]
+lay/wheel-step: 40
+;; view-wheel "vp|dx|dy" (offset steps, positive toward the end)
+lay/wheel: func [value] [
+    a: lay/bar value 0
+    b: lay/bar value + a 1
+    dx: lay/int-at value + a 1
+    dy: lay/int-at value + b 1
+    lay/scroll-by lay/scroll-find parse-int value 0 * dx lay/wheel-step * dy lay/wheel-step 0
+]
+
+;; ---- focus reveal -------------------------------------------------------------
+;; ask the host for node's rectangle in its viewport's content coordinates,
+;; only while some viewport can move (the answer is another event round)
+lay/reveal: func [node] [ either = lay/overflow 0 0 [ 0 ] [ view/get node 4 7002 ] ]
+;; 1 when the content of some scroll is larger than its viewport
+lay/overflow: func [i] [
+    either < i lay/nscroll [
+        r: block-at lay/scrolls i
+        either either > block-at r 1 block-at r 5 [ 1 ] [ > block-at r 2 block-at r 6 ] [ 1 ] [ lay/overflow + i 1 ]
+    ] [ 0 ]
+]
+lay/ints: func [s i n] [
+    either = n 0 [ 0 ] [
+        e: s/scan-set s i "-0123456789"
+        reduce [ lay/int-at s i lay/ints s + e 1 - n 1 ]
+    ]
+]
+;; the answer "7002|4|vp x y w h": scroll vp minimally so the rectangle shows
+lay/view-get: func [value] [
+    either = parse-int value 7002 [
+        q: lay/ints value + lay/bar value + lay/bar value 0 1 1 5
+        i: lay/scroll-find block-at q 0 0
+        either < i 0 [ 0 ] [
+            q: block-at q 1
+            rx: block-at q 0  q: block-at q 1
+            ry: block-at q 0  q: block-at q 1
+            rw: block-at q 0  q: block-at q 1
+            rh: block-at q 0
+            r: block-at lay/scrolls i
+            cx: block-at r 3
+            cy: block-at r 4
+            nx: either < rx cx [ rx ] [ either > + rx rw + cx block-at r 5 [ - + rx rw block-at r 5 ] [ cx ] ]
+            ny: either < ry cy [ ry ] [ either > + ry rh + cy block-at r 6 [ - + ry rh block-at r 6 ] [ cy ] ]
+            lay/scroll-to i nx ny
+        ]
+    ] [ 0 ]
+]
+]

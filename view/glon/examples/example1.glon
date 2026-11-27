@@ -1,0 +1,11 @@
+;; Example 1 -- minimal VID window with a label and button.
+[
+do-event: [
+    either = current-event 'view-build [
+        vid/window theme/dark 640 240
+        vid/label theme/dark 1 20 20 300 24 "Minimal VID window"
+        vid/button theme/dark 1 20 60 120 30 "Press"
+    ] [ none ]
+    widget/flush
+]
+]

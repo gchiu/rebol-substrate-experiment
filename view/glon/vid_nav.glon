@@ -1,0 +1,29 @@
+;; view/glon/vid_nav.glon -- navigation list item.
+;; Unselected rows are clear with secondary text; hover uses the hover surface;
+;; the selected row has the selected-row surface, primary text and a 3-pixel
+;; accent bar.  state: [ 9 id bg tx theme selected bar hovered ]
+[
+vid/nav-item: func [theme parent x y w h text selected] [
+    id: view/next-id
+    view/create id parent view/type-group x y w h 1 1 1 1
+    bg: vid/rect theme id 0 0 w h 77
+    tx: vid/text-node theme id 14 0 - w 20 h text block-at theme 69 29
+    bar: vid/rect theme id 0 4 3 - h 8 13
+    vid/nav/refresh reduce [ 9 id bg tx theme selected bar 0 ]
+]
+
+vid/nav/refresh: func [state] [
+    theme: block-at state 4
+    k: either = block-at state 5 1 [ 0 ] [ either = block-at state 7 1 [ 1 ] [ 2 ] ]
+    vid/fill-color theme block-at state 2 block-at [ 73 33 77 ] k
+    vid/fg-color theme block-at state 3 block-at [ 121 9 29 ] k
+    view/flags block-at state 6 either = k 0 [ 1 ] [ 0 ] 1 0 0
+    state
+]
+
+;; vid/nav/set state 5 v (selected) or state 7 v (hovered)
+vid/nav/set: func [state k v] [
+    vid/set-block! state k v
+    vid/nav/refresh state
+]
+]

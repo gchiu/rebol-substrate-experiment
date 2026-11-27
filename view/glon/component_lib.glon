@@ -1,0 +1,269 @@
+;; view/glon/component_lib.glon -- scoped component state for Glon/VID.
+;;
+;; A component is an integer handle (1..1024).  The handle is a slot id in a
+;; small bucket table; the slot holds a record [kind caps props] or 0.
+;; Vocabulary operations are ordinary words that take the handle explicitly.
+;; No per-component global variables are used.
+[
+sc/set-block!: masm 3 [
+    LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD !
+    LIT 0 LIT SCRATCH_C !
+    ARITY 0 EXIT
+]
+
+kind/field: 1
+kind/table: 2
+kind/view: 3
+kind/group: 4
+
+cap/view: 1
+cap/text: 2
+cap/input: 4
+cap/table: 8
+
+prop/name: 0
+prop/value: 1
+prop/children: 2
+prop/child-count: 3
+prop/view: 4
+prop/row: 5
+prop/visible: 6
+prop/extra: 7
+
+sc-bucket0: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+sc-bucket1: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+sc-bucket2: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+sc-bucket3: [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+sc-reg: reduce [ sc-bucket0 sc-bucket1 sc-bucket2 sc-bucket3 ]
+sc-recs: reduce [ none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none ]
+sc-next-id: 1
+
+sc/decode: func [handle] [
+    bucket: / handle 256
+    slot: - handle * / handle 256 256
+    reduce [ bucket slot ]
+]
+
+sc/record: func [handle] [
+    either = handle none [ 0 ] [
+        d: sc/decode handle
+        bucket: block-at d 0
+        slot: block-at d 1
+        b: block-at sc-reg bucket
+        id: block-at b slot
+        either = id 0 [ 0 ] [ block-at sc-recs id ]
+    ]
+]
+
+sc/new: func [kind caps props] [
+    id: sc-next-id
+    ;; sc-recs has slots 0..383: handle 384 would be written past its end
+    either > id 383 [ 0 ] [
+        sc-next-id: + id 1
+        bucket: / id 256
+        slot: - id * / id 256 256
+        b: block-at sc-reg bucket
+        rec: reduce [ kind caps props ]
+        sc/set-block! sc-recs id rec
+        sc/set-block! b slot id
+        id
+    ]
+]
+
+sc/destroy: func [handle] [
+    rec: sc/record handle
+    either = rec 0 [ 0 ] [
+        d: sc/decode handle
+        bucket: block-at d 0
+        slot: block-at d 1
+        b: block-at sc-reg bucket
+        sc/set-block! b slot 0
+        sc/set-block! sc-recs handle none
+        1
+    ]
+]
+
+sc/get: func [handle prop] [
+    rec: sc/record handle
+    either = rec 0 [ none ] [
+        props: block-at rec 2
+        either < prop block-len props [ block-at props prop ] [ none ]
+    ]
+]
+
+sc/set: func [handle prop value] [
+    rec: sc/record handle
+    either = rec 0 [ handle ] [
+        props: block-at rec 2
+        sc/set-block! props prop value
+        handle
+    ]
+]
+
+sc/caps-has: func [caps cap i] [
+    either < i block-len caps [
+        either = block-at caps i cap [ 1 ] [
+            j: + i 1
+            sc/caps-has caps cap j
+        ]
+    ] [ 0 ]
+]
+
+sc/has?: func [handle cap] [
+    rec: sc/record handle
+    either = rec 0 [ 0 ] [ sc/caps-has block-at rec 1 cap 0 ]
+]
+
+sc/new-field: func [label] [
+    props: reduce [ none none none 0 none none none none ]
+    caps: reduce [ 1 2 4 ]
+    h: sc/new kind/field caps props
+    sc/set h prop/name label
+    h
+]
+
+sc/new-table: func [label] [
+    props: reduce [ none none none 0 none none none none ]
+    caps: reduce [ 1 8 ]
+    h: sc/new kind/table caps props
+    sc/set h prop/name label
+    h
+]
+
+sc/new-group: func [label] [
+    props: reduce [ none none reduce [ none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none ] 0 none none none none ]
+    caps: reduce [ 1 ]
+    h: sc/new kind/group caps props
+    sc/set h prop/name label
+    h
+]
+
+field/set-text: func [handle text] [ sc/set handle prop/value text ]
+field/get-text: func [handle] [ sc/get handle prop/value ]
+field/clear: func [handle] [ field/set-text handle "" ]
+field/set-view-text: func [handle text] [
+    field/set-text handle text
+    v: sc/get handle prop/view
+    either > v 0 [ view/text v text ] [ none ]
+    handle
+]
+
+table/select: func [handle row] [ sc/set handle prop/row row ]
+table/get-row: func [handle] [ sc/get handle prop/row ]
+
+view/hide: func [handle] [ sc/set handle prop/visible 0 ]
+view/show: func [handle] [ sc/set handle prop/visible 1 ]
+
+sc/add-child: func [parent child] [
+    rec: sc/record parent
+    either = rec 0 [ parent ] [
+        props: block-at rec 2
+        children: block-at props prop/children
+        count: block-at props prop/child-count
+        sc/set-block! children count child
+        next: + count 1
+        sc/set-block! props prop/child-count next
+        parent
+    ]
+]
+
+sc/clear-kids10: func [kids n i end] [
+    either < i n [
+        either < i end [
+            child: block-at kids i
+            either > child 0 [ sc/clear-fields child ] [ none ]
+            j: + i 1
+            sc/clear-kids10 kids n j end
+        ] [ kids ]
+    ] [ kids ]
+]
+
+sc/clear-kids: func [kids n i] [
+    either < i n [
+        end: + i 10
+        sc/clear-kids10 kids n i end
+        j: + i 10
+        sc/clear-kids kids n j
+    ] [ none ]
+]
+
+sc/clear-fields: func [handle] [
+    rec: sc/record handle
+    either = rec 0 [ 0 ] [
+        editable: sc/has? handle 4
+        either = editable 1 [ field/clear handle ] [ none ]
+        kind: block-at rec 0
+        either = kind kind/group [
+            kids: sc/get handle prop/children
+            n: sc/get handle prop/child-count
+            sc/clear-kids kids n 0
+        ] [ none ]
+        handle
+    ]
+]
+
+sc/destroy-kids10: func [kids n i end] [
+    either < i n [
+        either < i end [
+            child: block-at kids i
+            either > child 0 [ sc/destroy-tree child ] [ none ]
+            j: + i 1
+            sc/destroy-kids10 kids n j end
+        ] [ kids ]
+    ] [ kids ]
+]
+
+sc/destroy-kids: func [kids n i] [
+    either < i n [
+        end: + i 10
+        sc/destroy-kids10 kids n i end
+        j: + i 10
+        sc/destroy-kids kids n j
+    ] [ none ]
+]
+
+sc/destroy-tree: func [handle] [
+    rec: sc/record handle
+    either = rec 0 [ 0 ] [
+        kind: block-at rec 0
+        either = kind kind/group [
+            kids: sc/get handle prop/children
+            n: sc/get handle prop/child-count
+            sc/destroy-kids kids n 0
+        ] [ none ]
+        sc/destroy handle
+    ]
+]
+
+sc/count-kids10: func [kids n i end] [
+    either < i n [
+        either < i end [
+            child: block-at kids i
+            c: either > child 0 [ sc/count-tree child ] [ 0 ]
+            j: + i 1
+            + c sc/count-kids10 kids n j end
+        ] [ 0 ]
+    ] [ 0 ]
+]
+
+sc/count-kids: func [kids n i] [
+    either < i n [
+        end: + i 10
+        j: + i 10
+        + sc/count-kids10 kids n i end sc/count-kids kids n j
+    ] [ 0 ]
+]
+
+sc/count-tree: func [handle] [
+    rec: sc/record handle
+    either = rec 0 [ 0 ] [
+        kind: block-at rec 0
+        either = kind kind/group [
+            kids: sc/get handle prop/children
+            n: sc/get handle prop/child-count
+            + 1 sc/count-kids kids n 0
+        ] [ 1 ]
+    ]
+]
+]

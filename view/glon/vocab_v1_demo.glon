@@ -1,0 +1,105 @@
+[
+gc/collect: masm 0 [ CALL collect ARITY 0 EXIT ]
+
+table/select-impl: func [members row] [
+    either < row block-len members [ block-at members row ] [ none ]
+]
+table/count-impl: func [members] [ block-len members ]
+table/clear-impl: func [members] [ 0 ]
+list/select-impl: func [items row] [
+    either < row block-len items [ block-at items row ] [ none ]
+]
+list/length-impl: func [items] [ block-len items ]
+
+table-vocab: vocab/new [
+    [ select table/select-impl ]
+    [ count table/count-impl ]
+]
+list-vocab: vocab/new [
+    [ select list/select-impl ]
+    [ length list/length-impl ]
+]
+table/select: func [members row] [ vocab/call2 table-vocab 'select members row ]
+list/select: func [items row] [ vocab/call2 list-vocab 'select items row ]
+string-vocab: vocab/new [
+    [ length s/length ]
+]
+text-vocab: vocab/new [
+    [ length s/length ]
+]
+math-vocab: vocab/new [
+    [ add + ]
+]
+
+members: reduce [ reduce [ "A" 1 ] reduce [ "B" 2 ] reduce [ "C" 3 ] ]
+items: reduce [ "x" "y" "z" ]
+
+print vocab/length table-vocab
+print vocab/length list-vocab
+r: table/select members 1
+print block-len r
+r: vocab/call2 list-vocab 'select items 2
+s/print r
+print vocab/call1 table-vocab 'count members
+print vocab/call1 list-vocab 'length items
+print vocab/call1 string-vocab 'length "Lambton"
+print vocab/call1 text-vocab 'length "Lambton"
+print vocab/call2 math-vocab 'add 2 5
+
+print vocab/lookup table-vocab 'select
+print vocab/lookup list-vocab 'select
+
+both: vocab/compose table-vocab list-vocab
+print vocab/length both
+r: vocab/call2 both 'select members 0
+print block-len r
+print vocab/call1 both 'length items
+
+extended: vocab/add table-vocab 'clear 'table/clear-impl
+print vocab/length extended
+print vocab/call1 extended 'clear members
+
+e: judge [ vocab/call1 table-vocab 'missing 0 ]
+print sin? e
+print sin-id e
+print vocab/lookup none 'missing
+
+select: 42
+r: vocab/call2 table-vocab 'select members 2
+print block-len r
+r: vocab/call2 list-vocab 'select items 1
+s/print r
+
+vid/create: func [a] [
+    view/create block-at a 0 block-at a 1 block-at a 2 block-at a 3 block-at a 4 block-at a 5 block-at a 6 block-at a 7 block-at a 8 block-at a 9
+]
+vid/rect: func [a] [
+    view/rect block-at a 0 block-at a 1 block-at a 2 block-at a 3 block-at a 4
+]
+vid-vocab: vocab/new [
+    [ create vid/create ]
+    [ rect vid/rect ]
+    [ text view/text ]
+    [ flush widget/flush ]
+]
+
+print vocab/length vid-vocab
+vocab/call1 vid-vocab 'create reduce [ 1 0 1 0 0 120 40 1 1 1 0 ]
+vocab/call1 vid-vocab 'rect reduce [ 1 0 0 120 40 ]
+vocab/call2 vid-vocab 'text 1 "Hello"
+print s/length v/batch
+vocab/call0 vid-vocab 'flush
+print s/length v/batch
+
+gc/collect
+print vocab/length table-vocab
+r: table/select members 1
+print block-len r
+print vocab/call1 list-vocab 'length items
+print vocab/call1 string-vocab 'length "Lambton"
+print vocab/call2 math-vocab 'add 2 5
+vocab/call1 vid-vocab 'create reduce [ 1 0 1 0 0 120 40 1 1 1 0 ]
+
+s/print "VOCAB_V1_PASS"
+1
+]

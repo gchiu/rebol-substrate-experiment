@@ -1,0 +1,1302 @@
+[
+style/registry: 0
+
+style/facets: func [rows i next] [
+    either < i block-len rows [
+        row: block-at rows i
+        reduce [ block-at row 0 block-at row 1 style/facets rows + i 1 next ]
+    ] [ next ]
+]
+
+;; GUI-4B2C: defining a style again replaces its entry.  The registry used to
+;; grow by one entry per definition, so an application that restyles on every
+;; theme switch made each lookup (a recursive walk) slower and, after a few
+;; dozen switches, deeper than the ~84-frame return stack.
+style/drop: func [reg name] [
+    either = reg 0 [ 0 ] [
+        either = block-at reg 0 name [ block-at reg 3 ] [
+            reduce [ block-at reg 0 block-at reg 1 block-at reg 2 style/drop block-at reg 3 name ]
+        ]
+    ]
+]
+
+style/new: func [name facets] [
+    style/registry: reduce [ name style/facets facets 0 0 0 style/drop style/registry name ]
+    name
+]
+
+style/derive: func [name parent overrides] [
+    rec: style/lookup parent
+    either = rec 0 [ 0 ] [
+        style/registry: reduce [ name style/facets overrides 0 block-at rec 1 parent style/drop style/registry name ]
+        name
+    ]
+]
+
+style/lookup-at: func [reg name] [
+    either = reg 0 [ 0 ] [
+        either = block-at reg 0 name [ reg ] [ style/lookup-at block-at reg 3 name ]
+    ]
+]
+
+style/lookup: func [name] [ style/lookup-at style/registry name ]
+
+style/get: func [name key] [
+    rec: style/lookup name
+    either = rec 0 [ 0 ] [
+        scan: func [facets] [
+            either = facets 0 [ 0 ] [
+                either = block-at facets 0 key [ block-at facets 1 ] [ scan block-at facets 2 ]
+            ]
+        ]
+        v: scan block-at rec 1
+        either = v 0 [ style/get block-at rec 2 key ] [ v ]
+    ]
+]
+
+gui3/focus: 0
+gui3/capture: 0
+gui3/capture-key: 0
+gui3/hover: 0
+gui3/faces: 0
+gui3/focusables: 0
+gui3/states: 0
+gui3/focus-key: 0
+gui3/status: 0
+gui3/scrollers: 0
+gui3/scroll-hook: 0
+gui3/id-base: 0
+gui3/saved: 0
+gui3/resize-hook: 0
+gui3/build-hook: 0
+gui3/caps: reduce [ 1 ]
+
+gui3/remove-node: func [list node] [
+    either = list 0 [ 0 ] [
+        either = block-at list 0 node [ block-at list 1 ] [
+            reduce [ block-at list 0 gui3/remove-node block-at list 1 node ]
+        ]
+    ]
+]
+
+;; ---- GUI-F2: node-indexed state tables (see GUI-F2-REPORT.md) ----------
+;; A table is a managed block of 32 rows; a row is a managed block of 32 slots
+;; created on first use.  Slot n holds the record of View node n or NONE, so
+;; every live face has exactly one current record, an update replaces it, and
+;; lookup costs two block-at calls (no list walk, no recursion).  Both levels
+;; are built with `reduce` (managed, traced by the collector): a literal
+;; `[ ... ]` table would be a loader block, which the collector does not trace.
+;; Node ids outside 0..1023 (the host's GV_GLON_MAX_NODES) raise SIN! 'gui.
+gui3/tab-new: func [] [ reduce [ none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none none ] ]
+gui3/tab-get: func [tab node] [
+    either either < node 0 [ 1 ] [ > node 1023 ] [ 0 ] [
+        row: block-at tab / node 32
+        either = row none [ 0 ] [
+            rec: block-at row - node * / node 32 32
+            either = rec none [ 0 ] [ rec ]
+        ]
+    ]
+]
+gui3/tab-put: func [tab node rec] [
+    either either < node 0 [ 1 ] [ > node 1023 ] [ raise create-sin 'gui 'node-range node ] [
+        r: / node 32
+        row: block-at tab r
+        either = row none [
+            either = rec none [ 0 ] [
+                row: gui3/tab-new
+                vid/set-block! tab r row
+                vid/set-block! row - node * r 32 rec
+            ]
+        ] [ vid/set-block! row - node * r 32 rec ]
+    ]
+]
+
+;; gui3/scan ( tab lo hi down mode arg ): visits the records of nodes in
+;; [lo, hi) by halving (recursion depth about log2 of the range, never the
+;; number of faces); returns the first node, highest first when down = 1,
+;; for which gui3/scan-match answers 1, or 0.  Rows that were never used are
+;; skipped whole.
+gui3/scan: func [tab lo hi down mode arg] [
+    either >= lo hi [ 0 ] [
+        either either = / lo 32 / - hi 1 32 [ = block-at tab / lo 32 none ] [ 0 ] [ 0 ] [
+            either = - hi lo 1 [
+                rec: gui3/tab-get tab lo
+                either = rec 0 [ 0 ] [ either = gui3/scan-match mode lo rec arg 1 [ lo ] [ 0 ] ]
+            ] [
+                mid: / + lo hi 2
+                either = down 1 [
+                    found: gui3/scan tab mid hi down mode arg
+                    either = found 0 [ gui3/scan tab lo mid down mode arg ] [ found ]
+                ] [
+                    found: gui3/scan tab lo mid down mode arg
+                    either = found 0 [ gui3/scan tab mid hi down mode arg ] [ found ]
+                ]
+            ]
+        ]
+    ]
+]
+
+;; modes: 1 key match, 2 focusable, 3 refresh (never matches),
+;;        4 release faces below node arg (never matches), 5 parent is arg,
+;;        6 collect scroll offsets into gui3/saved (scroll-tab; never matches)
+gui3/scan-match: func [mode node rec arg] [
+    either = mode 1 [ either = block-at rec 4 arg [ 1 ] [ 0 ] ] [
+        either = mode 2 [ gui3/focusable? rec ] [
+            either = mode 3 [
+                kind: block-at rec 3
+                either either = kind 'checkbox' [ 1 ] [ = kind 'radio' ] [ 0 ] [ gui3/refresh node ]
+                0
+            ] [
+                either = mode 4 [
+                    either = gui3/below? block-at rec 2 arg 0 1 [ gui3/release node ] [ 0 ]
+                    0
+                ] [
+                    either = mode 5 [ either = block-at rec 2 arg [ 1 ] [ 0 ] ] [
+                        either = mode 6 [
+                            either = block-at rec 0 node [
+                                gui3/saved: reduce [ node block-at rec 6 block-at rec 7 gui3/saved ]
+                            ] [ 0 ]
+                            0
+                        ] [ 0 ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+]
+
+;; gui3/below? ( p root depth ): is p, or an ancestor face of p, equal to root?
+;; Scroll content nodes have no record; they continue through their scroll.
+gui3/below?: func [p root depth] [
+    either either = p root [ 1 ] [ > depth 64 ] [ either = p root [ 1 ] [ 0 ] ] [
+        either < p 2 [ 0 ] [
+            rec: gui3/state p
+            either = rec 0 [
+                srec: gui3/scroll-find-content p
+                either = srec 0 [ 0 ] [ gui3/below? block-at srec 0 root + depth 1 ]
+            ] [ gui3/below? block-at rec 2 root + depth 1 ]
+        ]
+    ]
+]
+
+gui3/focusable?: func [rec] [
+    either = block-at rec 12 0 [ 0 ] [
+        kind: block-at rec 3
+        either = kind 'button' [ 1 ] [
+            either = kind 'checkbox' [ 1 ] [
+                either = kind 'radio' [ 1 ] [
+                    either = kind 'field' [ 1 ] [ either = kind 'scroll [ 1 ] [ 0 ] ]
+                ]
+            ]
+        ]
+    ]
+]
+
+gui3/state-tab: gui3/tab-new
+gui3/state: func [node] [ gui3/tab-get gui3/state-tab node ]
+gui3/set-state: func [node state] [ gui3/tab-put gui3/state-tab node state ]
+gui3/top: func [] [ either > view/id 1023 [ 1024 ] [ + view/id 1 ] ]
+
+gui3/key-of: func [node] [
+    state: gui3/state node
+    either = state 0 [ 0 ] [
+        either = state none [ 0 ] [ block-at state 4 ]
+    ]
+]
+
+;; GUI-F2: one edit record per field node, in its own table.  gui4/edits is
+;; kept only as the (ignored) list argument of the GUI-4B1 edit-at signature.
+gui4/edits: 0
+gui4/edit-tab: gui3/tab-new
+
+gui4/edit-at: func [list node] [ gui3/tab-get gui4/edit-tab node ]
+
+gui4/edit-get: func [node] [
+    edit: gui3/tab-get gui4/edit-tab node
+    either = edit 0 [
+        state: gui3/state node
+        text: either = state 0 [ "" ] [ block-at state 5 ]
+        len: s/length text
+        edit: reduce [ len len 0 ]
+        gui3/tab-put gui4/edit-tab node edit
+        edit
+    ] [ edit ]
+]
+
+gui4/edit-set: func [node edit] [ gui3/tab-put gui4/edit-tab node edit ]
+
+;; GUI-F2: keyboard input goes to the focused face, never to the newest field.
+gui3/focused-field: func [] [
+    node: gui3/current-node
+    either > node 0 [ either = block-at gui3/state node 3 'field' [ node ] [ 0 ] ] [ 0 ]
+]
+
+gui4/edit-update: func [node] [
+    edit: gui4/edit-get node
+    caret: block-at edit 0
+    anchor: block-at edit 1
+    caret-node: block-at edit 2
+    sel-node: block-at edit 3
+    offset: block-at edit 4
+    text: block-at gui3/state node 5
+    text-node: block-at gui3/state node 8
+    len: s/length text
+    either > caret len [ caret: len ] [ 0 ]
+    either > anchor len [ anchor: len ] [ 0 ]
+    caret-x: * caret 7
+    either > - caret-x offset 147 [ offset: - caret-x 147 ] [
+        either < caret-x offset [ offset: caret-x ] [ 0 ]
+    ]
+    either < offset 0 [ offset: 0 ] [ 0 ]
+    edit: reduce [ caret anchor caret-node sel-node offset ]
+    gui4/edit-set node edit
+    either > text-node 0 [ view/rect text-node - 0 offset 0 148 17 ] [ 0 ]
+    either > sel-node 0 [
+        start: either < caret anchor [ caret ] [ anchor ]
+        end: either < caret anchor [ anchor ] [ caret ]
+        x: - * start 7 offset
+        w: * - end start 7
+        either < x 0 [ w: + w x  x: 0 ] [ 0 ]
+        either > + x w 148 [ w: - 148 x ] [ 0 ]
+        either < w 0 [ w: 0 ] [ 0 ]
+        view/rect sel-node x 0 w 17
+    ] [ 0 ]
+    either > caret-node 0 [
+        cx: - * caret 7 offset
+        either < cx 0 [ cx: 0 ] [ 0 ]
+        view/rect caret-node cx 0 1 17
+    ] [ 0 ]
+]
+
+gui4/edit-caret-set: func [node caret] [
+    edit: gui4/edit-get node
+    caret-node: block-at edit 2
+    sel-node: block-at edit 3
+    gui4/edit-set node reduce [ caret caret caret-node sel-node 0 ]
+    gui4/edit-update node
+]
+
+gui4/edit-select-set: func [node caret anchor] [
+    edit: gui4/edit-get node
+    caret-node: block-at edit 2
+    sel-node: block-at edit 3
+    gui4/edit-set node reduce [ caret anchor caret-node sel-node 0 ]
+    gui4/edit-update node
+]
+
+gui4/edit-text-set: func [node text] [
+    edit: gui4/edit-get node
+    len: s/length text
+    caret: block-at edit 0
+    either > caret len [ caret: len ] [ 0 ]
+    caret-node: block-at edit 2
+    sel-node: block-at edit 3
+    gui4/edit-set node reduce [ caret caret caret-node sel-node 0 ]
+    gui4/edit-update node
+]
+
+gui4/edit-init: func [node text sel clip] [
+    either = gui4/edit-at gui4/edits node 0 [
+        len: s/length text
+        caret-node: view/next-id
+        view/create caret-node clip view/type-rect 0 0 1 17 1 1 0 0
+        view/bg caret-node 235 238 242 255
+        gui4/edit-set node reduce [ len len caret-node sel 0 ]
+        gui4/edit-update node
+    ] [ 0 ]
+]
+
+;; INTENT-4B-2: GUI-4's editing operations now live in the one editing core
+;; (edit_core.glon: edit/step, edit/insert, edit/back, edit/del, edit/move,
+;; edit/key), shared with VID fields; the functions below keep their names
+;; and apply the core's results to GUI-3 state as before.
+gui4/utf8-step: :edit/step
+
+gui4/selection: func [node] [
+    edit: gui4/edit-get node
+    reduce [ edit/lo block-at edit 0 block-at edit 1  edit/hi block-at edit 0 block-at edit 1 ]
+]
+
+;; an edit [ text caret anchor ] from the core: its caret and anchor kept,
+;; then its text (gui3/field-set keeps the caret, as before)
+gui4/edit-apply: func [node r] [
+    edit: gui4/edit-get node
+    gui4/edit-set node reduce [ block-at r 1 block-at r 2 block-at edit 2 block-at edit 3 0 ]
+    gui3/field-set node block-at r 0
+]
+gui4/edit-move: func [node r] [ gui4/edit-select-set node block-at r 1 block-at r 2 ]
+gui4/edit-of: func [node] [
+    edit: gui4/edit-get node
+    reduce [ block-at gui3/state node 5 block-at edit 0 block-at edit 1 ]
+]
+
+gui4/field-left: func [node] [
+    e: gui4/edit-of node
+    gui4/edit-move node edit/move block-at e 0 block-at e 1 block-at e 2 -1 0
+]
+
+gui4/field-right: func [node] [
+    e: gui4/edit-of node
+    gui4/edit-move node edit/move block-at e 0 block-at e 1 block-at e 2 1 0
+]
+
+gui4/field-insert: func [node text] [
+    state: gui3/state node
+    either = block-at state 12 1 [
+        e: gui4/edit-of node
+        gui4/edit-apply node edit/insert block-at e 0 block-at e 1 block-at e 2 text
+    ] [ 0 ]
+]
+
+gui4/field-delete-selection: func [node] [
+    e: gui4/edit-of node
+    gui4/edit-apply node edit/insert block-at e 0 block-at e 1 block-at e 2 ""
+]
+
+gui4/field-delete-before: func [node] [
+    e: gui4/edit-of node
+    gui4/edit-apply node edit/back block-at e 0 block-at e 1 block-at e 2
+]
+
+gui4/field-delete: func [node] [
+    e: gui4/edit-of node
+    gui4/edit-apply node edit/del block-at e 0 block-at e 1 block-at e 2
+]
+
+gui4/field-clipboard: func [op node] [
+    state: gui3/state node
+    either = block-at state 12 1 [
+        either = op 'paste [
+            view/send "clipboard-paste"
+            1
+        ] [
+            e: gui4/edit-of node
+            text: edit/selected block-at e 0 block-at e 1 block-at e 2
+            either > s/length text 0 [
+                view/send s/+ "clipboard-set " text
+                either = op 'cut [ gui4/field-delete-selection node ] [ 0 ]
+                1
+            ] [ 0 ]
+        ]
+    ] [ 0 ]
+]
+
+;; a key on the focused field: the core's moves, selection and Delete; the
+;; clipboard through gui4/field-clipboard (as before)
+gui4/field-key: func [key] [
+    either = gui3/scroll-record gui3/current-node 0 [
+    focused: gui3/focused-field
+    either > focused 0 [
+        either = gui4/edit-at gui4/edits focused 0 [ 0 ] [
+            state: gui3/state focused
+            either = block-at state 12 1 [
+                either = key 1012 [ gui4/field-clipboard 'copy focused  1 ] [
+                either = key 1013 [ gui4/field-clipboard 'cut focused  1 ] [
+                either = key 1014 [ gui4/field-clipboard 'paste focused  1 ] [
+                    e: gui4/edit-of focused
+                    r: edit/key block-at e 0 block-at e 1 block-at e 2 key 0 0
+                    what: block-at r 3
+                    either = what 1 [ gui4/edit-move focused r  1 ] [
+                        either either = what 2 [ = key 127 ] [ 0 ] [ gui4/edit-apply focused r  1 ] [ 0 ]
+                    ]
+                ] ] ]
+            ] [ 0 ]
+        ]
+    ] [ 0 ]
+    ] [ gui3/scroll-key key ]
+
+]
+
+gui3/set-status: func [text] [
+    either > gui3/status 0 [ view/text gui3/status text ] [ 0 ]
+    text
+]
+
+gui3/remove-state: func [list node] [
+    either = list 0 [ 0 ] [
+        either = block-at list 0 node [ block-at list 2 ] [
+            reduce [ block-at list 0 block-at list 1 gui3/remove-state block-at list 2 node ]
+        ]
+    ]
+]
+
+gui3/forget: func [node] [
+    either = gui3/focus node [ gui3/focus: 0  gui3/focus-key: 0 ] [ 0 ]
+    either = gui3/capture node [ gui3/capture: 0 ] [ 0 ]
+    either = gui3/hover node [ gui3/hover: 0 ] [ 0 ]
+    gui3/set-state node none
+    gui3/tab-put gui4/edit-tab node none
+]
+
+;; gui3/release: forget a face that is going away with its ancestor.
+gui3/release: func [node] [
+    gui3/forget node
+    gui3/scroll-forget node
+]
+
+;; GUI-F2: destroying a face releases the records of every face below it
+;; (highest ids first, so each chain is still intact when it is examined).
+gui3/destroy-face: func [node] [
+    gui3/scan gui3/state-tab + node 1 gui3/top 1 4 node
+    gui3/forget node
+    gui3/scroll-forget node
+    view/destroy node
+]
+
+gui3/reset-lists: func [] [
+    gui3/focus: 0
+    gui3/capture: 0
+    gui3/hover: 0
+    gui3/faces: 0
+    gui3/focusables: 0
+    gui3/scrollers: 0
+]
+
+gui3/reset-ui: func [] [
+    gui3/focus: 0
+    gui3/capture: 0
+    gui3/hover: 0
+    gui3/faces: 0
+    gui3/focusables: 0
+    gui3/states: 0
+    gui3/state-tab: gui3/tab-new
+    gui4/edit-tab: gui3/tab-new
+    gui3/scroll-tab: gui3/tab-new
+    gui3/scrollers: 0
+]
+
+gui3/text-child: func [node text x y] [
+    style: block-at gui3/state node 1
+    text-node: view/next-id
+    view/create text-node node view/type-text x y 0 0 1 1 0 0
+    view/text text-node text
+    font: style/get style 'font
+    font: either = font 0 [ 14 ] [ font ]
+    view/font text-node font
+    fg: style/get style 'fg
+    either = fg 0 [ 0 ] [ view/fg text-node block-at fg 0 block-at fg 1 block-at fg 2 block-at fg 3 ]
+    text-node
+]
+
+gui3/set-widget: func [node style parent kind key text checked group text-node action box-node] [
+    state: reduce [ node style parent kind key text checked group text-node 0 box-node 0 1 0 'normal ]
+    vid/set-block! state 9 action
+    gui3/set-state node state
+]
+
+;; gui3/skin-hook: optional presentation layer (VID, view/glon/vid_gui3.glon).
+;; When set, a face whose style has a 'skin facet is drawn by the hook
+;; ( node state ) instead of the default style colours; behaviour (events,
+;; focus, editing, capture, lifecycle) is unchanged.  0 = plain GUI-3.
+gui3/skin-hook: 0
+gui3/refresh: func [node] [
+    state: gui3/state node
+    either = state 0 [ 0 ] [
+        either either = gui3/skin-hook 0 [ 1 ] [ = style/get block-at state 1 'skin 0 ] [
+        style: block-at state 1
+        enabled: block-at state 12
+        focused: block-at state 13
+        widget-state: block-at state 14
+        key: 'bg
+        either = enabled 0 [ key: 'disabled/bg ] [
+            either = focused 1 [ key: 'focused/bg ] [
+                either = widget-state 'hover [ key: 'hover/bg ] [
+                    either = widget-state 'pressed [ key: 'pressed/bg ] [ 'bg ]
+                ]
+            ]
+        ]
+        bg: style/get style key
+        bg: either = bg 0 [ style/get style 'bg ] [ bg ]
+        either = bg 0 [ 0 ] [
+            view/bg node block-at bg 0 block-at bg 1 block-at bg 2 block-at bg 3
+        ]
+        focus: style/get style 'focus
+        either = focused 1 [
+            either = focus 0 [ 0 ] [
+                view/fg node block-at focus 0 block-at focus 1 block-at focus 2 block-at focus 3
+            ]
+        ] [ 0 ]
+        fg: style/get style 'fg
+        text-node: block-at state 8
+        either = fg 0 [ 0 ] [
+            either > text-node 0 [
+                view/fg text-node block-at fg 0 block-at fg 1 block-at fg 2 block-at fg 3
+            ] [ 0 ]
+        ]
+        kind: block-at state 3
+        either = kind 'checkbox' [ gui3/refresh-check state style 0 ] [
+            either = kind 'radio' [ gui3/refresh-check state style 1 ] [ 0 ]
+        ]
+        ] [
+            f: get block-at gui3/skin-hook 0
+            f node state
+        ]
+    ]
+]
+
+gui3/refresh-check: func [state style radio] [
+    boxrec: block-at state 10
+    box: block-at boxrec 0
+    marker: block-at boxrec 1
+    checked: block-at state 6
+    box-bg: style/get style 'box
+    box-bg: either = box-bg 0 [ style/get style 'border ] [ box-bg ]
+    box-bg: either = box-bg 0 [ reduce [ 24 26 30 255 ] ] [ box-bg ]
+    either > box 0 [
+        view/bg box block-at box-bg 0 block-at box-bg 1 block-at box-bg 2 block-at box-bg 3
+    ] [ 0 ]
+    view/text marker either = checked 1 [ either = radio 1 [ "●" ] [ "✓" ] ] [ "" ]
+]
+
+gui3/refresh-all: func [] [ gui3/scan gui3/state-tab 1 gui3/top 0 3 0 ]
+
+gui3/new-face: func [style parent text] [
+    node: view/next-id
+    view/create node parent view/type-group 0 0 0 0 1 1 1 1
+    state: reduce [ node style parent 'group' "" "" 0 0 0 0 0 0 1 0 'normal ]
+    gui3/set-state node state
+    node
+]
+
+gui3/container: func [parent style dir align spacing padding] [
+    node: gui3/new-face style parent ""
+    gui3/set-widget node style parent 'group' "" "" 0 0 0 0 0
+    view/flags node 1 1 0 0
+    view/layout node dir align spacing padding
+    gui3/refresh node
+    node
+]
+
+gui3/window: func [style w h] [
+    node: gui3/container 1 style view/layout-v 0 0 0
+    view/rect node 0 0 w h
+    view/layout 1 view/layout-v 0 0 0
+    node
+]
+
+gui3/label: func [parent style text] [
+    node: gui3/new-face style parent text
+    gui3/set-widget node style parent 'label' "" text 0 0 0 0 0
+    view/flags node 1 1 0 0
+    gui3/text-child node text 0 0
+]
+
+gui3/field: func [parent style text key] [
+    node: gui3/new-face style parent text
+    gui3/set-widget node style parent 'field' key text 0 0 0 0 0
+    view/flags node 1 1 1 1
+    view/rect node 0 0 160 28
+    clip: view/next-id
+    view/create clip node 7 6 5 148 18 1 1 0 0
+    sel: view/next-id
+    view/create sel clip view/type-rect 0 0 0 17 1 1 0 0
+    view/bg sel 80 120 200 210
+    text-node: gui3/text-child node text 0 0
+    view/reparent text-node clip
+    view/rect text-node 0 0 148 17
+    gui4/edit-init node text sel clip
+    state: gui3/state node
+    vid/set-block! state 8 text-node
+    gui3/set-state node state
+        gui3/refresh node
+    node
+]
+
+gui3/button: func [parent style text key action] [
+    node: gui3/new-face style parent text
+    gui3/set-widget node style parent 'button' key text 0 0 0 action 0
+    view/flags node 1 1 1 1
+    view/rect node 0 0 110 32
+    text-node: gui3/text-child node text 10 7
+    state: gui3/state node
+    vid/set-block! state 8 text-node
+    gui3/set-state node state
+    gui3/refresh node
+    node
+]
+
+gui3/checkbox: func [parent style text key action] [
+    node: gui3/new-face style parent text
+    gui3/set-widget node style parent 'checkbox' key text 0 0 0 action 0
+    view/flags node 1 1 1 1
+    view/rect node 0 0 120 24
+    box: view/next-id
+    view/create box node view/type-rect 0 3 16 16 1 1 0 0
+    marker: gui3/text-child node "" 4 3
+    text-node: gui3/text-child node text 24 4
+    state: gui3/state node
+    vid/set-block! state 8 text-node
+    vid/set-block! state 10 reduce [ box marker ]
+    gui3/set-state node state
+    gui3/refresh node
+    node
+]
+
+gui3/group-add: func [group node] [
+    state: gui3/state group
+    children: block-at state 11
+    vid/set-block! state 11 reduce [ node children ]
+    gui3/set-state group state
+]
+
+gui3/radio: func [parent style text key group action] [
+    node: gui3/new-face style parent text
+    gui3/set-widget node style parent 'radio' key text 0 group 0 action 0
+    view/flags node 1 1 1 1
+    view/rect node 0 0 120 24
+    box: view/next-id
+    view/create box node view/type-rect 0 3 16 16 1 1 0 0
+    marker: gui3/text-child node "" 4 3
+    text-node: gui3/text-child node text 24 4
+    state: gui3/state node
+    vid/set-block! state 8 text-node
+    vid/set-block! state 10 reduce [ box marker ]
+    gui3/set-state node state
+    gui3/group-add group node
+    gui3/refresh node
+    node
+]
+
+gui3/set-checked: func [node checked] [
+    state: gui3/state node
+    text: block-at state 5
+    group: block-at state 7
+    text-node: block-at state 8
+    action: block-at state 9
+    box: block-at state 10
+    new-state: reduce [ block-at state 0 block-at state 1 block-at state 2 block-at state 3 block-at state 4 text checked group text-node 0 box block-at state 11 block-at state 12 block-at state 13 block-at state 14 ]
+    vid/set-block! new-state 9 action
+    gui3/set-state node new-state
+    gui3/refresh node
+]
+
+gui3/field-set: func [node text] [
+    state: gui3/state node
+    key: block-at state 4
+    checked: block-at state 6
+    group: block-at state 7
+    text-node: block-at state 8
+    action: block-at state 9
+    box: block-at state 10
+    children: block-at state 11
+    enabled: block-at state 12
+    focused: block-at state 13
+    widget-state: block-at state 14
+    new-state: reduce [ node block-at state 1 block-at state 2 'field' key text checked group text-node 0 box children enabled focused widget-state ]
+    vid/set-block! new-state 9 action
+    gui3/set-state node new-state
+    either > text-node 0 [ view/text text-node text ] [ 0 ]
+    gui4/edit-text-set node text
+    gui3/refresh node
+]
+
+gui3/field-append: func [node text] [
+    gui4/field-insert node text
+]
+
+gui3/field-backspace: func [node] [
+    gui4/field-delete-before node
+]
+
+gui3/checkbox-toggle: func [node] [
+    state: gui3/state node
+    checked: block-at state 6
+    checked: either = checked 1 [ 0 ] [ 1 ]
+    gui3/set-checked node checked
+]
+
+gui3/radio-select: func [group key] [
+    state: gui3/state group
+    children: block-at state 11
+    clear: func [list] [
+        either = list 0 [ 0 ] [
+            child: block-at list 0
+            child-state: gui3/state child
+            either = block-at child-state 3 'radio' [
+                checked: either = block-at child-state 4 key [ 1 ] [ 0 ]
+                gui3/set-checked child checked
+            ] [ 0 ]
+            clear block-at list 1
+        ]
+    ]
+    clear children
+]
+
+gui3/activate: func [node] [
+    either = node 0 [ 0 ] [
+        state: gui3/state node
+        either = state 0 [ 0 ] [
+            kind: block-at state 3
+            either = kind 'button' [
+                gui3/app-action node
+            ] [
+                either = kind 'checkbox' [
+                    gui3/checkbox-toggle node
+                    gui3/app-action node
+                ] [
+                    either = kind 'radio' [
+                        group: block-at state 7
+                        key: block-at state 4
+                        either > group 0 [ gui3/radio-select group key ] [ 0 ]
+                        gui3/app-action node
+                    ] [
+                        either = kind 'field' [
+                            gui3/focus-set node
+                        ] [ 0 ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+]
+
+gui3/focus-set: func [node] [
+    either = node 0 [ 0 ] [
+        state: gui3/state node
+        either = state 0 [ 0 ] [
+            enabled: block-at state 12
+            either = enabled 0 [ 0 ] [
+                either = gui3/focus node [ 0 ] [
+                    old: gui3/focus
+                    either > old 0 [
+                        old-state: gui3/state old
+                        either = old-state 0 [ 0 ] [
+                            new-old: reduce [ block-at old-state 0 block-at old-state 1 block-at old-state 2 block-at old-state 3 block-at old-state 4 block-at old-state 5 block-at old-state 6 block-at old-state 7 block-at old-state 8 block-at old-state 9 block-at old-state 10 block-at old-state 11 block-at old-state 12 0 block-at old-state 14 ]
+                            gui3/set-state old new-old
+                            gui3/refresh old
+                        ]
+                    ] [ 0 ]
+                    new-state: reduce [ block-at state 0 block-at state 1 block-at state 2 block-at state 3 block-at state 4 block-at state 5 block-at state 6 block-at state 7 block-at state 8 block-at state 9 block-at state 10 block-at state 11 block-at state 12 1 block-at state 14 ]
+                    gui3/set-state node new-state
+                    gui3/focus: node
+                    gui3/focus-key: block-at state 4
+                    either = block-at state 3 'field [ gui4/active-field: node ] [ gui4/active-field: 0 ]
+                    view/focus node
+                    gui3/scroll-reveal node
+                    gui3/refresh node
+                    gui3/set-status "Focus changed"
+                ]
+            ]
+        ]
+    ]
+]
+
+gui3/focus-next: func [backwards] [
+    cur: gui3/current-node
+    top: gui3/top
+    next: either = backwards 1 [
+        found: either > cur 0 [ gui3/scan gui3/state-tab 1 cur 1 2 0 ] [ 0 ]
+        either = found 0 [ gui3/scan gui3/state-tab 1 top 1 2 0 ] [ found ]
+    ] [
+        found: gui3/scan gui3/state-tab + cur 1 top 0 2 0
+        either = found 0 [ gui3/scan gui3/state-tab 1 top 0 2 0 ] [ found ]
+    ]
+    gui3/focus-set next
+]
+
+;; newest face (highest id) whose key matches; key 0 matches nothing
+gui3/find-node-by-key: func [key] [
+    either = key 0 [ 0 ] [ gui3/scan gui3/state-tab 1 gui3/top 1 1 key ]
+]
+
+gui3/current-node: func [] [
+    focused: gui3/focus
+    either either > focused 0 [ either = gui3/state focused 0 [ 0 ] [ 1 ] ] [ 0 ] [ focused ] [
+        gui3/find-node-by-key gui3/focus-key
+    ]
+]
+
+gui3/focus-by-key: func [key] [
+    node: gui3/find-node-by-key key
+    either > node 0 [ gui3/focus-set node ] [ 0 ]
+]
+
+gui3/set-enabled: func [node enabled] [
+    state: gui3/state node
+    either = state 0 [ 0 ] [
+        kind: block-at state 3
+        focusable: either = kind 'button [ 1 ] [
+            either = kind 'checkbox [ 1 ] [
+                either = kind 'radio [ 1 ] [ either either = kind 'field [ 1 ] [ = kind 'scroll ] [ 1 ] [ 0 ] ]
+            ]
+        ]
+        new-state: reduce [ block-at state 0 block-at state 1 block-at state 2 block-at state 3 block-at state 4 block-at state 5 block-at state 6 block-at state 7 block-at state 8 block-at state 9 block-at state 10 block-at state 11 enabled block-at state 13 block-at state 14 ]
+        gui3/set-state node new-state
+        view/flags node 1 enabled 1 1
+        gui3/refresh node
+    ]
+]
+
+gui3/pointer-down: func [node] [
+    either = node 0 [ 0 ] [
+        state: gui3/state node
+        either = state 0 [ 0 ] [
+            enabled: block-at state 12
+            either = enabled 0 [ 0 ] [
+                gui3/focus-set node
+                ;; focus-set replaced the record (focused flag): build on that one
+                state: gui3/state node
+                gui3/capture: node
+                gui3/capture-key: block-at state 4
+                new-state: reduce [ block-at state 0 block-at state 1 block-at state 2 block-at state 3 block-at state 4 block-at state 5 block-at state 6 block-at state 7 block-at state 8 block-at state 9 block-at state 10 block-at state 11 block-at state 12 block-at state 13 'pressed ]
+                gui3/set-state node new-state
+                gui3/refresh node
+                gui3/set-status "Capture active"
+            ]
+        ]
+    ]
+]
+
+gui3/pointer-up: func [node] [
+    capture-key: gui3/capture-key
+    cap: gui3/capture
+    ;; GUI-4B2C: the capture ends (0, as before the first press: "" kept every
+    ;; later pointer move on the captured path, so hover stopped working) and
+    ;; the captured face stops looking pressed
+    gui3/capture-key: 0
+    gui3/capture: 0
+    either either = capture-key 0 [ 1 ] [ = capture-key "" ] [ 0 ] [
+        either > cap 0 [
+            cst: gui3/state cap
+            either = cst 0 [ 0 ] [
+                gui3/set-state cap reduce [ block-at cst 0 block-at cst 1 block-at cst 2 block-at cst 3 block-at cst 4 block-at cst 5 block-at cst 6 block-at cst 7 block-at cst 8 block-at cst 9 block-at cst 10 block-at cst 11 block-at cst 12 block-at cst 13 either = node cap [ 'hover ] [ 'normal ] ]
+                gui3/hover: either = node cap [ cap ] [ 0 ]
+                gui3/refresh cap
+            ]
+        ] [ 0 ]
+        key: gui3/key-of node
+        either = key 0 [
+            gui3/set-status "Pointer released outside"
+        ] [
+            either = key capture-key [
+                gui3/activate node
+            ] [
+                gui3/set-status "Pointer released outside"
+            ]
+        ]
+    ]
+]
+
+gui3/pointer-move: func [node] [
+    capture-key: gui3/capture-key
+    either either = capture-key 0 [ 1 ] [ = capture-key "" ] [
+        old: gui3/hover
+        either = node old [ 0 ] [
+            either > old 0 [
+                old-state: gui3/state old
+                either = old-state 0 [ 0 ] [
+                    new-old: reduce [ block-at old-state 0 block-at old-state 1 block-at old-state 2 block-at old-state 3 block-at old-state 4 block-at old-state 5 block-at old-state 6 block-at old-state 7 block-at old-state 8 block-at old-state 9 block-at old-state 10 block-at old-state 11 block-at old-state 12 block-at old-state 13 'normal ]
+                    gui3/set-state old new-old
+                    gui3/refresh old
+                ]
+            ] [ 0 ]
+            either > node 0 [
+                state: gui3/state node
+                either = state 0 [ 0 ] [
+                    either = state none [ 0 ] [
+                    gui3/hover: node
+                    new-state: reduce [ block-at state 0 block-at state 1 block-at state 2 block-at state 3 block-at state 4 block-at state 5 block-at state 6 block-at state 7 block-at state 8 block-at state 9 block-at state 10 block-at state 11 block-at state 12 block-at state 13 'hover ]
+                        gui3/set-state node new-state
+                        gui3/refresh node
+                    ]
+                ]
+            ] [ 0 ]
+        ]
+    ] [
+        key: gui3/key-of node
+        either = key 0 [ 0 ] [
+            either = key capture-key [
+                state: gui3/state node
+                new-state: reduce [ block-at state 0 block-at state 1 block-at state 2 block-at state 3 block-at state 4 block-at state 5 block-at state 6 block-at state 7 block-at state 8 block-at state 9 block-at state 10 block-at state 11 block-at state 12 block-at state 13 'pressed ]
+                gui3/set-state node new-state
+                gui3/refresh node
+            ] [ 0 ]
+        ]
+    ]
+]
+
+gui3/pointer-cancel: func [node] [
+    capture-key: gui3/capture-key
+    gui3/capture-key: 0
+    either = capture-key 0 [ 0 ] [
+        gui3/set-status "Pointer cancelled"
+    ]
+]
+
+gui3/key: func [key] [
+    either = key 9 [ gui3/focus-next 0 ] [
+        either = key 1024 [ gui3/focus-next 1 ] [
+            either = key 13 [ gui3/activate gui3/current-node ] [
+                either = key 32 [
+                    focused: gui3/current-node
+                    either > focused 0 [
+                        state: gui3/state focused
+                        either = block-at state 3 'field' [
+                            gui3/field-append focused " "
+                        ] [
+                            gui3/activate focused
+                        ]
+                    ] [ 0 ]
+                ] [
+                    either = key 8 [
+                        focused: gui3/focused-field
+                        either > focused 0 [
+                            state: gui3/state focused
+                            either = block-at state 3 'field' [
+                                gui3/field-backspace focused
+                            ] [ 0 ]
+                        ] [ 0 ]
+                    ] [
+                        either = key 27 [ gui3/pointer-cancel 0 ] [ gui4/field-key key ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+]
+
+gui3/char: func [text] [
+    focused: gui3/focused-field
+    either > focused 0 [
+        state: gui3/state focused
+        either = block-at state 3 'field' [
+            gui3/field-append focused text
+        ] [ 0 ]
+    ] [ 0 ]
+]
+
+
+;; ---- GUI-4B2C: scroll records ------------------------------------------
+;; A scroll record [ outer vp content parent maxx maxy x y vw vh cw ch barv
+;; barh ] lives in the node-indexed gui3/scroll-tab (the GUI-F2 table), filed
+;; under its outer, viewport and content node ids.  The table is rooted by a
+;; global and is separate from the SC-1R component records (sc-recs), whose
+;; handles used to share slots 256..383 with scroll records.
+gui3/scroll-tab: gui3/tab-new
+gui3/scroll-rec-at: func [node k] [
+    rec: gui3/tab-get gui3/scroll-tab node
+    either = rec 0 [ 0 ] [ either = block-at rec k node [ rec ] [ 0 ] ]
+]
+gui3/scroll-record: func [outer] [ gui3/scroll-rec-at outer 0 ]
+gui3/scroll-find-vp: func [vp] [ gui3/scroll-rec-at vp 1 ]
+gui3/scroll-find-content: func [content] [ gui3/scroll-rec-at content 2 ]
+
+;; the record of the nearest scroll whose content holds node, or 0
+gui3/scroll-enclosing: func [node depth] [
+    either either < node 2 [ 1 ] [ > depth 64 ] [ 0 ] [
+        srec: gui3/scroll-find-content node
+        either = srec 0 [
+            frec: gui3/state node
+            either = frec 0 [ 0 ] [ gui3/scroll-enclosing block-at frec 2 + depth 1 ]
+        ] [ srec ]
+    ]
+]
+
+;; signed integer at byte i of s (a leading '-' negates)
+gui3/int-at: func [s i] [
+    either = s/at s i 45 [ - 0 parse-int-at s + i 1 0 ] [ parse-int-at s i 0 ]
+]
+
+gui3/scroll-update: func [outer] [
+    rec: gui3/scroll-record outer
+    either = rec 0 [ 0 ] [
+        vp: block-at rec 1
+        content: block-at rec 2
+        maxx: block-at rec 4
+        maxy: block-at rec 5
+        x: block-at rec 6
+        y: block-at rec 7
+        vw: block-at rec 8
+        vh: block-at rec 9
+        cw: block-at rec 10
+        ch: block-at rec 11
+        barv: block-at rec 12
+        barh: block-at rec 13
+        either < x 0 [ x: 0 ] [ 0 ]
+        either < y 0 [ y: 0 ] [ 0 ]
+        either > x maxx [ x: maxx ] [ 0 ]
+        either > y maxy [ y: maxy ] [ 0 ]
+        vid/set-block! rec 6 x
+        vid/set-block! rec 7 y
+        view/viewport vp x y
+        ;; thumbs: length view*view/content (at least 16), placed along the
+        ;; free track in proportion to the offset; full length when the
+        ;; content fits.  (The old expressions left a stray operand, so a
+        ;; thumb was as long as the content and sat at the maximum offset.)
+        tv: either > ch vh [ / * vh vh ch ] [ vh ]
+        tv: either < tv 16 [ 16 ] [ tv ]
+        th: either > cw vw [ / * vw vw cw ] [ vw ]
+        th: either < th 16 [ 16 ] [ th ]
+        view/rect barv + vw 2 either > maxy 0 [ / * - vh tv y maxy ] [ 0 ] 8 tv
+        view/rect barh either > maxx 0 [ / * - vw th x maxx ] [ 0 ] + vh 2 th 8
+    ]
+]
+
+gui3/scroll-set: func [outer x y] [
+    rec: gui3/scroll-record outer
+    either = rec 0 [ 0 ] [
+        maxx: block-at rec 4
+        maxy: block-at rec 5
+        oldx: block-at rec 6
+        oldy: block-at rec 7
+        either < x 0 [ x: 0 ] [ 0 ]
+        either < y 0 [ y: 0 ] [ 0 ]
+        either > x maxx [ x: maxx ] [ 0 ]
+        either > y maxy [ y: maxy ] [ 0 ]
+        ;; an unchanged offset sends nothing (each View command costs ms)
+        either either = oldx x [ = oldy y ] [ 0 ] [ 0 ] [
+            vid/set-block! rec 6 x
+            vid/set-block! rec 7 y
+            gui3/scroll-update outer
+            hook: gui3/scroll-hook
+            either = hook 0 [ 0 ] [ f: get block-at hook 0 f outer ]
+            1
+        ]
+    ]
+]
+
+gui3/scroll-by: func [outer dx dy] [
+    rec: gui3/scroll-record outer
+    either = rec 0 [ 0 ] [ gui3/scroll-set outer + block-at rec 6 dx + block-at rec 7 dy ]
+]
+
+gui3/scroll-size: func [outer cw ch] [
+    rec: gui3/scroll-record outer
+    either = rec 0 [ 0 ] [
+        vw: block-at rec 8
+        vh: block-at rec 9
+        maxx: either > cw vw [ - cw vw ] [ 0 ]
+        maxy: either > ch vh [ - ch vh ] [ 0 ]
+        vid/set-block! rec 4 maxx
+        vid/set-block! rec 5 maxy
+        vid/set-block! rec 10 cw
+        vid/set-block! rec 11 ch
+        view/rect block-at rec 2 0 0 cw ch
+        gui3/scroll-update outer
+    ]
+]
+
+gui3/scroll: func [parent style w h cw ch] [
+    outer: gui3/new-face style parent ""
+    gui3/set-widget outer style parent 'scroll "" "" 0 0 0 0 0
+    view/flags outer 1 1 1 1
+    view/rect outer 0 0 w h
+    vw: - w 12
+    vh: - h 12
+    vp: view/next-id
+    view/create vp outer 8 0 0 vw vh 1 1 0 0
+    content: view/next-id
+    view/create content vp 2 0 0 cw ch 1 1 0 0
+    view/layout content view/layout-v 0 8 8
+    barv: view/next-id
+    view/create barv outer 4 + vw 2 0 8 vh 1 1 0 0
+    barh: view/next-id
+    view/create barh outer 4 0 + vh 2 vw 8 1 1 0 0
+    bar: style/get style 'box
+    bar: either = bar 0 [ style/get style 'border ] [ bar ]
+    bar: either = bar 0 [ reduce [ 70 76 86 255 ] ] [ bar ]
+    view/bg barv block-at bar 0 block-at bar 1 block-at bar 2 block-at bar 3
+    view/bg barh block-at bar 0 block-at bar 1 block-at bar 2 block-at bar 3
+    rec: reduce [ outer vp content parent either > cw vw [ - cw vw ] [ 0 ] either > ch vh [ - ch vh ] [ 0 ] 0 0 vw vh cw ch barv barh ]
+    gui3/tab-put gui3/scroll-tab outer rec
+    gui3/tab-put gui3/scroll-tab vp rec
+    gui3/tab-put gui3/scroll-tab content rec
+    gui3/scroll-update outer
+    gui3/refresh outer
+    outer
+]
+
+gui3/scroll-content: func [outer] [
+    rec: gui3/scroll-record outer
+    either = rec 0 [ 0 ] [ block-at rec 2 ]
+]
+
+gui3/scroll-state: func [outer] [
+    rec: gui3/scroll-record outer
+    either = rec 0 [ reduce [ 0 0 0 0 ] ] [
+        reduce [ block-at rec 6 block-at rec 7 block-at rec 4 block-at rec 5 ]
+    ]
+]
+
+gui3/scroll-forget: func [outer] [
+    rec: gui3/scroll-record outer
+    either = rec 0 [ 0 ] [
+        gui3/tab-put gui3/scroll-tab block-at rec 0 none
+        gui3/tab-put gui3/scroll-tab block-at rec 1 none
+        gui3/tab-put gui3/scroll-tab block-at rec 2 none
+    ]
+]
+
+;; view-wheel "vp|dx|dy": dx, dy are signed offset steps (positive toward the
+;; end).  The innermost scroll moves; at its boundary the wheel goes on to the
+;; nearest enclosing scroll, whatever containers lie in between.
+gui3/scroll-wheel: func [value] [
+    vp: parse-int value
+    sep: func [s i] [
+        either < i s/length s [
+            either = s/at s i 124 [ i ] [ sep s + i 1 ]
+        ] [ i ]
+    ]
+    a: sep value 0
+    b: sep value + a 1
+    dx: gui3/int-at value + a 1
+    dy: gui3/int-at value + b 1
+    step: func [r depth] [
+        either either = r 0 [ 1 ] [ > depth 16 ] [ 0 ] [
+            moved: gui3/scroll-by block-at r 0 * dx 24 * dy 24
+            either = moved 1 [ 1 ] [ step gui3/scroll-enclosing block-at r 3 0 + depth 1 ]
+        ]
+    ]
+    step gui3/scroll-find-vp vp 0
+]
+
+;; PageUp (1021) / PageDown (1022) move a focused scroll by one viewport
+gui3/scroll-key: func [key] [
+    focused: gui3/current-node
+    rec: gui3/scroll-record focused
+    either = rec 0 [ 0 ] [
+        either = key 1021 [ gui3/scroll-by focused 0 - 0 block-at rec 9 ] [
+            either = key 1022 [ gui3/scroll-by focused 0 block-at rec 9 ] [ 0 ]
+        ]
+    ]
+]
+
+;; Focus brings a face inside a scroll into view: the host answers view/get
+;; prop 4 with "vp x y w h" (the face's rectangle in that viewport's content
+;; coordinates); query 7001 is this reveal.  Nested scrolls reveal outward.
+gui3/scroll-reveal: func [node] [
+    either = gui3/scroll-enclosing node 0 0 [ 0 ] [ view/get node 4 7001 ]
+]
+gui3/ints: func [s i n] [
+    either = n 0 [ 0 ] [
+        e: s/scan-set s i "-0123456789"
+        reduce [ gui3/int-at s i gui3/ints s + e 1 - n 1 ]
+    ]
+]
+gui3/view-get: func [value] [
+    either = parse-int value 7001 [
+        bar: s/scan-set value 5 "0123456789"
+        q: gui3/ints value + bar 1 5
+        vp: block-at q 0
+        rx: block-at block-at q 1 0
+        ry: block-at block-at block-at q 1 1 0
+        rw: block-at block-at block-at block-at q 1 1 1 0
+        rh: block-at block-at block-at block-at block-at q 1 1 1 1 0
+        rec: gui3/scroll-find-vp vp
+        either = rec 0 [ 0 ] [
+            cx: block-at rec 6
+            cy: block-at rec 7
+            nx: either < rx cx [ rx ] [ either > + rx rw + cx block-at rec 8 [ - + rx rw block-at rec 8 ] [ cx ] ]
+            ny: either < ry cy [ ry ] [ either > + ry rh + cy block-at rec 9 [ - + ry rh block-at rec 9 ] [ cy ] ]
+            gui3/scroll-set block-at rec 0 nx ny
+            gui3/scroll-reveal block-at rec 0
+        ]
+    ] [ 0 ]
+]
+
+;; ---- GUI-4B2C: rebuild with View node-id reuse ------------------------------
+;; gui3/rebuild destroys every face under the window, rewinds view/id to the
+;; value it had before the first build (gui3/id-base), runs the build hook
+;; again and restores the offset of each scroll that is rebuilt under the same
+;; node id.  The host releases every Glon id of a destroyed subtree, so ids
+;; are reused instead of exhausting the 1,024-id space.  Creating an id that
+;; is still live is refused by the host (a deterministic error, not reuse).
+gui3/destroy-children: func [p depth] [
+    n: gui3/scan gui3/state-tab 2 gui3/top 1 5 p
+    either either = n 0 [ 1 ] [ > depth 60 ] [ 0 ] [
+        gui3/destroy-face n
+        gui3/destroy-children p + depth 1
+    ]
+]
+gui3/restore-offsets: func [l] [
+    either = l 0 [ 0 ] [
+        gui3/scroll-set block-at l 0 block-at l 1 block-at l 2
+        gui3/restore-offsets block-at l 3
+    ]
+]
+gui3/rebuild: func [] [
+    gui3/saved: 0
+    gui3/scan gui3/scroll-tab 0 gui3/top 1 6 0
+    keep: gui3/saved
+    gui3/destroy-children 1 0
+    either = gui3/id-base 0 [ 0 ] [ view/id: gui3/id-base ]
+    hook: gui3/build-hook
+    either = hook 0 [ 0 ] [ f: get block-at hook 0 f ]
+    gui3/restore-offsets keep
+]
+
+gui3/handle: func [] [
+    ev: current-event
+    value: current-value
+    either = ev 'view-build [
+            either = gui3/id-base 0 [ gui3/id-base: view/id ] [ 0 ]
+            hook: gui3/build-hook
+            either = hook 0 [ 0 ] [ f: get block-at hook 0 f ]
+        ] [
+        either = ev 'view-pointer-down [
+            gui3/pointer-down parse-int value
+        ] [
+            either = ev 'view-pointer-up [
+                gui3/pointer-up parse-int value
+            ] [
+                either = ev 'view-pointer-move [
+                    gui3/pointer-move parse-int value
+                ] [
+                    either = ev 'view-pointer-cancel [
+                        gui3/pointer-cancel parse-int value
+                    ] [
+                        either = ev 'view-click [
+                            click-node: parse-int value
+                            click-state: gui3/state click-node
+                            ;; a click that follows this face's own pointer-down
+                            ;; is activated by the pointer-up (capture), not twice
+                            either = click-state 0 [ gui3/activate click-node ] [
+                                ;; disabled faces are not activated by a click either
+                                either either = gui3/capture-key block-at click-state 4 [ 1 ] [ = block-at click-state 12 0 ] [ 0 ] [ gui3/activate click-node ]
+                                gui3/focus-set click-node
+                            ]
+                        ] [
+                            either = ev 'view-focus [
+                                gui3/focus-set parse-int value
+                            ] [
+                                either = ev 'view-blur [
+                                    blur-node: parse-int value
+                                    either = gui3/focus blur-node [
+                                        gui3/focus: 0
+                                        state: gui3/state blur-node
+                                        new-state: reduce [ block-at state 0 block-at state 1 block-at state 2 block-at state 3 block-at state 4 block-at state 5 block-at state 6 block-at state 7 block-at state 8 block-at state 9 block-at state 10 block-at state 11 block-at state 12 0 block-at state 14 ]
+                                        gui3/set-state blur-node new-state
+                                        gui3/refresh blur-node
+                                        gui3/set-status "Focus lost"
+                                    ] [ 0 ]
+                                ] [
+                                    either = ev 'view-wheel [
+                                        gui3/scroll-wheel value
+                                    ] [
+                                    either = ev 'view-key [
+                                        gui3/key parse-int value
+                                    ] [
+                                        either = ev 'view-char [
+                                            gui3/char value
+                                        ] [
+                                            either = ev 'view-resize [
+                                                hook: gui3/resize-hook
+                                                either = hook 0 [ 0 ] [ f: get block-at hook 0 f value ]
+                                                gui3/set-status s/+ "Resized " value
+                                            ] [
+                                                either = ev 'view-get [ gui3/view-get value ] [ 0 ]
+                                            ]
+                                        ]
+                                    ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+    widget/flush
+]
+]

@@ -1,0 +1,30 @@
+;; Example -- VID state matrix (dark theme): normal, hover, pressed, focus, disabled.
+[
+do-event: [
+    either = current-event 'view-build [
+        vid/window theme/dark 1000 300
+        panel: vid/panel theme/dark 1 10 10 980 280 0 0 0 0 []
+        pid: block-at panel 1
+        vid/label theme/dark pid 10 8 460 24 "Dark theme"
+        b1: vid/button theme/dark pid 10 44 100 34 "Normal"
+        b2: vid/button theme/dark pid 120 44 100 34 "Hover"
+        b3: vid/button theme/dark pid 230 44 100 34 "Pressed"
+        b4: vid/button theme/dark pid 340 44 100 34 "Focus"
+        b5: vid/button theme/dark pid 450 44 100 34 "Disabled"
+        b6: vid/primary-button theme/dark pid 560 44 100 34 "Primary"
+        vid/button/set-hovered b2 1
+        vid/button/set-pressed b3 1
+        vid/button/set-focused b4 1
+        vid/button/set-enabled b5 0
+        f1: vid/field theme/dark pid 680 44 220 30 "focused field" 0
+        vid/field/set-focused f1 1
+        f2: vid/field theme/dark pid 680 90 220 30 "" 0
+        f3: vid/field theme/dark pid 680 136 220 30 "disabled" 1
+        cb1: vid/checkbox theme/dark pid 10 190 "Active" 1
+        cb2: vid/checkbox theme/dark pid 230 190 "Mailing" 0
+        r1: vid/radio theme/dark pid 470 190 "Individual" 1
+        r2: vid/radio theme/dark pid 690 190 "Household" 0
+    ] [ none ]
+    widget/flush
+]
+]

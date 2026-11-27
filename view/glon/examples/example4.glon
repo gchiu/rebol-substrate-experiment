@@ -1,0 +1,44 @@
+;; Example 4 -- recursive clearing of nested form fields.
+[
+v/field-text: ""
+v/name-text: ""
+v/city-text: ""
+
+do-event: [
+    either = current-event 'view-build [
+        vid/window theme/dark 760 360
+        outer: vid/panel theme/dark 1 20 20 720 300 0 0 0 0 []
+        oid: block-at outer 1
+        vid/label theme/dark oid 20 20 200 24 "Outer form"
+        inner: vid/panel theme/dark oid 20 60 680 160 0 0 0 0 []
+        iid: block-at inner 1
+        vid/label theme/dark iid 10 10 200 24 "Name"
+        name: vid/field theme/dark iid 10 40 300 28 "" 0
+        vid/label theme/dark iid 330 10 200 24 "City"
+        city: vid/field theme/dark iid 330 40 300 28 "" 0
+        clear: vid/button theme/dark oid 20 240 120 30 "Clear"
+        v/clear-node: block-at clear 1
+        v/name-node: block-at name 2
+        v/city-node: block-at city 2
+        v/outer: outer
+    ] [ none ]
+
+    either = current-event 'view-set-text [
+        v/name-text: current-value
+        view/text v/name-node current-value
+    ] [ none ]
+
+    either = current-event 'view-click [
+        id: parse-int current-value
+        either = id v/clear-node [
+            vid/clear-fields v/outer
+            v/name-text: ""
+            v/city-text: ""
+            view/text v/name-node ""
+            view/text v/city-node ""
+        ] [ none ]
+    ] [ none ]
+
+    widget/flush
+]
+]

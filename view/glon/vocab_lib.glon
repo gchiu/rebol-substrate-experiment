@@ -1,0 +1,54 @@
+[
+vocab/row: func [name impl next] [ reduce [ name impl next ] ]
+
+vocab/build: func [spec i] [
+    either < i block-len spec [
+        row: block-at spec i
+        vocab/row block-at row 0 block-at row 1 vocab/build spec + i 1
+    ] [ none ]
+]
+
+vocab/new: func [spec] [ vocab/build spec 0 ]
+
+vocab/lookup: func [v name] [
+    either = v none [ none ] [
+        either = block-at v 0 name [ block-at v 1 ] [ vocab/lookup block-at v 2 name ]
+    ]
+]
+
+vocab/add: func [v name impl] [ vocab/row name impl v ]
+
+vocab/append: func [a b] [
+    either = a none [ b ] [
+        vocab/row block-at a 0 block-at a 1 vocab/append block-at a 2 b
+    ]
+]
+
+vocab/compose: func [a b] [ vocab/append a b ]
+
+vocab/length: func [v] [
+    either = v none [ 0 ] [ + 1 vocab/length block-at v 2 ]
+]
+
+vocab/missing: func [name] [ raise create-sin 'vocab 'missing name ]
+
+vocab/call0: func [v name] [
+    w: vocab/lookup v name
+    either = w none [ vocab/missing name ] [ f: get w f ]
+]
+
+vocab/call1: func [v name arg] [
+    w: vocab/lookup v name
+    either = w none [ vocab/missing name ] [ f: get w f arg ]
+]
+
+vocab/call2: func [v name a b] [
+    w: vocab/lookup v name
+    either = w none [ vocab/missing name ] [ f: get w f a b ]
+]
+
+vocab/call3: func [v name a b c] [
+    w: vocab/lookup v name
+    either = w none [ vocab/missing name ] [ f: get w f a b c ]
+]
+]

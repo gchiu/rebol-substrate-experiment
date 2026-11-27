@@ -1,0 +1,95 @@
+;; view/glon/vid_fields.glon -- themed field and checkbox state helpers.
+[
+vid/checkbox/toggle: func [state] [
+    vid/checkbox/set-checked state either = block-at state 5 0 [ 1 ] [ 0 ]
+]
+
+vid/checkbox/set-checked: func [state checked] [
+    vid/set-block! state 5 checked
+    theme: block-at state 6
+    glyph: block-at state 3
+    either = block-at state 0 vid/kind-radio [
+        view/text glyph either checked [ "●" ] [ "○" ]
+        vid/fg-color theme glyph either checked [ 13 ] [ 29 ]
+    ] [
+        view/text glyph either checked [ "✓" ] [ "" ]
+        vid/fill-color theme block-at state 2 either checked [ 13 ] [ 21 ]
+    ]
+    state
+]
+
+;; Field: 1-pixel border, input surface, 8-pixel text inset; the focus ring
+;; is a 2-pixel accent outline drawn behind the field.
+;; state: [ kind id box tx readonly text theme border 0 ring ] (ring at 9,
+;; as for buttons, so both share one set-focused)
+vid/field: func [theme parent x y w h text readonly] [
+    id: view/next-id
+    view/create id parent view/type-group x y w h 1 1 1 1
+    ring: view/next-id
+    view/create ring id view/type-rect -2 -2 + w 4 + h 4 0 0 0 0
+    vid/fill-color theme ring 105
+    border: vid/rect theme id 0 0 w h 17
+    box: vid/rect theme id 1 1 - w 2 - h 2 21
+    tx: vid/text-node theme id 8 0 - w 16 h text block-at theme 69 25
+    reduce [ vid/kind-field id box tx readonly text theme border 0 ring ]
+]
+
+vid/field/set-focused: :vid/button/set-focused
+
+vid/field/set-enabled: func [state enabled] [
+    theme: block-at state 6
+    view/flags block-at state 1 1 enabled 1 1
+    view/flags block-at state 2 1 enabled 0 0
+    view/flags block-at state 3 1 enabled 0 0
+    vid/fg-color theme block-at state 3 either = enabled 0 [ 93 ] [ 25 ]
+    vid/fill-color theme block-at state 2 either = enabled 0 [ 49 ] [ 21 ]
+    state
+]
+
+vid/field/set-text: func [state text] [
+    vid/set-block! state 5 text
+    view/text block-at state 3 text
+    state
+]
+
+vid/field/get-text: func [state] [ block-at state 5 ]
+vid/field/clear: func [state] [ vid/field/set-text state "" ]
+
+;; the ring (state slot 9) of the widget shown focused by vid/event, 0 for none
+vid/focus-ring: 0
+vid/focus-event: func [state ev ev-focus ev-hit] [
+    ring: block-at state 9
+    either either ev-focus [ ev-hit ] [ 0 ] [ vid/focus-ring: ring  vid/button/set-focused state 1 ] [
+        either either ev-focus [ 1 ] [ = ev 'view-blur ] [
+            either = ring vid/focus-ring [ vid/focus-ring: 0  vid/button/set-focused state 0 ] [ state ]
+        ] [ state ]
+    ]
+]
+
+vid/event: func [state] [
+    either = block-len state 0 [ state ] [
+        kind: block-at state 0
+        ev: current-event
+        ev-move: = ev 'view-pointer-move
+        ev-down: = ev 'view-pointer-down
+        ev-focus: = ev 'view-focus
+        ;; 1 when this widget is the event's target (move / down / focus carry a node id)
+        ev-hit: either either ev-move [ 1 ] [ either ev-down [ 1 ] [ ev-focus ] ] [
+            either = block-at state 1 parse-int current-value [ 1 ] [ 0 ]
+        ] [ 0 ]
+        ;; only widgets whose look changes are redrawn (GUI-P2): hover and
+        ;; press compare the stored flag; one focus ring is shown at a time
+        either = kind vid/kind-button [
+            either ev-move [ either = block-at state 8 ev-hit [ state ] [ vid/button/set-hovered state ev-hit ] ] [
+            either ev-down [ either = block-at state 7 ev-hit [ state ] [ vid/button/set-pressed state ev-hit ] ] [
+            either = ev 'view-pointer-up [ either = block-at state 7 0 [ state ] [ vid/button/set-pressed state 0 ] ] [
+            vid/focus-event state ev ev-focus ev-hit ] ] ]
+        ] [
+            either = kind vid/kind-field [ vid/focus-event state ev ev-focus ev-hit ] [
+                either = kind 9 [ either ev-move [ either = block-at state 7 ev-hit [ state ] [ vid/nav/set state 7 ev-hit ] ] [ state ] ] [ state ]
+            ]
+        ]
+    ]
+]
+
+]

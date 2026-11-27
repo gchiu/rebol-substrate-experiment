@@ -1,0 +1,44 @@
+;; view/glon/table_data.glon -- structured table data and special characters.
+;;
+;; This demonstrates `table/columns-block` and `table/rows-block`.  Cell text
+;; may contain semicolons, vertical bars, newlines and Unicode because the Glon
+;; vocabulary escapes them before the textual host-call boundary.
+[
+v/table: 100
+v/table1: 0
+v/field-text: ""
+v/table-sort-col: -1
+v/table-sort-dir: 1
+v/table-filter: ""
+v/table-select-row: -1
+v/nl: mk-string [ 10 ]
+
+build-ui: func [] [
+    view/mknode 1 0 view/type-window
+    view/rect 1 0 0 760 300
+    view/flags 1 1 0 0 0
+
+    t1: table/new-auto 1 20 20 720 240
+    col1: reduce [ "Name" 160 0 ]
+    col2: reduce [ "Note" 320 0 ]
+    col3: reduce [ "Unicode" 140 0 ]
+    table/columns-block t1 reduce [ col1 col2 col3 ]
+
+    row1: reduce [ "Alice" "semi;colon" "π" ]
+    row2: reduce [ "Bob" "pipe|char" "λ" ]
+    row3: reduce [
+        "Cara"
+        s/+ "line" s/+ v/nl "break"
+        "漢字"
+    ]
+    table/rows-block t1 reduce [ row1 row2 row3 ]
+    v/table1: t1
+]
+
+do-event: [
+    either = current-event 'view-build [
+        build-ui
+    ] [ none ]
+    widget/flush
+]
+]

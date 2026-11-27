@@ -1,0 +1,22 @@
+;; Example 6 -- custom View component embedded in a VID form.
+[
+v/field-text: ""
+do-event: [
+    either = current-event 'view-build [
+        vid/window theme/dark 700 300
+        p: vid/panel theme/dark 1 20 20 660 260 0 0 0 0 []
+        pid: block-at p 1
+        vid/label theme/dark pid 20 20 300 24 "Custom View in a VID form"
+        vid/button theme/dark pid 20 60 120 30 "Press"
+        c: view/next-id
+        view/mknode c pid view/type-custom
+        view/rect c 20 110 160 80
+        view/flags c 1 1 0 0
+        view/draw-clear c
+        view/draw-rect c 0 0 160 80 42 48 58 255
+        view/draw-rect c 8 8 40 64 70 130 200 255
+        view/draw-text c 58 28 14 235 238 242 255 "Custom"
+    ] [ none ]
+    widget/flush
+]
+]

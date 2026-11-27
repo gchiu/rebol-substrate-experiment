@@ -1,0 +1,601 @@
+;; view/glon/membership_app.glon -- INTENT-6: a membership application in
+;; Glon Intent, the acceptance test of the declarative GUI (INTENT-6.md).
+;;
+;;   make -C view members-app
+;;
+;; Members on the left (search, sort, a table keyed by member ID); the
+;; selected member's details on the right (fields, drop-downs, a check that
+;; shows the postal address, areas); New / Save / Cancel / Delete with a
+;; confirmation; unsaved edits are never dropped silently.  The records are
+;; kept in view/data/members.tsv (started from view/data/members-seed.tsv, 120
+;; synthetic members); every Save and Delete rewrites it.
+;;
+;; Every record is synthetic (view/tools/gen_members.py).
+;;
+;; Structure: the layout only declares widgets and names handlers.  The data,
+;; parsing and file format are ordinary Glon (sections 1-3), written with the
+;; shared collection and text vocabulary (demo/shop/list.glon,
+;; demo/shop/strings-text.glon: GLON-LIB-1.md); every place where the
+;; application goes below Intent is marked TRAPDOOR and listed in INTENT-6.md
+;; section 6.
+[
+;; INTENT-7: command batches in 400-byte chunks (View's default is 4,000).
+;; With the members loaded, the 1M profile's heap is full and fragmented
+;; after a few collections: its largest free block falls to about 600-1,400
+;; cells, and a 2,000-cell batch copy -- a step of rows, the form's fields
+;; -- then failed although 160K cells were free (the second load:
+;; INTENT-7.md section 4).  Smaller chunks keep every copy small.
+vb/chunk: 400
+
+;; ==== 1. records and search ========================================================
+;; record: [ id name email phone village postal? postal status year notes key ]
+;; (postal? 1 or 0; key: the name and the ID in lower case with a tab between
+;; them, for searching; not stored in the file)
+mb/fields: 10
+mb/tab: mk-string [ 9 ]
+mb/digits: "0123456789"
+mb/key: func [name id] [ s/lower s/+ s/+ name mb/tab id ]
+;; a line of the file as a record, or none (not exactly ten fields)
+mb/record: func [line] [
+    f: s/split line 9
+    either = list/length f mb/fields [
+        reduce [ list/at f 0 list/at f 1 list/at f 2 list/at f 3 list/at f 4 either s/= list/at f 5 "1" [ 1 ] [ 0 ]
+                 list/at f 6 list/at f 7 list/at f 8 list/at f 9 mb/key list/at f 1 list/at f 0 ]
+    ] [ none ]
+]
+;; the query (in lower case) is the start of the name, of a word in it, or of
+;; the ID: the key starts with it, or holds it after a space or the tab
+mb/matcher: func [q] [ mb/matcher-for q s/+ " " q s/+ mb/tab q ]
+mb/matcher-for: func [q word id] [
+    func [r] [
+        k: block-at r 10
+        either s/starts-with? k q [ 1 ] [ either < s/find k 0 word s/length k [ 1 ] [ < s/find k 0 id s/length k ] ]
+    ]
+]
+mb/is: func [id] [ func [r] [ s/= block-at r 0 id ] ]
+
+mb/recs: list/new
+mb/file: "view/data/members.tsv"
+mb/seed: "view/data/members-seed.tsv"
+mb/header: s/+ "glon-members" s/+ mb/tab "1"
+;; TRAPDOOR (file): the host's small text-file facility (INTENT-6.md 4),
+;; written as its command lines, like the View commands in view_cmd.glon
+mb/k-read: "file read"
+mb/k-begin: "file begin"
+mb/k-line: "file line"
+mb/k-commit: "file commit"
+mb/file-read: func [q path] [ vb/start mb/k-read vb/i vb/buf q vb/s vb/buf vk/sp vb/s vb/buf path vb/end ]
+mb/file-begin: func [path] [ vb/start mb/k-begin vb/s vb/buf vk/sp vb/s vb/buf path vb/end ]
+mb/file-line: func [text] [ vb/start mb/k-line vb/s vb/buf vk/sp vb/s-esc vb/buf text 0 s/length text vb/end ]
+mb/file-commit: func [q] [ vb/start mb/k-commit vb/i vb/buf q vb/end ]
+
+;; ==== 2. the file ===================================================================
+;; loading: the host sends file-line "Q|N|text" for each line, then
+;; file-done "Q|lines" (or "Q|-1|reason")
+mb/load-q: 0
+mb/loading: ""
+mb/bad: 0
+mb/reload: func [path] [
+    ;; the view holds records: let the old ones go now, not after the load
+    ;; (in 1M, 250 members' records twice do not fit)
+    mb/recs: list/new
+    mb/view: list/new
+    mb/view-q: none
+    mb/bad: 0
+    mb/loading: path
+    mb/load-q: + mb/load-q 1
+    mb/file-read mb/load-q path
+]
+;; "Q|N|rest": [ q n rest ]
+mb/answer: func [value] [
+    p1: s/find-byte value 0 124
+    p2: s/find-byte value + p1 1 124
+    reduce [ parse-int value either = s/at value + p1 1 45 [ -1 ] [ parse-int-at value + p1 1 0 ]
+             either < p2 s/length value [ s/span value + p2 1 s/length value ] [ "" ] ]
+]
+mb/on-file-line: func [value] [
+    a: mb/answer value
+    either = block-at a 0 mb/load-q [
+        either = block-at a 1 1 [
+            either s/= block-at a 2 mb/header [ 0 ] [ mb/bad: + mb/bad 1 ]
+        ] [
+            r: mb/record block-at a 2
+            either = r none [ mb/bad: + mb/bad 1 ] [ list/append mb/recs r ]
+        ]
+    ] [ 0 ]
+]
+mb/on-file-done: func [value] [
+    a: mb/answer value
+    either = block-at a 0 mb/load-q [
+        either < block-at a 1 0 [
+            ;; no data file yet: start from the seed (and save to the data file
+            ;; then); any other failure (a refused path) is reported
+            either either s/= mb/loading mb/file [ s/= block-at a 2 "cannot read the file" ] [ 0 ] [ mb/reload mb/seed ] [
+                mb/loaded
+                mb/say s/+ "Cannot read " s/+ mb/loading s/+ ": " block-at a 2
+            ]
+        ] [ either = mb/auto-show 1 [ mb/loaded ] [ 0 ] ]
+    ] [ 0 ]
+]
+;; (tests set it to 0 to take the steps after loading one at a time)
+mb/auto-show: 1
+;; ==== 3. long work in steps =========================================================
+;; One event's command batch is built in the managed heap and copied whole when
+;; it passes a chunk; with the records loaded the heap has no large contiguous
+;; room (the collector does not compact: INTENT-6.md 7).  So rows and file
+;; lines go out a few at a time, one step per event: TRAPDOOR (next), the
+;; host's "next" answer starts the next event
+mb/k-next: "next"
+mb/next: func [] [ vb/start mb/k-next vb/i vb/buf 1 vb/end ]
+mb/rows-per-step: 40
+mb/lines-per-step: 25
+mb/rows-i: -1               ;; the next row to add (-1: no rows job)
+mb/save-i: -1               ;; the next record to write (-1: no save job)
+mb/busy?: func [] [ either >= mb/rows-i 0 [ 1 ] [ >= mb/save-i 0 ] ]
+mb/on-next: func [value] [
+    either >= mb/rows-i 0 [ mb/step-rows ] [ 0 ]
+    either >= mb/save-i 0 [ mb/step-save ] [ 0 ]
+    either mb/busy? [ mb/next ] [ 0 ]
+]
+;; the end of the step that starts at i
+mb/step-end: func [l i per] [ either > + i per list/length l [ list/length l ] [ + i per ] ]
+
+mb/save-q: 0
+mb/saves: 0
+;; the whole file again: the header, then the records in their order
+mb/save-file: func [] [
+    mb/file-begin mb/file
+    mb/file-line mb/header
+    mb/save-i: 0
+    mb/step-save
+    either mb/busy? [ mb/next ] [ 0 ]
+]
+mb/step-save: func [] [
+    e: mb/step-end mb/recs mb/save-i mb/lines-per-step
+    loop/for mb/save-i e func [k] [ mb/save-rec list/at mb/recs k ]
+    either < e list/length mb/recs [ mb/save-i: e ] [
+        mb/save-i: -1
+        mb/save-q: + mb/save-q 1
+        mb/file-commit mb/save-q
+    ]
+]
+;; INTENT-7: a record's line goes into the command batch field by field
+;; (each escaped as the whole line was: a newline becomes 0x1F, a tab stays)
+;; -- the same bytes as the joined line, without building it
+mb/save-rec: func [r] [
+    vb/start mb/k-line vb/s vb/buf vk/sp
+    mb/out block-at r 0  mb/out mb/tab  mb/out block-at r 1  mb/out mb/tab  mb/out block-at r 2  mb/out mb/tab
+    mb/out block-at r 3  mb/out mb/tab  mb/out block-at r 4  mb/out mb/tab  mb/out either = block-at r 5 1 [ "1" ] [ "0" ]
+    mb/out mb/tab  mb/out block-at r 6  mb/out mb/tab  mb/out block-at r 7  mb/out mb/tab  mb/out block-at r 8
+    mb/out mb/tab  mb/out block-at r 9
+    vb/end
+]
+mb/out: func [v] [ vb/s-esc vb/buf v 0 s/length v ]
+;; "Q|ok|bytes" or "Q|error|reason"
+mb/on-file-saved: func [value] [
+    rest: s/span value + s/find-byte value 0 124 1 s/length value
+    mb/saves: + mb/saves 1
+    mb/saved-ok: s/starts-with? rest "ok|"
+    either mb/saved-ok [ 0 ] [ mb/say s/+ "Could not save the member file: " rest ]
+]
+mb/saved-ok: 0
+
+;; (sections 4 and 5: a block of their own -- a block holds at most 512 items)
+do [
+;; ==== 4. the member list ============================================================
+mb/view: list/new           ;; the visible records
+mb/sort-by: 'id
+mb/query: ""
+mb/current: none            ;; the ID shown in the details (none: none, or a new one)
+mb/mode: 'none              ;; none / edit / new
+mb/dirty: 0
+mb/pending: none            ;; what to do after an unsaved-changes answer
+mb/statuses: reduce [ reduce [ "active" "Active" ] reduce [ "lapsed" "Lapsed" ]
+                      reduce [ "life" "Life member" ] reduce [ "honorary" "Honorary" ] ]
+mb/villages: reduce [
+    reduce [ "Petone" ] reduce [ "Lower Hutt" ] reduce [ "Wainuiomata" ] reduce [ "Karori" ]
+    reduce [ "Newtown" ] reduce [ "Johnsonville" ] reduce [ "Porirua" ] reduce [ "Masterton" ]
+    reduce [ "Levin" ] reduce [ "Otaki" ] reduce [ "Upper Hutt" ] reduce [ "Island Bay" ] ]
+mb/sorts: reduce [ reduce [ "id" "Member ID" ] reduce [ "year" "Year, newest first" ] ]
+mb/status-label: func [k] [ mb/status-at k 0 ]
+mb/status-at: func [k i] [
+    either < i block-len mb/statuses [
+        either s/= block-at block-at mb/statuses i 0 k [ block-at block-at mb/statuses i 1 ] [ mb/status-at k + i 1 ]
+    ] [ k ]
+]
+
+mb/f: func [w] [ form/field form/current w ]
+mb/d: func [w] [ form/field form/sub form/current 'details w ]
+mb/say: func [text] [ face/set-text mb/f 'status text ]
+
+;; the index of the record with this ID, or -1
+mb/find: func [id] [ list/find mb/recs mb/is id ]
+;; the records that match the search, in the chosen order (by ID: the file's
+;; order; by year: newest first, by ID within a year -- the sort is stable)
+mb/view-q: none             ;; the (lower-case) query mb/view was made for, or none
+mb/compute-view: func [] [
+    mb/view-q: s/lower mb/query
+    mb/view: list/filter mb/recs mb/matcher mb/view-q
+    either = mb/sort-by 'year [
+        mb/view: list/sort mb/view func [a b] [ > parse-int block-at a 8 parse-int block-at b 8 ]
+    ] [ 0 ]
+]
+;; INTENT-7: a query that extends the one the view was made for can only
+;; match members already in the view, in the same order: they are tested
+;; again, the others are not (typing a name narrows; nothing else is changed)
+mb/narrows?: func [] [
+    either = mb/view-q none [ 0 ] [ either > s/length mb/view-q 0 [ s/starts-with? s/lower mb/query mb/view-q ] [ 0 ] ]
+]
+mb/narrow-view: func [] [
+    mb/view-q: s/lower mb/query
+    mb/view: list/filter mb/view mb/matcher mb/view-q
+]
+mb/row: func [r] [ reduce [ block-at r 0 block-at r 1 block-at r 4 mb/status-label block-at r 7 block-at r 8 ] ]
+;; the table shows the view, a step of rows per event; the selection follows
+;; the current ID (never a row position)
+mb/show: func [] [
+    face/set-rows mb/f 'members reduce [ ]
+    face/set-text mb/f 'count s/+ "Showing " s/+ s/from-int list/length mb/view s/+ " of " s/+ s/from-int list/length mb/recs " members"
+    mb/rows-i: 0
+    mb/step-rows
+    either mb/busy? [ mb/next ] [ 0 ]
+]
+mb/step-rows: func [] [
+    e: mb/step-end mb/view mb/rows-i mb/rows-per-step
+    face/add-rows mb/f 'members loop/collect mb/rows-i e func [k] [ mb/row list/at mb/view k ]
+    either < e list/length mb/view [ mb/rows-i: e ] [
+        mb/rows-i: -1
+        either = mb/current none [ 0 ] [ mb/select-quietly mb/current ]
+    ]
+]
+mb/select-quietly: func [id] [
+    t: mb/f 'members
+    either >= mb/view-pos id 0 [ face/set-value t id ] [ face/set-index t 0 ]
+]
+mb/view-pos: func [id] [ list/find mb/view mb/is id ]
+;; TRAPDOOR (row): one row of the table replaced in place, through machine
+;; VID's table/set-row (Intent has set-rows / add-rows only); row = the
+;; position of the record in the view (looked up from its ID)
+mb/update-row: func [rec] [
+    k: mb/view-pos block-at rec 0
+    either < k 0 [ 0 ] [
+        list/put mb/view k rec
+        table/set-row intent/tid intent/hface mb/f 'members k table/row-encode mb/row rec
+    ]
+]
+
+;; ==== 5. the details ==================================================================
+mb/to-form: func [r] [
+    reduce [ 'id block-at r 0 'name block-at r 1 'email block-at r 2 'phone block-at r 3 'village block-at r 4
+             'postal? block-at r 5 'postal block-at r 6 'status block-at r 7 'year block-at r 8 'notes block-at r 9 ]
+]
+mb/show-member: func [id] [
+    k: mb/find id
+    f: form/sub form/current 'details
+    form/clear f
+    either < k 0 [ mb/current: none  mb/mode: 'none ] [
+        form/load f mb/to-form list/at mb/recs k
+        mb/current: id
+        mb/mode: 'edit
+    ]
+    mb/set-dirty 0
+    mb/postal-shown
+    mb/controls
+]
+;; what may be done now: the ID only for a new member; Save / Cancel with
+;; edits; Delete for a saved member
+mb/controls: func [] [
+    face/set-enabled mb/d 'id = mb/mode 'new
+    face/set-enabled mb/d 'save mb/dirty
+    face/set-enabled mb/d 'cancel either mb/dirty [ 1 ] [ = mb/mode 'new ]
+    face/set-enabled mb/d 'delete either = mb/mode 'edit [ = mb/dirty 0 ] [ 0 ]
+]
+mb/set-dirty: func [on] [ mb/dirty: on ]
+mb/postal-shown: func [] [
+    on: face/value mb/d 'postal?
+    face/set-visible mb/d 'postal on
+    face/set-visible mb/d 'postal-label on
+]
+mb/edited: func [self event] [
+    either = mb/mode 'none [ 0 ] [
+        mb/set-dirty 1
+        mb/controls
+        mb/say "Unsaved changes."
+    ]
+]
+mb/postal-toggled: func [self event] [ mb/postal-shown  mb/edited self event ]
+
+;; the prompt row (hidden, its place kept): a question and up to three answers
+mb/ask: func [text a b c what] [
+    mb/pending: what
+    face/set-text mb/d 'prompt-text text
+    face/set-text mb/d 'p1 a
+    face/set-text mb/d 'p2 b
+    face/set-text mb/d 'p3 c
+    face/set-visible mb/d 'p3 > s/length c 0
+    face/set-visible mb/d 'prompt 1
+]
+mb/unask: func [] [ face/set-visible mb/d 'prompt 0  mb/pending: none ]
+
+;; ---- validation: ( self value ) -> none or a message --------------------------------
+mb/v-id: func [self value] [
+    either either = s/length value 6 [ either = s/at value 0 77 [ = s/scan-set value 1 mb/digits 6 ] [ 0 ] ] [ 0 ] [
+        either either = mb/mode 'new [ >= mb/find value 0 ] [ 0 ] [ s/+ "Member ID " s/+ value " is already used." ] [ none ]
+    ] [ "Member ID: M and five digits, e.g. M00121." ]
+]
+mb/v-name: func [self value] [
+    n: s/length value
+    either = n 0 [ "Name is required." ] [ either > n 60 [ "Name: at most 60 characters." ] [ none ] ]
+]
+mb/v-email: func [self value] [
+    n: s/length value
+    either = n 0 [ none ] [
+        a: s/find-byte value 0 64
+        d: either < a n [ s/find-byte value + a 2 46 ] [ n ]
+        either either either > a 0 [ < + a 1 n ] [ 0 ] [ either < d - n 1 [ = s/find-byte value 0 32 n ] [ 0 ] ] [ 0 ] [
+            either = s/find-byte value + a 1 64 n [ none ] [ "Email: only one @." ]
+        ] [ "Email: like name@example.org." ]
+    ]
+]
+mb/v-phone: func [self value] [
+    n: s/length value
+    either = n 0 [ none ] [
+        either either >= n 7 [ either <= n 20 [ = s/scan-set value 0 "0123456789 +-()" n ] [ 0 ] ] [ 0 ] [ none ] [
+            "Telephone: 7 to 20 digits, spaces or + - ( )."
+        ]
+    ]
+]
+mb/v-village: func [self value] [ either = value none [ "Village is required." ] [ none ] ]
+mb/v-status: func [self value] [ either = value none [ "Membership status is required." ] [ none ] ]
+mb/v-year: func [self value] [
+    either either = s/length value 4 [ = s/scan-set value 0 mb/digits 4 ] [ 0 ] [
+        y: parse-int value
+        either either >= y 1950 [ <= y 2027 ] [ 0 ] [ none ] [ "Subscription year: 1950 to 2027." ]
+    ] [ "Subscription year: four digits." ]
+]
+;; the whole form: a postal address when one is ticked
+mb/v-form: func [f rec] [
+    either either = record/get rec 'postal? 1 [ = s/length record/get rec 'postal 0 ] [ 0 ] [
+        "Postal address is required when ticked."
+    ] [ none ]
+]
+
+;; ---- actions -----------------------------------------------------------------------
+;; the table's selection changed (a click or a key): its value is the member ID
+mb/selected: func [self event] [
+    id: face/value self
+    either = id none [ 0 ] [
+        either either = mb/current none [ 0 ] [ s/= id mb/current ] [ 0 ] [
+            either mb/dirty [
+                ;; unsaved edits: keep them; the selection goes back to them
+                mb/select-quietly-current
+                mb/ask "Unsaved changes. Save them first?" "Save" "Discard" "Keep editing" reduce [ 'show id ]
+            ] [ mb/unask  mb/show-member id  mb/say s/+ "Member " id ]
+        ]
+    ]
+]
+mb/select-quietly-current: func [] [
+    either = mb/current none [ face/set-index mb/f 'members 0 ] [ mb/select-quietly mb/current ]
+]
+mb/new: func [self event] [
+    either mb/dirty [
+        mb/ask "Unsaved changes. Save them first?" "Save" "Discard" "Keep editing" reduce [ 'new none ]
+    ] [ mb/start-new ]
+]
+mb/start-new: func [] [
+    mb/unask
+    f: form/sub form/current 'details
+    form/clear f
+    mb/current: none
+    mb/mode: 'new
+    face/set-index mb/f 'members 0
+    face/set-value mb/d 'id mb/next-id
+    face/set-value mb/d 'status "active"
+    face/set-value mb/d 'year "2026"
+    mb/set-dirty 0
+    mb/postal-shown
+    mb/controls
+    face/focus mb/d 'name
+    mb/say "New member: fill in the details, then Save."
+]
+;; the next free ID: one more than the highest number used
+mb/next-id: func [] [
+    n: 0
+    list/each mb/recs func [r] [ v: parse-int-at block-at r 0 1 0  either > v n [ n: v ] [ 0 ] ]
+    n: + n 1
+    s/+ "M" s/+ either < n 10 [ "0000" ] [ either < n 100 [ "000" ] [ either < n 1000 [ "00" ] [ either < n 10000 [ "0" ] [ "" ] ] ] ] s/from-int n
+]
+mb/save: func [self event] [ mb/save-now ]
+;; validate, then store: a new member is added, an existing one replaced in
+;; place (its ID cannot change); the table and the file follow.  1 when saved
+mb/save-now: func [] [
+    f: form/sub form/current 'details
+    r: form/validate f
+    either form/valid? r [
+        c: form/collect f
+        rec: reduce [ record/get c 'id record/get c 'name record/get c 'email record/get c 'phone
+                      record/get c 'village record/get c 'postal? record/get c 'postal record/get c 'status
+                      record/get c 'year record/get c 'notes mb/key record/get c 'name record/get c 'id ]
+        either = mb/mode 'new [
+            list/append mb/recs rec
+            mb/current: block-at rec 0
+            mb/mode: 'edit
+            mb/compute-view
+            mb/show
+        ] [
+            list/put mb/recs mb/find mb/current rec
+            mb/update-row rec
+            ;; (the view was not made again: it can no longer be narrowed)
+            mb/view-q: none
+        ]
+        mb/set-dirty 0
+        mb/controls
+        mb/save-file
+        mb/say s/+ "Saved " s/+ block-at rec 0 s/+ " " block-at rec 1
+        1
+    ] [
+        mb/say either = form/status r 'failed [ "Validation could not run." ] [ form/first-message r ]
+        0
+    ]
+]
+mb/cancel: func [self event] [
+    mb/unask
+    either = mb/current none [
+        form/clear form/sub form/current 'details
+        mb/mode: 'none
+        mb/set-dirty 0
+        mb/postal-shown
+        mb/controls
+        mb/say "New member cancelled."
+    ] [ mb/show-member mb/current  mb/say "Changes cancelled." ]
+]
+mb/delete: func [self event] [
+    either = mb/current none [ 0 ] [
+        mb/ask s/+ "Delete " s/+ mb/current s/+ " " s/+ block-at list/at mb/recs mb/find mb/current 1 "?"
+            "Delete" "Keep" "" reduce [ 'delete mb/current ]
+    ]
+]
+mb/delete-now: func [id] [
+    k: mb/find id
+    either < k 0 [ 0 ] [
+        ;; the records after it move up one: the order (and the file) stays the same
+        list/remove mb/recs k
+        mb/current: none
+        mb/mode: 'none
+        form/clear form/sub form/current 'details
+        mb/set-dirty 0
+        mb/postal-shown
+        mb/controls
+        mb/compute-view
+        mb/show
+        mb/save-file
+        mb/say s/+ "Deleted " id
+    ]
+]
+;; the prompt's answers
+mb/p1: func [self event] [
+    what: mb/pending
+    either = block-at what 0 'delete [ mb/unask  mb/delete-now block-at what 1 ] [
+        ;; Save first: only if valid; then do what was asked
+        either = mb/save-now 1 [ mb/unask  mb/then what ] [ 0 ]
+    ]
+]
+mb/p2: func [self event] [
+    what: mb/pending
+    mb/unask
+    either = block-at what 0 'delete [ mb/say "Kept." ] [ mb/set-dirty 0  mb/then what ]
+]
+mb/p3: func [self event] [ mb/unask  mb/say "Still editing." ]
+mb/then: func [what] [
+    either = block-at what 0 'new [ mb/start-new ] [ mb/select-quietly block-at what 1  mb/show-member block-at what 1 ]
+]
+mb/search-changed: func [self event] [ mb/search face/value self ]
+mb/search: func [q] [
+    mb/query: q
+    either mb/narrows? [ mb/narrow-view ] [ mb/compute-view ]
+    mb/show
+]
+mb/clear-search: func [self event] [ face/set-value mb/f 'search ""  mb/search ""  face/focus mb/f 'search ]
+mb/sort-changed: func [self event] [
+    mb/sort-by: either s/= face/value self "year" [ 'year ] [ 'id ]
+    mb/compute-view
+    mb/show
+]
+;; after loading: the list, the first member
+mb/loaded: func [] [
+    mb/current: none
+    mb/compute-view
+    mb/show
+    either > list/length mb/view 0 [
+        id: block-at list/at mb/view 0 0
+        mb/select-quietly id
+        mb/show-member id
+    ] [ mb/show-member "" ]
+    mb/say s/+ "Loaded " s/+ s/from-int list/length mb/recs s/+ " members from " s/+ mb/loading
+        either > mb/bad 0 [ s/+ "; skipped " s/+ s/from-int mb/bad " bad lines" ] [ "" ]
+    ;; first run: the seed becomes the data file
+    either s/= mb/loading mb/seed [ mb/save-file ] [ 0 ]
+]
+
+]
+
+;; ==== 6. the window ==================================================================
+mb/form: layout [
+    theme light
+    style title heading look [ font 20 bold ]
+    style action button look [ background 37 99 205 color 255 255 255 border-width 0 radius 4 ]
+    style danger button look [ background 180 40 40 color 255 255 255 border-width 0 radius 4 ]
+    margin 16
+    title "Members"
+    across
+    left: panel [
+        across
+        label 6 "Search" right   search: field 22 on-change mb/search-changed
+        clear-search: button "Clear" on-click mb/clear-search
+        return
+        label 6 "Sort" right     sort: drop-down 16 2 key 1 display 2 rows mb/sorts on-change mb/sort-changed
+        return
+        members: table [ "ID" 7 "Name" 17 "Village" 11 "Status" 9 "Year" 5 ] 16 key 1 on-change mb/selected
+        return
+        count: label 40 ""
+    ]
+    details: form [
+        heading "Member details"
+        across
+        label 10 "Member ID" right   id: field 10 validate mb/v-id on-change mb/edited
+        return
+        label 10 "Name" right        name: field 30 validate mb/v-name on-change mb/edited
+        return
+        label 10 "Email" right       email: field 30 validate mb/v-email on-change mb/edited
+        return
+        label 10 "Telephone" right   phone: field 16 fixed validate mb/v-phone on-change mb/edited
+        return
+        label 10 "Village" right     village: drop-down 18 8 key 1 display 1 rows mb/villages validate mb/v-village on-change mb/edited
+        return
+        label 10 "" right            postal?: check "Postal address" on-change mb/postal-toggled
+        return
+        postal-label: label 10 "Postal" right hidden   postal: area 30 2 hidden on-change mb/edited
+        return
+        label 10 "Status" right      status: drop-down 16 4 key 1 display 2 rows mb/statuses validate mb/v-status on-change mb/edited
+        label 4 "Year" right         year: field 6 fixed validate mb/v-year on-change mb/edited
+        return
+        label 10 "Notes" right       notes: area 30 3 on-change mb/edited
+        return
+        new: button "New" on-click mb/new
+        save: action "Save" on-click mb/save disabled
+        cancel: button "Cancel" on-click mb/cancel disabled
+        delete: danger "Delete" on-click mb/delete disabled
+        return
+        prompt: panel [
+            across
+            prompt-text: label 36 ""
+            return
+            p1: button 9 "Save" on-click mb/p1
+            p2: button 9 "Discard" on-click mb/p2
+            p3: button 12 "Keep editing" on-click mb/p3
+        ] hidden
+    ]
+    return
+    status: label 80 "Loading members..."
+]
+
+;; the application's own event step: the file answers go to it, everything
+;; else to Intent; the first build loads the members
+mb/started: 0
+mb/start: func [] [
+    face/set-value mb/f 'sort "id"
+    form/on-validate form/sub form/current 'details 'mb/v-form
+    mb/reload mb/file
+]
+do-event: [
+    either = current-event 'file-line [ mb/on-file-line current-value ] [
+    either = current-event 'file-done [ mb/on-file-done current-value ] [
+    either = current-event 'file-saved [ mb/on-file-saved current-value ] [
+    either = current-event 'next [ mb/on-next current-value ] [
+        intent/event current-event current-value
+        either either = mb/started 0 [ = current-event 'view-build ] [ 0 ] [ mb/started: 1  mb/start ] [ 0 ]
+    ] ] ] ]
+    widget/flush
+]
+view mb/form
+]

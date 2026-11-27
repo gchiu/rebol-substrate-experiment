@@ -1140,3 +1140,14 @@ arch-check: ci/arch_check.c s1.c r0_s1.h s1.h m1_layout.h
 iterators-test:
 	$(MAKE) -C experiments/glon-iter test
 .PHONY: arch-check iterators-test
+
+# Glon/View (view/; GLON-VIEW-CORE-V3): the desktop GUI built on this core
+.PHONY: view-test view-demo view-probe
+view-test:
+	$(MAKE) -C view test
+
+view-demo:
+	$(MAKE) -C view demo
+
+view-probe:
+	$(MAKE) -C view probe

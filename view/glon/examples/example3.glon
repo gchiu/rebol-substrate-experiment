@@ -1,0 +1,26 @@
+;; Example 3 -- table with structured block data and Unicode.
+[
+v/field-text: ""
+v/table-id: 0
+v/table-sort-col: -1
+v/table-sort-dir: 1
+v/table-filter: ""
+v/table-select-row: -1
+row1: reduce [ "Alice" "阿明" "Wellington" "10" ]
+row2: reduce [ "Bob" "小波" "Auckland" "20" ]
+row3: reduce [ "Cara" "小美" "Christchurch" "30" ]
+
+do-event: [
+    either = current-event 'view-build [
+        vid/window theme/dark 800 400
+        p: vid/panel theme/dark 1 20 20 760 360 0 0 0 0 []
+        pid: block-at p 1
+        rows: reduce [ row1 row2 row3 ]
+        t: vid/table theme/dark pid 20 20 720 300
+            "Name:180:0;Chinese:120:0;City:160:0;Donation:100:2"
+            table/rows-encode rows
+        v/table-id: block-at t 1
+    ] [ none ]
+    widget/flush
+]
+]

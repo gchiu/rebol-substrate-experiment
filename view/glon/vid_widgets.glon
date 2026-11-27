@@ -1,0 +1,174 @@
+;; view/glon/vid_widgets.glon -- reusable themed VID widget constructors.
+[
+vid/kind-panel: 1
+vid/kind-label: 2
+vid/kind-button: 3
+vid/kind-checkbox: 4
+vid/kind-field: 5
+vid/kind-table: 6
+vid/kind-radio: 7
+;; 8 was vid/kind-radio-group (an empty stub, removed in INTENT-4B-1; not
+;; reused); 9 is vid_nav.glon's nav item, 10 vid_tabs.glon's tabs
+
+vid/fill-color: func [theme id idx] [
+    view/bg id block-at theme idx block-at theme + idx 1 block-at theme + idx 2 block-at theme + idx 3
+]
+
+vid/fg-color: func [theme id idx] [
+    view/fg id block-at theme idx block-at theme + idx 1 block-at theme + idx 2 block-at theme + idx 3
+]
+
+;; vid/rect: a plain coloured rectangle (theme colour slot idx)
+vid/rect: func [theme parent x y w h idx] [
+    id: view/next-id
+    view/create id parent view/type-rect x y w h 1 1 0 0
+    vid/fill-color theme id idx
+    id
+]
+
+;; vid/text-node: a text node of the given font and colour slot; text is
+;; vertically centred in a box of height h
+vid/text-node: func [theme parent x y w h text font idx] [
+    id: view/next-id
+    ty: + y / - h + font 6 2
+    view/create id parent view/type-text x either < ty y [ y ] [ ty ] w + font 6 1 1 0 0
+    view/text id text
+    view/font id font
+    vid/fg-color theme id idx
+    id
+]
+
+vid/border-rect: func [theme parent x y w h idx] [
+    vid/rect theme parent - x 1 - y 1 + w 2 + h 2 idx
+]
+
+vid/window: func [theme w h] [
+    view/create 1 0 view/type-window 0 0 w h 1 0 0 0
+    vid/fill-color theme 1 1
+]
+
+vid/panel: func [theme parent x y w h dir align spacing padding children] [
+    id: view/next-id
+    view/create id parent view/type-group x y w h 1 1 0 0
+    vid/border-rect theme id 0 0 w h 17
+    bg: view/next-id
+    view/create bg id view/type-rect 0 0 w h 1 1 0 0
+    vid/fill-color theme bg 5
+    cid: view/next-id
+    view/create cid id view/type-group 0 0 w h 1 1 0 0
+    view/layout cid dir align spacing padding
+    reduce [ vid/kind-panel cid children theme ]
+]
+
+vid/hbox: func [theme parent x y w h spacing padding children] [
+    vid/panel theme parent x y w h view/layout-h 0 spacing padding children
+]
+
+vid/vbox: func [theme parent x y w h spacing padding children] [
+    vid/panel theme parent x y w h view/layout-v 0 spacing padding children
+]
+
+vid/label: func [theme parent x y w h text] [
+    id: view/next-id
+    view/create id parent view/type-text x y w h 1 1 0 0
+    view/text id text
+    view/font id block-at theme 69
+    vid/fg-color theme id 9
+    reduce [ vid/kind-label id theme ]
+]
+
+;; vid/heading: a pane or section title (heading colour, heading font)
+vid/heading: func [theme parent x y w h text] [
+    reduce [ vid/kind-label vid/text-node theme parent x y w h text block-at theme 133 121 theme ]
+]
+
+;; vid/caption: secondary text (muted colour, small font)
+vid/caption: func [theme parent x y w h text] [
+    reduce [ vid/kind-label vid/text-node theme parent x y w h text block-at theme 70 29 theme ]
+]
+
+;; Buttons.  style 0 = secondary (neutral surface, border), 1 = primary
+;; (accent fill), 2 = danger.  The focus ring is a 2-pixel outline drawn
+;; behind the button, shown only while focused.
+;; state: [ kind id bg tx theme 0 enabled pressed hovered ring style border ]
+;; Per-style theme slots, five per style (secondary, primary, danger):
+;; surface, hover surface, pressed surface, border, text.
+vid/button-slots: [ 109 113 117 17 9  13 41 45 45 81  97 101 97 97 81 ]
+vid/button-slot: func [style k] [ block-at vid/button-slots + * style 5 k ]
+vid/button-styled: func [theme parent x y w h text style] [
+    id: view/next-id
+    view/create id parent view/type-group x y w h 1 1 1 1
+    ring: view/next-id
+    view/create ring id view/type-rect -2 -2 + w 4 + h 4 0 0 0 0
+    vid/fill-color theme ring 105
+    border: vid/rect theme id 0 0 w h vid/button-slot style 3
+    bg: vid/rect theme id 1 1 - w 2 - h 2 109
+    tx: vid/text-node theme id 0 0 w h text block-at theme 69 vid/button-slot style 4
+    view/text-align tx 1
+    vid/button/refresh reduce [ vid/kind-button id bg tx theme 0 1 0 0 ring style border ]
+]
+
+vid/button: func [theme parent x y w h text] [ vid/button-styled theme parent x y w h text 0 ]
+vid/primary-button: func [theme parent x y w h text] [ vid/button-styled theme parent x y w h text 1 ]
+vid/danger-button: func [theme parent x y w h text] [ vid/button-styled theme parent x y w h text 2 ]
+
+vid/button/refresh: func [state] [
+    style: block-at state 10
+    vid/fill-color block-at state 4 block-at state 2 either = block-at state 6 0 [ 49 ] [
+        vid/button-slot style either = block-at state 7 1 [ 2 ] [ either = block-at state 8 1 [ 1 ] [ 0 ] ]
+    ]
+    state
+]
+
+vid/button/set-enabled: func [state enabled] [
+    vid/set-block! state 6 enabled
+    theme: block-at state 4
+    style: block-at state 10
+    view/flags block-at state 1 1 enabled 1 1
+    vid/fg-color theme block-at state 3 either = enabled 0 [ 93 ] [ vid/button-slot style 4 ]
+    vid/fill-color theme block-at state 11 either = enabled 0 [ 125 ] [ vid/button-slot style 3 ]
+    vid/button/refresh state
+]
+
+vid/button/set-hovered: func [state hovered] [
+    vid/set-block! state 8 hovered
+    vid/button/refresh state
+    state
+]
+
+vid/button/set-pressed: func [state pressed] [
+    vid/set-block! state 7 pressed
+    vid/button/refresh state
+    state
+]
+
+vid/button/set-focused: func [state focused] [
+    view/flags block-at state 9 either focused [ 1 ] [ 0 ] 0 0 0
+    state
+]
+
+;; Checkbox: a 16-pixel box (accent when checked) and a label.
+;; state: [ kind id box check label checked theme edge ]
+vid/checkbox: func [theme parent x y text checked] [
+    id: view/next-id
+    view/create id parent view/type-group x y 240 24 1 1 1 1
+    edge: vid/border-rect theme id 1 5 14 14 17
+    box: vid/rect theme id 1 5 14 14 21
+    check: vid/text-node theme id 2 3 14 16 "" block-at theme 70 81
+    label: vid/text-node theme id 26 0 208 24 text block-at theme 69 9
+    vid/checkbox/set-checked reduce [ vid/kind-checkbox id box check label checked theme edge ] checked
+]
+
+;; Radio: the same row with a ring glyph in the accent colour.
+vid/radio: func [theme parent x y text selected] [
+    state: vid/checkbox theme parent x y text selected
+    check: block-at state 3
+    view/flags block-at state 2 0 0 0 0
+    view/flags block-at state 7 0 0 0 0
+    view/rect check 0 1 18 20
+    view/font check 15
+    vid/set-block! state 0 vid/kind-radio
+    vid/checkbox/set-checked state selected
+]
+
+]

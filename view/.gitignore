@@ -1,0 +1,3 @@
+build/
+# test output (screenshots and logs written by the tests)
+evidence/

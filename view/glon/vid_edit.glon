@@ -1,0 +1,151 @@
+;; view/glon/vid_edit.glon -- INTENT-4B-2: editable VID fields.
+;;
+;; A VID field (vid_fields.glon) made editable keeps its text where it always
+;; has (state slot 5) and its edit -- [ caret anchor mode ] -- in the slot the
+;; field never used (8).  Every change goes through the one editing core
+;; (edit_core.glon); this file only applies a field's policy and shows the
+;; result:
+;;   mode 0  a single-line field: pasted newlines become spaces
+;;   mode 1  a password: shown as one bullet per character; the real text is
+;;           never sent to View, and copy / cut are refused
+;;   mode 2  a multi-line area: Enter inserts a newline; Up / Down move by
+;;           line; Home / End go to the line's ends
+;; Read-only (state slot 4, as vid/field has always taken it): the caret,
+;; selection and copy work; nothing changes the text.
+;;
+;;   vid/edit/attach st mode      make the field st editable
+;;   vid/edit/type st s           typed or pasted text: 1 when the text changed
+;;   vid/edit/key st key          a key: edit/key's "what" (2 / 6: changed)
+;;   vid/edit/show st focused     the text, caret and selection on View
+;;   vid/area theme parent x y w h text    a multi-line field (mode 2)
+;;   vid/area/size st w h         its resize hook
+;; vid/field/set-text and the focus ring (vid/button/set-focused) keep the
+;; caret of an editable field: a programmatic text puts it at the end.
+;; View: "text-exact" (the bytes as they are), "caret id index anchor" (the
+;; selection), "edit id 1" (clipped to its box and scrolled to the caret).
+;; Desktop VID loader only (after edit_core.glon and vid_caret.glon); the
+;; 64K stack is unchanged.
+[
+vid/edit/k-text: "view text-exact"
+vid/edit/k-edit: "view edit"
+vid/edit/nl: mk-string [ 10 ]
+vid/edit/bullet: "•"
+
+view/text-exact: func [id text] [
+    either > s/length text 3900 [ raise create-sin 'view 'line-too-large s/length text ] [
+        vb/start vid/edit/k-text vb/i vb/buf id vb/s vb/buf vk/sp vb/s-esc vb/buf text 0 s/length text vb/end
+    ]
+]
+view/caret-sel: func [id index anchor] [ vb/start vk/caret vb/i vb/buf id vb/i vb/buf index vb/i vb/buf anchor vb/end ]
+view/edit: func [id on] [ vb/start vid/edit/k-edit vb/i vb/buf id vb/i vb/buf on vb/end ]
+
+vid/edit/on?: func [st] [ either = block-len st 10 [ either = block-at st 0 vid/kind-field [ either = block-at st 8 0 [ 0 ] [ 1 ] ] [ 0 ] ] [ 0 ] ]
+vid/edit/focused?: func [st] [ either = vid/focus-ring 0 [ 0 ] [ = vid/focus-ring block-at st 9 ] ]
+vid/edit/mode: func [st] [ block-at block-at st 8 2 ]
+
+vid/edit/attach: func [st mode] [
+    len: s/length block-at st 5
+    vid/set-block! st 8 reduce [ len len mode ]
+    view/edit block-at st 3 1
+    vid/edit/show st vid/edit/focused? st
+    st
+]
+;; the characters of text (UTF-8 lead bytes)
+vid/edit/chars: func [text] [
+    ctx: reduce [ text 0 ]
+    edit/repeat :vid/edit/char1 ctx s/length text
+    block-at ctx 1
+]
+vid/edit/char1: func [ctx k] [
+    b: s/at block-at ctx 0 k
+    either either < b 128 [ 1 ] [ >= b 192 ] [ vid/set-block! ctx 1 + block-at ctx 1 1 ] [ 0 ]
+    0
+]
+;; a password's look: one bullet per character
+vid/edit/mask: func [text] [
+    ctx: reduce [ "" ]
+    edit/repeat :vid/edit/bullet1 ctx vid/edit/chars text
+    block-at ctx 0
+]
+vid/edit/bullet1: func [ctx k] [ vid/set-block! ctx 0 s/+ block-at ctx 0 vid/edit/bullet  0 ]
+;; a byte offset of the text as an offset of its mask (3 bytes a bullet)
+vid/edit/mask-at: func [text p] [ * 3 vid/edit/chars s/slice text 0 p ]
+
+vid/edit/show: func [st focused] [
+    e: block-at st 8
+    text: block-at st 5
+    tx: block-at st 3
+    either = block-at e 2 1 [
+        view/text-exact tx vid/edit/mask text
+        view/caret-sel tx either focused [ vid/edit/mask-at text block-at e 0 ] [ -1 ] vid/edit/mask-at text block-at e 1
+    ] [
+        view/text-exact tx text
+        view/caret-sel tx either focused [ block-at e 0 ] [ -1 ] block-at e 1
+    ]
+    st
+]
+;; an edit [ text caret anchor ... ] made the field's
+vid/edit/apply: func [st r] [
+    vid/set-block! st 5 block-at r 0
+    vid/set-block! st 8 reduce [ block-at r 1 block-at r 2 vid/edit/mode st ]
+    vid/edit/show st vid/edit/focused? st
+]
+vid/edit/type: func [st s] [
+    either = block-at st 4 1 [ 0 ] [
+        e: block-at st 8
+        t: either = block-at e 2 2 [ s ] [ edit/one-line s ]
+        vid/edit/apply st edit/insert block-at st 5 block-at e 0 block-at e 1 t
+        1
+    ]
+]
+vid/edit/key: func [st key] [
+    e: block-at st 8
+    text: block-at st 5
+    mode: block-at e 2
+    r: edit/key text block-at e 0 block-at e 1 key either = mode 2 [ 1 ] [ 0 ] block-at st 4
+    what: block-at r 3
+    ;; a password is never copied or cut
+    what: either = mode 1 [ either either = what 3 [ 1 ] [ = what 6 ] [ 5 ] [ what ] ] [ what ]
+    either = what 3 [ view/send s/+ "clipboard-set " edit/selected text block-at e 0 block-at e 1 ] [ 0 ]
+    either = what 6 [ view/send s/+ "clipboard-set " edit/selected text block-at e 0 block-at e 1 ] [ 0 ]
+    either = what 4 [ view/send "clipboard-paste" ] [ 0 ]
+    either either = what 1 [ 1 ] [ either = what 2 [ 1 ] [ = what 6 ] ] [ vid/edit/apply st r ] [ 0 ]
+    what
+]
+
+;; a programmatic text: the caret at its end, no selection
+vid/edit-set-text0: :vid/field/set-text
+vid/field/set-text: func [state text] [
+    either = vid/edit/on? state 0 [ vid/edit-set-text0 state text ] [
+        len: s/length text
+        vid/set-block! state 5 text
+        vid/set-block! state 8 reduce [ len len vid/edit/mode state ]
+        vid/edit/show state vid/edit/focused? state
+    ]
+    state
+]
+;; the focus ring of an editable field shows its own caret, not the end
+vid/edit-ring0: :vid/button/set-focused
+vid/button/set-focused: func [state focused] [
+    either = vid/edit/on? state 0 [ vid/edit-ring0 state focused ] [
+        vid/caret-ring state focused
+        vid/edit/show state focused
+    ]
+    state
+]
+
+;; ---- area: a multi-line field ----
+vid/area: func [theme parent x y w h text] [
+    st: vid/field theme parent x y w h text 0
+    vid/area/size st w h
+    vid/edit/attach st 2
+]
+;; its parts for a w x h box (the outer group is placed by the layout)
+vid/area/size: func [st w h] [
+    view/rect block-at st 9 -2 -2 + w 4 + h 4
+    view/rect block-at st 7 0 0 w h
+    view/rect block-at st 2 1 1 - w 2 - h 2
+    view/rect block-at st 3 8 6 - w 16 - h 12
+    st
+]
+]

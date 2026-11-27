@@ -1,0 +1,32 @@
+[
+v/field-text: ""
+style/new 'base [
+    [ 'bg [40 44 52 255] ]
+    [ 'fg [235 238 242 255] ]
+    [ 'font 14 ]
+    [ 'border [70 76 86 255] ]
+    [ 'box [24 26 30 255] ]
+    [ 'focus [90 160 255 255] ]
+]
+style/derive 'root 'base [ [ 'bg [24 26 30 255] ] ]
+style/derive 'button 'base [ [ 'bg [40 100 180 255] ] ]
+style/derive 'checkbox 'base [ [ 'bg [32 36 44 255] ] ]
+style/derive 'label 'base [ [ 'bg [0 0 0 0] ] ]
+gui3/build-hook: [ gui3/app-build ]
+cb: 0
+gui3/app-action: func [node] [
+    gui3/set-enabled cb 1
+    gui3/set-status "Enabled"
+]
+gui3/app-build: func [] [
+    gui3/reset-lists
+    root: gui3/window 'root 300 200
+    cb: gui3/checkbox root 'checkbox "Toggle" 'toggle 0
+    gui3/set-enabled cb 0
+    gui3/button root 'button "Enable" 'enable 0
+    st: gui3/label root 'label "Ready"
+    gui3/status: st
+    gui3/set-status "Ready"
+]
+do-event: [ gui3/handle ]
+]

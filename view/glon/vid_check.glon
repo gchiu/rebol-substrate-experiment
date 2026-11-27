@@ -1,0 +1,36 @@
+;; view/glon/vid_check.glon -- INTENT-4B-1: the look of a VID checkbox or
+;; radio (vid_widgets.glon) when it is focused or disabled.
+;;
+;;   vid/checkbox/look state enabled focused
+;;
+;; Checkbox: the edge is the focus-ring colour while focused, the border
+;; colour otherwise (the disabled border when disabled); the box is the
+;; accent when checked, the input surface when not, and the disabled text /
+;; surface colours when disabled; the label uses the disabled text colour.
+;; Radio (its box and edge are hidden by vid/radio): the label is the accent
+;; colour while focused; the glyph and label use the disabled text colour
+;; when disabled.
+;; The node's enabled flag follows (disabled widgets leave the Tab order and
+;; take no clicks), as vid/button/set-enabled does; its visibility is the
+;; caller's (Intent re-applies its own flags after this).
+;;
+;; vid/checkbox/set-checked keeps its own colours (enabled, unfocused);
+;; call look after it when the widget may be disabled or focused.
+;; state: [ kind id box check label checked theme edge ]
+;; Desktop VID loader only (after vid_tabs.glon); the 64K stack is unchanged.
+[
+vid/checkbox/look: func [state enabled focused] [
+    theme: block-at state 6
+    checked: = block-at state 5 1
+    view/flags block-at state 1 1 enabled 1 1
+    either = block-at state 0 vid/kind-radio [
+        vid/fg-color theme block-at state 4 either enabled [ either focused [ 13 ] [ 9 ] ] [ 93 ]
+        vid/fg-color theme block-at state 3 either enabled [ either checked [ 13 ] [ 29 ] ] [ 93 ]
+    ] [
+        vid/fg-color theme block-at state 4 either enabled [ 9 ] [ 93 ]
+        vid/fill-color theme block-at state 7 either focused [ 105 ] [ either enabled [ 17 ] [ 125 ] ]
+        vid/fill-color theme block-at state 2 either enabled [ either checked [ 13 ] [ 21 ] ] [ either checked [ 93 ] [ 49 ] ]
+    ]
+    state
+]
+]

@@ -1,0 +1,227 @@
+;; view/glon/edit_core.glon -- INTENT-4B-2: the one text-editing core.
+;;
+;; Pure operations on an edit -- text, caret, anchor: byte offsets, always at
+;; UTF-8 character boundaries; the selection runs between anchor and caret.
+;; Each answers a new edit [ text caret anchor ] and changes nothing else, so
+;; the widget that owns the edit decides what to show and what to report.
+;; The operations were GUI-4's (gui3_lib.glon: gui4/utf8-step, field-insert,
+;; field-delete-before, field-delete, field-left / right, field-key); GUI-4
+;; now calls them here, and so do VID fields (vid_edit.glon: Intent's field,
+;; password and area).  There is no other editing implementation.
+;;
+;;   edit/key text caret anchor key multi ro  -> [ text caret anchor what ]
+;;     what: 0 not an editing key, 1 moved, 2 text changed, 3 copy the
+;;     selection, 4 paste (ask the host), 5 refused (read-only), 6 cut (the
+;;     caller copies the old selection; the edit is the text without it)
+;;   edit/insert text caret anchor s       the selection replaced by s
+;;   edit/back / edit/del text caret anchor   Backspace / Delete
+;;
+;; Keys (the host's codes): 1001 / 1002 Left / Right, 1003 / 1004 Home / End,
+;; 1015 .. 1018 the same with Shift, 1011 select all, 1012 / 1013 / 1014
+;; copy / cut / paste (Ctrl+C X V), 127 Delete, 8 Backspace; for multi-line
+;; text (multi 1) Up / Down (SDL's 1073741906 / 1073741905) and 1019 / 1020
+;; with Shift, and Home / End go to the line's start / end.  ro: read-only
+;; (moves, selection and copy only).
+;; Desktop loaders only; the 64K stack is unchanged.
+;; (Functions keep under the 16 bindings a context holds; loops over bytes
+;; use edit/repeat, whose call chain grows by one frame per eight-fold.)
+[
+;; ---- UTF-8 and the selection (GUI-4's, unchanged) ----
+edit/step: func [text pos dir] [
+    either < dir 0 [
+        step: func [p] [
+            either > p 0 [
+                b: s/at text - p 1
+                either either >= b 128 [ < b 192 ] [ 0 ] [ step - p 1 ] [ - p 1 ]
+            ] [ 0 ]
+        ]
+        step pos
+    ] [
+        len: s/length text
+        step: func [p] [
+            either < p len [
+                b: s/at text p
+                either >= b 128 [ step + p 1 ] [ p ]
+            ] [ p ]
+        ]
+        either < pos len [ step + pos 1 ] [ pos ]
+    ]
+]
+edit/lo: func [caret anchor] [ either < caret anchor [ caret ] [ anchor ] ]
+edit/hi: func [caret anchor] [ either < caret anchor [ anchor ] [ caret ] ]
+edit/selected: func [text caret anchor] [
+    s/slice text edit/lo caret anchor - edit/hi caret anchor edit/lo caret anchor
+]
+
+;; ---- changing the text ----
+;; the selection (anchor .. caret; empty when equal) replaced by s, the caret
+;; after it
+edit/insert: func [text caret anchor s] [
+    start: edit/lo caret anchor
+    end: edit/hi caret anchor
+    p: + start s/length s
+    reduce [ s/+ s/slice text 0 start s/+ s s/slice text end - s/length text end  p p ]
+]
+;; Backspace: the selection, or the character before the caret
+edit/back: func [text caret anchor] [
+    either = caret anchor [
+        either > caret 0 [ edit/insert text edit/step text caret -1 caret "" ] [ reduce [ text caret caret ] ]
+    ] [ edit/insert text caret anchor "" ]
+]
+;; Delete: the selection, or the character after the caret
+edit/del: func [text caret anchor] [
+    either = caret anchor [
+        either < caret s/length text [ edit/insert text caret edit/step text caret 1 "" ] [ reduce [ text caret caret ] ]
+    ] [ edit/insert text caret anchor "" ]
+]
+
+;; ---- moving ----
+;; Left / Right: one character; without Shift a selection collapses to its
+;; edge in that direction (GUI-4's rule)
+edit/move: func [text caret anchor dir shift] [
+    either either shift [ 1 ] [ = caret anchor ] [
+        p: edit/step text caret dir
+        reduce [ text p either shift [ anchor ] [ p ] ]
+    ] [
+        p: either < dir 0 [ edit/lo caret anchor ] [ edit/hi caret anchor ]
+        reduce [ text p p ]
+    ]
+]
+edit/to: func [text anchor p shift] [ reduce [ text p either shift [ anchor ] [ p ] ] ]
+
+;; ---- lines (multi-line text) ----
+;; every byte but a newline: s/scan-set with it finds the next newline
+edit/no-nl: mk-string [
+    1 2 3 4 5 6 7 8 9 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27
+    28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51
+    52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75
+    76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99
+    100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117
+    118 119 120 121 122 123 124 125 126 127 128 129 130 131 132 133 134 135
+    136 137 138 139 140 141 142 143 144 145 146 147 148 149 150 151 152 153
+    154 155 156 157 158 159 160 161 162 163 164 165 166 167 168 169 170 171
+    172 173 174 175 176 177 178 179 180 181 182 183 184 185 186 187 188 189
+    190 191 192 193 194 195 196 197 198 199 200 201 202 203 204 205 206 207
+    208 209 210 211 212 213 214 215 216 217 218 219 220 221 222 223 224 225
+    226 227 228 229 230 231 232 233 234 235 236 237 238 239 240 241 242 243
+    244 245 246 247 248 249 250 251 252 253 254 255
+]
+;; the end of the line holding pos (the next newline, or the text's end)
+edit/line-end: func [text pos] [ s/scan-set text pos edit/no-nl ]
+;; the start of the line holding pos: after the last newline before it
+edit/line-start: func [text pos] [
+    ctx: reduce [ text pos 0 ]
+    edit/repeat :edit/back-nl ctx pos
+    block-at ctx 2
+]
+;; ctx [ text pos found ]: is byte pos-1-k a newline?  (1 stops the loop)
+edit/back-nl: func [ctx k] [
+    i: - - block-at ctx 1 k 1
+    either = s/at block-at ctx 0 i 10 [ vid/set-block! ctx 2 + i 1  1 ] [ 0 ]
+]
+;; a byte offset moved back to the start of its character
+edit/char-at: func [text p] [
+    either either > p 0 [ either < p s/length text [ either >= s/at text p 128 [ < s/at text p 192 ] [ 0 ] ] [ 0 ] ] [ 0 ] [
+        edit/char-at text - p 1
+    ] [ p ]
+]
+;; Up / Down: the same byte column on the previous / next line, or that
+;; line's end when it is shorter; from the first / last line, to the text's
+;; start / end
+edit/vertical: func [text caret anchor dir shift] [
+    ls: edit/line-start text caret
+    col: - caret ls
+    p: either < dir 0 [
+        either = ls 0 [ 0 ] [
+            ps: edit/line-start text - ls 1
+            edit/char-at text either < + ps col - ls 1 [ + ps col ] [ - ls 1 ]
+        ]
+    ] [
+        le: edit/line-end text caret
+        either >= le s/length text [ s/length text ] [
+            ne: edit/line-end text + le 1
+            edit/char-at text either < + + le 1 col ne [ + + le 1 col ] [ ne ]
+        ]
+    ]
+    reduce [ text p either shift [ anchor ] [ p ] ]
+]
+;; the newlines of a single-line field's input made spaces (pasted text)
+edit/one-line: func [s] [
+    either >= edit/line-end s 0 s/length s [ s ] [
+        k: edit/line-end s 0
+        s/+ s/slice s 0 k s/+ " " edit/one-line s/slice s + k 1 - - s/length s k 1
+    ]
+]
+
+;; ---- keys ----
+;; the edit after key, and what happened (see the header)
+edit/key: func [text caret anchor key multi ro] [
+    r: edit/key-move text caret anchor key multi
+    either = r 0 [ edit/key-change text caret anchor key ro ] [ edit/with r 1 ]
+]
+edit/with: func [r what] [ reduce [ block-at r 0 block-at r 1 block-at r 2 what ] ]
+;; moves and selection (always allowed); 0 when key is none of them
+edit/key-move: func [text caret anchor key multi] [
+    len: s/length text
+    either = key 1001 [ edit/move text caret anchor -1 0 ] [
+    either = key 1002 [ edit/move text caret anchor 1 0 ] [
+    either = key 1015 [ edit/move text caret anchor -1 1 ] [
+    either = key 1016 [ edit/move text caret anchor 1 1 ] [
+    either = key 1011 [ reduce [ text len 0 ] ] [
+        edit/key-line text caret anchor key multi
+    ] ] ] ] ]
+]
+edit/key-line: func [text caret anchor key multi] [
+    home: either multi [ edit/line-start text caret ] [ 0 ]
+    end: either multi [ edit/line-end text caret ] [ s/length text ]
+    either = key 1003 [ edit/to text anchor home 0 ] [
+    either = key 1004 [ edit/to text anchor end 0 ] [
+    either = key 1017 [ edit/to text anchor home 1 ] [
+    either = key 1018 [ edit/to text anchor end 1 ] [
+        either multi [ edit/key-vertical text caret anchor key ] [ 0 ]
+    ] ] ] ]
+]
+edit/key-vertical: func [text caret anchor key] [
+    either = key 1073741906 [ edit/vertical text caret anchor -1 0 ] [
+    either = key 1073741905 [ edit/vertical text caret anchor 1 0 ] [
+    either = key 1019 [ edit/vertical text caret anchor -1 1 ] [
+    either = key 1020 [ edit/vertical text caret anchor 1 1 ] [ 0 ] ] ] ]
+]
+;; changes and the clipboard
+edit/key-change: func [text caret anchor key ro] [
+    either = key 1012 [ reduce [ text caret anchor either = caret anchor [ 0 ] [ 3 ] ] ] [
+    either either = key 8 [ 1 ] [ either = key 127 [ 1 ] [ either = key 1013 [ 1 ] [ = key 1014 ] ] ] [
+        either ro [ reduce [ text caret anchor 5 ] ] [
+            either = key 8 [ edit/with edit/back text caret anchor 2 ] [
+            either = key 127 [ edit/with edit/del text caret anchor 2 ] [
+            either = key 1014 [ reduce [ text caret anchor 4 ] ] [
+                ;; cut: copied by the caller, then deleted
+                either = caret anchor [ reduce [ text caret anchor 0 ] ] [ edit/with edit/insert text caret anchor "" 6 ]
+            ] ] ]
+        ]
+    ] [ reduce [ text caret anchor 0 ] ] ]
+]
+
+;; ---- a loop: for k from 0 below n, f ctx k, until f answers 1 ----
+;; the range split in eight, and so on, visited by eight calls in sequence:
+;; one more frame per eight-fold, whatever n is
+edit/repeat: func [f ctx n] [
+    either > n 0 [ edit/rep8 :f ctx 0 edit/span8 n 1 n reduce [ 0 ] ] [ 0 ]
+]
+edit/span8: func [n size] [ either < size n [ edit/span8 n * size 8 ] [ size ] ]
+edit/rep8: func [f ctx base size n stop] [
+    either either >= base n [ 1 ] [ = block-at stop 0 1 ] [ 0 ] [
+        either = size 1 [ either = f ctx base 1 [ vid/set-block! stop 0 1 ] [ 0 ] ] [
+            p: / size 8
+            edit/rep8 :f ctx base p n stop
+            edit/rep8 :f ctx + base p p n stop
+            edit/rep8 :f ctx + base * 2 p p n stop
+            edit/rep8 :f ctx + base * 3 p p n stop
+            edit/rep8 :f ctx + base * 4 p p n stop
+            edit/rep8 :f ctx + base * 5 p p n stop
+            edit/rep8 :f ctx + base * 6 p p n stop
+            edit/rep8 :f ctx + base * 7 p p n stop
+        ]
+    ]
+]
+]

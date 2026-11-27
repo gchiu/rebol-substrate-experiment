@@ -1,6 +1,9 @@
 # build artifacts
 s1
 glon
+# GLON-VIEW-CORE-V3: the bare `glon` pattern above (the CLI binary) also
+# matches the source directory view/glon/; keep that directory tracked
+!view/glon/
 glon-lib/
 glon-live-native-test
 demo/shop/glon-live.wasm

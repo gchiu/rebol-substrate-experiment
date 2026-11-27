@@ -1,0 +1,278 @@
+;; view/glon/table_demo.glon -- two independent tables, controlled from Glon.
+;;
+;; The tables are host-backed for large-row performance.  Glon owns the policy:
+;; columns, row data, selection, sorting, filtering, editing and formatting.
+;; The window and controls are composed with the generic View vocabulary.
+[
+v/focus-table: 0
+v/table1: 0
+v/table2: 0
+t1: 0
+t2: 0
+v/focus-row: 0
+v/focus-col: 0
+v/field-text: ""
+v/editing: 0
+v/status: "Ready"
+v/query: 0
+v/table-sort-col: -1
+v/table-sort-dir: 1
+v/table-filter: ""
+v/table-select-row: -1
+v/last-button: 0
+v/last-button-text: 0
+btn1: 0
+btn2: 0
+btn3: 0
+btn4: 0
+btn5: 0
+btn6: 0
+btn7: 0
+btn1-text: 0
+btn2-text: 0
+btn3-text: 0
+btn4-text: 0
+btn5-text: 0
+btn6-text: 0
+btn7-text: 0
+btn8: 0
+btn8-text: 0
+
+button/new: func [x y w h text] [
+    id: view/next-id
+    bg: + id 100
+    tx: + id 200
+    view/mknode id 1 view/type-group
+    view/rect id x y w h
+    view/flags id 1 1 1 1
+    view/rect bg id x y w h
+    view/flags bg 1 1 0 0
+    view/bg bg 70 130 200 255
+    view/mknode tx id view/type-text
+    view/rect tx 0 0 w h
+    view/flags tx 1 1 0 0
+    view/text tx text
+    view/font tx 13
+    v/last-button: id
+    v/last-button-text: tx
+    none
+]
+
+button/new-at: func [id x y w h text] [
+    bg: + id 100
+    tx: + id 200
+    view/mknode id 1 view/type-group
+    view/rect id x y w h
+    view/flags id 1 1 1 1
+    view/rect bg id x y w h
+    view/flags bg 1 1 0 0
+    view/bg bg 70 130 200 255
+    view/mknode tx id view/type-text
+    view/rect tx 0 0 w h
+    view/flags tx 1 1 0 0
+    view/text tx text
+    view/font tx 13
+    v/last-button: id
+    v/last-button-text: tx
+    none
+]
+
+set-status: func [text] [
+    v/status: text
+    view/text 40 text
+]
+
+split3: func [s] [
+    id: parse-int s/slice s 0 4
+    row: parse-int s/slice s 5 4
+    col: parse-int s/slice s 10 4
+    reduce [ id row col ]
+]
+
+build-background: func [] [
+view/mknode 1 0 view/type-window
+view/rect 1 0 0 900 420
+view/flags 1 1 0 0 0
+view/mknode 40 1 view/type-text
+view/rect 40 20 380 860 24
+view/flags 40 1 1 0 0
+view/text 40 "Ready"
+view/bg 40 24 26 30 255
+view/fg 40 160 168 178 255
+view/font 40 13
+
+;; Two independent host-backed tables.
+]
+
+build-table1: func [] [
+t1: table/new-auto 1 20 50 420 210
+table/columns t1 "Name:160:0;Age:60:2;City:140:0;Donation:90:2"
+table/rows t1 "Alice|30|Wellington|10;Bob|25|Auckland|20;Cara|41|Christchurch|30;Dan|37|Dunedin|40;Eve|29|Hamilton|50"
+table/select t1 0
+table/focus t1 0 0
+]
+
+build-table2: func [] [
+t2: table/new-auto 1 460 50 420 210
+table/columns t2 "Name:160:0;Age:60:2;City:140:0;Donation:90:2"
+table/rows t2 "Frank|52|Napier|60;Gina|33|Tauranga|70;Hana|28|Palmerston|80;Ivan|45|Nelson|90;Jade|31|Rotorua|100"
+table/select t2 0
+table/focus t2 0 0
+]
+build-controls: func [] [
+view/mknode 50 1 view/type-rect
+view/rect 50 20 310 300 28
+view/flags 50 1 1 1 1
+view/bg 50 24 26 30 255
+view/fg 50 235 238 242 255
+view/mknode 51 50 view/type-text
+view/rect 51 6 4 288 20
+view/flags 51 1 1 1 0
+view/text 51 ""
+view/font 51 13
+view/mknode 52 1 view/type-text
+view/rect 52 340 314 200 20
+view/flags 52 1 1 0 0
+view/text 52 "Filter or edit value"
+view/bg 52 24 26 30 255
+view/fg 52 160 168 178 255
+view/font 52 12
+]
+
+build-buttons: func [] [
+button/new-at 600 20 270 100 30 "Add"
+btn1: v/last-button
+btn1-text: v/last-button-text
+button/new-at 610 130 270 100 30 "Delete"
+btn2: v/last-button
+btn2-text: v/last-button-text
+button/new-at 620 240 270 100 30 "Sort"
+btn3: v/last-button
+btn3-text: v/last-button-text
+button/new-at 630 350 270 100 30 "Filter"
+btn4: v/last-button
+btn4-text: v/last-button-text
+button/new-at 640 460 270 100 30 "Edit"
+btn5: v/last-button
+btn5-text: v/last-button-text
+button/new-at 650 570 270 100 30 "Clear"
+btn6: v/last-button
+btn6-text: v/last-button-text
+button/new-at 660 680 270 100 30 "Status"
+btn7: v/last-button
+btn7-text: v/last-button-text
+button/new-at 670 790 270 100 30 "Read"
+btn8: v/last-button
+btn8-text: v/last-button-text
+]
+
+build-ui: func [] [
+    build-background
+    build-table1
+    build-table2
+    v/table1: t1
+    v/table2: t2
+    v/focus-table: t1
+    build-controls
+    build-buttons
+]
+
+table/add-focused: func [] [
+    table/row v/focus-table "New|Village|Active|0"
+    set-status s/+ "Added row to table " s/from-int v/focus-table
+]
+table/delete-focused: func [] [
+    table/delete v/focus-table v/focus-row
+    set-status s/+ "Deleted row " s/from-int v/focus-row
+]
+table/sort-focused: func [] [
+    table/sort v/focus-table 0 1
+    set-status "Sorted by column 0"
+]
+table/filter-focused: func [] [
+    table/filter v/focus-table v/field-text
+    set-status s/+ "Filter: " v/field-text
+]
+table/edit-focused: func [] [
+    table/edit v/focus-table v/focus-row v/focus-col v/field-text
+    v/editing: 1
+    set-status "Editing cell"
+]
+table/clear-focused: func [] [
+    table/clear v/focus-table
+    set-status "Cleared table"
+]
+table/status-focused: func [] [
+    table/status v/focus-table 1
+    set-status "Status requested"
+]
+table/commit-focused: func [] [
+    table/commit v/focus-table
+    v/editing: 0
+    set-status "Cell committed"
+]
+table/cancel-focused: func [] [
+    table/cancel v/focus-table
+    v/editing: 0
+    set-status "Edit cancelled"
+]
+
+do-event: [
+    either = current-event 'view-build [
+        build-ui
+    ] [ none ]
+
+    either = current-event 'view-click [
+        id: parse-int current-value
+        either = id btn1 [ table/add-focused ] [ none ]
+        either = id btn2 [ table/delete-focused ] [ none ]
+        either = id btn3 [ table/sort-focused ] [ none ]
+        either = id btn4 [ table/filter-focused ] [ none ]
+        either = id btn5 [ table/edit-focused ] [ none ]
+        either = id btn6 [ table/clear-focused ] [ none ]
+        either = id btn7 [ table/status-focused ] [ none ]
+        either = id btn8 [ table/get v/focus-table v/focus-row v/focus-col 1 ] [ none ]
+    ] [ none ]
+
+    either = current-event 'table-click [
+        parts: split3 current-value
+        v/focus-table: block-at parts 0
+        v/focus-row: block-at parts 1
+        v/focus-col: block-at parts 2
+        table/select v/focus-table v/focus-row
+        table/focus v/focus-table v/focus-row v/focus-col
+        set-status s/+ "Table " s/+ s/from-int v/focus-table s/+ " row " s/from-int v/focus-row
+    ] [ none ]
+
+    either = current-event 'view-set-text [
+        v/field-text: current-value
+        view/text 51 current-value
+    ] [ none ]
+
+    either = current-event 'view-char [
+        either = v/editing 1 [ table/edit-text v/focus-table current-value ] [ none ]
+    ] [ none ]
+
+    either = current-event 'view-key [
+        key: parse-int current-value
+        either = key 1024 [ v/focus-row: - v/focus-row 1  table/focus v/focus-table v/focus-row v/focus-col ] [ none ]
+        either = key 1025 [ v/focus-row: + v/focus-row 1  table/focus v/focus-table v/focus-row v/focus-col ] [ none ]
+        either = key 1026 [ v/focus-col: - v/focus-col 1  table/focus v/focus-table v/focus-row v/focus-col ] [ none ]
+        either = key 1027 [ v/focus-col: + v/focus-col 1  table/focus v/focus-table v/focus-row v/focus-col ] [ none ]
+        either = key 13 [ either = v/editing 1 [ table/commit-focused ] [ table/edit-focused ] ] [ none ]
+        either = key 27 [ table/cancel-focused ] [ none ]
+        either = key 8 [ either = v/editing 1 [ table/edit-text v/focus-table v/field-text ] [ none ] ] [ none ]
+        either = key 65 [ table/add-focused ] [ none ]
+        either = key 68 [ table/delete-focused ] [ none ]
+        either = key 83 [ table/sort-focused ] [ none ]
+        either = key 70 [ table/filter-focused ] [ none ]
+    ] [ none ]
+
+    either = current-event 'table-cell [
+        v/query: current-value
+        set-status s/+ "Query: " current-value
+    ] [ none ]
+
+    widget/flush
+]
+]

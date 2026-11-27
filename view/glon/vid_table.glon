@@ -1,0 +1,69 @@
+;; view/glon/vid_table.glon -- application-facing table vocabulary.
+;;
+;; The table is implemented by the host as a high-performance row store and
+;; renderer.  Glon owns policy: columns, row data, selection, sorting,
+;; filtering, editing, formatting and event decisions.  No C table changes are
+;; required to use this vocabulary.
+[
+table/send: func [cmd] [ v/batch: s/+ v/batch s/+ "table " s/+ cmd nl ]
+
+table/new: func [id par x y w h] [
+    table/send s/+ "new " s/+ s/from-int id s/+ " " s/+ s/from-int par s/+ " " s/+ s/from-int x s/+ " " s/+ s/from-int y s/+ " " s/+ s/from-int w s/+ " " s/from-int h
+]
+table/new-auto: func [par x y w h] [
+    id: view/next-id
+    table/send s/+ "new " s/+ s/from-int id s/+ " " s/+ s/from-int par s/+ " " s/+ s/from-int x s/+ " " s/+ s/from-int y s/+ " " s/+ s/from-int w s/+ " " s/from-int h
+    id
+]
+table/theme: func [id bg panel header text accent border row-alt grid] [
+    table/send s/+ "theme " s/+ s/from-int id s/+ " " s/from-int bg s/+ " " s/from-int panel s/+ " " s/from-int header s/+ " " s/from-int text s/+ " " s/from-int accent s/+ " " s/from-int border s/+ " " s/from-int row-alt s/+ " " s/from-int grid
+]
+table/columns: func [id spec] [ table/send s/+ "columns " s/+ s/from-int id s/+ " " spec ]
+table/rows: func [id data] [ table/send s/+ "rows " s/+ s/from-int id s/+ " " data ]
+table/row: func [id text] [ table/send s/+ "row " s/+ s/from-int id s/+ " " text ]
+table/set-cell: func [id row col text] [
+    table/send s/+ "set-cell " s/+ s/from-int id s/+ " " s/+ s/from-int row s/+ " " s/+ s/from-int col s/+ " " text
+]
+table/set-row: func [id row text] [
+    table/send s/+ "set-row " s/+ s/from-int id s/+ " " s/+ s/from-int row s/+ " " text
+]
+table/delete: func [id row] [ table/send s/+ "delete " s/+ s/from-int id s/+ " " s/from-int row ]
+table/clear: func [id] [ table/send s/+ "clear " s/from-int id ]
+table/sort: func [id col dir] [
+    table/send s/+ "sort " s/+ s/from-int id s/+ " " s/+ s/from-int col s/+ " " s/from-int dir
+]
+table/filter: func [id text] [ table/send s/+ "filter " s/+ s/from-int id s/+ " " text ]
+table/select: func [id row] [ table/send s/+ "select " s/+ s/from-int id s/+ " " s/from-int row ]
+table/focus: func [id row col] [
+    table/send s/+ "focus " s/+ s/from-int id s/+ " " s/+ s/from-int row s/+ " " s/from-int col
+]
+table/resize: func [id col width] [
+    table/send s/+ "resize " s/+ s/from-int id s/+ " " s/+ s/from-int col s/+ " " s/from-int width
+]
+table/readonly: func [id row col on] [
+    table/send s/+ "readonly " s/+ s/from-int id s/+ " " s/+ s/from-int row s/+ " " s/+ s/from-int col s/+ " " s/from-int on
+]
+table/kind: func [id row col kind] [
+    table/send s/+ "kind " s/+ s/from-int id s/+ " " s/+ s/from-int row s/+ " " s/+ s/from-int col s/+ " " s/from-int kind
+]
+table/renderer: func [id row col node] [
+    table/send s/+ "renderer " s/+ s/from-int id s/+ " " s/+ s/from-int row s/+ " " s/+ s/from-int col s/+ " " s/from-int node
+]
+table/edit: func [id row col text] [
+    table/send s/+ "edit " s/+ s/from-int id s/+ " " s/+ s/from-int row s/+ " " s/+ s/from-int col s/+ " " text
+]
+table/edit-text: func [id text] [ table/send s/+ "edit-text " s/+ s/from-int id s/+ " " text ]
+table/commit: func [id] [ table/send s/+ "commit " s/from-int id ]
+table/cancel: func [id] [ table/send s/+ "cancel " s/from-int id ]
+table/scroll: func [id delta] [ table/send s/+ "scroll " s/+ s/from-int id s/+ " " s/from-int delta ]
+table/batch: func [id script] [ table/send s/+ "batch " s/+ s/from-int id s/+ " " script ]
+table/get: func [id row col query] [
+    table/send s/+ "get " s/+ s/from-int id s/+ " " s/+ s/from-int row s/+ " " s/+ s/from-int col s/+ " " s/from-int query
+]
+table/status: func [id query] [ table/send s/+ "status " s/+ s/from-int id s/+ " " s/from-int query ]
+table/destroy: func [id] [ table/send s/+ "destroy " s/from-int id ]
+
+table/cell-text: 0
+table/cell-checkbox: 1
+table/cell-indicator: 2
+]

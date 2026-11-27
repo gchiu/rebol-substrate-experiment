@@ -1,0 +1,22 @@
+[
+bench-vocab: vocab/new [
+    [ op0 + ] [ op1 + ] [ op2 + ] [ op3 + ]
+    [ op4 + ] [ op5 + ] [ op6 + ] [ op7 + ]
+    [ op8 + ] [ op9 + ] [ op10 + ] [ op11 + ]
+    [ op12 + ] [ op13 + ] [ op14 + ] [ op15 + ]
+    [ op16 + ] [ op17 + ] [ op18 + ] [ op19 + ]
+    [ op20 + ] [ op21 + ] [ op22 + ] [ op23 + ]
+    [ op24 + ] [ op25 + ] [ op26 + ] [ op27 + ]
+    [ op28 + ] [ op29 + ] [ op30 + ] [ op31 + ]
+]
+
+bench: func [n i] [
+    either < i n [
+        either vocab/lookup bench-vocab 'op0 [ bench n + i 1 ] [ 0 ]
+    ] [ 0 ]
+]
+
+bench 80 0
+s/print "VOCAB_V1_BENCH_PASS"
+1
+]

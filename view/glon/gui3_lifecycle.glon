@@ -1,0 +1,56 @@
+[
+v/field-text: ""
+style/new 'base [
+    [ 'bg [40 44 52 255] ]
+    [ 'fg [235 238 242 255] ]
+    [ 'font 14 ]
+    [ 'border [70 76 86 255] ]
+    [ 'box [24 26 30 255] ]
+    [ 'focus [90 160 255 255] ]
+]
+style/derive 'root 'base [ [ 'bg [24 26 30 255] ] ]
+style/derive 'field 'base [ [ 'bg [24 26 30 255] ] ]
+style/derive 'button 'base [ [ 'bg [40 100 180 255] ] ]
+style/derive 'checkbox 'base [ [ 'bg [32 36 44 255] ] ]
+style/derive 'radio 'base [ [ 'bg [32 36 44 255] ] ]
+style/derive 'label 'base [ [ 'bg [0 0 0 0] ] ]
+
+gui3/build-hook: [ gui3/app-build ]
+victim: 0
+gui3/disable: func [node] [
+    gui3/set-enabled node 0
+]
+gui3/app-action: func [node] [
+    state: gui3/state node
+    key: block-at state 4
+    case [
+        [ = key 'destroy ] [
+            old: victim
+            either > old 0 [ gui3/destroy-face old ] [ 0 ]
+            victim: 0
+            gui3/activate old
+            gui3/set-status "Destroyed"
+        ]
+        [ 1 ] [ 0 ]
+    ]
+]
+gui3/app-build: func [] [
+    gui3/reset-lists
+    root: gui3/window 'root 400 300
+    f: gui3/field root 'field "x" 'disabled-field
+    c: gui3/checkbox root 'checkbox "Disabled" 'disabled-check 0
+    b: gui3/button root 'button "Disabled" 'disabled-button 0
+    r: gui3/radio root 'radio "Disabled" 'disabled-radio root
+    gui3/button root 'button "Destroy" 'destroy 0
+    victim: gui3/button root 'button "Victim" 'victim 0
+    st: gui3/label root 'label "Ready"
+    gui3/status: st
+    gui3/disable f
+    gui3/disable c
+    gui3/disable b
+    gui3/disable r
+    gui3/set-status "Ready"
+]
+
+do-event: [ gui3/handle ]
+]

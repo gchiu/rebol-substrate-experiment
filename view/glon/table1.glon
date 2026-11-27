@@ -1,0 +1,32 @@
+;; view/glon/table1.glon -- minimal Glon/VID table.
+;;
+;; Run with the generic Glon app runner.  No numeric scene spec is required:
+;; the window and table are composed with the generic View vocabulary, and the
+;; table policy is ordinary Glon.
+[
+v/table: 100
+v/field-text: ""
+v/table-sort-col: -1
+v/table-sort-dir: 1
+v/table-filter: ""
+v/table-select-row: -1
+v/status: "Ready"
+
+build-ui: func [] [
+    view/mknode 1 0 view/type-window
+    view/rect 1 0 0 700 300
+    view/flags 1 1 0 0 0
+
+    t1: table/new-auto 1 20 20 660 240
+    table/columns t1 "Name:180:0;Age:60:2;City:140:0"
+    table/rows t1 "Alice|30|Wellington;Bob|25|Auckland;Cara|41|Christchurch;Dan|37|Dunedin;Eve|29|Hamilton"
+    table/select t1 0
+]
+
+do-event: [
+    either = current-event 'view-build [
+        build-ui
+    ] [ none ]
+    widget/flush
+]
+]

@@ -1,0 +1,39 @@
+--- /tmp/vl_orig.glon	2026-11-23 17:04:22.043660396 +1300
++++ experiments/gui-f1b/view_lib_b1.glon	2026-11-23 17:06:11.735775853 +1300
+@@ -45,20 +45,27 @@
+ ]
+ 
+ emit-host-call: func [op arg] [
+-    emit-clear
+-    emit-byte 1
+-    emit-text op
+-    emit-byte 0
+-    emit-text arg
+-    emit-finish
++    either > + + 2 s/length op s/length arg 4095 [ raise create-sin 'view 'fragment-too-large s/length arg ] [
++        emit-clear emit-byte 1 emit-text op emit-byte 0 emit-text arg emit-finish
++    ]
+ ]
+ 
+-view/send: func [cmd] [ v/batch: s/+ v/batch s/+ "view " s/+ cmd nl ]
++v/sealed: 0
++v/out: 0
++view/send: func [cmd] [
++    line: s/+ "view " s/+ cmd nl
++    either > + s/length v/batch s/length line 4000 [
++        v/sealed: reduce [ v/batch v/sealed ]
++        v/batch: line
++    ] [ v/batch: s/+ v/batch line ]
++]
+ widget/flush: func [] [
+-    tmp: v/batch
++    v/out: reduce [ reduce [ v/batch v/sealed ] v/out ]
+     v/batch: ""
+-    emit-host-call "batch" tmp
++    v/sealed: 0
++    emit-host-call "batch-ref" ""
+ ]
++widget/take: func [] [ o: v/out v/out: 0 o ]
+ 
+ join-block: func [b i] [
+     either < i block-len b [

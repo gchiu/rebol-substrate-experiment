@@ -1,0 +1,46 @@
+;; view/glon/core_words.glon -- the block words for Glon/View desktop sessions
+;; (GLON-LIB-1; GLON-VIEW-CORE-V3). The same words, with the same meanings, as
+;; demo/shop/block.glon, which sessions without the View libraries load
+;; instead; list.glon needs them. Loaded after view_lib.glon.
+;;
+;;   value-tag v          the type tag of any value: 0 INTEGER!, 2 word,
+;;                        3 set-word, 5 lit-word, 6 BLOCK!, 8 closure, 12 STRING!
+;;   block-set! b i v     PUBLIC, CHECKED store of item i of block b: a managed
+;;                        value (tag >= 6, payload in the managed heap) may be
+;;                        stored only into a managed block; storing one into a
+;;                        literal (loader) block -- which the collector does
+;;                        not trace -- raises SIN! 'escape 'block-set! v and
+;;                        stores nothing (GLON-VIEW-CORE-V2 5).  Immediates and
+;;                        permanent values are stored anywhere.  Still
+;;                        unchecked for 0 <= i < block-len b.  Answers none.
+;;   block-set-raw! b i v INTERNAL, UNCHECKED store (view_lib.glon's
+;;                        vid/set-block!, no code of its own).  Preconditions,
+;;                        the caller's to guarantee: b is a BLOCK! with
+;;                        0 <= i < block-len b, and b is a block the library
+;;                        allocated itself (reduced / new, i.e. managed) or v
+;;                        is not a managed reference.  For library code behind
+;;                        those guarantees only: list.glon (its own nodes) and,
+;;                        under its own name, VID's vid/set-block! (its own
+;;                        reduced state blocks).  Applications use block-set!
+;;                        or list/put.
+;;   managed-ref? x       1 if x's payload lies in the managed heap
+;;                        [32768, REG_HP), else 0 (42 code cells)
+;;   block-store-ok? b v  1 if block-set! would store v into b, else 0
+;;
+;; value-tag is the one tag word of the session: vid_look.glon's vid/look/tag
+;; and intent.glon's intent/tag are this word, so the masm is assembled once.
+[
+value-tag: masm 1 [ LIT 16 MOD LIT 16 MUL ARITY 1 EXIT ]
+block-set-raw!: :vid/set-block!
+managed-ref?: masm 1 [
+    DUP LIT 16 MOD SUB DUP LIT REG_HP @ LT MUL LIT 32768 GE
+    LIT 16 MUL ARITY 1 EXIT
+]
+block-store-ok?: func [b v] [
+    either >= value-tag :v 6 [ either = 1 managed-ref? :v [ managed-ref? b ] [ 1 ] ] [ 1 ]
+]
+;; v is passed on as :v: a closure value must be stored, not called.
+block-set!: func [b i v] [
+    either = 1 block-store-ok? b :v [ block-set-raw! b i :v  none ] [ raise create-sin 'escape 'block-set! :v ]
+]
+]

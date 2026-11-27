@@ -1,0 +1,33 @@
+;; Checkpoint B fixture: one VID-styled GUI-3 field and two VID-styled
+;; GUI-3 buttons.  gui3/app: [ activations last-key theme ]
+[
+v/field-text: ""
+gc/collect: masm 0 [ CALL collect ARITY 0 EXIT ]
+gui3/app: reduce [ 0 0 'dark ]
+gui3/build-hook: [ vg/app-build ]
+vg/use theme/dark
+
+gui3/app-action: func [node] [
+    vid/set-block! gui3/app 0 + block-at gui3/app 0 1
+    vid/set-block! gui3/app 1 block-at gui3/state node 4
+]
+
+vg/app-build: func [] [
+    root: gui3/window 'vg-root 480 240
+    box: gui3/container root 'vg-panel view/layout-v 0 12 16
+    gui3/label box 'vg-label "Checkpoint B"
+    vg/field box "Name" 'name
+    row: gui3/container box 'vg-panel view/layout-h 0 12 0
+    vg/button row "Save" 'save 1 110 32
+    vg/button row "Cancel" 'cancel 0 110 32
+]
+
+t/theme: func [name] [
+    vid/set-block! gui3/app 2 name
+    vg/use either = name 'dark [ theme/dark ] [ theme/light ]
+    gui3/rebuild
+]
+t/text: func [] [ block-at gui3/state gui3/find-node-by-key 'name 5 ]
+
+do-event: [ gui3/handle ]
+]

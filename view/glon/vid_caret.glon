@@ -1,0 +1,27 @@
+;; view/glon/vid_caret.glon -- GUI-P2: a text caret in focused VID fields.
+;;
+;; The caret is drawn by the backend, which measures the shaped text
+;; (View "caret id index"), so it sits exactly after the last character in a
+;; proportional font.  A VID field shows it at the end of its text while it
+;; has the focus ring (vid/focus-event), and it follows the text as it
+;; changes.  Desktop VID loader only (after vid_fields.glon); the 64K VID
+;; stack is unchanged.  Fields made focused programmatically for display
+;; (vid/field/set-focused, an alias of the original) keep only the ring.
+[
+vid/caret-ring: :vid/button/set-focused
+vid/button/set-focused: func [state focused] [
+    vid/caret-ring state focused
+    either = block-at state 0 vid/kind-field [
+        view/caret block-at state 3 either focused [ s/length block-at state 5 ] [ -1 ]
+    ] [ 0 ]
+    state
+]
+vid/caret-set-text: :vid/field/set-text
+vid/field/set-text: func [state text] [
+    vid/caret-set-text state text
+    either either = vid/focus-ring 0 [ 0 ] [ = vid/focus-ring block-at state 9 ] [
+        view/caret block-at state 3 s/length text
+    ] [ 0 ]
+    state
+]
+]

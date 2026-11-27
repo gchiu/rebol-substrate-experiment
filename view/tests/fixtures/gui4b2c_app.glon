@@ -1,0 +1,95 @@
+;; GUI-4B2C fixture: two scroll regions, a nested region and controls
+;; inside them.  gui3/app: [ theme left right inner saved last-key hits root ]
+[
+v/field-text: ""
+style/new 'base [
+    [ 'bg [40 44 52 255] ] [ 'fg [235 238 242 255] ] [ 'font 14 ]
+    [ 'border [70 76 86 255] ] [ 'box [24 26 30 255] ] [ 'focus [90 160 255 255] ]
+]
+style/derive 'root 'base [ [ 'bg [24 26 30 255] ] ]
+style/derive 'panel 'base [ [ 'bg [32 36 44 255] ] ]
+style/derive 'label 'base [ [ 'bg [0 0 0 0] ] ]
+style/derive 'field 'base [ [ 'bg [24 26 30 255] ] [ 'focused/bg [30 34 42 255] ] ]
+style/derive 'button 'base [ [ 'bg [40 100 180 255] ] [ 'hover/bg [60 120 200 255] ] [ 'pressed/bg [30 80 150 255] ] ]
+style/derive 'checkbox 'base [ [ 'bg [32 36 44 255] ] [ 'box [24 26 30 255] ] ]
+
+gc/collect: masm 0 [ CALL collect ARITY 0 EXIT ]
+gui3/app: reduce [ 'dark 0 0 0 reduce [ 0 0 0 0 0 0 ] 0 0 0 ]
+gui3/build-hook: [ gui3/app-build ]
+
+t/off: func [i k] [ block-at gui3/scroll-state block-at gui3/app i k ]
+t/save: func [] [
+    vid/set-block! gui3/app 4 reduce [ t/off 1 0 t/off 1 1 t/off 2 0 t/off 2 1 t/off 3 0 t/off 3 1 ]
+]
+t/rebuild: func [] [ gui3/rebuild ]
+t/count: func [tab lo hi] [
+    either >= lo hi [ 0 ] [
+        either = - hi lo 1 [ either = gui3/tab-get tab lo 0 [ 0 ] [ 1 ] ] [
+            mid: / + lo hi 2
+            + t/count tab lo mid t/count tab mid hi
+        ]
+    ]
+]
+t/states: func [] [ t/count gui3/state-tab 0 1024 ]
+t/scrolls: func [] [ / t/count gui3/scroll-tab 0 1024 3 ]
+
+gui3/app-action: func [node] [
+    key: block-at gui3/state node 4
+    vid/set-block! gui3/app 5 key
+    vid/set-block! gui3/app 6 + block-at gui3/app 6 1
+    either = key 'theme [
+        vid/set-block! gui3/app 0 either = block-at gui3/app 0 'dark [ 'light ] [ 'dark ]
+        t/rebuild
+    ] [ 0 ]
+]
+
+gui3/app-build: func [] [
+    root: gui3/window 'root 700 480
+    vid/set-block! gui3/app 7 root
+    head: gui3/container root 'panel view/layout-h 0 8 8
+    gui3/label head 'label "B2C"
+    gui3/button head 'button "Theme" 'theme 0
+    body: gui3/container root 'panel view/layout-h 0 8 8
+    left: gui3/scroll body 'panel 360 330 360 620
+    lc: gui3/scroll-content left
+    gui3/label lc 'label "Left region"
+    gui3/field lc 'field "alpha" 'f0
+    gui3/button lc 'button "Top" 'top 0
+    gui3/field lc 'field "beta" 'f1
+    gui3/checkbox lc 'checkbox "Subscribe" 'subscribe 0
+    inner: gui3/scroll lc 'panel 320 140 320 360
+    ic: gui3/scroll-content inner
+    gui3/label ic 'label "Inner 0"
+    gui3/label ic 'label "Inner 1"
+    gui3/button ic 'button "InnerHit" 'inner-hit 0
+    gui3/label ic 'label "Inner 3"
+    gui3/label ic 'label "Inner 4"
+    gui3/label ic 'label "Inner 5"
+    gui3/label lc 'label "After nested 0"
+    gui3/label lc 'label "After nested 1"
+    gui3/field lc 'field "gamma" 'f2
+    gui3/button lc 'button "LeftHit" 'left-hit 0
+    right: gui3/scroll body 'panel 260 330 260 520
+    rc: gui3/scroll-content right
+    gui3/label rc 'label "Right region"
+    gui3/label rc 'label "Right 1"
+    gui3/label rc 'label "Right 2"
+    gui3/label rc 'label "Right 3"
+    gui3/label rc 'label "Right 4"
+    gui3/label rc 'label "Right 5"
+    gui3/label rc 'label "Right 6"
+    gui3/label rc 'label "Right 7"
+    gui3/label rc 'label "Right 8"
+    gui3/label rc 'label "Right 9"
+    gui3/button rc 'button "RightHit" 'right-hit 0
+    vid/set-block! gui3/app 1 left
+    vid/set-block! gui3/app 2 right
+    vid/set-block! gui3/app 3 inner
+    s: block-at gui3/app 4
+    gui3/scroll-set left block-at s 0 block-at s 1
+    gui3/scroll-set right block-at s 2 block-at s 3
+    gui3/scroll-set inner block-at s 4 block-at s 5
+]
+
+do-event: [ gui3/handle ]
+]

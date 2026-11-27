@@ -1,0 +1,81 @@
+;; view/tests/fixtures/gui_f2_app.glon -- GUI-F2 regression fixture.
+;; Builds f2/fields text fields (keys 1000 + i, text "f<i>") and f2/buttons
+;; buttons (keys 2000 + i) inside one container, using halving recursion so the
+;; build itself never needs deep recursion.  The C test drives it through the
+;; ordinary View host events.
+[
+v/field-text: ""
+gc/collect: masm 0 [ CALL collect ARITY 0 EXIT ]
+f2/fields: 40
+f2/buttons: 180
+f2/box: 0
+f2/root: 0
+gui3/app: reduce [ 0 ]
+gui3/build-hook: [ f2/build ]
+gui3/app-action: func [node] [ 0 ]
+
+f2/make: func [parent lo hi] [
+    either >= lo hi [ 0 ] [
+        either = - hi lo 1 [
+            either < lo f2/fields [
+                gui3/field parent 'field s/+ "f" s/from-int lo + 1000 lo
+            ] [
+                b: - lo f2/fields
+                gui3/button parent 'button s/+ "b" s/from-int b + 2000 b 0
+            ]
+        ] [
+            mid: / + lo hi 2
+            f2/make parent lo mid
+            f2/make parent mid hi
+        ]
+    ]
+]
+;; f2/fill builds the first f2/first widgets; f2/more adds the rest in later
+;; events, so no single event holds the whole command stream (GUI-F2-REPORT.md).
+f2/first: 20
+f2/made: 0
+f2/total: func [] [ + f2/fields f2/buttons ]
+f2/fill: func [] [
+    f2/box: gui3/container f2/root 'panel view/layout-v 0 2 2
+    n: either < f2/total f2/first [ f2/total ] [ f2/first ]
+    f2/make f2/box 0 n
+    f2/made: n
+]
+f2/more: func [count] [
+    hi: either > + f2/made count f2/total [ f2/total ] [ + f2/made count ]
+    f2/make f2/box f2/made hi
+    f2/made: hi
+]
+f2/build: func [] [
+    f2/root: gui3/window 'root 900 700
+    gui3/label f2/root 'label "GUI-F2 fixture"
+    f2/fill
+]
+
+;; helpers used by the C test (all bounded by halving recursion)
+f2/node: func [key] [ gui3/find-node-by-key key ]
+f2/text: func [key] [ block-at gui3/state f2/node key 5 ]
+f2/count: func [tab lo hi] [
+    either >= lo hi [ 0 ] [
+        either = - hi lo 1 [ either = gui3/tab-get tab lo 0 [ 0 ] [ 1 ] ] [
+            mid: / + lo hi 2
+            + f2/count tab lo mid f2/count tab mid hi
+        ]
+    ]
+]
+f2/states: func [] [ f2/count gui3/state-tab 0 1024 ]
+f2/edits: func [] [ f2/count gui4/edit-tab 0 1024 ]
+f2/rebuild-box: func [] [
+    gui3/destroy-face f2/box
+    f2/fill
+]
+
+style/new 'base [ [ 'bg [40 44 52 255] ] [ 'fg [235 238 242 255] ] [ 'font 14 ] [ 'focus [90 160 255 255] ] ]
+style/derive 'root 'base [ [ 'bg [24 26 30 255] ] ]
+style/derive 'panel 'base [ [ 'bg [32 36 44 255] ] ]
+style/derive 'label 'base [ [ 'bg [0 0 0 0] ] ]
+style/derive 'field 'base [ [ 'bg [24 26 30 255] ] ]
+style/derive 'button 'base [ [ 'bg [40 100 180 255] ] ]
+
+do-event: [ gui3/handle ]
+]

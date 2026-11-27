@@ -1,0 +1,205 @@
+;; view/glon/vid_look.glon -- INTENT-4B-5A: looks for VID widgets.
+;;
+;; A LOOK is a short list of appearance properties.  It is applied by deriving
+;; a theme: a copy of the widget's theme (theme_lib.glon's slot map) with the
+;; look's properties written into the semantic slots its widgets already read.
+;; The widget is then made by its ordinary VID constructor with that theme, so
+;; there is one button, one field and one label whatever they look like; their
+;; hover, pressed, focused and disabled looks come from the same slots.
+;;
+;;   vid/look/derive theme props    a new theme: theme with props applied
+;;   vid/look/apply st w h          radius, border width and font style on a
+;;                                  VID button, field, label or check made
+;;                                  with such a theme (nothing for defaults)
+;;   vid/look/size st w h           a button's or field's border width again
+;;                                  after lay/button-size / lay/field-size
+;;   view/radius id px   view/font-style id bits   view/image id path
+;;
+;; Properties (colours are three integers 0..255):
+;;   color R G B          text: labels, captions, fields, headings
+;;   background R G B     controls (buttons), inputs (fields), panes (panels);
+;;                        hover and pressed follow unless given after it
+;;   hover / pressed R G B         a button's hovered / held surface
+;;   accent R G B         checked boxes and primary fills (hover, pressed follow)
+;;   border R G B         the outline     border-width N  0..8 px (default 1)
+;;   radius N             corner rounding, 0..40 px
+;;   focus R G B          the focus ring
+;;   disabled R G B / disabled-color R G B   the disabled surface / text
+;;   selection R G B      selected rows of lists and tables
+;;   font N               body text size, 8..72 (headings N + 4)
+;;   bold   serif   monospace   sans
+;;   height N             control height, 16..200 px (default 30)
+;;   width N              control width, 16..2000 px (default: the content)
+;;
+;; Desktop VID loaders only (after view_cmd.glon, whose command buffer it
+;; writes); the 64K stack is unchanged.
+[
+vk/radius: "view radius"
+vk/font-style: "view font-style"
+vk/image: "view image"
+view/type-image: 5
+view/radius: func [id r] [ vb/start vk/radius vb/i vb/buf id vb/i vb/buf r vb/end ]
+view/font-style: func [id st] [ vb/start vk/font-style vb/i vb/buf id vb/i vb/buf st vb/end ]
+view/image: func [id path] [
+    vb/start vk/image vb/i vb/buf id vb/s vb/buf vk/sp vb/s-esc vb/buf path 0 s/length path vb/end
+]
+
+;; ---- deriving a theme ----------------------------------------------------------
+;; a fresh theme-sized block (140 slots)
+vid/look/cells: [
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+]
+vid/look/copy: func [t] [
+    n: reduce vid/look/cells
+    vid/look/copy-at t n 0
+    n
+]
+;; 8 slots a step (a call chain holds well under 100 frames)
+vid/look/copy-at: func [t n i] [ either < i 140 [ vid/look/copy-at t n vid/look/copy8 t n i 8 ] [ n ] ]
+vid/look/copy8: func [t n i k] [
+    either either < i 140 [ > k 0 ] [ 0 ] [
+        vid/set-block! n i block-at t i
+        vid/look/copy8 t n + i 1 - k 1
+    ] [ i ]
+]
+vid/look/derive: func [theme props] [
+    t: vid/look/copy theme
+    vid/look/walk t props 0
+    t
+]
+vid/look/walk: func [t p i] [ either < i block-len p [ vid/look/walk t p vid/look/walk8 t p i 8 ] [ t ] ]
+vid/look/walk8: func [t p i k] [
+    either either < i block-len p [ > k 0 ] [ 0 ] [ vid/look/walk8 t p vid/look/prop t p i - k 1 ] [ i ]
+]
+;; one property at i; answers the index after it
+vid/look/prop: func [t p i] [
+    w: block-at p i
+    j: + i 1
+    either = w 'color [ vid/look/rgb t p j w reduce [ 9 25 121 ] ] [
+    either = w 'background [ vid/look/background t p j w ] [
+    either = w 'hover [ vid/look/rgb t p j w reduce [ 113 ] ] [
+    either = w 'pressed [ vid/look/rgb t p j w reduce [ 117 ] ] [
+    either = w 'accent [ vid/look/accent t p j w ] [
+    either = w 'border [ vid/look/rgb t p j w reduce [ 17 ] ] [
+    either = w 'focus [ vid/look/rgb t p j w reduce [ 105 ] ] [
+    either = w 'disabled [ vid/look/rgb t p j w reduce [ 49 ] ] [
+    either = w 'disabled-color [ vid/look/rgb t p j w reduce [ 93 ] ] [
+    either = w 'selection [ vid/look/rgb t p j w reduce [ 53 73 ] ] [
+        vid/look/prop2 t p j w
+    ] ] ] ] ] ] ] ] ] ]
+]
+vid/look/prop2: func [t p j w] [
+    st: block-at t 137
+    bold: - st * / st 2 2
+    either = w 'font [ vid/look/font t p j w ] [
+    either = w 'border-width [ vid/look/num t p j w 135 0 8 ] [
+    either = w 'radius [ vid/look/num t p j w 136 0 40 ] [
+    either = w 'height [ vid/look/num t p j w 138 16 200 ] [
+    either = w 'width [ vid/look/num t p j w 139 16 2000 ] [
+    either = w 'bold [ vid/set-block! t 137 + 1 * 2 / st 2  j ] [
+    either = w 'sans [ vid/set-block! t 137 bold  j ] [
+    either = w 'serif [ vid/set-block! t 137 + bold 2  j ] [
+    either = w 'monospace [ vid/set-block! t 137 + bold 4  j ] [
+        raise create-sin 'vid 'unknown-look-property w
+    ] ] ] ] ] ] ] ] ]
+]
+;; an integer at j within lo .. hi
+vid/look/int: func [p j w lo hi] [
+    either < j block-len p [ 0 ] [ raise create-sin 'vid 'look-needs-a-number w ]
+    v: block-at p j
+    either = vid/look/tag v 0 [ 0 ] [ raise create-sin 'vid 'look-needs-a-number w ]
+    either either < v lo [ 1 ] [ > v hi ] [ raise create-sin 'vid 'look-value-out-of-range w ] [ v ]
+]
+vid/look/tag: :value-tag   ;; (GLON-LIB-1: core_words.glon)
+vid/look/num: func [t p j w slot lo hi] [
+    vid/set-block! t slot vid/look/int p j w lo hi
+    + j 1
+]
+;; R G B at j into each slot of slots (opaque); answers j + 3
+vid/look/rgb: func [t p j w slots] [
+    r: vid/look/int p j w 0 255
+    g: vid/look/int p + j 1 w 0 255
+    b: vid/look/int p + j 2 w 0 255
+    vid/look/set-rgb t slots 0 r g b
+    + j 3
+]
+vid/look/set-rgb: func [t slots k r g b] [
+    either < k block-len slots [
+        s: block-at slots k
+        vid/set-block! t s r
+        vid/set-block! t + s 1 g
+        vid/set-block! t + s 2 b
+        vid/set-block! t + s 3 255
+        vid/look/set-rgb t slots + k 1 r g b
+    ] [ t ]
+]
+;; a surface's hover and pressed shades: a light surface darkens, a dark one
+;; lightens on hover; both darken when pressed
+vid/look/shade: func [c light pct] [ either light [ / * c - 100 pct 100 ] [ + c / * - 255 c pct 100 ] ]
+vid/look/background: func [t p j w] [
+    k: vid/look/rgb t p j w reduce [ 109 21 5 ]
+    vid/look/states t 109 113 117
+    k
+]
+vid/look/accent: func [t p j w] [
+    k: vid/look/rgb t p j w reduce [ 13 ]
+    vid/look/states t 13 41 45
+    k
+]
+vid/look/states: func [t base hs ps] [
+    r: block-at t base
+    g: block-at t + base 1
+    b: block-at t + base 2
+    light: > + + * r 299 * g 587 * b 114 140000
+    vid/look/set-rgb t reduce [ hs ] 0 vid/look/shade r light 8 vid/look/shade g light 8 vid/look/shade b light 8
+    vid/look/set-rgb t reduce [ ps ] 0 / * r 80 100 / * g 80 100 / * b 80 100
+]
+vid/look/font: func [t p j w] [
+    n: vid/look/int p j w 8 72
+    vid/set-block! t 69 n
+    vid/set-block! t 70 either > n 10 [ - n 2 ] [ n ]
+    vid/set-block! t 133 + n 4
+    + j 1
+]
+
+;; ---- decorating a widget made with a derived theme ---------------------------
+vid/look/apply: func [st w h] [
+    k: block-at st 0
+    either = k vid/kind-button [ vid/look/box st 4 2 11 9 3 w h ] [
+    either = k vid/kind-field [ vid/look/box st 6 2 7 9 3 w h ] [
+    either = k vid/kind-label [ vid/look/font-of block-at st 1 block-at st 2 ] [
+    either = k vid/kind-checkbox [ vid/look/font-of block-at st 4 block-at st 6 ] [ 0 ] ] ] ]
+    st
+]
+vid/look/font-of: func [id theme] [ either = block-at theme 137 0 [ 0 ] [ view/font-style id block-at theme 137 ] ]
+;; a button's or field's parts: theme slot ts, surface bs, border es, ring rs,
+;; text xs in its state
+vid/look/box: func [st ts bs es rs xs w h] [
+    theme: block-at st ts
+    r: block-at theme 136
+    bw: block-at theme 135
+    either > r 0 [
+        ;; the group too: View then leaves the focus outline to the rounded ring
+        view/radius block-at st 1 r
+        view/radius block-at st rs + r 2
+        view/radius block-at st es r
+        view/radius block-at st bs either > r bw [ - r bw ] [ 0 ]
+    ] [ 0 ]
+    vid/look/font-of block-at st xs theme
+    vid/look/inset st ts bs w h
+]
+;; the surface inside a border of the theme's width (1 is what VID made)
+vid/look/inset: func [st ts bs w h] [
+    bw: block-at block-at st ts 135
+    either = bw 1 [ 0 ] [ view/rect block-at st bs bw bw - w * 2 bw - h * 2 bw ]
+]
+vid/look/size: func [st w h] [
+    k: block-at st 0
+    either = k vid/kind-button [ vid/look/inset st 4 2 w h ] [
+        either = k vid/kind-field [ vid/look/inset st 6 2 w h ] [ 0 ]
+    ]
+]
+]

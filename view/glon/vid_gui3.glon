@@ -1,0 +1,102 @@
+;; view/glon/vid_gui3.glon -- VID presentation over GUI-3 behaviour.
+;;
+;; Checkpoint B of the VID/GUI-3 composition (GUI-VID-CHECKPOINTS.md).  A
+;; vg/button or vg/field is an ordinary GUI-3 face: GUI-3 owns its state
+;; record, pointer capture, hover, focus and Tab order, activation and (for
+;; fields) caret, selection, clipboard and editing.  Only its look comes from
+;; VID: colours are read from the WG-3 theme block (theme_lib.glon) through
+;; the same slots VID's own widgets use (vid/button-slots, input, border,
+;; focus ring), so there is one palette.  The GUI-3 styles defined here are
+;; derived from the theme, not a second palette.  Optional: a GUI-3
+;; application that does not load this file is unchanged.
+[
+vg/theme: theme/dark
+vg/sizes: gui3/tab-new
+
+vg/rgba: func [idx] [
+    reduce [ block-at vg/theme idx block-at vg/theme + idx 1 block-at vg/theme + idx 2 block-at vg/theme + idx 3 ]
+]
+
+;; select a theme: GUI-3 styles for the parts GUI-3 draws itself (text,
+;; caret, panels) are derived from it; 'skin marks faces drawn by vg/skin
+;; (1 secondary button, 2 primary button, 3 field)
+vg/use: func [theme] [
+    vg/theme: theme
+    style/new 'vg-base reduce [
+        reduce [ 'bg vg/rgba 5 ] reduce [ 'fg vg/rgba 9 ] reduce [ 'font block-at theme 69 ]
+        reduce [ 'focus vg/rgba 105 ] reduce [ 'border vg/rgba 17 ] reduce [ 'box vg/rgba 21 ]
+    ]
+    style/derive 'vg-root 'vg-base reduce [ reduce [ 'bg vg/rgba 1 ] ]
+    style/derive 'vg-panel 'vg-base []
+    style/derive 'vg-label 'vg-base [ [ 'bg [ 0 0 0 0 ] ] ]
+    style/derive 'vg-button 'vg-base [ [ 'skin 1 ] ]
+    style/derive 'vg-primary 'vg-base [ [ 'skin 2 ] ]
+    style/derive 'vg-field 'vg-base reduce [ [ 'skin 3 ] reduce [ 'fg vg/rgba 25 ] ]
+    gui3/skin-hook: [ vg/skin ]
+    theme
+]
+
+;; a t-pixel frame of theme colour idx around x y w h, in the face's own
+;; draw list (no extra View nodes)
+vg/frame: func [node x y w h t idx] [
+    c: vg/rgba idx
+    view/draw-rect node x y w t block-at c 0 block-at c 1 block-at c 2 block-at c 3
+    view/draw-rect node x - + y h t w t block-at c 0 block-at c 1 block-at c 2 block-at c 3
+    view/draw-rect node x y t h block-at c 0 block-at c 1 block-at c 2 block-at c 3
+    view/draw-rect node - + x w t y t h block-at c 0 block-at c 1 block-at c 2 block-at c 3
+]
+
+;; the presentation of a skinned face, from its GUI-3 state record
+;; [ node style parent kind key text value group text-node ... enabled focused widget-state ]
+vg/skin: func [node state] [
+    sk: style/get block-at state 1 'skin
+    sz: gui3/tab-get vg/sizes node
+    w: either = sz 0 [ 110 ] [ block-at sz 0 ]
+    h: either = sz 0 [ 32 ] [ block-at sz 1 ]
+    enabled: block-at state 12
+    focused: block-at state 13
+    ws: block-at state 14
+    either = sk 3 [
+        surface: either = enabled 0 [ 49 ] [ 21 ]
+        tc: either = enabled 0 [ 93 ] [ 25 ]
+        edge: 17
+    ] [
+        variant: - sk 1
+        surface: either = enabled 0 [ 49 ] [
+            vid/button-slot variant either = ws 'pressed [ 2 ] [ either = ws 'hover [ 1 ] [ 0 ] ]
+        ]
+        tc: either = enabled 0 [ 93 ] [ vid/button-slot variant 4 ]
+        edge: either = enabled 0 [ 125 ] [ vid/button-slot variant 3 ]
+    ]
+    vid/fill-color vg/theme node surface
+    vid/fg-color vg/theme node 105
+    tx: block-at state 8
+    either > tx 0 [ vid/fg-color vg/theme tx tc ] [ 0 ]
+    view/draw-clear node
+    vg/frame node 0 0 w h 1 either = focused 1 [ 105 ] [ edge ]
+    either = focused 1 [ vg/frame node -3 -3 + w 6 + h 6 2 105 ] [ 0 ]
+    node
+]
+
+;; a GUI-3 button with VID presentation; primary 1 for the accent variant
+vg/button: func [parent text key primary w h] [
+    node: gui3/button parent either = primary 1 [ 'vg-primary ] [ 'vg-button ] text key 0
+    gui3/tab-put vg/sizes node reduce [ w h ]
+    view/rect node 0 0 w h
+    tx: block-at gui3/state node 8
+    font: block-at vg/theme 69
+    view/rect tx 0 / - h + font 6 2 w + font 6
+    view/text-align tx 1
+    gui3/refresh node
+    node
+]
+
+;; a GUI-3 text field (caret, selection, clipboard, focus routing) with VID
+;; presentation; GUI-3's field geometry (160 x 28) is kept
+vg/field: func [parent text key] [
+    node: gui3/field parent 'vg-field text key
+    gui3/tab-put vg/sizes node reduce [ 160 28 ]
+    gui3/refresh node
+    node
+]
+]

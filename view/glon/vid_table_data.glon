@@ -1,0 +1,66 @@
+;; view/glon/vid_table_data.glon -- structured table data helpers.
+[
+table/bs: mk-string [ 92 ]
+table/esc-pipe: mk-string [ 92 124 ]
+table/esc-semi: mk-string [ 92 59 ]
+table/esc-nl: mk-string [ 92 110 ]
+
+table/escape: func [s] [ table/escape-at s 0 ]
+table/escape-at: func [s i] [
+    either < i s/length s [
+        b: s/at s i
+        either = b 92 [ s/+ table/bs table/escape-at s + i 1 ] [
+        either = b 124 [ s/+ table/esc-pipe table/escape-at s + i 1 ] [
+        either = b 59 [ s/+ table/esc-semi table/escape-at s + i 1 ] [
+        either = b 10 [ s/+ table/esc-nl table/escape-at s + i 1 ] [
+            s/+ s/slice s i 1 table/escape-at s + i 1
+        ] ] ] ]
+    ] [ "" ]
+]
+
+table/row-encode: func [cells] [ table/row-encode-rest cells 0 ]
+table/row-encode-at: func [cells i] [ table/escape block-at cells i ]
+table/row-encode-rest: func [cells i] [
+    either < i block-len cells [
+        next: table/row-encode-at cells i
+        rest: table/row-encode-rest cells + i 1
+        either = i 0 [ s/+ next rest ] [ s/+ "|" s/+ next rest ]
+    ] [ "" ]
+]
+
+table/rows-encode: func [rows] [ table/rows-encode-rest rows 0 ]
+table/rows-encode-at: func [rows i] [ table/row-encode block-at rows i ]
+table/rows-encode-rest: func [rows i] [
+    either < i block-len rows [
+        next: table/rows-encode-at rows i
+        rest: table/rows-encode-rest rows + i 1
+        either = i 0 [ s/+ next rest ] [ s/+ ";" s/+ next rest ]
+    ] [ "" ]
+]
+
+table/cols-encode: func [cols] [ table/cols-encode-rest cols 0 ]
+table/cols-encode-at: func [cols i] [
+    row: block-at cols i
+    a: table/escape block-at row 0
+    b: s/+ a ":"
+    c: s/+ b s/from-int block-at row 1
+    d: s/+ c ":"
+    e: s/+ d s/from-int block-at row 2
+    e
+]
+table/cols-encode-rest: func [cols i] [
+    either < i block-len cols [
+        next: table/cols-encode-at cols i
+        rest: table/cols-encode-rest cols + i 1
+        either = i 0 [ s/+ next rest ] [ s/+ ";" s/+ next rest ]
+    ] [ "" ]
+]
+
+table/columns-block: func [id cols] [
+    table/send s/+ "columns " s/+ s/from-int id s/+ " " table/cols-encode cols
+]
+table/rows-block: func [id rows] [
+    table/send s/+ "rows " s/+ s/from-int id s/+ " " table/rows-encode rows
+]
+
+]

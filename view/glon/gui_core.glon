@@ -1,0 +1,167 @@
+[
+gui/kind-face: 5
+gui/caps: reduce [ 1 ]
+gui/faces: 0
+gui/prop/style: 0
+gui/prop/parent: 1
+gui/prop/children: 2
+gui/prop/child-count: 3
+gui/prop/node: 4
+gui/prop/visible: 5
+gui/prop/enabled: 6
+gui/prop/focusable: 7
+gui/prop/focused: 8
+gui/prop/handler: 9
+gui/prop/x: 10
+gui/prop/y: 11
+gui/prop/w: 12
+gui/prop/h: 13
+gui/prop/state: 14
+gui/prop/text: 15
+gui/prop/widget: 16
+
+style/registry: 0
+
+style/facets: func [rows i next] [
+    either < i block-len rows [
+        row: block-at rows i
+        reduce [ block-at row 0 block-at row 1 style/facets rows + i 1 next ]
+    ] [ next ]
+]
+
+
+style/new: func [name facets] [
+    style/registry: reduce [ name style/facets facets 0 0 0 style/registry ]
+    name
+]
+
+style/derive: func [name parent overrides] [
+    rec: style/lookup parent
+    either = rec 0 [ 0 ] [
+        style/registry: reduce [ name style/facets overrides 0 block-at rec 1 parent style/registry ]
+        name
+    ]
+]
+
+style/lookup-at: func [reg name] [
+    either = reg 0 [ 0 ] [
+        either = block-at reg 0 name [ reg ] [ style/lookup-at block-at reg 3 name ]
+    ]
+]
+
+style/lookup: func [name] [ style/lookup-at style/registry name ]
+
+style/get: func [name key] [
+    rec: style/lookup name
+    either = rec 0 [ 0 ] [
+        scan: func [facets] [
+            either = facets 0 [ 0 ] [
+                either = block-at facets 0 key [ block-at facets 1 ] [ scan block-at facets 2 ]
+            ]
+        ]
+        v: scan block-at rec 1
+        either = v 0 [ style/get block-at rec 2 key ] [ v ]
+    ]
+]
+
+gui/new-block: func [spec] [
+    style: block-at spec 0
+    parent: block-at spec 1
+    x: block-at spec 2
+    y: block-at spec 3
+    w: block-at spec 4
+    h: block-at spec 5
+    text: block-at spec 6
+    children: reduce [ none none none none none none none none none none none none none none none none ]
+    props: reduce [ style parent children 0 0 1 1 0 0 0 x y w h 0 text 0 ]
+    face: sc/new gui/kind-face gui/caps props
+    node: view/next-id
+    pnode: either > parent 0 [ sc/get parent gui/prop/node ] [ 1 ]
+    view/create node pnode view/type-group x y w h 1 1 1 1
+    sc/set face gui/prop/node node
+    gui/faces: reduce [ node face gui/faces ]
+    either > parent 0 [ sc/add-child parent face ] [ 0 ]
+    face
+]
+
+gui/destroy: func [face] [
+    rec: sc/record face
+    either = rec 0 [ 0 ] [
+        children: sc/get face gui/prop/children
+        count: sc/get face gui/prop/child-count
+        clear: func [i] [
+            either < i count [
+                child: block-at children i
+                either > child 0 [ gui/destroy child ] [ 0 ]
+                clear + i 1
+            ] [ 0 ]
+        ]
+        clear 0
+            node: sc/get face gui/prop/node
+        either > node 0 [ view/destroy node ] [ 0 ]
+            sc/destroy face
+            1
+    ]
+]
+
+gui/set: func [face prop value] [
+    rec: sc/record face
+    either = rec 0 [ face ] [
+        sc/set face prop value
+        either = prop gui/prop/visible [
+            view/flags sc/get face gui/prop/node value 1 1 0
+        ] [
+            either = prop gui/prop/enabled [
+                view/flags sc/get face gui/prop/node 1 value 1 1
+            ] [ 0 ]
+        ]
+        face
+    ]
+]
+
+gui/set-enabled: func [face enabled] [ gui/set face gui/prop/enabled enabled ]
+gui/draw: func [face] [
+    style: sc/get face gui/prop/style
+    draw: style/get style 'draw
+    either = draw 0 [ 0 ] [ f: get draw f face ]
+]
+
+gui/dispatch: func [face event value] [
+    either = face 0 [ 0 ] [
+        handler: sc/get face gui/prop/handler
+        either = handler 0 [
+            style: sc/get face gui/prop/style
+            actor: style/get style event
+            either = actor 0 [
+                parent: sc/get face gui/prop/parent
+                either > parent 0 [ gui/dispatch parent event value ] [ 0 ]
+            ] [
+                f: get actor f face event value
+            ]
+        ] [
+            f: get block-at handler 0 f face event value
+        ]
+    ]
+]
+
+gui/lookup-face-at: func [list node] [
+    either = list 0 [ 0 ] [
+        either = block-at list 0 node [ block-at list 1 ] [ gui/lookup-face-at block-at list 2 node ]
+    ]
+]
+
+gui/lookup-face: func [node] [ gui/lookup-face-at gui/faces node ]
+
+gui/dispatch-view: func [node event value] [
+    face: gui/lookup-face node
+    either > face 0 [ gui/dispatch face event value ] [ 0 ]
+]
+
+gui-vocab: vocab/new [
+    [ new gui/new-block ]
+    [ destroy gui/destroy ]
+    [ set gui/set ]
+        [ dispatch gui/dispatch-view ]
+    [ draw gui/draw ]
+]
+]

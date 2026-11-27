@@ -1,0 +1,51 @@
+;; view/glon/vid_forms.glon -- themed table constructor.
+;; (INTENT-4B-1: the empty vid/radio-group stub was removed; one-of-n
+;; selection is Intent's choice, built from vid/radio.)
+[
+vid/table: func [theme parent x y w h cols rows] [
+    id: view/next-id
+    table/new id parent x y w h
+    vid/table-theme theme id
+    table/columns id cols
+    table/rows id rows
+    reduce [ vid/kind-table id theme ]
+]
+
+;; the host's table theme takes seven RGBA colours and a grid flag:
+;; background, surface, header, text, accent, border, alternate row
+vid/rgba: func [theme idx] [
+    s/+ " " s/+ s/from-int block-at theme idx
+    s/+ " " s/+ s/from-int block-at theme + idx 1
+    s/+ " " s/+ s/from-int block-at theme + idx 2
+    s/+ " " s/from-int block-at theme + idx 3
+]
+;; (INTENT-7: after the grid flag, the theme's table selection colour (slot
+;; 53) for the selected rows' background; the accent (13) stays the focus
+;; ring's.  The theme's text on slot 53 meets 4.5:1 in both themes
+;; (theme-contrast); on the accent, the light theme's dark text did not.)
+vid/table-theme: func [theme id] [
+    table/send s/+ "theme " s/+ s/from-int id
+        s/+ vid/rgba theme 5 s/+ vid/rgba theme 21 s/+ vid/rgba theme 37 s/+ vid/rgba theme 9
+        s/+ vid/rgba theme 13 s/+ vid/rgba theme 125 s/+ vid/rgba theme 129 s/+ " 1" vid/rgba theme 53
+]
+
+vid/clear-fields: func [state] [
+    kind: block-at state 0
+    either = kind vid/kind-panel [
+        children: block-at state 2
+        vid/clear-fields-at children 0
+        state
+    ] [
+        either = kind vid/kind-field [
+            either = block-at state 4 0 [ state ] [ vid/field/clear state ]
+        ] [ state ]
+    ]
+]
+
+vid/clear-fields-at: func [children i] [
+    either < i block-len children [
+        vid/clear-fields block-at children i
+        vid/clear-fields-at children + i 1
+    ] [ none ]
+]
+]

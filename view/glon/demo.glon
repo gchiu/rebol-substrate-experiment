@@ -1,0 +1,68 @@
+;; view/glon/demo.glon -- GV-1 demonstration.
+;;
+;; The UI is a declarative flat scene spec (the minimal Glon/VID vocabulary).
+;; The host creates the retained View scene from chunked spec blocks.  All
+;; application state and event behaviour live here.
+[
+v/focus: 5
+v/field-text: "Glon operator"
+v/status: "Ready"
+v/enabled: 0
+v/field: 5
+v/field-text-node: 6
+v/button: 7
+v/check: 9
+v/check-box: 10
+v/scene-button: 17
+v/canvas: 15
+v/id: 0
+v/table: 19
+v/table-rows: 300
+v/table-sort-col: 2
+v/table-sort-dir: 1
+v/table-filter: ""
+v/table-select-row: -1
+v/bs: mk-string [ 8 ]
+
+do-event: [
+    either = current-event 'view-click [
+        either s/= current-value "7" [ v/status: "Run pressed" ] [ none ]
+        either s/= current-value "9" [
+            v/enabled: either = v/enabled 1 [ 0 ] [ 1 ]
+            v/status: either = v/enabled 1 [ "Enabled" ] [ "Disabled" ]
+        ] [ none ]
+        either s/= current-value "17" [ v/status: "View button pressed" ] [ none ]
+        either s/= current-value "5" [ v/focus: 5  v/status: "Editing" ] [ none ]
+    ] [ none ]
+    either = current-event 'view-set-text [
+        v/field-text: current-value
+    ] [ none ]
+    either = current-event 'view-focus [
+        either s/= current-value "5" [ v/focus: 5 ] [ none ]
+    ] [ none ]
+    either = current-event 'view-char [
+        either = v/focus 5 [
+            either s/= current-value v/bs [
+                either > s/length v/field-text 0 [
+                    v/len: s/length v/field-text
+                    v/field-text: s/slice v/field-text 0 v/len - 1
+                ] [ none ]
+            ] [
+                v/field-text: s/+ v/field-text current-value
+            ]
+        ] [ none ]
+    ] [ none ]
+    either = current-event 'view-tick [
+        v/status: "Tick"
+        either = v/table-sort-dir 1 [
+            v/table-sort-dir: -1
+        ] [
+            v/table-sort-dir: 1
+        ]
+    ] [ none ]
+
+        ] [ none ]
+    ] [ none ]
+    ""
+]
+]

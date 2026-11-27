@@ -1,0 +1,92 @@
+[
+v/field-text: ""
+style/new 'base [
+    [ 'bg [40 44 52 255] ] [ 'fg [235 238 242 255] ] [ 'font 14 ]
+    [ 'border [70 76 86 255] ] [ 'box [24 26 30 255] ] [ 'focus [90 160 255 255] ]
+]
+style/derive 'root 'base [ [ 'bg [24 26 30 255] ] ]
+style/derive 'panel 'base [ [ 'bg [32 36 44 255] ] ]
+style/derive 'label 'base [ [ 'bg [0 0 0 0] ] ]
+style/derive 'field 'base [ [ 'bg [24 26 30 255] ] [ 'focused/bg [30 34 42 255] ] ]
+style/derive 'button 'base [ [ 'bg [40 100 180 255] ] [ 'hover/bg [60 120 200 255] ] [ 'pressed/bg [30 80 150 255] ] ]
+style/derive 'checkbox 'base [ [ 'bg [32 36 44 255] ] [ 'box [24 26 30 255] ] ]
+style/derive 'radio 'base [ [ 'bg [32 36 44 255] ] [ 'box [24 26 30 255] ] ]
+
+gc/collect: masm 0 [ CALL collect ARITY 0 EXIT ]
+gui3/app: reduce [ 'dark 0 0 0 reduce [ 0 0 0 0 0 0 ] 0 ]
+gui3/build-hook: [ gui3/app-build ]
+
+gui3/app-action: func [node] [
+    key: block-at gui3/state node 4
+    case [
+        [ = key 'theme ] [
+            l: gui3/scroll-state block-at gui3/app 1
+            r: gui3/scroll-state block-at gui3/app 2
+            n: gui3/scroll-state block-at gui3/app 3
+            saved: reduce [ block-at l 0 block-at l 1 block-at r 0 block-at r 1 block-at n 0 block-at n 1 ]
+            vid/set-block! gui3/app 4 saved
+            vid/set-block! gui3/app 0 either = block-at gui3/app 0 'dark [ 'light ] [ 'dark ]
+            gui3/rebuild
+        ]
+        [ = key 'down ] [ gui3/scroll-by block-at gui3/app 1 0 80 ]
+        [ = key 'up ] [ gui3/scroll-by block-at gui3/app 1 0 -80 ]
+        [ = key 'focus ] [ gui3/focus-set block-at gui3/app 1 ]
+        [ = key 'grow ] [ gui3/scroll-size block-at gui3/app 1 360 900 ]
+        [ = key 'hit ] [ vid/set-block! gui3/app 5 1 ]
+        [ 1 ] [ 0 ]
+    ]
+]
+
+gui3/app-build: func [] [
+    root: gui3/window 'root 700 480
+    head: gui3/container root 'panel view/layout-h 0 8 8
+    gui3/label head 'label "Scroll Demo"
+    gui3/button head 'button "Theme" 'theme 0
+    gui3/button head 'button "Down" 'down 0
+    gui3/button head 'button "Up" 'up 0
+    gui3/button head 'button "Focus" 'focus 0
+    gui3/button head 'button "Grow" 'grow 0
+    body: gui3/container root 'panel view/layout-h 0 8 8
+    left: gui3/scroll body 'panel 360 330 360 620
+    lc: gui3/scroll-content left
+    gui3/label lc 'label "Left region"
+    gui3/field lc 'field "edit me" 'f0
+    gui3/label lc 'label "Left 1"
+    gui3/field lc 'field "edit me" 'f1
+    gui3/checkbox lc 'checkbox "Subscribe" 'subscribe 0
+    inner: gui3/scroll lc 'panel 320 140 320 360
+    ic: gui3/scroll-content inner
+    gui3/label ic 'label "Inner 0"
+    gui3/label ic 'label "Inner 1"
+    gui3/label ic 'label "Inner 2"
+    gui3/label ic 'label "Inner 3"
+    gui3/label lc 'label "After nested 0"
+    gui3/label lc 'label "After nested 1"
+    gui3/label lc 'label "After nested 2"
+    gui3/button lc 'button "Hit" 'hit 0
+    right: gui3/scroll body 'panel 260 330 260 520
+    rc: gui3/scroll-content right
+    gui3/label rc 'label "Right region"
+    gui3/label rc 'label "Right 1"
+    gui3/label rc 'label "Right 2"
+    gui3/label rc 'label "Right 3"
+    gui3/label rc 'label "Right 4"
+    gui3/label rc 'label "Right 5"
+    gui3/label rc 'label "Right 6"
+    gui3/label rc 'label "Right 7"
+    gui3/label rc 'label "Right 8"
+    gui3/label rc 'label "Right 9"
+    gui3/label rc 'label "Right 10"
+    gui3/label rc 'label "Right 11"
+    gui3/label rc 'label "Right 12"
+    gui3/button rc 'button "Hit" 'hit 0
+    vid/set-block! gui3/app 1 left
+    vid/set-block! gui3/app 2 right
+    vid/set-block! gui3/app 3 inner
+    gui3/scroll-set left block-at block-at gui3/app 4 0 block-at block-at gui3/app 4 1
+    gui3/scroll-set right block-at block-at gui3/app 4 2 block-at block-at gui3/app 4 3
+    gui3/scroll-set inner block-at block-at gui3/app 4 4 block-at block-at gui3/app 4 5
+]
+
+do-event: [ gui3/handle ]
+]

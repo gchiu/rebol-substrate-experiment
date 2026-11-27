@@ -1,0 +1,23 @@
+;; experiments/gui-f1b/f1b_transport.glon -- GUI-F1B experiment overlay (the
+;; transport words of view_lib_p3.glon, loaded over the unchanged view_lib).
+;; widget/flush publishes the queued chunks by reference (v/out) and returns one
+;; constant 11-byte "batch-ref" fragment; the host then calls widget/take once.
+[
+v/sealed: 0
+v/out: 0
+view/send: func [cmd] [
+    line: s/+ "view " s/+ cmd nl
+    either > + s/length v/batch s/length line 4000 [
+        v/sealed: reduce [ v/batch v/sealed ]
+        v/batch: line
+    ] [ v/batch: s/+ v/batch line ]
+]
+widget/flush: func [] [
+    v/out: reduce [ reduce [ v/batch v/sealed ] v/out ]
+    v/batch: ""
+    v/sealed: 0
+    emit-host-call "batch-ref" ""
+]
+widget/take: func [] [ o: v/out v/out: 0 o ]
+
+]

@@ -1,0 +1,172 @@
+;; view/glon/view_lib.glon -- generic View vocabulary for Glon applications.
+;;
+;; This is an ordinary Glon library.  It emits G1A host-call requests; the host
+;; owns the retained View scene.  No widget semantics live here.
+[
+v/batch: ""
+vid/set-block!: masm 3 [
+    LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD !
+    ARITY 0 EXIT
+]
+nl: mk-string [ 10 ]
+view/id: 1
+view/type-window: 1
+view/type-group: 2
+view/type-text: 3
+view/type-rect: 4
+view/type-custom: 9
+view/layout-h: 1
+view/layout-v: 2
+view/next-id: func [] [ view/id: + view/id 1  view/id ]
+
+
+emit-clear: masm [ LIT 0 LIT SCRATCH_E ! ARITY 0 EXIT ]
+emit-byte: masm 1 [
+    LIT SCRATCH_E @ LIT G1_OUT_DATA ADD !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    ARITY 0 EXIT
+]
+emit-finish: masm [ LIT SCRATCH_E @ LIT G1_OUT ! LIT G1_OUT LIT T_BLOCK ADD ARITY 1 EXIT ]
+emit-text: masm 1 [
+    DUP LIT 16 MOD SUB LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_A !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+  emit-text-loop:
+    LIT SCRATCH_A @ LIT SCRATCH_F @ LT ZBRANCH emit-text-done
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_A @ ADD @ LIT 16 MUL
+    LIT G1_OUT_DATA LIT SCRATCH_E @ ADD
+    !
+    LIT SCRATCH_E @ LIT 1 ADD LIT SCRATCH_E !
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    BRANCH emit-text-loop
+  emit-text-done:
+    ARITY 0 EXIT
+]
+
+emit-host-call: func [op arg] [
+    either > + + 2 s/length op s/length arg 4095 [ raise create-sin 'view 'fragment-too-large s/length arg ] [
+        emit-clear emit-byte 1 emit-text op emit-byte 0 emit-text arg emit-finish
+    ]
+]
+
+v/sealed: 0
+v/out: 0
+view/send: func [cmd] [
+    line: s/+ "view " s/+ cmd nl
+    either > + s/length v/batch s/length line 4000 [
+        v/sealed: reduce [ v/batch v/sealed ]
+        v/batch: line
+    ] [ v/batch: s/+ v/batch line ]
+]
+widget/flush: func [] [
+    v/out: reduce [ reduce [ v/batch v/sealed ] v/out ]
+    v/batch: ""
+    v/sealed: 0
+    emit-host-call "batch-ref" ""
+]
+widget/take: func [] [ o: v/out v/out: 0 o ]
+
+join-block: func [b i] [
+    either < i block-len b [
+        s/+ block-at b i join-block b + i 1
+    ] [ "" ]
+]
+
+view/mknode: func [id parent ntype] [
+    view/send s/+ "new " s/+ s/from-int id s/+ " " s/+ s/from-int parent s/+ " " s/from-int ntype
+]
+
+view/create: func [id parent ntype x y w h visible enabled focusable pickable] [
+    view/send s/+ "create " s/+ s/from-int id s/+ " " s/+ s/from-int parent s/+ " " s/+ s/from-int ntype s/+ " " s/+ s/from-int x s/+ " " s/+ s/from-int y s/+ " " s/+ s/from-int w s/+ " " s/+ s/from-int h s/+ " " s/+ s/from-int visible s/+ " " s/+ s/from-int enabled s/+ " " s/+ s/from-int focusable s/+ " " s/from-int pickable
+]
+
+
+
+view/rect: func [id x y w h] [
+    view/send s/+ "rect " s/+ s/from-int id s/+ " " s/+ s/from-int x s/+ " " s/+ s/from-int y s/+ " " s/+ s/from-int w s/+ " " s/from-int h
+]
+
+view/flags: func [id visible enabled focusable pickable] [
+    view/send s/+ "flags " s/+ s/from-int id s/+ " " s/+ s/from-int visible s/+ " " s/+ s/from-int enabled s/+ " " s/+ s/from-int focusable s/+ " " s/from-int pickable
+]
+
+view/bg: func [id r g b a] [
+    view/send s/+ "bg " s/+ s/from-int id s/+ " " s/+ s/from-int r s/+ " " s/+ s/from-int g s/+ " " s/+ s/from-int b s/+ " " s/from-int a
+]
+
+view/fg: func [id r g b a] [
+    view/send s/+ "fg " s/+ s/from-int id s/+ " " s/+ s/from-int r s/+ " " s/+ s/from-int g s/+ " " s/+ s/from-int b s/+ " " s/from-int a
+]
+
+view/layout: func [id dir align spacing padding] [
+    view/send s/+ "layout " s/+ s/from-int id s/+ " " s/+ s/from-int dir s/+ " " s/+ s/from-int align s/+ " " s/+ s/from-int spacing s/+ " " s/from-int padding
+]
+
+view/destroy: func [id] [ view/send s/+ "destroy " s/from-int id ]
+view/text: func [id text] [ view/send s/+ "text " s/+ s/from-int id s/+ " " text ]
+view/fill: func [id fill-x fill-y] [
+    cmd: s/+ "fill " s/from-int id
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int fill-x
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int fill-y
+    view/send cmd
+]
+view/font: func [id size] [ view/send s/+ "font " s/+ s/from-int id s/+ " " s/from-int size ]
+view/text-align: func [id align] [ view/send s/+ "text-align " s/+ s/from-int id s/+ " " s/from-int align ]
+view/reparent: func [id par] [ view/send s/+ "parent " s/+ s/from-int id s/+ " " s/from-int par ]
+view/add-child: func [id par] [ view/reparent id par ]
+view/remove-child: func [id] [ view/reparent id 0 ]
+view/focus: func [id] [ view/send s/+ "focus " s/from-int id ]
+view/viewport: func [id x y] [
+    view/send s/+ "viewport " s/+ s/from-int id s/+ " " s/+ s/from-int x s/+ " " s/from-int y
+]
+view/invalidate: func [id layout] [ view/send s/+ "invalidate " s/+ s/from-int id s/+ " " s/from-int layout ]
+view/begin: func [] [ view/send "begin" ]
+view/end: func [] [ view/send "end" ]
+view/capabilities: func [] [ view/send "capabilities" ]
+view/enumerate: func [parent query] [ view/send s/+ "enumerate " s/+ s/from-int parent s/+ " " s/from-int query ]
+
+view/draw-clear: func [id] [ view/send s/+ "draw-clear " s/from-int id ]
+view/draw-rect: func [id x y w h r g b a] [
+    cmd: s/+ "draw-rect " s/from-int id
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int x
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int y
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int w
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int h
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int r
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int g
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int b
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int a
+    view/send cmd
+]
+view/draw-text: func [id x y size r g b a text] [
+    cmd: s/+ "draw-text " s/from-int id
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int x
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int y
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int size
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int r
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int g
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int b
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int a
+    cmd: s/+ cmd " "  cmd: s/+ cmd text
+    view/send cmd
+]
+view/get: func [id prop query] [
+    cmd: s/+ "get " s/from-int id
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int prop
+    cmd: s/+ cmd " "  cmd: s/+ cmd s/from-int query
+    view/send cmd
+]
+
+parse-int: func [s] [ parse-int-at s 0 0 ]
+parse-int-at: func [s i acc] [
+    either < i s/length s [
+        b: s/at s i
+        either >= b 48 [
+            either <= b 57 [
+                parse-int-at s + i 1 + * acc 10 - b 48
+            ] [ acc ]
+        ] [ acc ]
+    ] [ acc ]
+]
+]

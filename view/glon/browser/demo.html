@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Glon FOREIGN-2 test page</title>
+<style>
+  body { font-family: sans-serif; margin: 0; background: #f4f1ea; color: #222; }
+  header { background: linear-gradient(90deg, #2b5876, #4e4376); color: white; padding: 16px 20px; }
+  header h1 { margin: 0; font-size: 22px; }
+  main { padding: 16px 20px; }
+  .card { background: white; border-radius: 10px; padding: 12px 16px; margin: 12px 0;
+          box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+  label { display: inline-block; width: 90px; }
+  input { padding: 4px 6px; margin: 4px 0; }
+  button { padding: 5px 12px; border-radius: 6px; border: 1px solid #4e4376; background: #ece6ff; }
+  #out { font-weight: bold; color: #2b5876; }
+  .row { height: 34px; border-bottom: 1px solid #e3ddd0; line-height: 34px; }
+</style>
+</head>
+<body>
+<header><h1>Rendered by WebKit, inside a Glon Intent layout</h1></header>
+<main>
+  <div class="card">
+    <p>This page is HTML and CSS drawn by the browser engine. The controls on the left are Glon.</p>
+    <p>Links: <a href="#second">jump to the second section</a> ·
+       <a href="page2.html">another local page</a> ·
+       <a href="missing-page.html">a missing page (navigation fails)</a></p>
+  </div>
+  <div class="card">
+    <label for="a">First</label><input id="a" value="first input"><br>
+    <label for="b">Second</label><input id="b" value="second input"><br>
+    <button id="hello" onclick="document.getElementById('out').textContent =
+      'Clicked: ' + document.getElementById('a').value + ' / ' + document.getElementById('b').value;">Click me</button>
+    <span id="out">(not clicked yet)</span>
+  </div>
+  <div class="card" id="second">
+    <h2>Scrollable content</h2>
+    <div class="row">Row 1</div><div class="row">Row 2</div><div class="row">Row 3</div>
+    <div class="row">Row 4</div><div class="row">Row 5</div><div class="row">Row 6</div>
+    <div class="row">Row 7</div><div class="row">Row 8</div><div class="row">Row 9</div>
+    <div class="row">Row 10</div><div class="row">Row 11</div><div class="row">Row 12</div>
+    <div class="row">Row 13</div><div class="row">Row 14</div><div class="row">Row 15</div>
+    <div class="row">Row 16</div><div class="row">Row 17</div><div class="row">Row 18</div>
+    <p><input value="last input on the page"> (Tab beyond this leaves the browser)</p>
+  </div>
+</main>
+</body>
+</html>

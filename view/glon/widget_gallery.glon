@@ -1,0 +1,1019 @@
+[
+gc/collect: masm 0 [ CALL collect ARITY 0 EXIT ]
+v/field-text: ""
+;; host table policy words (every table app defines them; without them the
+;; host's post-event table policy lookup fails and the Table preview halts)
+v/table-sort-col: -1
+v/table-sort-dir: 1
+v/table-filter: ""
+v/table-select-row: -1
+gallery/theme: theme/dark
+gallery/status: "Ready"
+gallery/theme-id: 0
+gallery/table-id: 0
+gallery/root: 0
+;; View node-id reuse (GUI-4B2C): view/id before the first UI build and
+;; before the current preview; destroyed subtrees hand their ids back
+gallery/id-base: 0
+gallery/root-outer: 0
+gallery/pmark: 0
+gallery/source: ""
+gallery/ids: reduce [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+gallery/id: func [i] [ block-at gallery/ids i ]
+gallery/set-id: func [i v] [ vid/set-block! gallery/ids i v ]
+;; node id of the widget state in slot i, -1 when the slot is empty (an
+;; empty slot holds 0, and block-at on 0 reads raw memory)
+gallery/nid: func [i] [ st: gallery/id i either = st 0 [ -1 ] [ block-at st 1 ] ]
+gallery/widget-source: ""
+gallery/states: none
+;; widgets that take events (hover, press, focus): the UI's slots, read when
+;; an event arrives (a list taken at build time missed the preview's widgets,
+;; which are built after it), plus the current preview's other interactive
+;; buttons, gallery/pstates = [ state label next ] or 0
+gallery/slots: [ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 19 20 21 32 42 43 46 ]
+gallery/pstates: 0
+gallery/track: func [st label] [ gallery/pstates: reduce [ st label gallery/pstates ] st ]
+;; every widget that takes events now (tests read it)
+gallery/live-states: func [] [ gallery/live-from 0 gallery/live-list gallery/pstates ]
+gallery/live-from: func [i rest] [
+    either < i block-len gallery/slots [
+        st: gallery/id block-at gallery/slots i
+        either = st 0 [ gallery/live-from + i 1 rest ] [ reduce [ st gallery/live-from + i 1 rest ] ]
+    ] [ rest ]
+]
+gallery/live-list: func [l] [ either = l 0 [ 0 ] [ reduce [ block-at l 0 gallery/live-list block-at l 2 ] ] ]
+;; the label of the tracked preview button with node id, or 0
+gallery/tracked-label: func [l id] [
+    either = l 0 [ 0 ] [
+        either = block-at block-at l 0 1 id [ block-at l 1 ] [ gallery/tracked-label block-at l 2 id ]
+    ]
+]
+
+;; GUI-P2 responsive layout (vid_layout.glon).  The UI is built at its design
+;; size (1200 x 700) and placed by layout rules for the window size the host
+;; reports (view-resize); a resize re-applies the rules and never rebuilds.
+;; Below the minimum size the root viewport scrolls instead of clipping.
+lay/w: 1200
+lay/h: 700
+gallery/min-w: 960
+gallery/min-h: 660
+gallery/lay-root: -1
+gallery/lay-left: -1
+gallery/lay-center: -1
+gallery/lay-right: -1
+gallery/pscroll: -1
+;; the preview viewport's rule, and the rule count before a preview's own
+gallery/lay-pv: -1
+gallery/lay-mark: 0
+
+;; gallery/cat parts lo hi: join strings lo..hi-1 of a block, splitting in halves
+;; (depth log2 n, ~n log n bytes copied) -- used by widget_gallery_full.glon
+gallery/cat-range: func [parts lo hi] [
+    either = - hi lo 1 [ block-at parts lo ] [
+        mid: + lo / - hi lo 2
+        s/+ gallery/cat-range parts lo mid gallery/cat-range parts mid hi
+    ]
+]
+gallery/cat: func [parts i] [
+    either < i block-len parts [ gallery/cat-range parts i block-len parts ] [ "" ]
+]
+gallery/full-source: ""
+
+gallery/join-lines: func [lines i] [
+    either < i block-len lines [
+        s/+ block-at lines i s/+ nl gallery/join-lines lines + i 1
+    ] [ "" ]
+]
+
+;; the Field preview's text: survives Clear, focus changes, theme rebuilds
+;; and preview switches; the host's input buffer is not consulted
+gallery/field-value: ""
+;; until the first edit the field shows the prompt "Type here" (as before:
+;; the first keystroke replaces it)
+gallery/field-touched: 0
+;; the field takes typing only while it has the focus (shows its ring): keys
+;; must not reach it when another widget is focused or its tab page is hidden
+gallery/field-focused: func [] [
+    either = gallery/id 32 0 [ 0 ] [ = vid/focus-ring block-at gallery/id 32 9 ]
+]
+gallery/field-input: func [t] [
+    gallery/field-value: t
+    gallery/field-touched: 1
+    either = gallery/id 32 0 [ 0 ] [ vid/field/set-text gallery/id 32 t ]
+    either > gallery/id 39 0 [ view/text gallery/id 39 t ] [ 0 ]
+    gallery/set-status s/+ "Field: " t
+]
+;; t without its last UTF-8 character
+gallery/drop-last: func [t] [
+    n: s/length t
+    either = n 0 [ t ] [ gallery/drop-cont t - n 1 ]
+]
+gallery/drop-cont: func [t i] [
+    either either > i 0 [ either >= s/at t i 128 [ < s/at t i 192 ] [ 0 ] ] [ 0 ] [
+        gallery/drop-cont t - i 1
+    ] [ s/slice t 0 i ]
+]
+
+gallery/set-status: func [text] [
+    gallery/status: text
+    either > gallery/id 35 0 [ view/text gallery/id 35 text ] [ 0 ]
+    text
+]
+
+gallery/sync-nav: func [i k] [
+    either < k 9 [
+        ;; only rows whose selection changes are redrawn
+        either > gallery/id k 0 [
+            want: either = i k [ 1 ] [ 0 ]
+            either = block-at gallery/id k 5 want [ 0 ] [ vid/nav/set gallery/id k 5 want ]
+        ] [ 0 ]
+        gallery/sync-nav i + k 1
+    ] [
+        ;; the Tabs row lives in slot 46 and is preview 9
+        either > gallery/id 46 0 [
+            want: either = i 9 [ 1 ] [ 0 ]
+            either = block-at gallery/id 46 5 want [ 0 ] [ vid/nav/set gallery/id 46 5 want ]
+        ] [ 0 ]
+    ]
+]
+
+;; a section caption inside a preview (secondary colour, small font)
+gallery/section: func [theme parent x y w h text] [ vid/caption theme parent x y w h text ]
+
+;; The source pane is a host table in text mode (vid_table / view_cmd): one
+;; document, wrapped at the pane's width by the backend's own text shaping,
+;; only the rows in view drawn, with the table scrollbar (drag, track paging,
+;; wheel).  A wider pane reflows, a taller one shows more rows.  The document
+;; is the preview's documentation (from Glon) followed by the library file
+;; that implements the widget, read from disk; Full Source shows this
+;; gallery's own file.  Slot 40 is the pane's table, slot 45 is 1 in
+;; full-source mode.  Each document keeps its own position, as the document
+;; byte at the top (from table-scroll), so it survives a reflow, a preview
+;; switch and a rebuild: gallery/src-tops, one per preview, the last for Full
+;; Source.
+gallery/src-tops: reduce [ 0 0 0 0 0 0 0 0 0 0 0 ]
+gallery/src-key: func [] [ either = gallery/id 45 1 [ 10 ] [ gallery/id 38 ] ]
+;; the position after the number at i and its space
+gallery/after-int: func [s i] [ + s/scan-set s i "0123456789" 1 ]
+gallery/src-size: 11
+;; the library file shown with preview i
+gallery/src-files: reduce [
+    "view/glon/vid_widgets.glon" "view/glon/vid_widgets.glon" "view/glon/vid_widgets.glon"
+    "view/glon/vid_widgets.glon" "view/glon/vid_widgets.glon" "view/glon/vid_widgets.glon"
+    "view/glon/vid_fields.glon" "view/glon/vid_table.glon" "view/glon/vocab_lib.glon"
+    "view/glon/vid_tabs.glon"
+]
+gallery/src-file: func [] [
+    either = gallery/id 45 1 [ "view/glon/widget_gallery.glon" ] [ block-at gallery/src-files gallery/id 38 ]
+]
+gallery/show-source: func [] [
+    sid: gallery/id 40
+    either = sid 0 [ 0 ] [
+        table/text-reset sid gallery/src-size
+        either = gallery/id 45 1 [ 0 ] [ table/text sid gallery/source ]
+        table/text sid s/+ nl s/+ "-- Source: " s/+ gallery/src-file s/+ " --" nl
+        table/text-file sid gallery/src-file
+        table/text-top sid block-at gallery/src-tops gallery/src-key
+    ]
+]
+;; slots 12..21, 31, 32 and 39 hold widgets of the current preview
+gallery/clear-preview-ids: func [i] [
+    either < i 22 [ gallery/set-id i 0 gallery/clear-preview-ids + i 1 ] [
+        gallery/set-id 31 0 gallery/set-id 32 0 gallery/set-id 39 0
+    ]
+]
+
+gallery/select: func [i source] [
+    gallery/set-id 45 0
+    gallery/set-id 38 i
+    gallery/sync-nav i 0
+    gallery/widget-source: s/+ source gallery/doc-vid
+    gallery/source: gallery/widget-source
+    either > gallery/id 33 0 [ view/destroy gallery/id 33 ] [ 0 ]
+    gallery/set-id 33 0
+    ;; the preview's table (if any) went with it; with ids reused, a stale
+    ;; table id would name some later node
+    gallery/set-id 36 0
+    gallery/table-id: 0
+    gallery/clear-preview-ids 12
+    gallery/pstates: 0
+    either = gallery/pmark 0 [ gallery/pmark: view/id ] [ view/id: gallery/pmark ]
+    either < gallery/pscroll 0 [ 0 ] [ lay/scroll-content gallery/pscroll 600 604 ]
+    ;; a preview's own layout rules go with it
+    lay/truncate gallery/lay-mark
+    c: gallery/id 37
+    ;; a flat either chain (same dispatch as a `case` on i)
+    gallery/set-id 33 either = i 0 [ gallery/build-window-preview gallery/theme c ] [
+        either = i 1 [ gallery/build-panel-preview gallery/theme c ] [
+        either = i 2 [ gallery/build-label-preview gallery/theme c ] [
+        either = i 3 [ gallery/build-button-preview gallery/theme c ] [
+        either = i 4 [ gallery/build-checkbox-preview gallery/theme c ] [
+        either = i 5 [ gallery/build-radio-preview gallery/theme c ] [
+        either = i 6 [ gallery/build-field-preview gallery/theme c ] [
+        either = i 7 [ gallery/build-table-preview gallery/theme c ] [
+        either = i 8 [ gallery/build-vocab-preview gallery/theme c ] [
+        either = i 9 [ gallery/build-tabs-preview gallery/theme c ] [ 0 ] ] ] ] ] ] ] ] ] ]
+    view/flags gallery/id 33 1 1 0 0
+    lay/apply lay/w lay/h
+    either > gallery/id 40 0 [ gallery/show-source ] [ 0 ]
+    gallery/set-status "Selected widget"
+]
+
+gallery/src-window: gallery/join-lines reduce [
+    "vid/window theme w h"
+] 0
+gallery/src-panel: gallery/join-lines reduce [
+    "vid/panel theme parent x y w h dir align spacing padding children"
+] 0
+gallery/src-label: gallery/join-lines reduce [
+    "vid/label theme parent x y w h text"
+] 0
+gallery/src-button: gallery/join-lines reduce [
+    "vid/button theme parent x y w h text"
+] 0
+gallery/src-checkbox: gallery/join-lines reduce [
+    "vid/checkbox theme parent x y text checked"
+] 0
+gallery/src-radio: gallery/join-lines reduce [
+    "vid/radio theme parent x y text selected"
+] 0
+gallery/src-field: gallery/join-lines reduce [
+    "vid/field theme parent x y w h text readonly"
+] 0
+;; joined in two parts: gallery/join-lines recurses once per line, and the
+;; return stack holds about 80 frames (one part of ~76 lines overflowed it)
+gallery/src-table-a: gallery/join-lines reduce [
+    "vid/table theme parent x y w h cols rows"
+    ""
+    "-- VID table: rows live in the host --"
+    "The table keeps its rows in a C row store and draws only the rows that fit, so scrolling 100 or 100,000 records costs the same. Glon decides the columns, the data and what a click means."
+    ""
+    "-- Making a table --"
+    "t: vid/table theme parent x y w h cols rows"
+    "   cols   title:width:align for each column, separated by ;"
+    "          (align 0 left, 2 right): #:44:2;Name:182:0"
+    "   rows   cells separated by a bar, rows by ; (may be empty)"
+    "id: block-at t 1          the table's View node"
+    ""
+    "-- Rows one at a time --"
+    "table/row id text         append one row (cells by bar)"
+    "table/set-cell id r c x   replace one cell"
+    "table/delete id r         remove row r"
+    "One View command line holds about 4 KB, so large data goes row by row; the gallery sends 100 rows with table/row."
+    ""
+    "-- Selection and focus --"
+    "The host sends table-click tttt rrrr cccc (table, row, column)."
+    "   row: parse-int-at value 5 0"
+    "   table/clear-selection id    then table/select id row"
+    "   table/focus id row 0"
+    "table/select only adds a row; table/deselect id row removes one and table/focus id -1 0 hides the focused cell. Here a click on the selected row unselects it."
+    ""
+    "-- Scrolling --"
+    "The wheel over a table scrolls it three rows a step; at the first or last row the wheel goes on to the enclosing viewport. A click on the scrollbar track pages; the thumb shows where the view is. The header row always stays at the top."
+    "   table/scroll id delta     move the first visible row"
+    "The host reports table-scroll id first-row top-byte, so an application can keep the position: the gallery restores it after a rebuild (theme switch, preview switch). The scrollbar is 14 px wide; drag its thumb (the drag goes on outside the window until the button is released)."
+] 0
+gallery/src-table-b: gallery/join-lines reduce [
+    "-- International text --"
+    "Cells are UTF-8. Pango shapes them with font fallback (DejaVu Sans for Latin, Greek, Cyrillic and Hebrew; Droid Sans Fallback for Chinese and Japanese). A cell wider than its column is ellipsised at a character boundary, never inside a multibyte sequence, and clipped to the column:"
+    "   趙世榮 Zhao Shirong      高要 Gaoyao"
+    "   陳美玲 Chan Mei-ling     增城 Zengcheng"
+    "   张伟 Zhang Wei           广州 (简体) / 廣州 Guangzhou"
+    "   Mere Pōmare             Ōtautahi Christchurch"
+    "Māori macrons ā ē ī ō ū and accents é ü ñ ø need no setup."
+    ""
+    "-- Sorting and filtering --"
+    "table/sort id col dir     dir 1 ascending, -1 descending"
+    "table/filter id text      show rows containing text"
+    "Both keep the row store; only the view order changes, and a selected row stays selected by its row id."
+    ""
+    "-- Cell kinds --"
+    "table/kind id r c table/cell-checkbox   a check box cell"
+    "table/kind id r c table/cell-indicator  a coloured dot"
+    "table/readonly id r c 1                 no editing"
+    ""
+    "-- Editing --"
+    "table/edit id r c text    start editing a cell"
+    "table/edit-text id text   the text being edited"
+    "table/commit id           keep it; table/cancel id: drop it"
+    ""
+    "-- Column widths --"
+    "Drag the divider between two column headers to resize the column on its left (the pointer becomes a horizontal resize arrow); double-click the divider to fit the column to its title and cells (24 to 480 px). A flexible column (fourth spec field 1, here Notes) takes the spare width and grows with the window; # stays narrow. Cells keep their whole text: a wider column shows more of it. When the table is narrower than its columns nothing shrinks; the columns on the right are cut at the scrollbar."
+    "   cols   title:width:align:flex   e.g. Notes:156:0:1"
+    "The host reports table-columns id want:flex;... after a drag or a fit; the gallery keeps the string and gives it back with table/widths id spec after a rebuild, so widths survive scrolling, preview switches and theme switches."
+    "   table/col-width id c w   set one column (no longer flexible)"
+    ""
+    "-- Theme --"
+    "vid/table-theme theme id  colours from the WG-3 theme slots:"
+    "background 5, surface 21, header 37, text 9, accent 13, border 125, alternate row 129. A theme switch rebuilds the table; its rows, position and selection come back."
+] 0
+gallery/src-table: s/+ gallery/src-table-a s/+ nl s/+ nl gallery/src-table-b
+gallery/src-vocab: gallery/join-lines reduce [
+    "vocab/call0 gallery-vocab 'theme"
+    "vocab/call1 gallery-vocab 'status status"
+    "vocab/call2 gallery-vocab 'add 2 3"
+] 0
+
+gallery/vocab-theme: func [] [
+    gallery/theme: either = gallery/theme theme/dark [ theme/light ] [ theme/dark ]
+    gallery/build-ui gallery/theme
+]
+
+gallery-vocab: vocab/new [
+    [ theme gallery/vocab-theme ]
+    [ status gallery/set-status ]
+    [ add + ]
+]
+
+gallery/build-left: func [theme root] [
+    p: vid/panel theme root 16 16 224 668 0 0 0 0 []
+    id: block-at p 1
+    ;; fixed width, full height
+    gallery/lay-left: lay/add id 1 gallery/lay-root 16 0 16 0 224 0 -32 1000 0 0
+    vid/heading theme id 16 14 192 24 "Widget Gallery"
+    vid/caption theme id 16 40 192 18 "VID components"
+    gallery/set-id 0  vid/nav-item theme id 8 70 208 32 "Window" 0
+    gallery/set-id 1  vid/nav-item theme id 8 104 208 32 "Panel" 0
+    gallery/set-id 2  vid/nav-item theme id 8 138 208 32 "Label" 0
+    gallery/set-id 3  vid/nav-item theme id 8 172 208 32 "Button" 0
+    gallery/set-id 4  vid/nav-item theme id 8 206 208 32 "Checkbox" 0
+    gallery/set-id 5  vid/nav-item theme id 8 240 208 32 "Radio" 0
+    gallery/set-id 6  vid/nav-item theme id 8 274 208 32 "Field" 0
+    gallery/set-id 7  vid/nav-item theme id 8 308 208 32 "Table" 0
+    gallery/set-id 8  vid/nav-item theme id 8 342 208 32 "Vocabulary" 0
+    gallery/set-id 46 vid/nav-item theme id 8 376 208 32 "Tabs" 0
+    vid/rect theme id 16 426 192 1 125
+    vid/caption theme id 16 438 192 18 "View"
+    theme-button: vid/button theme id 16 462 192 30 "Theme"
+    gallery/set-id 9  theme-button
+    gallery/theme-id: block-at theme-button 1
+    gallery/set-id 10  vid/button theme id 16 500 192 30 "Full Source"
+    gallery/set-id 11  vid/button theme id 16 538 192 30 "Widget Source"
+    ;; the status row stays at the bottom of the pane
+    foot: view/next-id
+    view/create foot id view/type-group 0 624 224 44 1 1 0 0
+    lay/add foot 0 gallery/lay-left 0 0 -44 1000 224 0 44 0 0 0
+    vid/rect theme foot 0 0 224 1 125
+    status: vid/caption theme foot 16 10 192 24 "Ready"
+    gallery/set-id 35 block-at status 1
+]
+
+gallery/preview-shell: func [theme parent x y w h] [
+    g: view/next-id
+    view/create g parent view/type-group x y w h 1 1 0 0
+    reduce [ g g ]
+]
+
+gallery/build-window-preview: func [theme parent] [
+    s: gallery/preview-shell theme parent 4 68 592 596
+    g: block-at s 0
+    c: block-at s 1
+    gallery/section theme c 16 0 500 20 "Window / panel / nested layout"
+    outer: vid/panel theme c 16 24 548 440 0 0 0 0 []
+    oc: block-at outer 1
+    vid/label theme oc 16 12 500 24 "Nested panel"
+    inner: vid/panel theme oc 16 48 500 120 view/layout-h 0 8 8 []
+    ic: block-at inner 1
+    vid/label theme ic 8 8 160 24 "Horizontal"
+    gallery/track vid/button theme ic 8 44 120 30 "One" "One"
+    gallery/track vid/button theme ic 140 44 120 30 "Two" "Two"
+    inner2: vid/panel theme oc 16 188 500 120 view/layout-v 0 8 8 []
+    i2: block-at inner2 1
+    vid/label theme i2 8 8 160 24 "Vertical"
+    gallery/track vid/button theme i2 8 44 120 30 "Three" "Three"
+    gallery/track vid/button theme i2 140 44 120 30 "Four" "Four"
+    g
+]
+
+gallery/build-panel-preview: func [theme parent] [
+    s: gallery/preview-shell theme parent 4 68 592 596
+    g: block-at s 0
+    c: block-at s 1
+    gallery/section theme c 16 0 500 20 "Panel / hbox / vbox"
+    h: vid/panel theme c 16 24 548 120 view/layout-h 0 12 8 []
+    hc: block-at h 1
+    vid/label theme hc 8 8 160 24 "Horizontal layout"
+    gallery/track vid/button theme hc 8 44 120 30 "Button A" "Button A"
+    gallery/track vid/button theme hc 140 44 120 30 "Button B" "Button B"
+    v: vid/panel theme c 16 164 548 260 view/layout-v 0 12 8 []
+    vc: block-at v 1
+    vid/label theme vc 8 8 160 24 "Vertical layout"
+    gallery/track vid/button theme vc 8 44 120 30 "Top" "Top"
+    gallery/track vid/button theme vc 140 44 120 30 "Bottom" "Bottom"
+    g
+]
+
+gallery/doc-vid-lines: gallery/join-lines reduce [
+    ""
+    "-- VID: the widget layer of Glon/View --"
+    "Every widget is a constructor that makes View nodes and answers a state block; the application keeps the block and passes events to it. Nothing about widgets lives in C."
+    ""
+    "-- Building a window --"
+    "vid/window theme w h                 the root window"
+    "p: vid/panel theme parent x y w h dir align spacing pad []"
+    "c: block-at p 1                      the panel's content group"
+    "vid/label theme c 16 16 200 24 text"
+    "b: vid/button theme c 16 52 120 30 text"
+    "f: vid/field theme c 16 96 300 30 text readonly"
+    ""
+    "-- Events --"
+    "The host sends events (view-click, view-char, view-key, view-focus, view-blur, view-wheel, view-resize ...) with a value; do-event runs for each one. A widget updates its look with vid/event state; the application decides what an activation does:"
+    "   do-event: ["
+    "       vid/event b"
+    "       either = current-event 'view-click [ ... ] [ 0 ]"
+    "       widget/flush"
+    "   ]"
+    ""
+    "-- Themes --"
+    "theme/dark and theme/light are blocks of colour slots (r g b a from slot 1 + 4k): 1 window, 5 pane surface, 9 text, 13 accent, 17 border, 21 input, 105 focus ring, 109 control. A theme switch rebuilds the UI; view/id is rewound so node ids are reused instead of exhausted."
+    ""
+    "-- Layout that follows the window --"
+    "lay/add node kind parent x0 fx y0 fy w0 fw h0 fh minw minh"
+    "   x = x0 + fx * parent-w / 1000, and so on for y, w, h"
+    "lay/apply w h places every rule; a resize never rebuilds."
+    "lay/scroll gives a viewport a scroll record: wheel, thumbs and"
+    "focus reveal."
+    ""
+    "-- Tabs --"
+    "t: vid/tabs theme parent x y w h labels hook"
+    "vid/tabs/page t i          build page i's content here"
+    "Pages are kept, only shown or hidden, so their state stays."
+    ""
+    "-- Commands are cheap --"
+    "View commands are written into one reusable buffer with no temporary strings (view_cmd.glon); a batch reaches the host by reference. Building this whole gallery takes about 0.15 s."
+    ""
+    "-- This pane --"
+    "This pane is a host table in text mode: one document, wrapped at the pane's width by the backend's own text shaping (Pango), never inside a UTF-8 sequence. A wider pane reflows, a taller one shows more rows; only the rows in view are drawn."
+    "The wheel over this text scrolls it three rows a step; Scroll Up and Scroll Down, or a click on the scrollbar track, move a page; the 14 px thumb drags. It scrolls on its own: the table and the preview do not move. Each preview's document keeps its own place, across resizing, preview switches and theme switches."
+    "   table/text-reset id size    table/text id str    table/text-file id path"
+    "   table/page id dir           table/text-top id byte"
+    ""
+    "Below: the library file that implements the widget, read from disk."
+] 0
+gallery/doc-vid: s/+ nl gallery/doc-vid-lines
+gallery/src-tabs: gallery/join-lines reduce [
+    "vid/tabs theme parent x y w h labels hook"
+    "vid/tabs/page st i   vid/tabs/select st i"
+] 0
+;; the Tabs preview's tab sets and their labels, for the status line
+gallery/tabs-a: 0
+gallery/tabs-b: 0
+gallery/tab-names-a: reduce [ "General" "Details" "Nested" ]
+gallery/tab-names-b: reduce [ "One" "Two" ]
+gallery/tab-changed: func [st i] [
+    names: either = block-at st 1 block-at gallery/tabs-a 1 [ gallery/tab-names-a ] [ gallery/tab-names-b ]
+    gallery/set-status s/+ "Tab: " block-at names i
+]
+
+;; ---- Table preview: 100 records with international text -------------------
+;; Rows are made from these lists (row i: name i, place 7i, note 5i, mod the
+;; list lengths), generated once and cached; the host keeps them in its row
+;; store and draws only the visible rows.  Scroll position and selection
+;; survive preview switches and rebuilds (gallery/table-start, -sel).
+gallery/table-widths: ""
+gallery/table-start: 0
+gallery/table-sel: -1
+gallery/table-rows: 0
+gallery/tnames: reduce [
+    "趙世榮 Zhao Shirong"
+    "陳美玲 Chan Mei-ling"
+    "张伟 Zhang Wei"
+    "李嘉欣 Li Ka-yan"
+    "王芳 Wang Fang"
+    "Aroha Te Whare"
+    "Mere Pōmare"
+    "Hēmi Rāwiri"
+    "Tūī Ngātai"
+    "Āwhina Kōtare"
+    "José Martínez"
+    "Zoë Ørsted"
+    "François Lefèvre"
+    "Sigrún Þórsdóttir"
+    "Łukasz Wiśniewski"
+    "Αλέξανδρος Παπαδόπουλος-Ηλιόπουλος"
+    "Мария Иванова"
+    "田中さくら Tanaka Sakura"
+    "דוד כהן David Cohen"
+    "黄志明 Wong Chi-ming"
+]
+gallery/tplaces: reduce [
+    "高要 Gaoyao"
+    "增城 Zengcheng"
+    "廣州 Guangzhou"
+    "广州 (简体)"
+    "台山 Taishan"
+    "開平 Kaiping"
+    "香港 Hong Kong"
+    "澳門 Macau"
+    "Ōtautahi Christchurch"
+    "Tāmaki Makaurau Auckland"
+    "Te Whanganui-a-Tara Wellington"
+    "Rotorua"
+    "Αθήνα Athens"
+    "Москва Moscow"
+    "東京 Tokyo"
+    "Zürich"
+]
+gallery/tnotes: reduce [
+    "Member since 1998"
+    "會員 Member"
+    "新會員 new member, welcome"
+    "Kia ora, nau mai haere mai"
+    "Kaumātua: whānau of Ngāti Porou"
+    "Prefers 中文 for letters"
+    "長備註：趙世榮在增城出生，後來搬到 Ōtautahi Christchurch 工作，每年都回廣州探親。"
+    "Long note: café crème, naïve résumé, coöperation, Ångström, façade — beyond the column"
+    "简体与繁體混合：张伟 / 張偉 lives near 高要 and 增城"
+    "Ελληνικά και English μαζί"
+    "Русский текст and English"
+    "Mixed ひらがな カタカナ 漢字 with English words that keep going"
+]
+gallery/tmod: func [a b] [ - a * / a b b ]
+gallery/table-row-text: func [i] [
+    k: - i 1
+    s/+ s/from-int i s/+ "|" s/+ block-at gallery/tnames gallery/tmod k 20
+        s/+ "|" s/+ block-at gallery/tplaces gallery/tmod * k 7 16
+        s/+ "|" block-at gallery/tnotes gallery/tmod * k 5 12
+]
+gallery/table-row: func [i] [
+    either = gallery/table-rows 0 [ gallery/table-rows: gallery/make100 ] [ 0 ]
+    r: block-at gallery/table-rows - i 1
+    either = r 0 [ r: gallery/table-row-text i  vid/set-block! gallery/table-rows - i 1 r ] [ 0 ]
+    r
+]
+gallery/make100: func [] [ reduce [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ] ]
+;; rows i..n (at most ten deep: the return stack is small), in tens
+gallery/table-fill: func [tid i n] [
+    either <= i n [ table/row tid gallery/table-row i  gallery/table-fill tid + i 1 n ] [ 0 ]
+]
+gallery/table-fill-all: func [tid k] [
+    either < k 10 [
+        gallery/table-fill tid + * k 10 1 * + k 1 10
+        gallery/table-fill-all tid + k 1
+    ] [ 0 ]
+]
+
+;; Tabs: a tab set in a panel, its pages keep their state; the third page
+;; holds a panel with a second tab set.  Both stretch with the preview pane.
+;; (Split in parts: a context holds at most 16 bindings.)
+gallery/build-tabs-preview: func [theme parent] [
+    s: gallery/preview-shell theme parent 4 68 592 596
+    c: block-at s 1
+    gallery/section theme c 16 0 500 20 "Tabs: one selected; pages keep their state"
+    outer: vid/panel theme c 16 24 548 520 0 0 0 0 []
+    oc: block-at outer 1
+    op: lay/add oc 1 gallery/lay-pv 16 0 24 0 -40 1000 -84 1000 400 360
+    a: vid/tabs theme oc 16 16 516 488 gallery/tab-names-a [ gallery/tab-changed ]
+    gallery/tabs-a: a
+    gallery/track a "Tabs"
+    ta: lay/add a 5 op 16 0 16 0 -32 1000 -32 1000 0 0
+    gallery/tabs-page-general theme vid/tabs/page a 0
+    gallery/tabs-page-details theme vid/tabs/page a 1
+    gallery/tabs-page-nested theme vid/tabs/page a 2 ta
+    block-at s 0
+]
+gallery/tabs-page-general: func [theme p] [
+    vid/label theme p 16 16 300 24 "Name"
+    gallery/set-id 32 vid/field theme p 16 44 300 30 either = gallery/field-touched 1 [ gallery/field-value ] [ "Type here" ] 0
+    gallery/set-id 14 vid/checkbox theme p 16 92 "Notifications" 0
+]
+gallery/tabs-page-details: func [theme p] [
+    vid/label theme p 16 16 400 24 "Details page"
+    gallery/track vid/button theme p 16 52 120 30 "Save" "Save"
+]
+gallery/tabs-page-nested: func [theme p ta] [
+    inner: vid/panel theme p 16 16 460 300 0 0 0 0 []
+    ic: block-at inner 1
+    ip: lay/add ic 1 ta 16 0 16 0 -56 1000 300 0 300 0
+    b: vid/tabs theme ic 16 16 420 240 gallery/tab-names-b [ gallery/tab-changed ]
+    gallery/tabs-b: b
+    gallery/track b "Inner tabs"
+    lay/add b 5 ip 16 0 16 0 -40 1000 240 0 0 0
+    vid/label theme vid/tabs/page b 0 16 16 300 24 "Inner page one"
+    q1: vid/tabs/page b 1
+    vid/label theme q1 16 16 300 24 "Inner page two"
+    gallery/track vid/button theme q1 16 52 120 30 "Inner" "Inner"
+]
+
+gallery/build-label-preview: func [theme parent] [
+    s: gallery/preview-shell theme parent 4 68 592 596
+    g: block-at s 0
+    c: block-at s 1
+    gallery/section theme c 16 0 500 20 "Label / Unicode"
+    vid/label theme c 16 32 500 28 "Hello, World"
+    vid/label theme c 16 72 500 28 "Hello, 世界"
+    vid/label theme c 16 112 500 28 "Mixed π, λ, 中文"
+    vid/label theme c 16 152 500 28 "Lambton Quay"
+    g
+]
+
+gallery/build-button-preview: func [theme parent] [
+    s: gallery/preview-shell theme parent 4 68 592 596
+    g: block-at s 0
+    c: block-at s 1
+    gallery/section theme c 16 0 500 20 "Button variants"
+    gallery/set-id 12 vid/primary-button theme c 16 28 140 34 "Activate"
+    gallery/track vid/button theme c 168 28 140 34 "Secondary" "Secondary"
+    gallery/track vid/danger-button theme c 320 28 140 34 "Delete" "Delete"
+    gallery/section theme c 16 90 500 20 "Button states"
+    b1: vid/button theme c 16 118 100 34 "Normal"
+    b2: vid/button theme c 128 118 100 34 "Hover"
+    b3: vid/button theme c 240 118 100 34 "Pressed"
+    b4: vid/button theme c 352 118 100 34 "Focus"
+    b5: vid/button theme c 464 118 100 34 "Disabled"
+    vid/button/set-hovered b2 1
+    vid/button/set-pressed b3 1
+    vid/button/set-focused b4 1
+    vid/button/set-enabled b5 0
+    g
+]
+
+gallery/build-checkbox-preview: func [theme parent] [
+    s: gallery/preview-shell theme parent 4 68 592 596
+    g: block-at s 0
+    c: block-at s 1
+    gallery/section theme c 16 0 500 20 "Checkbox"
+    gallery/set-id 14  vid/checkbox theme c 16 32 "Active" 1
+    gallery/set-id 15  vid/checkbox theme c 16 72 "Mailing list" 0
+    g
+]
+
+gallery/build-radio-preview: func [theme parent] [
+    s: gallery/preview-shell theme parent 4 68 592 596
+    g: block-at s 0
+    c: block-at s 1
+    gallery/section theme c 16 0 500 20 "Radio"
+    gallery/set-id 16  vid/radio theme c 16 32 "Individual" 1
+    gallery/set-id 17  vid/radio theme c 16 72 "Household" 0
+    gallery/set-id 18  vid/radio theme c 16 112 "Business" 0
+    g
+]
+
+gallery/build-field-preview: func [theme parent] [
+    s: gallery/preview-shell theme parent 4 68 592 596
+    g: block-at s 0
+    c: block-at s 1
+    gallery/section theme c 16 0 500 20 "Field"
+    f1: vid/field theme c 16 32 500 30 "Normal" 0
+    vid/field/set-focused f1 1
+    f2: vid/field theme c 16 76 500 30 "Disabled" 1
+    vid/field/set-enabled f2 0
+    gallery/set-id 32  vid/field theme c 16 120 500 30 either = gallery/field-touched 1 [ gallery/field-value ] [ "Type here" ] 0
+    clear: vid/button theme c 16 166 100 30 "Clear"
+    gallery/set-id 13 clear
+    live-label: vid/label theme c 16 216 500 28 "Live preview"
+    gallery/set-id 39 block-at live-label 1
+    g
+]
+
+gallery/build-table-preview: func [theme parent] [
+    s: gallery/preview-shell theme parent 4 68 592 596
+    g: block-at s 0
+    c: block-at s 1
+    gallery/section theme c 16 0 500 20 "Table: 100 records; wheel or scrollbar; header stays"
+    gallery/set-id 31  vid/table theme c 16 24 548 380
+        "#:44:2;Name:182:0;Place:156:0;Notes:156:0:1" ""
+    tid: block-at gallery/id 31 1
+    gallery/table-id: tid
+    gallery/set-id 36 tid
+    ;; the table is as wide as the preview pane allows (its scrollbar stays at
+    ;; the visible right edge; narrower than its columns, the last one is cut
+    ;; by the table's own clip), at least 300; fixed height
+    lay/add tid 0 gallery/lay-pv 16 0 24 0 -40 1000 380 0 300 0
+    gallery/table-fill-all tid 0
+    ;; back where the user left it
+    either < gallery/table-sel 0 [ 0 ] [
+        table/select tid gallery/table-sel
+        table/focus tid gallery/table-sel 0
+    ]
+    either = gallery/table-start 0 [ 0 ] [ table/scroll tid gallery/table-start ]
+    ;; column widths the user dragged or fitted
+    either = s/length gallery/table-widths 0 [ 0 ] [ table/widths tid gallery/table-widths ]
+    g
+]
+
+gallery/build-vocab-preview: func [theme parent] [
+    s: gallery/preview-shell theme parent 4 68 592 596
+    g: block-at s 0
+    c: block-at s 1
+    gallery/section theme c 16 0 500 20 "V-1 vocabulary dispatch"
+    gallery/set-id 19  vid/button theme c 16 32 160 32 "Call Theme"
+    gallery/set-id 20  vid/button theme c 190 32 160 32 "Call Status"
+    gallery/set-id 21  vid/button theme c 16 76 160 32 "Call Add"
+    vid/label theme c 16 126 500 24 "vocab/call0 / call1 / call2"
+    g
+]
+
+gallery/build-center: func [theme root] [
+    p: vid/panel theme root 252 16 600 668 0 0 0 0 []
+    id: block-at p 1
+    ;; takes 3/4 of the width beyond 1200 and all the extra height
+    gallery/lay-center: lay/add id 1 gallery/lay-root 252 0 16 0 -300 750 -32 1000 0 0
+    vid/heading theme id 20 14 560 24 "Live preview"
+    vid/caption theme id 20 40 560 18 "Rendered by the VID widget library"
+    ;; previews are built (at y 68 and below, as before) into a content group
+    ;; shifted up by 64 inside a viewport below the heading: a pane smaller
+    ;; than the preview scrolls it (wheel, focus reveal) instead of clipping
+    pv: view/next-id
+    view/create pv id 8 0 64 600 604 1 1 0 0
+    pvr: lay/add pv 3 gallery/lay-center 0 0 64 0 0 1000 -64 1000 0 0
+    gallery/lay-pv: pvr
+    pc: view/next-id
+    view/create pc pv view/type-group 0 -64 600 668 1 1 0 0
+    gallery/pscroll: lay/thumbs lay/scroll pv -1 600 604 0 1 pvr id theme
+    gallery/set-id 37 pc
+]
+
+gallery/build-right: func [theme root] [
+    p: vid/panel theme root 864 16 320 668 0 0 0 0 []
+    id: block-at p 1
+    ;; right-aligned; takes 1/4 of the width beyond 1200, all the height
+    r: lay/add id 1 gallery/lay-root -36 750 16 0 20 250 -32 1000 0 0
+    gallery/lay-right: r
+    vid/heading theme id 16 14 288 24 "Glon source"
+    vid/caption theme id 16 40 288 18 "Documentation and library source"
+    ;; the source box stretches with the pane; its text stays clipped to it
+    lay/add vid/border-rect theme id 16 70 288 538 125 2 r 16 0 70 0 -32 1000 -130 1000 0 0
+    lay/add vid/rect theme id 16 70 288 538 89 0 r 16 0 70 0 -32 1000 -130 1000 0 0
+    clip: view/next-id
+    ;; the source document: a text-mode table filling the box
+    st: table/new-auto id 17 71 286 536
+    vid/table-theme theme st
+    lay/add st 0 r 17 0 71 0 -34 1000 -132 1000 0 0
+    gallery/set-id 40 st
+    gallery/show-source
+    ;; the scroll buttons stay at the bottom of the pane
+    foot: view/next-id
+    view/create foot id view/type-group 0 622 320 30 1 1 0 0
+    f: lay/add foot 0 r 0 0 -46 1000 0 1000 30 0 0 0
+    ;; the two buttons share the pane's width (138 each at 320)
+    up: vid/button theme foot 16 0 138 30 "Scroll Up"
+    down: vid/button theme foot 166 0 138 30 "Scroll Down"
+    lay/add up 4 f 16 0 0 0 -22 500 30 0 0 0
+    lay/add down 4 f 6 500 0 0 -22 500 30 0 0 0
+    gallery/set-id 42 up
+    gallery/set-id 43 down
+]
+
+gallery/build-ui: func [theme] [
+    clear-state: func [i] [
+        either < i 34 [
+            vid/set-block! gallery/ids i 0
+            clear-state + i 1
+        ] [
+            gallery/states: none
+            gallery/source: ""
+            gallery/widget-source: ""
+            ;; GUI-P2: no forced collection here any more.  It cost 250-600
+            ;; ms of every theme switch; with the allocation-free command
+            ;; builder a rebuild leaves ~26K cells of garbage, which the
+            ;; collector takes when the heap needs it.
+        ]
+    ]
+    either = gallery/root 0 [ 0 ] [
+        either > gallery/id 36 0 [
+            table/destroy gallery/id 36
+                    ] [ 0 ]
+        ;; the whole root panel (its outer group), not only its content group:
+        ;; destroying the content left the old panel and its fill behind
+        view/destroy gallery/root-outer
+        gallery/root: 0
+        clear-state 0
+        view/id: gallery/id-base
+        gallery/pmark: 0
+    ]
+    either = gallery/id-base 0 [ gallery/id-base: view/id ] [ 0 ]
+    vid/fill-color theme 1 1
+    lay/reset
+    ;; a group filling the window holds a viewport with the root panel (the
+    ;; window's size but never below the minimum) and its scroll thumbs; the
+    ;; group is what a rebuild destroys
+    rg: view/next-id
+    view/create rg 1 view/type-group 0 0 1200 700 1 1 0 0
+    gallery/root-outer: rg
+    gr: lay/add rg 0 -1 0 0 0 0 0 1000 0 1000 0 0
+    rv: view/next-id
+    view/create rv rg 8 0 0 1200 700 1 1 0 0
+    rvr: lay/add rv 3 gr 0 0 0 0 0 1000 0 1000 0 0
+    p: vid/panel theme rv 0 0 1200 700 0 0 0 0 []
+    gallery/root: block-at p 1
+    gallery/lay-root: lay/add gallery/root 1 -1 0 0 0 0 0 1000 0 1000 gallery/min-w gallery/min-h
+    lay/thumbs lay/scroll rv gallery/lay-root 0 0 -1 0 rvr rg theme
+    gallery/build-left theme gallery/root
+    gallery/build-center theme gallery/root
+    gallery/build-right theme gallery/root
+    lay/apply lay/w lay/h
+    gallery/lay-mark: lay/count
+    ;; (widgets taking events are found when an event arrives: gallery/live-states)
+    gallery/select 3 gallery/src-button
+]
+
+;; focus and blur change only the widget they name and the one showing the
+;; focus ring (vid/focus-ring); only buttons and fields have a ring (state
+;; slot 9), so those two are found by kind and node id instead of running
+;; vid/event for every widget (GUI-P2: half of a Tab's cost)
+gallery/focus-one: func [st id] [
+    k: block-at st 0
+    either = k vid/kind-tabs [ vid/event st ] [
+    either either = k vid/kind-button [ 1 ] [ = k vid/kind-field ] [
+        either either = block-at st 1 id [ 1 ] [ = block-at st 9 vid/focus-ring ] [ vid/event st ] [ 0 ]
+    ] [ 0 ]
+    ]
+]
+;; both walk the UI slots, then the preview's tracked buttons, in place (no
+;; list is built per event)
+gallery/focus-states: func [i id] [
+    either < i block-len gallery/slots [
+        st: gallery/id block-at gallery/slots i
+        either = st 0 [ 0 ] [ gallery/focus-one st id ]
+        gallery/focus-states + i 1 id
+    ] [ gallery/focus-list gallery/pstates id ]
+]
+gallery/focus-list: func [l id] [
+    either = l 0 [ 0 ] [ gallery/focus-one block-at l 0 id gallery/focus-list block-at l 2 id ]
+]
+gallery/event-states: func [i] [
+    either < i block-len gallery/slots [
+        st: gallery/id block-at gallery/slots i
+        either = st 0 [ 0 ] [ vid/event st ]
+        gallery/event-states + i 1
+    ] [ gallery/event-list gallery/pstates ]
+]
+gallery/event-list: func [l] [
+    either = l 0 [ 0 ] [ vid/event block-at l 0 gallery/event-list block-at l 2 ]
+]
+
+gallery/click: func [id] [
+    scroll: func [down] [
+        table/page gallery/id 40 either down [ 1 ] [ -1 ]
+        gallery/set-status "Source scrolled"
+    ]
+    case [
+        [ = id gallery/nid 0 ] [ gallery/select 0 gallery/src-window ]
+        [ = id gallery/nid 1 ] [ gallery/select 1 gallery/src-panel ]
+        [ = id gallery/nid 2 ] [ gallery/select 2 gallery/src-label ]
+        [ = id gallery/nid 3 ] [ gallery/select 3 gallery/src-button ]
+        [ = id gallery/nid 4 ] [ gallery/select 4 gallery/src-checkbox ]
+        [ = id gallery/nid 5 ] [ gallery/select 5 gallery/src-radio ]
+        [ = id gallery/nid 6 ] [ gallery/select 6 gallery/src-field ]
+        [ = id gallery/nid 7 ] [ gallery/select 7 gallery/src-table ]
+        [ = id gallery/nid 8 ] [ gallery/select 8 gallery/src-vocab ]
+        [ = id gallery/nid 46 ] [ gallery/select 9 gallery/src-tabs ]
+        [ = id gallery/nid 9 ] [
+            gallery/theme: either = gallery/theme theme/dark [ theme/light ] [ theme/dark ]
+            gallery/build-ui gallery/theme
+            gallery/set-status either = gallery/theme theme/dark [ "Dark theme" ] [ "Light theme" ]
+        ]
+        [ = id gallery/nid 10 ] [
+            ;; this gallery's own file, read from disk
+            gallery/set-id 45 1
+            gallery/show-source
+            gallery/set-status "Full source"
+        ]
+        [ = id gallery/nid 11 ] [
+            gallery/select gallery/id 38 gallery/widget-source
+        ]
+        [ = id gallery/nid 12 ] [
+            gallery/set-status "Button activated"
+        ]
+        [ = id gallery/nid 13 ] [
+            gallery/field-input ""
+            gallery/set-status "Field cleared"
+        ]
+        [ = id gallery/nid 14 ] [
+            c: block-at gallery/id 14 5
+            vid/checkbox/set-checked gallery/id 14 either = c 0 [ 1 ] [ 0 ]
+            gallery/set-status either = block-at gallery/id 14 5 1 [ "Checkbox 1 checked" ] [ "Checkbox 1 unchecked" ]
+        ]
+        [ = id gallery/nid 15 ] [
+            c: block-at gallery/id 15 5
+            vid/checkbox/set-checked gallery/id 15 either = c 0 [ 1 ] [ 0 ]
+            gallery/set-status either = block-at gallery/id 15 5 1 [ "Checkbox 2 checked" ] [ "Checkbox 2 unchecked" ]
+        ]
+        [ = id gallery/nid 16 ] [
+            vid/checkbox/set-checked gallery/id 16 1
+            vid/checkbox/set-checked gallery/id 17 0
+            vid/checkbox/set-checked gallery/id 18 0
+            gallery/set-status "Radio: Individual"
+        ]
+        [ = id gallery/nid 17 ] [
+            vid/checkbox/set-checked gallery/id 16 0
+            vid/checkbox/set-checked gallery/id 17 1
+            vid/checkbox/set-checked gallery/id 18 0
+            gallery/set-status "Radio: Household"
+        ]
+        [ = id gallery/nid 18 ] [
+            vid/checkbox/set-checked gallery/id 16 0
+            vid/checkbox/set-checked gallery/id 17 0
+            vid/checkbox/set-checked gallery/id 18 1
+            gallery/set-status "Radio: Business"
+        ]
+        [ = id gallery/nid 19 ] [ vocab/call0 gallery-vocab 'theme ]
+        [ = id gallery/nid 20 ] [ vocab/call1 gallery-vocab 'status "Vocabulary dispatch" ]
+        [ = id gallery/nid 21 ] [
+            r: vocab/call2 gallery-vocab 'add 2 3
+            gallery/set-status "Vocabulary add"
+        ]
+        [ = id gallery/nid 42 ] [ scroll 0 ]
+        [ = id gallery/nid 43 ] [ scroll 1 ]
+        [ 1 ] [
+            label: gallery/tracked-label gallery/pstates id
+            either = label 0 [ 0 ] [ gallery/set-status s/+ label " pressed" ]
+        ]
+    ]
+]
+
+gallery/handle: func [ev value] [
+    ;; pointer moves and releases need nothing here (vid/event did the hover
+    ;; and press looks), nor does the host's input buffer (view-set-text, see
+    ;; Clear): skip the case chain, where every clause tried costs an
+    ;; allocation (case.glon makes a func per condition)
+    either either = ev 'view-pointer-move [ 1 ] [ either = ev 'view-pointer-up [ 1 ] [ = ev 'view-set-text ] ] [ 0 ] [
+    case [
+        [ = ev 'view-click ] [ gallery/click parse-int value ]
+        ;; the field's text is owned here (gallery/field-value), built from
+        ;; view-char and Backspace; the host's own input buffer (view-set-text)
+        ;; is not used, since Clear could not reset it
+        [ = ev 'view-char ] [
+            either gallery/field-focused [ gallery/field-input s/+ gallery/field-value value ] [ 0 ]
+        ]
+        [ = ev 'view-key ] [
+            either either = parse-int value 8 [ gallery/field-focused ] [ 0 ] [
+                gallery/field-input gallery/drop-last gallery/field-value
+            ] [ 0 ]
+        ]
+        [ either = ev 'table-click [ = parse-int value gallery/table-id ] [ 0 ] ] [
+            ;; "tttt rrrr cccc": table id, row, column (the row used to be
+            ;; read from the id field)
+            ;; one selected row: a click on another row moves the selection,
+            ;; a click on the selected row unselects it (Escape quits the
+            ;; runner, so it cannot be the way to clear it)
+            row: parse-int-at value 5 0
+            tid: gallery/id 36
+            either either < row 0 [ 1 ] [ = row gallery/table-sel ] [
+                either < gallery/table-sel 0 [ 0 ] [ table/deselect tid gallery/table-sel ]
+                table/focus tid -1 0
+                gallery/table-sel: -1
+                gallery/set-status "Table selection cleared"
+            ] [
+                table/clear-selection tid
+                gallery/table-sel: row
+                table/focus tid row 0
+                table/select tid row
+                gallery/set-status s/+ "Table row selected: " s/from-int + row 1
+            ]
+        ]
+        ;; the host scrolled the table (wheel, scrollbar): remember where
+        [ = ev 'table-columns ] [
+            either = parse-int value gallery/table-id [
+                gallery/table-widths: s/span value gallery/after-int value 0 s/length value
+            ] [ 0 ]
+        ]
+        [ = ev 'table-scroll ] [
+            tid: parse-int value
+            p: gallery/after-int value 0
+            either = tid gallery/table-id [ gallery/table-start: parse-int-at value p 0 ] [
+                either = tid gallery/id 40 [
+                    vid/set-block! gallery/src-tops gallery/src-key parse-int-at value gallery/after-int value p 0
+                ] [ 0 ]
+            ]
+        ]
+        [ = ev 'view-focus ] [
+            lay/reveal parse-int value
+            ;; the field's prompt ("Type here") is replaced by the first
+            ;; keystroke, so the caret starts in front of it
+            either either = parse-int value gallery/nid 32 [ = gallery/field-touched 0 ] [ 0 ] [
+                view/caret block-at gallery/id 32 3 0
+            ] [ 0 ]
+            gallery/set-status "Focus changed"
+        ]
+        [ = ev 'view-blur ] [ gallery/set-status "Focus lost" ]
+        ;; GUI-P2: window size, wheel and reveal answers go to the layout
+        [ = ev 'view-resize ] [
+            lay/apply parse-int value parse-int-at value + s/scan-set value 0 "0123456789" 1 0
+        ]
+        [ = ev 'view-wheel ] [ lay/wheel value ]
+        [ = ev 'view-get ] [ lay/view-get value ]
+        [ 1 ] [ 0 ]
+    ]
+    ]
+]
+
+do-event: [
+    either = current-event 'view-build [
+        vid/window theme/dark 1200 700
+        gallery/theme: theme/dark
+        gallery/build-ui gallery/theme
+    ] [
+        ;; layout events (window size, wheel, reveal answers) change no
+        ;; widget's look: only the gallery handler needs them
+        either either = current-event 'view-resize [ 1 ] [ either = current-event 'view-wheel [ 1 ] [ = current-event 'view-get ] ] [ 0 ] [
+            either either = current-event 'view-focus [ 1 ] [ = current-event 'view-blur ] [
+                gallery/focus-states 0 parse-int current-value
+            ] [ gallery/event-states 0 ]
+        ]
+        gallery/handle current-event current-value
+    ]
+    widget/flush
+]
+]

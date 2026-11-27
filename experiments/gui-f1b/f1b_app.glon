@@ -1,0 +1,21 @@
+;; experiments/gui-f1b/f1b_app.glon -- one event, two chunks, ordered.
+[
+pad: func [n] [ either = n 0 [ "" ] [ s/+ "a" pad - n 1 ] ]
+pad64: s/+ pad 32 pad 32
+pad64: s/+ pad64 pad64
+f1b/a: 0
+f1b/b: 0
+f1b/go: func [] [
+    f1b/a: view/next-id
+    view/create f1b/a 1 view/type-group 0 0 10 10 1 1 0 1
+    fill: func [n] [ either = n 0 [ 0 ] [ view/text f1b/a s/+ "A" pad64 fill - n 1 ] ]
+    fill 30
+    f1b/b: view/next-id
+    view/create f1b/b f1b/a view/type-group 0 0 10 10 1 1 0 1
+    view/text f1b/b "B-last"
+]
+do-event: [
+    either = current-event 'view-char [ f1b/go ] [ 0 ]
+    widget/flush
+]
+]

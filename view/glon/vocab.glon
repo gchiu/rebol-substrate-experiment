@@ -1,0 +1,58 @@
+;; view/glon/vocab.glon -- Glon-level vocabulary registry experiment.
+;;
+;; This is a Glon library, not a language extension.  It uses existing words
+;; and blocks only.  A vocabulary is a block of [operation word] rows; the
+;; operation word is resolved with GET and called.  No context, class or
+;; per-instance method dictionary is required.
+[
+lookup: func [table i key] [
+    either < i block-len table [
+        row: block-at table i
+        either = block-at row 0 key [ block-at row 1 ] [ lookup table i + 1 key ]
+    ] [ none ]
+]
+
+dispatch: func [table op value] [
+    w: lookup table 0 op
+    either = w none [ none ] [ f: get w  f value ]
+]
+
+;; String vocabulary: operations are flat words, not new path semantics.
+string-vocab: [
+    [ length s/length ]
+    [ at     s/at ]
+    [ slice  s/slice ]
+    [ cat    s/+ ]
+]
+
+;; Field vocabulary: a field handle is represented by the global field-text
+;; word for this experiment.  A production field would use a handle table.
+field/text: func [x] [ v/field-text ]
+field/set-text: func [x] [ v/field-text: x  v/field-text ]
+field/length: func [x] [ s/length v/field-text ]
+field/clear: func [x] [ v/field-text: ""  v/field-text ]
+
+field-vocab: [
+    [ text     field/text ]
+    [ set-text field/set-text ]
+    [ length   field/length ]
+    [ clear    field/clear ]
+]
+
+;; Machine-readable contract sketch.  This is documentation/verification data;
+;; the dispatcher does not require runtime reflection.
+contracts: [
+    [ string [
+        [ length 1 string none ]
+        [ at     2 string none ]
+        [ slice  3 string none ]
+        [ cat    2 string none ]
+    ] ]
+    [ field [
+        [ text     1 string none ]
+        [ set-text 1 string mutation ]
+        [ length   1 integer none ]
+        [ clear    1 string mutation ]
+    ] ]
+]
+]

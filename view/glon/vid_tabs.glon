@@ -1,0 +1,219 @@
+;; view/glon/vid_tabs.glon -- VID tabs: a tab strip and one content page per
+;; tab, exactly one tab selected.
+;;
+;;   st: vid/tabs theme parent x y w h labels hook
+;;       labels  a block of strings (reduced), one tab each (at least one)
+;;       hook    0, or [ word ]: called as ( st i ) after the selection changes
+;;   vid/tabs/page st i      the group of page i: build the page's content in it
+;;   vid/tabs/select st i    select tab i (its page shown, the others hidden)
+;;   vid/tabs/selected st    the selected index
+;;   vid/tabs/size st w h    new size (the layout shape 5 in vid_layout.glon)
+;;
+;; Pages are created once and only shown or hidden, so whatever is on a page
+;; (field text, checks, nested tabs, scroll offsets) survives switching.  A
+;; hidden page's widgets are out of the View focus order; if the focus was on
+;; one when its page is hidden, the host drops it and sends view-blur.
+;;
+;; Input (through vid/event, like every VID widget): a click selects a tab;
+;; while a tab has the focus, Left / Right select the previous / next tab
+;; (wrapping) and Home / End the first / last, and the focus follows.  Hover
+;; and the focus ring follow the button conventions.
+;;
+;; State: [ kind id strip host theme sel n tabs pages hover focus w h hook
+;;          border bg ]; tabs: one [ group ring bg text underline ] per tab.
+;; (Functions here keep under the 16 bindings a context holds.)
+;; Desktop VID loader only (after vid_fields.glon); the 64K stack is unchanged.
+[
+vid/kind-tabs: 10
+vid/tabs-strip-h: 32
+
+vid/tabs-list: func [b] [ either = b 0 [ 0 ] [ b ] ]
+;; tab width: the strip shared equally, at most 160
+vid/tabs-tw: func [w n] [ either > / w n 160 [ 160 ] [ / w n ] ]
+
+vid/tabs: func [theme parent x y w h labels hook] [
+    id: view/next-id
+    view/create id parent view/type-group x y w h 1 1 0 0
+    vid/tabs-build theme id w h labels hook
+]
+;; (a separate function: a context holds at most 16 bindings)
+vid/tabs-build: func [theme id w h labels hook] [
+    n: block-len labels
+    sh: vid/tabs-strip-h
+    border: vid/rect theme id 0 - sh 1 w + - h sh 1 17
+    bg: vid/rect theme id 1 sh - w 2 - - h sh 1 5
+    strip: view/next-id
+    view/create strip id view/type-group 0 0 w sh 1 1 0 0
+    host: view/next-id
+    view/create host id view/type-group 1 sh - w 2 - - h sh 1 1 1 0 0
+    tabs: vid/tabs-make theme strip labels 0 vid/tabs-tw w n sh
+    pages: vid/tabs-pages host n 0 - w 2 - - h sh 1
+    st: reduce [ vid/kind-tabs id strip host theme 0 n tabs pages -1 -1 w h hook border bg ]
+    vid/tabs-show st 0
+    vid/tabs-refresh-all st 0
+    st
+]
+vid/tabs-make: func [theme strip labels i tw sh] [
+    either < i block-len labels [
+        g: view/next-id
+        view/create g strip view/type-group * i tw 0 - tw 2 sh 1 1 1 1
+        ring: view/next-id
+        view/create ring g view/type-rect -2 -2 + - tw 2 4 + sh 4 0 0 0 0
+        vid/fill-color theme ring 105
+        bg: vid/rect theme g 0 0 - tw 2 sh 109
+        tx: vid/text-node theme g 0 0 - tw 2 sh block-at labels i block-at theme 69 29
+        view/text-align tx 1
+        ul: vid/rect theme g 0 - sh 2 - tw 2 2 13
+        reduce [ reduce [ g ring bg tx ul ] vid/tabs-make theme strip labels + i 1 tw sh ]
+    ] [ 0 ]
+]
+;; pages as a linked list [ group next ]: made hidden; vid/tabs-show shows one
+vid/tabs-pages: func [host n i w h] [
+    either < i n [
+        pg: view/next-id
+        view/create pg host view/type-group 0 0 w h 0 1 0 0
+        reduce [ pg vid/tabs-pages host n + i 1 w h ]
+    ] [ 0 ]
+]
+vid/tabs-nth: func [l i] [ either = i 0 [ block-at l 0 ] [ vid/tabs-nth block-at l 1 - i 1 ] ]
+vid/tabs/page: func [st i] [ vid/tabs-nth block-at st 8 i ]
+vid/tabs/selected: func [st] [ block-at st 5 ]
+vid/tabs-tab: func [st i] [ vid/tabs-nth block-at st 7 i ]
+;; index of the tab whose group is node, or -1
+vid/tabs-index: func [l node i] [
+    either = l 0 [ -1 ] [
+        either = block-at block-at l 0 0 node [ i ] [ vid/tabs-index block-at l 1 node + i 1 ]
+    ]
+]
+
+;; one tab's look: selected (pane surface, primary text, accent underline),
+;; hovered, or plain; the ring when it has the focus
+vid/tabs-refresh: func [st i] [
+    t: vid/tabs-tab st i
+    theme: block-at st 4
+    sel: = i block-at st 5
+    vid/fill-color theme block-at t 2 either sel [ 5 ] [ either = i block-at st 9 [ 113 ] [ 109 ] ]
+    vid/fg-color theme block-at t 3 either sel [ 9 ] [ 29 ]
+    view/flags block-at t 4 either sel [ 1 ] [ 0 ] 0 0 0
+    view/flags block-at t 1 either = i block-at st 10 [ 1 ] [ 0 ] 0 0 0
+    st
+]
+vid/tabs-refresh-all: func [st i] [
+    either < i block-at st 6 [ vid/tabs-refresh st i vid/tabs-refresh-all st + i 1 ] [ st ]
+]
+vid/tabs-show: func [st i] [
+    vid/tabs-show-from block-at st 8 0 i
+]
+vid/tabs-show-from: func [l k i] [
+    either = l 0 [ 0 ] [
+        view/flags block-at l 0 either = k i [ 1 ] [ 0 ] 1 0 0
+        vid/tabs-show-from block-at l 1 + k 1 i
+    ]
+]
+
+vid/tabs/select: func [st i] [
+    old: block-at st 5
+    either either < i 0 [ 1 ] [ >= i block-at st 6 ] [ st ] [
+        either = i old [ st ] [
+            vid/set-block! st 5 i
+            vid/tabs-show st i
+            vid/tabs-refresh st old
+            vid/tabs-refresh st i
+            hook: block-at st 13
+            either = hook 0 [ 0 ] [ f: get block-at hook 0 f st i ]
+            st
+        ]
+    ]
+]
+;; keyboard: select and move the focus to the new tab
+vid/tabs-select-focus: func [st i] [
+    n: block-at st 6
+    j: either < i 0 [ - n 1 ] [ either >= i n [ 0 ] [ i ] ]
+    old: block-at st 10
+    vid/set-block! st 10 j
+    either < old 0 [ 0 ] [ vid/tabs-refresh st old ]
+    vid/tabs/select st j
+    vid/tabs-refresh st j
+    view/focus block-at vid/tabs-tab st j 0
+    st
+]
+
+vid/tabs-set-hover: func [st i] [
+    old: block-at st 9
+    either = i old [ st ] [
+        vid/set-block! st 9 i
+        either < old 0 [ 0 ] [ vid/tabs-refresh st old ]
+        either < i 0 [ 0 ] [ vid/tabs-refresh st i ]
+        st
+    ]
+]
+vid/tabs-set-focus: func [st i] [
+    old: block-at st 10
+    either = i old [ st ] [
+        vid/set-block! st 10 i
+        either < old 0 [ 0 ] [ vid/tabs-refresh st old ]
+        either < i 0 [ 0 ] [ vid/tabs-refresh st i ]
+        st
+    ]
+]
+
+;; events (vid/event hands tabs states here)
+vid/tabs/event: func [st] [
+    ev: current-event
+    either either = ev 'view-pointer-move [ 1 ] [ either = ev 'view-click [ 1 ] [ either = ev 'view-focus [ 1 ] [ = ev 'view-blur ] ] ] [
+        i: vid/tabs-index block-at st 7 parse-int current-value 0
+        either = ev 'view-pointer-move [ vid/tabs-set-hover st i ] [
+        either = ev 'view-click [ either < i 0 [ st ] [ vid/tabs/select st i ] ] [
+        either = ev 'view-focus [ vid/tabs-set-focus st i ] [
+            ;; blur: only the tab that had the focus loses it
+            either either < i 0 [ 0 ] [ = i block-at st 10 ] [ vid/tabs-set-focus st -1 ] [ st ]
+        ] ] ]
+    ] [
+        either either = ev 'view-key [ >= block-at st 10 0 ] [ 0 ] [
+            k: parse-int current-value
+            f: block-at st 10
+            either = k 1001 [ vid/tabs-select-focus st - f 1 ] [
+            either = k 1002 [ vid/tabs-select-focus st + f 1 ] [
+            either = k 1003 [ vid/tabs-select-focus st 0 ] [
+            either = k 1004 [ vid/tabs-select-focus st - block-at st 6 1 ] [ st ] ] ] ]
+        ] [ st ]
+    ]
+]
+vid/tabs-base-event: :vid/event
+vid/event: func [state] [
+    either either = block-len state 0 [ 0 ] [ = block-at state 0 vid/kind-tabs ] [
+        vid/tabs/event state
+    ] [ vid/tabs-base-event state ]
+]
+
+;; resize: the strip shares the new width; the content panel and its pages
+;; take the rest of the height
+vid/tabs/size: func [st w h] [
+    sh: vid/tabs-strip-h
+    vid/set-block! st 11 w
+    vid/set-block! st 12 h
+    view/rect block-at st 14 0 - sh 1 w + - h sh 1
+    view/rect block-at st 15 1 sh - w 2 - - h sh 1
+    view/rect block-at st 2 0 0 w sh
+    view/rect block-at st 3 1 sh - w 2 - - h sh 1
+    tw: vid/tabs-tw w block-at st 6
+    vid/tabs-size-tabs block-at st 7 0 tw sh block-at block-at st 4 69
+    vid/tabs-size-pages block-at st 8 - w 2 - - h sh 1
+    st
+]
+vid/tabs-size-tabs: func [l i tw sh font] [
+    either = l 0 [ 0 ] [
+        t: block-at l 0
+        view/rect block-at t 0 * i tw 0 - tw 2 sh
+        view/rect block-at t 1 -2 -2 + - tw 2 4 + sh 4
+        view/rect block-at t 2 0 0 - tw 2 sh
+        ty: / - sh + font 6 2
+        view/rect block-at t 3 0 either < ty 0 [ 0 ] [ ty ] - tw 2 + font 6
+        view/rect block-at t 4 0 - sh 2 - tw 2 2
+        vid/tabs-size-tabs block-at l 1 + i 1 tw sh font
+    ]
+]
+vid/tabs-size-pages: func [l w h] [
+    either = l 0 [ 0 ] [ view/rect block-at l 0 0 0 w h vid/tabs-size-pages block-at l 1 w h ]
+]
+]

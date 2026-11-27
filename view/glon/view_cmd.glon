@@ -1,0 +1,375 @@
+;; view/glon/view_cmd.glon -- GUI-P2: View commands without temporary strings.
+;;
+;; view_lib.glon builds every command line by concatenation: each string
+;; literal, each s/raw-cat and the batch append allocate a new string, and the
+;; batch append copies the whole pending batch (up to 4,000 bytes) again for
+;; every command.  With the runtime's first-fit allocator (a header walk per
+;; allocation) that cost ~0.15-0.35 ms per allocation, 18 for one view/rect.
+;;
+;; This file redefines the same words over one reusable byte buffer (a STRING
+;; payload of 8,192 cells whose length cell counts the bytes in use; the GC
+;; only requires length <= capacity).  Command names are constants made once
+;; at load, integers are formatted straight into the buffer, so a command line
+;; allocates nothing.  Strings are allocated only when a chunk is sealed or a
+;; batch is flushed: one string of exactly the chunk's bytes.
+;;
+;; The P3 transport is unchanged: widget/flush publishes the same
+;; [ [ current sealed ] older ] structure by reference, and chunks are cut
+;; exactly where view_lib cut them (a line that would take the batch past
+;; 4,000 bytes starts the next chunk), so the host sees the same lines in the
+;; same chunks.  Optional: loaded after view_lib (and vid_table) by the
+;; desktop (1M) GUI loaders only; the 64K VID stack keeps view_lib's words.
+;;
+;; The buffer is private: no other code may hold it.  The masm workers use the
+;; safe scratch cells A/B/C/F only (never D/E, the live output state).
+[
+
+;; ---- buffer workers (masm; tagged integers are value * 16) ---------------
+
+;; a fresh buffer: an 8,192-cell STRING payload, length 0
+vb/new: masm 0 [
+    LIT 8192 LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT 0 LIT SCRATCH_C @ !
+    LIT SCRATCH_C @ LIT T_STRING ADD
+    ARITY 1 EXIT
+]
+
+;; vb/len buf -> bytes in use
+vb/len: masm 1 [ LIT T_STRING SUB @ LIT 16 MUL ARITY 1 EXIT ]
+
+;; vb/s buf str: append the bytes of str
+vb/s: masm 2 [
+    LIT T_STRING SUB LIT SCRATCH_B !
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT SCRATCH_B @ @ LIT SCRATCH_F !
+    LIT SCRATCH_A @ @ LIT SCRATCH_A @ ADD LIT SCRATCH_C !
+  vbs-loop:
+    LIT SCRATCH_F @ ZBRANCH vbs-done
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT SCRATCH_B @ @ LIT SCRATCH_C @ !
+    LIT SCRATCH_F @ LIT 1 SUB LIT SCRATCH_F !
+    BRANCH vbs-loop
+  vbs-done:
+    LIT SCRATCH_C @ LIT SCRATCH_A @ SUB LIT SCRATCH_A @ !
+    ARITY 0 EXIT
+]
+
+;; vb/i buf n: append a space and the decimal text of the integer n
+vb/i: masm 2 [
+    LIT 16 DIV LIT SCRATCH_B !
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_A @ ADD LIT 1 ADD LIT SCRATCH_C !
+    LIT 32 LIT SCRATCH_C @ !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT SCRATCH_B @ LIT 0 LT ZBRANCH vbi-pos
+    LIT 45 LIT SCRATCH_C @ !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT 0 LIT SCRATCH_B @ SUB LIT SCRATCH_B !
+  vbi-pos:
+    LIT 1 LIT SCRATCH_F !
+    LIT SCRATCH_B @
+  vbi-count:
+    DUP LIT 10 GE ZBRANCH vbi-counted
+    LIT 10 DIV
+    LIT SCRATCH_F @ LIT 1 ADD LIT SCRATCH_F !
+    BRANCH vbi-count
+  vbi-counted:
+    DROP
+    LIT SCRATCH_C @ LIT SCRATCH_F @ ADD LIT 1 SUB LIT SCRATCH_A @ SUB LIT SCRATCH_A @ !
+    LIT SCRATCH_C @ LIT SCRATCH_F @ ADD LIT 1 SUB LIT SCRATCH_A !
+    LIT SCRATCH_B @
+  vbi-digit:
+    DUP LIT 10 MOD LIT 48 ADD LIT SCRATCH_A @ !
+    LIT SCRATCH_A @ LIT 1 SUB LIT SCRATCH_A !
+    LIT 10 DIV
+    DUP ZBRANCH vbi-done
+    BRANCH vbi-digit
+  vbi-done:
+    DROP
+    ARITY 0 EXIT
+]
+
+;; vb/nl buf: append a newline; answers 0
+vb/nl: masm 1 [
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT 1 ADD LIT SCRATCH_C !
+    LIT 10 LIT SCRATCH_A @ LIT SCRATCH_C @ ADD !
+    LIT SCRATCH_C @ LIT SCRATCH_A @ !
+    LIT 0 ARITY 1 EXIT
+]
+
+;; vb/prefix buf n: a NEW string holding the first n bytes of buf.  buf stays
+;; on the data stack across the allocation (a GC root) and is read after it.
+vb/prefix: masm 2 [
+    LIT 16 DIV LIT SCRATCH_F !
+    LIT SCRATCH_F @ LIT 16 ADD LIT 16 DIV LIT 16 MUL LIT GC_KIND_STRING CALL alloc LIT SCRATCH_C !
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT SCRATCH_F @ LIT SCRATCH_C @ !
+    LIT SCRATCH_C @ LIT T_STRING ADD
+  vbp-loop:
+    LIT SCRATCH_F @ ZBRANCH vbp-done
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT SCRATCH_A @ @ LIT SCRATCH_C @ !
+    LIT SCRATCH_F @ LIT 1 SUB LIT SCRATCH_F !
+    BRANCH vbp-loop
+  vbp-done:
+    ARITY 1 EXIT
+]
+
+;; vb/drop buf n: remove the first n bytes (the rest moves to the front)
+vb/drop: masm 2 [
+    LIT 16 DIV LIT SCRATCH_F !
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_F @ SUB LIT SCRATCH_C !
+    LIT SCRATCH_C @ LIT SCRATCH_A @ !
+    LIT SCRATCH_A @ LIT SCRATCH_F @ ADD LIT SCRATCH_B !
+  vbd-loop:
+    LIT SCRATCH_C @ ZBRANCH vbd-done
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B !
+    LIT SCRATCH_B @ @ LIT SCRATCH_A @ !
+    LIT SCRATCH_C @ LIT 1 SUB LIT SCRATCH_C !
+    BRANCH vbd-loop
+  vbd-done:
+    ARITY 0 EXIT
+]
+
+;; ---- the batch ---------------------------------------------------------------
+
+vb/buf: vb/new
+vb/mark: 0
+vk/empty: ""
+vk/sp: " "
+vk/batch-ref: "batch-ref"
+
+;; a command line starts with its (constant) name
+vb/start: func [k] [ vb/mark: vb/len vb/buf  vb/s vb/buf k ]
+;; ... and ends here.  A line that takes the batch past vb/chunk bytes moves
+;; to the next chunk (the bytes before it are sealed: copied out as a string).
+;; INTENT-7: the size is a setting (it was the constant 4,000; the host takes
+;; up to 4,096 a chunk, and any number of chunks).  Each sealed chunk, and the
+;; rest at widget/flush, is one contiguous string in the managed heap: once a
+;; small heap is full and fragmented (it does not compact), a 2,000- to
+;; 4,000-cell string can find no free block although half the heap is free.
+;; An application with that much live data may lower it (the membership
+;; application sets 400: INTENT-7.md); a single line may still be up to
+;; 3,900 bytes.
+vb/chunk: 4000
+vb/end: func [] [
+    vb/nl vb/buf
+    either either > vb/len vb/buf vb/chunk [ > vb/mark 0 ] [ 0 ] [
+        v/sealed: reduce [ vb/prefix vb/buf vb/mark v/sealed ]
+        vb/drop vb/buf vb/mark
+    ] [ 0 ]
+    0
+]
+;; text arguments: one line must stay below the host's 4,096-byte chunk limit
+vb/text: func [t] [
+    either > s/length t 3900 [ raise create-sin 'view 'line-too-large s/length t ] [
+        vb/s vb/buf vk/sp vb/s vb/buf t
+    ]
+]
+
+view/send: func [cmd] [ vb/start vk/view vb/s vb/buf cmd vb/end ]
+widget/flush: func [] [
+    n: vb/len vb/buf
+    v/out: reduce [ reduce [ either = n 0 [ vk/empty ] [ vb/prefix vb/buf n ] v/sealed ] v/out ]
+    vb/drop vb/buf n
+    v/sealed: 0
+    emit-host-call vk/batch-ref vk/empty
+]
+
+;; ---- the View vocabulary (same words, same lines as view_lib) ----------------
+
+vk/view: "view "
+vk/new: "view new"
+vk/create: "view create"
+vk/rect: "view rect"
+vk/flags: "view flags"
+vk/bg: "view bg"
+vk/fg: "view fg"
+vk/layout: "view layout"
+vk/destroy: "view destroy"
+vk/text: "view text"
+vk/fill: "view fill"
+vk/font: "view font"
+vk/text-align: "view text-align"
+vk/parent: "view parent"
+vk/focus: "view focus"
+vk/viewport: "view viewport"
+vk/invalidate: "view invalidate"
+vk/begin: "view begin"
+vk/end: "view end"
+vk/capabilities: "view capabilities"
+vk/enumerate: "view enumerate"
+vk/draw-clear: "view draw-clear"
+vk/draw-rect: "view draw-rect"
+vk/draw-text: "view draw-text"
+vk/get: "view get"
+vk/table: "table "
+vk/table-row: "table row"
+vk/caret: "view caret"
+
+view/mknode: func [id parent ntype] [
+    vb/start vk/new vb/i vb/buf id vb/i vb/buf parent vb/i vb/buf ntype vb/end
+]
+view/create: func [id parent ntype x y w h visible enabled focusable pickable] [
+    vb/start vk/create vb/i vb/buf id vb/i vb/buf parent vb/i vb/buf ntype
+    vb/i vb/buf x vb/i vb/buf y vb/i vb/buf w vb/i vb/buf h
+    vb/i vb/buf visible vb/i vb/buf enabled vb/i vb/buf focusable vb/i vb/buf pickable vb/end
+]
+view/rect: func [id x y w h] [
+    vb/start vk/rect vb/i vb/buf id vb/i vb/buf x vb/i vb/buf y vb/i vb/buf w vb/i vb/buf h vb/end
+]
+view/flags: func [id visible enabled focusable pickable] [
+    vb/start vk/flags vb/i vb/buf id vb/i vb/buf visible vb/i vb/buf enabled
+    vb/i vb/buf focusable vb/i vb/buf pickable vb/end
+]
+view/bg: func [id r g b a] [
+    vb/start vk/bg vb/i vb/buf id vb/i vb/buf r vb/i vb/buf g vb/i vb/buf b vb/i vb/buf a vb/end
+]
+view/fg: func [id r g b a] [
+    vb/start vk/fg vb/i vb/buf id vb/i vb/buf r vb/i vb/buf g vb/i vb/buf b vb/i vb/buf a vb/end
+]
+view/layout: func [id dir align spacing padding] [
+    vb/start vk/layout vb/i vb/buf id vb/i vb/buf dir vb/i vb/buf align
+    vb/i vb/buf spacing vb/i vb/buf padding vb/end
+]
+view/destroy: func [id] [ vb/start vk/destroy vb/i vb/buf id vb/end ]
+view/text: func [id text] [ vb/start vk/text vb/i vb/buf id vb/text text vb/end ]
+view/fill: func [id fill-x fill-y] [
+    vb/start vk/fill vb/i vb/buf id vb/i vb/buf fill-x vb/i vb/buf fill-y vb/end
+]
+view/font: func [id size] [ vb/start vk/font vb/i vb/buf id vb/i vb/buf size vb/end ]
+view/text-align: func [id align] [ vb/start vk/text-align vb/i vb/buf id vb/i vb/buf align vb/end ]
+view/reparent: func [id par] [ vb/start vk/parent vb/i vb/buf id vb/i vb/buf par vb/end ]
+view/focus: func [id] [ vb/start vk/focus vb/i vb/buf id vb/end ]
+view/viewport: func [id x y] [ vb/start vk/viewport vb/i vb/buf id vb/i vb/buf x vb/i vb/buf y vb/end ]
+view/invalidate: func [id layout] [ vb/start vk/invalidate vb/i vb/buf id vb/i vb/buf layout vb/end ]
+view/begin: func [] [ vb/start vk/begin vb/end ]
+view/end: func [] [ vb/start vk/end vb/end ]
+view/capabilities: func [] [ vb/start vk/capabilities vb/end ]
+view/enumerate: func [parent query] [ vb/start vk/enumerate vb/i vb/buf parent vb/i vb/buf query vb/end ]
+view/draw-clear: func [id] [ vb/start vk/draw-clear vb/i vb/buf id vb/end ]
+view/draw-rect: func [id x y w h r g b a] [
+    vb/start vk/draw-rect vb/i vb/buf id vb/i vb/buf x vb/i vb/buf y vb/i vb/buf w vb/i vb/buf h
+    vb/i vb/buf r vb/i vb/buf g vb/i vb/buf b vb/i vb/buf a vb/end
+]
+view/draw-text: func [id x y size r g b a text] [
+    vb/start vk/draw-text vb/i vb/buf id vb/i vb/buf x vb/i vb/buf y vb/i vb/buf size
+    vb/i vb/buf r vb/i vb/buf g vb/i vb/buf b vb/i vb/buf a vb/text text vb/end
+]
+view/caret: func [id index] [ vb/start vk/caret vb/i vb/buf id vb/i vb/buf index vb/end ]
+view/get: func [id prop query] [
+    vb/start vk/get vb/i vb/buf id vb/i vb/buf prop vb/i vb/buf query vb/end
+]
+;; ---- integer parsing ------------------------------------------------------------
+;; parse-int / parse-int-at (view_lib) recurse once per digit in Glon; every
+;; event handler parses its node id, so this desktop file replaces them with
+;; a masm loop.  Same answers: digits from byte i are accumulated onto acc and
+;; parsing stops at the first non-digit or the end.  Anything other than a
+;; string with i >= 0 takes the original definition (and its errors).
+vb/parse-at: masm 3 [
+    LIT 16 DIV LIT SCRATCH_B !
+    LIT 16 DIV LIT SCRATCH_C !
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_C @ SUB LIT SCRATCH_F !
+    LIT SCRATCH_A @ LIT SCRATCH_C @ ADD LIT SCRATCH_A !
+  vpa-loop:
+    LIT SCRATCH_F @ LIT 0 GT ZBRANCH vpa-done
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT 48 GE ZBRANCH vpa-done
+    LIT SCRATCH_A @ @ LIT 57 LE ZBRANCH vpa-done
+    LIT SCRATCH_B @ LIT 10 MUL LIT SCRATCH_A @ @ ADD LIT 48 SUB LIT SCRATCH_B !
+    LIT SCRATCH_F @ LIT 1 SUB LIT SCRATCH_F !
+    BRANCH vpa-loop
+  vpa-done:
+    LIT SCRATCH_B @ LIT 16 MUL
+    ARITY 1 EXIT
+]
+vb/parse-int-at-glon: :parse-int-at
+parse-int-at: func [s i acc] [
+    either either s/raw-string? s [ either s/raw-int? i [ either s/raw-int? acc [ >= i 0 ] [ 0 ] ] [ 0 ] ] [ 0 ] [
+        vb/parse-at s i acc
+    ] [ vb/parse-int-at-glon s i acc ]
+]
+parse-int: func [s] [ parse-int-at s 0 0 ]
+
+;; ---- text mode tables (a wrapped document; GUI-P2) ----
+;; vb/s-esc buf str from n: append n bytes of str from byte `from`, a newline
+;; written as 0x1F (a command line cannot hold a newline; the host turns it
+;; back)
+vb/s-esc: masm 4 [
+    LIT 16 DIV LIT SCRATCH_F !
+    LIT 16 DIV LIT SCRATCH_C !
+    LIT T_STRING SUB LIT SCRATCH_C @ ADD LIT SCRATCH_B !
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_A @ ADD LIT SCRATCH_C !
+  vbe-loop:
+    LIT SCRATCH_F @ ZBRANCH vbe-done
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B !
+    LIT SCRATCH_C @ LIT 1 ADD LIT SCRATCH_C !
+    LIT SCRATCH_B @ @ DUP LIT 10 EQ ZBRANCH vbe-keep
+    DROP LIT 31
+  vbe-keep:
+    LIT SCRATCH_C @ !
+    LIT SCRATCH_F @ LIT 1 SUB LIT SCRATCH_F !
+    BRANCH vbe-loop
+  vbe-done:
+    LIT SCRATCH_C @ LIT SCRATCH_A @ SUB LIT SCRATCH_A @ !
+    ARITY 0 EXIT
+]
+vk/table-text-reset: "table text-reset"
+vk/table-text-chunk: "table text-chunk"
+vk/table-text-file: "table text-file"
+vk/table-page: "table page"
+vk/table-text-top: "table text-top"
+vk/table-widths: "table widths"
+vk/table-col-width: "table col-width"
+;; table/text-reset id size        start an empty document (font size)
+;; table/text id str               append str (any length, sent in chunks)
+;; table/text-file id path         append a file below the application root
+;; table/page id dir               one page up (-1) or down (1)
+;; table/text-top id byte          the row holding this document byte on top
+;; (the host answers paging, wheel and scrollbar with
+;;  "table-scroll id first-row top-byte")
+table/text-reset: func [id size] [ vb/start vk/table-text-reset vb/i vb/buf id vb/i vb/buf size vb/end ]
+table/text: func [id str] [ table/text-from id str 0 ]
+table/text-from: func [id str from] [
+    n: - s/length str from
+    either > n 0 [
+        k: either > n 3400 [ 3400 ] [ n ]
+        vb/start vk/table-text-chunk vb/i vb/buf id vb/s vb/buf vk/sp
+        vb/s-esc vb/buf str from k
+        vb/end
+        table/text-from id str + from k
+    ] [ 0 ]
+]
+table/text-file: func [id path] [ vb/start vk/table-text-file vb/i vb/buf id vb/text path vb/end ]
+;; column sizing (GUI-P2): the host reports a drag or a double-click fit as
+;; "table-columns id want:flex;want:flex;..."; table/widths gives it back
+;; (after a rebuild); table/col-width sets one column (no longer flexible)
+table/widths: func [id spec] [ vb/start vk/table-widths vb/i vb/buf id vb/text spec vb/end ]
+table/col-width: func [id c w] [ vb/start vk/table-col-width vb/i vb/buf id vb/i vb/buf c vb/i vb/buf w vb/end ]
+table/text-top: func [id byte] [ vb/start vk/table-text-top vb/i vb/buf id vb/i vb/buf byte vb/end ]
+table/page: func [id dir] [ vb/start vk/table-page vb/i vb/buf id vb/i vb/buf dir vb/end ]
+
+;; selection: the host's "select" only adds a row; these remove rows
+;; (desktop only, like the rest of this file; 64K VID applications can send
+;; the same lines with table/send)
+vk/table-deselect: "table deselect"
+vk/table-clear-sel: "table clear-selection"
+table/deselect: func [id row] [ vb/start vk/table-deselect vb/i vb/buf id vb/i vb/buf row vb/end ]
+table/clear-selection: func [id] [ vb/start vk/table-clear-sel vb/i vb/buf id vb/end ]
+;; table/row id text without temporary strings (a 100-row table is 100 of
+;; these); same line as vid_table's
+table/row: func [id text] [ vb/start vk/table-row vb/i vb/buf id vb/text text vb/end ]
+;; vid_table's commands ("table ..." lines) join the same batch
+table/send: func [cmd] [
+    either > s/length cmd 3900 [ raise create-sin 'view 'line-too-large s/length cmd ] [
+        vb/start vk/table vb/s vb/buf cmd vb/end
+    ]
+]
+]
