@@ -30,6 +30,7 @@ HOST, PORT = "127.0.0.1", 8443
 CERT = ROOT / "tests" / "https-g1" / ".cert" / "server.pem"
 APP = ROOT / "examples" / "glon-worlds-g3b" / "server.glon"
 LIBS = [str(ROOT / "modules" / "web.glon"), str(ROOT / "modules" / "json.glon")]
+COOKIE = None
 
 
 def fail(m):
@@ -67,7 +68,7 @@ def wait_port(host, timeout=15.0):
 
 
 def start(bind, io_root, log_path=None):
-    argv = [str(ROOT / "glon"), "--http-bind", bind, "--http-cert", str(CERT),
+    argv = [str(ROOT / "glon"), "--http-tasks", "--http-bind", bind, "--http-cert", str(CERT),
             "--io-root", io_root, "--allow-file-read", "--allow-file-write"]
     if log_path:
         argv += ["--http-log", log_path]
@@ -92,14 +93,34 @@ def stop(proc):
 
 
 def req(method, path, body=None, host=HOST, timeout=10):
+    global COOKIE
     ctx = ssl._create_unverified_context()
     c = http.client.HTTPSConnection(host, PORT, context=ctx, timeout=timeout)
     try:
-        c.request(method, path, body=body)
+        headers = {"Content-Type": "application/json"} if body else {}
+        if COOKIE and host == HOST:
+            headers["Cookie"] = COOKIE
+        c.request(method, path, body=body, headers=headers)
         r = c.getresponse()
+        sc = r.getheader("Set-Cookie")
+        if sc and host == HOST:
+            first = sc.split(";", 1)[0]
+            if first.startswith("gw_session="):
+                COOKIE = first if first != "gw_session=" else None
         return r.status, r.read().decode()
     finally:
         c.close()
+
+
+def auth_setup():
+    s, b = req("POST", "/api/auth/register",
+               '{"username":"g3huser","password":"password123"}')
+    if s != 201:
+        fail(f"register g3huser: {s} {b[:80]}")
+    s, b = req("POST", "/api/auth/login",
+               '{"username":"g3huser","password":"password123"}')
+    if s != 200 or not COOKIE:
+        fail(f"login g3huser: {s} {b[:80]}")
 
 
 def main():
@@ -150,7 +171,8 @@ def main():
             fail("disabled status did not persist")
         ok("disabled user 2 (record kept, status=disabled)")
 
-        # message endpoints still work
+        # message endpoints still work for an authenticated user
+        auth_setup()
         if req("GET", "/api/groups")[0] != 200:
             fail("groups endpoint broken")
         if req("POST", "/api/messages", body='{"text":"hi","group":"general"}')[0] != 201:

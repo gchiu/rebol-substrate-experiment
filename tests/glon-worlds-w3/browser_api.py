@@ -29,6 +29,7 @@ APP = ROOT / "examples" / "glon-worlds-g3b" / "server.glon"
 HTML = ROOT / "examples" / "glon-worlds-g3b" / "web" / "index.html"
 LIBS = [str(ROOT / "modules" / "web.glon"), str(ROOT / "modules" / "json.glon")]
 PAGE = 9
+COOKIE = None
 
 
 def fail(msg):
@@ -106,17 +107,36 @@ class Server:
 
 
 def req(method, path, body=None, headers=None, timeout=60):
+    global COOKIE
     ctx = ssl._create_unverified_context()
     c = http.client.HTTPSConnection(HOST, PORT, context=ctx, timeout=timeout)
     try:
         h = dict(headers or {})
         if body is not None and "Content-Type" not in h:
             h["Content-Type"] = "application/json"
+        if COOKIE:
+            h["Cookie"] = COOKIE
         c.request(method, path, body=body, headers=h)
         r = c.getresponse()
+        sc = r.getheader("Set-Cookie")
+        if sc:
+            first = sc.split(";", 1)[0]
+            if first.startswith("gw_session="):
+                COOKIE = first if first != "gw_session=" else None
         return r.status, dict(r.getheaders()), r.read()
     finally:
         c.close()
+
+
+def auth_setup():
+    st, _, body = req("POST", "/api/auth/register",
+                      json.dumps({"username": "w3user", "password": "password123"}))
+    if st != 201:
+        fail(f"register w3user: {st} {body[:120]!r}")
+    st, _, body = req("POST", "/api/auth/login",
+                      json.dumps({"username": "w3user", "password": "password123"}))
+    if st != 200 or not COOKIE:
+        fail(f"login w3user: {st} {body[:120]!r}")
 
 
 class Client:
@@ -239,6 +259,8 @@ def main():
         if st != 200 or b"groups" not in body:
             fail("groups route unavailable to browser client")
         ok("browser client's group API is available")
+        auth_setup()
+        ok("browser-equivalent user registered and authenticated")
 
         a = Client("A")
         b = Client("B")

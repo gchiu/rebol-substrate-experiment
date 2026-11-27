@@ -1085,13 +1085,13 @@ h3e-test:
 .PHONY: h3e-test
 
 g3g-test:
-	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite MEM_PROFILE=server-https
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,sec,task MEM_PROFILE=server-https
 	tests/https-g1/make-cert.sh
 	python3 tests/glon-worlds-g3g/smoke.py
 .PHONY: g3g-test
 
 g3h-test:
-	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite MEM_PROFILE=server-https
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,sec,task MEM_PROFILE=server-https
 	tests/https-g1/make-cert.sh
 	python3 tests/glon-worlds-g3h/smoke.py
 .PHONY: g3h-test
@@ -1115,28 +1115,34 @@ json-j2-g3h-test:
 .PHONY: json-j2-g3h-test
 
 w0-routes-test:
-	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,task MEM_PROFILE=server-https
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,sec,task MEM_PROFILE=server-https
 	tests/https-g1/make-cert.sh
 	python3 tests/glon-worlds-w0/routes_task.py
 .PHONY: w0-routes-test
 
 w1-test:
-	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,task MEM_PROFILE=server-https
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,sec,task MEM_PROFILE=server-https
 	tests/https-g1/make-cert.sh
 	python3 tests/glon-worlds-w1/messaging.py
 .PHONY: w1-test
 
 w2-test:
-	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,task MEM_PROFILE=server-https
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,sec,task MEM_PROFILE=server-https
 	tests/https-g1/make-cert.sh
 	python3 tests/glon-worlds-w2/history.py
 .PHONY: w2-test
 
 w3-test:
-	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,task MEM_PROFILE=server-https
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,sec,task MEM_PROFILE=server-https
 	tests/https-g1/make-cert.sh
 	python3 tests/glon-worlds-w3/browser_api.py
 .PHONY: w3-test
+
+w4-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,sec,task MEM_PROFILE=server-https
+	tests/https-g1/make-cert.sh
+	python3 tests/glon-worlds-w4/auth.py
+.PHONY: w4-test
 
 # ---- JSON vocabulary tests (ordinary Glon; no OpenSSL) ---------------------
 # The general JSON module and its full focused suite exceed the constrained

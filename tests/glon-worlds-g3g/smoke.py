@@ -27,6 +27,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 HOST, PORT = "127.0.0.1", 8443
 CERT = ROOT / "tests" / "https-g1" / ".cert" / "server.pem"
 APP = ROOT / "examples" / "glon-worlds-g3b" / "server.glon"
+COOKIE = None
 LIBS = [str(ROOT / "glon-lib" / "strings-ext.glon"),
         str(ROOT / "modules" / "web.glon"),
         str(ROOT / "modules" / "json.glon")]
@@ -56,7 +57,7 @@ def wait_port(timeout=15.0):
 
 
 def start(log_path, io_root):
-    argv = [str(ROOT / "glon"), "--http-bind", HOST, "--http-cert", str(CERT),
+    argv = [str(ROOT / "glon"), "--http-tasks", "--http-bind", HOST, "--http-cert", str(CERT),
             "--io-root", io_root, "--allow-file-read", "--allow-file-write",
             "--http-log", log_path, "--http-log-max-bytes", "250",
             "--http-log-backups", "3"] + LIBS + [str(APP)]
@@ -80,14 +81,34 @@ def stop(proc):
 
 
 def req(method, path, body=None):
+    global COOKIE
     ctx = ssl._create_unverified_context()
     c = http.client.HTTPSConnection(HOST, PORT, context=ctx, timeout=10)
     try:
-        c.request(method, path, body=body)
+        headers = {"Content-Type": "application/json"} if body else {}
+        if COOKIE:
+            headers["Cookie"] = COOKIE
+        c.request(method, path, body=body, headers=headers)
         r = c.getresponse()
+        sc = r.getheader("Set-Cookie")
+        if sc:
+            first = sc.split(";", 1)[0]
+            if first.startswith("gw_session="):
+                COOKIE = first if first != "gw_session=" else None
         return r.status, r.read().decode()
     finally:
         c.close()
+
+
+def auth_setup():
+    s, b = req("POST", "/api/auth/register",
+               '{"username":"g3guser","password":"password123"}')
+    if s != 201:
+        fail(f"register g3guser: {s} {b[:80]}")
+    s, b = req("POST", "/api/auth/login",
+               '{"username":"g3guser","password":"password123"}')
+    if s != 200 or not COOKIE:
+        fail(f"login g3guser: {s} {b[:80]}")
 
 
 def all_log_text(log_dir):
@@ -116,6 +137,7 @@ def main():
         if not wait_port():
             stop(p)
             fail("server did not start")
+        auth_setup()
         s1, _ = req("GET", "/api/groups")
         s2, _ = req("POST", "/api/messages",
                     body='{"text":"%s","group":"general"}' % secret)

@@ -17,16 +17,33 @@ p = subprocess.Popen(["./glon", "--http-tasks", "--http-bind", "127.0.0.1", "--h
      "tests/https-g1/.cert/server.pem", "--io-root", root, "--allow-file-read", "--allow-file-write",
      "modules/web.glon", "modules/json.glon", "examples/glon-worlds-g3b/server.glon"],
      stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+COOKIE = None
 ctx = ssl._create_unverified_context()
 def req(method, path, body=None):
+    global COOKIE
     c = http.client.HTTPSConnection("127.0.0.1", 8443, context=ctx, timeout=8)
     try:
-        c.request(method, path, body=body, headers={"Content-Type": "application/json"} if body else {})
-        r = c.getresponse(); return r.status, r.read().decode()
+        headers = {"Content-Type": "application/json"} if body else {}
+        if COOKIE:
+            headers["Cookie"] = COOKIE
+        c.request(method, path, body=body, headers=headers)
+        r = c.getresponse()
+        sc = r.getheader("Set-Cookie")
+        if sc:
+            first = sc.split(";", 1)[0]
+            if first.startswith("gw_session="):
+                COOKIE = first if first != "gw_session=" else None
+        return r.status, r.read().decode()
     finally: c.close()
 for _ in range(80):
     try: req("GET", "/api/session"); break
     except OSError: time.sleep(0.25)
+st, data = req("POST", "/api/auth/register", '{"username":"j2user","password":"password123"}')
+if st != 201:
+    print("FAIL register:", st, data[:80]); sys.exit(1)
+st, data = req("POST", "/api/auth/login", '{"username":"j2user","password":"password123"}')
+if st != 200 or not COOKIE:
+    print("FAIL login:", st, data[:80]); sys.exit(1)
 ok = True
 def check(name, cond, info=""):
     global ok

@@ -28,6 +28,7 @@ CERT = ROOT / "tests" / "https-g1" / ".cert" / "server.pem"
 APP = ROOT / "examples" / "glon-worlds-g3b" / "server.glon"
 LIBS = [str(ROOT / "modules" / "web.glon"), str(ROOT / "modules" / "json.glon")]
 MAX_PAGE = 9
+COOKIE = None
 
 
 def fail(msg):
@@ -106,15 +107,34 @@ class Server:
 
 
 def req(method, path, body=None, timeout=60):
+    global COOKIE
     ctx = ssl._create_unverified_context()
     c = http.client.HTTPSConnection(HOST, PORT, context=ctx, timeout=timeout)
     try:
         headers = {"Content-Type": "application/json"} if body else {}
+        if COOKIE:
+            headers["Cookie"] = COOKIE
         c.request(method, path, body=body, headers=headers)
         r = c.getresponse()
+        sc = r.getheader("Set-Cookie")
+        if sc:
+            first = sc.split(";", 1)[0]
+            if first.startswith("gw_session="):
+                COOKIE = first if first != "gw_session=" else None
         return r.status, r.read()
     finally:
         c.close()
+
+
+def auth_setup():
+    st, body = req("POST", "/api/auth/register",
+                   json.dumps({"username": "w2user", "password": "password123"}))
+    if st != 201:
+        fail(f"register w2user: {st} {body[:120]!r}")
+    st, body = req("POST", "/api/auth/login",
+                   json.dumps({"username": "w2user", "password": "password123"}))
+    if st != 200 or not COOKIE:
+        fail(f"login w2user: {st} {body[:120]!r}")
 
 
 class Client:
@@ -174,6 +194,8 @@ def main():
         if not wait_port_free():
             fail("port 8443 is already in use before start")
         srv = Server(io_root, log_path)
+        auth_setup()
+        ok("registered and authenticated a history user")
 
         base = [f"m{i:02d}" for i in range(1, 19)]
         for text in base:

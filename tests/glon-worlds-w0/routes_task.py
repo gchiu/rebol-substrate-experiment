@@ -27,6 +27,7 @@ HOST, PORT = "127.0.0.1", 8443
 CERT = ROOT / "tests" / "https-g1" / ".cert" / "server.pem"
 APP = ROOT / "examples" / "glon-worlds-g3b" / "server.glon"
 LIBS = [str(ROOT / "modules" / "web.glon"), str(ROOT / "modules" / "json.glon")]
+COOKIE = None
 
 
 def fail(msg):
@@ -91,15 +92,34 @@ class Server:
 
 
 def req(method, path, body=None):
+    global COOKIE
     ctx = ssl._create_unverified_context()
     c = http.client.HTTPSConnection(HOST, PORT, context=ctx, timeout=10)
     try:
         headers = {"Content-Type": "application/json"} if body else {}
+        if COOKIE:
+            headers["Cookie"] = COOKIE
         c.request(method, path, body=body, headers=headers)
         r = c.getresponse()
+        sc = r.getheader("Set-Cookie")
+        if sc:
+            first = sc.split(";", 1)[0]
+            if first.startswith("gw_session="):
+                COOKIE = first if first != "gw_session=" else None
         return r.status, r.read().decode()
     finally:
         c.close()
+
+
+def auth_setup():
+    st, body = req("POST", "/api/auth/register",
+                   json.dumps({"username": "w0user", "password": "password123"}))
+    if st != 201:
+        fail(f"register w0user: {st} {body[:120]}")
+    st, body = req("POST", "/api/auth/login",
+                   json.dumps({"username": "w0user", "password": "password123"}))
+    if st != 200 or not COOKIE:
+        fail(f"login w0user: {st} {body[:120]}")
 
 
 def main():
@@ -157,6 +177,13 @@ def main():
         if st != 409:
             fail(f"duplicate username: {st} {body[:100]}")
         ok("duplicate username -> 409")
+
+        st, _ = req("GET", "/api/messages?group=general&after=0")
+        if st != 401:
+            fail(f"unauthenticated messages: {st}")
+        ok("unauthenticated messages -> 401")
+        auth_setup()
+        ok("registered and authenticated a messaging user")
 
         st, body = req("GET", "/api/messages?group=general&after=0")
         if st != 200 or "messages" not in body:
