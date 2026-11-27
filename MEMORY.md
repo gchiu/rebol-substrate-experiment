@@ -577,6 +577,10 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `docs/design/GLON-MASM-VOCABULARY-ACCELERATION-3.md` — MASM-3 profile,
   `s/slice2` variable-length worker, allocation/GC findings and streaming
   benchmarks; implementation and tests in `experiments/masm3/`.
+- `GLON-VIEW-CORE-CODECAP.md` — 2026-11-28: desktop-256k/1m/4m `CODE_CAP`
+  16,384 -> 17,408 (code 16,896 cells, main return stack 7,168, recursion
+  limit 84 -> 73); Intent stack with the checked `block-set!` 10 -> 1,034 code
+  cells free; `make code-capacity-check`; range 16,384-20,480 measured.
 - `GLON-VIEW-CORE-V3.md` — 2026-11-27: STOPPED at the code-space gate. With
   the checked `block-set!` in View's `core_words.glon` (42-cell `managed-ref?`),
   the full Intent stack leaves 10 code cells (< 20 required); View not

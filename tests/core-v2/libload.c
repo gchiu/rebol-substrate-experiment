@@ -5,7 +5,10 @@
  * Loads each FILE, in order, into ONE fresh persistent session with no
  * default libraries (unlike the glon CLI), as the hosts do: ";;" comments
  * stripped, parsed, run.  For each file it prints one line:
- *   LOAD <file> ok|REFUSED|FAIL globals=<n> sites=<n> code_free=<n> loader=<n>
+ *   LOAD <file> ok|REFUSED|FAIL globals=<n> sites=<n> code_free=<n> loader=<n> rs_peak=<n>
+ * (rs_peak: the deepest main return-stack use of that file's run, in cells
+ * below R0S1_RS_INIT, from the runtime's RV_RPMIN; 0 if it never went deeper
+ * than the top level)
  * and, for the last file, its results as molded values ("RESULT ...").
  * A refusal prints the loader's message (stderr).  Exit: 0 when every file
  * loaded, 1 otherwise.  -q prints only failures and the result. */
@@ -48,10 +51,12 @@ int main(int argc, char **argv) {
         cell g, gc, s, sc;
         r0_s1_global_usage(&g, &gc); s = -1; sc = -1; if (r0_s1_site_usage) r0_s1_site_usage(&s, &sc);
         long code_free = (long)R0S1_CODE_LIMIT - (long)(M[RV_DSLIM] - R0S1_DS_GUARD);
+        long rpmin = (long)r0_s1_rp_min();
+        long rs_peak = rpmin <= (long)R0S1_RS_INIT ? (long)R0S1_RS_INIT - rpmin : 0;
         if (!ok || !quiet)
-            printf("LOAD %s %s globals=%ld sites=%ld code_free=%ld loader=%ld\n", argv[a],
+            printf("LOAD %s %s globals=%ld sites=%ld code_free=%ld loader=%ld rs_peak=%ld\n", argv[a],
                    ok ? "ok" : (perr ? "REFUSED" : "FAIL"), (long)g, (long)s, code_free,
-                   (long)(M[GC_LOADER_HP] - R0S1_LOAD_BASE));
+                   (long)(M[GC_LOADER_HP] - R0S1_LOAD_BASE), rs_peak);
         if (!ok) { status = 1; break; }
         if (a == argc - 1 && oc.count > 0) {
             char buf[512];

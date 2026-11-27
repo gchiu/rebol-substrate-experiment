@@ -3,7 +3,10 @@
 NAME=desktop-4m
 STATUS=provisional
 MEM_CELLS=4194304
-CODE_CAP=16384
+# GLON-VIEW-CORE-V3 capacity: the code region grows by 1,024 cells (code
+# limit 17,152); the main return stack is 7,168 cells (lim/sum recursion
+# limit 84 -> 73; GLON-VIEW-CORE-CODECAP.md).  The 64K reference is 16,384.
+CODE_CAP=17408
 MANAGED_CELLS=1048576
 WORKLIST=after-heap
 WORKLIST_CELLS=32768

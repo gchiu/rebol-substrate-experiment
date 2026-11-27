@@ -823,6 +823,12 @@ lib1-test:
 	  grep -v '^\[dump\]' build/core-v2/lib1-$$p.txt | tail -n 3; echo "lib1 $$p: exit $$rc"; [ $$rc -eq 0 ]; done
 .PHONY: lib1-one lib1-test
 
+# GLON-VIEW-CORE-V3 capacity: code region, main return stack and recursion
+# limit per profile (desktop profiles: CODE_CAP 17,408).
+code-capacity-check:
+	sh tests/core-v2/code_capacity.sh
+.PHONY: code-capacity-check
+
 profile-common-test:
 	sh tests/core-c2/common_check.sh
 
