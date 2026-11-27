@@ -1,7 +1,7 @@
 // standalone/node_test.js -- headless verification of the standalone WASM
 // demo (no DOM, no browser, no Emscripten runtime).
 //
-// Instantiates standalone/glon.wasm directly with the two host imports,
+// Instantiates standalone/glon.wasm directly with its host imports,
 // loads the authoritative source standalone/app.glon, then calls the
 // `increment` word three times and asserts the counter emits host_set_text
 // (handle=1, value=1/2/3).  This exercises the exact R0 application path the
@@ -26,7 +26,12 @@ const imports = {
     },
     host_set_text(handle, value) {
       calls.push([handle, value]);
-    }
+    },
+    // GLON-VIEW-CORE-V5: standalone/glon.c also imports the G1A/G1-canvas host
+    // calls (since G1D).  The counter never renders HTML or canvas, so they
+    // are no-ops here, as in demo/shop/binding_case_wasm_test.js.
+    host_set_html() {},
+    host_canvas_script() {}
   }
 };
 

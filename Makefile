@@ -218,8 +218,12 @@ STANDALONE_FLAGS = -O1 -nostdlib -fno-builtin \
 
 wasm-standalone: standalone/glon.wasm docs/standalone.html
 
-standalone/glon.wasm: standalone/glon.c s1.c s1.h r0_s1_runtime.c r0_s1_show.c r0_s1.h
-	$(EMCC) $(STANDALONE_FLAGS) standalone/glon.c s1.c r0_s1_runtime.c r0_s1_show.c \
+# GLON-VIEW-CORE-V5: standalone/glon.c calls r0_s1_g1a_event /
+# r0_s1_g1a_event_value outside its GLON_LIVE branch, so r0_s1_g1a.c is
+# linked here as in demo/shop/glon.wasm (without it a fresh build failed to
+# link and an unbuilt tree tested a stale committed module).
+standalone/glon.wasm: standalone/glon.c r0_s1_g1a.c r0_s1_g1a.h s1.c s1.h r0_s1_runtime.c r0_s1_show.c r0_s1.h
+	$(EMCC) $(STANDALONE_FLAGS) standalone/glon.c r0_s1_g1a.c s1.c r0_s1_runtime.c r0_s1_show.c \
 		-o standalone/glon.wasm
 
 # generate docs/standalone.html from app.glon/glon.js and publish artifacts
