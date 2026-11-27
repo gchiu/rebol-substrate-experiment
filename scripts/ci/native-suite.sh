@@ -156,6 +156,11 @@ run_step integration-intent7 make intent7-set-check
 run_step integration-libraries make lib1-test modules-check
 run_step integration-s-find make s-find-check
 run_step integration-library-audit make library-audit
+# GLON-CORE-CI-1A: a configuration change relinks glon (and recompiles
+# civetweb.o) even when the new stamp has the output's timestamp, as a
+# one-second-resolution make sees it; the executable's modules and profile are
+# checked.
+run_step config-rebuild make config-rebuild-check
 
 # ---- explicit build matrix and sizes --------------------------------------
 run_step sizes sizes

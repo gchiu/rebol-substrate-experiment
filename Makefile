@@ -170,7 +170,7 @@ clean:
 	rm -f s1 fib-profiler fib-timing fib-p6b-bench fib-p10a-bench fib-p10b-bench traffic-bench-o0 traffic-bench-o2 glon-live-native-test demo/shop/glon-live.wasm $(OBJS) r0_s1_fib_profiler.o r0_s1_fib_profiler_prof.o r0_s1_runtime_prof.o
 	rm -f glon-desktop glon-desktop.exe desktop-test patrol-test kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test kaka-wave-test desktop/glon.wasm desktop/prelude.glon desktop/strings.glon desktop/big.txt
 	rm -rf glon glon-lib
-	rm -f .glon-config .glon-config.tmp io-file-c-test arch-check m1-smoke m1-smoke.exe
+	rm -f .glon-config .glon-config.tmp build/glon.built build/civetweb.built io-file-c-test arch-check m1-smoke m1-smoke.exe
 
 # ---- WebAssembly browser demo (Emscripten) --------------------------------
 # Produces web/demo.js (Emscripten runtime + web/glue.js) and web/demo.wasm,
@@ -481,9 +481,11 @@ CIVETWEB_FLAGS = -std=c17 -O2 -w -pthread -DOPENSSL_API_3_0 -DNO_CGI -DNO_CACHIN
 		-DNO_SSL_DL -Ithird_party/civetweb $(OPENSSL_CFLAGS)
 # (defined before the rule that lists it: prerequisites expand when read)
 CIVETWEB_STAMP = build/civetweb.flags
+CIVETWEB_BUILT = build/civetweb.built
 third_party/civetweb/civetweb.o: third_party/civetweb/civetweb.c third_party/civetweb/civetweb.h \
 		$(wildcard third_party/civetweb/*.inl) $(CIVETWEB_STAMP)
 	$(CC) $(CIVETWEB_FLAGS) -c $< -o $@
+	@sh scripts/glon-stamp.sh $(CIVETWEB_BUILT) '$(CC) $(CIVETWEB_FLAGS)'
 
 # ---- Build-configuration stamps (GLON-CORE-C2) -------------------------------
 # .glon-config records every value that changes the glon binary (modules,
@@ -509,6 +511,27 @@ $(GLON_CONFIG):
 $(CIVETWEB_STAMP):
 	@sh scripts/glon-stamp.sh $@ '$(CC) $(CIVETWEB_FLAGS)'
 
+# GLON-CORE-CI-1A: build records.  A stamp rewritten in the same timestamp
+# unit as the previous link compares equal to the output (make rebuilds only
+# when a prerequisite is strictly newer), so with one-second timestamps a
+# configuration change could leave the previous configuration's glon in place
+# (the macOS G3A failure: an http-only binary run with file options).  After
+# each successful build the recipe writes the configuration it used to
+# build/glon.built or build/civetweb.built; when the requested configuration
+# differs from that record, or there is none, the output is forced.  The
+# comparison is by content, so it does not depend on timestamps, and an
+# unchanged configuration still rebuilds nothing.  It is evaluated on every
+# invocation, so glon reached as another goal's prerequisite is covered too.
+GLON_BUILT = build/glon.built
+.PHONY: FORCE
+FORCE:
+ifneq ($(shell sh scripts/glon-stamp.sh --differs $(GLON_BUILT) '$(GLON_CONFIG_LINE)'),)
+glon: FORCE
+endif
+ifneq ($(shell sh scripts/glon-stamp.sh --differs $(CIVETWEB_BUILT) '$(CC) $(CIVETWEB_FLAGS)'),)
+third_party/civetweb/civetweb.o: FORCE
+endif
+
 # Headers of the CLI host and its modules (glon.c and module sources).
 GLON_HOST_HEADERS := $(wildcard glon_*.h) r0_s1_g1a.h
 ifneq ($(filter http,$(GLON_MODULE_LIST)),)
@@ -517,6 +540,7 @@ endif
 
 glon: $(GLON_SRCS) $(GLON_MODULE_SRCS) $(GLON_MODULE_OBJS) $(GLON_PROFILE_DEPS) $(R0S1_RUNTIME_HEADERS) $(GLON_HOST_HEADERS) $(GLON_CONFIG) $(GLON_TARGET_LIBS)
 	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) $(GLON_MODULE_CFLAGS) -I. -o $@ $(GLON_SRCS) $(GLON_MODULE_SRCS) $(GLON_MODULE_OBJS) $(GLON_MODULE_LDLIBS)
+	@sh scripts/glon-stamp.sh $(GLON_BUILT) '$(GLON_CONFIG_LINE)'
 
 $(GLON_LIB_DIR)/prelude.glon: jupyter/prelude.glon
 	@mkdir -p $(GLON_LIB_DIR)
@@ -838,7 +862,13 @@ profile-common-test:
 
 build-deps-check:
 	sh tests/core-c2/build_deps_check.sh
-.PHONY: profile-layout-one profile-check profile-reject-check profile-common-test build-deps-check
+
+# GLON-CORE-CI-1A: configuration changes rebuild glon and civetweb.o even when
+# the rewritten stamp has the output's timestamp; the executable's modules and
+# profile are checked.  Needs the OpenSSL development files.
+config-rebuild-check:
+	sh tests/core-c2/config_rebuild_check.sh
+.PHONY: profile-layout-one profile-check profile-reject-check profile-common-test build-deps-check config-rebuild-check
 
 # ---- Desktop proof: native Glon application + browser/WASM Glon View --------
 # glon-desktop is the installed application host: it binds a localhost TCP
