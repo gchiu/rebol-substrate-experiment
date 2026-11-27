@@ -50,10 +50,15 @@
 "use strict";
 const GROUP = "general";
 const PAGE = 9;                 /* W2 server maximum page size */
+const POLL_MS = 2000;
+const MAX_BACKOFF_MS = 30000;
 const byId = new Map();
 let windowStart = 0;
 let busy = false;
-let autoRefresh = null;
+let pollTimer = null;
+let pollInFlight = false;
+let pollFailures = 0;
+let pollHadError = false;
 
 const statusEl = document.getElementById("status");
 const messagesEl = document.getElementById("messages");
@@ -134,6 +139,67 @@ async function parseError(res) {
   throw new Error(detail || `Request failed (HTTP ${res.status}).`);
 }
 
+function newestId() {
+  const all = sorted();
+  return all.length ? all[all.length - 1].id : 0;
+}
+
+function atNewestView() {
+  return windowStart + PAGE >= byId.size;
+}
+
+function resetPolling() {
+  pollFailures = 0;
+  pollHadError = false;
+  schedulePoll(POLL_MS);
+}
+
+function schedulePoll(delay) {
+  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+  if (document.visibilityState === "hidden") return;
+  pollTimer = setTimeout(poll, delay);
+}
+
+function pollErrorText(e) {
+  return e && e.message ? String(e.message) : String(e);
+}
+
+async function poll() {
+  pollTimer = null;
+  if (document.visibilityState === "hidden") return;
+  if (pollInFlight || busy) { schedulePoll(POLL_MS); return; }
+  pollInFlight = true;
+  const stayAtNewest = atNewestView();
+  const recovering = pollHadError;
+  const before = byId.size;
+  try {
+    await fetchAll(newestId());
+    const added = byId.size - before;
+    pollFailures = 0;
+    if (added) {
+      if (stayAtNewest) windowStart = Math.max(0, sorted().length - PAGE);
+      render();
+      status(`${added} new message${added === 1 ? "" : "s"} loaded.`, "success");
+    } else if (recovering) {
+      status(`${byId.size} message${byId.size === 1 ? "" : "s"} loaded.`, null);
+    }
+    pollHadError = false;
+  } catch (e) {
+    pollFailures++;
+    pollHadError = true;
+    if (byId.size > before) {
+      if (stayAtNewest) windowStart = Math.max(0, sorted().length - PAGE);
+      render();
+    }
+    status(`Live updates paused: ${pollErrorText(e)} Retrying…`, "error");
+  } finally {
+    pollInFlight = false;
+    schedulePoll(pollHadError
+      ? Math.min(POLL_MS * Math.pow(2, Math.max(0, pollFailures - 1)), MAX_BACKOFF_MS)
+      : POLL_MS);
+  }
+}
+
 async function fetchPage(after, limit) {
   const url = `/api/messages?group=${encodeURIComponent(GROUP)}` +
               `&after=${encodeURIComponent(String(after))}` +
@@ -187,13 +253,12 @@ async function refresh() {
   setBusy(true);
   status("Refreshing…");
   try {
-    const all = sorted();
-    const newest = all.length ? all[all.length - 1].id : 0;
-    const added = await fetchAll(newest);
+    const added = await fetchAll(newestId());
     windowStart = Math.max(0, sorted().length - PAGE);
     render();
     if (added) status(`Loaded ${added} new message${added === 1 ? "" : "s"}.`, "success");
     else status("Already up to date.", null);
+    resetPolling();
   } catch (e) {
     status(String(e.message || e), "error");
   } finally {
@@ -226,6 +291,7 @@ async function send() {
     textEl.value = "";
     render();
     status("Message sent.", "success");
+    resetPolling();
   } catch (e) {
     status(String(e.message || e), "error");
   } finally {
@@ -239,9 +305,19 @@ formEl.addEventListener("submit", (ev) => { ev.preventDefault(); send(); });
 textEl.addEventListener("keydown", (ev) => {
   if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); send(); }
 });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+  } else {
+    pollFailures = 0;
+    poll();
+  }
+});
 initial();
-autoRefresh = setInterval(refresh, 15000);
-window.addEventListener("beforeunload", () => { if (autoRefresh) clearInterval(autoRefresh); });
+schedulePoll(POLL_MS);
+window.addEventListener("beforeunload", () => {
+  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+});
 </script>
 </body>
 </html>

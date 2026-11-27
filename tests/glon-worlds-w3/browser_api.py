@@ -159,6 +159,42 @@ class Client:
         return json.loads(body)
 
 
+class PollingClient(Client):
+    """Browser-equivalent incremental poller: request only after the newest id."""
+
+    def __init__(self, name):
+        super().__init__(name)
+        self.by_id = {}
+        self.calls = []
+
+    def poll(self):
+        after = max(self.by_id) if self.by_id else 0
+        added = []
+        for _ in range(1000):
+            self.calls.append(after)
+            data = self.page(after)
+            if data.get("busy"):
+                time.sleep(0.1)
+                continue
+            for m in data["messages"]:
+                if m["id"] not in self.by_id:
+                    self.by_id[m["id"]] = m
+                    added.append(m)
+            if not data["has_more"]:
+                ids = list(self.by_id)
+                if ids != sorted(ids):
+                    fail(f"{self.name}: polled messages are not chronological")
+                return added
+            nxt = data["next_after"]
+            if nxt <= after:
+                fail(f"{self.name}: polling pagination did not advance")
+            after = nxt
+        fail(f"{self.name}: too many polling pages")
+
+    def messages(self):
+        return [self.by_id[i] for i in sorted(self.by_id)]
+
+
 def main():
     if not (ROOT / "glon").exists() or not CERT.exists() or not APP.exists() or not HTML.exists():
         fail("missing glon binary, certificate, app or browser asset")
@@ -190,7 +226,14 @@ def main():
             fail("browser rendering is not textContent-only")
         if "fetch(" not in source or "/api/messages" not in source:
             fail("browser asset does not use the same-origin API")
-        ok("native server serves the browser client and safe textContent rendering")
+        for marker in ("POLL_MS = 2000", "visibilitychange", "visibilityState",
+                       "pollInFlight", "MAX_BACKOFF_MS", "setTimeout(poll",
+                       "Math.pow", "503"):
+            if marker not in source:
+                fail(f"browser asset missing automatic-update marker {marker!r}")
+        if "setInterval(" in source:
+            fail("browser asset still uses setInterval polling")
+        ok("native server serves the browser client with safe rendering and automatic updates")
 
         st, _, body = req("GET", "/api/groups")
         if st != 200 or b"groups" not in body:
@@ -267,6 +310,45 @@ def main():
         if [m["id"] for m in b_restart] != [m["id"] for m in a_restart]:
             fail("clients disagree after restart")
         ok("conversation survives server restart for both clients")
+
+        # Automatic polling: two browser-equivalent clients load once, then
+        # exchange messages using only after=<latest displayed id>.  No manual
+        # refresh or full-history walk is used for these updates.
+        pa = PollingClient("PA")
+        pb = PollingClient("PB")
+        pa.poll()
+        pb.poll()
+        baseline = pa.messages()
+        if [m["id"] for m in baseline] != [m["id"] for m in a_restart]:
+            fail("polling clients did not load the restarted history")
+        newest_at_load = baseline[-1]["id"] if baseline else 0
+        pa.calls.clear()
+        pb.calls.clear()
+
+        auto_a = a.send("automatic update from A")
+        got_b = pb.poll()
+        if [m["id"] for m in got_b] != [auto_a["id"]] or got_b[0]["text"] != auto_a["text"]:
+            fail("Client B polling did not receive A's message without manual refresh")
+        if any(after < newest_at_load for after in pb.calls):
+            fail("polling re-downloaded history before the latest displayed id")
+        if pb.poll():
+            fail("polling re-appended messages that were already displayed")
+        ok("Client B received A's message by polling after the latest displayed id")
+
+        auto_b1 = b.send("automatic reply one from B")
+        auto_b2 = b.send("automatic reply two from B")
+        got_a = pa.poll()
+        expected = [auto_a["id"], auto_b1["id"], auto_b2["id"]]
+        if [m["id"] for m in got_a] != expected:
+            fail(f"Client A polling did not catch up in order: {[m['id'] for m in got_a]}")
+        if any(after < newest_at_load for after in pa.calls):
+            fail("Client A polling re-downloaded the full history")
+        pb.poll()
+        if [m["id"] for m in pa.messages()] != [m["id"] for m in pb.messages()]:
+            fail("polling clients disagree on message ids")
+        if [m["text"] for m in pa.messages()] != [m["text"] for m in pb.messages()]:
+            fail("polling clients disagree on message text")
+        ok("Client A caught up in order after several messages; clients agree")
 
         trace = srv.trace()
         if "halt" in trace or "run-tasks" in trace:
