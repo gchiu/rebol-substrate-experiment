@@ -210,8 +210,8 @@ STANDALONE_FLAGS = -O1 -nostdlib -fno-builtin \
 
 wasm-standalone: standalone/glon.wasm docs/standalone.html
 
-standalone/glon.wasm: standalone/glon.c s1.c s1.h r0_s1_runtime.c r0_s1_show.c r0_s1.h
-	$(EMCC) $(STANDALONE_FLAGS) standalone/glon.c s1.c r0_s1_runtime.c r0_s1_show.c \
+standalone/glon.wasm: standalone/glon.c r0_s1_g1a.c r0_s1_g1a.h s1.c s1.h r0_s1_runtime.c r0_s1_show.c r0_s1.h
+	$(EMCC) $(STANDALONE_FLAGS) standalone/glon.c r0_s1_g1a.c s1.c r0_s1_runtime.c r0_s1_show.c \
 		-o standalone/glon.wasm
 
 # generate docs/standalone.html from app.glon/glon.js and publish artifacts

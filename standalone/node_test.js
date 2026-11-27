@@ -1,7 +1,7 @@
 // standalone/node_test.js -- headless verification of the standalone WASM
 // demo (no DOM, no browser, no Emscripten runtime).
 //
-// Instantiates standalone/glon.wasm directly with the two host imports,
+// Instantiates standalone/glon.wasm directly with the four host imports,
 // loads the authoritative source standalone/app.glon, then calls the
 // `increment` word three times and asserts the counter emits host_set_text
 // (handle=1, value=1/2/3).  This exercises the exact R0 application path the
@@ -26,7 +26,9 @@ const imports = {
     },
     host_set_text(handle, value) {
       calls.push([handle, value]);
-    }
+    },
+    host_set_html(handle, ptr, len) { /* G1A route export; unused here */ },
+    host_canvas_script(ptr, len) { /* G1-canvas export; unused here */ }
   }
 };
 

@@ -3,12 +3,14 @@
  *
  * This file REPLACES the generated Emscripten runtime from W1 (web/demo.js):
  * it instantiates the raw glon.wasm (built with `-nostdlib`, no Emscripten JS
- * runtime, no virtual filesystem) and supplies only the two host imports the
- * C side declares.  JavaScript responsibilities remain strictly limited to:
+ * runtime, no virtual filesystem) and supplies the four host imports the C
+ * side declares.  JavaScript responsibilities remain strictly limited to:
  *
  *   - host_print:  capture the host's plain text output (console.log);
  *   - host_set_text: decode a numeric DOM handle and write the value into the
  *     element tagged with data-glon-id="<handle>";
+ *   - host_set_html: write rendered G1A HTML into that element;
+ *   - host_canvas_script: accept a generic canvas script (no-op for this demo);
  *   - feed the R0/GLON source (inlined as <script type="application/glon">)
  *     into glon_load once at startup;
  *   - forward clicks on [data-glon-click="<word>"] to glon_call.
@@ -36,6 +38,13 @@
       host_set_text: function (handle, value) {
         var el = document.querySelector('[data-glon-id="' + handle + '"]');
         if (el) el.textContent = String(value);
+      },
+      host_set_html: function (handle, ptr, len) {
+        var el = document.querySelector('[data-glon-id="' + handle + '"]');
+        if (el) el.innerHTML = dec.decode(view().subarray(ptr, ptr + len));
+      },
+      host_canvas_script: function (ptr, len) {
+        /* The counter demo has no canvas layer. */
       }
     }
   };
