@@ -799,6 +799,16 @@ static void http_bridge_process_one(http_bridge_req *s) {
             if (pr < 0) { http.errors++; http.fatal = 1; break; }
         } while (pr > 0);
     }
+    /* W2: streaming message-history reads and append writes are file jobs.
+     * Direct bridge mode must drain them before collecting the response, as
+     * task mode already does after its task turn. */
+    if (!http.fatal && http.pump) {
+        int fp;
+        do {
+            fp = http.pump(http.pump_user);
+            if (fp < 0) { http.errors++; http.fatal = 1; break; }
+        } while (fp > 0);
+    }
     http_response r;
     int have = 0;
     if (http.fatal) {
@@ -1159,6 +1169,20 @@ static int http_begin_request(struct mg_connection *conn) {
                     break;
                 }
             } while (pr > 0);
+        }
+        /* W2: drain file jobs issued by the handler (streaming history reads
+         * and append writes) before deciding there is no response. */
+        if (!http.fatal && http.pump) {
+            int fp;
+            do {
+                fp = http.pump(http.pump_user);
+                if (fp < 0) {
+                    fprintf(stderr, "glon: http: file pump failed for request %lu\n", id);
+                    http.errors++;
+                    http.fatal = 1;
+                    break;
+                }
+            } while (fp > 0);
         }
         http_response r;
         int have = 0;
