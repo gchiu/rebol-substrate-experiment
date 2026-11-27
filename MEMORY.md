@@ -577,6 +577,15 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `docs/design/GLON-MASM-VOCABULARY-ACCELERATION-3.md` — MASM-3 profile,
   `s/slice2` variable-length worker, allocation/GC findings and streaming
   benchmarks; implementation and tests in `experiments/masm3/`.
+- `GLON-VIEW-CORE-V1.md` — 2026-11-27, branch `integration/c2-view` from C2
+  `4dcae2aa`: SITE-1 (a declared `SITES`/`SITE_CAP` profile region), the
+  MEM-2/3/5 allocator and collector optimisations, INTENT-7's hashed
+  set-word search on C2's fixed-radix hash, the parser block-capacity fix
+  and GLON-VOCAB-1 (`GLON-VOCAB-1.md`: lexical set-words, loader-level
+  vocabularies, the `s/` and `n/` vocabularies), ported from `glon-gui-f2`;
+  tests and measurements in 64K/1M/4M. Open: C2 `s/` code outside the `s`
+  vocabulary (`io-file-inplace-test`), the literal-block GC hazard
+  (`make literal-block-gc-check`).
 - `docs/design/GLON-COOKBOOK-FILE-REPLACEMENT.md` — completed Cookbook 0004
   original-path replacement, protocol v2, reusable vocabulary, tests and
   performance; sources in `modules/file-replace.glon`,

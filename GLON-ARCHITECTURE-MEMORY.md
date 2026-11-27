@@ -126,9 +126,18 @@ These are summaries; **`GLON-ALPHA-LAWS.md` is normative.**
   - A word is looked up dynamically through the lexical parent chain (§2).
   - `T_BOUND` is a pre-resolved `(depth, slot)` reference, valid only under an
     activation of the block's site: the Guard of Binding (§2–§4).
-  - A set-word updates the nearest existing binding, else it creates a local of
-    the current call. Library code must therefore choose local names that no
-    global uses (the Pratt parser uses a `pt-` prefix).
+  - **Superseded by GLON-VOCAB-1 (2026-11-27, `GLON-VIEW-CORE-V1.md`):** a
+    set-word in a function is decided by the loader from the source -- a
+    parameter or local of this or an enclosing function; else, outside
+    vocabularies, a global defined at the top level of the same source or a
+    data global of an earlier source; else a new local (a decorated symbol).
+    `set 'name`, `global/name` and `'local/name` are the explicit forms;
+    `vocabulary NAME [ ]` is a loader scope whose members are stored as
+    qualified globals. Normative text: `GLON-ALPHA-LAWS.md`; design and
+    measurements: `GLON-VOCAB-1.md`.
+  - (Before GLON-VOCAB-1: a set-word updated the nearest existing binding,
+    else created a local of the current call, so library locals had to avoid
+    global names; the Pratt parser uses a `pt-` prefix.)
 - **[DECISION] Blocks are not portable executable objects; closures are.** A
   bare block that depends on an activation may not outlive it. The runtime
   refuses at the moment of escape, raising `SIN! 'escape` with the id of the

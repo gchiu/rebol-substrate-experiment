@@ -39,9 +39,39 @@ Every value is one cell: `payload * 16 + tag`, where `tag` is the low 4 bits.
 - **Qualified names.** A `/` inside a word is part of the word: `s/+` is one
   word (`s/+:` sets it, `:s/+` gets it, `'s/+` is its literal form), and a bare
   `/` is still integer division. An interior `/` is reserved for qualified,
-  path-like names (`domain/operation`). For now such names are ordinary flat
-  words in the usual contexts; no path evaluation, qualified lookup,
-  namespaces or contexts exist yet.
+  path-like names (`domain/operation`).
+- **Vocabularies (GLON-VOCAB-1).** `vocabulary NAME [ body ]`, at a top level
+  (a source, a vocabulary body or a top-level `do [ ]`), declares a scope.
+  - Its members are the body's top-level set-words, stored under their full
+    names (`NAME/member`, nested `A/B/member`).
+  - Inside the body a plain name that is a member means that member, unless a
+    parameter or local shadows it. A member named like a built-in native does
+    not hide the native.
+  - A qualified name whose head is a vocabulary must name an existing member.
+    Members are defined only in their vocabulary's body (it may be reopened in
+    another source; the same source may be loaded again). Outside it they may
+    be read, called and assigned. Any of these errors is refused at load.
+  - Flat globals already defined under the prefix are adopted as members when
+    the vocabulary is first declared.
+  - Vocabularies are resolved by the loader: they are not run-time values,
+    and there is no path evaluation at run time.
+- **Assignment (GLON-VOCAB-1).** A set-word inside a function assigns, as
+  decided from the source when it is loaded:
+  1. a parameter or variable of that function or an enclosing one (innermost
+     first);
+  2. otherwise, outside vocabularies only, a global the reader can see: one
+     defined at the top level of the same source, or a data global (not a
+     function, native or `masm` word) that an earlier source defined before
+     this one was loaded;
+  3. otherwise a new local of that function.
+
+  It never reaches any other binding, whatever globals exist when it runs.
+  - Outer bindings are assigned explicitly: a member by its qualified name, a
+    global with `set 'name value`.
+  - `global/name` reads a global past a member; `'local/name` is a local's own
+    word, for inspection.
+  - Outside functions, a set-word assigns the global (or, in a vocabulary
+    body, the member) as before.
 
 ## 3. Blocks
 
