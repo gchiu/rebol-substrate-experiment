@@ -60,11 +60,42 @@ r0_s1_p4_tests.o: r0_s1_p4_tests.c r0_s1.h s1.h
 r0_s1_p5_tests.o: r0_s1_p5_tests.c r0_s1.h s1.h
 main.o: main.c s1.h
 
-test: s1 gc-worklist-overflow-test
+test: s1 gc-worklist-overflow-test global-ctx-hash-constrained
 	./check-frozen-s1.sh
 	./s1
 	./gc-worklist-overflow-test
+	./global-ctx-hash-constrained
 	python3 demo/shop/build-primer.py --check
+
+# GLON-CORE-C1: global-context hash regression (see global_ctx_hash_test.c).
+# global-ctx-hash-constrained is the 64K reference build (256 globals, 512
+# symbols, radix 256, the original encoding checked cell by cell).
+# global-ctx-hash-test also builds the large profile at 512 / 1,024 and
+# 4,096 / 8,192 and runs the same checks there.  hash-capacity-check confirms
+# that unsafe capacity combinations are rejected at compile time.
+global-ctx-hash-constrained: global_ctx_hash_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c s1.c r0_s1.h s1.h m1_layout.h
+	$(CC) $(CFLAGS) -I. -o $@ global_ctx_hash_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c s1.c
+
+global-ctx-hash-test: global-ctx-hash-constrained
+	./global-ctx-hash-constrained
+	$(MAKE) --no-print-directory global-ctx-hash-profile MEM_PROFILE=large MEM_GLOBAL_CAP=512 MEM_SYM_CAP=1024
+	$(MAKE) --no-print-directory global-ctx-hash-profile MEM_PROFILE=large MEM_GLOBAL_CAP=4096 MEM_SYM_CAP=8192
+
+# Each unsafe combination must fail to compile with its own assertion; the
+# last, safe one must compile.
+hash-capacity-check:
+	@check() { want="$$1"; shift; \
+	  if $(CC) -std=c17 -fsyntax-only -I. "$$@" r0_s1_runtime.c 2>$@.err; then \
+	    echo "  FAIL: $$* compiled (expected: $$want)"; exit 1; \
+	  elif grep -q "$$want" $@.err; then echo "  ok: $$* rejected ($$want)"; \
+	  else echo "  FAIL: $$* rejected for another reason:"; cat $@.err; exit 1; fi; }; \
+	check "at least the 64K reference" -DR0S1_GLOBAL_CAP=128 -DR0S1_SYM_CAP=512; \
+	check "its own symbol" -DR0S1_GLOBAL_CAP=512 -DR0S1_SYM_CAP=256; \
+	check "overflow a 32-bit cell" -DR0S1_GLOBAL_CAP=4096 -DR0S1_SYM_CAP=1048576; \
+	check "does not fit in the loader heap" -DR0S1_GLOBAL_CAP=8192 -DR0S1_SYM_CAP=16384; \
+	$(CC) -std=c17 -fsyntax-only -I. -DR0S1_GLOBAL_CAP=4096 -DR0S1_SYM_CAP=8192 r0_s1_runtime.c && \
+	  echo "  ok: 4096 / 8192 compiles"; rm -f $@.err; echo "hash-capacity-check: PASS"
+.PHONY: global-ctx-hash-test global-ctx-hash-profile hash-capacity-check
 
 # GC worklist overflow: a SEPARATE enlarged-heap TEST build (never shipped),
 # identified by R0S1_GC_OVERFLOW_TEST_BUILD, the only switch that enlarges the
@@ -307,10 +338,21 @@ MEM_WORKLIST_CELLS ?= 40000
 MEM_LOADER_CELLS ?= 200000
 MEM_M1_CELLS ?= 10200
 MEM_TOTAL ?= 65536
+# GLON-CORE-C1: global-context and symbol-table capacities (r0_s1.h
+# R0S1_GLOBAL_CAP / R0S1_SYM_CAP; the hash radix equals MEM_GLOBAL_CAP).  The
+# constrained profile is fixed at the 64K reference values 256 / 512; only an
+# expanded profile may change them.  r0_s1.h rejects unsafe combinations
+# (symbols < globals, a radix too small, entries overflowing a 32-bit cell, a
+# global context larger than the loader heap) at compile time.
+MEM_GLOBAL_CAP ?= 256
+MEM_SYM_CAP ?= 512
 GLON_MEMORY_CFLAGS :=
 GLON_PROFILE_DEPS :=
 GLON_S1_SRC := s1.c
 ifeq ($(MEM_PROFILE),constrained)
+  ifneq ($(MEM_GLOBAL_CAP) $(MEM_SYM_CAP),256 512)
+    $(error the constrained profile is the 64K reference: MEM_GLOBAL_CAP=256 MEM_SYM_CAP=512 only (use MEM_PROFILE=large))
+  endif
 else ifeq ($(MEM_PROFILE),large)
   MEM_MANAGED_END := $(shell expr 32768 + $(MEM_MANAGED_CELLS))
   MEM_LOAD_BASE := $(shell expr $(MEM_MANAGED_END) + $(MEM_WORKLIST_CELLS))
@@ -323,7 +365,9 @@ else ifeq ($(MEM_PROFILE),large)
       -DGC_WORKLIST=$(MEM_MANAGED_END) \
       -DGC_WORKLIST_CAP=$(MEM_WORKLIST_CELLS) \
       -DM1_ARENA_BASE=$(MEM_M1_BASE) \
-      -DM1_TASK_TABLE=$(MEM_TASK_TABLE)
+      -DM1_TASK_TABLE=$(MEM_TASK_TABLE) \
+      -DR0S1_GLOBAL_CAP=$(MEM_GLOBAL_CAP) \
+      -DR0S1_SYM_CAP=$(MEM_SYM_CAP)
   GLON_S1_SRC := build/profile/s1_profile.c
   GLON_PROFILE_DEPS := build/profile/s1_profile.c build/profile/s1_profile.h
 else
@@ -412,8 +456,9 @@ GLON_CONFIG = .glon-config
 .PHONY: FORCE
 FORCE:
 $(GLON_CONFIG): FORCE
-	@printf '%s %s %s %s %s %s' '$(strip $(MODULES))' '$(GLON_HTTP_RECLAIM_M1)' \
-	    '$(MEM_PROFILE)' '$(MEM_MANAGED_CELLS)' '$(MEM_WORKLIST_CELLS)' '$(MEM_LOADER_CELLS)' > $@.tmp
+	@printf '%s %s %s %s %s %s %s %s' '$(strip $(MODULES))' '$(GLON_HTTP_RECLAIM_M1)' \
+	    '$(MEM_PROFILE)' '$(MEM_MANAGED_CELLS)' '$(MEM_WORKLIST_CELLS)' '$(MEM_LOADER_CELLS)' \
+	    '$(MEM_GLOBAL_CAP)' '$(MEM_SYM_CAP)' > $@.tmp
 	@if ! cmp -s $@.tmp $@; then mv $@.tmp $@; else rm -f $@.tmp; fi
 
 build/profile:
@@ -598,6 +643,15 @@ m1-large-test: tests/m1_large_driver.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_sh
 	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o m1-large-test tests/m1_large_driver.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c $(GLON_S1_SRC)
 	./m1-large-test
 .PHONY: m1-large-test
+
+# GLON-CORE-C1: the large-profile build of the global-context hash regression
+# (driven by global-ctx-hash-test; defined after the profile block so that
+# GLON_PROFILE_DEPS is set when this rule is read).
+global-ctx-hash-profile: global_ctx_hash_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c r0_s1.h s1.h m1_layout.h $(GLON_PROFILE_DEPS)
+	@test "$(MEM_PROFILE)" = large || { echo "use MEM_PROFILE=large"; exit 2; }
+	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o $@-$(MEM_GLOBAL_CAP) global_ctx_hash_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c $(GLON_S1_SRC)
+	./$@-$(MEM_GLOBAL_CAP)
+
 
 # ---- Desktop proof: native Glon application + browser/WASM Glon View --------
 # glon-desktop is the installed application host: it binds a localhost TCP

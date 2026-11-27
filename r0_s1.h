@@ -387,13 +387,51 @@ _Static_assert(GC_WORKLIST_CAP >= (GC_HEAP_LIMIT - GC_HEAP_BASE) / GC_MIN_EXTENT
 #define PF_HASH_FALLBACK_SLOTS 24684 /* P5 slots examined by fallback linear scan  */
 
 /* context layout: [parent, count, cap, (word,value)*cap, hash[cap]].
- * FIB-OPT-P5: the hash index maps word_id -> slot. hash[i] = word_id*256 + slot
- * (occupied) or -1 (empty); h(word_id) = word_id % cap. The index is a fast
- * path only; the ordered (word,value) pairs remain authoritative. */
+ * FIB-OPT-P5: the hash index maps word_id -> slot.
+ * hash[i] = word_id*R0S1_HASH_RADIX + slot (occupied) or -1 (empty);
+ * h(word_id) = word_id % cap. The index is a fast path only; the ordered
+ * (word,value) pairs remain authoritative. */
 enum { CTX_PARENT = 0, CTX_COUNT = 1, CTX_CAP = 2, CTX_DATA = 3 };
 #define CTX_HASH      (CTX_DATA + 2 * R0S1_CTX_CAP)  /* hash index offset (35) */
 #define R0S1_CTX_CELLS 64    /* 16-aligned stack-context size (3+32+16=51 -> 64) */
 #define HASH_EMPTY    (-1)   /* empty hash bucket sentinel */
+
+/* GLON-CORE-C1: global-context and symbol-table capacities are profile
+ * parameters.  The constrained (64K reference) profile keeps the original
+ * values, 256 global bindings and 512 symbols, and therefore the original
+ * hash encoding word_id*256 + slot bit for bit.  An expanded profile sets
+ * both (Makefile MEM_GLOBAL_CAP / MEM_SYM_CAP).
+ *
+ * The hash radix is the global-context capacity: a slot must be below the
+ * radix or its entry decodes as another word and slot (the defect the HTTPS
+ * line hit with a 512-binding global context and radix 256).  The global
+ * context is the largest context, so radix = its capacity covers every slot
+ * of every context. */
+#ifndef R0S1_GLOBAL_CAP
+#define R0S1_GLOBAL_CAP 256L
+#endif
+#ifndef R0S1_SYM_CAP
+#define R0S1_SYM_CAP 512L
+#endif
+#define R0S1_HASH_RADIX R0S1_GLOBAL_CAP
+
+/* Unsafe capacities are rejected at build time. */
+_Static_assert(R0S1_GLOBAL_CAP >= 256,
+               "the global context must hold at least the 64K reference's 256 bindings");
+_Static_assert(R0S1_CTX_CAP <= R0S1_HASH_RADIX,
+               "a child-context slot would not fit below the hash radix");
+_Static_assert(R0S1_GLOBAL_CAP <= R0S1_HASH_RADIX,
+               "a global-context slot would not fit below the hash radix");
+_Static_assert(R0S1_SYM_CAP >= R0S1_GLOBAL_CAP,
+               "every global binding needs its own symbol: R0S1_SYM_CAP >= R0S1_GLOBAL_CAP");
+/* The largest entry is (R0S1_SYM_CAP-1)*radix + (radix-1) = SYM_CAP*radix - 1.
+ * It must fit a 32-bit cell (the WASM build), so the encoding is portable. */
+_Static_assert((long long)R0S1_SYM_CAP * (long long)R0S1_HASH_RADIX - 1 <= 2147483647LL,
+               "hash entries would overflow a 32-bit cell: lower R0S1_SYM_CAP or R0S1_GLOBAL_CAP");
+/* The global context ([parent, count, cap, pairs, hash] = 3 + 3*cap cells) is
+ * allocated in the loader heap at start-up. */
+_Static_assert(CTX_DATA + 3 * R0S1_GLOBAL_CAP <= R0S1_HEAP_LIMIT - R0S1_LOAD_BASE,
+               "the global context does not fit in the loader heap");
 
 /* closure layout: [spec, body, captured-context, func-site-id, depth-bias]
  * CLOSURE_BIAS is the "Guard of Binding" depth offset: 0 for a hand-written

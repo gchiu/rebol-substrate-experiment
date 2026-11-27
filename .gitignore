@@ -30,6 +30,9 @@ demos/patrol/prelude.glon
 demos/patrol/strings.glon
 patrol-test
 gc-worklist-overflow-test
+global-ctx-hash-constrained
+global-ctx-hash-profile-*
+hash-capacity-check.err
 
 # machine-integrity (generated)
 machine-integrity-test
