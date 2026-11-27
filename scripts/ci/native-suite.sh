@@ -161,6 +161,9 @@ run_step integration-library-audit make library-audit
 # one-second-resolution make sees it; the executable's modules and profile are
 # checked.
 run_step config-rebuild make config-rebuild-check
+# GLON-CORE-CI-1C: the harness itself must not depend on GNU `timeout` or
+# discard the host's OPENSSL_CFLAGS (both broke the CI-1B macOS runs).
+run_step harness-portability make harness-portability-check
 
 # ---- explicit build matrix and sizes --------------------------------------
 run_step sizes sizes

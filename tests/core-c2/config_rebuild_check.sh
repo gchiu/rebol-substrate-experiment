@@ -92,23 +92,47 @@ switch "3 none/constrained" none full MODULES=
 switch "4 none/server" none fits MODULES= MEM_PROFILE=server
 
 # ---- 5. CivetWeb compiler flags ------------------------------------------
+# The probe flag is appended to the caller's OPENSSL_CFLAGS, never substituted
+# for it: macOS CI exports Homebrew's OpenSSL include directory there and
+# civetweb.c does not compile without it (GLON-CORE-CI-1C).  The caller's
+# setting is restored by building with no command-line OPENSSL_CFLAGS at all,
+# so the restored build and the final up-to-date check use exactly the
+# environment's state (set, empty or unset).  A failed compile is a failure.
 build third_party/civetweb/civetweb.o >/dev/null || bad "5 civetweb build failed"
 X=-DGLON_CONFIG_REBUILD_CHECK
-for flags in "$X" ""; do
-    label="5 OPENSSL_CFLAGS='$flags'"
-    $MAKE -q --no-print-directory third_party/civetweb/civetweb.o OPENSSL_CFLAGS="$flags" >/dev/null 2>&1
+base=${OPENSSL_CFLAGS-}
+probe="${base:+$base }$X"
+for step in probe restore; do
+    if [ "$step" = probe ]; then
+        label="5 OPENSSL_CFLAGS+=$X"
+        set -- OPENSSL_CFLAGS="$probe"
+    else
+        label="5 OPENSSL_CFLAGS restored"
+        set --
+    fi
+    $MAKE -q --no-print-directory third_party/civetweb/civetweb.o "$@" >/dev/null 2>&1
     tie third_party/civetweb/civetweb.o build/civetweb.flags
-    out=$(build third_party/civetweb/civetweb.o OPENSSL_CFLAGS="$flags")
+    out=$(build third_party/civetweb/civetweb.o "$@")
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        bad "$label: civetweb.o compilation failed (make exit $rc): $(echo "$out" | tail -n 3 | tr '\n' ' ')"
+        continue
+    fi
     case "$out" in *"-c third_party/civetweb/civetweb.c"*) ok "$label: civetweb.o recompiled after a same-timestamp stamp" ;;
         *) bad "$label: civetweb.o not recompiled after a same-timestamp stamp" ;; esac
     rec=$(cat build/civetweb.built 2>/dev/null)
-    case "$flags:$rec" in *:) bad "$label: no build record (build/civetweb.built)" ;;
-        "$X:"*"$X"*) ok "$label: build record has the new flags" ;;
-        ":"*"$X"*) bad "$label: build record still has $X" ;;
-        "$X:"*) bad "$label: build record lacks $X" ;;
-        *) ok "$label: build record has the default flags" ;; esac
+    if [ -z "$rec" ]; then bad "$label: no build record (build/civetweb.built)"; continue; fi
+    case "$step:$rec" in
+        probe:*"$X"*) ;;
+        probe:*) bad "$label: build record lacks $X"; continue ;;
+        restore:*"$X"*) bad "$label: build record still has $X"; continue ;;
+    esac
+    if [ -n "$base" ]; then
+        case "$rec" in *"$base"*) ;; *) bad "$label: build record lacks the caller's OPENSSL_CFLAGS ($base)"; continue ;; esac
+    fi
+    ok "$label: build record has the expected flags"
 done
-[ "$(q third_party/civetweb/civetweb.o)" = 0 ] && ok "5 default flags rebuilt: up to date" || bad "5 default flags: still stale"
+[ "$(q third_party/civetweb/civetweb.o)" = 0 ] && ok "5 caller's flags restored: up to date" || bad "5 caller's flags restored: still stale"
 
 build glon MODULES= >/dev/null   # leave the default build in place
 if [ "$fails" -eq 0 ]; then echo "config-rebuild-check: PASS"; else echo "config-rebuild-check: FAIL ($fails)"; exit 1; fi

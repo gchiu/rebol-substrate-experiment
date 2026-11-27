@@ -847,7 +847,7 @@ lib1-one: tests/core-v2/lib1_tests.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.
 	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o build/core-v2/lib1-$(MEM_PROFILE) tests/core-v2/lib1_tests.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c $(GLON_S1_SRC) -lm
 lib1-test:
 	@set -e; for p in $(LIB1_PROFILES); do $(MAKE) --no-print-directory lib1-one MEM_PROFILE=$$p >/dev/null; rc=0; \
-	  timeout 900 ./build/core-v2/lib1-$$p . > build/core-v2/lib1-$$p.txt 2>&1 || rc=$$?; \
+	  sh scripts/run-with-limit.sh 900 ./build/core-v2/lib1-$$p . > build/core-v2/lib1-$$p.txt 2>&1 || rc=$$?; \
 	  grep -v '^\[dump\]' build/core-v2/lib1-$$p.txt | tail -n 3; echo "lib1 $$p: exit $$rc"; [ $$rc -eq 0 ]; done
 .PHONY: lib1-one lib1-test
 
@@ -868,7 +868,15 @@ build-deps-check:
 # profile are checked.  Needs the OpenSSL development files.
 config-rebuild-check:
 	sh tests/core-c2/config_rebuild_check.sh
-.PHONY: profile-layout-one profile-check profile-reject-check profile-common-test build-deps-check config-rebuild-check
+
+# GLON-CORE-CI-1C: test-harness portability -- scripts/run-with-limit.sh (the
+# POSIX replacement for GNU `timeout`), lib1-test without `timeout` on PATH, and
+# config-rebuild-check under a caller-supplied OPENSSL_CFLAGS that civetweb.c
+# needs (as macOS CI's Homebrew include path), including an explicit failure
+# when the probe compile fails.  Needs the OpenSSL development files.
+harness-portability-check:
+	sh tests/core-c2/harness_portability_check.sh
+.PHONY: profile-layout-one profile-check profile-reject-check profile-common-test build-deps-check config-rebuild-check harness-portability-check
 
 # ---- Desktop proof: native Glon application + browser/WASM Glon View --------
 # glon-desktop is the installed application host: it binds a localhost TCP
