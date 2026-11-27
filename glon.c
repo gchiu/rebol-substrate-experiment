@@ -15,6 +15,7 @@
  *
  * The core libraries are located beside the executable in glon-lib/:
  *   glon-lib/prelude.glon   the smallest ordinary core vocabulary
+ *   glon-lib/binding.glon   set: explicit assignment of a global (GLON-VOCAB-1)
  *   glon-lib/strings.glon   immutable STRING! operations (s/+ s/= s/length s/print)
  * They are ordinary Glon source, parsed and run by the existing loader; they
  * are not compiled into the binary.
@@ -144,10 +145,13 @@ static int load_default_libraries(void) {
         fprintf(stderr, "glon: cannot locate the executable directory\n");
         return -1;
     }
-    static const char *names[] = { "prelude.glon", "strings.glon" };
+    static const char *names[] = { "prelude.glon", "binding.glon", "strings.glon" };
     char path[4096];
     for (unsigned k = 0; k < sizeof names / sizeof names[0]; k++) {
         snprintf(path, sizeof path, "%s/glon-lib/%s", exe_dir, names[k]);
+        /* binding.glon (set for a computed name) is optional: a glon-lib
+         * without it (an older copy) still runs; set 'name is the loader's */
+        if (k == 1) { FILE *f = fopen(path, "r"); if (!f) continue; fclose(f); }
         if (load_library(path) != 0) return -1;
     }
 #if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP)

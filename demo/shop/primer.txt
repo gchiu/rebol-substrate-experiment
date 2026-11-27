@@ -155,8 +155,10 @@ add10 5
 15
 @end
 
-A set-word inside a function updates the nearest existing binding of that
-word; if there is none, it creates a local of the current call.
+A set-word inside a function makes a local of that call, or updates a
+variable of an enclosing function, as here. It never changes a global that
+the function's source does not show (a global of another library, or one
+defined later); to assign a global from a function, write `set 'name value`.
 
 @example counter
 @source
@@ -394,7 +396,7 @@ Glon looks familiar, which is exactly why these differences matter:
 | `type?` | none |
 | `try`, `attempt`, `error!`, `catch` / `throw` | `SIN!`, `create-sin`, `raise`, `judge` |
 | an unset word is a catchable error | an unset word halts the run (a machine fail-stop, not a SIN!) |
-| `func` set-words are global (Rebol); `function` collects locals (Red) | a set-word updates the nearest existing binding, else makes a local |
+| `func` set-words are global (Rebol); `function` collects locals (Red) | a set-word makes a local, or updates an enclosing function's variable; `set 'name value` assigns a global |
 | a bound block can travel anywhere | a block that uses a call's locals may not outlive that call; use a closure |
 | `[1] = [1]` is true | `=` is identity for blocks and strings (`= [1] [1]` is `0`); `str-eq` compares strings |
 | threads, ports | cooperative tasks: `spawn`, `yield`, `run-tasks` (library words) |

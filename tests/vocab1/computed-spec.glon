@@ -1,0 +1,3 @@
+;; a computed spec held in a local: func sp body
+mk: func [] [ sp: [ x ]  b: [ * x 2 ]  f: func sp b  f 21 ]
+values [ mk ]

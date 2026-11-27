@@ -1,0 +1,28 @@
+;; demo/shop/binding.glon (copied to glon-lib/) -- GLON-VOCAB-1: explicit
+;; assignment of a global.
+;;
+;;   set 'word value   assigns the GLOBAL binding of word (making it if there
+;;                     is none) and answers value
+;;
+;; A function's plain set-word makes or updates a local of that function (or
+;; a variable of an enclosing function).  It reaches a global only where the
+;; reader can see it from the source: a global defined at the top level of
+;; the same source, or a data global (not a function) of an earlier source.
+;; Inside a vocabulary it never does.  Any other global is assigned with set;
+;; a vocabulary member with its qualified name (s/x: ...).
+;;
+;; With a literal name (set 'total ...) the loader reads it as an assignment
+;; of that global itself, at no cost; this word is for a computed name
+;; (set w value).  The runtime's own SET, run with the global context as the
+;; current one, so it finds (or makes) the global binding only.  It costs 67
+;; code cells, so the Intent host does not load it.
+[
+set: masm 2 [
+    LIT SCRATCH_A ! LIT RV_WORD !
+    LIT RV_CTX @ LIT SCRATCH_B !
+    LIT GC_GLOBAL_CTX @ LIT RV_CTX !
+    LIT SCRATCH_A @ CALL set
+    LIT SCRATCH_B @ LIT RV_CTX !
+    ARITY 1 EXIT
+]
+]

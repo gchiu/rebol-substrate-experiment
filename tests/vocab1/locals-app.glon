@@ -1,0 +1,15 @@
+;; locals are per function and per activation; a set-word in a function
+;; assigns a same-source global, an earlier source's data global, and never an
+;; earlier source's function global (that makes a local)
+f: func [] [ t: 1  g  t ]
+g: func [] [ t: 2  t ]
+depth: func [n] [ k: n  either > n 0 [ depth - n 1 ] [ 0 ]  k ]
+make-cell: func [v] [ x: v  func [] [ x ] ]
+c1: make-cell 1
+c2: make-cell 2
+blk: func [] [ z: 0  either 1 [ z: 5 ] [ z: 6 ]  do [ z: + z 1 ]  z ]
+r: 40
+same-source: func [] [ r: + r 1  r ]
+earlier-data: func [] [ shared: + shared 1  shared ]
+earlier-func: func [] [ helper: 5  helper ]
+values [ f  depth 3  c1 c2  blk  same-source r  earlier-data shared  earlier-func helper ]

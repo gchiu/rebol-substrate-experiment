@@ -1,0 +1,3 @@
+;; the same source loaded twice in one session (a reload) is not a redefinition
+vocabulary rl [ a: func [] [ 1 ] ]
+values [ rl/a ]

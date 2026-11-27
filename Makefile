@@ -66,6 +66,14 @@ test: s1 gc-worklist-overflow-test global-ctx-hash-constrained
 	./gc-worklist-overflow-test
 	./global-ctx-hash-constrained
 	python3 demo/shop/build-primer.py --check
+	$(MAKE) --no-print-directory test-vocab1
+
+# GLON-VOCAB-1 (glon-gui-f2 3b7b7f7e; GLON-VIEW-CORE-V1 step 5): vocabularies
+# and lexical binding through the native runner (the minimal CLI).
+test-vocab1:
+	$(MAKE) --no-print-directory glon MODULES=
+	sh tests/vocab1/run.sh ./glon
+.PHONY: test-vocab1
 
 # GLON-CORE-C1: global-context hash regression (see global_ctx_hash_test.c).
 # global-ctx-hash-constrained is the 64K reference build (256 globals, 512
@@ -400,7 +408,7 @@ $(KAKA_TARGETS): $(KAKA_PROFILE_HEADER)
 
 GLON_SRCS = glon.c r0_s1_session.c r0_s1_show.c r0_s1_runtime.c $(GLON_S1_SRC)
 GLON_LIB_DIR = glon-lib
-GLON_LIBS = $(GLON_LIB_DIR)/prelude.glon $(GLON_LIB_DIR)/strings.glon $(GLON_LIB_DIR)/strings-ext.glon
+GLON_LIBS = $(GLON_LIB_DIR)/prelude.glon $(GLON_LIB_DIR)/binding.glon $(GLON_LIB_DIR)/strings.glon $(GLON_LIB_DIR)/strings-ext.glon
 
 # Optional modules are compile-time selected. MODULES is empty for the
 # unchanged minimal CLI.  The list is comma-separated:
@@ -511,6 +519,11 @@ $(GLON_LIB_DIR)/prelude.glon: jupyter/prelude.glon
 	cp $< $@
 
 $(GLON_LIB_DIR)/strings.glon: demo/shop/strings.glon
+	@mkdir -p $(GLON_LIB_DIR)
+	cp $< $@
+
+# GLON-VOCAB-1: set for a computed global name (loaded after the prelude)
+$(GLON_LIB_DIR)/binding.glon: demo/shop/binding.glon
 	@mkdir -p $(GLON_LIB_DIR)
 	cp $< $@
 

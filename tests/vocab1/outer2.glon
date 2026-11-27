@@ -1,0 +1,18 @@
+;; explicit outer-scope assignment across levels: two enclosing functions up,
+;; a member of an enclosing vocabulary by its qualified name, a global with
+;; set from a nested vocabulary, and a member assigned from outside
+mk: func [] [ n: 0  func [] [ func [] [ n: + n 10  n ] ] ]
+step: mk
+inc: step
+inc inc
+seen: 0
+vocabulary outer [
+    count: 0
+    vocabulary inner [
+        bump: func [] [ outer/count: + outer/count 1  set 'seen outer/count  outer/count ]
+        try-local: func [] [ count: 50  count ]
+    ]
+]
+outer/inner/bump outer/inner/bump
+outer/count: + outer/count 100
+values [ inc  seen  outer/count  outer/inner/try-local  outer/count ]

@@ -19,6 +19,7 @@
  * No libc: the WASM build links without one (see standalone/glon.c). */
 
 #include "r0_s1.h"
+#include <string.h>
 
 typedef struct { char *p; int n, cap; } out_t;
 
@@ -39,6 +40,8 @@ static void put_int(out_t *o, long long v) {
 
 static void put_word(out_t *o, cell v) {
     const char *name = r0_s1_sym_name(word_id(v));
+    /* GLON-VOCAB-1: a local's decorated symbol prints as its source name */
+    if (name && name[0] && name[strlen(name) - 1] == ' ') { for (const char *c = name; c[1]; c++) put_ch(o, *c); return; }
     if (name) put_s(o, name);
     else { put_s(o, "#[word "); put_int(o, (long long)word_id(v)); put_ch(o, ']'); }
 }

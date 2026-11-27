@@ -1,0 +1,15 @@
+;; explicit outer-scope mutation: an enclosing function's local (lexical), a
+;; global with set, a vocabulary member by its qualified name
+counter: func [] [ n: 0  func [] [ n: + n 1  n ] ]
+c: counter
+c c
+total: 0
+add-total: func [v] [ set 'total + total v ]
+add-total 5 add-total 6
+vocabulary tally [
+    count: 0
+    bump: func [] [ tally/count: + count 1  tally/count ]
+    shadow: func [] [ count: 99  count ]
+]
+tally/bump tally/bump
+values [ c  total  tally/count  tally/shadow  tally/count ]

@@ -1,0 +1,6 @@
+;; a library: its functions' locals are its own
+lib/count-to: func [n] [ k: 0  face: 0  lib/step n ]
+lib/step: func [n] [ k: n  face: + n 1  k ]
+lib/sum: func [b] [ lib/sum-from b 0 0 ]
+lib/sum-from: func [b i k] [ either < i block-len b [ lib/sum-from b + i 1 + k block-at b i ] [ k ] ]
+lib/twice: func [v] [ k: * v 2  i: k  i ]

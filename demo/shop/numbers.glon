@@ -1,0 +1,22 @@
+;; demo/shop/numbers.glon -- GLON-VOCAB-1: the n vocabulary, integer helpers.
+;;
+;;   n/min a b        n/max a b        n/abs a        n/sign a
+;;   n/clamp a lo hi  n/between? a lo hi               n/digits a
+;;   n/sum block      (the integers of a block)
+;;
+;; Written as a vocabulary: its members are defined by their plain names and
+;; use each other by them (clamp calls max and min), whatever globals an
+;; application defines; outside it they are n/min, n/max, ...
+[
+vocabulary n [
+    min: func [a b] [ either < a b [ a ] [ b ] ]
+    max: func [a b] [ either > a b [ a ] [ b ] ]
+    abs: func [a] [ either < a 0 [ - 0 a ] [ a ] ]
+    sign: func [a] [ either < a 0 [ -1 ] [ either > a 0 [ 1 ] [ 0 ] ] ]
+    clamp: func [a lo hi] [ max lo min a hi ]
+    between?: func [a lo hi] [ either < a lo [ 0 ] [ <= a hi ] ]
+    digits: func [a] [ either < abs a 10 [ 1 ] [ + 1 digits / abs a 10 ] ]
+    sum: func [b] [ sum-from b 0 0 ]
+    sum-from: func [b i acc] [ either < i block-len b [ sum-from b + i 1 + acc block-at b i ] [ acc ] ]
+]
+]

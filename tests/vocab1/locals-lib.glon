@@ -1,0 +1,3 @@
+;; a library source: a function global and a data global
+helper: func [] [ 11 ]
+shared: 21

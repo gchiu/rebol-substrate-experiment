@@ -1,0 +1,2 @@
+;; a global defined in a later source cannot be reached by a function's local
+f: func [] [ y: 1  y ]

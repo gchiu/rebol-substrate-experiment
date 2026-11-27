@@ -225,7 +225,9 @@ static cell expect_session1(const char *debuggee, const char *body, cell want,
 
 /* ============================== the tests ================================ */
 
-/* frame inspection uses the generic RAW frame-depth/frame-get primitives */
+/* frame inspection uses the generic RAW frame-depth/frame-get primitives.
+ * GLON-VOCAB-1: a function's set-word locals are inspected by 'local/NAME
+ * (their lexical names); parameters by their own names */
 
 static void test_basic(void) {
     printf("debugger: A basic pause/continue\n");
@@ -233,7 +235,7 @@ static void test_basic(void) {
     const char *body =
         " st: continue "
         " ctx: state-get st 6 "
-        " dbg-x: ctx-lookup ctx 'x "
+        " dbg-x: ctx-lookup ctx 'local/x "
         " continue ";
     expect_session1(gee, body, mk_int(15), "A: result == 15 after continue");
     CHECK(get_int("dbg-x") == mk_int(10), "A: at breakpoint, x == 10 (via debugger-level inspection)");
@@ -246,7 +248,7 @@ static void test_locals(void) {
         " st: continue "
         " ctx: state-get st 6 "
         " dbg-a: ctx-lookup ctx 'a "
-        " dbg-b: ctx-lookup ctx 'b "
+        " dbg-b: ctx-lookup ctx 'local/b "
         " continue ";
     expect_session1(gee, body, mk_int(16), "B: result == 16 after continue");
     CHECK(get_int("dbg-a") == mk_int(5), "B: inspected a == 5");
@@ -360,7 +362,7 @@ static void test_first_class_state(void) {
     const char *body =
         " resume-it: func [st] [ continue ] "
         " st: continue "
-        " dbg-x: ctx-lookup state-get st 6 'x "
+        " dbg-x: ctx-lookup state-get st 6 'local/x "
         " resume-it st ";
     expect_session1(gee, body, mk_int(15), "I: resume-it (ordinary R0 fn) resumes; result == 15");
     CHECK(get_int("dbg-x") == mk_int(10), "I: state passed at HLL level; x == 10");
@@ -412,7 +414,7 @@ static void test_hll_inspection(void) {
         " st: continue "
         " ctx: state-get st 6 "
         " dbg-a: lookup ctx 'a "
-        " dbg-b: lookup ctx 'b "
+        " dbg-b: lookup ctx 'local/b "
         " dbg-rec: count 3 "
         " dbg-nested: twice :inc 5 "
         " continue ";

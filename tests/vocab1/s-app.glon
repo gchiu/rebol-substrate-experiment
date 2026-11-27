@@ -1,0 +1,26 @@
+;; the s vocabulary across its three files, with application globals named
+;; like its members (length, at, slice, find, split, lower, clamp, check, bad)
+length: func [x] [ 0 ]
+at: 77
+slice: "app slice"
+find: func [a b] [ -1 ]
+split: 0
+lower: func [x] [ "app lower" ]
+clamp: func [a lo hi] [ 12345 ]
+check: 0
+bad: 0
+e: judge [ s/length 42 ]
+values [
+    s/length "hello"
+    s/= s/+ "ab" "c" "abc"
+    s/at "abc" 1
+    s/= s/slice "hello" 1 3 "ell"
+    s/find "hello" 0 "l"
+    s/= s/lower "HeLLo" "hello"
+    list/length s/split "a,b,c" 44
+    s/= s/from-int -305 "-305"
+    sin-id e
+    length "hello"
+    at
+    clamp 1 2 3
+]

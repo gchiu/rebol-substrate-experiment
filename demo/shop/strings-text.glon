@@ -1,0 +1,179 @@
+;; demo/shop/strings-text.glon -- searching, splitting, joining and ASCII case
+;; for STRING! (GLON-LIB-1): an optional library over strings-ext.glon.
+;;
+;; BYTES, NOT CHARACTERS (as strings-ext.glon). Every index is a 0-based BYTE
+;; offset and every "byte" an integer 0..255. Nothing here decodes UTF-8: a
+;; multi-byte character is several bytes, an index can fall inside one, and
+;; the case operations change only the ASCII letters A-Z and a-z (every other
+;; byte, including each byte of a UTF-8 character, is copied unchanged).
+;;
+;; SCANNING CLAMPS (as s/scan-set): a start below 0 is 0, past the end is the
+;; length, and "not found" is the length -- the scan simply reached the end.
+;;
+;;   s/find-byte s i b      the first index >= i holding byte b, or the length
+;;   s/find-range s i lo hi the first index >= i whose byte is in [lo, hi], or the
+;;                          length (s/find-range s 0 48 57: the first digit)
+;;   s/find s i p           the first index >= i at which the string p starts, or
+;;                          the length (an empty p is found at i)
+;;   s/starts-with? s p     1 if s begins with p (every s begins with ""), else 0
+;;   s/split s b            a LIST of the pieces of s between the bytes b: one more
+;;                          than the number of b's ("" gives one empty piece;
+;;                          "a,b," split on 44 gives "a" "b" "")
+;;   s/join items sep       one new string: the strings of the list or block items,
+;;                          with sep between them ("" for none)
+;;   s/lower s, s/upper s   a new string: A-Z made a-z (s/lower) or a-z made A-Z
+;;                          (s/upper); every other byte unchanged
+;;
+;; Errors follow strings.glon: a wrong argument type raises SIN! 'type with the
+;; operation as the id. Strings stay immutable: every result is new.
+;;
+;; COST. The byte scan is a masm loop, so a long run costs no recursion depth
+;; and no Glon step a byte; s/find, s/split, s/join and the case operations
+;; loop with loop/until and halved ranges (list.glon), so their depth is about
+;; log2 of the steps: one step per candidate (s/find), piece (s/split) or
+;; changed letter (s/lower, s/upper: one copy, changed in place). s/find
+;; allocates only where p's first byte occurs; s/join builds halves and joins
+;; them (about log2(n) copies of each byte). Code space: 170 cells.
+;;
+;; Requires the prelude, strings.glon, strings-ext.glon and list.glon. Wrapped
+;; in [ ] because it contains masm. The workers are unchecked (they trust
+;; their caller's types and start index): call them only through the
+;; functions below.
+[
+vocabulary s [
+
+;; s/raw-find-range ( string! i lo hi -> index ): unchecked; 0 <= i <= length.
+;; Only reads; allocates nothing. A/B/C/F: payload, index, lo, hi.
+raw-find-range: masm 4 [
+    LIT 16 DIV LIT SCRATCH_F !
+    LIT 16 DIV LIT SCRATCH_C !
+    LIT 16 DIV LIT SCRATCH_B !
+    LIT T_STRING SUB LIT SCRATCH_A !
+  sfr-loop:
+    LIT SCRATCH_B @ LIT SCRATCH_A @ @ LT ZBRANCH sfr-done
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_B @ ADD @
+    DUP LIT SCRATCH_C @ GE ZBRANCH sfr-below
+    LIT SCRATCH_F @ LE ZBRANCH sfr-next
+    BRANCH sfr-done
+  sfr-below:
+    DROP
+  sfr-next:
+    LIT SCRATCH_B @ LIT 1 ADD LIT SCRATCH_B !
+    BRANCH sfr-loop
+  sfr-done:
+    LIT SCRATCH_B @ LIT 16 MUL ARITY 1 EXIT
+]
+;; s/raw-poke! ( string! i byte -> ): unchecked; stores the byte at index i,
+;; 0 <= i < length. Only for a string this library has just made (s/lower and
+;; s/upper change their own copy): strings stay immutable to every caller.
+raw-poke!: masm 3 [
+    LIT 16 DIV LIT SCRATCH_C !
+    LIT 16 DIV LIT SCRATCH_B !
+    LIT T_STRING SUB LIT 1 ADD LIT SCRATCH_B @ ADD LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT SCRATCH_A @ !
+    ARITY 0 EXIT
+]
+
+;; i clamped to [0, length]
+clamp: func [s i] [ either < i 0 [ 0 ] [ either > i raw-length s [ raw-length s ] [ i ] ] ]
+check: func [s op] [ either raw-string? s [ s ] [ raise create-sin 'type op s ] ]
+check-int: func [i op] [ either raw-int? i [ i ] [ raise create-sin 'type op i ] ]
+;; the first of the arguments with the wrong type, raised (the checks below
+;; test them all at once and only come here on a failure): a must be a
+;; string, b a string or an integer, c an integer; if they are, b was the
+;; wrong one of the two
+bad: func [op a b c] [
+    check a op  either raw-string? b [ check b op ] [ check-int b op ]  check-int c op
+    raise create-sin 'type op b
+]
+
+find-range: func [s i lo hi] [
+    either either raw-string? s [ either raw-int? i [ either raw-int? lo [ raw-int? hi ] [ 0 ] ] [ 0 ] ] [ 0 ] [
+        raw-find-range s clamp s i lo hi
+    ] [ bad 's/find-range s i either raw-int? lo [ hi ] [ lo ] ]
+]
+find-byte: func [s i b] [
+    either either raw-string? s [ either raw-int? i [ raw-int? b ] [ 0 ] ] [ 0 ] [
+        raw-find-range s clamp s i b b
+    ] [ bad 's/find-byte s i b ]
+]
+starts-with?: func [s p] [
+    either either raw-string? s [ raw-string? p ] [ 0 ] [ raw-match? s 0 p ] [ bad 's/starts-with? s p 0 ]
+]
+;; p's bytes are at i in s (0 <= i): the first and last bytes are compared
+;; before a slice is made, so a mismatch almost never allocates
+raw-match?: func [s i p] [
+    either <= + i raw-length p raw-length s [
+        either = raw-length p 0 [ 1 ] [
+            either = raw-at s i raw-at p 0 [
+                either = raw-at s - + i raw-length p 1 raw-at p - raw-length p 1 [
+                    s/raw-eq raw-slice s i raw-length p p
+                ] [ 0 ]
+            ] [ 0 ]
+        ]
+    ] [ 0 ]
+]
+find: func [s i p] [
+    either either raw-string? s [ either raw-int? i [ raw-string? p ] [ 0 ] ] [ 0 ] [
+        either = raw-length p 0 [ clamp s i ] [ find-at s raw-find-range s clamp s i raw-at p 0 raw-at p 0 p 0 ]
+    ] [ bad 's/find s p i ]
+]
+;; i: the first place p's first byte occurs. Up to 8 candidates are tried by
+;; plain recursion (k counts them); a search with more goes on in loop/until,
+;; whose function is a closure (a heap object): most searches make none
+find-at: func [s i p k] [
+    either < i raw-length s [
+        either raw-match? s i p [ i ] [
+            either < k 8 [ find-at s raw-find-range s + i 1 raw-at p 0 raw-at p 0 p + k 1 ] [
+                find-from s + i 1 p raw-at p 0
+            ]
+        ]
+    ] [ i ]
+]
+;; each candidate is the next place p's first byte occurs (i, a parameter, is
+;; the state loop/until's function updates)
+find-from: func [s i p b] [
+    loop/until func [] [
+        i: raw-find-range s i b b
+        either < i raw-length s [ either raw-match? s i p [ 1 ] [ i: + i 1  0 ] ] [ 1 ]
+    ]
+    i
+]
+split: func [s b] [
+    either either raw-string? s [ raw-int? b ] [ 0 ] [ split-from s b list/new 0 0 ] [ bad 's/split s 0 b ]
+]
+split-from: func [s b out i j] [
+    loop/until func [] [
+        j: raw-find-range s i b b
+        list/push out raw-slice s i - j i
+        either < j raw-length s [ i: + j 1  0 ] [ 1 ]
+    ]
+    out
+]
+join: func [items sep] [
+    check sep 's/join
+    either list/list? items [ join-range :list/item items 0 list/length items sep ] [
+        either = value-tag items 6 [ join-range :block-at items 0 block-len items sep ] [
+            raise create-sin 'type 's/join items
+        ]
+    ]
+]
+;; the items in [lo, hi), halves joined
+join-range: func [at items lo hi sep] [
+    either > - hi lo 1 [
+        raw-cat raw-cat join-range :at items lo / + lo hi 2 sep  sep  join-range :at items / + lo hi 2 hi sep
+    ] [ either = hi lo [ "" ] [ check at items lo 's/join ] ]
+]
+lower: func [s] [ recase raw-slice check s 's/lower 0 raw-length s 0 65 90 32 ]
+upper: func [s] [ recase raw-slice check s 's/upper 0 raw-length s 0 97 122 -32 ]
+;; c: the copy, changed in place one letter at a time (the scan between them is
+;; the masm loop; nothing is allocated)
+recase: func [c i lo hi d] [
+    loop/until func [] [
+        i: raw-find-range c i lo hi
+        either < i raw-length c [ raw-poke! c i + raw-at c i d  i: + i 1  0 ] [ 1 ]
+    ]
+    c
+]
+]
+]

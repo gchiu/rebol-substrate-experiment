@@ -1,0 +1,1 @@
+values [ n/sum reduce [ 4 5 6 ]  n/clamp 50 0 9  n/digits -1234  n/between? 9 1 9  n/between? 10 1 9  n/sign 0  acc sum-from min a ]

@@ -1,0 +1,2 @@
+;; loaded first: uses ord/x before the vocabulary ord exists (not checked)
+use-x: func [] [ ord/x 4 ]

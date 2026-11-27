@@ -1,0 +1,5 @@
+;; the same member names in unrelated vocabularies, and a global of that name
+size: 99
+vocabulary box [ size: func [] [ 1 ]  area: func [] [ * size 10 ] ]
+vocabulary bag [ size: func [] [ 2 ]  area: func [] [ * size 100 ] ]
+values [ box/size bag/size box/area bag/area size ]

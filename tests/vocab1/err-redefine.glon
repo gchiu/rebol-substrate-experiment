@@ -1,0 +1,2 @@
+vocabulary e [ a: func [] [ 1 ] ]
+e/a: func [] [ 2 ]

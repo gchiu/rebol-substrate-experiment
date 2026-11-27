@@ -1,0 +1,14 @@
+;; nested vocabularies, hierarchical qualification, lexical members
+vocabulary geo [
+    origin: 0
+    vocabulary point [
+        make: func [x y] [ reduce [ x y ] ]
+        x: func [p] [ block-at p 0 ]
+        y: func [p] [ block-at p 1 ]
+        sum: func [p] [ + x p y p ]
+    ]
+    double-sum: func [p] [ * 2 point/sum p ]
+    shifted: func [p] [ + origin point/x p ]
+]
+p: geo/point/make 3 4
+values [ geo/point/sum p  geo/double-sum p  geo/origin  geo/shifted p  geo/point/y p ]

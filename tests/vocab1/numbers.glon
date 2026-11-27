@@ -1,0 +1,5 @@
+;; the n vocabulary; application globals min, max and abs change nothing in it
+min: "app min"
+max: 999
+abs: func [x] [ 0 ]
+values [ n/min 3 7  n/max 3 7  n/abs -5  n/clamp 15 0 10  n/clamp -3 0 10  n/sign -9  n/digits 12345  n/sum reduce [ 1 2 3 4 ]  n/between? 5 1 9  max ]

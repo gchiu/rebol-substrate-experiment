@@ -1,0 +1,7 @@
+;; data globals named like the n vocabulary's members and locals, defined
+;; before numbers.glon is loaded (inside a vocabulary a set-word never reaches
+;; a global)
+acc: 500
+sum-from: 600
+min: 700
+a: 800

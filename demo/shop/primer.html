@@ -147,7 +147,7 @@ add10 5</textarea>
 <div class="bar"><button class="run" disabled>Run</button><button class="reset" disabled>Reset</button><span class="hint">Ctrl+Enter runs</span></div>
 <pre class="out" aria-live="polite"></pre>
 </div>
-<p>A set-word inside a function updates the nearest existing binding of that word; if there is none, it creates a local of the current call.</p>
+<p>A set-word inside a function makes a local of that call, or updates a variable of an enclosing function, as here. It never changes a global that the function's source does not show (a global of another library, or one defined later); to assign a global from a function, write <code>set 'name value</code>.</p>
 <div class="ex" data-ex="counter" data-env="core">
 <textarea rows="6" spellcheck="false" autocapitalize="off" aria-label="Glon source: counter">counter: func [] [
     n: 0
@@ -292,7 +292,7 @@ sin-id e</textarea>
 </div>
 <h2 id="s10">10. Coming from Rebol or Red</h2>
 <p>Glon looks familiar, which is exactly why these differences matter:</p>
-<div class="tablewrap"><table><thead><tr><th>In Rebol / Red</th><th>In Glon today</th></tr></thead><tbody><tr><td><code>1 + 2 * 3</code> (infix)</td><td>prefix only: <code>+ 1 * 2 3</code>; comparisons too: <code>&gt; n 0</code></td></tr><tr><td><code>( ... )</code> groups an expression</td><td>no parentheses; fixed arity decides grouping</td></tr><tr><td><code>0</code> is true; <code>true</code> / <code>false</code></td><td><code>0</code> and <code>none</code> are false; no <code>true</code> / <code>false</code> words (use <code>1</code> / <code>0</code>)</td></tr><tr><td><code>case [cond [action] ...]</code>, <code>case/all</code></td><td><code>case [ [cond] [action] ... ]</code>: conditions are blocks; no <code>/all</code></td></tr><tr><td><code>foreach</code>, <code>each</code>, <code>while</code>, <code>repeat</code>, <code>loop</code></td><td>no loop words; use recursion</td></tr><tr><td><code>switch</code></td><td>none; use <code>case</code></td></tr><tr><td><code>type?</code></td><td>none</td></tr><tr><td><code>try</code>, <code>attempt</code>, <code>error!</code>, <code>catch</code> / <code>throw</code></td><td><code>SIN!</code>, <code>create-sin</code>, <code>raise</code>, <code>judge</code></td></tr><tr><td>an unset word is a catchable error</td><td>an unset word halts the run (a machine fail-stop, not a SIN!)</td></tr><tr><td><code>func</code> set-words are global (Rebol); <code>function</code> collects locals (Red)</td><td>a set-word updates the nearest existing binding, else makes a local</td></tr><tr><td>a bound block can travel anywhere</td><td>a block that uses a call's locals may not outlive that call; use a closure</td></tr><tr><td><code>[1] = [1]</code> is true</td><td><code>=</code> is identity for blocks and strings (<code>= [1] [1]</code> is <code>0</code>); <code>str-eq</code> compares strings</td></tr><tr><td>threads, ports</td><td>cooperative tasks: <code>spawn</code>, <code>yield</code>, <code>run-tasks</code> (library words)</td></tr><tr><td><code>print</code> shows any value</td><td><code>print</code> shows integers only; <code>s/print</code> prints a string</td></tr><tr><td><code>append</code> changes a string in place</td><td>strings are immutable: <code>s/+</code> returns a new string</td></tr></tbody></table></div>
+<div class="tablewrap"><table><thead><tr><th>In Rebol / Red</th><th>In Glon today</th></tr></thead><tbody><tr><td><code>1 + 2 * 3</code> (infix)</td><td>prefix only: <code>+ 1 * 2 3</code>; comparisons too: <code>&gt; n 0</code></td></tr><tr><td><code>( ... )</code> groups an expression</td><td>no parentheses; fixed arity decides grouping</td></tr><tr><td><code>0</code> is true; <code>true</code> / <code>false</code></td><td><code>0</code> and <code>none</code> are false; no <code>true</code> / <code>false</code> words (use <code>1</code> / <code>0</code>)</td></tr><tr><td><code>case [cond [action] ...]</code>, <code>case/all</code></td><td><code>case [ [cond] [action] ... ]</code>: conditions are blocks; no <code>/all</code></td></tr><tr><td><code>foreach</code>, <code>each</code>, <code>while</code>, <code>repeat</code>, <code>loop</code></td><td>no loop words; use recursion</td></tr><tr><td><code>switch</code></td><td>none; use <code>case</code></td></tr><tr><td><code>type?</code></td><td>none</td></tr><tr><td><code>try</code>, <code>attempt</code>, <code>error!</code>, <code>catch</code> / <code>throw</code></td><td><code>SIN!</code>, <code>create-sin</code>, <code>raise</code>, <code>judge</code></td></tr><tr><td>an unset word is a catchable error</td><td>an unset word halts the run (a machine fail-stop, not a SIN!)</td></tr><tr><td><code>func</code> set-words are global (Rebol); <code>function</code> collects locals (Red)</td><td>a set-word makes a local, or updates an enclosing function's variable; <code>set 'name value</code> assigns a global</td></tr><tr><td>a bound block can travel anywhere</td><td>a block that uses a call's locals may not outlive that call; use a closure</td></tr><tr><td><code>[1] = [1]</code> is true</td><td><code>=</code> is identity for blocks and strings (<code>= [1] [1]</code> is <code>0</code>); <code>str-eq</code> compares strings</td></tr><tr><td>threads, ports</td><td>cooperative tasks: <code>spawn</code>, <code>yield</code>, <code>run-tasks</code> (library words)</td></tr><tr><td><code>print</code> shows any value</td><td><code>print</code> shows integers only; <code>s/print</code> prints a string</td></tr><tr><td><code>append</code> changes a string in place</td><td>strings are immutable: <code>s/+</code> returns a new string</td></tr></tbody></table></div>
 <h2 id="s11">11. Next</h2>
 <ul><li>The first substantial Glon program is the live traffic simulator: <a href="https://gchiu.github.io/rebol-substrate-experiment/shop/traffic.html">https://gchiu.github.io/rebol-substrate-experiment/shop/traffic.html</a>. Its IDM, Newell, OVM/FVDM and NaSch car-following models are written in Glon and run through WebAssembly in the browser.</li><li>The normative rules: <a href="https://github.com/gchiu/rebol-substrate-experiment/blob/glon-shop-g1a/GLON-ALPHA-LAWS.md">GLON-ALPHA-LAWS.md</a>.</li></ul>
 
@@ -804,11 +804,13 @@ do-event: [
 
 
 [
+vocabulary s [
 
 
 
 
-s/raw-cat: masm 2 [
+
+raw-cat: masm 2 [
     LIT SCRATCH_B ! LIT SCRATCH_A !
     LIT SCRATCH_A @ LIT SCRATCH_B @
     LIT SCRATCH_A @ LIT T_STRING SUB @ LIT SCRATCH_B @ LIT T_STRING SUB @ ADD LIT SCRATCH_F !
@@ -836,10 +838,10 @@ s/raw-cat: masm 2 [
 ]
 
 
-s/raw-length: masm 1 [ LIT T_STRING SUB @ LIT 16 MUL ARITY 1 EXIT ]
+raw-length: masm 1 [ LIT T_STRING SUB @ LIT 16 MUL ARITY 1 EXIT ]
 
 
-s/raw-print: masm 1 [
+raw-print: masm 1 [
     LIT T_STRING SUB LIT SCRATCH_A !
     LIT SCRATCH_A @ @ LIT SCRATCH_C !
   s-print-loop:
@@ -853,22 +855,23 @@ s/raw-print: masm 1 [
     ARITY 0 EXIT
 ]
 
-s/+: func [a b] [
-    either s/raw-string? a [
-        either s/raw-string? b [ s/raw-cat a b ] [ raise create-sin 'type 's/+ b ]
++: func [a b] [
+    either raw-string? a [
+        either raw-string? b [ raw-cat a b ] [ raise create-sin 'type 's/+ b ]
     ] [ raise create-sin 'type 's/+ a ]
 ]
 
-s/=: :str-eq
+=: :str-eq
 
-s/length: func [a] [
-    either s/raw-string? a [ s/raw-length a ] [ raise create-sin 'type 's/length a ]
+length: func [a] [
+    either raw-string? a [ raw-length a ] [ raise create-sin 'type 's/length a ]
 ]
 
-s/print: func [a] [
-    either s/raw-string? a [ s/raw-print a ] [ raise create-sin 'type 's/print a ]
+print: func [a] [
+    either raw-string? a [ raw-print a ] [ raise create-sin 'type 's/print a ]
 ]
 
+]
 ]</script>
 <script type="application/glon" data-env="case">
 

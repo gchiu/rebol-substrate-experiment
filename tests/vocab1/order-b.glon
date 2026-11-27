@@ -1,0 +1,3 @@
+;; declares ord afterwards
+vocabulary ord [ x: func [v] [ * v 10 ] ]
+values [ use-x  ord/x 2 ]

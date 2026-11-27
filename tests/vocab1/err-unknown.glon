@@ -1,0 +1,2 @@
+vocabulary e [ a: 1 ]
+values [ e/b ]

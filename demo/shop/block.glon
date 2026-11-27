@@ -1,0 +1,22 @@
+;; demo/shop/block.glon -- the two raw words list.glon needs, for sessions
+;; that do not load the View libraries (GLON-LIB-1).
+;;
+;;   value-tag v          the type tag of any value: 0 INTEGER!, 6 BLOCK!,
+;;                        8 closure, 12 STRING! (r0_s1.h). Reads no memory, so
+;;                        it is safe for every value.
+;;   block-set! b i v     store v as item i of block b. UNCHECKED: b must be a
+;;                        BLOCK! and 0 <= i < block-len b, or it writes outside
+;;                        the block. For library code behind checks (list.glon);
+;;                        applications use list/put.
+;;
+;; The same two words are defined in Glon/View sessions by
+;; view/glon/core_words.glon, from words those sessions already have (so the
+;; code is not assembled twice). Wrapped in [ ] because it contains masm.
+[
+value-tag: masm 1 [ LIT 16 MOD LIT 16 MUL ARITY 1 EXIT ]
+block-set!: masm 3 [
+    LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A !
+    LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD !
+    ARITY 0 EXIT
+]
+]

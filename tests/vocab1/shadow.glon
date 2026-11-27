@@ -1,0 +1,24 @@
+;; nested vocabularies: the innermost member wins, a parameter shadows a
+;; member, a sibling's member is reached through the enclosing vocabulary,
+;; global/name reads past a member, a set-word of a member's name in a member
+;; function is a local, and the same names at every level. (A nested
+;; vocabulary is declared before the code that names it: see forward-*.)
+vocabulary outer [
+    name: 1
+    get: func [] [ name ]
+    vocabulary other [ name: 4  get: func [] [ name ] ]
+    vocabulary mid [
+        name: 2
+        get: func [] [ name ]
+        vocabulary inner [
+            get: func [] [ name ]
+            param: func [name] [ name ]
+            sib: func [] [ mid/get ]
+            reach-other: func [] [ other/get ]
+            top: func [] [ global/name ]
+            local: func [] [ name: 9  name ]
+        ]
+    ]
+]
+name: 100
+values [ outer/get outer/mid/get outer/mid/inner/get outer/mid/inner/param 7 outer/mid/inner/sib outer/mid/inner/reach-other outer/mid/inner/top outer/mid/inner/local outer/mid/name name ]

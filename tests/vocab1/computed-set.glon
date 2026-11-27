@@ -1,0 +1,10 @@
+;; set with a computed name (binding.glon) and with a literal one, in a vocabulary
+count-a: 0
+bump-by-name: func [w] [ set w + 1 get w ]
+bump-by-name 'count-a bump-by-name 'count-a
+vocabulary tally [
+    hits: 0
+    hit: func [] [ set 'tally/hits + hits 1  set 'last-hit hits  hits ]
+]
+tally/hit tally/hit
+values [ count-a tally/hits last-hit ]

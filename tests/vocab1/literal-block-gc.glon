@@ -1,0 +1,15 @@
+;; KNOWN DEFECT, unresolved, for C1 (GLON-LANG-1 2.4, probe a2; GLON-VIEW-C1-CONTRACT.md):
+;; literal blocks live in the loader heap and are GC leaves, so a managed
+;; block stored into one is not marked; after collections its cells are
+;; reused. Expected once fixed: "glon" 1 (or a refusal by block-set!).
+block-set!: masm 3 [ LIT SCRATCH_C ! LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT SCRATCH_A ! LIT SCRATCH_C @ LIT SCRATCH_A @ LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD ! ARITY 0 EXIT ]
+gc/collect: masm 0 [ CALL collect ARITY 0 EXIT ]
+holder: func [] [ [ 0 ] ]
+keep: func [v] [ block-set! holder 0 v ]
+keep reduce [ s/+ "glo" "n" 1 2 3 ]
+churn: func [n] [ either = n 0 [ 0 ] [ reduce [ s/+ "xxxxxxxx" "yyyyyyyy" 1 2 3 4 5 6 ]  churn - n 1 ] ]
+gc/collect
+churn 40
+gc/collect
+churn 40
+values [ block-at block-at holder 0 0  block-at block-at holder 0 1 ]

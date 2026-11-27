@@ -36,6 +36,7 @@ static cell code_begin, code_end;
  * RAW assembler's symbolic CALL targets (alloc/collect/lookup). Defined later
  * by emit_gc/emit_alloc/emit_lookup. */
 static cell r_alloc, r_collect, r_lookup;
+static cell r_set;                          /* GLON-VOCAB-1: masm CALL set */
 
 static char *dup_str(const char *s) {
     size_t n = strlen(s) + 1;
@@ -153,7 +154,11 @@ static cell lex_names[MAX_LEX_DEPTH][R0S1_CTX_CAP];
 static int  lex_count[MAX_LEX_DEPTH];
 static int  lex_depth;
 
-static void lex_push(void) { if (lex_depth < MAX_LEX_DEPTH) lex_count[lex_depth++] = 0; }
+static int  lex_nloc[MAX_LEX_DEPTH];      /* VOCAB-1: locals per scope (below) */
+/* VOCAB-1: a scope whose parameters are known by name only: a top-level func of
+ * an unwrapped source, which never had a site or T_BOUND references */
+static int  lex_pseudo[MAX_LEX_DEPTH];
+static void lex_push(void) { if (lex_depth < MAX_LEX_DEPTH) { lex_nloc[lex_depth] = 0; lex_pseudo[lex_depth] = 0; lex_count[lex_depth++] = 0; } }
 static void lex_pop(void)  { if (lex_depth > 0) lex_depth--; }
 static void lex_add(cell id) {
     int d = lex_depth - 1;
@@ -164,9 +169,423 @@ static int lex_resolve(cell id, int *depth, int *slot) {
     for (int d = 0; d < lex_depth; d++) {
         int si = lex_depth - 1 - d;
         for (int s = 0; s < lex_count[si]; s++)
-            if (lex_names[si][s] == id) { *depth = d; *slot = s; return 1; }
+            if (lex_names[si][s] == id) { if (lex_pseudo[si]) return 0; *depth = d; *slot = s; return 1; }
     }
     return 0;
+}
+
+/* ==== GLON-VOCAB-1: lexical locals and vocabularies (loader only) ==========
+ * Everything here runs in the loader (C); no emitted S1 code changes.
+ *
+ * Lexical locals.  The set-words of a function body (outside nested literal
+ * funcs and dialect blocks) are that function's locals, unless the name is
+ * bound by an enclosing function (then it is that binding: closures share it,
+ * as before) or -- outside vocabularies only -- a global the reader can see
+ * from the source: defined at the top level of the same source, or a DATA
+ * global (not a function, native or masm word) that an earlier source has
+ * already defined when this one is loaded.  A
+ * local is renamed to a DECORATED symbol, its spelling followed by a space,
+ * which no source can spell: no global can ever have it, so the runtime's
+ * set (nearest existing binding, else a new local) always makes it a local,
+ * whatever globals exist now or later.  References to it in the body and in
+ * nested functions are renamed alike; parameters keep their names.
+ *
+ * Vocabularies.  `vocabulary NAME [ body ]` (at a top level: a source, a
+ * vocabulary body or a top-level `do [ ]`) declares the vocabulary NAME
+ * (nested: PARENT/NAME).  Its members are the body's top-level set-words; each
+ * is stored under its full name (s/length, intent/example/face).  Inside the
+ * body -- its top level and its functions -- a plain name that is a member
+ * means that member (innermost vocabulary first; a member named like a
+ * built-in native does not hide the native).  A qualified name is resolved
+ * lexically (a nested vocabulary's name, then a top-level vocabulary) and must
+ * name an existing member: an unknown member, or a definition (func, masm,
+ * does, lambda) made outside the vocabulary, is a load error.  Existing flat
+ * globals with the vocabulary's prefix are adopted as members when it is
+ * first declared; a source loaded before the declaration is not checked. */
+#define LX_DECO ' '
+enum { MODE_TOP = 0, MODE_FUNC = 1, MODE_DATA = 2 };
+#define MAX_MODE 256
+static int mode_stack[MAX_MODE];
+static int mode_depth;
+static int cur_mode(void) { return mode_depth > 0 ? mode_stack[mode_depth - 1] : MODE_TOP; }
+static int next_hint;            /* for the block about to be parsed: 1 code (do/reduce), 2 dialect data */
+static int in_spec;              /* parsing a func spec: names are parameters, never rewritten */
+static int file_block_pending;   /* the next block is the source's own outer block */
+static int func_body_pending;    /* the next block is a (pseudo-scoped) function body */
+static int vocab_body_pending;   /* the next block is a vocabulary body */
+
+#define MAX_LOCALS 96
+static cell lex_loc[MAX_LEX_DEPTH][MAX_LOCALS];    /* local word ids, per scope */
+static cell lex_deco[MAX_LEX_DEPTH][MAX_LOCALS];   /* their decorated ids */
+
+static unsigned char file_top[(R0S1_SYM_CAP + 7) / 8];   /* the source's top-level set-words */
+static unsigned char earlier_data[(R0S1_SYM_CAP + 7) / 8]; /* data globals of earlier sources (not functions) */
+#define BIT_SET(b, i) ((b)[(i) >> 3] |= (unsigned char)(1u << ((i) & 7)))
+#define BIT_GET(b, i) (((b)[(i) >> 3] >> ((i) & 7)) & 1u)
+static unsigned char native_bits[(R0S1_SYM_CAP + 7) / 8];
+static int native_bits_ready;
+
+/* vocabularies and their members */
+#define MAX_VOCABS 128
+typedef struct { char path[256]; int parent; } vocab_t;
+static vocab_t vocabs[MAX_VOCABS];
+static int nvocabs;
+#define VM_CAP 16384
+/* src: a hash of the source that defined the member (0: adopted from legacy
+ * flat definitions); the same source may define it again (a reload) */
+typedef struct { int v; cell id; unsigned char defined; unsigned src; unsigned serial; } vmember_t;
+static unsigned cur_src;               /* the hash of the source being parsed */
+static unsigned cur_serial;            /* which parse this is (a reload is a new one) */
+static vmember_t vm_tab[VM_CAP];       /* open addressing, key (v, id) */
+static unsigned char vm_used[VM_CAP];
+static int vm_log[VM_CAP];             /* table slots in insertion order (rollback) */
+static int vm_nlog;
+static int vstack[32];
+static int vdepth;
+
+static unsigned vm_hash(int v, cell id) { return (unsigned)((unsigned long)id * 2654435761u + (unsigned)v * 40503u) % VM_CAP; }
+static vmember_t *vm_find(int v, cell id) {
+    unsigned h = vm_hash(v, id);
+    for (int k = 0; k < VM_CAP; k++) {
+        unsigned i = (h + (unsigned)k) % VM_CAP;
+        if (!vm_used[i]) return NULL;
+        if (vm_tab[i].v == v && vm_tab[i].id == id) return &vm_tab[i];
+    }
+    return NULL;
+}
+static vmember_t *vm_add(int v, cell id) {
+    vmember_t *m = vm_find(v, id);
+    if (m) return m;
+    if (vm_nlog >= VM_CAP - 1) { parse_fail_set(R0S1_PARSE_TOO_LARGE); return NULL; }
+    unsigned h = vm_hash(v, id);
+    for (int k = 0; k < VM_CAP; k++) {
+        unsigned i = (h + (unsigned)k) % VM_CAP;
+        if (!vm_used[i]) {
+            vm_used[i] = 1; vm_tab[i].v = v; vm_tab[i].id = id; vm_tab[i].defined = 0; vm_tab[i].src = 0; vm_tab[i].serial = 0;
+            vm_log[vm_nlog++] = (int)i;
+            return &vm_tab[i];
+        }
+    }
+    return NULL;
+}
+/* a failed parse leaves no vocabulary or member behind */
+static void vm_rollback(int nlog, int nv) {
+    while (vm_nlog > nlog) {
+        vm_nlog--;
+        vm_used[vm_log[vm_nlog]] = 0;
+    }
+    /* rebuild the open-addressing chains of what is left */
+    static vmember_t keep[VM_CAP];
+    int n = 0;
+    for (int i = 0; i < vm_nlog; i++) keep[n++] = vm_tab[vm_log[i]];
+    memset(vm_used, 0, sizeof vm_used);
+    vm_nlog = 0;
+    for (int i = 0; i < n; i++) { vmember_t *m = vm_add(keep[i].v, keep[i].id); if (m) { m->defined = keep[i].defined; m->src = keep[i].src; m->serial = keep[i].serial; } }
+    nvocabs = nv;
+}
+/* "a/b" into d (cap bytes), cut to fit */
+static void lx_join(char *d, size_t cap, const char *a, const char *b) {
+    size_t la = strlen(a), lb = strlen(b);
+    if (la > cap - 2) la = cap - 2;
+    memcpy(d, a, la); d[la] = '/';
+    if (lb > cap - la - 2) lb = cap - la - 2;
+    memcpy(d + la + 1, b, lb); d[la + 1 + lb] = 0;
+}
+static int vocab_find(const char *path) {
+    for (int i = 0; i < nvocabs; i++) if (strcmp(vocabs[i].path, path) == 0) return i;
+    return -1;
+}
+static cell word_id_of(const char *name) { return word_id(intern(name)); }
+static void lx_error(const char *what, const char *name) {
+    fprintf(stderr, "r0_s1: %s: %s\n", name, what);
+    parse_fail_set(R0S1_PARSE_SYNTAX);
+}
+/* built-in natives (bound at init) are never hidden by a member */
+static int is_native_name(cell id) {
+    if (!native_bits_ready) {
+        memset(native_bits, 0, sizeof native_bits);
+        cell p = r0_untag(global_ctx);
+        for (cell k = 0; k < M[p + CTX_COUNT]; k++) {
+            cell w = M[p + CTX_DATA + 2 * k], val = M[p + CTX_DATA + 2 * k + 1];
+            if (r0_tag(val) == T_NATIVE && word_id(w) < R0S1_SYM_CAP) BIT_SET(native_bits, word_id(w));
+        }
+        native_bits_ready = 1;
+    }
+    return id >= 0 && id < R0S1_SYM_CAP && BIT_GET(native_bits, id);
+}
+
+/* ---- the pre-scanner: the parser's own tokens, without building anything */
+typedef struct { const char *s; int pos; } scan_t;
+static int scan_next(scan_t *S, int *st, int *ln) {
+    while (S->s[S->pos] && isspace((unsigned char)S->s[S->pos])) S->pos++;
+    char c = S->s[S->pos];
+    if (!c) return 0;
+    if (c == '[' || c == ']') { *st = S->pos++; *ln = 1; return c; }
+    if (c == '"') {
+        *st = S->pos++;
+        while (S->s[S->pos] && S->s[S->pos] != '"') S->pos++;
+        if (S->s[S->pos]) S->pos++;
+        *ln = S->pos - *st;
+        return 's';
+    }
+    *st = S->pos;
+    while (S->s[S->pos] && !isspace((unsigned char)S->s[S->pos]) && S->s[S->pos] != '[' && S->s[S->pos] != ']') S->pos++;
+    *ln = S->pos - *st;
+    return 'w';
+}
+static void scan_skip_block(scan_t *S) {          /* just after its '[' */
+    int d = 1, st, ln, k;
+    while (d > 0 && (k = scan_next(S, &st, &ln)) != 0) { if (k == '[') d++; else if (k == ']') d--; }
+}
+static int scan_peek(scan_t *S) { int save = S->pos, st, ln; int k = scan_next(S, &st, &ln); S->pos = save; return k; }
+static int tok_is(const char *s, int st, int ln, const char *w) { return (int)strlen(w) == ln && strncmp(s + st, w, (size_t)ln) == 0; }
+/* a dialect whose block is data (Intent/VID specs: their set-words name faces) */
+static int tok_dialect(const char *s, int st, int ln) {
+    return tok_is(s, st, ln, "layout") || tok_is(s, st, ln, "panel") || tok_is(s, st, ln, "form") || tok_is(s, st, ln, "tabs");
+}
+/* `func` just read: its spec block, and its body when that is a literal block */
+static void scan_skip_func(scan_t *S) {
+    int st, ln;
+    if (scan_peek(S) == '[') { scan_next(S, &st, &ln); scan_skip_block(S); }
+    if (scan_peek(S) == '[') { scan_next(S, &st, &ln); scan_skip_block(S); }
+}
+static void scan_skip_masm(scan_t *S) {
+    int st, ln, save = S->pos;
+    if (scan_next(S, &st, &ln) == 'w' && isdigit((unsigned char)S->s[st])) save = S->pos;
+    S->pos = save;
+    if (scan_peek(S) == '[') { scan_next(S, &st, &ln); scan_skip_block(S); }
+}
+static int tok_plain_set(const char *s, int st, int ln) {
+    return ln > 1 && s[st + ln - 1] == ':' && s[st] != ':' && s[st] != '\'' && !memchr(s + st, '/', (size_t)(ln - 1));
+}
+/* the plain set-word names of a function body (S just after its '[') */
+static int prescan_func(scan_t *S, cell *out, int cap) {
+    int n = 0, d = 1, st, ln, k, prev_dialect = 0;
+    while ((k = scan_next(S, &st, &ln)) != 0) {
+        if (k == ']') { if (--d == 0) break; prev_dialect = 0; continue; }
+        if (k == '[') { if (prev_dialect) scan_skip_block(S); else d++; prev_dialect = 0; continue; }
+        if (k == 's') { prev_dialect = 0; continue; }
+        prev_dialect = tok_dialect(S->s, st, ln);
+        if (tok_is(S->s, st, ln, "func")) { scan_skip_func(S); continue; }
+        if (tok_is(S->s, st, ln, "masm") || tok_is(S->s, st, ln, "raw")) { scan_skip_masm(S); continue; }
+        if (tok_plain_set(S->s, st, ln)) {
+            char buf[64]; int l = ln - 1 < 63 ? ln - 1 : 63;
+            memcpy(buf, S->s + st, (size_t)l); buf[l] = 0;
+            cell id = word_id_of(buf);
+            int seen = 0;
+            for (int i = 0; i < n; i++) if (out[i] == id) seen = 1;
+            if (!seen && n < cap) out[n++] = id;
+        }
+    }
+    return n;
+}
+/* the top level of a source or a vocabulary body (S just after its '[', or at
+ * the start of an unwrapped source: open = 0): each plain set-word, each
+ * set-word of the vocabulary's own full names (prefix "PATH/"), and each
+ * nested vocabulary's name, reported through add(); `do [ ]` blocks are the
+ * same top level */
+typedef void (*top_add_fn)(const char *name, int len, int nested);
+static void prescan_top(scan_t *S, int open, const char *prefix, top_add_fn add) {
+    int d = open ? 1 : 0, st, ln, k, prev_do = 0;
+    size_t pl = prefix ? strlen(prefix) : 0;
+    while ((k = scan_next(S, &st, &ln)) != 0) {
+        if (k == ']') { if (open && --d == 0) break; prev_do = 0; continue; }
+        if (k == '[') { if (prev_do) d++; else scan_skip_block(S); prev_do = 0; continue; }
+        if (k == 's') { prev_do = 0; continue; }
+        prev_do = tok_is(S->s, st, ln, "do");
+        if (tok_is(S->s, st, ln, "func")) { scan_skip_func(S); continue; }
+        if (tok_is(S->s, st, ln, "masm") || tok_is(S->s, st, ln, "raw")) { scan_skip_masm(S); continue; }
+        if (tok_is(S->s, st, ln, "vocabulary")) {
+            int nst, nln;
+            if (scan_next(S, &nst, &nln) == 'w') add(S->s + nst, nln, 1);
+            if (scan_peek(S) == '[') { scan_next(S, &nst, &nln); scan_skip_block(S); }
+            continue;
+        }
+        if (tok_plain_set(S->s, st, ln)) { add(S->s + st, ln - 1, 0); continue; }
+        if (pl && ln > (int)pl + 1 && S->s[st + ln - 1] == ':' && strncmp(S->s + st, prefix, pl) == 0 &&
+            !memchr(S->s + st + pl, '/', (size_t)(ln - 1 - (int)pl)))
+            add(S->s + st + pl, ln - 1 - (int)pl, 0);
+    }
+}
+static void top_add_file(const char *name, int len, int nested) {
+    (void)nested;
+    char buf[64]; int l = len < 63 ? len : 63;
+    memcpy(buf, name, (size_t)l); buf[l] = 0;
+    cell id = word_id_of(buf);
+    if (id >= 0 && id < R0S1_SYM_CAP) BIT_SET(file_top, id);
+}
+static int top_vocab;                       /* the vocabulary top_add_member adds to */
+static int top_dup;                         /* a member defined before this body */
+static void top_add_member(const char *name, int len, int nested) {
+    char buf[64]; int l = len < 63 ? len : 63;
+    memcpy(buf, name, (size_t)l); buf[l] = 0;
+    vmember_t *m = vm_find(top_vocab, word_id_of(buf));
+    if (m && m->defined == 2 && !nested && (m->src != cur_src || m->serial == cur_serial)) { if (!top_dup) { char full[1024]; lx_join(full, sizeof full, vocabs[top_vocab].path, buf); lx_error("member already defined (a vocabulary defines each member once)", full); } top_dup = 1; return; }
+    if (m && m->defined == 2 && !nested) return;      /* this source's own, again (a reload) */
+    m = vm_add(top_vocab, word_id_of(buf));
+    if (m) { m->defined = 3; m->src = cur_src; m->serial = cur_serial; }   /* this body's: marked 2 when the body is done */
+}
+/* the decorated (local) id of a name */
+static cell lx_deco_id(cell id) {
+    const char *nm = syms[id];
+    char buf[80];
+    snprintf(buf, sizeof buf, "%s%c", nm, LX_DECO);
+    return word_id_of(buf);
+}
+/* a new function scope (the top lex level, its parameters added): its locals */
+static void lx_func_locals(const char *src, int body_pos) {
+    int d = lex_depth - 1;
+    if (d < 0) return;
+    cell cand[MAX_LOCALS];
+    scan_t S = { src, body_pos + 1 };
+    int n = prescan_func(&S, cand, MAX_LOCALS);
+    lex_nloc[d] = 0;
+    for (int i = 0; i < n; i++) {
+        cell id = cand[i];
+        int bound = 0;
+        for (int s = 0; s < lex_count[d] && !bound; s++) if (lex_names[d][s] == id) bound = 1;   /* a parameter */
+        for (int e = 0; e < d && !bound; e++) {
+            for (int s = 0; s < lex_count[e]; s++) if (lex_names[e][s] == id) bound = 1;
+            for (int s = 0; s < lex_nloc[e]; s++) if (lex_loc[e][s] == id) bound = 1;
+        }
+        if (bound) continue;
+        if (vdepth == 0 && id < R0S1_SYM_CAP && (BIT_GET(file_top, id) || BIT_GET(earlier_data, id)))
+            continue;   /* the source's own global, or an earlier source's data global (not a function) */
+        if (id < 3) continue;                                                        /* func / return / raw */
+        if (lex_nloc[d] >= MAX_LOCALS) break;
+        lex_loc[d][lex_nloc[d]] = id;
+        lex_deco[d][lex_nloc[d]] = lx_deco_id(id);
+        lex_nloc[d]++;
+    }
+}
+/* a plain name in code: 0 not a function binding; 1 a parameter (*depth,*slot);
+ * 2 a local (*deco) */
+static int lx_func_binding(cell id, int *depth, int *slot, cell *deco) {
+    for (int dd = 0; dd < lex_depth; dd++) {
+        int si = lex_depth - 1 - dd;
+        for (int s = 0; s < lex_count[si]; s++) if (lex_names[si][s] == id) { *depth = dd; *slot = s; return lex_pseudo[si] ? 3 : 1; }
+        for (int s = 0; s < lex_nloc[si]; s++) if (lex_loc[si][s] == id) { *deco = lex_deco[si][s]; return 2; }
+    }
+    return 0;
+}
+/* the member a plain name means in the enclosing vocabularies, or -1 */
+static cell lx_member(cell id) {
+    for (int i = vdepth - 1; i >= 0; i--) {
+        if (vm_find(vstack[i], id)) {
+            if (is_native_name(id)) return -1;
+            char full[1024];
+            lx_join(full, sizeof full, vocabs[vstack[i]].path, syms[id]);
+            return word_id_of(full);
+        }
+    }
+    return -1;
+}
+/* the next source token after the current position is a definition form */
+static int lx_next_is_definition(parser_t *P) {
+    scan_t S = { P->s, P->pos };
+    int st, ln;
+    if (scan_next(&S, &st, &ln) != 'w') return 0;
+    return tok_is(P->s, st, ln, "func") || tok_is(P->s, st, ln, "masm") || tok_is(P->s, st, ln, "raw")
+        || tok_is(P->s, st, ln, "does") || tok_is(P->s, st, ln, "lambda");
+}
+/* a qualified name: its full member name, checked; legacy (not a vocabulary)
+ * names are left as they are.  kind 's' for a set-word. */
+static cell lx_qualified(parser_t *P, const char *buf, int kind) {
+    const char *slash = strchr(buf, '/');
+    char head[160];
+    size_t hl = (size_t)(slash - buf);
+    if (hl == 0 || hl >= sizeof head || !slash[1]) return word_id_of(buf);
+    memcpy(head, buf, hl); head[hl] = 0;
+    if (strcmp(head, "local") == 0) {            /* a function local by name (reflection, inspection) */
+        if (strchr(slash + 1, '/')) { lx_error("malformed qualified name", buf); return word_id_of(buf); }
+        return lx_deco_id(word_id_of(slash + 1));
+    }
+    if (strcmp(head, "global") == 0) {           /* the global binding, past any member */
+        if (kind == 's') { lx_error("cannot be assigned: write  set 'name value", buf); return word_id_of(buf); }
+        return word_id_of(slash + 1);
+    }
+    int base = -1;
+    cell hid = word_id_of(head);
+    for (int i = vdepth - 1; i >= 0 && base < 0; i--) {
+        if (!vm_find(vstack[i], hid)) continue;
+        char path[1024];
+        lx_join(path, sizeof path, vocabs[vstack[i]].path, head);
+        base = vocab_find(path);
+    }
+    if (base < 0) base = vocab_find(head);
+    if (base < 0) return word_id_of(buf);        /* not a vocabulary: a flat name, as before */
+    const char *rest = slash + 1;
+    char seg[160];
+    for (;;) {
+        const char *nx = strchr(rest, '/');
+        size_t sl = nx ? (size_t)(nx - rest) : strlen(rest);
+        if (sl == 0 || sl >= sizeof seg) { lx_error("malformed qualified name", buf); return word_id_of(buf); }
+        memcpy(seg, rest, sl); seg[sl] = 0;
+        cell sid = word_id_of(seg);
+        if (nx) {
+            char path[1024];
+            lx_join(path, sizeof path, vocabs[base].path, seg);
+            int nb = vocab_find(path);
+            if (nb < 0 || !vm_find(base, sid)) { lx_error("no such vocabulary", buf); return word_id_of(buf); }
+            base = nb; rest = nx + 1; continue;
+        }
+        vmember_t *m = vm_find(base, sid);
+        int own = vdepth > 0 && vstack[vdepth - 1] == base && cur_mode() == MODE_TOP && kind == 's';
+        if (!m) {
+            if (own) { m = vm_add(base, sid); if (m) { m->defined = 3; m->src = cur_src; m->serial = cur_serial; } }
+            else {
+                char why[1600];
+                snprintf(why, sizeof why, "no member '%s' in vocabulary %s (members are declared in its vocabulary body)", seg, vocabs[base].path);
+                lx_error(why, buf);
+                return word_id_of(buf);
+            }
+        } else if (kind == 's' && !own && (vdepth == 0 || vstack[vdepth - 1] != base) && m->src != 0 && !(m->src == cur_src && m->serial != cur_serial) &&
+                   lx_next_is_definition(P)) {
+            char why[1600];
+            snprintf(why, sizeof why, "defined outside vocabulary %s (its members are defined in its body)", vocabs[base].path);
+            lx_error(why, buf);
+        }
+        char full[1024];
+        lx_join(full, sizeof full, vocabs[base].path, seg);
+        return word_id_of(full);
+    }
+}
+/* declare (or reopen) the vocabulary NAME inside the current scope; its
+ * members from the body; answers its index or -1 */
+static int lx_vocab_open(const char *name, const char *src, int body_pos) {
+    char path[1024];
+    if (vdepth > 0) lx_join(path, sizeof path, vocabs[vstack[vdepth - 1]].path, name);
+    else snprintf(path, sizeof path, "%s", name);
+    if (strchr(name, '/') || strchr(name, ':') || name[0] == '\'' || name[0] == ':') { lx_error("a vocabulary name is a plain word", name); return -1; }
+    int v = vocab_find(path);
+    if (v < 0) {
+        if (nvocabs >= MAX_VOCABS) { lx_error("too many vocabularies", path); return -1; }
+        if (strlen(path) >= sizeof vocabs[0].path) { lx_error("vocabulary path too long", path); return -1; }
+        v = nvocabs++;
+        memcpy(vocabs[v].path, path, strlen(path) + 1);
+        vocabs[v].parent = vdepth > 0 ? vstack[vdepth - 1] : -1;
+        /* adopt the flat globals already defined under its prefix */
+        size_t pl = strlen(path);
+        cell p = r0_untag(global_ctx);
+        for (cell k = 0; k < M[p + CTX_COUNT]; k++) {
+            const char *nm = syms[word_id(M[p + CTX_DATA + 2 * k])];
+            if (strncmp(nm, path, pl) == 0 && nm[pl] == '/' && nm[pl + 1] && !strchr(nm + pl + 1, '/')) {
+                vmember_t *m = vm_add(v, word_id_of(nm + pl + 1));
+                if (m) m->defined = 2;
+            }
+        }
+    }
+    if (vdepth > 0) { vmember_t *m = vm_add(vstack[vdepth - 1], word_id_of(name)); if (m && m->defined < 2) m->defined = 3; }
+    top_vocab = v; top_dup = 0;
+    scan_t S = { src, body_pos + 1 };
+    char prefix[1100];
+    snprintf(prefix, sizeof prefix, "%s/", path);
+    prescan_top(&S, 1, prefix, top_add_member);
+    return v;
+}
+/* the body is done: its members are defined */
+static void lx_vocab_close(int v) {
+    for (int i = 0; i < vm_nlog; i++) { vmember_t *m = &vm_tab[vm_log[i]]; if (m->v == v && m->defined == 3) m->defined = 2; }
 }
 
 static void skip_ws(parser_t *P) {
@@ -200,11 +619,57 @@ static cell parse_word(parser_t *P) {
     memcpy(buf, P->s + start, (size_t)len);
     buf[len] = 0;
     if (len == 4 && strcmp(buf, "none") == 0) return R0_NONE;
-    if (buf[len - 1] == ':') { buf[len - 1] = 0; return mk_set((cell)word_id(intern(buf))); }
-    if (buf[0] == ':')       { return mk_get((cell)word_id(intern(buf + 1))); }
-    if (buf[0] == '\'')      { return mk_lit((cell)word_id(intern(buf + 1))); }
+    /* GLON-VOCAB-1: names in code are resolved lexically (locals, members,
+     * qualified names); a lit-word is data and keeps its spelling */
+    int rewrite = !in_spec && cur_mode() != MODE_DATA;
+    if (buf[len - 1] == ':') {
+        buf[len - 1] = 0;
+        if (strchr(buf, '/') && len > 2) return mk_set(lx_qualified(P, buf, 's'));
+        cell id = word_id(intern(buf));
+        if (rewrite && id >= 3) {
+            int depth, slot; cell deco;
+            int b = lx_func_binding(id, &depth, &slot, &deco);
+            if (b == 2) return mk_set(deco);
+            if (b == 0 && lex_depth == 0 && vdepth > 0 && cur_mode() == MODE_TOP) {
+                /* a member definition at the vocabulary's top level */
+                char full[1024];
+                lx_join(full, sizeof full, vocabs[vstack[vdepth - 1]].path, buf);
+                return mk_set(word_id_of(full));
+            }
+        }
+        return mk_set(id);
+    }
+    if (buf[0] == ':' && len > 1) {
+        if (strchr(buf + 1, '/')) return mk_get(lx_qualified(P, buf + 1, 'g'));
+        cell id = word_id(intern(buf + 1));
+        if (rewrite && id >= 3) {
+            int depth, slot; cell deco;
+            int b = lx_func_binding(id, &depth, &slot, &deco);
+            if (b == 2) return mk_get(deco);
+            if (b == 0) { cell m = lx_member(id); if (m >= 0) return mk_get(m); }
+        }
+        return mk_get(id);
+    }
+    if (buf[0] == '\'') {
+        /* GLON-VOCAB-1: 'local/NAME is the local NAME's own (decorated) word */
+        if (strncmp(buf + 1, "local/", 6) == 0 && buf[7] && !strchr(buf + 7, '/')) return mk_lit(lx_deco_id(word_id_of(buf + 7)));
+        return mk_lit((cell)word_id(intern(buf + 1)));
+    }
+    if (len > 1 && strchr(buf, '/') && buf[0] != '/' && buf[len - 1] != '/') {
+        if (!in_spec) return mk_word(lx_qualified(P, buf, 'w'));
+    }
     {
         cell id = word_id(intern(buf));
+        if (rewrite && id >= 3) {
+            int depth, slot; cell deco;
+            int b = lx_func_binding(id, &depth, &slot, &deco);
+            if (b == 1) return mk_bound(depth, slot);
+            if (b == 2) return mk_word(deco);
+            if (b == 3) return mk_word(id);
+            cell m = lx_member(id);
+            if (m >= 0) return mk_word(m);
+            return mk_word(id);
+        }
         /* FIB-OPT-P4: resolve a plain reference to an enclosing parameter.
          * Reserved keywords (func/return/raw = ids 0/1/2) are never resolved,
          * and only parameters are tracked, so this can only fast-path a name
@@ -241,6 +706,8 @@ static const raw_sym_t raw_syms[] = {
     { "RV_CTX", RV_CTX }, { "RV_CUR", RV_CUR }, { "RV_END", RV_END },
     { "RV_BLK", RV_BLK }, { "RV_FRAME", RV_FRAME },
     { "RV_CLOSURE", RV_CLOSURE }, { "RV_CHILD", RV_CHILD },
+    /* GLON-VOCAB-1: the explicit global assignment word (set) */
+    { "RV_WORD", RV_WORD }, { "GC_GLOBAL_CTX", GC_GLOBAL_CTX },
     { "FRAME_PREV", FRAME_PREV }, { "FRAME_SITE_ID", FRAME_SITE },
     { "FRAME_SAVED_SP", FRAME_SP }, { "FRAME_SAVED_RP", FRAME_RP },
     { "FRAME_SAVED_IP", FRAME_IP }, { "FRAME_SAVED_CTX", FRAME_CTX },
@@ -453,6 +920,7 @@ static void raw_counts(const masm_tok_t *tk, int n, int *labels, int *refs) {
             if (i >= n || !is_ref || tk[i].kind != MT_WORD) continue;
             const masm_tok_t *op = &tk[i];
             if (is_call && (mt_is(op, "alloc") || mt_is(op, "collect") || mt_is(op, "lookup")
+                            || mt_is(op, "set")
                             || mt_is(op, "ESC_ANY") || mt_is(op, "ESC_TRANSPORT"))) continue;
             (*refs)++;
         }
@@ -479,7 +947,7 @@ static int raw_is_mnemonic(const masm_tok_t *t) {
     return 0;
 }
 static int raw_is_named_entry(const masm_tok_t *t) {
-    return mt_is(t, "alloc") || mt_is(t, "collect") || mt_is(t, "lookup")
+    return mt_is(t, "alloc") || mt_is(t, "collect") || mt_is(t, "lookup") || mt_is(t, "set")
         || mt_is(t, "ESC_ANY") || mt_is(t, "ESC_TRANSPORT");
 }
 static int raw_validate(const masm_tok_t *tk, int n) {
@@ -600,6 +1068,7 @@ static cell assemble_raw(const masm_tok_t *tk, int n) {
                     if (mt_is(op, "alloc")) asm_call(r_alloc);
                     else if (mt_is(op, "collect")) asm_call(r_collect);
                     else if (mt_is(op, "lookup")) asm_call(r_lookup);
+                    else if (mt_is(op, "set")) asm_call(r_set);         /* GLON-VOCAB-1 */
                     else if (mt_is(op, "ESC_ANY")) asm_call(r_esc_any);
                     else if (mt_is(op, "ESC_TRANSPORT")) asm_call(r_esc_transport);
                     else raw_add_ref(emit_call_fwd(), op);
@@ -771,7 +1240,90 @@ static int parse_masm(parser_t *P, cell *out) {
  * rolled back completely (r0_s1_parse), so failing here is safe. */
 #define PB_ROOM(k) if (n + (k) > 511) { parse_fail_set(R0S1_PARSE_TOO_LARGE); P->err = 1; break; }
 
+/* GLON-VOCAB-1: `set 'name value` with a literal name is read as an explicit
+ * assignment of the global (or, for a qualified name, of the vocabulary
+ * member): the set-word name: undecorated, its global binding made now if
+ * there is none.  Function locals are decorated, so none can catch it; a
+ * parameter of an enclosing function with that name would, and is refused.
+ * Answers 1 when it consumed `set 'name` (the value follows), 0 when the
+ * words are something else (a computed set, a local or parameter named set). */
+static int lx_explicit_set(parser_t *P, cell *out) {
+    if (in_spec || cur_mode() == MODE_DATA) return 0;
+    cell sid = word_id_of("set");
+    int depth, slot; cell deco;
+    if (lx_func_binding(sid, &depth, &slot, &deco) != 0) return 0;
+    scan_t S = { P->s, P->pos };
+    int st, ln;
+    if (scan_next(&S, &st, &ln) != 'w' || P->s[st] != '\'' || ln < 2 || ln > 63) return 0;
+    char name[64];
+    memcpy(name, P->s + st + 1, (size_t)(ln - 1)); name[ln - 1] = 0;
+    if (strncmp(name, "local/", 6) == 0 || name[ln - 2] == ':' || name[0] == ':') return 0;
+    P->pos = S.pos;
+    if (strchr(name, '/')) { *out = mk_set(lx_qualified(P, name, 's')); return 1; }
+    cell id = word_id_of(name);
+    if (lx_func_binding(id, &depth, &slot, &deco) == 1 || lx_func_binding(id, &depth, &slot, &deco) == 3) {
+        lx_error("a parameter of an enclosing function has this name; set cannot reach the global", name);
+        return 1;
+    }
+    cell gp = r0_untag(global_ctx), w = mk_word(id);
+    int found = 0;
+    for (cell k = 0; k < M[gp + CTX_COUNT] && !found; k++) if (M[gp + CTX_DATA + 2 * k] == w) found = 1;
+    if (!found && M[gp + CTX_COUNT] < M[gp + CTX_CAP]) bind(global_ctx, w, R0_NONE);
+    *out = mk_set(id);
+    return 1;
+}
+/* GLON-VOCAB-1: the word before a nested block decides what it is */
+static int lx_hint_of(cell prev) {
+    if (r0_tag(prev) != T_WORD) return 0;
+    const char *nm = syms[word_id(prev)];
+    if (strcmp(nm, "do") == 0 || strcmp(nm, "reduce") == 0) return 1;
+    if (strcmp(nm, "layout") == 0 || strcmp(nm, "panel") == 0 || strcmp(nm, "form") == 0 || strcmp(nm, "tabs") == 0) return 2;
+    return 0;
+}
+static cell parse_block_in(parser_t *P, int is_body);
+static cell parse_block(parser_t *P, int is_body);
+/* after the keyword: NAME [ body ]  ->  tmp: do <body> */
+static int lx_vocab_body(parser_t *P, cell *tmp, int *n) {
+    skip_ws(P);
+    int st = P->pos;
+    while (P->s[P->pos] && !isspace((unsigned char)P->s[P->pos]) && P->s[P->pos] != '[' && P->s[P->pos] != ']') P->pos++;
+    int ln = P->pos - st;
+    char name[64];
+    if (ln <= 0 || ln > 63) { lx_error("a vocabulary needs a name", "vocabulary"); return -1; }
+    memcpy(name, P->s + st, (size_t)ln); name[ln] = 0;
+    skip_ws(P);
+    if (P->s[P->pos] != '[') { lx_error("a vocabulary needs a body block", name); return -1; }
+    int v = lx_vocab_open(name, P->s, P->pos);
+    if (v < 0 || parse_fail) return -1;
+    if (vdepth >= 32) { lx_error("vocabularies nested too deeply", name); return -1; }
+    vstack[vdepth++] = v;
+    vocab_body_pending = 1;
+    cell body = parse_block(P, 0);
+    vdepth--;
+    lx_vocab_close(v);
+    if (P->err || parse_fail) return -1;
+    tmp[(*n)++] = intern("do");
+    tmp[(*n)++] = body;
+    return 0;
+}
 static cell parse_block(parser_t *P, int is_body) {
+    int mode;
+    if (is_body || func_body_pending) { mode = MODE_FUNC; func_body_pending = 0; }
+    else if (file_block_pending || vocab_body_pending) { mode = MODE_TOP; file_block_pending = 0; vocab_body_pending = 0; }
+    else {
+        int pm = cur_mode();
+        if (pm == MODE_FUNC) mode = next_hint == 2 ? MODE_DATA : MODE_FUNC;
+        else if (pm == MODE_TOP) mode = next_hint == 1 ? MODE_TOP : MODE_DATA;
+        else mode = MODE_DATA;
+    }
+    next_hint = 0;
+    if (mode_depth < MAX_MODE) mode_stack[mode_depth] = mode;
+    mode_depth++;
+    cell b = parse_block_in(P, is_body);
+    mode_depth--;
+    return b;
+}
+static cell parse_block_in(parser_t *P, int is_body) {
     P->pos++; /* '[' */
     cell tmp[512];
     int n = 0;
@@ -813,9 +1365,18 @@ static cell parse_block(parser_t *P, int is_body) {
                  * T_BOUND, drop it from the new scope, and make the body's `x`
                  * silently read the OUTER x). */
                 int save_lex_depth = lex_depth;
-                lex_depth = 0;
+                /* GLON-VOCAB-1: a literal spec block names parameters (never
+                 * rewritten); a computed spec (func sp body) is an expression */
+                skip_ws(P);
+                int literal_spec = P->s[P->pos] == '[';
+                if (literal_spec) { lex_depth = 0; in_spec++; }
                 cell spec = parse_form(P);
-                lex_depth = save_lex_depth;
+                if (literal_spec) { in_spec--; lex_depth = save_lex_depth; }
+                else if (r0_tag(spec) == T_BOUND) {
+                    /* as before: a computed spec names no parameter slot */
+                    int bd = (int)bound_depth(spec), bs = (int)(bound_payload(spec) % 16);
+                    spec = mk_word(lex_names[lex_depth - 1 - bd][bs]);
+                }
                 /* Only a literal body block is this func's own lexical scope.
                  * A computed body (`func [] :b`, `func [] block-at rows i`) is
                  * an ordinary expression in the ENCLOSING scope; parsing it
@@ -840,6 +1401,7 @@ static cell parse_block(parser_t *P, int is_body) {
                     }
                 }
                 tmp[n++] = spec;
+                lx_func_locals(P->s, P->pos);            /* GLON-VOCAB-1: the body's locals */
                 site_stack[site_depth++] = sid;
                 parse_func_depth++;                       /* the body's own scope */
                 tmp[n++] = parse_block(P, 1);             /* literal body (under scope) */
@@ -863,11 +1425,26 @@ static cell parse_block(parser_t *P, int is_body) {
                 tmp[n++] = v;
                 continue;
             }
+            if (len == 3 && strncmp(P->s + start, "set", 3) == 0) {   /* GLON-VOCAB-1 */
+                cell sw;
+                PB_ROOM(1)
+                if (lx_explicit_set(P, &sw)) { tmp[n++] = sw; continue; }
+            }
+            /* GLON-VOCAB-1: `vocabulary NAME [ body ]` becomes `do [ body ]`,
+             * its body's names resolved in the vocabulary */
+            if (len == 10 && strncmp(P->s + start, "vocabulary", 10) == 0) {
+                PB_ROOM(2)
+                if (cur_mode() != MODE_TOP || lex_depth > 0) { lx_error("a vocabulary is declared at a top level (a source, a vocabulary or a top-level do)", "vocabulary"); P->err = 1; break; }
+                if (lx_vocab_body(P, tmp, &n) < 0) { P->err = 1; break; }
+                continue;
+            }
             P->pos = start;
         }
         PB_ROOM(1)
         {
+            next_hint = n > 0 ? lx_hint_of(tmp[n - 1]) : 0;
             cell form = parse_form(P);
+            next_hint = 0;
             /* Escape-time binding law: mark the block activation-dependent if
              * this form is a T_BOUND that reaches the origin activation (rather
              * than a scope opened by a literal func nested inside this block),
@@ -2160,7 +2737,7 @@ static void emit_gc(void) {
 
 /* ========================== evaluator build ============================ */
 
-static cell r_reduce, r_set, r_append, r_mkctx, r_mkclosure;
+static cell r_reduce, r_append, r_mkctx, r_mkclosure;
 static cell r_load_lex, r_hash_insert, r_build_hash;
 #ifndef R0S1_SET_LINEAR
 static cell r_find_addr;   /* INTENT-7: LOOKUP returning the binding's value-cell address */
@@ -3982,6 +4559,7 @@ static void emit_main(void) {
 cell r0_s1_init(void) {
     M[GC_LOADER_HP] = R0S1_LOAD_BASE;
     nsyms = 0;
+    nvocabs = 0; vm_nlog = 0; memset(vm_used, 0, sizeof vm_used); native_bits_ready = 0;   /* GLON-VOCAB-1 */
     n_subexpr = 0; n_block_eval = 0;
     n_invoke = 0;
     n_fw_mv = 0; n_fw_mf = 0;
@@ -4159,7 +4737,7 @@ static void seed_datatype_heap(void) {
 
 static cell parse_program(parser_t *P) {
     skip_ws(P);
-    if (P->s[P->pos] == '[') return parse_block(P, 0);
+    if (P->s[P->pos] == '[') { file_block_pending = 1; return parse_block(P, 0); }
     cell tmp[512]; int n = 0;
     while (P->s[P->pos] && !P->err && !parse_fail) {
         skip_ws(P);
@@ -4185,11 +4763,52 @@ static cell parse_program(parser_t *P) {
                     tmp[n++] = v;
                     continue;
                 }
+                if (len == 10 && strncmp(P->s + start, "vocabulary", 10) == 0) {   /* GLON-VOCAB-1 */
+                    PB_ROOM(2)
+                    if (lx_vocab_body(P, tmp, &n) < 0) { P->err = 1; break; }
+                    continue;
+                }
+                if (len == 3 && strncmp(P->s + start, "set", 3) == 0) {     /* GLON-VOCAB-1 */
+                    cell sw;
+                    PB_ROOM(1)
+                    if (lx_explicit_set(P, &sw)) { tmp[n++] = sw; continue; }
+                }
+                /* GLON-VOCAB-1: a top-level func of an unwrapped source keeps
+                 * the forms it had (no site, no T_BOUND), with a scope that
+                 * knows its parameters and locals by name */
+                if (len == 4 && strncmp(P->s + start, "func", 4) == 0) {
+                    PB_ROOM(3)
+                    tmp[n++] = intern("func");
+                    skip_ws(P);
+                    int literal_spec = P->s[P->pos] == '[';
+                    if (literal_spec) in_spec++;
+                    cell spec = parse_form(P);
+                    if (literal_spec) in_spec--;
+                    tmp[n++] = spec;
+                    skip_ws(P);
+                    if (P->err || P->s[P->pos] != '[') continue;
+                    lex_push();
+                    lex_pseudo[lex_depth - 1] = 1;
+                    if (r0_tag(spec) == T_BLOCK) {
+                        cell sp = r0_untag(spec);
+                        for (int i = (int)M[sp] - 1; i >= 0; i--) {
+                            cell e = M[sp + BLK_DATA + i];
+                            if (r0_tag(e) == T_WORD) lex_add(word_id(e));
+                        }
+                    }
+                    lx_func_locals(P->s, P->pos);
+                    func_body_pending = 1;
+                    tmp[n++] = parse_block(P, 0);
+                    lex_pop();
+                    continue;
+                }
                 P->pos = start;
             }
         }
         PB_ROOM(1)
+        next_hint = n > 0 ? lx_hint_of(tmp[n - 1]) : 0;
         tmp[n++] = parse_form(P);
+        next_hint = 0;
     }
     cell b = make_block((cell)n);
     if (b == R0_NONE) { P->err = 1; return R0_NONE; }
@@ -4237,12 +4856,40 @@ cell r0_s1_parse(const char *src, int *err) {
     lex_depth = 0;
     parse_func_depth = 0;
     raw_npending = 0; raw_pending_cells = 0;
+    /* GLON-VOCAB-1: the source's identity (for member ownership), its own
+     * top-level names; a fresh scope state */
+    {
+        unsigned hsh = 2166136261u;
+        for (const char *c = src; *c; c++) hsh = (hsh ^ (unsigned char)*c) * 16777619u;
+        cur_src = hsh ? hsh : 1;
+        cur_serial++;
+    }
+    int save_vm = vm_nlog, save_nv = nvocabs;
+    mode_depth = 0; vdepth = 0; in_spec = 0; next_hint = 0; file_block_pending = 0; vocab_body_pending = 0; func_body_pending = 0;
+    memset(file_top, 0, sizeof file_top);
+    memset(earlier_data, 0, sizeof earlier_data);
+    {
+        cell gp = r0_untag(global_ctx);
+        for (cell k = 0; k < M[gp + CTX_COUNT]; k++) {
+            cell w = M[gp + CTX_DATA + 2 * k], val = M[gp + CTX_DATA + 2 * k + 1];
+            int t = (int)r0_tag(val);
+            if (t != T_CLOSURE && t != T_NATIVE && t != T_RAW && word_id(w) < R0S1_SYM_CAP) BIT_SET(earlier_data, word_id(w));
+        }
+    }
+    {
+        int i = 0;
+        while (src[i] && isspace((unsigned char)src[i])) i++;
+        scan_t S = { src, src[i] == '[' ? i + 1 : 0 };
+        prescan_top(&S, src[i] == '[', NULL, top_add_file);
+    }
     cell b = parse_program(&P);
     if (!P.err && !parse_fail) {
         raw_emit_pending(src);
         return b;
     }
     raw_npending = 0; raw_pending_cells = 0;   /* a failed source emits no code */
+    vm_rollback(save_vm, save_nv);             /* GLON-VOCAB-1: nor any member */
+    mode_depth = 0; vdepth = 0; in_spec = 0;
     if (!parse_fail) parse_fail = R0S1_PARSE_SYNTAX;
     M[GC_LOADER_HP] = save_lhp;
     next_site = save_site;

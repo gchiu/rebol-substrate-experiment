@@ -1,0 +1,5 @@
+;; an application defining globals k and face (and i), after the library
+k: 7
+face: "a face"
+i: 1000
+values [ lib/count-to 5  lib/sum reduce [ 1 2 3 ]  lib/twice 21  k  s/length face  i ]

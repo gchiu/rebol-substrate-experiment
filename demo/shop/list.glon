@@ -1,0 +1,341 @@
+;; demo/shop/list.glon -- LIST: a growable, indexed collection of Glon values
+;; (GLON-LIB-1). An optional library, loaded after the prelude and strings.
+;;
+;;   list/new            a new, empty list
+;;   list/from b         a new list of the items of the block b
+;;   list/length l       the number of items
+;;   list/append l v     add v at the end; answers l
+;;   list/at l i         item i (0-based); NONE when i is outside [0, length)
+;;   list/put l i v      replace item i; i must be in [0, length), else it raises
+;;                       SIN! 'range 'list/put i; answers v
+;;   list/remove l i     remove item i, the later items moving down one (the order
+;;                       is kept); i must be in [0, length), else 'range; answers
+;;                       the item removed
+;;   list/clear l        remove every item (the storage is let go); answers l
+;;   list/truncate l n   keep the first n items (0 <= n <= length), the storage
+;;                       kept for reuse; the dropped slots are cleared; answers l
+;;   list/each l f       f item, for each item in order; answers l
+;;   list/find l f       the index of the first item for which f item is truthy
+;;                       (not NONE, not 0), or -1; stops at that item
+;;   list/filter l f     a new list of the items for which f item is truthy
+;;   list/map l f        a new list of f item, for each item
+;;   list/sort l less    a new list of the items, sorted: less a b is truthy when a
+;;                       must come before b. Stable (equal items keep their order)
+;;   list/slice l i n    a new list of the n items from i (a bad range raises 'range)
+;;   list/to-block l     a new BLOCK! of the items, for words that take a block (at
+;;                       most 64 items, else 'range)
+;;   list/blank n        a new BLOCK! of n zeros (0 <= n <= 64)
+;;   list/list? v        1 if v is a list, else 0
+;;   loop/for lo hi f    f i for each integer lo <= i < hi, in order
+;;   loop/collect lo hi f  a new BLOCK! of f i for each lo <= i < hi (at most 64)
+;;   loop/until f        call f (no arguments) until it answers a truthy value
+;;
+;; A list holds any values (integers, strings, blocks, other lists, closures,
+;; NONE). It is an ordinary managed object: it stays valid across collections
+;; and is collected when nothing refers to it. Functions are passed by get-word
+;; (list/each items :show) or written in place (list/each items func [x] [ ... ]).
+;;
+;; ERRORS. A first argument that is not a list raises SIN! 'type with the
+;; operation as the id; a non-integer index raises 'type; a read outside the
+;; list is NONE (as s/at), a write or removal outside it raises 'range.
+;;
+;; REPRESENTATION (private; it may change). [ list/magic count span root ]: root
+;; is a tree of 64-slot blocks, span the number of items under each slot of the
+;; root (1: the root is the only leaf, 64 items; 64: 4,096; 4,096: 262,144; ...).
+;; It grows a level at a time, so no block is ever copied or enlarged: every
+;; allocation is one 96-cell node. That matters because the collector does not
+;; compact -- a fragmented heap can refuse a large block with plenty of room
+;; free (INTENT-7.md section 4) -- and Glon cannot enlarge a block. An empty list
+;; is 32 cells; each 64 items cost one leaf (96 cells, 1.5 cells an item).
+;;
+;; ITERATION never recurses once per item: ranges are halved (depth about log2
+;; of the count), and loop/until doubles its run (depth about 2 log2 of the
+;; steps), so a long list stays within the ~84-frame return stack.
+;;
+;; COST (Glon/View 4M, 2026-11-27; GLON-LIB-1.md). list/at about 60 us,
+;; list/append about 190 us (the old application's own tree: 52 and 125);
+;; list/each about 25 us an item, against about 100 for an index loop with
+;; list/at. A function written in place is a closure: each call of each, find,
+;; filter, map or sort makes a few small heap objects for its loop.
+;;
+;; NAMES. A set-word updates the nearest existing binding, which can be a
+;; global (GLON-ARCHITECTURE-MEMORY.md section 4), so nothing here assigns a
+;; local of its own: state is held in parameters, which are always local.
+;;
+;; Requires the prelude (block-at, block-len), strings.glon, and value-tag and
+;; block-set! (demo/shop/block.glon, or view/glon/core_words.glon in Glon/View).
+;; One masm word (the check every operation makes): 131 code cells.
+[
+;; blocks of 0 to 64 zeros: a fresh block of n items is reduce of one of
+;; these (Glon cannot make a block of a size known only at run time)
+list/templates: [
+    [ ]
+    [ 0 ]
+    [ 0 0 ]
+    [ 0 0 0 ]
+    [ 0 0 0 0 ]
+    [ 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+]
+list/magic: reduce [ 'list ]
+list/node: func [] [ reduce block-at list/templates 64 ]
+
+;; list/raw-index ( v i magic -> 1 | 0 | 2 | 3 ): 1 when v is a list and i an
+;; index of it, 0 when i is an integer outside it, 2 when v is not a list (not
+;; a BLOCK!, fewer than 4 items, or a first item that is not magic), 3 when i is
+;; not an integer. Only reads (the tag before any memory), so it is safe for
+;; any v and i; one masm call does what costs a Glon list check a dozen steps.
+list/raw-index: masm 3 [
+    LIT SCRATCH_C ! LIT SCRATCH_B !
+    INT 2 LIT SCRATCH_F !
+    DUP LIT 16 MOD LIT T_BLOCK EQ ZBRANCH li-end
+    LIT T_BLOCK SUB DUP @ LIT 3 GT ZBRANCH li-end
+    DUP LIT 2 ADD @ LIT SCRATCH_C @ EQ ZBRANCH li-end
+    INT 3 LIT SCRATCH_F !
+    LIT SCRATCH_B @ LIT 16 MOD ZBRANCH li-int
+    BRANCH li-end
+  li-int:
+    LIT 3 ADD @ LIT SCRATCH_B @ GT
+    LIT SCRATCH_B @ LIT 0 GE MUL LIT 16 MUL ARITY 1 EXIT
+  li-end:
+    DROP LIT SCRATCH_F @ ARITY 1 EXIT
+]
+list/new: func [] [ reduce [ list/magic 0 0 0 ] ]
+list/blank: func [n] [
+    either either = value-tag n 0 [ either >= n 0 [ <= n 64 ] [ 0 ] ] [ 0 ] [ reduce block-at list/templates n ] [
+        raise create-sin 'range 'list/blank n
+    ]
+]
+list/list?: func [v] [ < list/raw-index v 0 list/magic 2 ]
+list/check: func [l op] [ either < list/raw-index l 0 list/magic 2 [ l ] [ raise create-sin 'type op l ] ]
+
+;; ---- the tree (unchecked) ----
+;; Lists of up to 4,096 items (span 1 or 64) are read and written without a
+;; call per level: a Glon call costs more than the arithmetic it saves
+list/item: func [l i] [
+    either = block-at l 2 1 [ block-at block-at l 3 i ] [
+        either = block-at l 2 64 [ block-at block-at block-at l 3 / i 64 - i * / i 64 64 ] [
+            list/get block-at l 3 block-at l 2 i
+        ]
+    ]
+]
+list/get: func [node span i] [
+    either = span 1 [ block-at node i ] [ list/get block-at node / i span  / span 64  - i * / i span span ]
+]
+list/store: func [l i v] [
+    either = block-at l 2 1 [ block-set! block-at l 3 i v ] [ list/set block-at l 3 block-at l 2 i v ]
+]
+list/set: func [node span i v] [
+    either = span 1 [ block-set! node i v ] [
+        list/set list/child node / i span  / span 64  - i * / i span span  v
+    ]
+]
+;; child k of an inner node, made when it is missing
+list/child: func [node k] [ either = block-at node k 0 [ list/made node k list/node ] [ block-at node k ] ]
+list/made: func [node k c] [ block-set! node k c  c ]
+;; full: another level above the root (or the first leaf)
+list/grow: func [l] [
+    either = block-at l 2 0 [ block-set! l 3 list/node  block-set! l 2 1 ] [ list/deepen l list/node ]
+]
+list/deepen: func [l top] [ block-set! top 0 block-at l 3  block-set! l 3 top  block-set! l 2 * 64 block-at l 2 ]
+
+;; ---- loops ----
+;; f i for lo <= i < hi, halving the range; stops when f answers truthy, and
+;; answers 1 if it stopped, else 0
+list/range: func [f lo hi] [
+    either > - hi lo 8 [
+        either list/range :f lo / + lo hi 2 [ 1 ] [ list/range :f / + lo hi 2 hi ]
+    ] [ list/range8 :f lo hi ]
+]
+list/range8: func [f i hi] [
+    either < i hi [ either f i [ 1 ] [ either < + i 1 hi [ either f + i 1 [ 1 ] [ list/range8 :f + i 2 hi ] ] [ 0 ] ] ] [ 0 ]
+]
+;; v item i for each item in order, a leaf at a time; stops when v answers truthy
+list/walk: func [l v] [
+    list/range func [j] [ list/walk-leaf :v list/leaf l * j 64 * j 64 list/min 64 - block-at l 1 * j 64 ]
+        0 / + block-at l 1 63 64
+]
+list/walk-leaf: func [v leaf base n] [ list/range func [k] [ v block-at leaf k + base k ] 0 n ]
+;; the leaf that holds item i
+list/leaf: func [l i] [ list/leaf-at block-at l 3 block-at l 2 i ]
+list/leaf-at: func [node span i] [
+    either = span 1 [ node ] [ list/leaf-at block-at node / i span  / span 64  - i * / i span span ]
+]
+list/min: func [a b] [ either < a b [ a ] [ b ] ]
+;; f () until it answers truthy: runs of 4, 8, 16, ... calls, so the depth is
+;; about 2 log2 of the number of calls
+loop/until: func [f] [ loop/until-from :f 4 ]
+loop/until-from: func [f k] [ either loop/until-k :f k [ 1 ] [ loop/until-from :f * k 2 ] ]
+loop/until-k: func [f k] [
+    either = k 4 [ either f [ 1 ] [ either f [ 1 ] [ either f [ 1 ] [ f ] ] ] ] [
+        either loop/until-k :f / k 2 [ 1 ] [ loop/until-k :f / k 2 ]
+    ]
+]
+
+;; ---- the vocabulary ----
+;; l is a list and i an index of it: 1; an integer outside it: 0; else raises
+list/index?: func [l i op] [ list/answer list/raw-index l i list/magic l i op ]
+list/answer: func [k l i op] [
+    either < k 2 [ k ] [ raise create-sin 'type op either = k 2 [ l ] [ i ] ]
+]
+list/length: func [l] [ block-at list/check l 'list/length 1 ]
+;; (list/push: append without the check, for lists made here)
+list/append: func [l v] [ list/push list/check l 'list/append v ]
+list/push: func [l v] [
+    either < block-at l 1 * 64 block-at l 2 [ 0 ] [ list/grow l ]
+    either = block-at l 2 1 [ block-set! block-at l 3 block-at l 1 v ] [ list/set block-at l 3 block-at l 2 block-at l 1 v ]
+    block-set! l 1 + block-at l 1 1
+    l
+]
+;; (list/at, list/put and list/remove make the one masm check inline: in a
+;; list's hottest words, every Glon call saved shows)
+list/at: func [l i] [
+    either = list/raw-index l i list/magic 1 [ either = block-at l 2 1 [ block-at block-at l 3 i ] [ list/item l i ] ] [
+        either list/index? l i 'list/at [ 0 ] [ none ]
+    ]
+]
+list/put: func [l i v] [
+    either = list/raw-index l i list/magic 1 [ list/store l i v  v ] [
+        either list/index? l i 'list/put [ 0 ] [ raise create-sin 'range 'list/put i ]
+    ]
+]
+list/remove: func [l i] [
+    either = list/raw-index l i list/magic 1 [ list/remove-at l i list/item l i ] [
+        either list/index? l i 'list/remove [ 0 ] [ raise create-sin 'range 'list/remove i ]
+    ]
+]
+list/remove-at: func [l i v] [
+    list/range func [k] [ list/store l k list/item l + k 1  0 ] i - block-at l 1 1
+    list/store l - block-at l 1 1 0
+    block-set! l 1 - block-at l 1 1
+    v
+]
+list/clear: func [l] [
+    list/check l 'list/clear
+    block-set! l 1 0  block-set! l 2 0  block-set! l 3 0
+    l
+]
+;; a new block of the items, for a function that takes a block (face/add-rows,
+;; reduce, block-at): at most 64 items, else 'range
+list/to-block: func [l] [
+    list/check l 'list/to-block
+    either > block-at l 1 64 [ raise create-sin 'range 'list/to-block block-at l 1 ] [
+        loop/collect 0 block-at l 1 func [k] [ list/item l k ]
+    ]
+]
+;; a new BLOCK! of f i for each lo <= i < hi, in order: at most 64 values,
+;; else 'range (the way to build a block whose size is known only at run time)
+loop/collect: func [lo hi f] [
+    either either = value-tag lo 0 [ either = value-tag hi 0 [ either <= lo hi [ <= - hi lo 64 ] [ 0 ] ] [ 0 ] ] [ 0 ] [
+        loop/collect-in reduce block-at list/templates - hi lo lo hi :f
+    ] [ raise create-sin 'range 'loop/collect reduce [ lo hi ] ]
+]
+loop/collect-in: func [b lo hi f] [ list/range func [i] [ block-set! b - i lo f i  0 ] lo hi  b ]
+;; the n items from i, as a new list: 0 <= i, 0 <= n, i + n <= length, else 'range
+list/slice: func [l i n] [
+    list/check l 'list/slice
+    either either either = value-tag i 0 [ = value-tag n 0 ] [ 0 ] [ either >= i 0 [ >= n 0 ] [ 0 ] ] [ 0 ] [
+        either <= + i n block-at l 1 [ list/slice-in l i n list/new ] [ raise create-sin 'range 'list/slice reduce [ i n ] ]
+    ] [ raise create-sin 'range 'list/slice reduce [ i n ] ]
+]
+list/slice-in: func [l i n out] [ list/range func [k] [ list/push out list/item l k  0 ] i + i n  out ]
+;; a new list of f item, for each item in order
+list/map: func [l f] [ list/map-in list/check l 'list/map :f list/new ]
+list/map-in: func [l f out] [ list/walk l func [x i] [ list/push out f x  0 ]  out ]
+;; f i for each integer lo <= i < hi, in order
+loop/for: func [lo hi f] [ list/range func [i] [ f i  0 ] lo hi ]
+;; (GLON-INST-2: a list emptied and filled again, as Intent's per-instance
+;; id runs are on every rebuild, makes no new blocks)
+list/truncate: func [l n] [
+    list/check l 'list/truncate
+    either either = value-tag n 0 [ either >= n 0 [ <= n block-at l 1 ] [ 0 ] ] [ 0 ] [
+        list/range func [k] [ list/store l k 0  0 ] n block-at l 1
+        block-set! l 1 n
+        l
+    ] [ raise create-sin 'range 'list/truncate n ]
+]
+list/from: func [b] [ list/from-block b list/new ]
+list/from-block: func [b l] [ list/range func [k] [ list/push l block-at b k  0 ] 0 block-len b  l ]
+list/each: func [l f] [ list/walk list/check l 'list/each func [x i] [ f x  0 ]  l ]
+list/find: func [l f] [ list/find-in list/check l 'list/find :f -1 ]
+list/find-in: func [l f at] [ list/walk l func [x i] [ either f x [ at: i  1 ] [ 0 ] ]  at ]
+list/filter: func [l f] [ list/filter-in list/check l 'list/filter :f list/new ]
+list/filter-in: func [l f out] [ list/walk l func [x i] [ either f x [ list/push out x ] [ 0 ]  0 ]  out ]
+;; merge sort: halves sorted, then merged (a stable merge: b's item goes first
+;; only when it is strictly less)
+list/sort: func [l less] [ list/check l 'list/sort  list/msort l :less 0 block-at l 1 ]
+list/msort: func [l less lo hi] [
+    either < - hi lo 2 [ either < lo hi [ list/push list/new list/item l lo ] [ list/new ] ] [
+        list/merge :less list/msort l :less lo / + lo hi 2  list/msort l :less / + lo hi 2 hi  list/new 0 0
+    ]
+]
+list/merge: func [less a b out i j] [
+    loop/until func [] [
+        either < i block-at a 1 [
+            either either < j block-at b 1 [ less list/item b j list/item a i ] [ 0 ]
+                [ list/push out list/item b j  j: + j 1 ]
+                [ list/push out list/item a i  i: + i 1 ]
+            0
+        ] [ either < j block-at b 1 [ list/push out list/item b j  j: + j 1  0 ] [ 1 ] ]
+    ]
+    out
+]
+]
