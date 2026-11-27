@@ -881,7 +881,7 @@ these commits is merged, pushed, tagged or accepted for production.
 | IO-2 | `97b8d36` | Stabilisation: caps, status/protocol validation, C tests, sanitizers. |
 | IO-3 | `72ff1ff` | Bounded-memory streaming replacement, 400-byte chunks, 4 MiB verified. |
 | HOST investigation | `43600bb` | Keep the closed HOST table; external complexity is async completion, not the table. |
-| MASM-1 | `fac9b57` | MASM `s/find`; 221/221 differential; ~220–235× on a 400-byte no-match. |
+| MASM-1 | `fac9b57` | MASM `s/find` (renamed `s/index-of` in GLON-VIEW-CORE-V2); 221/221 differential; ~220–235× on a 400-byte no-match. |
 | IO-4 | `24c10b2` | Callback/state ~77%, worker wait ~17%; textual build/parse <1%; loader-lifetime audit. |
 | MASM-2 | `4a054ec` | MASM fused `io/u32`; fixed-size managed STRING!; 1 MiB no-match 78.98 s → 34.76 s. |
 | MASM-3 | *(this experiment)* | `s/slice2` variable-length worker; matched/boundary streaming −8–10%; no-match neutral. |

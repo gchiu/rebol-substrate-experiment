@@ -324,7 +324,7 @@ In order:
 | Host-backed DOM and native `glon-web` link extraction (**experimental milestone, not deployed**) | *(untagged)* | *(the commit adding `experiments/glon-dom-links/`, `glon-dom-host/`, `glon-links-native/`)* |
 | Optional async file I/O + bounded streaming (**experimental, not production**) | *(untagged)* | IO-1 `7adf057`, IO-2 `97b8d36`, IO-3 `72ff1ff` |
 | HOST-boundary investigation (**design only**) | *(untagged)* | `43600bb` |
-| MASM `s/find` + fused `io/u32` (**experimental, not production**) | *(untagged)* | MASM-1 `fac9b57`, IO-4 `24c10b2`, MASM-2 `4a054ec` |
+| MASM `s/find` (now `s/index-of`, GLON-VIEW-CORE-V2) + fused `io/u32` (**experimental, not production**) | *(untagged)* | MASM-1 `fac9b57`, IO-4 `24c10b2`, MASM-2 `4a054ec` |
 | MASM `s/slice2` variable-length worker (**experimental, not production**) | *(untagged)* | `87a5ca7` |
 | Cookbook 0004 original-path file replacement (**completed local integration, not deployed**) | *(untagged)* | *(this integration commit)* |
 | HTTPS G1/G2/G3/G3A (**local experiments, not pushed**) | *(untagged)* | `d01dab5`, `c955523`, `9d943c7`, `546de49` |
@@ -577,6 +577,13 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `docs/design/GLON-MASM-VOCABULARY-ACCELERATION-3.md` — MASM-3 profile,
   `s/slice2` variable-length worker, allocation/GC findings and streaming
   benchmarks; implementation and tests in `experiments/masm3/`.
+- `GLON-VIEW-CORE-V2.md` — 2026-11-27, `integration/c2-view`: C2's
+  two-argument search is `s/index-of` (the shared `s/find s i p` unchanged);
+  `modules/strings.glon` and `file-replace.glon` as `s` members
+  (`io-file-inplace-test` 36/36); static lexical-binding and duplicate audit
+  (`make library-audit`); the shared `block-set!` refuses a managed value
+  stored into a literal block (`make literal-store-check`), `list.glon` uses
+  `block-set-raw!`. No runtime change.
 - `GLON-VIEW-CORE-V1.md` — 2026-11-27, branch `integration/c2-view` from C2
   `4dcae2aa`: SITE-1 (a declared `SITES`/`SITE_CAP` profile region), the
   MEM-2/3/5 allocator and collector optimisations, INTENT-7's hashed
