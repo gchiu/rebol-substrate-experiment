@@ -135,7 +135,7 @@ class Client:
         if self.csrf:
             h["X-CSRF-Token"] = self.csrf
         if self.xff:
-            h["X-Forwarded-For"] = self.xff
+            h["X-Glon-Client-IP"] = self.xff
         st, sc, data = raw_req(method, path, body, h, timeout)
         if sc:
             first = sc.split(";", 1)[0]
@@ -230,7 +230,7 @@ def main():
         ok("unauthenticated message reads are rejected")
 
         st, _, _ = raw_req("GET", "/api/users",
-                           headers={"X-Forwarded-For": "203.0.113.20"})
+                           headers={"X-Glon-Client-IP": "203.0.113.20"})
         if st != 403:
             fail(f"proxied admin registry access returned {st}")
         ok("proxied admin registry access is rejected in depth")
@@ -351,12 +351,12 @@ def main():
         for i in range(5):
             st, _, _ = raw_req("POST", "/api/auth/login",
                                json.dumps({"username": "ghost", "password": "wrong"}),
-                               {"X-Forwarded-For": xff_r})
+                               {"X-Glon-Client-IP": xff_r})
             if st != 401:
                 fail(f"rate-limit failure {i + 1} returned {st}")
         st, _, _ = raw_req("POST", "/api/auth/login",
                            json.dumps({"username": "ghost", "password": "wrong"}),
-                           {"X-Forwarded-For": xff_r})
+                           {"X-Glon-Client-IP": xff_r})
         if st != 429:
             fail(f"rate limit did not block after five failures: {st}")
         ok("login rate limiting blocks repeated failures per client/user")

@@ -83,8 +83,15 @@ only `127.0.0.1:8443`; Caddy remains the only public listener.
    ```
 
    The staged config keeps Caddy's existing automatic HTTPS certificate and
-   blocks `/api/users*` before proxying. Glon also rejects those routes when
-   `X-Forwarded-For` is present.
+   blocks `/api/users*` before proxying. Glon also rejects those routes when a
+   proxy header is present.
+
+   Caddy overwrites `X-Glon-Client-IP` and `X-Forwarded-For` with
+   `{remote_host}`. Glon ignores client-supplied `X-Forwarded-For`; it trusts
+   `X-Glon-Client-IP` only when the transport peer is loopback. This keeps rate
+   limiting tied to the address Caddy observed, not an attacker-supplied header.
+   Public application routes intended through Caddy are `/`, `/index.html`,
+   `/api/groups`, `/api/session`, `/api/auth/*` and `/api/messages`.
 
 ## Rollback
 
@@ -116,3 +123,11 @@ only `127.0.0.1:8443`; Caddy remains the only public listener.
 - The current application still stores session tokens hashed at rest, but the
   cookie token is a bearer secret; protect `users.db` file permissions.
 - Real-browser acceptance is separate from the automated W5 tests.
+
+## Manual browser acceptance (required before cutover)
+
+Automated browser automation is not installed on this VPS. Before cutover, run
+the procedure in
+`tests/glon-worlds-w5.1/MANUAL-BROWSER-ACCEPTANCE.md` against the loopback
+service (or a staging hostname) with two real browser profiles. Do not treat the
+automated HTTPS tests as a substitute for real-browser acceptance.

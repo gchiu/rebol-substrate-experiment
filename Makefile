@@ -1150,6 +1150,12 @@ w5-test:
 	python3 tests/glon-worlds-w5/pilot.py
 .PHONY: w5-test
 
+w5.1-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,sec,task MEM_PROFILE=server-https
+	tests/https-g1/make-cert.sh
+	python3 tests/glon-worlds-w5.1/pilot.py
+.PHONY: w5.1-test
+
 # ---- JSON vocabulary tests (ordinary Glon; no OpenSSL) ---------------------
 # The general JSON module and its full focused suite exceed the constrained
 # profile's 14,800-cell loader heap, so this test build uses the documented

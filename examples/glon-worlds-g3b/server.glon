@@ -279,12 +279,18 @@ gw/auth-loopback?: func [peer] [
     ]
 ]
 gw/auth-client-key: func [request] [
-    xff: http/header request "X-Forwarded-For"
-    either = xff none [ s/+ "ip:" http/peer request ] [ s/+ "ip:" xff ]
+    trusted: http/header request "X-Glon-Client-IP"
+    either = trusted none [
+        s/+ "ip:" http/peer request
+    ] [
+        either gw/auth-loopback? http/peer request [ s/+ "ip:" trusted ] [ s/+ "ip:" http/peer request ]
+    ]
 ]
 gw/auth-local-bootstrap?: func [request] [
     either gw/auth-loopback? http/peer request [
-        either = http/header request "X-Forwarded-For" none [ 1 ] [ 0 ]
+        either = http/header request "X-Glon-Client-IP" none [
+            either = http/header request "X-Forwarded-For" none [ 1 ] [ 0 ]
+        ] [ 0 ]
     ] [ 0 ]
 ]
 gw/auth-hex: func [s] [ sec/hex s ]
@@ -539,25 +545,84 @@ gw/auth-register-start: func [request u p d] [
         ] func [e] [ gw/auth-error request 500 "random failed" ]
     ]
 ]
-gw/auth-invite-consume: func [request u p d code-hash] [
-    sqlite/prepare gw/users-db "UPDATE auth_invites SET used_at = strftime('%s','now') WHERE code_hash = ? AND used_at IS NULL AND expires_at > strftime('%s','now') RETURNING id"
+gw/auth-tx-fail: func [request status message] [
+    sqlite/exec gw/users-db "ROLLBACK"
+        func [x] [ gw/auth-error request status message ]
+        func [e] [ gw/auth-error request status message ]
+]
+gw/auth-tx-commit: func [request body] [
+    sqlite/exec gw/users-db "COMMIT"
+        func [x] [ gw/auth-ok request 201 body ]
+        func [e] [ gw/auth-tx-fail request 500 "registration commit failed" ]
+]
+gw/auth-tx-invite: func [request body code-hash uid] [
+    sqlite/prepare gw/users-db "UPDATE auth_invites SET used_at = strftime('%s','now'), used_by = ? WHERE code_hash = ? AND used_at IS NULL AND expires_at > strftime('%s','now') RETURNING id"
         func [st] [
-            sqlite/bind-text st 1 code-hash func [b] [
-                sqlite/step st
-                    func [row] [
-                        either = row none [
-                            sqlite/finalize st
-                                func [x] [ gw/auth-error request 403 "invalid or used invitation" ]
-                                func [e] [ gw/auth-error request 403 "invalid or used invitation" ]
-                        ] [
-                            sqlite/finalize st
-                                func [x] [ gw/auth-register-start request u p d ]
-                                func [e] [ gw/auth-error request 500 "invitation finalize failed" ]
+            sqlite/bind-int st 1 uid func [b1] [
+                sqlite/bind-text st 2 code-hash func [b2] [
+                    sqlite/step st
+                        func [row] [
+                            either = row none [
+                                sqlite/finalize st
+                                    func [x] [ gw/auth-tx-fail request 403 "invalid or used invitation" ]
+                                    func [e] [ gw/auth-tx-fail request 403 "invalid or used invitation" ]
+                            ] [
+                                sqlite/finalize st
+                                    func [x] [ gw/auth-tx-commit request body ]
+                                    func [e] [ gw/auth-tx-fail request 500 "invitation finalize failed" ]
+                            ]
                         ]
-                    ]
-                    func [e] [ gw/auth-error request 500 "invitation lookup failed" ]
-            ] func [e] [ gw/auth-error request 500 "bind failed" ]
-        ] func [e] [ gw/auth-error request 500 "prepare failed" ]
+                        func [e] [ gw/auth-tx-fail request 500 "invitation update failed" ]
+                ] func [e] [ gw/auth-tx-fail request 500 "bind failed" ]
+            ] func [e] [ gw/auth-tx-fail request 500 "bind failed" ]
+        ] func [e] [ gw/auth-tx-fail request 500 "prepare failed" ]
+]
+gw/auth-tx-password: func [request uid body code-hash salt hash-hex] [
+    sqlite/prepare gw/users-db "INSERT OR REPLACE INTO user_passwords(user_id,algo,salt,hash,n,r,p) VALUES (?,'scrypt',?,?,16384,8,1)"
+        func [st] [
+            sqlite/bind-int st 1 uid func [b1] [
+                sqlite/bind-text st 2 salt func [b2] [
+                    sqlite/bind-text st 3 hash-hex func [b3] [
+                        sqlite/step st
+                            func [row] [
+                                sqlite/finalize st
+                                    func [x] [ gw/auth-tx-invite request body code-hash uid ]
+                                    func [e] [ gw/auth-tx-fail request 500 "password store failed" ]
+                            ]
+                            func [e] [ gw/auth-tx-fail request 500 "password store failed" ]
+                    ] func [e] [ gw/auth-tx-fail request 500 "bind failed" ]
+                ] func [e] [ gw/auth-tx-fail request 500 "bind failed" ]
+            ] func [e] [ gw/auth-tx-fail request 500 "bind failed" ]
+        ] func [e] [ gw/auth-tx-fail request 500 "prepare failed" ]
+]
+gw/auth-tx-user: func [request u d code-hash salt hash-hex] [
+    sqlite/prepare gw/users-db "INSERT INTO users(username,display_name,role,status,created_at) VALUES (?,?,'user','active','2026-01-01T00:00:00+00:00') RETURNING id,username,display_name,role,status,created_at"
+        func [ins] [
+            sqlite/bind-text ins 1 u func [b1] [
+                sqlite/bind-text ins 2 d func [b2] [
+                    sqlite/step ins
+                        func [row] [
+                            either = row none [
+                                sqlite/finalize ins
+                                    func [x] [ gw/auth-tx-fail request 409 "duplicate username" ]
+                                    func [e] [ gw/auth-tx-fail request 409 "duplicate username" ]
+                            ] [
+                                uid: block-at row 0
+                                body: json/encode gw/auth-user-value row
+                                sqlite/finalize ins
+                                    func [x] [ gw/auth-tx-password request uid body code-hash salt hash-hex ]
+                                    func [e] [ gw/auth-tx-fail request 500 "user finalize failed" ]
+                            ]
+                        ]
+                        func [e] [ gw/auth-tx-fail request 409 "duplicate username" ]
+                ] func [e] [ gw/auth-tx-fail request 500 "bind failed" ]
+            ] func [e] [ gw/auth-tx-fail request 500 "bind failed" ]
+        ] func [e] [ gw/auth-tx-fail request 500 "prepare failed" ]
+]
+gw/auth-tx-begin: func [request u d code-hash salt hash-hex] [
+    sqlite/exec gw/users-db "BEGIN IMMEDIATE"
+        func [x] [ gw/auth-tx-user request u d code-hash salt hash-hex ]
+        func [e] [ gw/auth-error request 503 "registration busy; retry" ]
 ]
 gw/auth-invite-start: func [request u p d code] [
     either sec/pending [
@@ -565,10 +630,18 @@ gw/auth-invite-start: func [request u p d code] [
     ] [
         sec/sha256 code func [bytes] [
             ch: gw/auth-hex bytes
-            gw/auth-invite-consume request u p d ch
+            sec/random 16 func [salt-raw] [
+                salt: gw/auth-hex salt-raw
+                sec/scrypt p salt 16384 8 1 32
+                    func [hash-raw] [
+                        hash-hex: gw/auth-hex hash-raw
+                        gw/auth-tx-begin request u d ch salt hash-hex
+                    ] func [e] [ gw/auth-error request 500 "password hashing failed" ]
+            ] func [e] [ gw/auth-error request 500 "random failed" ]
         ] func [e] [ gw/auth-error request 500 "invite hash failed" ]
     ]
 ]
+
 gw/auth-register: func [request] [
     body: http/body request
     body: either = 0 s/length body [ "{}" ] [ body ]
@@ -1153,7 +1226,11 @@ app/install: func [] [
                 ]
 
                 gw/users-handle: func [request] [
-                    either either loopback? http/peer request [ = http/header request "X-Forwarded-For" none ] [ 0 ] [
+                    either either loopback? http/peer request [
+                        either = http/header request "X-Forwarded-For" none [
+                            = http/header request "X-Glon-Client-IP" none
+                        ] [ 0 ]
+                    ] [ 0 ] [
                         method: http/method request
                         path: http/path request
                         either str-eq path "/api/users" [

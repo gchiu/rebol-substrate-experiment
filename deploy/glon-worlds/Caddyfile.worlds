@@ -8,6 +8,11 @@ worlds.tungjung.nz {
 	respond @admin 404
 
 	reverse_proxy https://127.0.0.1:8443 {
+		# Overwrite both headers with Caddy's observed remote address. The Glon
+		# app ignores client-supplied X-Forwarded-For and only trusts
+		# X-Glon-Client-IP when the transport peer is loopback.
+		header_up X-Glon-Client-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
 		transport http {
 			tls_insecure_skip_verify
 		}
