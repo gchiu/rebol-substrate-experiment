@@ -714,6 +714,20 @@ profile-check: build/profile/constrained/glon_profile.h
 profile-reject-check:
 	sh tests/core-c2/reject_check.sh
 
+# GLON-VIEW-CORE-V1 (SITE-1 on C2): function-site capacity in every declared
+# profile -- 640 in the fixed 64K slot; 2,048 / 4,096 / 8,192 in the desktop
+# profiles' site region (profiles/*.profile SITES / SITE_CAP).
+site-capacity-one: tests/core-v1/site_capacity_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c $(R0S1_RUNTIME_HEADERS) $(GLON_PROFILE_DEPS)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o build/site-capacity-$(MEM_PROFILE) tests/core-v1/site_capacity_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c $(GLON_S1_SRC)
+	./build/site-capacity-$(MEM_PROFILE)
+
+site-capacity-test:
+	@for p in $(MEM_PROFILES); do \
+	  $(MAKE) --no-print-directory site-capacity-one MEM_PROFILE=$$p || exit 1; done
+	@echo "site-capacity-test: PASS ($(words $(MEM_PROFILES)) profiles)"
+.PHONY: site-capacity-one site-capacity-test
+
 profile-common-test:
 	sh tests/core-c2/common_check.sh
 

@@ -17,6 +17,9 @@
  *   [32768, R0S1_HEAP_BASE)        managed heap (GC_HEAP_BASE..GC_HEAP_LIMIT)
  *   [GC_WORKLIST, +GC_WORKLIST_CAP) GC worklist: either the fixed 256-entry
  *                                  slot at 25057, or directly after the heap
+ *   [SITE_PARENT_BASE, +SITE_PARENT_CAP) function-site table: the fixed
+ *                                  640-site slot at 32024, or directly before
+ *                                  the loader (SITE-1, GLON-VIEW-CORE-V1)
  *   [R0S1_LOAD_BASE, R0S1_HEAP_LIMIT) loader heap
  *   [M1_ARENA_BASE, M1_TASK_TABLE) M1 task stacks (none when M1_MAX_TASKS is 0)
  *   [M1_TASK_TABLE, +536)          task records and wrapper blocks
@@ -75,6 +78,17 @@ _Static_assert(R0S1_LOAD_BASE >= R0S1_HEAP_BASE,
                "layout: the loader heap overlaps the managed heap");
 _Static_assert(R0S1_HEAP_LIMIT > R0S1_LOAD_BASE,
                "layout: the loader heap is empty");
+
+/* ---- function-site table (SITE-1, GLON-VIEW-CORE-V1) ---------------------- */
+/* Either the 64K reference's fixed 640-site slot at 32024 (r0_s1.h checks it
+ * against its neighbours), or a profile region of at least 640 sites after the
+ * managed heap and any after-heap worklist, ending at or below the loader. */
+_Static_assert((SITE_PARENT_BASE == 32024L && SITE_PARENT_CAP == 640L)
+               || (SITE_PARENT_CAP >= 640L
+                   && SITE_PARENT_BASE >= GC_HEAP_LIMIT
+                   && (GC_WORKLIST == 25057L || SITE_PARENT_BASE >= GC_WORKLIST + GC_WORKLIST_CAP)
+                   && SITE_PARENT_BASE + SITE_PARENT_CAP <= R0S1_LOAD_BASE),
+               "layout: the function-site table is neither the fixed 640-site slot nor between the heap/worklist and the loader");
 
 /* ---- M1 task arena and table ----------------------------------------------- */
 /* No exception: the loader never shares cells with the task arena or table.

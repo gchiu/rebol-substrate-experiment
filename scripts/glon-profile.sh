@@ -35,7 +35,7 @@ out=$2
 here=$(cd "$(dirname "$0")/.." && pwd)
 
 # ---- read KEY=VALUE (values: integers, 'auto', words) ----------------------
-keys="NAME STATUS MEM_CELLS CODE_CAP MANAGED_CELLS WORKLIST WORKLIST_CELLS LOADER_CELLS TAIL_CELLS TASKS TASK_CELLS TASK_DS_OFF TASK_RS_OFF GLOBAL_CAP SYM_CAP"
+keys="NAME STATUS MEM_CELLS CODE_CAP MANAGED_CELLS WORKLIST WORKLIST_CELLS LOADER_CELLS TAIL_CELLS TASKS TASK_CELLS TASK_DS_OFF TASK_RS_OFF GLOBAL_CAP SYM_CAP SITES SITE_CAP"
 for k in $keys; do eval "P_$k="; done
 lineno=0
 while IFS= read -r line || [ -n "$line" ]; do
@@ -63,11 +63,21 @@ done
 num() {  # num KEY VALUE: VALUE must be a non-negative integer
     case "$2" in ''|*[!0-9]*) die "$pf: $1 must be a non-negative integer, not '$2'" ;; esac
 }
-for k in CODE_CAP MANAGED_CELLS WORKLIST_CELLS TAIL_CELLS TASKS TASK_CELLS TASK_DS_OFF TASK_RS_OFF GLOBAL_CAP SYM_CAP; do
+for k in CODE_CAP MANAGED_CELLS WORKLIST_CELLS TAIL_CELLS TASKS TASK_CELLS TASK_DS_OFF TASK_RS_OFF GLOBAL_CAP SYM_CAP SITE_CAP; do
     eval "num $k \${P_$k}"
 done
 case "$P_WORKLIST" in fixed|after-heap) ;; *) die "$pf: WORKLIST must be 'fixed' or 'after-heap'" ;; esac
 case "$P_STATUS" in reference|verified|provisional) ;; *) die "$pf: STATUS must be reference, verified or provisional" ;; esac
+# Function-site table (SITE-1, GLON-VIEW-CORE-V1): the escape law's
+# site-parent table, one raw cell per func literal of a session.  'fixed' is
+# the 64K reference's 640-cell slot at 32024, inside the fixed runtime state;
+# 'after-worklist' is a region of SITE_CAP cells between the managed heap (and
+# an after-heap GC worklist) and the loader heap.  Never GC-scanned.
+case "$P_SITES" in
+    fixed) [ "$P_SITE_CAP" -eq 640 ] || die "$pf: a fixed site table holds exactly 640 sites (SITE_CAP=$P_SITE_CAP); use SITES=after-worklist" ;;
+    after-worklist) [ "$P_SITE_CAP" -ge 640 ] || die "$pf: SITE_CAP $P_SITE_CAP is below the 64K reference's 640" ;;
+    *) die "$pf: SITES must be 'fixed' or 'after-worklist'" ;;
+esac
 
 # ---- layout ----------------------------------------------------------------
 HEAP_BASE=32768                    # frozen s1.c HEAP_BASE == GC_HEAP_BASE
@@ -83,6 +93,10 @@ if [ "$P_WORKLIST" = fixed ]; then
 else
     worklist=$managed_end
     load_base=$((managed_end + P_WORKLIST_CELLS))
+fi
+if [ "$P_SITES" = after-worklist ]; then
+    site_base=$load_base
+    load_base=$((load_base + P_SITE_CAP))
 fi
 arena_cells=$((P_TASKS * P_TASK_CELLS))
 if [ "$P_LOADER_CELLS" = auto ]; then
@@ -125,6 +139,10 @@ tmp="$out/glon_profile.h.tmp"
         echo "#define GC_WORKLIST ${worklist}L"
     fi
     echo "#define GC_WORKLIST_CAP ${P_WORKLIST_CELLS}L"
+    if [ "$P_SITES" = after-worklist ]; then
+        echo "#define SITE_PARENT_BASE ${site_base}L"
+        echo "#define SITE_PARENT_CAP ${P_SITE_CAP}L"
+    fi
     # M1_* addresses are stringified into RAW assembly by the M1 test/host
     # library, so they must stay plain integers (a trailing L becomes a token).
     echo "#define M1_ARENA_BASE ${arena_base}"
@@ -165,7 +183,9 @@ mv "$out/s1_profile.c.tmp" "$out/s1_profile.c"
         echo "    (GC worklist $P_WORKLIST_CELLS entries at 25057, inside the fixed state)"
     fi
     row "managed heap" "$HEAP_BASE" "$managed_end"
-    if [ "$P_WORKLIST" = after-heap ]; then row "GC worklist" "$worklist" "$load_base"; fi
+    if [ "$P_WORKLIST" = after-heap ]; then row "GC worklist" "$worklist" $((worklist + P_WORKLIST_CELLS)); fi
+    if [ "$P_SITES" = after-worklist ]; then row "function-site table" "$site_base" "$load_base"; else
+        echo "    (function-site table: 640 sites at 32024, inside the fixed state)"; fi
     row "loader heap" "$load_base" "$heap_limit"
     if [ "$P_TASKS" -gt 0 ]; then
         row "M1 task arena ($P_TASKS x $P_TASK_CELLS)" "$arena_base" "$task_table"
@@ -175,5 +195,5 @@ mv "$out/s1_profile.c.tmp" "$out/s1_profile.c"
     fi
     if [ "$P_TAIL_CELLS" -gt 0 ]; then row "tail" $((task_table + TABLE_CELLS)) "$end"; fi
     if [ "$end" -lt "$mem" ]; then row "unused" "$end" "$mem"; fi
-    echo "  globals $P_GLOBAL_CAP, symbols $P_SYM_CAP, hash radix $P_GLOBAL_CAP"
+    echo "  globals $P_GLOBAL_CAP, symbols $P_SYM_CAP, hash radix $P_GLOBAL_CAP, function sites $P_SITE_CAP"
 } > "$out/layout.txt"

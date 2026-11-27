@@ -473,8 +473,17 @@ enum { BLK_COUNT = 0, BLK_SITE = 1, BLK_DATA = 2 };
  * the lexical enclosing func-site of site sid (site 0 is the root). It lives in
  * the free gap above the G1 visual buffer and below the managed heap
  * ([32018,32768)), holds raw site ids only, and is never GC-scanned. */
+#ifndef SITE_PARENT_BASE
 #define SITE_PARENT_BASE 32024
 #define SITE_PARENT_CAP  640
+#endif
+/* SITE-1 (GLON-VIEW-CORE-V1): a profile with SITES=after-worklist moves the
+ * table out of the fixed state into its own region between the managed heap
+ * (and an after-heap GC worklist) and the loader heap, with SITE_CAP sites
+ * (scripts/glon-profile.sh; r0_s1_layout.h checks the region).  The 64K slot
+ * [32024, 32664) is then unused.  Site ids are raw cells everywhere (BLK_SITE,
+ * FRAME_SITE, CTX_ESCSITE) and the emitted escape-law walk takes
+ * SITE_PARENT_BASE as a literal, so only the address and the bound change. */
 
 /* Private scratch cells for the escape-law enforcement helpers. They live in
  * the authoritative free gap after the site-parent table and before the managed
@@ -496,12 +505,15 @@ enum { BLK_COUNT = 0, BLK_SITE = 1, BLK_DATA = 2 };
  * region overlap its neighbours. The site-parent table must sit above the G1
  * visual buffer and below the managed heap; the escape scratch must sit above
  * the site-parent table and below the managed heap. */
+#if SITE_PARENT_BASE == 32024
+_Static_assert(SITE_PARENT_CAP == 640, "the fixed site-parent slot at 32024 holds exactly 640 sites");
 _Static_assert(SITE_PARENT_BASE >= G1_VIS + 2 + G1_VIS_CAP,
                "SITE_PARENT table overlaps the G1 visual buffer");
 _Static_assert(SITE_PARENT_BASE + SITE_PARENT_CAP <= GC_HEAP_BASE,
                "SITE_PARENT table overlaps the managed heap");
 _Static_assert(RV_ESC_A >= SITE_PARENT_BASE + SITE_PARENT_CAP,
                "RV_ESC_* overlaps the site-parent table");
+#endif
 _Static_assert(RV_ESC_W < GC_HEAP_BASE,
                "RV_ESC_* overlaps the managed heap");
 
@@ -577,6 +589,8 @@ int  r0_s1_mold(cell v, char *out, int cap);
 
 /* Global-context usage: current binding count and capacity. */
 void r0_s1_global_usage(cell *count, cell *cap);
+/* SITE-1: func literals parsed so far in the session, and the capacity */
+void r0_s1_site_usage(cell *count, cell *cap);
 
 /* r0_s1_session.c: run one cell (source WITHOUT the outer [ ]) in the persistent
  * session and classify the outcome from structured runtime state only. */

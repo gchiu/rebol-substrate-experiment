@@ -15,3 +15,6 @@ TASK_DS_OFF=400
 TASK_RS_OFF=3400
 GLOBAL_CAP=4096
 SYM_CAP=8192
+# SITE-1 (GLON-VIEW-CORE-V1): function-site table after the worklist, GUI MS-1/SITE-1 capacity
+SITES=after-worklist
+SITE_CAP=4096

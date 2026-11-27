@@ -50,6 +50,8 @@ flags_case "D1 Kaka override -DR0S1_HEAP_LIMIT=65536" \
     "overlaps the M1 task arena or task table" -DR0S1_HEAP_LIMIT=65536
 flags_case "D1 reclaim override -DR0S1_HEAP_LIMIT=65000" \
     "overlaps the M1 task arena or task table" -DR0S1_HEAP_LIMIT=65000
+flags_case "SITE-1: a site table overlapping the 64K loader" \
+    "function-site table is neither" -DSITE_PARENT_BASE=40000 -DSITE_PARENT_CAP=4096
 flags_case "removed -DR0S1_ARENA_RECLAIMED" \
     "R0S1_ARENA_RECLAIMED is not supported" -DR0S1_ARENA_RECLAIMED=1 -DR0S1_HEAP_LIMIT=65000
 

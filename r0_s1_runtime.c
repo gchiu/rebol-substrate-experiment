@@ -4224,6 +4224,14 @@ const char *r0_s1_sym_name(cell id) {
     return (id >= 0 && id < nsyms) ? syms[id] : 0;
 }
 int  r0_s1_stack_sentry_fired(void){ return stack_sentry_fired; }
+/* SITE-1 (GLON-VIEW-CORE-V1): site ids start at 1 (0 is "no enclosing
+ * func"); every committed parse keeps the ids it took, a failed one gives them
+ * back.  The capacity is the profile's (640 in the fixed 64K slot). */
+void r0_s1_site_usage(cell *count, cell *cap) {
+    if (count) *count = (cell)(next_site - 1);
+    if (cap) *cap = (cell)SITE_PARENT_CAP;
+}
+
 void r0_s1_global_usage(cell *count, cell *cap) {
     cell p = r0_untag(global_ctx);
     if (count) *count = M[p + CTX_COUNT];
