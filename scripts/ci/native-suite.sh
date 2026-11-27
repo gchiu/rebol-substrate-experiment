@@ -88,18 +88,25 @@ https_posix() {
 sizes() {
     out="$LOG_DIR/sizes.txt"
     : > "$out"
+    # GLON-VIEW-CORE-V5: a failed build fails the step; it used to record the
+    # previous configuration's binary under the new label and pass.
     record_size() {
         label="$1"; shift
-        make glon "$@"
+        if ! make glon "$@"; then
+            printf '%s BUILD-FAILED\n' "$label" | tee -a "$out"
+            return 1
+        fi
         bin="$(glon_bin)"
         cp "$bin" "$LOG_DIR/glon-$label"
         bytes=$(wc -c < "$bin" | tr -d ' ')
         printf '%s %s\n' "$label" "$bytes" | tee -a "$out"
     }
-    record_size minimal MODULES=
-    record_size file MODULES=file
-    record_size combined MODULES=file,http
-    record_size large MODULES=file,http MEM_PROFILE=server
+    rc=0
+    record_size minimal MODULES= || rc=1
+    record_size file MODULES=file || rc=1
+    record_size combined MODULES=file,http || rc=1
+    record_size large MODULES=file,http MEM_PROFILE=server || rc=1
+    return $rc
 }
 
 # ---- frozen substrate and the complete native regression -------------------
@@ -136,6 +143,19 @@ else
     run_step https-g1g2g3 https_posix
     run_step https-g3a make https-g3a-test
 fi
+
+# ---- GLON-VIEW-CORE integration checks (portable; `make test` above already
+# runs test-vocab1).  Function-site and code capacity per profile, the checked
+# block-set!, INTENT-7 on C2's hash, the shared list/text libraries, the C2
+# modules as s-vocabulary members, the two s/ searches and the static library
+# audit.  mem-diff-test (about 9 minutes) runs in the View acceptance suite
+# instead (make -C view test-c1-accept with C1_ACCEPT_VARIANTS=1). ----------
+run_step integration-capacity make site-capacity-test code-capacity-check
+run_step integration-literal make literal-store-check literal-block-gc-check
+run_step integration-intent7 make intent7-set-check
+run_step integration-libraries make lib1-test modules-check
+run_step integration-s-find make s-find-check
+run_step integration-library-audit make library-audit
 
 # ---- explicit build matrix and sizes --------------------------------------
 run_step sizes sizes

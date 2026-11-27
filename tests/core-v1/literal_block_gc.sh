@@ -17,8 +17,8 @@ FIXED='"glon" 1'
 status=0
 for p in "$@"; do
     $MAKE --no-print-directory glon MODULES= MEM_PROFILE="$p" >/dev/null 2>&1 || { echo "  FAIL: $p: build"; status=1; continue; }
-    ctl=$(./glon tests/core-v1/managed_block_gc.glon 2>/dev/null | tail -n 1)
-    lit=$(./glon tests/core-v1/literal_block_gc.glon 2>/dev/null | tail -n 1)
+    ctl=$(./glon tests/core-v1/managed_block_gc.glon 2>/dev/null | tr -d '\r' | tail -n 1)
+    lit=$(./glon tests/core-v1/literal_block_gc.glon 2>/dev/null | tr -d '\r' | tail -n 1)
     if [ "$ctl" = "$FIXED" ]; then echo "  ok: $p: control (managed block) survives: $ctl"
     else echo "  FAIL: $p: control read '$ctl', expected $FIXED"; status=1; fi
     if [ "$lit" = "$DEFECT" ]; then echo "  known defect: $p: literal block reads $lit (a raw masm store: unchecked by definition; the shared block-set! refuses it, make literal-store-check)"

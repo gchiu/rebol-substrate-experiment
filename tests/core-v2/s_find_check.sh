@@ -26,7 +26,7 @@ want='4 -1 4 3 4'
 SH="demo/shop/block.glon demo/shop/list.glon demo/shop/strings-text.glon"
 F=experiments/masm-vocabulary/find.glon
 for order in "$SH $F" "$F $SH"; do
-    got=$(./glon glon-lib/strings-ext.glon $order $prog 2>&1 | tail -n 1)
+    got=$(./glon glon-lib/strings-ext.glon $order $prog 2>&1 | tr -d '\r' | tail -n 1)
     if [ "$got" = "$want" ]; then echo "  ok: both searches, load order [$order]: $got"
     else echo "  FAIL: both searches, load order [$order]: '$got' (want $want)"; status=1; fi
 done

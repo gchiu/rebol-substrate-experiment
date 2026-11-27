@@ -12,7 +12,7 @@ MAKE=${MAKE:-make}
 status=0
 tmp=build/core-v2; mkdir -p $tmp
 probe() { printf 'lim/sum: func [n] [ either = n 0 [ 0 ] [ + n lim/sum - n 1 ] ]\nvalues [ lim/sum %d ]\n' $1 > $tmp/depth.glon
-          ./glon $tmp/depth.glon 2>&1 | tail -n 1; }
+          ./glon $tmp/depth.glon 2>&1 | tr -d '\r' | tail -n 1; }
 for p in $(cd profiles && ls *.profile | sed 's/\.profile$//'); do
     $MAKE --no-print-directory glon MODULES= MEM_PROFILE=$p >/dev/null 2>&1 || { echo "  FAIL: $p build"; status=1; continue; }
     cap=$(sed -n 's/^CODE_CAP=//p' profiles/$p.profile); rs=$((24576 - cap)); limit=$((cap - 256))

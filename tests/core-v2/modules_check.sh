@@ -18,7 +18,7 @@ cmp -s modules/strings.glon demo/shop/strings.glon && ok "modules/strings.glon =
 for p in constrained server; do $MAKE --no-print-directory libload-one MEM_PROFILE=$p >/dev/null 2>&1 || { bad "libload $p build"; exit 1; }; done
 L=build/core-v2
 printf 'values [ s/length s/+ "glo" "n"  s/= "a" "a"  judge [ s/length 5 ] ]\n' > $L/strings-mod.glon
-got=$($L/libload-constrained -q jupyter/prelude.glon modules/strings.glon $L/strings-mod.glon 2>&1 | tail -n 1)
+got=$($L/libload-constrained -q jupyter/prelude.glon modules/strings.glon $L/strings-mod.glon 2>&1 | tr -d '\r' | tail -n 1)
 case "$got" in "RESULT 4 1 "*"type"*) ok "modules/strings.glon alone: $got" ;; *) bad "modules/strings.glon alone: '$got'" ;; esac
 B="jupyter/prelude.glon demo/shop/binding.glon demo/shop/strings.glon demo/shop/strings-ext.glon"
 stack() { # stack PROFILE LABEL FILES...
@@ -31,7 +31,7 @@ stack server "http + web + json" modules/http.glon modules/web.glon modules/json
 stack server "https-g3a register (slots, reg)" modules/http.glon modules/web.glon modules/json.glon examples/https-g3a/slots.glon examples/https-g3a/reg.glon
 stack server "https-g3 server" modules/http.glon examples/https-g3/webparse.glon
 printf 'values [ s/replace-first "the web is wide" "web" "rebol"  s/replace-first "web web" "web" "x"  s/replace-first "none here" "web" "x" ]\n' > $L/replace.glon
-got=$($L/libload-constrained -q $B modules/file.glon modules/file-stream.glon modules/file-replace.glon $L/replace.glon 2>&1 | tail -n 1)
+got=$($L/libload-constrained -q $B modules/file.glon modules/file-stream.glon modules/file-replace.glon $L/replace.glon 2>&1 | tr -d '\r' | tail -n 1)
 [ "$got" = 'RESULT "the rebol is wide" "x web" "none here"' ] && ok "s/replace-first: $got" || bad "s/replace-first: '$got'"
 [ $status -eq 0 ] && echo "modules-check: PASS" || echo "modules-check: FAIL"
 exit $status

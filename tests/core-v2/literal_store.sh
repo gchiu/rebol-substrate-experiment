@@ -13,7 +13,7 @@ status=0
 for p in "$@"; do
     $MAKE --no-print-directory glon MODULES= MEM_PROFILE="$p" >/dev/null 2>&1 || { echo "  FAIL: $p build"; status=1; continue; }
     for t in literal_store literal_block_gc_shared; do
-        got=$(./glon demo/shop/block.glon tests/core-v2/$t.glon 2>&1 | tail -n 1)
+        got=$(./glon demo/shop/block.glon tests/core-v2/$t.glon 2>&1 | tr -d '\r' | tail -n 1)
         if [ "$got" = "$(cat tests/core-v2/$t.expect)" ]; then echo "  ok: $p $t: $got"
         else echo "  FAIL: $p $t: '$got' (want $(cat tests/core-v2/$t.expect))"; status=1; fi
     done
