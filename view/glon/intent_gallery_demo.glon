@@ -1,0 +1,105 @@
+;; view/glon/intent_gallery_demo.glon -- INTENT-4B-5A: an appearance gallery.
+;; The same widgets twice, side by side: on the left in the light theme, on
+;; the right in the dark one, so their readability can be compared.  The
+;; styles at the top (looks) are shared by both sides: the ones that set no
+;; colour follow each side's theme.
+;;
+;;   make -C view gallery-demo
+;;
+;; Shown: large, normal and small buttons and text; coloured and rounded
+;; buttons; buttons with icons (PNG); a disabled button of each kind; a field
+;; with the focus (left); checks, ticked and disabled; a list and a table
+;; with a selected row; a JPEG picture scaled into its box.  Press any button:
+;; the line at the bottom names it.  Tab moves the focus.  The icons and the
+;; picture are in view/images (drawn for this demo).
+[
+gal/places: reduce [
+    reduce [ "APW" "Apia" ]  reduce [ "SLL" "Salelologa" ]  reduce [ "FGI" "Faleolo" ]
+    reduce [ "ASU" "Asau" ]  reduce [ "MNO" "Manono" ]
+]
+gal/pressed: func [self event] [
+    face/set-text form/field form/current 'status s/+ "Pressed: " s/+ face/text self
+        either = form/name face/form self 'light [ " (light)" ] [ " (dark)" ]
+]
+;; after the first build: selections and the focus, so their looks show
+gal/ready: 0
+gal/init: func [] [
+    gal/side 'light
+    gal/side 'dark
+    face/focus form/field form/sub form/current 'light 'name
+]
+gal/side: func [w] [
+    f: form/sub form/current w
+    face/set-index form/field f 'people 2
+    face/set-value form/field f 'places "FGI"
+    face/set-value form/field f 'ticked 1
+]
+
+gal/form: layout [
+    style big button look [ font 18 height 44 ]
+    style small button look [ font 11 height 24 ]
+    style pill button look [ radius 15 ]
+    style go button look [ background 30 120 60 color 255 255 255 radius 6 border-width 0 ]
+    style stop button look [ background 180 40 40 color 255 255 255 radius 6 border-width 0 ]
+    style lead label look [ font 20 bold ]
+    style note label look [ font 11 ]
+    style code label look [ monospace ]
+    margin 16
+    heading "Appearance gallery: the same widgets in the light and dark themes"
+    across
+    light: form [
+        theme light
+        heading "Light"
+        across
+        lead "Large"   label "Body text"   note "Small text"   code "mono 0123"
+        return
+        big "Large" on-click gal/pressed   button "Normal" on-click gal/pressed   small "Small" on-click gal/pressed
+        return
+        go "Save" on-click gal/pressed   stop "Delete" on-click gal/pressed   pill "Rounded" on-click gal/pressed
+        return
+        button "Save" icon "view/images/save.png" on-click gal/pressed
+        button "Open" icon "view/images/open.png" on-click gal/pressed
+        button "" icon "view/images/delete.png" on-click gal/pressed
+        return
+        button "Disabled" disabled   go "Disabled" disabled   name: field 14 "Focused field"
+        return
+        ticked: check "Ticked"   check "Disabled" disabled
+        return
+        people: list 14 3 display 2 rows gal/places
+        places: table [ "Code" 5 "Place" 10 ] 3 key 1 rows gal/places
+        return
+        image "view/images/landscape.jpg" 200 110
+    ]
+    dark: form [
+        theme dark
+        heading "Dark"
+        across
+        lead "Large"   label "Body text"   note "Small text"   code "mono 0123"
+        return
+        big "Large" on-click gal/pressed   button "Normal" on-click gal/pressed   small "Small" on-click gal/pressed
+        return
+        go "Save" on-click gal/pressed   stop "Delete" on-click gal/pressed   pill "Rounded" on-click gal/pressed
+        return
+        button "Save" icon "view/images/save.png" on-click gal/pressed
+        button "Open" icon "view/images/open.png" on-click gal/pressed
+        button "" icon "view/images/delete.png" on-click gal/pressed
+        return
+        button "Disabled" disabled   go "Disabled" disabled   name: field 14 "Field"
+        return
+        ticked: check "Ticked"   check "Disabled" disabled
+        return
+        people: list 14 3 display 2 rows gal/places
+        places: table [ "Code" 5 "Place" 10 ] 3 key 1 rows gal/places
+        return
+        image "view/images/landscape.jpg" 200 110
+    ]
+    return
+    status: label 60 "Press a button: its name appears here."
+]
+do-event: [
+    intent/event current-event current-value
+    either either = gal/ready 0 [ = current-event 'view-build ] [ 0 ] [ gal/init  gal/ready: 1 ] [ 0 ]
+    widget/flush
+]
+view gal/form
+]

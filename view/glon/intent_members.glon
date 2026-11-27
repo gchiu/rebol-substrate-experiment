@@ -1,0 +1,107 @@
+;; view/glon/intent_members.glon -- INTENT-2 demo: a member editor.
+;;
+;;   build/glon_demo_1m --root .. --vocab-vid --app view/glon/intent_members.glon
+;;
+;; The layout only declares widgets and names the handlers; the application
+;; logic is ordinary Glon defined beside it.  Handlers are functions of
+;; ( self event ): self is the widget's handle, event gives the type, the
+;; enclosing form and a detail.  Nothing here reads machine-VID state
+;; positions.  See INTENT-2.md.
+[
+;; ---- application state and logic --------------------------------------------------
+members/sample: reduce [
+    'name "Aroha Te Whare"  'phone "021 555 0199"  'village "Ōtaki"  'kind "H"  'mail 1
+    'contact reduce [ 'name "Rawiri Paki"  'phone "04 555 0100" ]
+]
+members/saved: none          ;; the last record saved (in memory; no database)
+members/saves: 0
+members/last-self: none      ;; the widget the last on-change / on-enter came from
+members/changes: 0
+
+members/say: func [f msg] [ face/set-text form/field f 'status msg ]
+
+;; validators: ( self value ) -> none when valid, else a message
+check-name: func [self value] [ either = s/length value 0 [ "Name: required" ] [ none ] ]
+check-phone: func [self value] [
+    n: s/length value
+    either either >= n 7 [ either <= n 20 [ = s/scan-set value 0 "0123456789 +-()" n ] [ 0 ] ] [ 0 ] [ none ] [
+        "Phone: 7 to 20 digits, spaces or + - ( )"
+    ]
+]
+
+;; handlers: ( self event )
+validate-phone: func [self event] [
+    members/last-self: self
+    m: check-phone self face/value self
+    members/say event/form event either = m none [ "Phone looks right" ] [ m ]
+]
+note-change: func [self event] [
+    members/last-self: self
+    members/changes: + members/changes 1
+]
+load-member: func [self event] [
+    r: form/load event/form event members/sample
+    members/say event/form event s/+ "Loaded " s/+ s/from-int record/get r 'loaded " fields"
+]
+clear-member: func [self event] [
+    form/clear event/form event
+    members/say event/form event "Cleared"
+]
+save-member: func [self event] [
+    f: event/form event
+    r: form/validate f
+    either form/valid? r [
+        members/saved: form/collect f
+        members/saves: + members/saves 1
+        members/say f s/+ "Saved " record/get members/saved 'name
+    ] [
+        members/say f either = form/status r 'failed [ "Validation could not run" ] [ form/first-message r ]
+    ]
+]
+
+;; for the tests: a validator and a handler that raise, a form-level validator
+members/boom: func [self value] [ raise create-sin 'app 'boom value ]
+members/boom2: func [self event] [ raise create-sin 'app 'boom2 0 ]
+members/no-kiri: func [f rec] [ either s/= record/get rec 'name "Kiri" [ "No Kiri today" ] [ none ] ]
+members/keep: none
+members/kept: none
+
+;; ---- the form ---------------------------------------------------------------------
+members/form: layout [
+    across
+    label 10 "Name:"    name: field 24 validate check-name on-change note-change
+    return
+    label 10 "Phone:"   phone: field 16 validate check-phone on-enter validate-phone on-change note-change
+    return
+    panel [
+        across
+        label 8 "Village:"  village: field 18
+        return
+        label 8 "Kind:"     kind: choice [ "Individual" "I"  "Household" "H"  "Business" "B" ]
+    ]
+    return
+    mail: vid 200 24 [ vid/checkbox theme parent x y "Mailing list" 0 ]
+    return
+    contact: form [
+        across
+        label 8 "Contact:"  name: field 14
+        label 6 "Phone:"    phone: field 12 validate check-phone
+    ]
+    return
+    button "Load" on-click load-member
+    button "Clear" on-click clear-member
+    button "Save" on-click save-member
+    return
+    status: label 44 "Ready"
+]
+
+;; tests rebuild the form with view-key 5000 (an application's own handler
+;; around Intent's, as intent_test.glon does)
+do-event: [
+    either either = current-event 'view-key [ = parse-int current-value 5000 ] [ 0 ] [
+        intent/show members/form
+    ] [ intent/event current-event current-value ]
+    widget/flush
+]
+view members/form
+]

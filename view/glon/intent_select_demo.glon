@@ -1,0 +1,84 @@
+;; view/glon/intent_select_demo.glon -- INTENT-4B-3: selection and data in
+;; Intent.  A drop-down of villages shows each name and stores its code; a
+;; list shows the selected village's members (its rows replaced on every
+;; change); a check shows or hides the postal address; Save / Load / Clear.
+;;
+;;   make -C view select-demo
+;;
+;; Try: click the village button, or focus it and use Up / Down / Home / End;
+;; Space or Enter opens its list, Escape closes it.  "Code" follows the
+;; stored key, "Name" the label shown.  Two villages are both called "Apia":
+;; their codes keep them apart.  Tick "Has a postal address" to show the
+;; postal field.  Save checks and stores the form; Clear empties it; Load
+;; brings back what was saved.
+[
+;; application data: [ code name island ] rows; members by village code
+sel/villages: reduce [
+    reduce [ "APW" "Apia" "Upolu" ]
+    reduce [ "SLL" "Salelologa" "Savai'i" ]
+    reduce [ "FGI" "Faleolo" "Upolu" ]
+    reduce [ "APX" "Apia" "Manono" ]
+    reduce [ "ASU" "Asau" "Savai'i" ]
+]
+sel/members: reduce [
+    "APW" reduce [ reduce [ "M01" "Ana Lima" ] reduce [ "M02" "Sione Tui" ] reduce [ "M03" "Mele Fa'apito" ] ]
+    "SLL" reduce [ reduce [ "M04" "Tavita Leota" ] ]
+    "FGI" reduce [ ]
+    "APX" reduce [ reduce [ "M05" "Losa Ioane" ] reduce [ "M06" "Fetu Pele" ] ]
+    "ASU" reduce [ reduce [ "M07" "Iosefa Malo" ] ]
+]
+sel/members-of: func [code] [ either = code none [ reduce [ ] ] [ sel/find code 0 ] ]
+sel/find: func [code i] [
+    either < i block-len sel/members [
+        either s/= block-at sel/members i code [ block-at sel/members + i 1 ] [ sel/find code + i 2 ]
+    ] [ reduce [ ] ]
+]
+
+sel/field: func [w] [ form/field form/current w ]
+sel/say: func [text] [ face/set-text sel/field 'status text ]
+;; the members of the selected village, and the postal address shown or not
+sel/sync: func [] [
+    face/set-rows sel/field 'members sel/members-of face/value sel/field 'village
+    face/set-visible sel/field 'postal-box face/value sel/field 'postal?
+]
+sel/village-changed: func [self event] [ sel/sync ]
+sel/postal-toggled: func [self event] [ sel/sync ]
+sel/picked?: func [self v] [ either = v none [ "Please pick a village." ] [ none ] ]
+
+sel/saved: none
+sel/save: func [self event] [
+    r: form/validate form/current
+    either form/valid? r [ sel/saved: form/collect form/current  sel/say "Saved." ] [ sel/say form/first-message r ]
+]
+sel/load: func [self event] [
+    either = sel/saved none [ sel/say "Nothing saved yet." ] [
+        form/load form/current sel/saved
+        sel/sync
+        sel/say "Loaded the saved record."
+    ]
+]
+sel/clear: func [self event] [ form/clear form/current  sel/sync  sel/say "Cleared." ]
+
+sel/form: layout [
+    heading "Village members"
+    across
+    label 9 "Village"   village: drop-down 20 6 key 1 display 2 rows sel/villages
+                            on-change sel/village-changed validate sel/picked?
+    return
+    label 9 "Code"      code: label 8 "" follow village value
+    label 6 "Name"      name: label 16 "" follow village text
+    return
+    label 9 "Members"   members: list 24 5 display 2
+    return
+    label 9 ""          postal?: check "Has a postal address" on-change sel/postal-toggled
+    return
+    postal-box: panel [ across label 8 "Postal" postal: field 30 ] hidden
+    return
+    button "Save" on-click sel/save
+    button "Load" on-click sel/load
+    button "Clear" on-click sel/clear
+    return
+    status: label 40 "Pick a village."
+]
+view sel/form
+]

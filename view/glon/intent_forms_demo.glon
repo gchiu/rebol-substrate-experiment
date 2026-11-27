@@ -1,0 +1,72 @@
+;; view/glon/intent_forms_demo.glon -- INTENT-4B-2: a data-entry form in
+;; Intent: name, email, password, multi-line notes and a check, with
+;; validation, collect (Save), load (Load) and clear (Clear).
+;;
+;;   make -C view forms-demo
+;;
+;; Try: Tab and Shift+Tab move between the widgets.  In a field, the arrows,
+;; Home / End, Shift+arrows (selection), Backspace / Delete and Ctrl+A / C /
+;; X / V edit as usual; the password shows bullets and cannot be copied.  In
+;; Notes, Enter starts a new line and Up / Down move by line.  Save checks
+;; the form and stores it; Clear empties it; Load brings back what was saved.
+[
+;; every byte but "@" (s/scan-set finds the first byte not in a set)
+forms/not-at: mk-string [
+    32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54
+    55 56 57 58 59 60 61 62 63 65 66 67 68 69 70 71 72 73 74 75 76 77 78
+    79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101
+    102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118
+    119 120 121 122 123 124 125 126 128 129 130 131 132 133 134 135 136
+    137 138 139 140 141 142 143 144 145 146 147 148 149 150 151 152 153
+    154 155 156 157 158 159 160 161 162 163 164 165 166 167 168 169 170
+    171 172 173 174 175 176 177 178 179 180 181 182 183 184 185 186 187
+    188 189 190 191 192 193 194 195 196 197 198 199 200 201 202 203 204
+    205 206 207 208 209 210 211 212 213 214 215 216 217 218 219 220 221
+    222 223 224 225 226 227 228 229 230 231 232 233 234 235 236 237 238
+    239 240 241 242 243 244 245 246 247 248 249 250 251 252 253 254 255
+]
+forms/named?: func [self v] [ either > s/length v 0 [ none ] [ "Please enter a name." ] ]
+forms/email?: func [self v] [
+    either < s/scan-set v 0 forms/not-at s/length v [ none ] [ "The email address needs an @." ]
+]
+forms/long-enough?: func [self v] [ either >= s/length v 8 [ none ] [ "The password needs 8 characters or more." ] ]
+forms/accepted?: func [self v] [ either = v 1 [ none ] [ "Please accept the rules." ] ]
+
+forms/saved: none
+forms/say: func [text] [ face/set-text form/field form/current 'status text ]
+forms/save: func [self event] [
+    r: form/validate form/current
+    either form/valid? r [
+        forms/saved: form/collect form/current
+        forms/say "Saved."
+    ] [ forms/say form/first-message r ]
+]
+forms/load: func [self event] [
+    either = forms/saved none [ forms/say "Nothing saved yet." ] [
+        form/load form/current forms/saved
+        forms/say "Loaded the saved record."
+    ]
+]
+forms/clear: func [self event] [ form/clear form/current  forms/say "Cleared." ]
+
+forms/form: layout [
+    heading "Member details"
+    across
+    label 9 "Name"      name: field 30 validate forms/named?
+    return
+    label 9 "Email"     email: field 30 validate forms/email?
+    return
+    label 9 "Password"  pin: field 30 password validate forms/long-enough?
+    return
+    label 9 "Notes"     notes: area 30 4
+    return
+    label 9 ""          agree: check "I accept the rules" validate forms/accepted?
+    return
+    button "Save" on-click forms/save
+    button "Load" on-click forms/load
+    button "Clear" on-click forms/clear
+    return
+    status: label 40 "Fill in the form and press Save."
+]
+view forms/form
+]

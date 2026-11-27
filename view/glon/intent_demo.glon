@@ -1,0 +1,42 @@
+;; view/glon/intent_demo.glon -- INTENT-1 demo: a form written in Glon Intent.
+;;
+;;   make -C view intent-demo   (build/glon_demo_1m --root .. --vocab-vid
+;;                               --app view/glon/intent_demo.glon)
+;;
+;; Type into the fields (Tab moves between them); Clear empties Name, Clear
+;; all empties both, Enter on a focused button runs it.  The checkbox is a
+;; machine VID widget and the swatch a View drawing region, both embedded
+;; through Intent's escape hatches.  See INTENT-1.md.
+[
+view layout [
+    across
+    label "Name:"
+    name: field 20 "Default text"
+    return
+
+    label "Village:"
+    village: field 20
+    return
+
+    button "Clear" [ clear name ]
+    button "Clear all" [ clear name clear village focus name ]
+    return
+
+    text "Escape hatches:"
+    mail: vid 200 24 [ vid/checkbox theme parent x y "Mailing list" 0 ]
+    box 64 24 [
+        view/draw-rect node 0 0 w h 64 125 230 255
+        view/draw-rect node 4 4 - w 8 - h 8 226 229 234 255
+    ]
+    return
+
+    panel [
+        text "A nested panel flows down:"
+        button "A"
+        button "B"
+        return
+        button "C"
+        button "D"
+    ]
+]
+]

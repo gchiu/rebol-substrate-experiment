@@ -1,0 +1,68 @@
+;; view/glon/intent_layout_demo.glon -- INTENT-4B-4: layout controls in
+;; Intent.  A contact form with right-aligned labels, two panels with the
+;; same content at different margins and spacing, buttons of different sizes,
+;; a postal field revealed by a check, and a notes area that takes the
+;; window's spare height.
+;;
+;;   make -C view layout-demo
+;;
+;; Try: widen and narrow the window (the fields and the notes widen, the
+;; notes grow taller with the window); tick "Postal address" (the PO Box
+;; field appears in its own place: nothing else moves); untick it (the field
+;; goes, its value is kept).  The buttons report which one was pressed.
+[
+ld/field: func [w] [ form/field form/current w ]
+ld/say: func [text] [ face/set-text ld/field 'status text ]
+ld/postal: func [self event] [
+    on: face/value self
+    face/set-visible form/field face/form self 'po-label on
+    face/set-visible form/field face/form self 'po-box on
+    ld/say either = on 1 [ "PO Box shown: nothing else moved." ] [ "PO Box hidden: its value is kept." ]
+]
+ld/pressed: func [self event] [ ld/say s/+ "Pressed: " face/text self ]
+
+ld/form: layout [
+    margin 20
+    space 10
+    heading "Layout controls"
+    top: panel [
+        across
+        contact: form [
+            across
+            label 10 "Name:" right       name: field 24
+            return
+            label 10 "Village:" right    village: field 16
+            return
+            label 10 "" right            postal?: check "Postal address" on-change ld/postal
+            return
+            po-label: label 10 "PO Box:" right hidden   po-box: field 10 hidden
+            return
+            label 10 "Phone:" right      phone: field 12 fixed
+        ]
+        compact: panel [
+            margin 4
+            space 2
+            label 12 "Compact" center
+            button 10 "One" on-click ld/pressed
+            button 10 "Two" on-click ld/pressed
+        ]
+        roomy: panel [
+            margin 16
+            space 12
+            label 12 "Roomy" center
+            button 10 "One" on-click ld/pressed
+            button 10 "Two" on-click ld/pressed
+        ]
+    ]
+    notes: area 40 4 "Resize the window: this area takes the spare height and width." fill-height
+    bar: panel [
+        across
+        button "OK" on-click ld/pressed
+        button 14 "Save as draft" on-click ld/pressed
+        button 6 "?" on-click ld/pressed
+        pad 20
+        status: label 36 "Ready."
+    ]
+]
+view ld/form
+]

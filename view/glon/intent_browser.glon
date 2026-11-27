@@ -1,0 +1,54 @@
+;; view/glon/intent_browser.glon -- FOREIGN-2 demo: a real browser engine
+;; (WebKitGTK) beside ordinary Glon controls.
+;;
+;;   make -C view browser-demo
+;;
+;; The application only declares widgets and calls documented widget
+;; operations (face/value, face/set-value, face/command, on-change,
+;; on-event): no GTK, X11, SDL or WebKit.  See FOREIGN-2.md.
+[
+;; ---- application logic ------------------------------------------------------------
+bdemo/home: "./glon/browser/demo.html"
+bdemo/web: func [f] [ form/field f 'browser ]
+bdemo/say: func [f msg] [ face/set-text form/field f 'status msg ]
+;; Go / Enter in the address field
+bdemo/go: func [self event] [
+    f: event/form event
+    face/command bdemo/web f "navigate" face/value form/field f 'address
+]
+bdemo/back: func [self event] [ face/command bdemo/web event/form event "back" "" ]
+bdemo/forward: func [self event] [ face/command bdemo/web event/form event "forward" "" ]
+bdemo/reload: func [self event] [ face/command bdemo/web event/form event "reload" "" ]
+bdemo/to-home: func [self event] [ face/command bdemo/web event/form event "navigate" bdemo/home ]
+;; the browser moved to another address: show it in the address field
+bdemo/changed: func [self event] [ face/set-value form/field event/form event 'address face/value self ]
+;; the browser's other events: status (loading / loaded / failed ...), title
+bdemo/event: func [self event] [
+    bdemo/say event/form event s/+ event/name event s/+ ": " event/detail event
+]
+
+;; ---- the form ---------------------------------------------------------------------
+bdemo/form: layout [
+    across
+    panel [
+        text "Browser controls"
+        address: field 30 "./glon/browser/demo.html" on-enter bdemo/go
+        across
+        button "Go" on-click bdemo/go
+        button "Back" on-click bdemo/back
+        button "Fwd" on-click bdemo/forward
+        return
+        button "Reload" on-click bdemo/reload
+        button "Home" on-click bdemo/to-home
+        return
+        status: label 30 "Ready"
+        return
+        note: field 30 "a Glon field"
+    ]
+    browser: host "webkit-view" 640 480 "./glon/browser/demo.html" stretch
+        on-change bdemo/changed on-event bdemo/event
+    return
+    after: field 30 "a Glon field below the browser"
+]
+view bdemo/form
+]

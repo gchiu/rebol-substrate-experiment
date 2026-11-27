@@ -1,0 +1,55 @@
+;; view/glon/intent_foreign.glon -- FOREIGN-1 demo: an independently rendered
+;; component between ordinary Intent fields.
+;;
+;;   make -C view foreign-demo   (build/glon_demo_1m --root .. --vocab-vid
+;;                                --app view/glon/intent_foreign.glon)
+;;
+;; "x11-edit" is a one-line editor in its own X11 child window, on its own X
+;; connection, drawn with Xlib and run by its own event loop.  Click into it
+;; or Tab to it, type, Tab (or Shift+Tab) out; the status line shows what it
+;; reported.  Without an X11 display it is not created and a placeholder
+;; says why.  See FOREIGN-1.md.
+[
+;; ---- application logic ------------------------------------------------------------
+fdemo/say: func [f msg] [ face/set-text form/field f 'status msg ]
+fdemo/changed: func [self event] [
+    fdemo/say event/form event s/+ "Foreign component says: " face/value self
+]
+fdemo/entered: func [self event] [
+    fdemo/say event/form event s/+ "Enter in the component: " face/value self
+]
+fdemo/toggle: func [self event] [
+    h: form/field event/form event 'foreign
+    face/set-visible h either = face/visible h 1 [ 0 ] [ 1 ]
+    fdemo/say event/form event either = face/visible h 1 [ "Shown" ] [ "Hidden" ]
+]
+fdemo/copy: func [self event] [
+    f: event/form event
+    face/set-value form/field f 'foreign face/value form/field f 'before
+    fdemo/say f "Copied Before into the component"
+]
+fdemo/opened: 1
+;; reopen: a fresh build of the layout (the old component is destroyed)
+fdemo/reopen: func [self event] [
+    fdemo/opened: + fdemo/opened 1
+    intent/show fdemo/form
+]
+
+;; ---- the form ---------------------------------------------------------------------
+fdemo/form: layout [
+    across
+    label 9 "Before:"   before: field 24 "a Glon field"
+    return
+    label 9 "Foreign:"  foreign: host "x11-edit" 360 60 "type here" stretch
+                            on-change fdemo/changed on-enter fdemo/entered
+    return
+    label 9 "After:"    after: field 24
+    return
+    button "Hide / show" on-click fdemo/toggle
+    button "Copy Before" on-click fdemo/copy
+    button "Reopen" on-click fdemo/reopen
+    return
+    status: label 50 "Ready"
+]
+view fdemo/form
+]

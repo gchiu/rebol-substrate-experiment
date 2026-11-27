@@ -1,0 +1,47 @@
+;; view/glon/intent_components_demo.glon -- GLON-INST-1 Stage 1: reusable
+;; components in Intent.
+;;
+;;   make -C view components-demo
+;;
+;; One component definition (comp/address: a block, shared and only read),
+;; placed three times.  Every instance has the same internal names (street,
+;; city, wipe, dup, edits) in its own scope, its own values and its own
+;; state (form/data: how many edits it has had).  The handlers are written
+;; once: each finds its instance from the event (face/form self), never from
+;; a global, and the inline action of Clear sees its own form's names.
+[
+comp/address: [
+    across
+    label 8 "Street" right   street: field 24 on-change comp/edited
+    return
+    label 8 "City" right     city: field 24 on-change comp/edited
+    return
+    wipe: button "Clear" [ clear street clear city ]
+    dup: button "Copy street" on-click comp/copy
+    edits: label 16 ""
+]
+;; on-change of either field: this instance's count goes up by one
+comp/edited: func [self event] [
+    f: face/form self
+    n: + either = form/data f none [ 0 ] [ form/data f ] 1
+    form/set-data f n
+    face/set-text form/field f 'edits s/+ s/from-int n " edits"
+]
+;; Copy street: this instance's street into its own city
+comp/copy: func [self event] [
+    f: face/form self
+    face/set-value form/field f 'city face/value form/field f 'street
+]
+comp/form: layout [
+    heading "Addresses"
+    home: form comp/address
+    work: form comp/address
+    post: form comp/address
+]
+;; a second layout of the same definition (tests show it in place of the first)
+comp/form2: layout [
+    a: form comp/address
+    b: form comp/address
+]
+view comp/form
+]

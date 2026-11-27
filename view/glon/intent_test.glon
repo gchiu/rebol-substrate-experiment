@@ -1,0 +1,509 @@
+;; view/glon/intent_test.glon -- layouts for the INTENT-1 tests
+;; (test_gui_p2 intent-*).  Test layouts live in a loaded file: a layout
+;; block must outlive the expression that shows it.
+[
+;; default direction down; return starts a new column: A C / B D
+test/columns: layout [
+    button "A"
+    button "B"
+    return
+    button "C"
+    button "D"
+]
+;; across; return starts a new row: A B / C D
+test/rows: layout [
+    across
+    button "A"
+    button "B"
+    return
+    button "C"
+    button "D"
+]
+;; unequal widths and heights in both directions; a tall item sets the
+;; row's height
+test/unequal: layout [
+    across
+    label "Short"
+    field 5
+    button "A much longer caption than the others"
+    return
+    tall: box 40 90 [ view/draw-rect node 0 0 w h 64 125 230 255 ]
+    field 40 "wide"
+    label "x"
+    return
+    text "Below the tall row"
+    down
+    button "Then down"
+    field 8
+    return
+    label "Second column"
+    button "Z"
+]
+;; label and text: the same widget
+test/alias: layout [
+    l1: label "Same words, Māori ā and 漢字"
+    t1: text "Same words, Māori ā and 漢字"
+    button "Retitle" [ set-text l1 "Changed" set-text t1 "Changed" ]
+]
+;; nested containers keep their own direction and cursor
+test/nested: layout [
+    across
+    text "Left"
+    p1: panel [
+        text "one"
+        text "two"
+        return
+        text "three"
+    ]
+    p2: panel [
+        across
+        text "x"
+        text "y"
+        return
+        text "z"
+    ]
+    text "Right"
+]
+;; escape hatches in a managed layout
+test/escape: layout [
+    across
+    text "Before"
+    chk: vid 200 24 [ vid/checkbox theme parent x y "Opt in" 0 ]
+    sw: box 60 30 [
+        ;; drawn far larger than the box: clipped to 60 x 30
+        view/draw-rect node -50 -50 400 400 200 40 40 255
+    ]
+    text "After"
+    return
+    note: field 20
+    button "Report" [ set-text note either = block-at chk 5 1 [ "checked" ] [ "unchecked" ] ]
+]
+;; editing, actions and focus
+test/form: layout [
+    across
+    label "Name:"
+    name: field 20 "Default text"
+    return
+    label "Place:"
+    place: field 20 "Te Whanganui-a-Tara ā"
+    return
+    button "Clear" [ clear name ]
+    button "Fill" [ set-text name s/+ "Filled from " get-text place  focus place ]
+]
+;; more items than one walk step (8) and the 16-binding limit of a context
+test/many: layout [
+    across
+    text "1" text "2" text "3" text "4" text "5" text "6" text "7" text "8"
+    return
+    text "9" text "10" text "11" text "12" text "13" text "14" text "15" text "16"
+    return
+    text "17" text "18" text "19" text "20" text "21" text "22" text "23" text "24"
+    return
+    n1: field 3 n2: field 3 n3: field 3 n4: field 3 n5: field 3
+    return
+    n6: field 3 n7: field 3 n8: field 3 n9: field 3 n10: field 3
+    return
+    button "All" [ clear n1 clear n10 ]
+]
+;; INTENT-2 handlers: inline blocks with self and event, a name defined
+;; only later (late binding)
+test/last: none
+test/hello: func [self event] [ face/set-text form/field event/form event 'out "hello" ]
+test/handlers: layout [
+    across
+    f1: field 10 on-change [ test/last: face/value self ]
+    go: button "Go" on-click [ face/set-value form/field event/form event 'f1 s/+ "went from " face/text self ]
+    later: button "Later" on-click not-defined-yet
+    return
+    out: label 30 "-"
+]
+
+;; FOREIGN-1: a hosted component between two fields (the mock provider in
+;; the dummy-driver tests), and one of a kind no provider offers
+test/foreign-changes: 0
+test/foreign-changed: func [self event] [ test/foreign-changes: + test/foreign-changes 1 ]
+test/foreign: layout [
+    across
+    label 8 "Before:"  before: field 20
+    return
+    label 8 "Foreign:" foreign: host "mock" 300 60 "hello" stretch on-change test/foreign-changed on-enter test/foreign-changed
+    return
+    label 8 "After:"   after: field 20
+    return
+    nope: host "no-such-kind" 200 30
+]
+
+;; the same with the real component (X11 only: intent-foreign-x11)
+test/foreign-x11: layout [
+    across
+    label 8 "Before:"  before: field 20
+    return
+    label 8 "Foreign:" foreign: host "x11-edit" 300 60 "smoke test" stretch
+    return
+    label 8 "After:"   after: field 20
+]
+
+;; FOREIGN-2: the browser demo's shape, with the mock component (dummy
+;; driver) and with the real engine (X11 + WebKitGTK only)
+test/browser-events: 0
+test/browser-last: ""
+test/browser-go: func [self event] [
+    face/command form/field event/form event 'browser "navigate" face/value form/field event/form event 'address
+]
+test/browser-changed: func [self event] [ face/set-value form/field event/form event 'address face/value self ]
+test/browser-status: ""
+test/browser-event: func [self event] [
+    test/browser-events: + test/browser-events 1
+    test/browser-last: s/+ event/name event s/+ ":" event/detail event
+    either s/= event/name event "status" [ test/browser-status: event/detail event ] [ 0 ]
+]
+test/browser: layout [
+    across
+    panel [
+        address: field 20 "start-page"
+        go: button "Go" on-click test/browser-go
+    ]
+    browser: host "mock" 300 200 "start-page" stretch on-change test/browser-changed on-event test/browser-event
+    return
+    after: field 20
+]
+test/browser-x11: layout [
+    across
+    panel [
+        address: field 20 "./glon/browser/demo.html"
+        go: button "Go" on-click test/browser-go
+    ]
+    browser: host "webkit-view" 500 300 "./glon/browser/demo.html" stretch on-change test/browser-changed on-event test/browser-event
+    return
+    after: field 20
+]
+
+;; INTENT-3: styles, follow and command (mock components, dummy driver)
+test/i3-home: "home-page"
+test/i3-events: 0
+test/i3-last: ""
+test/i3-ev: func [self event] [
+    test/i3-events: + test/i3-events 1
+    test/i3-last: s/+ event/name event s/+ ":" event/detail event
+]
+;; runs after Go's command: its own command must then be the last one
+test/i3-clicked: func [self event] [ face/command form/field event/form event 'web "after-handler" "" ]
+test/i3: layout [
+    style mockview host "mock"
+    style wideview mockview 300 120
+    style big button "Big"
+    across
+    panel [
+        address: field 20 test/i3-home follow web url command web "navigate" address
+        go: button "Go" command web "navigate" address on-click test/i3-clicked
+        back: button "Back" command web "back"
+        home: button "Home" command web "navigate" test/i3-home
+        bad: button "Bad" command web "refuse"
+        big1: big command web "reload"
+        below
+        status: label 20 "Ready" follow web status
+        title: label 20 "" follow web title
+        echo: label 20 "-" follow address value
+        cap: button "caption" follow web title
+    ]
+    web: mockview 200 80 test/i3-home stretch on-event test/i3-ev
+    return
+    wide: wideview test/i3-home
+    webkit: webview 100 50 "about:blank" on-event test/i3-ev
+]
+;; two forms with the same names; a command into the enclosing form
+test/i3-forms: layout [
+    style mockview host "mock"
+    across
+    left: form [
+        addr: field 20 "left" follow web url
+        go: button "Go" command web "navigate" addr
+        web: mockview 100 40 "L"
+    ]
+    right: form [
+        addr: field 20 "right" follow web url
+        go: button "Go" command web "navigate" addr
+        web: mockview 100 40 "R"
+        outer: button "Outer" command shared "reload"
+    ]
+    return
+    shared: mockview 100 40 "S"
+]
+;; the INTENT-3 browser demo's shape with the real engine (X11 + WebKitGTK)
+test/b3-home: "./glon/browser/demo.html"
+test/browser3-x11: layout [
+    across
+    panel [
+        address: field 30 test/b3-home follow browser url command browser "navigate" address
+        go: button "Go" command browser "navigate" address
+        back: button "Back" command browser "back"
+        bad: button "Bad" command browser "no-such-command"
+        below
+        status: label 30 "Ready" follow browser status
+        title: label 30 "" follow browser title
+        problem: label 30 "" follow browser error
+    ]
+    browser: webview 500 300 test/b3-home stretch
+]
+
+;; INTENT-4B-1: check, heading, disabled / hidden, the shared look
+test/i4-n: 0
+test/i4-changed: func [self event] [ test/i4-n: + test/i4-n 1 ]
+test/i4-p: 0
+test/i4-pressed: func [self event] [ test/i4-p: + test/i4-p 1 ]
+test/i4-agree?: func [self v] [ either = v 1 [ none ] [ "must agree" ] ]
+test/i4: layout [
+    heading "Member"
+    across
+    agree: check "I agree" on-change test/i4-changed validate test/i4-agree?
+    news: check "Newsletter" disabled
+    return
+    name: field 20 "Ann"
+    off: field 10 "x" disabled
+    later: field 10 "y"
+    return
+    go: button "Go"
+    gone: button "Gone" hidden on-click test/i4-pressed
+    return
+    kind: choice [ "Alpha" "a" "Beta" "b" ] disabled
+    note: label 20 "" follow agree value
+]
+
+;; INTENT-4B-1b: tabs
+test/i4-tn: 0
+test/i4-tlast: 0
+test/i4-tblur: 0
+test/i4-tab: func [self event] [ test/i4-tn: + test/i4-tn 1  test/i4-tlast: event/detail event ]
+test/i4-notes-blur: func [self event] [ test/i4-tblur: + test/i4-tblur 1 ]
+test/i4-tabs: layout [
+    top: field 10 "top"
+    pages: tabs [
+        "General" [ name: field 20 "Ann"  agree: check "OK" ]
+        "Notes" [ notes: field 30 "n" stretch on-blur test/i4-notes-blur  across  ok: button "Save" ]
+        "Empty" [ label "nothing here" ]
+    ] on-change test/i4-tab stretch
+    bottom: field 10 "bottom"
+]
+
+;; INTENT-4B-1c: table
+test/i4-tbn: 0
+test/i4-tbl: 0
+test/i4-tbchg: func [self event] [ test/i4-tbn: + test/i4-tbn 1  test/i4-tbl: event/detail event ]
+test/i4-villages: reduce [
+    reduce [ "A" "Apia" ]  reduce [ "S" "Salelologa" ]  reduce [ "F" "Faleolo" ]
+]
+test/i4-table: layout [
+    people: table [ "Code" 6 "Name" 16 "Village" 12 ] 5 key 1 on-change test/i4-tbchg
+    picked: label 20 "" follow people value
+    plain: table [ "Line" 30 ] 4
+    search: field 10 ""
+    villages: table [ "Code" 4 "Village" 14 ] 3 key 1 rows test/i4-villages
+]
+;; add n rows [ "C<i>" "Name <i>" "Village <i mod 7>" ] to the table h, i
+;; counting on from its rows (1 for the first), 64 rows a block (intent/blank
+;; holds at most 64)
+test/i4-fill: func [h n] [
+    intent/for-n :test/i4-chunk reduce [ h n face/row-count h ] + / - n 1 64 1
+    h
+]
+test/i4-chunk: func [ctx c] [
+    n: block-at ctx 1
+    base: * c 64
+    m: either > - n base 64 [ 64 ] [ - n base ]
+    either > m 0 [
+        rows: intent/blank m
+        intent/steps :test/i4-row reduce [ m rows base block-at ctx 2 ] 0
+        face/add-rows block-at ctx 0 rows
+    ] [ 0 ]
+]
+test/i4-row: func [ctx k] [
+    i: + + + block-at ctx 2 k block-at ctx 3 1
+    vid/set-block! block-at ctx 1 k reduce [ s/+ "C" s/from-int i  s/+ "Name " s/from-int i  s/+ "Village " s/from-int - i * / i 7 7 ]
+    + k 1
+]
+
+;; INTENT-4B-2: editing, read-only, disabled, password, area
+test/i4e-n: 0
+test/i4e-changed: func [self event] [ test/i4e-n: + test/i4e-n 1 ]
+test/i4e-named?: func [self v] [ either > s/length v 0 [ none ] [ "a name is needed" ] ]
+test/i4-edit: layout [
+    name: field 20 "Ada" on-change test/i4e-changed validate test/i4e-named?
+    copyname: label 20 "" follow name value
+    ro: field 20 "fixed text" read-only
+    off: field 10 "off" disabled
+    pin: field 10 "" password on-change test/i4e-changed
+    notes: area 30 4 "line one"
+    agree: check "Agree"
+    kind: choice [ "A" "a" "B" "b" ]
+]
+
+;; INTENT-4B-3: drop-down, list, label / key, hidden widgets
+test/i4-sv: reduce [
+    reduce [ "APW" "Apia" "Upolu" ]  reduce [ "SLL" "Salelologa" "Savai'i" ]
+    reduce [ "FGI" "Faleolo" "Upolu" ]  reduce [ "APX" "Apia" "Upolu" ]
+]
+test/i4-sn: 0
+test/i4-sl: 0
+test/i4-schg: func [self event] [ test/i4-sn: + test/i4-sn 1  test/i4-sl: event/detail event ]
+test/i4-picked?: func [self v] [ either = v none [ "pick a village" ] [ none ] ]
+test/i4-sel: layout [
+    village: drop-down 20 4 key 1 display 2 rows test/i4-sv on-change test/i4-schg validate test/i4-picked?
+    shown: label 20 "" follow village text
+    code: label 6 "" follow village value
+    people: list 20 5 key 1 display 2
+    empty: list 10 3
+    note: field 20 "" hidden
+    after: field 10 "after"
+]
+
+;; INTENT-4B-4: layout controls -- margin, space, pad, text alignment, row
+;; alignment, button widths, a panel with its own margin and spacing
+test/i4-layout: layout [
+    margin 24
+    space 12
+    across
+    name-l: label 10 "Name:" right   name: field 20
+    return
+    town-l: label 10 "Town:" right   town: field 12 fixed   pad 40   go: button 6 "Go"
+    return
+    title: label 30 "Centred" center
+    return
+    small: label "Mid" middle   tall: box 60 90 [ ]   ok: button "OK" bottom   top-l: label "Top"
+    return
+    p: panel [
+        margin 4
+        space 2
+        px: label "x"
+        py: label "y"
+    ]
+    wide: button 16 "A wide button"
+    auto: button "OK"
+]
+;; fill-height: two stacked fill faces share the spare height, a panel's
+;; list fills the panel, the button below moves, the column beside stays
+test/i4-vfill: layout [
+    head: label "Notes"
+    notes: area 30 3 stretch fill-height
+    fp: panel [
+        inner: label "Inner"
+        pl: list 20 3 fill-height
+    ] fill-height
+    done: button "Done"
+    return
+    side: label "Beside"
+    side2: button "Side"
+]
+;; state through resizing and hide / show: every kind of state a widget keeps
+test/i4-reveal: func [self event] [ face/set-visible form/field form/current 'st-extra face/value self ]
+test/i4-state: layout [
+    across
+    label 8 "Name:"   st-name: field 20 "Hello world"
+    return
+    label 8 "Notes:"  st-notes: area 20 3 "line one"
+    return
+    st-check: check "Reveal the extra field" on-change test/i4-reveal
+    st-extra: field 20 "secret" hidden
+    st-after: button "After"
+    return
+    st-dd: drop-down 20 4 key 1 display 2 rows test/i4-sv
+    st-list: list 20 4 key 1 display 2 rows test/i4-sv
+    return
+    st-table: table [ "Code" 6 "Place" 12 "Island" 10 ] 4 key 1 rows test/i4-sv stretch
+    return
+    st-host: host "mock" 300 60 "hosted" stretch
+]
+
+;; INTENT-4B-5A: themes -- the layout's own (light), a panel's own (dark)
+test/i5-theme: layout [
+    theme light
+    across
+    t-label: label "Light theme"   t-field: field 12 "typed"   t-button: button "OK"   t-check: check "Tick"
+    return
+    t-panel: panel [
+        theme dark
+        across
+        t-dlabel: label "Dark panel"   t-dbutton: button "Dark"
+    ]
+    t-off: button "Off" disabled
+]
+
+;; INTENT-4B-5A: looks -- styles with appearance over the one VID button,
+;; field and label; a style of a style; a disabled styled button
+test/i5-n: 0
+test/i5-hit: func [self event] [ test/i5-n: + test/i5-n 1 ]
+test/i5-look: layout [
+    style big button look [ font 20 height 48 bold ]
+    style small button look [ font 11 height 24 ]
+    style go button look [ background 30 120 60 color 255 255 255 radius 8 border-width 0 ]
+    style warn go look [ background 180 40 40 ]
+    style mono label look [ monospace color 240 200 80 ]
+    style boxy field look [ border 230 170 40 border-width 3 radius 4 height 36 ]
+    across
+    plain: button "Plain" on-click test/i5-hit
+    b-big: big "Big" on-click test/i5-hit
+    b-small: small "Small"
+    b-go: go "Go" on-click test/i5-hit
+    b-warn: warn "Stop"
+    b-off: go "Off" disabled
+    return
+    m-label: mono "fixed width"
+    f-boxy: boxy 12 "framed"
+    f-plain: field 12 "plain"
+]
+;; INTENT-4B-5A: images -- PNG and JPEG scaled to fit, the same file twice,
+;; files that cannot be shown, icons on buttons
+test/i5-image: layout [
+    across
+    pic: image "view/tests/images/badge.png" 128 128
+    tall: image "view/tests/images/photo.jpg" 100 100
+    gone: image "view/tests/images/missing.png" 160 60
+    bad: image "view/tests/images/not-an-image.png" 160 60
+    cut: image "view/tests/images/truncated.png" 160 60
+    huge: image "view/tests/images/too-large.png" 40 40
+    return
+    i-save: button "Save" icon "view/images/save.png" on-click test/i5-hit
+    i-only: button "" icon "view/images/check.png" on-click test/i5-hit
+    i-bad: button "Broken" icon "view/tests/images/missing.png" on-click test/i5-hit
+    again: image "view/tests/images/badge.png" 64 32 stretch
+]
+
+;; the tests pick a layout with view-key 5000 + i (an application's own
+;; handler around Intent's: layouts are built inside an event, where the
+;; closures of their actions are kept)
+;; flexible sizing: two fields share a row, fixed opts out, a stretched
+;; box redraws, a panel grows with its field, an escaped VID button stretches
+test/stretch: layout [
+    across
+    label "Two:"
+    f1: field 10
+    f2: field 10
+    return
+    label "Fixed:"
+    fx: field 10 fixed
+    return
+    cv: box 100 40 [ view/draw-rect node 0 0 w h 200 40 40 255 ] stretch
+    return
+    p: panel [ across text "In a panel:" pf: field 5 ]
+    return
+    esc: vid 100 30 [ vid/button theme parent x y w h "Escaped" ] stretch
+]
+test/pick: reduce [ test/form test/columns test/rows test/unequal test/alias
+                    test/nested test/escape test/many test/stretch test/handlers test/foreign test/foreign-x11 test/browser test/browser-x11
+                    test/i3 test/i3-forms test/browser3-x11 test/i4 test/i4-tabs test/i4-table test/i4-edit test/i4-sel
+                    test/i4-layout test/i4-vfill test/i4-state test/i5-theme test/i5-look test/i5-image ]
+;; INTENT-4B-1c scale tests: key 5200 adds 250 rows to the table named in
+;; test/i4-target, inside an event, as an application adds them
+test/i4-target: 'people
+test/i4-event-fill: func [] [
+    test/i4-fill form/field form/current test/i4-target 250
+]
+do-event: [
+    either either = current-event 'view-key [ = parse-int current-value 5200 ] [ 0 ] [ test/i4-event-fill ] [ 0 ]
+    ;; (5000 .. 5099 only: Up / Down arrive as SDL's large key codes)
+    either either = current-event 'view-key [ either >= parse-int current-value 5000 [ < parse-int current-value 5100 ] [ 0 ] ] [ 0 ] [
+        intent/show block-at test/pick - parse-int current-value 5000
+    ] [ intent/event current-event current-value ]
+    widget/flush
+]
+view test/form
+]

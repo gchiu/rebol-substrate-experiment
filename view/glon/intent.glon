@@ -1,0 +1,3603 @@
+;; view/glon/intent.glon -- INTENT-1: Glon Intent, a human-readable
+;; declarative GUI dialect over machine VID.  See INTENT-1.md.
+;;
+;;   view layout [
+;;       across
+;;       label "Name:"   name: field 20 "Default text"   return
+;;       label "Village:" village: field 20              return
+;;       button "Clear" [ clear name ]
+;;   ]
+;;
+;; The block is read as data (element tags), never evaluated: the dialect
+;; words (across down return label text field button panel vid box) are
+;; compared by symbol and need no global definitions.  Every widget is made
+;; by its machine VID constructor and keeps its machine state block; events
+;; go through vid/event as in any VID application.
+;;
+;; Layout record (layout): [ magic spec faces count root names nnames theme
+;;   focused cw ch scroll tmp states nameidx scope gen alive last-error
+;;   root-names styles theme-choice engine top resume owned ]  (INTENT-2:
+;;   scope = the root form's name scope; gen counts builds, so handles of an
+;;   earlier build are stale; alive = built (shown or hidden); root-names =
+;;   names in the root scope, for the inline-action limit.  GLON-INST-2:
+;;   engine = the layout engine's state while the instance is hidden; next
+;;   (slot 23, below); resume = the face to refocus when shown
+;;   again; owned = the id chunks it owns (GLON-INST-3A); slot 23 = the
+;;   next id of its last chunk (0: none);
+;;   hover = the face under the
+;;   pointer at the last move, -1 none, -2 not known; back = the instance
+;;   shown before this one, shown again if this one closes)
+;; Face record: [ kind name state action x y w h node ]
+;;   kind 1 label/text, 2 field, 3 button, 4 panel, 5 vid escape, 6 box escape
+;; Cursor (one per container): [ lay parent dir x y line ox oy maxx maxy
+;;   pending-name lx ly ]   dir 0 down, 1 across
+;;
+;; Desktop VID loader only (after view_cmd.glon); the 64K stack is unchanged.
+;; (Functions keep under the 16 bindings a context holds; lists are walked 8
+;; at a time, since a call chain holds well under 100 frames.)
+[
+intent/magic: 1717
+intent/max-faces: 64
+intent/margin: 16
+intent/spacing: 8
+intent/pad: 10
+intent/default-w: 640
+intent/default-h: 480
+intent/theme: theme/dark
+intent/main: 0
+intent/current: 0
+intent/building: 0
+intent/id-base: 0
+
+;; the cell tag of a value: 0 int, 2 word, 3 set-word, 5 lit-word, 6 block,
+;; 8 closure, 12 string (GLON-LIB-1: the session's value-tag, core_words.glon)
+intent/tag: :value-tag
+;; a set-word's word (name: -> name)
+intent/word: masm 1 [ LIT 1 SUB ARITY 1 EXIT ]
+;; character units of a UTF-8 string: 1 per character, 2 for East Asian wide
+;; (lead byte 0xE3 and above); continuation bytes count nothing
+intent/units: masm 1 [
+    LIT T_STRING SUB LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_B !
+    LIT 0 LIT SCRATCH_C !
+  iu-loop:
+    LIT SCRATCH_B @ ZBRANCH iu-done
+    LIT SCRATCH_A @ LIT 1 ADD LIT SCRATCH_A !
+    LIT SCRATCH_A @ @ LIT SCRATCH_F !
+    LIT SCRATCH_C @
+    LIT SCRATCH_F @ LIT 128 LT ADD
+    LIT SCRATCH_F @ LIT 192 GE ADD
+    LIT SCRATCH_F @ LIT 227 GE ADD
+    LIT SCRATCH_C !
+    LIT SCRATCH_B @ LIT 1 SUB LIT SCRATCH_B !
+    BRANCH iu-loop
+  iu-done:
+    LIT SCRATCH_C @ LIT 16 MUL ARITY 1 EXIT
+]
+;; px per character unit: 0.75 x the theme's body font size, rounded up
+;; (the size is in points: 14 pt is about 19 px at 96 dpi, whose average
+;; DejaVu Sans advance is about 10.3 px)
+intent/unit: func [theme] [
+    u: / + * block-at theme 69 3 3 4
+    ;; INTENT-4B-5A: bold text (font style bit 0) is about an eighth wider
+    either = 1 - block-at theme 137 * / block-at theme 137 2 2 [ / + * u 9 7 8 ] [ u ]
+]
+
+;; ---- layout records ----------------------------------------------------------
+;; blank n: a fresh managed block of n zeros (reduce of a literal template;
+;; n is at most 64). GLON-LIB-1: the templates are list.glon's (list/blank),
+;; which the Intent stack loads first
+intent/blank: func [n] [
+    either > n 64 [ raise create-sin 'intent 'too-large n ] [ reduce block-at list/templates n ]
+]
+;; a loop over i from i while i < block-at ctx 0, 8 steps per call level
+;; (a call chain holds under 100 frames): f is called as ( ctx i ) and
+;; answers the next i
+intent/steps: func [f ctx i] [
+    either < i block-at ctx 0 [ intent/steps :f ctx intent/steps8 :f ctx i 8 ] [ i ]
+]
+intent/steps8: func [f ctx i k] [
+    either either < i block-at ctx 0 [ > k 0 ] [ 0 ] [ intent/steps8 :f ctx f ctx i - k 1 ] [ i ]
+]
+intent/zeros: func [] [
+    reduce [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+             0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+]
+intent/no-names: func [] [
+    reduce [ 'intent/_0 'intent/_1 'intent/_2 'intent/_3 'intent/_4
+             'intent/_5 'intent/_6 'intent/_7 'intent/_8 'intent/_9 ]
+]
+;; layout spec -> an unbuilt layout (built when a window exists)
+layout: func [spec] [
+    either = intent/tag spec 6 [ 0 ] [ raise create-sin 'intent 'layout-needs-block spec ]
+    reduce [ intent/magic spec intent/zeros 0 0 intent/no-names 0 intent/theme -1 0 0 -1 0
+             reduce [ 0 0 0 0 0 0 0 0 0 0 ] intent/zeros 0 0 0 none 0 0 0 0 0 -1 list/new -2 0 0 ]
+]
+;; view lay: the application's main layout (built at view-build)
+view: func [lay] [ intent/main: lay  lay ]
+
+intent/face: func [lay i] [ block-at block-at lay 2 i ]
+intent/count: func [lay] [ block-at lay 3 ]
+;; the state of the face named w (a word: 'name), or 0
+intent/get: func [lay w] [
+    k: intent/name-index lay w 0
+    either < k 0 [ 0 ] [ block-at block-at lay 13 k ]
+]
+intent/name-index: func [lay w k] [
+    either < k block-at lay 6 [
+        either = block-at block-at lay 5 k w [ k ] [ intent/name-index lay w + k 1 ]
+    ] [ -1 ]
+]
+;; the face index of the name w, or -1
+intent/named: func [lay w] [
+    k: intent/name-index lay w 0
+    either < k 0 [ -1 ] [ block-at block-at lay 14 k ]
+]
+;; the View node of a face (the widget's outer node)
+intent/node: func [lay i] [ block-at intent/face lay i 8 ]
+
+;; ---- walking lists 8 at a time ----------------------------------------------
+;; f is called as ( lay i ) for every face.  (A word holding a closure
+;; calls it when evaluated: it is passed on as :f.)
+intent/each: func [lay f] [ intent/each-from lay :f 0 ]
+intent/each-from: func [lay f i] [
+    either < i block-at lay 3 [ intent/each-from lay :f intent/each8 lay :f i 8 ] [ 0 ]
+]
+intent/each8: func [lay f i k] [
+    either either < i block-at lay 3 [ > k 0 ] [ 0 ] [
+        f lay i
+        intent/each8 lay :f + i 1 - k 1
+    ] [ i ]
+]
+;; the face whose node is id, or -1
+intent/find: func [lay id] [ intent/find-from lay id 0 ]
+intent/find-from: func [lay id i] [
+    either < i block-at lay 3 [
+        j: intent/find8 lay id i 8
+        either < j 0 [ intent/find-from lay id + i 8 ] [ j ]
+    ] [ -1 ]
+]
+intent/find8: func [lay id i k] [
+    either either < i block-at lay 3 [ > k 0 ] [ 0 ] [
+        either = intent/node lay i id [ i ] [ intent/find8 lay id + i 1 - k 1 ]
+    ] [ -1 ]
+]
+
+;; ---- reading the dialect ------------------------------------------------------
+;; a string at j: a reduced STRING!, or the loader's mk-string [bytes] pair
+intent/str?: func [spec j] [
+    either < j block-len spec [
+        v: block-at spec j
+        t: intent/tag v
+        either = t 12 [ 1 ] [ either = t 2 [ either = v 'mk-string [ 1 ] [ intent/value-word? v ] ] [ 0 ] ]
+    ] [ 0 ]
+]
+intent/str-at: func [spec j] [
+    v: block-at spec j
+    either = intent/tag v 12 [ v ] [ either = v 'mk-string [ mk-string block-at spec + j 1 ] [ get v ] ]
+]
+intent/str-len: func [spec j] [
+    v: block-at spec j
+    either = intent/tag v 12 [ 1 ] [ either = v 'mk-string [ 2 ] [ 1 ] ]
+]
+intent/int?: func [spec j] [ either < j block-len spec [ = intent/tag block-at spec j 0 ] [ 0 ] ]
+intent/block?: func [spec j] [ either < j block-len spec [ = intent/tag block-at spec j 6 ] [ 0 ] ]
+
+;; Cursor: [ lay parent dir x y line ox oy maxx maxy pending lx ly last
+;;   seg prule mr anyflex R n m newscope scope space mb theme ]
+;;   newscope a form's scope for the next panel's cursor (intent/w-form), or 0
+;;   scope    the name scope (form) names declared here go into (INTENT-2)
+;;   ox / oy  where a return goes back to: the left of the current across
+;;            run, the top of the current down run (a direction change
+;;            starts a run at the cursor)
+;;   last     the last face added here (stretch / fixed apply to it)
+;;   seg      the first face of the current segment: an across row, or a
+;;            down column (see intent/end-seg)
+;;   prule    the vid_layout rule whose box is this container
+;;   mr       the container's right margin
+;;   anyflex  1 once a flexible face is added (a panel then stretches)
+;;   R n m    scratch for intent/end-seg (and intent/vfill)
+;;   space    the gap between items (INTENT-4B-4: space N; default 8)
+;;   mb       the container's bottom margin (margin N sets all four)
+;;   theme    the theme its widgets are made with (INTENT-4B-5A: a block's
+;;            "theme NAME" first, else its container's; a style's look
+;;            gives a derived one while its widget is made)
+intent/cursor: func [lay parent ox oy prule mr] [
+    reduce [ lay parent 0 ox oy 0 ox oy ox oy 0 0 0 -1 block-at lay 3 prule mr 0 0 0 0 0 block-at lay 15 intent/spacing mr block-at lay 7 0 ]
+]
+
+;; walk a container's block (8 items a step); at its end the open segment
+;; is closed as a return would
+intent/walk: func [c spec i] [
+    either < i block-len spec [ intent/walk c spec intent/walk8 c spec i 8 ] [
+        intent/end-seg c either = block-at c 2 1 [ 0 ] [ 2 ]
+        intent/vfill c
+        i
+    ]
+]
+intent/walk8: func [c spec i k] [
+    either either < i block-len spec [ > k 0 ] [ 0 ] [
+        intent/walk8 c spec intent/item c spec i - k 1
+    ] [ i ]
+]
+;; one item at i; answers the index after it
+intent/item: func [c spec i] [
+    v: block-at spec i
+    t: intent/tag v
+    either = t 3 [ vid/set-block! c 10 intent/word v  + i 1 ] [
+        either = t 2 [ intent/keyword c spec i v ] [
+            raise create-sin 'intent 'unexpected v
+        ]
+    ]
+]
+intent/keyword: func [c spec i w] [
+    either = w 'across [ intent/direction c 1  + i 1 ] [
+    either = w 'down [ intent/direction c 0  + i 1 ] [
+    either = w 'return [ intent/newline c  + i 1 ] [
+    ;; label and text: one keyword entry, one constructor
+    either either = w 'label [ 1 ] [ = w 'text ] [ intent/w-label c spec + i 1 ] [
+    either = w 'field [ intent/w-field c spec + i 1 ] [
+    either = w 'button [ intent/w-button c spec + i 1 ] [
+    either = w 'panel [ intent/w-panel c spec + i 1 ] [
+    either = w 'vid [ intent/w-vid c spec + i 1 ] [
+    either = w 'box [ intent/w-box c spec + i 1 ] [
+    either = w 'choice [ intent/w-choice c spec + i 1 ] [
+    either = w 'form [ intent/w-form c spec + i 1 ] [
+    either = w 'host [ intent/w-host c spec + i 1 ] [
+    ;; options for the face just added
+    either = w 'stretch [ intent/set-flex c 1  + i 1 ] [
+    either = w 'fixed [ intent/set-flex c 0  + i 1 ] [
+        intent/keyword2 c spec i w
+    ] ] ] ] ] ] ] ] ] ] ] ] ] ]
+]
+;; INTENT-2 options for the face just added:
+;;   on-click / on-enter / on-change / on-focus / on-blur  HANDLER
+;;   on-event HANDLER  (a hosted component's other events, FOREIGN-2:
+;;                      event/name says which, event/detail what)
+;;   validate VALIDATOR
+;; HANDLER: a word naming a function of ( self event ), looked up when the
+;; event comes (it may be defined after the layout, or redefined), or a
+;; block, the body of func [self event].  VALIDATOR: a word naming a
+;; function of ( self value ) that answers none (valid) or a message string
+intent/hslot: func [w] [
+    either = w 'on-click [ 0 ] [ either = w 'on-enter [ 1 ] [ either = w 'on-change [ 2 ] [
+    either = w 'on-focus [ 3 ] [ either = w 'on-blur [ 4 ] [ either = w 'on-event [ 5 ] [ -1 ] ] ] ] ] ]
+]
+intent/option: func [c spec i w] [
+    k: block-at c 13
+    slot: intent/hslot w
+    either either < slot 0 [ = w 'validate ] [ 1 ] [ 0 ] [ raise create-sin 'intent 'unknown-word w ]
+    either < k 0 [ raise create-sin 'intent 'option-needs-a-face w ] [ 0 ]
+    either < + i 1 block-len spec [ 0 ] [ raise create-sin 'intent 'option-needs-a-handler w ]
+    h: block-at spec + i 1
+    t: intent/tag h
+    face: intent/face block-at c 0 k
+    either < slot 0 [
+        either = t 2 [ vid/set-block! face 18 h ] [ raise create-sin 'intent 'validator-needs-a-name w ]
+    ] [
+        hs: block-at face 17
+        either = hs 0 [ hs: reduce [ 0 0 0 0 0 0 ]  vid/set-block! face 17 hs ] [ 0 ]
+        either = t 2 [ vid/set-block! hs slot h ] [
+            either = t 6 [ vid/set-block! hs slot func [self event] block-at spec + i 1 ] [
+                raise create-sin 'intent 'handler-needs-a-name-or-block w
+            ]
+        ]
+    ]
+    + i 2
+]
+intent/set-flex: func [c f] [
+    k: block-at c 13
+    either < k 0 [ raise create-sin 'intent 'option-needs-a-face either f [ 'stretch ] [ 'fixed ] ] [ 0 ]
+    vid/set-block! intent/face block-at c 0 k 10 f
+    either f [ vid/set-block! c 17 1 ] [ 0 ]
+    c
+]
+
+;; ---- placement -----------------------------------------------------------------
+;; the next item of w x h goes at the cursor (lx ly); the cursor moves on
+intent/place: func [c w h] [
+    x: block-at c 3
+    y: block-at c 4
+    sp: block-at c 23
+    vid/set-block! c 11 x
+    vid/set-block! c 12 y
+    either = block-at c 2 1 [
+        vid/set-block! c 3 + x + w sp
+        either > h block-at c 5 [ vid/set-block! c 5 h ] [ 0 ]
+    ] [
+        vid/set-block! c 4 + y + h sp
+        either > w block-at c 5 [ vid/set-block! c 5 w ] [ 0 ]
+    ]
+    either > + x w block-at c 8 [ vid/set-block! c 8 + x w ] [ 0 ]
+    either > + y h block-at c 9 [ vid/set-block! c 9 + y h ] [ 0 ]
+    c
+]
+;; a direction change ends the open segment: an across row followed by a
+;; down run (which starts to its right) cannot grow; the last column of a
+;; down run can
+intent/direction: func [c d] [
+    either = d block-at c 2 [ 0 ] [
+        intent/end-seg c either = block-at c 2 1 [ 1 ] [ 2 ]
+        vid/set-block! c 2 d
+        vid/set-block! c 5 0
+        vid/set-block! c 6 block-at c 3
+        vid/set-block! c 7 block-at c 4
+    ]
+    c
+]
+;; return: across, the next row under the tallest item (the row may grow);
+;; down, the next column right of the widest item (the column it leaves
+;; has one to its right, so it cannot grow)
+intent/newline: func [c] [
+    line: block-at c 5
+    either = block-at c 2 1 [
+        intent/end-seg c 0
+        vid/set-block! c 4 + block-at c 4 + line block-at c 23
+        vid/set-block! c 3 block-at c 6
+    ] [
+        intent/end-seg c 1
+        vid/set-block! c 3 + block-at c 3 + line block-at c 23
+        vid/set-block! c 4 block-at c 7
+    ]
+    vid/set-block! c 5 0
+    c
+]
+
+;; ---- sizing: segments become vid_layout rules -----------------------------------
+;; Every face has a preferred (natural) size, which is also its minimum, and
+;; is flexible (grows horizontally) or fixed.  When a segment closes:
+;;   mode 0  an across row: its flexible faces share the spare width of the
+;;           container equally; faces after one move right with it
+;;   mode 1  nothing grows (a column with another column to its right, a row
+;;           with a down run to its right)
+;;   mode 2  the last column of a down run: each flexible face grows to the
+;;           container's right margin
+;; Each face that grows or moves gets one linear rule (x0 fx w0 fw, min w =
+;; preferred) whose parent is the container's rule, so lay/apply places it
+;; for any window size.  The container never gets narrower than its
+;; preferred width (its own rule's minimum), so nothing shrinks or overlaps;
+;; below that the root viewport scrolls.
+intent/end-seg: func [c mode] [
+    lay: block-at c 0
+    either = mode 1 [ 0 ] [
+        vid/set-block! c 18 0
+        vid/set-block! c 19 0
+        vid/set-block! c 20 0
+        intent/range c :intent/seg-measure block-at c 14
+        either = block-at c 19 0 [ 0 ] [
+            intent/range c either = mode 0 [ :intent/seg-row ] [ :intent/seg-col ] block-at c 14
+        ]
+    ]
+    ;; INTENT-4B-4: top / middle / bottom in an across row
+    either = block-at c 2 1 [ intent/range c :intent/seg-valign block-at c 14 ] [ 0 ]
+    vid/set-block! c 14 block-at lay 3
+    c
+]
+;; f is called as ( c i ) for the faces from i on (8 a step)
+intent/range: func [c f i] [
+    either < i block-at block-at c 0 3 [ intent/range c :f intent/range8 c :f i 8 ] [ 0 ]
+]
+intent/range8: func [c f i k] [
+    either either < i block-at block-at c 0 3 [ > k 0 ] [ 0 ] [
+        f c i
+        intent/range8 c :f + i 1 - k 1
+    ] [ i ]
+]
+;; a face of this container (a nested panel's faces are in the same list)
+intent/mine?: func [c face] [ = block-at face 11 block-at c 15 ]
+intent/seg-measure: func [c i] [
+    face: intent/face block-at c 0 i
+    either intent/mine? c face [
+        r: + block-at face 4 block-at face 6
+        either > r block-at c 18 [ vid/set-block! c 18 r ] [ 0 ]
+        either = block-at face 10 1 [ vid/set-block! c 19 + block-at c 19 1 ] [ 0 ]
+    ] [ 0 ]
+]
+intent/seg-row: func [c i] [
+    face: intent/face block-at c 0 i
+    either intent/mine? c face [
+        n: block-at c 19
+        m: block-at c 20
+        flex: = block-at face 10 1
+        ;; the spare width E = pw - S; this face moves by m E / n, grows by E / n
+        sp: + block-at c 16 block-at c 18
+        either either > m 0 [ 1 ] [ flex ] [
+            intent/set-rule c face - block-at face 4 / * m sp n / * m 1000 n
+                either flex [ - block-at face 6 / sp n ] [ block-at face 6 ]
+                either flex [ / 1000 n ] [ 0 ]
+        ] [ 0 ]
+        either flex [ vid/set-block! c 20 + m 1 ] [ 0 ]
+    ] [ 0 ]
+]
+intent/seg-col: func [c i] [
+    face: intent/face block-at c 0 i
+    either either intent/mine? c face [ = block-at face 10 1 ] [ 0 ] [
+        ;; w = pw - margin - x
+        intent/set-rule c face block-at face 4 0 - 0 + block-at c 16 block-at face 4 1000
+    ] [ 0 ]
+]
+;; the face's rule: a panel's exists already (its children are placed in its
+;; box), the others are added here
+intent/set-rule: func [c face x0 fx w0 fw] [
+    r: block-at face 9
+    either < r 0 [
+        vid/set-block! face 9 lay/add block-at face 13 block-at face 12 block-at c 15
+            x0 fx + block-at face 5 block-at face 14 0 w0 fw block-at face 15 0 block-at face 6 0
+    ] [
+        rec: block-at lay/rules r
+        vid/set-block! rec 3 x0
+        vid/set-block! rec 4 fx
+        vid/set-block! rec 7 w0
+        vid/set-block! rec 8 fw
+        vid/set-block! rec 11 block-at face 6
+    ]
+]
+
+;; record a face (at the cursor's last place); a pending name names it.
+;; geo: [ flexible layout-kind layout-node dy node-height rule ] -- how
+;; vid_layout resizes it (kind 0 a node, 1 a VID panel, 4 a VID button, 5
+;; VID tabs, 6 a VID field, 7 a node with a resize hook), the node's offset
+;; and height in its row, and a rule made already (a panel's) or -1
+;; Face: [ kind name state action x y w h node rule flex container lkind
+;;         lnode dy rh ]
+intent/add-face: func [c kind st action w h geo] [
+    lay: block-at c 0
+    n: block-at lay 3
+    either < n intent/max-faces [ 0 ] [ raise create-sin 'intent 'too-many-faces n ]
+    node: either = intent/tag st 6 [ block-at st 1 ] [ st ]
+    vid/set-block! block-at lay 2 n reduce [ kind block-at c 10 st action block-at c 11 block-at c 12 w h node
+        block-at geo 5 block-at geo 0 block-at c 15 block-at geo 1 block-at geo 2 block-at geo 3 block-at geo 4
+        block-at c 22 0 0 "" 1 1 0 0 0 0 0 0 0 ]
+    vid/set-block! lay 3 + n 1
+    vid/set-block! c 13 n
+    either = block-at geo 0 1 [ vid/set-block! c 17 1 ] [ 0 ]
+    either = block-at c 10 0 [ 0 ] [
+        intent/add-name c block-at c 10 n
+        vid/set-block! c 10 0
+    ]
+    n
+]
+;; a name goes into its form's scope (at most 32 per scope; the same name
+;; may be used in another scope).  The root scope's first 10 names are also
+;; the parameters of inline actions (INTENT-1)
+intent/add-name: func [c w n] [
+    lay: block-at c 0
+    sc: block-at c 22
+    m: block-at sc 5
+    either < m 32 [ 0 ] [ raise create-sin 'intent 'too-many-names w ]
+    either < intent/scope-index sc w 0 0 [ 0 ] [ raise create-sin 'intent 'duplicate-name w ]
+    vid/set-block! block-at sc 3 m w
+    vid/set-block! block-at sc 4 m n
+    vid/set-block! sc 5 + m 1
+    either = sc block-at lay 15 [
+        vid/set-block! lay 19 + block-at lay 19 1
+        k: block-at lay 6
+        either < k 10 [
+            vid/set-block! block-at lay 5 k w
+            vid/set-block! block-at lay 14 k n
+            vid/set-block! lay 6 + k 1
+        ] [ 0 ]
+    ] [ 0 ]
+    n
+]
+;; ---- name scopes (forms) ------------------------------------------------------
+;; [ magic lay parent names faces count validator name data actions ]
+;; (GLON-INST-1: data = the application's state for this form instance,
+;; form/data; actions = [ spec states ] for its inline actions, made when
+;; the layout's actions are bound)
+intent/scope-magic: 2323
+intent/scope-new: func [lay parent name] [
+    reduce [ intent/scope-magic lay parent intent/blank 32 intent/blank 32 0 0 name none 0 ]
+]
+;; the index of name w in the scope, or -1
+intent/scope-index: func [sc w k] [
+    either < k block-at sc 5 [
+        either = block-at block-at sc 3 k w [ k ] [ intent/scope-index sc w + k 1 ]
+    ] [ -1 ]
+]
+;; a face's live size: its rule's box, or its preferred size
+intent/live-w: func [lay i] [
+    face: intent/face lay i
+    either < block-at face 9 0 [ block-at face 6 ] [ lay/box-w block-at face 9 ]
+]
+
+;; ---- widgets (machine VID constructors) --------------------------------------
+;; label / text: fixed; a 30 px row like fields and buttons, the text node
+;; centred in it as theirs is
+intent/w-label: func [c spec i] [
+    ;; label [N] "text": N character units wide (default: the text's own)
+    n: -1
+    either intent/int? spec i [ n: block-at spec i  i: + i 1 ] [ 0 ]
+    either intent/str? spec i [ 0 ] [ raise create-sin 'intent 'label-needs-text i ]
+    s: intent/str-at spec i
+    theme: block-at c 25
+    w: + * either < n 0 [ intent/units s ] [ n ] intent/unit theme 4
+    th: + block-at theme 69 6
+    ;; INTENT-4B-5A: the row is the control height (30), taller for a big font
+    rh: intent/max-of block-at theme 138 + th 6
+    dy: / - rh th 2
+    intent/place c w rh
+    st: vid/label theme block-at c 1 block-at c 11 + block-at c 12 dy w th s
+    vid/set-block! intent/face block-at c 0 intent/add-face c 1 st 0 w rh reduce [ 0 0 block-at st 1 dy th -1 ] 19 s
+    + i intent/str-len spec i
+]
+;; field [N] ["text"]: N character units of text (default 20) + the insets;
+;; flexible (it takes the row's spare width; N is its minimum)
+intent/w-field: func [c spec i] [
+    n: 20
+    either intent/int? spec i [ n: block-at spec i  i: + i 1 ] [ 0 ]
+    s: ""
+    either intent/str? spec i [ s: intent/str-at spec i  i: + i intent/str-len spec i ] [ 0 ]
+    theme: block-at c 25
+    w: + * n intent/unit theme 16
+    ;; INTENT-4B-5A: a look's height and width (defaults 30 and the content)
+    h: block-at theme 138
+    w: either > block-at theme 139 0 [ block-at theme 139 ] [ w ]
+    intent/place c w h
+    st: vid/field theme block-at c 1 block-at c 11 block-at c 12 w h s 0
+    ;; INTENT-4B-2: editable (caret, selection, clipboard: vid_edit.glon)
+    vid/edit/attach st 0
+    intent/add-face c 2 st 0 w h reduce [ 1 6 st 0 h -1 ]
+    i
+]
+;; button "caption" [action]: fixed
+intent/w-button: func [c spec i] [
+    ;; INTENT-4B-4: button N "caption": N character units + the 24 px insets
+    ;; (default: the caption's own, at least 80 px)
+    n: -1
+    either intent/int? spec i [ n: block-at spec i  i: + i 1 ] [ 0 ]
+    either intent/str? spec i [ 0 ] [ raise create-sin 'intent 'button-needs-caption i ]
+    s: intent/str-at spec i
+    i: + i intent/str-len spec i
+    ;; INTENT-4B-5A: icon "file" (a PNG or JPEG) beside the caption, or alone
+    ;; when the caption is ""; before or after the action block
+    ic: intent/icon-of spec i
+    i: either = s/length ic 0 [ i ] [ + + i 1 intent/str-len spec + i 1 ]
+    action: 0
+    either intent/block? spec i [ action: block-at spec i  i: + i 1 ] [ 0 ]
+    either = s/length ic 0 [ ic: intent/icon-of spec i  i: either = s/length ic 0 [ i ] [ + + i 1 intent/str-len spec + i 1 ] ] [ 0 ]
+    theme: block-at c 25
+    h: block-at theme 138
+    ;; the caption's width, the icon's (a square, 10 px less than the
+    ;; height, and a gap), at least 80 px; or the look's width
+    w: + + * either < n 0 [ intent/units s ] [ n ] intent/unit theme 24 either = s/length ic 0 [ 0 ] [ either = s/length s 0 [ - h 34 ] [ - h 4 ] ]
+    w: either either < n 0 [ < w 80 ] [ 0 ] [ 80 ] [ w ]
+    w: either > block-at theme 139 0 [ block-at theme 139 ] [ w ]
+    intent/place c w h
+    st: vid/button theme block-at c 1 block-at c 11 block-at c 12 w h s
+    geo: either = s/length ic 0 [ reduce [ 0 4 st 0 h -1 ] ] [ intent/icon-button st ic > s/length s 0 w h ]
+    vid/set-block! intent/face block-at c 0 intent/add-face c 3 st action w h geo 19 s
+    i
+]
+;; panel [ ... ]: a nested container with its own cursor (down, own origin)
+;; and its own rule, sized to its content; flexible when something in it is
+intent/w-panel: func [c spec i] [
+    either intent/block? spec i [ 0 ] [ raise create-sin 'intent 'panel-needs-block i ]
+    lay: block-at c 0
+    x: block-at c 3
+    y: block-at c 4
+    ;; INTENT-4B-5A: its theme: the block's own (theme NAME first) or its container's
+    pth: intent/block-theme block-at spec i block-at c 25
+    p: vid/panel pth block-at c 1 x y 20 20 0 0 0 0 []
+    cid: block-at p 1
+    r: lay/add cid 1 block-at c 15 x 0 y 0 20 0 20 0 0 0
+    ic: intent/cursor lay cid intent/pad intent/pad r intent/pad
+    ;; a styled panel's look is its own: what it holds takes the container's theme
+    vid/set-block! ic 25 either = block-at c 26 0 [ pth ] [ intent/block-theme block-at spec i block-at c 26 ]
+    ;; a panel shares its form's names; a form (intent/w-form) brings its own
+    vid/set-block! ic 22 either = block-at c 21 0 [ block-at c 22 ] [ block-at c 21 ]
+    intent/walk ic block-at spec i 0
+    w: + block-at ic 8 block-at ic 16
+    h: + block-at ic 9 block-at ic 24
+    rec: block-at lay/rules r
+    vid/set-block! rec 7 w
+    vid/set-block! rec 9 h
+    vid/set-block! rec 11 w
+    lay/place cid 1 x y w h
+    intent/place c w h
+    intent/add-face c 4 p 0 w h reduce [ block-at ic 17 1 cid 0 h r ]
+    + i 1
+]
+;; form [ ... ]: a panel with its own name scope (INTENT-2).  Names inside
+;; belong to it, so two forms may both have a "name" field; the form's own
+;; name (name: form [...]) is in the enclosing scope, and form/sub gives its
+;; handle.  Its data is collected as a nested record under that name.
+do [
+;; GLON-INST-1: form WORD, the word naming a block: a reusable component.
+;; The block is its definition, shared and only read; each placement is an
+;; instance with its own scope, widgets, values and form/data
+intent/w-form: func [c spec i] [
+    either intent/block? spec i [ intent/w-form-of c spec i ] [
+        d: either < i block-len spec [ block-at spec i ] [ 0 ]
+        either either = intent/tag d 2 [ = intent/tag get d 6 ] [ 0 ] [
+            intent/w-form-of c reduce [ get d ] 0
+            + i 1
+        ] [ raise create-sin 'intent 'form-needs-block i ]
+    ]
+]
+]
+intent/w-form-of: func [c spec i] [
+    lay: block-at c 0
+    sc: intent/scope-new lay block-at c 22 block-at c 10
+    ;; build it as a panel whose cursor carries the new scope
+    vid/set-block! c 21 sc
+    k: intent/w-panel c spec i
+    vid/set-block! c 21 0
+    face: intent/face lay block-at c 13
+    vid/set-block! face 0 8
+    vid/set-block! face 22 sc
+    k
+]
+;; host "KIND" W H ["props"]: a foreign component (FOREIGN-1): an
+;; independently rendered view -- its own surface, input and event loop --
+;; given a View node in the flow.  View decides its place, clipping,
+;; visibility and focus; the component reports change / enter / click,
+;; which reach on-change / on-enter / on-click.  A component that cannot be
+;; made (no provider, no display) leaves a placeholder saying why.  Fixed
+;; unless stretch follows.  Face slot 19 holds the value it last reported.
+intent/w-host: func [c spec i] [
+    either intent/str? spec i [ 0 ] [ raise create-sin 'intent 'host-needs-a-kind i ]
+    kind: intent/str-at spec i
+    i: + i intent/str-len spec i
+    either either intent/int? spec i [ intent/int? spec + i 1 ] [ 0 ] [ 0 ] [ raise create-sin 'intent 'host-needs-a-size i ]
+    w: block-at spec i
+    h: block-at spec + i 1
+    i: + i 2
+    props: ""
+    either intent/str? spec i [ props: intent/str-at spec i  i: + i intent/str-len spec i ] [ 0 ]
+    lay: block-at c 0
+    theme: block-at c 25
+    intent/place c w h
+    node: view/next-id
+    view/create node block-at c 1 view/type-group block-at c 11 block-at c 12 w h 1 1 1 1
+    ;; under the component's own surface: shown only if it is not there
+    vid/text-node theme node 8 0 - w 16 h s/+ kind " ..." block-at theme 70 29
+    view/send s/+ "host new " s/+ s/from-int node s/+ " " s/+ kind s/+ " " props
+    n: intent/add-face c 9 node 0 w h reduce [ 0 0 node 0 h -1 ]
+    vid/set-block! intent/face lay n 19 props
+    i
+]
+
+;; choice [ "Label" "VALUE" ... ]: one selected option of several (INTENT-2),
+;; made of machine VID radios, one per row.  Its value contract (shared by a
+;; future dropdown): index (1-based, 0 = none), text (the label), value
+;; (the code; what form/collect answers).  Fixed size.
+;; State: [ kind-choice group radios options n ]; options: [ count strings ]
+intent/kind-choice: 107
+intent/w-choice: func [c spec i] [
+    either intent/block? spec i [ 0 ] [ raise create-sin 'intent 'choice-needs-block i ]
+    b: block-at spec i
+    opts: reduce [ block-len b b intent/blank 64 0 ]
+    intent/steps :intent/choice-string opts 0
+    n: / block-at opts 3 2
+    either either > n 0 [ = * n 2 block-at opts 3 ] [ 0 ] [ 0 ] [ raise create-sin 'intent 'choice-needs-label-value-pairs i ]
+    lay: block-at c 0
+    theme: block-at c 25
+    intent/place c 240 * n 26
+    g: view/next-id
+    view/create g block-at c 1 view/type-group block-at c 11 block-at c 12 240 * n 26 1 1 0 0
+    radios: intent/blank n
+    intent/steps :intent/choice-radio reduce [ n radios g theme block-at opts 2 ] 0
+    st: reduce [ intent/kind-choice g radios reduce [ block-at opts 3 block-at opts 2 ] n ]
+    intent/add-face c 7 st 0 240 * n 26 reduce [ 0 0 g 0 * n 26 -1 ]
+    + i 1
+]
+;; ctx [ len block strings count ]: one string of the options block
+intent/choice-string: func [ctx j] [
+    b: block-at ctx 1
+    either intent/str? b j [
+        vid/set-block! block-at ctx 2 block-at ctx 3 intent/str-at b j
+        vid/set-block! ctx 3 + block-at ctx 3 1
+        + j intent/str-len b j
+    ] [ raise create-sin 'intent 'choice-needs-strings j ]
+]
+;; ctx [ n radios group theme strings ]: radio k, labelled with string 2k
+intent/choice-radio: func [ctx k] [
+    vid/set-block! block-at ctx 1 k
+        vid/radio block-at ctx 3 block-at ctx 2 0 * k 26 block-at block-at ctx 4 * k 2 0
+    + k 1
+]
+
+;; escape hatch 1: vid W H [ code ] -- code is the body of
+;; func [theme parent x y w h] and answers a machine VID state block.  Fixed
+;; unless stretch follows; vid_layout resizes VID buttons, fields, tabs and
+;; panels by their parts, any other widget by its outer node
+intent/w-vid: func [c spec i] [
+    either either intent/int? spec i [ either intent/int? spec + i 1 [ intent/block? spec + i 2 ] [ 0 ] ] [ 0 ] [ 0 ] [
+        raise create-sin 'intent 'vid-needs-size-and-block i
+    ]
+    w: block-at spec i
+    h: block-at spec + i 1
+    f: func [theme parent x y w h] block-at spec + i 2
+    intent/place c w h
+    st: f block-at c 25 block-at c 1 block-at c 11 block-at c 12 w h
+    either = intent/tag st 6 [ 0 ] [ raise create-sin 'intent 'vid-needs-state st ]
+    k: block-at st 0
+    lk: either = k vid/kind-button [ 4 ] [ either = k vid/kind-field [ 6 ] [
+          either = k 10 [ 5 ] [ either = k vid/kind-panel [ 1 ] [ 0 ] ] ] ]
+    intent/add-face c 5 st 0 w h reduce [ 0 lk either either = lk 0 [ 1 ] [ = lk 1 ] [ block-at st 1 ] [ st ] 0 h -1 ]
+    + i 3
+]
+;; escape hatch 2: box W H [ code ] -- a clip node at the cursor holding a
+;; custom (drawing) node of the same size; code is the body of
+;; func [node w h] and draws into node with View commands (view/draw-rect,
+;; view/draw-text ...), in node coordinates, clipped to w x h.  Fixed unless
+;; stretch follows; when its size changes the drawing is cleared and code
+;; runs again with the new w h
+intent/w-box: func [c spec i] [
+    either either intent/int? spec i [ either intent/int? spec + i 1 [ intent/block? spec + i 2 ] [ 0 ] ] [ 0 ] [ 0 ] [
+        raise create-sin 'intent 'box-needs-size-and-block i
+    ]
+    w: block-at spec i
+    h: block-at spec + i 1
+    f: func [node w h] block-at spec + i 2
+    intent/place c w h
+    clip: view/next-id
+    view/create clip block-at c 1 7 block-at c 11 block-at c 12 w h 1 1 0 0
+    node: view/next-id
+    view/create node clip view/type-custom 0 0 w h 1 1 0 0
+    f node w h
+    hook: func [nw nh] [
+        view/rect node 0 0 nw nh
+        view/draw-clear node
+        f node nw nh
+    ]
+    intent/add-face c 6 clip 0 w h reduce [ 0 7 reduce [ clip :hook ] 0 h -1 ]
+    + i 3
+]
+
+;; ---- building -------------------------------------------------------------------
+;; the window: a group filling it holds a viewport (scrolls when the window is
+;; smaller than the content) holding the content group, whose rule fills the
+;; viewport but is never smaller than the preferred size of the content
+intent/build: func [lay] [
+    ;; GLON-INST-2: the nodes it is about to make are its own (view/next-id);
+    ;; its id chunks are one list per layout record, emptied at teardown
+    either = block-at lay 25 0 [ vid/set-block! lay 25 list/new ] [ list/truncate block-at lay 25 0 ]
+    vid/set-block! lay 23 0
+    vid/set-block! lay 24 -1
+    vid/set-block! lay 26 -2
+    intent/register lay
+    vid/set-block! lay 3 0
+    vid/set-block! lay 5 intent/no-names
+    vid/set-block! lay 6 0
+    vid/set-block! lay 8 -1
+    ;; INTENT-2: a fresh root scope; handles of the previous build go stale
+    vid/set-block! lay 15 intent/scope-new lay 0 0
+    vid/set-block! lay 16 + block-at lay 16 1
+    vid/set-block! lay 17 1
+    vid/set-block! lay 19 0
+    ;; INTENT-3: this build's styles (style lines), and the layout being read
+    vid/set-block! lay 20 reduce [ 0 intent/blank 16 intent/blank 16 intent/blank 16 intent/blank 16 ]
+    intent/building: lay
+    ;; INTENT-4B-5A: the theme: the application's choice (intent/use-theme),
+    ;; else the layout's own "theme NAME" first, else Intent's default
+    vid/set-block! lay 7 either = block-at lay 21 0 [ intent/block-theme block-at lay 1 intent/theme ] [ block-at lay 21 ]
+    theme: block-at lay 7
+    vid/fill-color theme 1 1
+    lay/reset
+    rg: view/next-id
+    view/create rg either = block-at lay 28 0 [ 1 ] [ intent/window/parent block-at lay 28 ] view/type-group 0 0 lay/w lay/h 1 1 0 0
+    vid/set-block! lay 4 rg
+    gr: lay/add rg 0 -1 0 0 0 0 0 1000 0 1000 0 0
+    rv: view/next-id
+    view/create rv rg 8 0 0 lay/w lay/h 1 1 0 0
+    rvr: lay/add rv 3 gr 0 0 0 0 0 1000 0 1000 0 0
+    cg: view/next-id
+    view/create cg rv view/type-group 0 0 20 20 1 1 0 0
+    cr: lay/add cg 0 rvr 0 0 0 0 0 1000 0 1000 0 0
+    intent/content: cg
+    intent/dd-open-i: -1
+    c: intent/cursor lay cg intent/margin intent/margin cr intent/margin
+    intent/walk c block-at lay 1 0
+    intent/finish lay c rv rvr rg cr
+]
+intent/finish: func [lay c rv rvr rg cr] [
+    cw: + block-at c 8 block-at c 16
+    ch: + block-at c 9 block-at c 24
+    vid/set-block! lay 9 cw
+    vid/set-block! lay 10 ch
+    rec: block-at lay/rules cr
+    vid/set-block! rec 11 cw
+    vid/set-block! rec 12 ch
+    vid/set-block! lay 11 lay/thumbs lay/scroll rv cr 0 0 -1 0 rvr rg block-at lay 7
+    intent/each lay :intent/resolve-links
+    intent/each lay :intent/apply-state
+    intent/bind-actions lay
+    lay/apply lay/w lay/h
+    lay
+]
+;; each action block becomes func [clear set-text get-text focus name ...]:
+;; its plain words find the layout's named states and the action words
+intent/bind-actions: func [lay] [
+    ;; inline actions see at most 10 names (the context limit): a layout with
+    ;; inline actions and more root names is refused rather than half bound
+    either either > block-at lay 19 10 [ intent/any-action lay 0 ] [ 0 ] [
+        raise create-sin 'intent 'too-many-names-for-actions block-at lay 19
+    ] [ 0 ]
+    n: block-at lay 5
+    vid/set-block! lay 12 reduce [ 'clear 'set-text 'get-text 'focus
+        block-at n 0 block-at n 1 block-at n 2 block-at n 3 block-at n 4
+        block-at n 5 block-at n 6 block-at n 7 block-at n 8 block-at n 9 ]
+    vid/set-block! lay 13 reduce [
+        intent/name-state lay 0 intent/name-state lay 1 intent/name-state lay 2
+        intent/name-state lay 3 intent/name-state lay 4 intent/name-state lay 5
+        intent/name-state lay 6 intent/name-state lay 7 intent/name-state lay 8
+        intent/name-state lay 9 ]
+    intent/each lay :intent/bind-one
+]
+intent/any-action: func [lay i] [
+    ctx: reduce [ block-at lay 3 lay 0 ]
+    intent/steps :intent/action-at ctx 0
+    block-at ctx 2
+]
+intent/action-at: func [ctx i] [
+    either = intent/tag block-at intent/face block-at ctx 1 i 3 6 [ vid/set-block! ctx 2 1 ] [ 0 ]
+    + i 1
+]
+intent/name-state: func [lay k] [
+    either < k block-at lay 6 [ block-at intent/face lay block-at block-at lay 14 k 2 ] [ 0 ]
+]
+intent/bind-one: func [lay i] [
+    face: intent/face lay i
+    a: block-at face 3
+    either either = block-at face 0 3 [ = intent/tag a 6 ] [ 0 ] [
+        ;; (func takes its spec as a value, not an expression)
+        sp: block-at intent/scope-actions lay block-at face 16 0
+        vid/set-block! face 3 func sp a
+    ] [ 0 ]
+]
+;; (GLON-INST-1: a block of its own -- a block holds at most 512 values)
+do [
+;; GLON-INST-1: an inline action sees the names of its own form -- the root
+;; scope's for a widget outside any form, as before; a component's own names
+;; inside one -- so every instance's Clear clears its own fields.
+;; [ spec states ] for scope sc
+intent/scope-actions: func [lay sc] [
+    either = sc block-at lay 15 [ reduce [ block-at lay 12 block-at lay 13 ] ] [
+        either = block-at sc 9 0 [ vid/set-block! sc 9 intent/scope-bind lay sc ] [ 0 ]
+        block-at sc 9
+    ]
+]
+;; a form's first 10 names are its actions' parameters (the context limit,
+;; as for the root): a form with inline actions and more names is refused
+intent/scope-bind: func [lay sc] [
+    either > block-at sc 5 10 [ raise create-sin 'intent 'too-many-names-for-actions block-at sc 5 ] [ 0 ]
+    reduce [
+        reduce [ 'clear 'set-text 'get-text 'focus
+            intent/sname sc 0 intent/sname sc 1 intent/sname sc 2 intent/sname sc 3 intent/sname sc 4
+            intent/sname sc 5 intent/sname sc 6 intent/sname sc 7 intent/sname sc 8 intent/sname sc 9 ]
+        reduce [
+            intent/sstate lay sc 0 intent/sstate lay sc 1 intent/sstate lay sc 2 intent/sstate lay sc 3
+            intent/sstate lay sc 4 intent/sstate lay sc 5 intent/sstate lay sc 6 intent/sstate lay sc 7
+            intent/sstate lay sc 8 intent/sstate lay sc 9 ]
+    ]
+]
+intent/sname: func [sc k] [ either < k block-at sc 5 [ block-at block-at sc 3 k ] [ block-at intent/no-names k ] ]
+intent/sstate: func [lay sc k] [
+    either < k block-at sc 5 [ block-at intent/face lay block-at block-at sc 4 k 2 ] [ 0 ]
+]
+]
+
+;; (GLON-INST-2: a block of its own -- intent.glon's outer block holds at most 512 values)
+do [
+;; show lay in the window, replacing the current layout (its View nodes,
+;; escape-hatch nodes included, are destroyed; node ids are reused).
+;; GLON-INST-2: replacing is tearing the current instance down (as
+;; intent/close does) and building lay; hidden instances are untouched
+intent/show: func [lay] [
+    intent/to-primary
+    either = intent/current 0 [ 0 ] [ intent/teardown intent/current ]
+    intent/set-primary lay
+    ;; a build that fails (a bad spec) leaves no instance behind: what it
+    ;; made is torn down (it would stay registered, holding its nodes)
+    r: judge [ intent/build lay ]
+    either sin? r [ intent/teardown lay  intent/set-primary 0  raise r ] [ r ]
+]
+]
+
+;; ==== GLON-INST-2: layout instances in one window ===============================
+;; A layout instance is a layout record that has been built.  Several can be
+;; open at once; one is shown (intent/current, which also holds the keyboard
+;; focus) and the others are hidden with everything they hold: values,
+;; scroll offsets, selections, unsaved edits, handles.
+;;
+;;   intent/open spec        a new instance of spec, built and shown
+;;   intent/show-instance l  show the open instance l (an unbuilt or closed
+;;                           layout is built: a new generation)
+;;   intent/close l          tear l down: its nodes destroyed, its node ids
+;;                           free, its handles stale; another open instance is
+;;                           shown if l was
+;;   intent/open? l          1 while l is built
+;;   intent/layouts          the open instances, a new list (in the order opened)
+;;   intent/root-form l      the root form of instance l, for explicit targeting
+;;   face/layout h           the instance a widget handle belongs to
+;;
+;; Node ownership: every node id taken belongs to the instance being built
+;; or shown when it is taken (view/next-id), by its chunk of 64.  An event names a node, so it goes to that node's instance: the
+;; shown one (a hidden instance gets only the blur of its focus); an event
+;; for a closed instance's node is dropped; one naming no instance's node
+;; (the window) goes to the shown one.  So an event never looks at the faces
+;; of other instances.
+do [
+intent/opened: list/new                ;; the open instances, least recently shown first
+;; ---- node ids: owned in chunks (GLON-INST-3A) ----------------------------
+;; Ids are handed out in chunks of 64 (chunk c holds ids c*64 .. c*64+63;
+;; chunk 0 starts at 2: 1 is the window).  An instance takes whole chunks, so
+;; who owns an id is one look-up by its chunk, made when the chunk is taken
+;; (not for every node), and closing gives back a few chunks, not every id.
+;; The host maps ids below GV_GLON_ID_LIMIT (65,536): 1,024 chunks.
+;; The tables are fixed (16 blocks of 64), made once here: low in the heap,
+;; never grown during a build (GLON-INST-2: growing ones fragmented the 1M
+;; heap).
+intent/id-table: func [] [ loop/collect 0 16 func [k] [ list/blank 64 ] ]
+intent/chunk-owner: intent/id-table    ;; chunk -> its instance, 0 (free) or -1 (closed)
+intent/chunk-face: intent/id-table     ;; chunk -> a 64-slot block: id -> its face + 1 (0: none), or 0
+;; (unchecked: 0 <= k <= 1023, checked by the callers)
+intent/tget: func [t k] [ block-at block-at t / k 64 - k * / k 64 64 ]
+;; GLON-VIEW-CORE-V3: Intent's id tables are its own managed blocks (loop/collect
+;; of list/blank 64), so their stores use the internal block-set-raw! (its
+;; preconditions hold: a managed target, an index below 64).
+intent/tset: func [t k v] [ block-set-raw! block-at t / k 64 - k * / k 64 64 v ]
+intent/max-chunk: 1023
+intent/max-node: 65535
+intent/next-chunk: 0                   ;; the first chunk never taken
+intent/free-chunks: list/new           ;; chunks given back, the last to be taken first
+;; ids taken while no layout is shown or being built (before the window)
+intent/loose: reduce [ 0 ]
+;; node ids: a closed instance's come back (as intent/show reset view/id
+;; before), at once: the host keeps no id of a destroyed node
+;; (gv_glon_release_subtree), and Glon handles one event at a time, so no
+;; later event can name the old node.  view/id stays the highest id given.
+;; A VID panel's four nodes must be consecutive (vid_layout.glon places
+;; cid-3 .. cid): vid/panel reserves them in one chunk (intent/reserve).
+view/next-id: func [] [ intent/take-id intent/current ]
+intent/take-id: func [o] [
+    either = intent/tag o 6 [ intent/take o block-at o 23 ] [ intent/take-loose block-at intent/loose 0 ]
+]
+;; the last id of a chunk was given: next is past its end
+intent/chunk-end?: func [next] [ either = next 0 [ 1 ] [ = 0 - next * / next 64 64 ] ]
+;; next: the next id of o's chunk (0: none yet)
+intent/take: func [o next] [ intent/give o either intent/chunk-end? next [ intent/new-chunk o ] [ next ] ]
+intent/give: func [o id] [
+    vid/set-block! o 23 + id 1
+    block-set-raw! intent/tget intent/chunk-face / id 64 - id * / id 64 64 + block-at o 3 1
+    either > id view/id [ view/id: id ] [ 0 ]
+    id
+]
+intent/take-loose: func [next] [
+    intent/give-loose either intent/chunk-end? next [ intent/new-chunk 0 ] [ next ]
+]
+intent/give-loose: func [id] [
+    vid/set-block! intent/loose 0 + id 1
+    either > id view/id [ view/id: id ] [ 0 ]
+    id
+]
+;; a chunk for o (a layout, or 0 for the loose ids): its first id
+intent/new-chunk: func [o] [ intent/claim o intent/pick-chunk ]
+intent/pick-chunk: func [] [
+    either > list/length intent/free-chunks 0 [ list/remove intent/free-chunks - list/length intent/free-chunks 1 ] [
+        either <= intent/next-chunk intent/max-chunk [ intent/next-chunk: + intent/next-chunk 1  - intent/next-chunk 1 ] [
+            raise create-sin 'intent 'too-many-nodes view/id
+        ]
+    ]
+]
+intent/claim: func [o k] [
+    intent/tset intent/chunk-owner k o
+    either = intent/tget intent/chunk-face k 0 [ intent/tset intent/chunk-face k list/blank 64 ] [ 0 ]
+    either = intent/tag o 6 [ either = block-at o 25 0 [ 0 ] [ list/push block-at o 25 k ] ] [ 0 ]
+    either = k 0 [ 2 ] [ * k 64 ]
+]
+;; the next n ids consecutive: in one chunk (a fresh one if the rest of
+;; the current one is shorter)
+intent/reserve: func [n] [ either = intent/tag intent/current 6 [ intent/reserve-in intent/current block-at intent/current 23 n ] [ 0 ] ]
+intent/reserve-in: func [o next n] [
+    either either intent/chunk-end? next [ 1 ] [ <= + - next * / next 64 64 n 64 ] [ 0 ] [ vid/set-block! o 23 0 ]
+]
+;; how many ids are free in given-back chunks
+intent/free-count: func [] [ * 64 list/length intent/free-chunks ]
+intent/vid-panel: :vid/panel
+vid/panel: func [theme parent x y w h dir align spacing padding children] [
+    intent/reserve 4
+    intent/vid-panel theme parent x y w h dir align spacing padding children
+]
+;; an id belongs to the instance shown (or being built) when it is taken
+;; (a node made for a hidden instance from the shown one's handler belongs
+;; to the shown one: its id is returned when that one closes).  Every node
+;; of an instance is under its root group (slot 4), its one top-level node.
+;; node -> face: a widget's nodes are made just before its face is added, so
+;; an id taken while the instance has n faces is face n's (a container's own
+;; nodes go to its first child: harmless, as panels have no look; one taken
+;; after the build names no face).
+intent/owner-of: func [id] [
+    either either > id 1 [ <= id intent/max-node ] [ 0 ] [ intent/tget intent/chunk-owner / id 64 ] [ 0 ]
+]
+intent/register: func [lay] [
+    either < list/find intent/opened func [x] [ = x lay ] 0 [ list/append intent/opened lay ] [ 0 ]
+]
+intent/unregister: func [lay] [
+    k: list/find intent/opened func [x] [ = x lay ]
+    either < k 0 [ 0 ] [ list/remove intent/opened k ]
+]
+;; the layout engine's state (vid_layout.glon, and Intent's own) is that of
+;; the shown instance; a hidden one keeps it in its record
+intent/engine-save: func [lay] [
+    vid/set-block! lay 22 reduce [ lay/rules lay/count lay/scrolls lay/nscroll lay/saved intent/content intent/dd-open-i ]
+]
+intent/engine-load: func [e] [
+    lay/rules: block-at e 0  lay/count: block-at e 1  lay/scrolls: block-at e 2  lay/nscroll: block-at e 3
+    lay/saved: block-at e 4  intent/content: block-at e 5  intent/dd-open-i: block-at e 6
+]
+intent/engine-fresh: func [] [
+    lay/rules: 0  lay/count: 0  lay/scrolls: reduce [ 0 0 0 0 0 0 0 0 ]  lay/nscroll: 0
+    lay/saved: reduce [ 0 0 0 0 0 0 0 0 ]  intent/content: 0  intent/dd-open-i: -1
+]
+intent/check-layout: func [lay op] [
+    either either = intent/tag lay 6 [ either > block-len lay 27 [ = block-at lay 0 intent/magic ] [ 0 ] ] [ 0 ] [ lay ] [
+        raise create-sin 'intent 'not-a-layout op
+    ]
+]
+intent/open: func [spec] [ intent/show-instance layout spec ]
+intent/open?: func [lay] [ = block-at intent/check-layout lay 'intent/open? 17 1 ]
+intent/layouts: func [] [ list/filter intent/opened func [x] [ 1 ] ]
+intent/root-form: func [lay] [
+    either intent/open? lay [ intent/form-of-scope block-at lay 15 ] [ raise create-sin 'intent 'layout-not-open 'intent/root-form ]
+]
+face/layout: func [h] [ intent/hface h  block-at h 1 ]
+intent/show-instance: func [lay] [
+    intent/check-layout lay 'intent/show-instance
+    ;; GLON-INST-3B: an instance of a window of its own is raised (opened
+    ;; again once closed); one of the main window is switched to there
+    either = block-at lay 28 0 [
+        either = lay intent/current [ lay ] [
+            either = lay intent/primary [ intent/activate lay ] [ intent/to-primary  intent/switch-to lay ]
+        ]
+    ] [ intent/show-window lay ]
+]
+intent/switch-to: func [lay] [
+    ;; (GLON-INST-3A: the one shown before is remembered in lay, not by moving
+    ;; lay in the list of open instances: a switch costs the same however
+    ;; many are open)
+    either = intent/current lay [ 0 ] [ vid/set-block! lay 27 intent/current ]
+    intent/hide-current
+    intent/set-primary lay
+    either = block-at lay 17 1 [
+        intent/engine-load block-at lay 22
+        vid/set-block! lay 22 0
+        view/flags block-at lay 4 1 1 0 0
+        ;; the window may have been resized while it was hidden
+        lay/apply lay/w lay/h
+        intent/resume-focus lay
+    ] [
+        intent/engine-fresh
+        ;; a build that fails (too many nodes, a bad spec) leaves nothing
+        ;; behind: what it made is torn down, the instance shown before it
+        ;; comes back, and the failure is raised
+        r: judge [ intent/build lay ]
+        either sin? r [ intent/open-failed lay r ] [ 0 ]
+    ]
+    lay
+]
+intent/open-failed: func [lay r] [
+    intent/teardown lay
+    intent/set-primary 0
+    intent/engine-fresh
+    intent/show-back block-at lay 27
+    raise r
+]
+;; the shown instance hidden, all it holds kept; the host drops the View
+;; focus inside it and its blur reaches it (intent/route)
+intent/hide-current: func [] [
+    either either = intent/current 0 [ 0 ] [ = block-at intent/current 17 1 ] [
+        intent/hide intent/current
+    ] [ 0 ]
+]
+intent/hide: func [lay] [
+    either = intent/dd-open-i -1 [ 0 ] [ intent/dd-close lay ]
+    vid/set-block! lay 24 block-at lay 8
+    intent/engine-save lay
+    view/flags block-at lay 4 0 1 0 0
+]
+intent/resume-focus: func [lay] [
+    f: block-at lay 24
+    vid/set-block! lay 24 -1
+    either < f 0 [ 0 ] [ judge [ intent/focus-to lay f ] ]
+]
+intent/close: func [lay] [
+    intent/check-layout lay 'intent/close
+    ;; GLON-INST-3B: an instance in a window of its own closes the window
+    either = block-at lay 28 0 [
+        either = lay intent/primary [ intent/to-primary ] [ 0 ]
+        either = lay intent/current [
+            intent/teardown lay
+            intent/set-primary 0
+            intent/engine-fresh
+            intent/show-back block-at lay 27
+        ] [ intent/teardown lay ]
+    ] [ intent/close-window lay ]
+    lay
+]
+;; after the shown instance closes: the one shown before it, if still open,
+;; else the last opened
+intent/show-back: func [b] [
+    either either = intent/tag b 6 [ = block-at b 17 1 ] [ 0 ] [ intent/switch-to b ] [
+        either = intent/windows 0 [
+            either > list/length intent/opened 0 [ intent/switch-to list/at intent/opened - list/length intent/opened 1 ] [ 0 ]
+        ] [ intent/show-last-main ]
+    ]
+]
+;; its nodes destroyed (each top-level one: a subtree), its ids free (marked
+;; closed until reused, so an event still queued for one is dropped), its
+;; handles stale (generation), out of the open instances
+intent/teardown: func [lay] [
+    either = block-at lay 17 1 [
+        either either = lay intent/current [ > intent/dd-open-i -1 ] [ 0 ] [ intent/dd-close lay ] [ 0 ]
+        view/destroy block-at lay 4
+        either = block-at lay 25 0 [ 0 ] [
+            intent/free-chunks-of block-at lay 25 list/length block-at lay 25
+            list/truncate block-at lay 25 0
+        ]
+        vid/set-block! lay 23 0
+        vid/set-block! lay 17 0
+        vid/set-block! lay 16 + block-at lay 16 1
+        vid/set-block! lay 22 0
+        vid/set-block! lay 24 -1
+    ] [ 0 ]
+    intent/unregister lay
+]
+;; its chunks given back, the last taken first (new-chunk takes the last
+;; given): taken again in the order they were first taken, so a rebuild
+;; gets the same ids.  Each is marked closed (-1) until taken again: an event
+;; for one of its nodes is dropped (intent/route)
+intent/free-chunks-of: func [chunks n] [
+    loop/for 0 n func [k] [ intent/free-chunk list/item chunks - - n 1 k ]
+]
+intent/free-chunk: func [k] [
+    intent/tset intent/chunk-owner k -1
+    list/push intent/free-chunks k
+]
+;; the instance an event belongs to, or 0 to drop it
+intent/node-event?: func [ev] [
+    either intent/look-event? ev [ either = ev 'view-key [ 0 ] [ 1 ] ] [
+        either = ev 'table-click [ 1 ] [ either = ev 'table-scroll [ 1 ] [ either = ev 'host-event [ 1 ] [
+        either = ev 'view-wheel [ 1 ] [ = ev 'view-pointer-cancel ] ] ] ]
+    ]
+]
+intent/route: func [ev value] [
+    either intent/node-event? ev [ intent/route-node ev intent/owner-of parse-int value ] [ intent/key-target ]
+]
+;; GLON-INST-3B: an event for a node of an instance shown in a window (the
+;; main one's or one of its own) makes it the current instance; one for a
+;; hidden instance reaches it only as a blur
+intent/route-node: func [ev o] [
+    either = intent/tag o 6 [
+        either = block-at o 17 1 [
+            either = o intent/current [ o ] [
+                either either = o intent/primary [ 1 ] [ either = block-at o 28 0 [ 0 ] [ 1 ] ] [
+                    intent/activate o
+                ] [ either = ev 'view-blur [ o ] [ 0 ] ]
+            ]
+        ] [ 0 ]
+    ] [ either = o -1 [ 0 ] [ intent/key-target ] ]
+]
+
+;; ==== GLON-INST-3B: native windows (the hooks) ===============================
+;; The window words are in view/glon/intent_windows.glon, loaded only in
+;; sessions that open native windows (the runner's --windows): what stays
+;; here is reached with no window open, and costs a single-window session
+;; almost nothing (each object loaded here moves the 1M heap's layout: see
+;; GLON-INST-3B.md section 4).  intent/primary is the main window's shown
+;; instance; intent/current, with windows, the instance whose layout-engine
+;; state is loaded; intent/event-window, the window keys go to.
+intent/primary: 0
+intent/windows: 0
+;; (made at the first window, as the hooks block: an Intent session that
+;; opens none allocates nothing more at load, which matters for the 1M heap)
+intent/window-count: func [] [ either = intent/windows 0 [ 0 ] [ list/length intent/windows ] ]
+intent/event-window: 1
+intent/set-primary: func [lay] [ intent/current: lay  intent/primary: lay ]
+intent/to-primary: func [] [ either = intent/current intent/primary [ 0 ] [ intent/activate intent/primary ] ]
+;; the instance keys and text go to: the main window's, or that of the
+;; window the host last named
+intent/key-target: func [] [
+    either = intent/window-count 0 [ intent/current ] [
+        either = intent/event-window 1 [ intent/activate intent/primary ] [ intent/activate intent/window/instance intent/event-window ]
+    ]
+]
+]
+;; for code outside an event (tests, a REPL): show and send the batch
+intent/show-now: func [lay] [ intent/show lay  widget/flush  lay ]
+
+;; view-build: the window (glon node 1, the View root) keeps the size the
+;; runner gave it; Intent asks for it (view-get 7101) and lays out again when
+;; the answer comes, right after this batch
+intent/size-query: 7101
+intent/start: func [] [
+    either = lay/w 0 [ lay/w: intent/default-w  lay/h: intent/default-h ] [ 0 ]
+    either = intent/main 0 [ 0 ] [
+        intent/id-base: view/id
+        intent/show intent/main
+        view/get 1 1 intent/size-query
+    ]
+]
+;; "7101|1|x y w h"
+intent/window-size: func [value] [
+    q: lay/ints value + lay/bar value + lay/bar value 0 1 1 4
+    q: block-at block-at q 1 1
+    w: block-at q 0
+    h: block-at block-at q 1 0
+    either either > w 0 [ > h 0 ] [ 0 ] [ lay/apply w h ] [ 0 ]
+]
+
+;; ---- action words (the parameters clear set-text get-text focus) ------------
+intent/clear: func [st] [ intent/set-text st "" ]
+intent/set-text: func [st s] [
+    k: block-at st 0
+    either = k vid/kind-field [ vid/field/set-text st s ] [
+        either = k vid/kind-label [ view/text block-at st 1 s ] [
+            either = k vid/kind-button [ view/text block-at st 3 s ] [ 0 ]
+        ]
+    ]
+    st
+]
+intent/get-text: func [st] [ either = block-at st 0 vid/kind-field [ vid/field/get-text st ] [ "" ] ]
+intent/focus: func [st] [
+    lay: intent/current
+    i: either = lay 0 [ -1 ] [ intent/find lay block-at st 1 ]
+    either < i 0 [ view/focus block-at st 1 ] [ intent/focus-to lay i ]
+    st
+]
+;; run face i's action (a button's closure)
+intent/run: func [lay i] [
+    f: block-at intent/face lay i 3
+    either = intent/tag :f 8 [ intent/call :f block-at intent/scope-actions lay block-at intent/face lay i 16 1 ] [ 0 ]
+]
+intent/call: func [f s] [
+    f :intent/clear :intent/set-text :intent/get-text :intent/focus
+      block-at s 0 block-at s 1 block-at s 2 block-at s 3 block-at s 4
+      block-at s 5 block-at s 6 block-at s 7 block-at s 8 block-at s 9
+]
+
+;; ---- events ----------------------------------------------------------------------
+intent/event: func [ev value] [
+    either = ev 'view-build [ intent/start ] [ either either = intent/windows 0 [ 0 ] [ intent/window-event? ev ] [ intent/window-event ev value ] [
+        ;; GLON-INST-2: the instance the event belongs to (intent/route)
+        lay: intent/route ev value
+        either = lay 0 [ 0 ] [
+            either = ev 'view-resize [
+                lay/apply parse-int value parse-int-at value + s/scan-set value 0 "0123456789" 1 0
+            ] [
+            either = ev 'view-wheel [ intent/dd-close lay  lay/wheel value ] [
+            either = ev 'host-event [ intent/host-event lay value ] [
+            either = ev 'view-get [
+                either = parse-int value intent/size-query [ intent/window-size value ] [
+                    either = parse-int value intent/dd-query [ intent/dd-place lay value ] [ lay/view-get value ]
+                ]
+            ] [
+                ;; INTENT-7: only these events can change a face's machine-VID
+                ;; look (hover, press, focus ring; tabs: hover, click, focus,
+                ;; key); for any other the pass over every face changes
+                ;; nothing, so it is skipped (about 10 ms an event with 41
+                ;; faces)
+                either intent/look-event? ev [ intent/look-pass lay ev value ] [ 0 ]
+                intent/act lay ev value
+            ] ] ] ]
+        ]
+    ] ]
+]
+do [
+;; GLON-INST-2: a pointer move can change the look (hover) only of the face
+;; it reaches and the face it left: just those two see it.  When either is
+;; not a face's own node -- the window, a tab inside tabs, a table's parts --
+;; every face sees it, as before
+intent/look-pass: func [lay ev value] [
+    either = ev 'view-pointer-move [ intent/look-move lay intent/face-of lay parse-int value ] [ intent/each lay :intent/look ]
+]
+intent/look-move: func [lay i] [
+    old: block-at lay 26
+    either either >= i 0 [ >= old -1 ] [ 0 ] [
+        either either >= old 0 [ = old i ] [ 1 ] [ 0 ] [ intent/look lay old ]
+        intent/look lay i
+    ] [ intent/each lay :intent/look ]
+    ;; an unmapped node (a tab, a table part) may have changed any face's
+    ;; look: the next move sees them all again
+    vid/set-block! lay 26 either < i 0 [ -2 ] [ i ]
+]
+;; the face of lay that node id belongs to, or -1
+;; (the face of each id: intent/chunk-face, written by intent/give)
+intent/face-of: func [lay id] [
+    either = intent/owner-of id lay [
+        intent/face-below lay - block-at intent/tget intent/chunk-face / id 64 - id * / id 64 64 1
+    ] [ -1 ]
+]
+intent/face-below: func [lay k] [ either either >= k 0 [ < k block-at lay 3 ] [ 0 ] [ k ] [ -1 ] ]
+]
+;; the machine VID look of one face (hover, press, focus ring, caret)
+intent/look-event?: func [ev] [
+    either = ev 'view-pointer-move [ 1 ] [ either = ev 'view-pointer-down [ 1 ] [ either = ev 'view-pointer-up [ 1 ] [
+    either = ev 'view-focus [ 1 ] [ either = ev 'view-blur [ 1 ] [ either = ev 'view-click [ 1 ] [ = ev 'view-key ] ] ] ] ] ]
+]
+intent/look: func [lay i] [
+    face: intent/face lay i
+    k: block-at face 0
+    ;; (INTENT-4B-5A: an image (16) has no VID state, like a box, panel or host)
+    either either = k 6 [ 1 ] [ either = k 4 [ 1 ] [ either = k 9 [ 1 ] [ = k 16 ] ] ] [ 0 ] [
+        ;; INTENT-4B-1: a disabled widget gets no hover, press or selection
+        ;; (tabs select in vid/event); only a blur, which clears its ring
+        either either = block-at face 20 0 [ either = current-event 'view-blur [ 0 ] [ 1 ] ] [ 0 ] [ 0 ] [ vid/event block-at face 2 ]
+    ]
+]
+intent/act: func [lay ev value] [
+    intent/dd-maybe-close lay ev value
+    either = ev 'table-click [ intent/table-click lay value ] [
+    either = ev 'table-scroll [ intent/table-scrolled lay value ] [
+        intent/act1 lay ev value
+    ] ]
+]
+intent/act1: func [lay ev value] [
+    either = ev 'view-click [ intent/click lay parse-int value ] [
+    either = ev 'view-focus [
+        f: intent/find lay parse-int value
+        ;; a disabled or hidden widget never holds Intent's focus (the host
+        ;; reports only focus View took; this guards other senders too)
+        f: either < f 0 [ f ] [ either either = block-at intent/face lay f 20 0 [ 1 ] [ = block-at intent/face lay f 21 0 ] [ -2 ] [ f ] ]
+        either = f -2 [ 0 ] [
+            vid/set-block! lay 8 f
+            either < f 0 [ 0 ] [ intent/focus-mark lay f 1  intent/fire lay f 'focus "" ]
+        ]
+    ] [
+    either = ev 'view-blur [
+        f: block-at lay 8
+        either either < f 0 [ 0 ] [ = intent/node lay f parse-int value ] [
+            vid/set-block! lay 8 -1
+            intent/focus-mark lay f 0
+            intent/fire lay f 'blur ""
+        ] [ 0 ]
+    ] [
+    either = ev 'view-char [ intent/type lay value ] [
+    either = ev 'view-key [ intent/key lay parse-int value ] [ 0 ]
+    ] ] ] ]
+]
+intent/focused-field: func [lay] [
+    f: block-at lay 8
+    either < f 0 [ 0 ] [
+        face: intent/face lay f
+        either either = block-at face 0 2 [ 1 ] [ = block-at face 0 13 ] [ block-at face 2 ] [ 0 ]
+    ]
+]
+intent/type: func [lay s] [
+    st: intent/focused-field lay
+    either either = st 0 [ 1 ] [ = block-at intent/face lay block-at lay 8 20 0 ] [ 0 ] [
+        ;; INTENT-4B-2: inserted at the caret (over a selection), unless read-only
+        either = vid/edit/type st s 1 [ intent/fire lay block-at lay 8 'change vid/field/get-text st ] [ 0 ]
+    ]
+]
+;; a key on a focused, enabled field or area: the editing core's moves,
+;; selection, Backspace, Delete and clipboard; change when the text changed.
+;; Enter: a field's command and on-enter (as before); a newline in an area
+intent/edit-key: func [lay k st] [
+    f: block-at lay 8
+    either = k 13 [
+        either = block-at intent/face lay f 0 13 [
+            either = vid/edit/type st vid/edit/nl 1 [ intent/fire lay f 'change vid/field/get-text st ] [ 0 ]
+        ] [
+            intent/run-command lay f
+            intent/fire lay f 'enter vid/field/get-text st
+        ]
+    ] [
+        w: vid/edit/key st k
+        either either = w 2 [ 1 ] [ = w 6 ] [ intent/fire lay f 'change vid/field/get-text st ] [ 0 ]
+    ]
+]
+intent/key: func [lay k] [
+    either intent/dd-focused? lay [ intent/dd-key lay k ] [ intent/key0 lay k ]
+]
+intent/key0: func [lay k] [
+    either = k 32 [ intent/space lay ] [
+        either intent/table-focused? lay [ intent/table-key lay k ] [ intent/key1 lay k ]
+    ]
+]
+intent/key1: func [lay k] [
+    st: intent/focused-field lay
+    either either = st 0 [ 0 ] [ = block-at intent/face lay block-at lay 8 20 1 ] [ intent/edit-key lay k st ] [ intent/key2 lay k ]
+]
+intent/key2: func [lay k] [
+    f: block-at lay 8
+    either = k 8 [
+        st: intent/focused-field lay
+        either either = st 0 [ 1 ] [ = block-at intent/face lay f 20 0 ] [ 0 ] [
+            vid/field/set-text st intent/drop-last vid/field/get-text st
+            intent/fire lay f 'change vid/field/get-text st
+        ]
+    ] [
+        ;; Enter: on a focused button its action and on-click; on a focused
+        ;; field its on-enter
+        either either = k 13 [ >= f 0 ] [ 0 ] [
+            k2: block-at intent/face lay f 0
+            either = k2 3 [ intent/press lay f ] [
+                either = k2 2 [
+                    intent/run-command lay f
+                    intent/fire lay f 'enter vid/field/get-text block-at intent/face lay f 2
+                ] [ 0 ]
+            ]
+        ] [ 0 ]
+    ]
+]
+intent/click: func [lay id] [
+    i: intent/find lay id
+    either < i 0 [ intent/choice-click lay id ] [
+        face: intent/face lay i
+        k: block-at face 0
+        either = block-at face 20 0 [ 0 ] [               ;; disabled: nothing
+        either = k 3 [ intent/press lay i ] [
+        either = k 15 [ intent/dd-toggle lay i ] [
+            either either = k 5 [ 1 ] [ = k 10 ] [ intent/activate-check lay i ] [ 0 ]
+        ] ]
+        ]
+    ]
+]
+;; a button: its inline action (INTENT-1), then its on-click handler
+intent/press: func [lay i] [
+    either = block-at intent/face lay i 20 0 [ 0 ] [
+        intent/run lay i
+        intent/run-command lay i
+        intent/fire lay i 'click ""
+    ]
+]
+;; a click on one of a choice's radios: select it, fire on-change
+intent/choice-click: func [lay id] [
+    ctx: reduce [ block-at lay 3 lay id -1 -1 ]
+    intent/steps :intent/choice-find ctx 0
+    i: block-at ctx 3
+    either < i 0 [ 0 ] [
+        either = block-at intent/face lay i 20 0 [ 0 ] [
+            intent/choice-select block-at intent/face lay i 2 + block-at ctx 4 1
+            intent/fire lay i 'change intent/choice-value block-at intent/face lay i 2
+        ]
+    ]
+]
+;; ctx [ count lay id face option ]
+intent/choice-find: func [ctx i] [
+    face: intent/face block-at ctx 1 i
+    either = block-at face 0 7 [
+        st: block-at face 2
+        k: intent/radio-of st block-at ctx 2 0
+        either < k 0 [ 0 ] [ vid/set-block! ctx 3 i  vid/set-block! ctx 4 k ]
+    ] [ 0 ]
+    + i 1
+]
+intent/radio-of: func [st id k] [
+    either < k block-at st 4 [
+        either = block-at block-at block-at st 2 k 1 id [ k ] [ intent/radio-of st id + k 1 ]
+    ] [ -1 ]
+]
+;; the selected option (1-based), 0 for none
+intent/choice-index: func [st] [ intent/choice-scan st 0 ]
+intent/choice-scan: func [st k] [
+    either < k block-at st 4 [
+        either = block-at block-at block-at st 2 k 5 1 [ + k 1 ] [ intent/choice-scan st + k 1 ]
+    ] [ 0 ]
+]
+;; select option idx (1-based; 0: none); the radios hold the state
+intent/choice-select: func [st idx] [ intent/choice-set st idx 0  st ]
+intent/choice-set: func [st idx k] [
+    either < k block-at st 4 [
+        vid/checkbox/set-checked block-at block-at st 2 k either = + k 1 idx [ 1 ] [ 0 ]
+        intent/choice-set st idx + k 1
+    ] [ 0 ]
+]
+intent/choice-string-at: func [st j] [ block-at block-at block-at st 3 1 j ]
+intent/choice-value: func [st] [
+    idx: intent/choice-index st
+    either = idx 0 [ none ] [ intent/choice-string-at st - * idx 2 1 ]
+]
+intent/choice-text: func [st] [
+    idx: intent/choice-index st
+    either = idx 0 [ "" ] [ intent/choice-string-at st - * idx 2 2 ]
+]
+
+;; "GID NAME DETAIL" from a hosted component (FOREIGN-1).  Kept shallow: an
+;; event already runs several calls deep, and a call chain holds under 100
+;; frames -- the type is chosen first, then one handler call is made
+;; (FOREIGN-2: nesting the on-event case in the last arm of a chain of
+;; eithers overflowed inside a real event)
+intent/host-event: func [lay value] [
+    gid: parse-int value
+    p: + s/scan-set value 0 "0123456789" 1
+    q: s/scan-set value p "abcdefghijklmnopqrstuvwxyz-"
+    name: s/span value p q
+    detail: either < q s/length value [ s/span value + q 1 s/length value ] [ "" ]
+    i: intent/find lay gid
+    either < i 0 [ 0 ] [ intent/host-dispatch lay i gid name detail ]
+]
+;; the Intent event type of a component's event name: change / enter / click
+;; have their own options; any other name goes to on-event
+intent/host-type: func [name] [
+    either s/= name "change" [ 'change ] [ either s/= name "enter" [ 'enter ] [
+        either s/= name "click" [ 'click ] [ 'event ] ] ]
+]
+intent/host-dispatch: func [lay i gid name detail] [
+    t: intent/host-type name
+    ;; the value a component reports with change is its face's value
+    either = t 'change [ vid/set-block! intent/face lay i 19 detail ] [ 0 ]
+    ;; a component that could not be made: its placeholder says why
+    either s/= name "failed" [ view/text + gid 1 s/+ "unavailable: " detail ] [ 0 ]
+    intent/fire-named lay i t detail either = t 'event [ name ] [ none ]
+]
+
+;; ---- handlers (INTENT-2) ---------------------------------------------------------
+;; the last error raised by a handler (a SIN!), or none; a failing handler
+;; does not stop the application
+intent/last-error: none
+;; event slots: click enter change focus blur
+intent/event-slot: func [type] [
+    either = type 'click [ 0 ] [ either = type 'enter [ 1 ] [ either = type 'change [ 2 ] [
+    either = type 'focus [ 3 ] [ either = type 'blur [ 4 ] [ 5 ] ] ] ] ]
+]
+;; call face i's handler for this event, if it has one, as ( self event )
+intent/fire: func [lay i type detail] [ intent/fire-named lay i type detail none ]
+;; name: a hosted component's own event name (on-event), else none
+intent/fire-named: func [lay i type detail name] [
+    ;; INTENT-3: the widgets that follow this one are updated first, so its
+    ;; handler sees them current
+    intent/notify lay i type detail name
+    hs: block-at intent/face lay i 17
+    either = hs 0 [ 0 ] [
+        h: block-at hs intent/event-slot type
+        t: intent/tag :h
+        either = t 0 [ 0 ] [
+            either = t 2 [ intent/call-named lay i reduce [ type detail name ] h ] [
+                intent/call-handler lay i reduce [ type detail name ] :h
+            ]
+        ]
+    ]
+]
+;; a named handler: looked up now (late binding); an unset or non-function
+;; name is reported, not run
+intent/callable?: func [t] [ either = t 8 [ 1 ] [ either = t 9 [ 1 ] [ = t 10 ] ] ]
+intent/call-named: func [lay i what w] [
+    either intent/callable? intent/tag get w [
+        intent/call-handler lay i what get w
+    ] [
+        intent/last-error: create-sin 'intent 'handler-not-a-function w
+        0
+    ]
+]
+;; what: [ type detail name ]
+intent/call-handler: func [lay i what f] [
+    self: intent/handle lay i
+    ev: reduce [ block-at what 0 intent/form-of-scope block-at intent/face lay i 16 block-at what 1 block-at what 2 ]
+    r: judge [ f self ev ]
+    either sin? r [ intent/last-error: r ] [ 0 ]
+    r
+]
+
+;; the string without its last UTF-8 character
+intent/drop-last: func [s] [
+    n: s/length s
+    either = n 0 [ s ] [ s/span s 0 intent/char-start s - n 1 ]
+]
+intent/char-start: func [s i] [
+    b: s/at s i
+    either either > i 0 [ either >= b 128 [ < b 192 ] [ 0 ] ] [ 0 ] [ intent/char-start s - i 1 ] [ i ]
+]
+
+;; (A source block holds at most 512 elements; the INTENT-2 words are a
+;; block of their own, run here, so each block stays under the limit.)
+do [
+;; ==== INTENT-2: widget handles, forms, records ===================================
+;; Application code uses only these words; machine-VID state positions stay
+;; inside this library.  A handle answers for one widget of one build of one
+;; layout: after the layout is rebuilt or replaced it is stale, and using it
+;; raises 'intent 'stale-widget (judge can catch it; face/alive asks first).
+;;
+;;   widget handle [ 2121 lay face-index generation ]
+;;   form handle   [ 2424 scope generation ]
+;;   event         [ type form detail ]    type: 'click 'enter 'change 'focus 'blur
+;;   record        [ key value key value ... ]   keys are words
+intent/handle-magic: 2121
+intent/form-magic: 2424
+intent/handle: func [lay i] [ reduce [ intent/handle-magic lay i block-at lay 16 ] ]
+intent/form-of-scope: func [sc] [ reduce [ intent/form-magic sc block-at block-at sc 1 16 ] ]
+;; the face record behind a live handle (raises when stale or not a handle)
+intent/hface: func [h] [
+    either either = intent/tag h 6 [ either = block-len h 4 [ = block-at h 0 intent/handle-magic ] [ 0 ] ] [ 0 ] [ 0 ] [
+        raise create-sin 'intent 'not-a-widget h
+    ]
+    lay: block-at h 1
+    either either = block-at lay 17 1 [ = block-at lay 16 block-at h 3 ] [ 0 ] [ 0 ] [ raise create-sin 'intent 'stale-widget block-at intent/face lay block-at h 2 1 ]
+    intent/face lay block-at h 2
+]
+intent/hscope: func [f] [
+    either either = intent/tag f 6 [ either = block-len f 3 [ = block-at f 0 intent/form-magic ] [ 0 ] ] [ 0 ] [ 0 ] [
+        raise create-sin 'intent 'not-a-form f
+    ]
+    sc: block-at f 1
+    lay: block-at sc 1
+    either either = block-at lay 17 1 [ = block-at lay 16 block-at f 2 ] [ 0 ] [ 0 ] [ raise create-sin 'intent 'stale-form block-at sc 7 ] [ 0 ]
+    sc
+]
+;; what a face holds: 'text (a field), 'check (a VID checkbox or radio in a
+;; vid escape), 'choice, 'form (a nested form), or none (presentation only:
+;; labels, buttons, panels, boxes)
+intent/data-kind: func [face] [
+    k: block-at face 0
+    either = k 10 [ 'check ] [
+        either intent/tab? k [ either > block-at block-at face 22 0 0 [ 'table ] [ none ] ] [ intent/data-kind1 face k ]
+    ]
+]
+intent/data-kind1: func [face k] [
+    either either = k 2 [ 1 ] [ = k 13 ] [ 'text ] [ either = k 7 [ 'choice ] [ either = k 8 [ 'form ] [ either = k 9 [ 'host ] [
+        either = k 5 [
+            sk: block-at block-at face 2 0
+            either = sk vid/kind-field [ 'text ] [
+                either either = sk vid/kind-checkbox [ 1 ] [ = sk vid/kind-radio ] [ 'check ] [ none ]
+            ]
+        ] [ none ]
+    ] ] ] ]
+]
+
+;; ---- face/ : one widget -----------------------------------------------------------
+face/alive: func [h] [
+    either either = intent/tag h 6 [ either = block-len h 4 [ = block-at h 0 intent/handle-magic ] [ 0 ] ] [ 0 ] [
+        lay: block-at h 1
+        either = block-at lay 17 1 [ = block-at lay 16 block-at h 3 ] [ 0 ]
+    ] [ 0 ]
+]
+face/name: func [h] [ block-at intent/hface h 1 ]
+face/form: func [h] [ intent/form-of-scope block-at intent/hface h 16 ]
+;; the logical value: a field's text, a check's 0/1, a choice's code (none
+;; without a selection), a nested form's record; none for presentation
+face/value: func [h] [
+    face: intent/hface h
+    either intent/tab? block-at face 0 [ intent/table-value face h ] [ intent/value-of face ]
+]
+intent/value-of: func [face] [
+    dk: intent/data-kind face
+    st: block-at face 2
+    either = dk 'text [ vid/field/get-text st ] [
+    either = dk 'check [ block-at st 5 ] [
+    either = dk 'choice [ intent/choice-value st ] [
+    either = dk 'form [ form/collect intent/form-of-scope block-at face 22 ] [
+    either = dk 'host [ block-at face 19 ] [ none ] ] ] ] ]
+]
+face/set-value: func [h v] [
+    face: intent/hface h
+    either intent/tab? block-at face 0 [ intent/table-set-value face v h ] [ intent/set-value-of face v h ]
+    intent/refresh h
+    h
+]
+intent/set-value-of: func [face v h] [
+    dk: intent/data-kind face
+    st: block-at face 2
+    either = dk 'text [
+        either = intent/tag v 12 [ vid/field/set-text st v ] [ raise create-sin 'intent 'invalid-value face/name h ]
+    ] [
+    either = dk 'check [
+        either either = v 0 [ 1 ] [ = v 1 ] [ vid/checkbox/set-checked st v ] [ raise create-sin 'intent 'invalid-value face/name h ]
+    ] [
+    either = dk 'choice [
+        either = v none [ intent/choice-select st 0 ] [
+            k: intent/choice-find-value st v 0
+            either < k 0 [ raise create-sin 'intent 'invalid-value face/name h ] [ intent/choice-select st + k 1 ]
+        ]
+    ] [
+    either = dk 'form [ form/load intent/form-of-scope block-at face 22 v ] [
+    either = dk 'host [
+        either = intent/tag v 12 [
+            vid/set-block! face 19 v
+            view/send s/+ "host cmd " s/+ s/from-int block-at face 8 s/+ " set-text " v
+        ] [ raise create-sin 'intent 'invalid-value face/name h ]
+    ] [
+        raise create-sin 'intent 'not-data-bearing face/name h
+    ] ] ] ] ]
+    intent/repaint face
+]
+intent/choice-find-value: func [st v k] [
+    either < k block-at st 4 [
+        either either = intent/tag v 12 [ s/= intent/choice-string-at st + * k 2 1 v ] [ 0 ] [ k ] [ intent/choice-find-value st v + k 1 ]
+    ] [ -1 ]
+]
+;; the text shown: a field's text, a label's or button's caption, a
+;; choice's selected label
+face/text: func [h] [
+    face: intent/hface h
+    either intent/tab? block-at face 0 [ intent/tab-text face h ] [ intent/text-of-face face ]
+]
+intent/text-of-face: func [face] [
+    dk: intent/data-kind face
+    either = dk 'text [
+        either intent/password? face [ vid/edit/mask vid/field/get-text block-at face 2 ] [ vid/field/get-text block-at face 2 ]
+    ] [
+        either = dk 'choice [ intent/choice-text block-at face 2 ] [
+            either = block-at face 0 11 [ block-at block-at face 19 vid/tabs/selected block-at face 2 ] [ block-at face 19 ]
+        ]
+    ]
+]
+face/set-text: func [h s] [
+    face: intent/hface h
+    k: block-at face 0
+    st: block-at face 2
+    either = intent/tag s 12 [ 0 ] [ raise create-sin 'intent 'invalid-value face/name h ]
+    either = intent/data-kind face 'text [ vid/field/set-text st s ] [
+        either = k 1 [ view/text block-at st 1 s  vid/set-block! face 19 s ] [
+            either = k 3 [ view/text block-at st 3 s  vid/set-block! face 19 s ] [
+                either = k 10 [ view/text block-at st 4 s  vid/set-block! face 19 s ] [ raise create-sin 'intent 'no-text face/name h ]
+            ]
+        ]
+    ]
+    h
+]
+;; a choice's selected option, 1-based (0: none); 0 for other widgets
+face/index: func [h] [
+    face: intent/hface h
+    k: block-at face 0
+    either = k 7 [ intent/choice-index block-at face 2 ] [
+        either = k 11 [ + vid/tabs/selected block-at face 2 1 ] [
+            either intent/tab? k [ block-at block-at face 22 3 ] [ raise create-sin 'intent 'not-indexed face/name h ]
+        ]
+    ]
+]
+face/set-index: func [h k] [
+    face: intent/hface h
+    either = block-at face 0 7 [
+        either either < k 0 [ 1 ] [ > k block-at block-at face 2 4 ] [ raise create-sin 'intent 'invalid-value face/name h ] [
+            intent/choice-select block-at face 2 k
+            intent/repaint face
+        ]
+    ] [
+        either = block-at face 0 11 [ intent/tabs-set-index face k h ] [
+            either intent/tab? block-at face 0 [ intent/table-set-index face k h ] [ raise create-sin 'intent 'not-indexed face/name h ]
+        ]
+    ]
+    intent/refresh h
+    h
+]
+face/enabled: func [h] [ block-at intent/hface h 20 ]
+face/set-enabled: func [h on] [
+    intent/set-enabled intent/hface h either on [ 1 ] [ 0 ]
+    h
+]
+face/visible: func [h] [ block-at intent/hface h 21 ]
+face/set-visible: func [h on] [
+    face: intent/hface h
+    on: either on [ 1 ] [ 0 ]
+    vid/set-block! face 21 on
+    k: block-at face 0
+    ;; hiding drops the View focus inside it (the host sends view-blur);
+    ;; showing restores the focusability it was made with, so Tab reaches it
+    ;; again (FOREIGN-1: a host shown again stayed out of the Tab order)
+    view/flags intent/outer-node face on either = block-at face 20 0 [ 0 ] [ 1 ] intent/focusable? face 1
+    ;; INTENT-4B-3: an open drop-down list never outlives a visibility change
+    either = intent/dd-open-i -1 [ 0 ] [ intent/dd-close intent/current ]
+    h
+]
+;; was the face's node made focusable (Tab reaches it)?  fields, buttons,
+;; checks, tables, hosted components, and VID buttons, fields, checks and
+;; radios in vid
+intent/focusable?: func [face] [
+    k: block-at face 0
+    either either = k 2 [ 1 ] [ either = k 3 [ 1 ] [ either = k 9 [ 1 ] [ either = k 10 [ 1 ] [ either = k 12 [ 1 ] [ either = k 13 [ 1 ] [ either = k 14 [ 1 ] [ = k 15 ] ] ] ] ] ] ] [ 1 ] [
+        either = k 5 [
+            sk: block-at block-at face 2 0
+            either either = sk vid/kind-button [ 1 ] [ either = sk vid/kind-field [ 1 ] [
+                either = sk vid/kind-checkbox [ 1 ] [ = sk vid/kind-radio ] ] ] [ 1 ] [ 0 ]
+        ] [ 0 ]
+    ]
+]
+face/focus: func [h] [
+    face: intent/hface h
+    intent/focus-to block-at h 1 block-at h 2
+    h
+]
+;; a command for a hosted component (FOREIGN-2), interpreted by it:
+;; face/command browser "back" ""; other widgets refuse ('no-commands)
+face/command: func [h cmd arg] [
+    face: intent/hface h
+    either = block-at face 0 9 [
+        view/send s/+ "host cmd " s/+ s/from-int block-at face 8 s/+ " " s/+ cmd s/+ " " arg
+    ] [ raise create-sin 'intent 'no-commands face/name h ]
+    h
+]
+;; empty: a field's "", a check's 0, no choice, a nested form cleared
+face/clear: func [h] [
+    face: intent/hface h
+    either intent/tab? block-at face 0 [ intent/table-select face 0 ] [ intent/clear-of face h ]
+    intent/refresh h
+    h
+]
+intent/clear-of: func [face h] [
+    dk: intent/data-kind face
+    either = dk 'text [ face/set-value h "" ] [
+    either = dk 'check [ face/set-value h 0 ] [
+    either = dk 'choice [ face/set-value h none ] [
+    either = dk 'form [ form/clear intent/form-of-scope block-at face 22 ] [
+    either = dk 'host [ face/set-value h "" ] [ 0 ] ] ] ] ]
+]
+
+;; ---- event/ : what a handler is given -----------------------------------------------
+event/type: func [e] [ block-at e 0 ]
+event/form: func [e] [ block-at e 1 ]
+event/detail: func [e] [ block-at e 2 ]
+;; a hosted component's own event name for on-event ("status" ...), else none
+event/name: func [e] [ block-at e 3 ]
+
+;; ---- form/ : a layout's (or a nested form's) named widgets ---------------------------
+;; the form of the layout on show, and of a layout
+form/current: func [] [ either = intent/current 0 [ none ] [ intent/form-of-scope block-at intent/current 15 ] ]
+intent/form: func [lay] [ intent/form-of-scope block-at lay 15 ]
+form/field: func [f w] [
+    sc: intent/hscope f
+    k: intent/scope-index sc w 0
+    either < k 0 [ raise create-sin 'intent 'no-such-field w ] [ intent/handle block-at sc 1 block-at block-at sc 4 k ]
+]
+form/has: func [f w] [ >= intent/scope-index intent/hscope f w 0 0 ]
+form/sub: func [f w] [
+    face: intent/hface form/field f w
+    either = block-at face 0 8 [ intent/form-of-scope block-at face 22 ] [ raise create-sin 'intent 'not-a-form w ]
+]
+form/name: func [f] [ block-at intent/hscope f 7 ]
+do [
+;; GLON-INST-1: instance state and identity.  form/data is the application's
+;; own value for this form instance (none until set): shared handler code
+;; keeps per-instance state here, found from the event's form, never a global
+form/data: func [f] [ block-at intent/hscope f 8 ]
+form/set-data: func [f v] [ vid/set-block! intent/hscope f 8 v  v ]
+;; the same form instance (two handles may be different blocks)
+form/same?: func [f g] [ = intent/hscope f intent/hscope g ]
+;; the enclosing form, or none for the layout's root form
+form/parent: func [f] [
+    p: block-at intent/hscope f 2
+    either = p 0 [ none ] [ intent/form-of-scope p ]
+]
+]
+;; a form-level validator: a word naming func [form record] -> none or a message
+form/on-validate: func [f w] [ vid/set-block! intent/hscope f 6 w  f ]
+
+;; the names of the form's data-bearing widgets, in declaration order
+intent/data-names: func [sc] [
+    ctx: reduce [ block-at sc 5 sc intent/blank 32 0 ]
+    intent/steps :intent/data-name-at ctx 0
+    out: intent/blank block-at ctx 3
+    intent/copy-n block-at ctx 2 out block-at ctx 3
+    out
+]
+intent/data-name-at: func [ctx k] [
+    sc: block-at ctx 1
+    face: intent/face block-at sc 1 block-at block-at sc 4 k
+    either = intent/data-kind face none [ 0 ] [
+        vid/set-block! block-at ctx 2 block-at ctx 3 block-at block-at sc 3 k
+        vid/set-block! ctx 3 + block-at ctx 3 1
+    ]
+    + k 1
+]
+intent/copy-n: func [from to n] [ intent/steps :intent/copy-at reduce [ n from to ] 0  to ]
+intent/copy-at: func [ctx i] [ vid/set-block! block-at ctx 2 i block-at block-at ctx 1 i  + i 1 ]
+form/names: func [f] [ intent/data-names intent/hscope f ]
+
+;; collect: [ name value ... ] of the data-bearing widgets (a nested form's
+;; record under its name); labels and buttons are not collected
+form/collect: func [f] [
+    names: intent/data-names intent/hscope f
+    out: intent/blank * 2 block-len names
+    intent/steps :intent/collect-at reduce [ block-len names f names out ] 0
+    out
+]
+intent/collect-at: func [ctx i] [
+    w: block-at block-at ctx 2 i
+    vid/set-block! block-at ctx 3 * i 2 w
+    vid/set-block! block-at ctx 3 + * i 2 1 face/value form/field block-at ctx 1 w
+    + i 1
+]
+;; clear: every data-bearing widget to its empty value (layout untouched)
+form/clear: func [f] [
+    names: intent/data-names intent/hscope f
+    intent/steps :intent/clear-at reduce [ block-len names f names ] 0
+    f
+]
+intent/clear-at: func [ctx i] [ face/clear form/field block-at ctx 1 block-at block-at ctx 2 i  + i 1 ]
+
+;; load: set each named widget from the record.  Keys the form does not
+;; have, or that name presentation-only widgets, are unknown and skipped;
+;; a value of the wrong kind leaves its widget unchanged and is rejected.
+;; Widgets the record does not mention keep their values (a partial load);
+;; form/reload clears first.  Answers [ loaded N unknown [keys] rejected [keys] ]
+form/load: func [f rec] [
+    sc: intent/hscope f
+    either either = intent/tag rec 6 [ = * 2 / block-len rec 2 block-len rec ] [ 0 ] [ 0 ] [
+        raise create-sin 'intent 'invalid-record rec
+    ]
+    ctx: reduce [ / block-len rec 2 f rec 0 intent/blank 32 0 intent/blank 32 0 ]
+    intent/steps :intent/load-at ctx 0
+    reduce [ 'loaded block-at ctx 3
+             'unknown intent/copy-n block-at ctx 4 intent/blank block-at ctx 5 block-at ctx 5
+             'rejected intent/copy-n block-at ctx 6 intent/blank block-at ctx 7 block-at ctx 7 ]
+]
+;; ctx [ pairs form rec loaded unknown nunknown rejected nrejected ]
+intent/load-at: func [ctx i] [
+    f: block-at ctx 1
+    k: block-at block-at ctx 2 * i 2
+    v: block-at block-at ctx 2 + * i 2 1
+    ok: either either = intent/tag k 2 [ 1 ] [ = intent/tag k 5 ] [ form/has f k ] [ 0 ]
+    ok: either ok [ not-none? intent/data-kind intent/hface form/field f k ] [ 0 ]
+    either ok [
+        r: judge [ face/set-value form/field f k v ]
+        either sin? r [ intent/note ctx 6 k ] [ vid/set-block! ctx 3 + block-at ctx 3 1 ]
+    ] [ intent/note ctx 4 k ]
+    + i 1
+]
+intent/note: func [ctx slot k] [
+    n: block-at ctx + slot 1
+    either < n 32 [ vid/set-block! block-at ctx slot n k  vid/set-block! ctx + slot 1 + n 1 ] [ 0 ]
+]
+not-none?: func [v] [ either = v none [ 0 ] [ 1 ] ]
+form/reload: func [f rec] [ form/clear f  form/load f rec ]
+
+;; validate: each widget's validator (validate NAME in the layout), nested
+;; forms, then the form's own (form/on-validate).  A validator answers none
+;; (valid) or a message string (invalid); one that raises is a failure, not
+;; an invalid value.  Answers [ status messages failure ]: status 'valid
+;; 'invalid or 'failed; messages [ name "message" ... ] (form: the form's
+;; own); failure: the first SIN! raised, or none
+form/validate: func [f] [
+    sc: intent/hscope f
+    names: intent/data-names sc
+    ctx: reduce [ block-len names f names intent/blank 64 0 none ]
+    intent/steps :intent/validate-at ctx 0
+    w: block-at sc 6
+    either = intent/tag w 2 [ intent/judge-validator ctx 'form w f form/collect f ] [ 0 ]
+    msgs: intent/copy-n block-at ctx 3 intent/blank block-at ctx 4 block-at ctx 4
+    reduce [ either not-none? block-at ctx 5 [ 'failed ] [ either > block-at ctx 4 0 [ 'invalid ] [ 'valid ] ] msgs block-at ctx 5 ]
+]
+;; ctx [ n form names msgs nmsgs failure ]
+intent/validate-at: func [ctx i] [
+    w: block-at block-at ctx 2 i
+    h: form/field block-at ctx 1 w
+    face: intent/hface h
+    either = block-at face 0 8 [
+        r: form/validate intent/form-of-scope block-at face 22
+        either = block-at r 0 'failed [ intent/fail ctx block-at r 2 ] [
+            either = block-at r 0 'invalid [ intent/message ctx w block-at r 1 ] [ 0 ]
+        ]
+    ] [
+        v: block-at face 18
+        either = v 0 [ 0 ] [ intent/judge-validator ctx w v h face/value h ]
+    ]
+    + i 1
+]
+intent/judge-validator: func [ctx key v target value] [
+    either intent/callable? intent/tag get v [
+        f: get v
+        r: judge [ f target value ]
+        either sin? r [ intent/fail ctx r ] [
+            either = r none [ 0 ] [
+                either = intent/tag r 12 [ intent/message ctx key r ] [
+                    intent/fail ctx create-sin 'intent 'validator-result-not-none-or-string v
+                ]
+            ]
+        ]
+    ] [ intent/fail ctx create-sin 'intent 'validator-not-a-function v ]
+]
+intent/message: func [ctx key m] [
+    n: block-at ctx 4
+    either < n 63 [
+        vid/set-block! block-at ctx 3 n key
+        vid/set-block! block-at ctx 3 + n 1 m
+        vid/set-block! ctx 4 + n 2
+    ] [ 0 ]
+]
+intent/fail: func [ctx e] [ either = block-at ctx 5 none [ vid/set-block! ctx 5 e ] [ 0 ] ]
+form/status: func [r] [ block-at r 0 ]
+form/valid?: func [r] [ = block-at r 0 'valid ]
+form/messages: func [r] [ block-at r 1 ]
+form/failure: func [r] [ block-at r 2 ]
+;; the first message of a result, "" if none (a nested form's first)
+form/first-message: func [r] [ intent/first-message form/messages r ]
+intent/first-message: func [m] [
+    either = block-len m 0 [ "" ] [
+        v: block-at m 1
+        either = intent/tag v 6 [ intent/first-message v ] [ v ]
+    ]
+]
+
+;; ---- record/ : [ key value ... ] blocks ---------------------------------------------
+record/get: func [r k] [ intent/rec-find r k 0 ]
+intent/rec-find: func [r k i] [
+    either < i block-len r [
+        either = block-at r i k [ block-at r + i 1 ] [ intent/rec-find r k + i 2 ]
+    ] [ none ]
+]
+record/count: func [r] [ / block-len r 2 ]
+
+]
+
+;; (INTENT-3 words: a block of their own, run here, under the 512 limit)
+do [
+;; ==== INTENT-3: styles, word values, follow, command (INTENT-3-DESIGN.md) ====
+;; the dialect's own words: never values, never style names
+intent/keywords: [ across down below return label text field button panel vid box choice form host
+    style stretch fixed on-click on-enter on-change on-focus on-blur on-event validate follow command
+    check heading disabled hidden tabs table key rows area password read-only
+    list drop-down display space margin pad left center right top middle bottom fill-height theme
+    look icon image ]
+;; the widgets a style may be based on
+intent/widgets: [ label text field button panel vid box choice form host check heading tabs table area
+    list drop-down image ]
+;; built-in styles: NAME [ BASE facet... ] -- a provider is one line here
+intent/styles: reduce [
+    'webview reduce [ 'host "webkit-view" ]
+    'editor reduce [ 'host "x11-edit" ]
+]
+;; follow's property words and the event names they mean (Glon has no
+;; word -> string: the table is the spelling; any other event: a string)
+intent/properties: reduce [ 'value "value" 'text "text" 'url "url" 'title "title" 'status "status" 'error "error" ]
+
+;; the index of w in block b, or -1 (8 per call level); ctx [ len b w found ]
+intent/index-of: func [b w] [
+    ctx: reduce [ block-len b b w -1 ]
+    intent/steps :intent/index-at ctx 0
+    block-at ctx 3
+]
+intent/index-at: func [ctx k] [
+    either = block-at block-at ctx 1 k block-at ctx 2 [ vid/set-block! ctx 3 k  block-at ctx 0 ] [ + k 1 ]
+]
+;; a style's entry [ BASE facet... ]: the layout's own first, then built-in; none
+intent/style-of: func [lay w] [
+    k: either = lay 0 [ -1 ] [ intent/index-of block-at block-at lay 20 1 w ]
+    either < k 0 [
+        k: intent/index-of intent/styles w
+        either < k 0 [ none ] [ block-at intent/styles + k 1 ]
+    ] [ block-at block-at block-at lay 20 2 k ]
+]
+intent/dialect?: func [w] [
+    either >= intent/index-of intent/keywords w 0 [ 1 ] [ not-none? intent/style-of intent/building w ]
+]
+;; a word standing for a string facet: not a dialect word, and its value
+;; (read now, while the layout is built) is a string
+intent/value-word?: func [w] [ either intent/dialect? w [ 0 ] [ = intent/tag get w 12 ] ]
+
+;; below (VID's word for down), style, follow, command, a style's use;
+;; anything else is an INTENT-2 option
+intent/keyword2: func [c spec i w] [
+    either = w 'below [ intent/direction c 0  + i 1 ] [
+    either = w 'style [ intent/style-def c spec + i 1 ] [
+    either = w 'follow [ intent/o-follow c spec + i 1 ] [
+    either = w 'command [ intent/o-command c spec + i 1 ] [
+        intent/keyword4 c spec i w
+    ] ] ] ]
+]
+
+;; ---- styles ------------------------------------------------------------------------
+;; style NEW BASE facet... : NEW is BASE with those facets first (a style of
+;; a style is flattened here).  Facets only: options belong to each use
+intent/style-def: func [c spec i] [
+    either < + i 1 block-len spec [ 0 ] [ raise create-sin 'intent 'style-needs-a-name-and-widget i ]
+    nw: block-at spec i
+    base: block-at spec + i 1
+    either = intent/tag nw 2 [ 0 ] [ raise create-sin 'intent 'style-needs-a-name nw ]
+    either >= intent/index-of intent/keywords nw 0 [ raise create-sin 'intent 'style-shadows-keyword nw ] [ 0 ]
+    lay: block-at c 0
+    pre: either >= intent/index-of intent/widgets base 0 [ reduce [ base ] ] [ intent/style-of lay base ]
+    either = pre none [ raise create-sin 'intent 'style-needs-a-widget base ] [ 0 ]
+    j: intent/facets-end spec + i 2
+    n: - j + i 2
+    np: block-len pre
+    entry: intent/blank + np n
+    intent/copy-n pre entry np
+    intent/steps :intent/copy-from reduce [ n spec entry + i 2 np ] 0
+    ;; INTENT-4B-5A: look [ ... ] after the facets: appearance only; a style
+    ;; of a style looks like its base, then its own look
+    lk: intent/look-of lay base
+    either either < j block-len spec [ = block-at spec j 'look ] [ 0 ] [
+        either either < + j 1 block-len spec [ intent/block? spec + j 1 ] [ 0 ] [ 0 ] [ raise create-sin 'intent 'look-needs-a-block nw ]
+        lk: either = lk 0 [ block-at spec + j 1 ] [ intent/concat lk block-at spec + j 1 ]
+        ;; checked now, so a mistake is reported where the style is defined
+        vid/look/derive intent/theme lk
+        j: + j 2
+    ] [ 0 ]
+    intent/add-style lay nw entry lk
+    j
+]
+;; ctx [ n from to from-start to-start ]
+intent/copy-from: func [ctx k] [
+    vid/set-block! block-at ctx 2 + block-at ctx 4 k block-at block-at ctx 1 + block-at ctx 3 k
+    + k 1
+]
+intent/facets-end: func [spec j] [
+    n: intent/facet-len spec j
+    either = n 0 [ j ] [ intent/facets-end spec + j n ]
+]
+;; the items a facet at j takes: an integer, a block, a string (2 for the
+;; loader's mk-string pair), a word standing for a string; 0: no facet
+intent/facet-len: func [spec j] [
+    either < j block-len spec [
+        t: intent/tag block-at spec j
+        either either = t 0 [ 1 ] [ = t 6 ] [ 1 ] [ either intent/str? spec j [ intent/str-len spec j ] [ 0 ] ]
+    ] [ 0 ]
+]
+;; a layout's styles: [ count names entries ], 16 at most; a style defined
+;; again replaces the earlier one (as in VID)
+intent/add-style: func [lay w entry lk] [
+    st: block-at lay 20
+    n: block-at st 0
+    k: intent/index-of block-at st 1 w
+    either < k 0 [
+        either < n 16 [ 0 ] [ raise create-sin 'intent 'too-many-styles w ]
+        vid/set-block! block-at st 1 n w
+        vid/set-block! block-at st 2 n entry
+        vid/set-block! block-at st 3 n lk
+        vid/set-block! block-at st 4 n 0
+        vid/set-block! st 0 + n 1
+    ] [
+        vid/set-block! block-at st 2 k entry
+        vid/set-block! block-at st 3 k lk
+        vid/set-block! block-at st 4 k 0
+    ]
+]
+;; a style's use at i (after its word): its entry, then what follows the use
+;; (16 items: more than any widget's facets), read as the base widget
+intent/w-style: func [c spec i entry w] [
+    ne: block-len entry
+    rest: - block-len spec i
+    rest: either > rest 16 [ 16 ] [ rest ]
+    comb: intent/blank + ne rest
+    intent/copy-n entry comb ne
+    intent/steps :intent/copy-from reduce [ rest spec comb i ne ] 0
+    ;; INTENT-4B-5A: a style with a look makes its widget with a derived theme
+    ;; (slot 26 keeps the container's, for what a styled panel holds)
+    lk: intent/look-of block-at c 0 w
+    saved: block-at c 25
+    either = lk 0 [ 0 ] [
+        vid/set-block! c 26 saved
+        vid/set-block! c 25 intent/derived block-at c 0 w saved lk
+    ]
+    j: intent/keyword c comb 0 block-at entry 0
+    either = lk 0 [ 0 ] [
+        intent/look-face c
+        vid/set-block! c 25 saved
+        vid/set-block! c 26 0
+    ]
+    either < j ne [ raise create-sin 'intent 'style-has-unused-facets block-at entry 0 ] [ 0 ]
+    + i - j ne
+]
+
+;; ---- follow and command: read now, linked at the end of the build ----------
+intent/option-face: func [c w] [
+    k: block-at c 13
+    either < k 0 [ raise create-sin 'intent 'option-needs-a-face w ] [ k ]
+]
+intent/property: func [w] [
+    k: intent/index-of intent/properties w
+    either < k 0 [ raise create-sin 'intent 'unknown-property w ] [ block-at intent/properties + k 1 ]
+]
+;; follow SOURCE PROPERTY: always two items
+intent/o-follow: func [c spec i] [
+    k: intent/option-face c 'follow
+    either < + i 1 block-len spec [ 0 ] [ raise create-sin 'intent 'follow-needs-a-name-and-property i ]
+    src: block-at spec i
+    either = intent/tag src 2 [ 0 ] [ raise create-sin 'intent 'follow-needs-a-name src ]
+    pw: block-at spec + i 1
+    t: intent/tag pw
+    p: either = pw 'mk-string [ mk-string block-at spec + i 2 ] [
+        either = t 12 [ pw ] [ either = t 2 [ intent/property pw ] [ raise create-sin 'intent 'unknown-property pw ] ]
+    ]
+    face: intent/face block-at c 0 k
+    either = block-at face 23 0 [ 0 ] [ raise create-sin 'intent 'one-follow-per-widget src ]
+    vid/set-block! face 23 reduce [ src p ]
+    + i either = pw 'mk-string [ 3 ] [ 2 ]
+]
+;; command TARGET CMD [ARG]: ARG a string, or a word (a widget's name, else
+;; a variable holding a string); a dialect word is never ARG
+intent/o-command: func [c spec i] [
+    k: intent/option-face c 'command
+    tw: block-at spec i
+    either = intent/tag tw 2 [ 0 ] [ raise create-sin 'intent 'command-needs-a-name tw ]
+    either intent/str? spec + i 1 [ 0 ] [ raise create-sin 'intent 'command-needs-a-string tw ]
+    cmd: intent/str-at spec + i 1
+    j: + + i 1 intent/str-len spec + i 1
+    a: none
+    ak: 0
+    either < j block-len spec [
+        v: block-at spec j
+        t: intent/tag v
+        either either = t 12 [ 1 ] [ = v 'mk-string ] [ a: intent/str-at spec j  ak: 1  j: + j intent/str-len spec j ] [
+            either either = t 2 [ either intent/dialect? v [ 0 ] [ 1 ] ] [ 0 ] [ a: v  ak: 3  j: + j 1 ] [ 0 ]
+        ]
+    ] [ 0 ]
+    face: intent/face block-at c 0 k
+    either = block-at face 24 0 [ 0 ] [ raise create-sin 'intent 'one-command-per-widget tw ]
+    vid/set-block! face 24 reduce [ tw cmd ak a ]
+    j
+]
+;; the face index of name w seen from scope sc: its own names, then the
+;; enclosing forms' (nearest first); -1
+intent/scope-find: func [sc w] [
+    k: intent/scope-index sc w 0
+    either < k 0 [
+        p: block-at sc 2
+        either = p 0 [ -1 ] [ intent/scope-find p w ]
+    ] [ block-at block-at sc 4 k ]
+]
+intent/lookup: func [face w] [
+    k: intent/scope-find block-at face 16 w
+    either < k 0 [ raise create-sin 'intent 'no-such-field w ] [ k ]
+]
+;; at the end of the build, every name known: link follows and commands
+intent/resolve-links: func [lay i] [
+    face: intent/face lay i
+    fs: block-at face 23
+    either = intent/tag fs 6 [ intent/link-follow lay i face fs ] [ 0 ]
+    cs: block-at face 24
+    either = intent/tag cs 6 [ intent/link-command lay face cs ] [ 0 ]
+]
+;; the follower (face i) joins its source's list: [ n property face ... ], 8 at most
+intent/link-follow: func [lay i face fs] [
+    src: intent/lookup face block-at fs 0
+    p: block-at fs 1
+    sf: intent/face lay src
+    k: block-at face 0
+    either either = k 1 [ 1 ] [ either = k 2 [ 1 ] [ either = k 3 [ 1 ] [ = k 13 ] ] ] [ 0 ] [ raise create-sin 'intent 'cannot-follow block-at face 1 ]
+    either either s/= p "value" [ 1 ] [ s/= p "text" ] [
+        either = intent/data-kind sf none [ raise create-sin 'intent 'has-no-value block-at fs 0 ] [ 0 ]
+        either intent/password? sf [ raise create-sin 'intent 'cannot-follow-a-password block-at fs 0 ] [ 0 ]
+    ] [
+        either = block-at sf 0 9 [ 0 ] [ raise create-sin 'intent 'property-needs-a-component block-at fs 0 ]
+    ]
+    fl: block-at sf 25
+    either = fl 0 [ fl: intent/blank 17  vid/set-block! sf 25 fl ] [ 0 ]
+    n: block-at fl 0
+    either < n 8 [ 0 ] [ raise create-sin 'intent 'too-many-followers block-at fs 0 ]
+    vid/set-block! fl + 1 * n 2 p
+    vid/set-block! fl + 2 * n 2 i
+    vid/set-block! fl 0 + n 1
+]
+;; [ target cmd argkind arg ]: argkind 0 none, 1 a string, 2 a widget's value
+intent/link-command: func [lay face cs] [
+    k: block-at face 0
+    either either = k 2 [ 1 ] [ = k 3 ] [ 0 ] [ raise create-sin 'intent 'command-needs-button-or-field block-at face 1 ]
+    t: intent/lookup face block-at cs 0
+    either = block-at intent/face lay t 0 9 [ 0 ] [ raise create-sin 'intent 'no-commands block-at cs 0 ]
+    ak: block-at cs 2
+    a: block-at cs 3
+    either = ak 3 [
+        n: intent/scope-find block-at face 16 a
+        either < n 0 [
+            either intent/value-word? a [ ak: 1  a: get a ] [ raise create-sin 'intent 'unknown-word a ]
+        ] [ ak: 2  a: n ]
+    ] [ 0 ]
+    vid/set-block! face 24 reduce [ t block-at cs 1 ak a ]
+]
+
+;; ---- at run time ----------------------------------------------------------------
+;; face i was activated (a button pressed, Enter in a field): its command
+intent/run-command: func [lay i] [
+    cs: block-at intent/face lay i 24
+    either = intent/tag cs 6 [
+        ak: block-at cs 2
+        a: either = ak 0 [ "" ] [ either = ak 1 [ block-at cs 3 ] [ intent/text-of face/value intent/handle lay block-at cs 3 ] ]
+        view/send s/+ "host cmd " s/+ s/from-int intent/node lay block-at cs 0 s/+ " " s/+ block-at cs 1 s/+ " " a
+    ] [ 0 ]
+]
+;; a value shown as text: strings as they are, integers formatted, else ""
+intent/text-of: func [v] [
+    t: intent/tag v
+    either = t 12 [ v ] [ either = t 0 [ s/from-int v ] [ "" ] ]
+]
+;; face i's event: its followers of that property show the detail ('change
+;; is the property value; a component's own events go by their name).
+;; Programmatic updates raise no events: no loops, no chains
+intent/notify: func [lay i type detail name] [
+    fl: block-at intent/face lay i 25
+    either = fl 0 [ 0 ] [
+        p: either = type 'change [ "value" ] [ either = type 'event [ name ] [ none ] ]
+        either = p none [ 0 ] [
+            intent/steps :intent/notify-at reduce [ block-at fl 0 fl lay p intent/text-of detail ] 0
+        ]
+        ;; INTENT-4B-3: a change also updates followers of the text shown
+        either = type 'change [
+            intent/steps :intent/notify-at reduce [ block-at fl 0 fl lay "text" intent/shown-text intent/face lay i ] 0
+        ] [ 0 ]
+    ]
+]
+;; ctx [ n followers lay property text ]
+intent/notify-at: func [ctx k] [
+    fl: block-at ctx 1
+    either s/= block-at fl + 1 * k 2 block-at ctx 3 [ intent/show-in block-at ctx 2 block-at fl + 2 * k 2 block-at ctx 4 ] [ 0 ]
+    + k 1
+]
+intent/show-in: func [lay t v] [
+    face: intent/face lay t
+    k: block-at face 0
+    st: block-at face 2
+    either either = k 2 [ 1 ] [ = k 13 ] [ vid/field/set-text st v ] [
+        either = k 1 [ view/text block-at st 1 v  vid/set-block! face 19 v ] [
+            either = k 3 [ view/text block-at st 3 v  vid/set-block! face 19 v ] [ 0 ]
+        ]
+    ]
+]
+]
+
+;; ---- INTENT-4B-1: existing machine VID widgets as Intent words -----------------
+;; check "caption": a VID checkbox (vid/checkbox, unchanged; its row sized to
+;; the caption).  Value 0 or 1
+;; (load, collect, clear, validate); a click or Space toggles it and fires
+;; change, then click.  Face kind 10.
+;; heading "text": a VID heading (vid/heading); a label in every other way.
+;; disabled / hidden: options for the widget just added, applied when the
+;; build ends (as face/set-enabled 0 / face/set-visible 0; a hidden widget
+;; keeps its place).
+;; Looks (vid_check.glon): a focused check shows the focus-ring colour; a
+;; disabled check, choice, field or button the disabled colours.  Face slot
+;; 26 is 1 while the widget has the focus.
+do [
+intent/keyword4: func [c spec i w] [
+    either = w 'check [ intent/w-check c spec + i 1 ] [
+    either = w 'heading [ intent/w-heading c spec + i 1 ] [
+    either = w 'tabs [ intent/w-tabs c spec + i 1 ] [
+    either = w 'table [ intent/w-table c spec + i 1 ] [
+    either = w 'key [ intent/o-key c spec + i 1 ] [
+    either = w 'rows [ intent/o-rows c spec + i 1 ] [
+    either = w 'area [ intent/w-area c spec + i 1 ] [
+    either = w 'password [ intent/o-password c  + i 1 ] [
+    either = w 'read-only [ intent/o-read-only c  + i 1 ] [
+    either = w 'list [ intent/w-list c spec + i 1 ] [
+    either = w 'drop-down [ intent/w-drop-down c spec + i 1 ] [
+    either = w 'display [ intent/o-display c spec + i 1 ] [
+    either = w 'disabled [ intent/o-state c 20 w  + i 1 ] [
+    either = w 'hidden [ intent/o-state c 21 w  + i 1 ] [
+        intent/keyword5 c spec i w
+    ] ] ] ] ] ] ] ] ] ] ] ] ] ]
+]
+intent/w-check: func [c spec i] [
+    either intent/str? spec i [ 0 ] [ raise create-sin 'intent 'check-needs-caption i ]
+    s: intent/str-at spec i
+    theme: block-at c 25
+    ;; as wide as its caption (the box, a gap, the text): vid/checkbox makes
+    ;; a 240-pixel row, resized here
+    w: + * intent/units s intent/unit theme 34
+    intent/place c w 30
+    st: vid/checkbox theme block-at c 1 block-at c 11 + block-at c 12 3 s 0
+    view/rect block-at st 1 block-at c 11 + block-at c 12 3 w 24
+    view/rect block-at st 4 26 0 - w 26 24
+    vid/set-block! intent/face block-at c 0 intent/add-face c 10 st 0 w 30 reduce [ 0 0 block-at st 1 3 24 -1 ] 19 s
+    + i intent/str-len spec i
+]
+;; the heading font's width: the label's estimate scaled by heading / body size
+intent/w-heading: func [c spec i] [
+    either intent/str? spec i [ 0 ] [ raise create-sin 'intent 'heading-needs-text i ]
+    s: intent/str-at spec i
+    theme: block-at c 25
+    f: block-at theme 133
+    w: + / * * intent/units s intent/unit theme f block-at theme 69 4
+    rh: intent/max-of block-at theme 138 + f 12
+    intent/place c w rh
+    st: vid/heading theme block-at c 1 block-at c 11 block-at c 12 w rh s
+    dy: / - rh + f 6 2
+    dy: either < dy 0 [ 0 ] [ dy ]
+    vid/set-block! intent/face block-at c 0 intent/add-face c 1 st 0 w rh reduce [ 0 0 block-at st 1 dy + f 6 -1 ] 19 s
+    + i intent/str-len spec i
+]
+;; disabled / hidden: slot 20 / 21 of the face just added
+intent/o-state: func [c slot w] [
+    k: block-at c 13
+    either < k 0 [ raise create-sin 'intent 'option-needs-a-face w ] [ 0 ]
+    vid/set-block! intent/face block-at c 0 k slot 0
+]
+intent/apply-state: func [lay i] [
+    face: intent/face lay i
+    either intent/tab? block-at face 0 [
+        rows: block-at block-at face 22 6
+        either = rows 0 [ 0 ] [ intent/table-add face rows ]
+    ] [ 0 ]
+    either = block-at face 20 0 [ intent/set-enabled face 0 ] [ 0 ]
+    either = block-at face 21 0 [ intent/apply-flags face ] [ 0 ]
+]
+;; enabled: stored, drawn (machine VID looks), and the node's flags
+intent/set-enabled: func [face on] [
+    vid/set-block! face 20 on
+    k: block-at face 0
+    st: block-at face 2
+    either either = k 2 [ 1 ] [ = k 13 ] [ vid/field/set-enabled st on ] [
+        either = k 3 [ vid/button/set-enabled st on ] [
+            either = k 5 [ intent/vid-enable st on ] [
+                either = k 11 [ intent/tabs-enable st on ] [
+                    either intent/tab? k [ intent/table-enable face on ] [ 0 ]
+                ]
+            ]
+        ]
+    ]
+    intent/repaint face
+    intent/apply-flags face
+]
+;; a VID button or field in a vid escape
+intent/vid-enable: func [st on] [
+    k: block-at st 0
+    either = k vid/kind-button [ vid/button/set-enabled st on ] [
+        either = k vid/kind-field [ vid/field/set-enabled st on ] [ 0 ]
+    ]
+]
+;; the node's flags from the face: visible, enabled, focusable (as made)
+intent/apply-flags: func [face] [
+    view/flags intent/outer-node face block-at face 21 block-at face 20 intent/focusable? face 1
+]
+;; the node that shows or hides a whole widget: a panel's or form's face node
+;; is its content group, inside the border, background and outer group that
+;; vid/panel makes as content-3 .. content (INTENT-4B-3: hiding a panel left
+;; its border and background on show)
+intent/outer-node: func [face] [
+    k: block-at face 0
+    either either = k 4 [ 1 ] [ = k 8 ] [ - block-at face 8 3 ] [ block-at face 8 ]
+]
+;; the look of a check (its focus and enabled state) or a choice's radios
+intent/repaint: func [face] [
+    either = intent/data-kind face 'check [
+        vid/checkbox/look block-at face 2 block-at face 20 block-at face 26
+        intent/apply-flags face
+    ] [
+        either = block-at face 0 7 [ intent/choice-look face ] [ 0 ]
+    ]
+]
+intent/choice-look: func [face] [
+    st: block-at face 2
+    intent/steps :intent/choice-look-at reduce [ block-at st 4 block-at st 2 block-at face 20 ] 0
+]
+;; ctx [ n radios enabled ]
+intent/choice-look-at: func [ctx k] [
+    vid/checkbox/look block-at block-at ctx 1 k block-at ctx 2 0
+    + k 1
+]
+;; focus given by the application (face/focus, the focus action): View
+;; does not report it (only Tab and clicks are reported), so Intent moves its
+;; own record of the focus as view-blur / view-focus would: the old widget's
+;; ring and look off and its on-blur, the new one's on and its on-focus.  A
+;; widget that cannot take the focus (not focusable, disabled, hidden) is
+;; refused by name; focusing the focused widget does nothing.
+intent/focus-to: func [lay i] [
+    face: intent/face lay i
+    either either intent/focusable? face [ either = block-at face 20 1 [ = block-at face 21 1 ] [ 0 ] ] [ 0 ] [ 0 ] [
+        raise create-sin 'intent 'cannot-focus block-at face 1
+    ]
+    view/focus block-at face 8
+    old: block-at lay 8
+    either = old i [ 0 ] [
+        either < old 0 [ 0 ] [
+            vid/set-block! lay 8 -1
+            intent/ring lay old 0
+            intent/focus-mark lay old 0
+            intent/fire lay old 'blur ""
+        ]
+        vid/set-block! lay 8 i
+        intent/ring lay i 1
+        intent/focus-mark lay i 1
+        intent/fire lay i 'focus ""
+    ]
+]
+;; the machine VID focus ring (and caret) of a button or field, as
+;; vid/focus-event shows it
+intent/ring: func [lay i on] [
+    st: block-at intent/face lay i 2
+    k: either = intent/tag st 6 [ block-at st 0 ] [ 0 ]
+    either either = k vid/kind-button [ 1 ] [ = k vid/kind-field ] [
+        vid/button/set-focused st on
+        either on [ vid/focus-ring: block-at st 9 ] [
+            either = vid/focus-ring block-at st 9 [ vid/focus-ring: 0 ] [ 0 ]
+        ]
+    ] [ 0 ]
+]
+intent/focus-mark: func [lay i on] [
+    face: intent/face lay i
+    vid/set-block! face 26 on
+    intent/repaint face
+]
+;; a click, or Space, on a check (an INTENT-4 check or a vid-escape checkbox
+;; or radio): toggle it, change; then click (any vid escape)
+intent/activate-check: func [lay i] [
+    face: intent/face lay i
+    st: block-at face 2
+    either = intent/data-kind face 'check [
+        vid/checkbox/toggle st
+        intent/repaint face
+        intent/fire lay i 'change block-at st 5
+    ] [ 0 ]
+    intent/fire lay i 'click ""
+]
+;; Space: toggles a focused, enabled check; presses a focused button
+intent/space: func [lay] [
+    f: block-at lay 8
+    either < f 0 [ 0 ] [
+        face: intent/face lay f
+        either = block-at face 20 0 [ 0 ] [
+            either = intent/data-kind face 'check [ intent/activate-check lay f ] [
+                either = block-at face 0 3 [ intent/press lay f ] [ 0 ]
+            ]
+        ]
+    ]
+]
+]
+
+;; ---- INTENT-4B-1b: tabs ---------------------------------------------------------
+;; tabs [ "Label" [ layout ] ... ]: VID tabs (vid_tabs.glon, unchanged), one
+;; page per label, each page laid out like a panel (its own cursor, the
+;; enclosing form's names).  Sized to the widest and tallest page; flexible
+;; when something on a page is (or with stretch).  Face kind 11.
+;;   face/index: the selected tab, 1-based (always one); face/set-index
+;;   selects without an event; face/text: the selected label.  A click or
+;;   Left/Right/Home/End on a focused tab selects and fires change (detail:
+;;   the new index).  Not data-bearing: the fields on its pages are.
+;; Pages are made once and only shown or hidden (machine VID), so whatever
+;; is on a page survives switching; a hidden page is out of the Tab order.
+do [
+intent/kind-tabs: 11
+intent/tabs-max: 16
+;; 1 while Intent itself selects a tab (no change event)
+intent/quiet: 0
+intent/w-tabs: func [c spec i] [
+    either intent/block? spec i [ 0 ] [ raise create-sin 'intent 'tabs-need-a-block i ]
+    b: block-at spec i
+    ctx: reduce [ block-len b b intent/blank intent/tabs-max 0 intent/blank intent/tabs-max ]
+    intent/steps :intent/tabs-item ctx 0
+    n: block-at ctx 3
+    either > n 0 [ 0 ] [ raise create-sin 'intent 'tabs-need-pages i ]
+    labels: intent/copy-n block-at ctx 2 intent/blank n n
+    pages: intent/copy-n block-at ctx 4 intent/blank n n
+    intent/tabs-build c labels pages
+    + i 1
+]
+;; ctx [ len block labels count pages ]: "Label" [ layout ] at j
+intent/tabs-item: func [ctx j] [
+    b: block-at ctx 1
+    either intent/str? b j [ 0 ] [ raise create-sin 'intent 'tabs-need-label-and-layout j ]
+    k: + j intent/str-len b j
+    either intent/block? b k [ 0 ] [ raise create-sin 'intent 'tabs-need-label-and-layout j ]
+    n: block-at ctx 3
+    either < n intent/tabs-max [ 0 ] [ raise create-sin 'intent 'too-many-tabs n ]
+    vid/set-block! block-at ctx 2 n intent/str-at b j
+    vid/set-block! block-at ctx 4 n block-at b k
+    vid/set-block! ctx 3 + n 1
+    + k 1
+]
+;; the tabs' rule first (a parent's rule comes before its children's), then
+;; one rule per page following the content area, then the pages' content
+intent/tabs-build: func [c labels pages] [
+    lay: block-at c 0
+    x: block-at c 3
+    y: block-at c 4
+    st: vid/tabs block-at c 25 block-at c 1 x y 200 100 labels [ intent/tabs-changed ]
+    rt: lay/add st 5 block-at c 15 x 0 y 0 200 0 100 0 0 0
+    ctx: reduce [ block-len labels c st rt 0 0 0 pages ]
+    intent/steps :intent/tabs-page ctx 0
+    w: intent/max-of + block-at ctx 4 2 intent/tabs-strip-w block-at c 25 labels
+    h: + + block-at ctx 5 vid/tabs-strip-h 1
+    rec: block-at lay/rules rt
+    vid/set-block! rec 7 w
+    vid/set-block! rec 9 h
+    vid/set-block! rec 11 w
+    lay/place st 5 x y w h
+    intent/place c w h
+    n: intent/add-face c 11 st 0 w h reduce [ block-at ctx 6 5 st 0 h rt ]
+    vid/set-block! intent/face lay n 19 labels
+    n
+]
+;; ctx [ n c st rt maxw maxh flex pages ]: page k
+intent/tabs-page: func [ctx k] [
+    c: block-at ctx 1
+    lay: block-at c 0
+    pg: vid/tabs/page block-at ctx 2 k
+    rp: lay/add pg 0 block-at ctx 3 0 0 0 0 -2 1000 - 0 + vid/tabs-strip-h 1 1000 0 0
+    ic: intent/cursor lay pg intent/pad intent/pad rp intent/pad
+    vid/set-block! ic 22 block-at c 22
+    vid/set-block! ic 25 block-at c 25
+    intent/walk ic block-at block-at ctx 7 k 0
+    vid/set-block! ctx 4 intent/max-of block-at ctx 4 + block-at ic 8 block-at ic 16
+    vid/set-block! ctx 5 intent/max-of block-at ctx 5 + block-at ic 9 block-at ic 24
+    either = block-at ic 17 1 [ vid/set-block! ctx 6 1 ] [ 0 ]
+    + k 1
+]
+intent/max-of: func [a b] [ either > a b [ a ] [ b ] ]
+;; the strip's width: every tab as wide as the widest label (vid/tabs shares
+;; the width equally), at least 80 per tab
+intent/tabs-strip-w: func [theme labels] [
+    ctx: reduce [ block-len labels labels 0 ]
+    intent/steps :intent/tabs-label-w ctx 0
+    * block-len labels intent/max-of 80 + * block-at ctx 2 intent/unit theme 24
+]
+intent/tabs-label-w: func [ctx k] [
+    vid/set-block! ctx 2 intent/max-of block-at ctx 2 intent/units block-at block-at ctx 1 k
+    + k 1
+]
+;; vid/tabs calls this after a selection made by a click or a key
+intent/tabs-changed: func [st i] [
+    lay: intent/current
+    either either = lay 0 [ 1 ] [ = intent/quiet 1 ] [ 0 ] [
+        ctx: reduce [ block-at lay 3 lay st -1 ]
+        intent/steps :intent/state-face ctx 0
+        k: block-at ctx 3
+        either < k 0 [ 0 ] [ intent/fire lay k 'change + i 1 ]
+    ]
+]
+;; ctx [ count lay state found ]: the face whose machine state is state
+intent/state-face: func [ctx k] [
+    either = block-at intent/face block-at ctx 1 k 2 block-at ctx 2 [ vid/set-block! ctx 3 k ] [ 0 ]
+    + k 1
+]
+intent/tabs-set-index: func [face k h] [
+    st: block-at face 2
+    either either < k 1 [ 1 ] [ > k block-at st 6 ] [ raise create-sin 'intent 'invalid-value face/name h ] [ 0 ]
+    intent/quiet: 1
+    vid/tabs/select st - k 1
+    intent/quiet: 0
+]
+;; disabled tabs: every tab out of the Tab order and the clicks, muted
+intent/tabs-enable: func [st on] [
+    intent/steps :intent/tab-enable reduce [ block-at st 6 st on ] 0
+]
+intent/tab-enable: func [ctx k] [
+    st: block-at ctx 1
+    t: vid/tabs-tab st k
+    view/flags block-at t 0 1 block-at ctx 2 1 1
+    either block-at ctx 2 [ vid/tabs-refresh st k ] [ vid/fg-color block-at st 4 block-at t 3 93 ]
+    + k 1
+]
+]
+
+;; ---- INTENT-4B-1c: table ----------------------------------------------------------
+;; table [ "Title" N ... ] [ROWS] [key K]: the host's virtualised table
+;; (gv_table.c, vid/table, unchanged), columns N character units wide, ROWS
+;; visible rows (default 8).  Face kind 12.  Rows come from the
+;; application: face/set-rows h rows, face/add-rows h rows (rows: a block of
+;; blocks of strings or integers), face/row-count h.
+;;   index  the selected row's position, 1-based in the order the rows were
+;;          added (0: none); face/set-index selects (0 clears)
+;;   value  the selected row's KEY: the text of column K (key K); none
+;;          without a selection.  face/set-value selects the row with that
+;;          key.  A table without key has no value: face/value, set-value
+;;          and text refuse it (table-has-no-key), and form/collect / load
+;;          leave it out; the index still works.  The host's own row ids
+;;          (its virtualisation and selection bookkeeping) are not exposed.
+;;   text   the key (as value)
+;; A click on a row, or Up / Down / Page Up / Page Down / Home / End while
+;; the table has the focus, selects and fires change (detail: the value, or
+;; none without a key); a programmatic selection fires nothing.  Only a
+;; keyed table stores anything per row: its keys (at most 262,144 rows).
+;; Sorting and filtering are not offered here: they reorder the host's rows
+;; and the position / key correspondence would need the host's row ids.
+;; rows R: the table's first rows, a block or a word whose value is one (read
+;; when the layout is built, as word values are), added when the build ends.
+;; Face slot 22: [ key-column keys count selected visible-rows top rows
+;; label-column labels table-id ] (INTENT-4B-3: list and drop-down, kinds 14
+;; and 15, share all of this; label-column 0 for a table).
+do [
+;; The host reads four GV-1 table-policy words while drawing tables
+;; (gv_glon_apply_table_policy: the first table's sort, filter and selected
+;; row) and fails when they are undefined.  These values make that legacy
+;; policy inert (no sort column, no filter, no row), as membership.glon and
+;; the gallery do; Intent owns its tables' selection.  An application may
+;; still redefine them.
+v/table-sort-col: -1
+v/table-sort-dir: 1
+v/table-filter: ""
+v/table-select-row: -1
+intent/kind-table: 12
+intent/table-row-h: 24
+intent/table-head-h: 28
+intent/w-table: func [c spec i] [
+    either intent/block? spec i [ 0 ] [ raise create-sin 'intent 'table-needs-columns i ]
+    b: block-at spec i
+    i: + i 1
+    nr: 8
+    either intent/int? spec i [ nr: block-at spec i  i: + i 1 ] [ 0 ]
+    either > nr 0 [ 0 ] [ raise create-sin 'intent 'table-needs-rows i ]
+    lay: block-at c 0
+    theme: block-at c 25
+    cols: intent/table-cols theme b
+    w: + block-at cols 1 14
+    h: + + intent/table-head-h * nr intent/table-row-h 2
+    intent/place c w h
+    st: vid/table theme block-at c 1 block-at c 11 block-at c 12 w h table/cols-encode block-at cols 0 ""
+    n: intent/add-face c 12 st 0 w h reduce [ 0 0 block-at st 1 0 h -1 ]
+    vid/set-block! intent/face lay n 22 reduce [ 0 0 0 0 nr 0 0 0 0 block-at st 1 ]
+    vid/set-block! intent/face lay n 19 block-len block-at cols 0
+    i
+]
+;; [ "Title" N ... ] -> [ [ [ title px 0 ] ... ] total-width ]
+intent/table-cols: func [theme b] [
+    ctx: reduce [ block-len b b intent/blank 32 0 0 theme ]
+    intent/steps :intent/table-col ctx 0
+    either > block-at ctx 3 0 [ 0 ] [ raise create-sin 'intent 'table-needs-columns b ]
+    reduce [ intent/copy-n block-at ctx 2 intent/blank block-at ctx 3 block-at ctx 3 block-at ctx 4 ]
+]
+;; ctx [ len block cols count width theme ]
+intent/table-col: func [ctx j] [
+    b: block-at ctx 1
+    either intent/str? b j [ 0 ] [ raise create-sin 'intent 'table-needs-title-and-width j ]
+    k: + j intent/str-len b j
+    either intent/int? b k [ 0 ] [ raise create-sin 'intent 'table-needs-title-and-width j ]
+    n: block-at ctx 3
+    either < n 32 [ 0 ] [ raise create-sin 'intent 'too-many-columns n ]
+    px: + * block-at b k intent/unit block-at ctx 5 16
+    vid/set-block! block-at ctx 2 n reduce [ intent/str-at b j px 0 ]
+    vid/set-block! ctx 3 + n 1
+    vid/set-block! ctx 4 + block-at ctx 4 px
+    + k 1
+]
+;; key K: the table just added keeps column K's text as each row's key
+intent/o-key: func [c spec i] [
+    k: block-at c 13
+    either < k 0 [ raise create-sin 'intent 'option-needs-a-face 'key ] [ 0 ]
+    face: intent/face block-at c 0 k
+    either intent/tab? block-at face 0 [ 0 ] [ raise create-sin 'intent 'key-needs-a-table block-at face 1 ]
+    either intent/int? spec i [ 0 ] [ raise create-sin 'intent 'key-needs-a-column i ]
+    col: block-at spec i
+    ;; a table's key is one of its columns; a list's or drop-down's any of
+    ;; its rows' (only the label column is shown)
+    either either < col 1 [ 1 ] [ either = block-at face 0 12 [ > col block-at face 19 ] [ 0 ] ] [ raise create-sin 'intent 'no-such-column col ] [ 0 ]
+    info: block-at face 22
+    vid/set-block! info 0 col
+    vid/set-block! info 1 intent/blank 64
+    + i 1
+]
+
+;; ---- keys: a three-level store of up to 64 x 64 x 64 values ----
+intent/vec-put: func [top i v] [
+    a: / i 4096
+    b: / - i * a 4096 64
+    mid: block-at top a
+    either = mid 0 [ mid: intent/blank 64  vid/set-block! top a mid ] [ 0 ]
+    leaf: block-at mid b
+    either = leaf 0 [ leaf: intent/blank 64  vid/set-block! mid b leaf ] [ 0 ]
+    vid/set-block! leaf - i * / i 64 64 v
+]
+intent/vec-get: func [top i] [
+    a: / i 4096
+    block-at block-at block-at top a / - i * a 4096 64 - i * / i 64 64
+]
+;; for i from 0 below n: f ctx i (f's answer is ignored).  The range is
+;; split into eight parts, each part into eight, and so on, visited by eight
+;; calls in sequence, so the call chain grows by one frame per level -- at
+;; most 7 levels for 262,144 rows -- whatever n is (a call chain holds under
+;; 100 frames, and f may itself loop)
+intent/for-n: func [f ctx n] [
+    either > n 262144 [ raise create-sin 'intent 'too-many-rows n ] [ 0 ]
+    either > n 0 [ intent/for8 :f ctx 0 intent/span8 n 1 n ] [ 0 ]
+]
+;; the smallest power of 8 that is at least n
+intent/span8: func [n size] [ either < size n [ intent/span8 n * size 8 ] [ size ] ]
+;; [base, base + size) and below n
+intent/for8: func [f ctx base size n] [
+    either >= base n [ 0 ] [
+        either = size 1 [ f ctx base ] [
+            p: / size 8
+            intent/for8 :f ctx base p n
+            intent/for8 :f ctx + base p p n
+            intent/for8 :f ctx + base * 2 p p n
+            intent/for8 :f ctx + base * 3 p p n
+            intent/for8 :f ctx + base * 4 p p n
+            intent/for8 :f ctx + base * 5 p p n
+            intent/for8 :f ctx + base * 6 p p n
+            intent/for8 :f ctx + base * 7 p p n
+        ]
+    ]
+]
+
+;; ---- rows ----
+intent/table-face: func [h] [
+    face: intent/hface h
+    either intent/tab? block-at face 0 [ face ] [ raise create-sin 'intent 'not-a-table face/name h ]
+]
+;; tables, lists and drop-downs (rows, keys, selection)
+intent/tab?: func [k] [ either = k 12 [ 1 ] [ either = k 14 [ 1 ] [ = k 15 ] ] ]
+intent/tid: func [face] [ block-at block-at face 22 9 ]
+face/set-rows: func [h rows] [
+    face: intent/table-face h
+    table/clear intent/tid face
+    info: block-at face 22
+    vid/set-block! info 2 0
+    vid/set-block! info 3 0
+    vid/set-block! info 5 0
+    either > block-at info 0 0 [ vid/set-block! info 1 intent/blank 64 ] [ 0 ]
+    either > block-at info 7 0 [ vid/set-block! info 8 intent/blank 64 ] [ 0 ]
+    intent/after-select face
+    intent/refresh h
+    face/add-rows h rows
+]
+face/add-rows: func [h rows] [
+    face: intent/table-face h
+    either = intent/tag rows 6 [ 0 ] [ raise create-sin 'intent 'rows-need-a-block face/name h ]
+    intent/table-add face rows
+    h
+]
+intent/table-add: func [face rows] [
+    intent/for-n :intent/table-add-row reduce [ face rows block-at block-at face 22 2 ] block-len rows
+    info: block-at face 22
+    vid/set-block! info 2 + block-at info 2 block-len rows
+]
+;; rows R (a block, or a word naming one) for the table just added
+intent/o-rows: func [c spec i] [
+    k: block-at c 13
+    either < k 0 [ raise create-sin 'intent 'option-needs-a-face 'rows ] [ 0 ]
+    face: intent/face block-at c 0 k
+    either intent/tab? block-at face 0 [ 0 ] [ raise create-sin 'intent 'rows-need-a-table block-at face 1 ]
+    either < i block-len spec [ 0 ] [ raise create-sin 'intent 'rows-need-a-block i ]
+    v: block-at spec i
+    v: either = intent/tag v 2 [ get v ] [ v ]
+    either = intent/tag v 6 [ 0 ] [ raise create-sin 'intent 'rows-need-a-block i ]
+    vid/set-block! block-at face 22 6 v
+    + i 1
+]
+face/row-count: func [h] [ block-at block-at intent/table-face h 22 2 ]
+;; ctx [ face rows base ]: row i of rows becomes row base + i
+intent/table-add-row: func [ctx i] [
+    face: block-at ctx 0
+    row: block-at block-at ctx 1 i
+    either = intent/tag row 6 [ 0 ] [ raise create-sin 'intent 'row-needs-a-block i ]
+    cells: intent/table-cells row
+    ;; the host drops a row with more cells than columns: refused here, so
+    ;; Intent's count and keys never disagree with the host's rows
+    either either = block-at face 0 12 [ > block-len cells block-at face 19 ] [ 0 ] [ raise create-sin 'intent 'row-has-too-many-cells i ] [ 0 ]
+    intent/table-send face cells
+    info: block-at face 22
+    col: block-at info 0
+    either > col 0 [
+        either > block-len cells - col 1 [ 0 ] [ raise create-sin 'intent 'row-has-no-key i ]
+        intent/vec-put block-at info 1 + block-at ctx 2 i block-at cells - col 1
+    ] [ 0 ]
+    lc: block-at info 7
+    either > lc 0 [ intent/vec-put block-at info 8 + block-at ctx 2 i block-at cells - lc 1 ] [ 0 ]
+]
+;; a row for the host: all of a table's cells; a list's or drop-down's label
+intent/table-send: func [face cells] [
+    lc: block-at block-at face 22 7
+    either > lc 0 [
+        either > block-len cells - lc 1 [ 0 ] [ raise create-sin 'intent 'row-has-no-label lc ]
+        table/row intent/tid face intent/table-encode reduce [ block-at cells - lc 1 ]
+    ] [ table/row intent/tid face intent/table-encode cells ]
+]
+;; a row's text for the host ("a|b|c"): a cell with none of | ; \ or a
+;; control character is sent as it is (one scan); others go through
+;; table/escape (vid_table_data.glon), which builds the escaped copy a byte
+;; at a time
+;; INTENT-7: the same set as before (220 bytes), reordered: s/raw-scan-set
+;; tries a set from its last byte back, so the commonest bytes of table text
+;; -- lower-case letters, space, digits, capitals -- now come last (they came
+;; after the 128 bytes of 128-255, about 130 comparisons a byte)
+intent/table-safe: mk-string [
+    33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 58 60 61 62 63 64 91 93 94
+    95 96 123 125 126 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144 145 146
+    147 148 149 150 151 152 153 154 155 156 157 158 159 160 161 162 163 164 165 166 167 168 169 170
+    171 172 173 174 175 176 177 178 179 180 181 182 183 184 185 186 187 188 189 190 191 192 193 194
+    195 196 197 198 199 200 201 202 203 204 205 206 207 208 209 210 211 212 213 214 215 216 217 218
+    219 220 221 222 223 224 225 226 227 228 229 230 231 232 233 234 235 236 237 238 239 240 241 242
+    243 244 245 246 247 248 249 250 251 252 253 254 255 65 66 67 68 69 70 71 72 73 74 75
+    76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 48 49 50 51 52 53 54 55 56
+    57 32 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118
+    119 120 121 122
+]
+intent/table-escape: func [v] [
+    either = s/scan-set v 0 intent/table-safe s/length v [ v ] [ table/escape v ]
+]
+intent/table-encode: func [cells] [ intent/table-join cells 0 ]
+intent/table-join: func [cells i] [
+    either < + i 1 block-len cells [
+        s/+ intent/table-escape block-at cells i s/+ "|" intent/table-join cells + i 1
+    ] [ either < i block-len cells [ intent/table-escape block-at cells i ] [ "" ] ]
+]
+;; cells as strings (integers are written out); anything else is refused.
+;; A row may be a reduced block or a literal one from a layout (whose
+;; strings are still mk-string pairs): read as Intent reads string facets
+intent/table-cells: func [row] [
+    ;; INTENT-7: a row of strings only (a reduced block of texts, the usual
+    ;; case) is its own cells: the conversion below would copy them as they
+    ;; are.  (Short rows only, so the check stays a short call chain.)
+    either either <= block-len row 32 [ intent/all-strings? row 0 ] [ 0 ] [ row ] [
+        ctx: reduce [ block-len row row intent/blank block-len row 0 ]
+        intent/steps :intent/table-cell ctx 0
+        intent/copy-n block-at ctx 2 intent/blank block-at ctx 3 block-at ctx 3
+    ]
+]
+intent/all-strings?: func [row i] [
+    either < i block-len row [ either = intent/tag block-at row i 12 [ intent/all-strings? row + i 1 ] [ 0 ] ] [ 1 ]
+]
+;; ctx [ len row out count ]
+intent/table-cell: func [ctx j] [
+    row: block-at ctx 1
+    n: block-at ctx 3
+    vid/set-block! ctx 3 + n 1
+    either intent/str? row j [
+        vid/set-block! block-at ctx 2 n intent/str-at row j
+        + j intent/str-len row j
+    ] [
+        either intent/int? row j [
+            vid/set-block! block-at ctx 2 n s/from-int block-at row j
+            + j 1
+        ] [ raise create-sin 'intent 'cell-needs-text-or-integer block-at row j ]
+    ]
+]
+
+;; ---- selection ----
+;; select position k (1-based; 0: none): the host's selection, the focused
+;; cell, the row scrolled into view; no event
+intent/table-select: func [face k] [
+    id: intent/tid face
+    info: block-at face 22
+    vid/set-block! info 3 k
+    table/clear-selection id
+    either > k 0 [
+        table/select id - k 1
+        table/focus id - k 1 0
+        intent/table-reveal face k
+    ] [ table/focus id -1 0 ]
+    intent/after-select face
+]
+intent/table-reveal: func [face k] [
+    info: block-at face 22
+    top: block-at info 5
+    vis: intent/table-vis face
+    p: - k 1
+    d: either < p top [ - p top ] [ either >= p + top vis [ - p - + top vis 1 ] [ 0 ] ]
+    either = d 0 [ 0 ] [
+        table/scroll intent/tid face d
+        vid/set-block! info 5 + top d
+    ]
+]
+intent/table-value: func [face h] [
+    info: block-at face 22
+    either > block-at info 0 0 [ 0 ] [ raise create-sin 'intent 'table-has-no-key face/name h ]
+    k: block-at info 3
+    either = k 0 [ none ] [ intent/vec-get block-at info 1 - k 1 ]
+]
+intent/table-set-index: func [face k h] [
+    either either < k 0 [ 1 ] [ > k block-at block-at face 22 2 ] [ raise create-sin 'intent 'invalid-value face/name h ] [ 0 ]
+    intent/table-select face k
+]
+intent/table-set-value: func [face v h] [
+    info: block-at face 22
+    either > block-at info 0 0 [ 0 ] [ raise create-sin 'intent 'table-has-no-key face/name h ]
+    either = v none [ intent/table-select face 0 ] [
+        either = intent/tag v 12 [ 0 ] [ raise create-sin 'intent 'invalid-value face/name h ]
+        ctx: reduce [ block-at info 1 v -1 ]
+        intent/for-n :intent/table-find ctx block-at info 2
+        either < block-at ctx 2 0 [ raise create-sin 'intent 'invalid-value face/name h ] [
+            intent/table-select face + block-at ctx 2 1
+        ]
+    ]
+]
+;; ctx [ keys key found ]: the first row whose key is key
+intent/table-find: func [ctx i] [
+    either < block-at ctx 2 0 [
+        either s/= intent/vec-get block-at ctx 0 i block-at ctx 1 [ vid/set-block! ctx 2 i ] [ 0 ]
+    ] [ 0 ]
+]
+;; the user selected position k: select, then change with the value
+intent/table-pick: func [lay i k] [
+    face: intent/face lay i
+    either = block-at face 20 0 [ 0 ] [
+        either = k block-at block-at face 22 3 [ 0 ] [
+            intent/table-select face k
+            info: block-at face 22
+            intent/fire lay i 'change either either > block-at info 0 0 [ > k 0 ] [ 0 ] [
+                intent/vec-get block-at info 1 - k 1
+            ] [ none ]
+        ]
+    ]
+]
+;; table-click "tttt rrrr cccc": a row (a header click has row -1)
+intent/table-click: func [lay value] [
+    i: intent/tab-find lay parse-int value
+    either either < i 0 [ 1 ] [ = s/at value 5 45 ] [ 0 ] [
+        r: parse-int-at value 5 0
+        either < r block-at block-at intent/face lay i 22 2 [ intent/table-pick lay i + r 1 ] [ 0 ]
+        ;; a drop-down's list closes once a row is picked
+        either = block-at intent/face lay i 0 15 [ intent/dd-close lay ] [ 0 ]
+    ]
+]
+;; table-scroll "id start top": the wheel or the scrollbar moved the rows
+intent/table-scrolled: func [lay value] [
+    i: intent/tab-find lay parse-int value
+    either < i 0 [ 0 ] [
+        p: + s/scan-set value 0 "0123456789" 1
+        vid/set-block! block-at intent/face lay i 22 5 parse-int-at value p 0
+    ]
+]
+intent/table-focused?: func [lay] [
+    f: block-at lay 8
+    either < f 0 [ 0 ] [ either = block-at intent/face lay f 0 12 [ 1 ] [ = block-at intent/face lay f 0 14 ] ]
+]
+;; Up, Down (SDL key codes), Page Up / Down, Home, End
+intent/table-key: func [lay k] [
+    f: block-at lay 8
+    info: block-at intent/face lay f 22
+    n: block-at info 2
+    sel: block-at info 3
+    vis: intent/table-vis intent/face lay f
+    to: either = k 1073741906 [ - sel 1 ] [
+        either = k 1073741905 [ + sel 1 ] [
+        either = k 1021 [ - sel vis ] [
+        either = k 1022 [ + sel vis ] [
+        either = k 1003 [ 1 ] [
+        either = k 1004 [ n ] [ -1 ] ] ] ] ] ]
+    either either < to 0 [ 1 ] [ = n 0 ] [ 0 ] [
+        intent/table-pick lay f intent/max-of 1 either > to n [ n ] [ to ]
+    ]
+]
+;; disabled: muted text and accent (the host table's theme), no selection
+intent/table-enable: func [face on] [
+    either = block-at face 0 15 [ intent/dd-enable face on ] [ 0 ]
+    theme: block-at block-at face 2 either = block-at face 0 15 [ 4 ] [ 2 ]
+    either on [ vid/table-theme theme intent/tid face ] [
+        table/send s/+ "theme " s/+ s/from-int intent/tid face
+            s/+ vid/rgba theme 5 s/+ vid/rgba theme 49 s/+ vid/rgba theme 37 s/+ vid/rgba theme 93
+            s/+ vid/rgba theme 125 s/+ vid/rgba theme 125 s/+ vid/rgba theme 49 " 1"
+    ]
+]
+]
+
+;; ---- INTENT-4B-2: text editing --------------------------------------------------
+;; Every field is editable through the one editing core (edit_core.glon,
+;; also GUI-4's) and vid_edit.glon: caret, Left / Right / Home / End,
+;; Shift+arrows selection, Backspace / Delete, Ctrl+A / C / X / V, UTF-8.
+;;   area W H ["text"]  a multi-line field, W character units by H lines
+;;                      (Enter: a newline; Up / Down by line).  Face kind 13;
+;;                      its value is its text, as a field's.
+;;   password           (after a field) shown as bullets; its value is the
+;;                      real text; never copied or cut, never followed
+;;                      (cannot-follow-a-password); face/text is the mask.
+;;   read-only          (after a field or area) the caret, selection and copy
+;;                      work; typing, pasting, Backspace and Delete do not.
+;; A programmatic value (face/set-value, form/load, follow) puts the caret at
+;; its end and fires nothing, as before.
+do [
+intent/line-h: 22
+intent/w-area: func [c spec i] [
+    either either intent/int? spec i [ intent/int? spec + i 1 ] [ 0 ] [ 0 ] [ raise create-sin 'intent 'area-needs-size i ]
+    n: block-at spec i
+    lines: block-at spec + i 1
+    i: + i 2
+    s: ""
+    either intent/str? spec i [ s: intent/str-at spec i  i: + i intent/str-len spec i ] [ 0 ]
+    either either > n 0 [ > lines 0 ] [ 0 ] [ 0 ] [ raise create-sin 'intent 'area-needs-size i ]
+    theme: block-at c 25
+    w: + * n intent/unit theme 16
+    h: + * lines intent/line-h 12
+    intent/place c w h
+    st: vid/area theme block-at c 1 block-at c 11 block-at c 12 w h s
+    hook: func [nw nh] [ vid/area/size st nw nh ]
+    intent/add-face c 13 st 0 w h reduce [ 1 7 reduce [ block-at st 1 :hook ] 0 h -1 ]
+    i
+]
+;; the field just added: a password / read-only
+intent/text-face: func [c w kinds] [
+    k: block-at c 13
+    either < k 0 [ raise create-sin 'intent 'option-needs-a-face w ] [ 0 ]
+    face: intent/face block-at c 0 k
+    either >= intent/index-of kinds block-at face 0 0 [ 0 ] [ raise create-sin 'intent 'option-needs-a-field w ]
+    face
+]
+intent/o-password: func [c] [
+    face: intent/text-face c 'password [ 2 ]
+    st: block-at face 2
+    vid/set-block! block-at st 8 2 1
+    vid/edit/show st 0
+]
+intent/o-read-only: func [c] [
+    face: intent/text-face c 'read-only [ 2 13 ]
+    vid/set-block! block-at face 2 4 1
+]
+intent/password?: func [face] [
+    either = block-at face 0 2 [ = vid/edit/mode block-at face 2 1 ] [ 0 ]
+]
+]
+
+;; ---- INTENT-4B-3: list and drop-down ---------------------------------------------
+;; Both are rows like a table's (rows R, face/set-rows / add-rows, key K: the
+;; value), shown by one column of them:
+;;   display L (after a list or drop-down) the column shown; default 1
+;;   list W N  N rows visible, a column W character units wide; no header
+;;             (face kind 14; the host's table)
+;;   drop-down W [N]   a button showing the selected row's label; a click,
+;;             Space or Enter opens a list of N rows (default 8) below it
+;;             (face kind 15).  While it has the focus, Up / Down / Home /
+;;             End select (open or not); Enter, Space and Escape close the
+;;             list, as do a click elsewhere, the wheel and Tab.
+;; value: the key (refused without key: table-has-no-key, as a table);
+;; text: the label (none selected: ""); index: 1-based position.  Labels may
+;; repeat; keys select the first match.  The labels and keys are kept, once,
+;; for the synchronous accessors; the host keeps only the label it shows.
+;; A drop-down's list is the host table made with it: when it opens it moves
+;; to the end of the layout's content (so it draws over what follows and is
+;; not clipped by a panel or a tab page) under the button, placed from View's
+;; answer to "where is the button" (view/get 4, Intent's query 7103).
+do [
+intent/content: 0
+intent/dd-open-i: -1
+intent/dd-query: 7103
+intent/o-display: func [c spec i] [
+    k: block-at c 13
+    either < k 0 [ raise create-sin 'intent 'option-needs-a-face 'display ] [ 0 ]
+    face: intent/face block-at c 0 k
+    either either = block-at face 0 14 [ 1 ] [ = block-at face 0 15 ] [ 0 ] [ raise create-sin 'intent 'display-needs-a-list block-at face 1 ]
+    either intent/int? spec i [ 0 ] [ raise create-sin 'intent 'display-needs-a-column i ]
+    col: block-at spec i
+    either < col 1 [ raise create-sin 'intent 'no-such-column col ] [ 0 ]
+    vid/set-block! block-at face 22 7 col
+    + i 1
+]
+;; a header-less one-column host table (a list, or a drop-down's list)
+intent/list-table: func [theme parent x y w h] [
+    st: vid/table theme parent x y w h table/cols-encode reduce [ reduce [ "" - w 14 0 ] ] ""
+    table/send s/+ "header " s/+ s/from-int block-at st 1 " 0"
+    st
+]
+intent/w-list: func [c spec i] [
+    n: 20
+    either intent/int? spec i [ n: block-at spec i  i: + i 1 ] [ 0 ]
+    nr: 6
+    either intent/int? spec i [ nr: block-at spec i  i: + i 1 ] [ 0 ]
+    either either > n 0 [ > nr 0 ] [ 0 ] [ 0 ] [ raise create-sin 'intent 'list-needs-a-size i ]
+    theme: block-at c 25
+    w: + + * n intent/unit theme 16 14
+    h: + * nr intent/table-row-h 2
+    intent/place c w h
+    st: intent/list-table theme block-at c 1 block-at c 11 block-at c 12 w h
+    k: intent/add-face c 14 st 0 w h reduce [ 0 0 block-at st 1 0 h -1 ]
+    vid/set-block! intent/face block-at c 0 k 22 reduce [ 0 0 0 0 nr 0 0 1 intent/blank 64 block-at st 1 ]
+    vid/set-block! intent/face block-at c 0 k 19 1
+    i
+]
+intent/w-drop-down: func [c spec i] [
+    n: 20
+    either intent/int? spec i [ n: block-at spec i  i: + i 1 ] [ 0 ]
+    nr: 8
+    either intent/int? spec i [ nr: block-at spec i  i: + i 1 ] [ 0 ]
+    either either > n 0 [ > nr 0 ] [ 0 ] [ 0 ] [ raise create-sin 'intent 'drop-down-needs-a-size i ]
+    theme: block-at c 25
+    w: + * n intent/unit theme 40
+    intent/place c w 30
+    st: vid/button theme block-at c 1 block-at c 11 block-at c 12 w 30 ""
+    ;; the arrow at its right end
+    vid/text-node theme block-at st 1 - w 24 0 20 30 "▾" block-at theme 69 29
+    ;; its list: made now (it keeps the rows), hidden, out of the Tab order
+    lt: intent/list-table theme block-at c 1 block-at c 11 + block-at c 12 30 w + * nr intent/table-row-h 2
+    view/flags block-at lt 1 0 1 0 1
+    k: intent/add-face c 15 st 0 w 30 reduce [ 0 4 st 0 30 -1 ]
+    vid/set-block! intent/face block-at c 0 k 22 reduce [ 0 0 0 0 nr 0 0 1 intent/blank 64 block-at lt 1 ]
+    vid/set-block! intent/face block-at c 0 k 19 1
+    i
+]
+;; the label of the selected row (none: ""); a table's text is its key
+intent/tab-text: func [face h] [
+    info: block-at face 22
+    either > block-at info 7 0 [
+        k: block-at info 3
+        either = k 0 [ "" ] [ intent/vec-get block-at info 8 - k 1 ]
+    ] [ intent/table-value face h ]
+]
+;; the text a widget shows, for followers of "text" (never raises)
+intent/shown-text: func [face] [
+    either intent/tab? block-at face 0 [
+        either either > block-at block-at face 22 7 0 [ 1 ] [ > block-at block-at face 22 0 0 ] [
+            intent/text-of intent/tab-text face 0
+        ] [ "" ]
+    ] [ intent/text-of intent/text-of-face face ]
+]
+;; after a selection changed: a drop-down's button shows the label
+intent/after-select: func [face] [
+    either = block-at face 0 15 [ view/text block-at block-at face 2 3 intent/tab-text face 0 ] [ 0 ]
+]
+;; the face whose host table is tid (a table's, list's or drop-down's)
+intent/tab-find: func [lay tid] [
+    ctx: reduce [ block-at lay 3 lay tid -1 ]
+    intent/steps :intent/tab-find-at ctx 0
+    block-at ctx 3
+]
+intent/tab-find-at: func [ctx k] [
+    face: intent/face block-at ctx 1 k
+    either intent/tab? block-at face 0 [ either = intent/tid face block-at ctx 2 [ vid/set-block! ctx 3 k ] [ 0 ] ] [ 0 ]
+    + k 1
+]
+;; INTENT-4B-3: a programmatic change (face/set-value, set-index, clear,
+;; set-rows; so form/load and form/clear) shows in the widget's followers too,
+;; as a user's change does -- without an event: no handler runs, and a
+;; follower updated by its binding still passes nothing on (no chains)
+intent/refresh: func [h] [
+    lay: block-at h 1
+    face: intent/face lay block-at h 2
+    fl: block-at face 25
+    either = fl 0 [ 0 ] [
+        intent/steps :intent/notify-at reduce [ block-at fl 0 fl lay "value" intent/shown-value face ] 0
+        intent/steps :intent/notify-at reduce [ block-at fl 0 fl lay "text" intent/shown-text face ] 0
+    ]
+]
+;; a widget's value as its followers show it (never raises)
+intent/shown-value: func [face] [
+    either intent/tab? block-at face 0 [
+        either > block-at block-at face 22 0 0 [ intent/text-of intent/table-value face 0 ] [ "" ]
+    ] [ intent/text-of intent/value-of face ]
+]
+intent/dd-enable: func [face on] [
+    vid/button/set-enabled block-at face 2 on
+    either on [ 0 ] [ intent/dd-close-face face ]
+]
+
+;; ---- the drop-down's list ----
+intent/dd-focused?: func [lay] [
+    f: block-at lay 8
+    either < f 0 [ 0 ] [ = block-at intent/face lay f 0 15 ]
+]
+intent/dd-toggle: func [lay i] [
+    either = intent/dd-open-i i [ intent/dd-close lay ] [ intent/dd-open lay i ]
+]
+;; open: ask View where the button is; the answer places and shows the list
+intent/dd-open: func [lay i] [
+    intent/dd-close lay
+    face: intent/face lay i
+    intent/dd-open-i: i
+    view/reparent intent/tid face intent/content
+    view/get block-at face 8 4 intent/dd-query
+]
+;; "7103|4|vp x y w h": the button in the content's coordinates
+intent/dd-place: func [lay value] [
+    i: intent/dd-open-i
+    either < i 0 [ 0 ] [
+        q: lay/ints value + lay/bar value + lay/bar value 0 1 1 5
+        x: block-at block-at q 1 0
+        y: block-at block-at block-at q 1 1 0
+        h: block-at block-at block-at block-at block-at q 1 1 1 1 0
+        face: intent/face lay i
+        info: block-at face 22
+        lh: + * intent/max-of 1 either < block-at info 2 block-at info 4 [ block-at info 2 ] [ block-at info 4 ] intent/table-row-h 2
+        view/rect intent/tid face x + y h block-at face 6 lh
+        view/flags intent/tid face 1 1 0 1
+        intent/table-reveal face intent/max-of 1 block-at info 3
+    ]
+]
+intent/dd-close: func [lay] [
+    i: intent/dd-open-i
+    either < i 0 [ 0 ] [ intent/dd-close-face intent/face lay i ]
+]
+intent/dd-close-face: func [face] [
+    view/flags intent/tid face 0 1 0 1
+    intent/dd-open-i: -1
+]
+;; any click that is not the open list's, and a blur of its button, close it
+intent/dd-maybe-close: func [lay ev value] [
+    i: intent/dd-open-i
+    either < i 0 [ 0 ] [
+        face: intent/face lay i
+        either = ev 'view-pointer-down [
+            either either = parse-int value intent/tid face [ 1 ] [ = parse-int value block-at face 8 ] [ 0 ] [ intent/dd-close lay ]
+        ] [
+            either = ev 'view-blur [
+                either = parse-int value block-at face 8 [ intent/dd-close lay ] [ 0 ]
+            ] [ 0 ]
+        ]
+    ]
+]
+;; keys on a focused drop-down: Up / Down / Home / End select, open or not;
+;; Space and Enter open or close its list; Escape closes it
+intent/dd-key: func [lay k] [
+    f: block-at lay 8
+    face: intent/face lay f
+    info: block-at face 22
+    n: block-at info 2
+    sel: block-at info 3
+    either either = k 32 [ 1 ] [ = k 13 ] [ intent/dd-toggle lay f ] [
+    either = k 27 [ intent/dd-close lay ] [
+        to: either = k 1073741906 [ - sel 1 ] [
+            either = k 1073741905 [ + sel 1 ] [
+            either = k 1003 [ 1 ] [
+            either = k 1004 [ n ] [ -1 ] ] ] ]
+        either either < to 1 [ 1 ] [ > to n ] [ 0 ] [ intent/table-pick lay f to ]
+    ] ]
+]
+]
+
+;; ==== INTENT-4B-4: layout controls (INTENT-4B-STAGE4.md) ====================
+;; Every option here adjusts the existing placement (the cursor) or the face
+;; just added; the results are the same vid_layout rules as before.  Hidden
+;; widgets keep their place: nothing here moves a widget when another is
+;; hidden or shown.
+;;   space N      the gap between items of this container from here on
+;;   margin N     this container's inner margin on all four sides (before
+;;                its first item)
+;;   pad N        an extra gap of N px at the cursor, in the flow direction
+;;   left center right   a text widget's text within its box
+;;   top middle bottom   the face's place in the height of its across row
+;;   fill-height  the face takes the spare height of its container (a down
+;;                run); faces below it move down with it
+do [
+intent/keyword5: func [c spec i w] [
+    either = w 'space [ vid/set-block! c 23 intent/pixels spec + i 1 w  + i 2 ] [
+    either = w 'margin [ intent/o-margin c spec + i 1 ] [
+    either = w 'pad [ intent/o-pad c intent/pixels spec + i 1 w  + i 2 ] [
+    either = w 'left [ intent/o-align c 0 w  + i 1 ] [
+    either = w 'center [ intent/o-align c 1 w  + i 1 ] [
+    either = w 'right [ intent/o-align c 2 w  + i 1 ] [
+    either = w 'top [ intent/o-face-slot c 27 0 w  + i 1 ] [
+    either = w 'middle [ intent/o-face-slot c 27 1 w  + i 1 ] [
+    either = w 'bottom [ intent/o-face-slot c 27 2 w  + i 1 ] [
+    either = w 'fill-height [ intent/o-fill c w  + i 1 ] [
+    either = w 'theme [ intent/o-theme spec + i 1 ] [
+    either = w 'image [ intent/w-image c spec + i 1 ] [
+        e: intent/style-of block-at c 0 w
+        either = e none [ intent/option c spec i w ] [ intent/w-style c spec + i 1 e w ]
+    ] ] ] ] ] ] ] ] ] ] ] ]
+]
+;; a size in pixels after w: an integer, 0 or more
+intent/pixels: func [spec i w] [
+    either either intent/int? spec i [ >= block-at spec i 0 ] [ 0 ] [ block-at spec i ] [
+        raise create-sin 'intent 'needs-pixels w
+    ]
+]
+;; margin N: only before the container's first item (the cursor starts there)
+intent/o-margin: func [c spec i] [
+    m: intent/pixels spec i 'margin
+    either < block-at c 13 0 [ 0 ] [ raise create-sin 'intent 'margin-must-come-first m ]
+    vid/set-block! c 3 m
+    vid/set-block! c 4 m
+    vid/set-block! c 6 m
+    vid/set-block! c 7 m
+    vid/set-block! c 8 m
+    vid/set-block! c 9 m
+    vid/set-block! c 16 m
+    vid/set-block! c 24 m
+    + i 1
+]
+intent/o-pad: func [c n] [
+    either = block-at c 2 1 [ vid/set-block! c 3 + block-at c 3 n ] [ vid/set-block! c 4 + block-at c 4 n ]
+]
+;; the face just added (an option needs one)
+intent/last-face: func [c w] [
+    k: block-at c 13
+    either < k 0 [ raise create-sin 'intent 'option-needs-a-face w ] [ intent/face block-at c 0 k ]
+]
+intent/o-face-slot: func [c slot v w] [ vid/set-block! intent/last-face c w slot v ]
+;; text alignment: View's text-align on the text node (labels, text, headings)
+intent/o-align: func [c a w] [
+    face: intent/last-face c w
+    either = block-at face 0 1 [ view/text-align block-at face 8 a ] [ raise create-sin 'intent 'align-needs-a-text-widget w ]
+]
+intent/o-fill: func [c w] [
+    face: intent/last-face c w
+    either = block-at c 2 1 [ raise create-sin 'intent 'fill-height-needs-a-down-run w ] [ 0 ]
+    vid/set-block! face 28 1
+]
+
+;; ---- top / middle / bottom: at the end of an across row ----------------------
+intent/seg-valign: func [c i] [
+    face: intent/face block-at c 0 i
+    a: block-at face 27
+    either either intent/mine? c face [ > a 0 ] [ 0 ] [
+        d: / * a - block-at c 5 block-at face 7 2
+        either > d 0 [ intent/shift-y face d ] [ 0 ]
+    ] [ 0 ]
+]
+;; move a face down by d: its rule's offset, or (no rule) its nodes, once
+intent/shift-y: func [face d] [
+    vid/set-block! face 5 + block-at face 5 d
+    r: block-at face 9
+    either < r 0 [
+        lay/place block-at face 13 block-at face 12 block-at face 4 + block-at face 5 block-at face 14
+            block-at face 6 block-at face 15
+    ] [
+        rec: block-at lay/rules r
+        vid/set-block! rec 5 + block-at rec 5 d
+    ]
+]
+
+;; ---- fill-height: at the end of a container -----------------------------------
+;; With n fill faces and the content's height S (its lowest bottom plus the
+;; bottom margin), the container's spare height E = ph - S (never negative:
+;; a container is never shorter than its content) is shared: each fill face
+;; grows by E / n, and a face moves down by k E / n, k = the fill faces
+;; wholly above it.  A face beside a fill face stays, so nothing overlaps.
+;; Scratch: cursor slot 18 n, 19 S
+intent/vfill: func [c] [
+    vid/set-block! c 18 0
+    intent/range c :intent/vf-count 0
+    either = block-at c 18 0 [ 0 ] [
+        vid/set-block! c 19 + block-at c 9 block-at c 24
+        intent/range c :intent/vf-face 0
+    ]
+]
+intent/vf-count: func [c i] [
+    face: intent/face block-at c 0 i
+    either either intent/mine? c face [ = block-at face 28 1 ] [ 0 ] [ vid/set-block! c 18 + block-at c 18 1 ] [ 0 ]
+]
+intent/vf-face: func [c i] [
+    face: intent/face block-at c 0 i
+    either intent/mine? c face [
+        ctx: reduce [ block-at c 0 block-at face 5 0 c ]
+        intent/range ctx :intent/vf-above 0
+        k: block-at ctx 2
+        n: block-at c 18
+        sh: block-at c 19
+        fill: = block-at face 28 1
+        either either > k 0 [ 1 ] [ fill ] [
+            intent/set-vrule c face - + block-at face 5 block-at face 14 / * k sh n  / * k 1000 n
+                either fill [ - block-at face 15 / sh n ] [ block-at face 15 ]
+                either fill [ / 1000 n ] [ 0 ]
+        ] [ 0 ]
+    ] [ 0 ]
+]
+;; ctx [ lay top k c ]: count the fill faces whose bottom is at or above top
+intent/vf-above: func [ctx j] [
+    f: intent/face block-at ctx 0 j
+    either either intent/mine? block-at ctx 3 f [ = block-at f 28 1 ] [ 0 ] [
+        either > + block-at f 5 block-at f 7 block-at ctx 1 [ 0 ] [ vid/set-block! ctx 2 + block-at ctx 2 1 ]
+    ] [ 0 ]
+]
+;; the face's vertical rule (a fixed horizontal one is made if it has none);
+;; never shorter than its preferred height
+intent/set-vrule: func [c face y0 fy h0 fh] [
+    either < block-at face 9 0 [ intent/set-rule c face block-at face 4 0 block-at face 6 0 ] [ 0 ]
+    rec: block-at lay/rules block-at face 9
+    vid/set-block! rec 5 y0
+    vid/set-block! rec 6 fy
+    vid/set-block! rec 9 h0
+    vid/set-block! rec 10 fh
+    vid/set-block! rec 12 block-at face 15
+]
+;; the rows a table or list shows now: more than it was made with when
+;; fill-height made it taller (keys and reveal scroll by what is visible)
+intent/table-vis: func [face] [
+    info: block-at face 22
+    r: block-at face 9
+    either either < r 0 [ 1 ] [ = block-at face 0 15 ] [ block-at info 4 ] [
+        hh: either = block-at face 0 12 [ intent/table-head-h ] [ 0 ]
+        intent/max-of block-at info 4 / - - lay/box-h r hh 2 intent/table-row-h
+    ]
+]
+;; ---- looks and images (INTENT-4B-5A; vid_look.glon) --------------------------
+;; a style's look (its properties block), or 0
+intent/look-of: func [lay w] [
+    st: either = lay 0 [ 0 ] [ block-at lay 20 ]
+    k: either = st 0 [ -1 ] [ intent/index-of block-at st 1 w ]
+    either < k 0 [ 0 ] [ block-at block-at st 3 k ]
+]
+;; the style's theme derived from base: made once per style and base theme
+intent/derived: func [lay w base lk] [
+    st: block-at lay 20
+    k: intent/index-of block-at st 1 w
+    cache: block-at block-at st 4 k
+    either either = cache 0 [ 0 ] [ = block-at cache 0 base ] [ block-at cache 1 ] [
+        t: vid/look/derive base lk
+        vid/set-block! block-at st 4 k reduce [ base t ]
+        t
+    ]
+]
+;; two property blocks, one after the other (64 items at most)
+intent/concat: func [a b] [
+    na: block-len a
+    nb: block-len b
+    either > + na nb 64 [ raise create-sin 'intent 'look-too-long + na nb ] [ 0 ]
+    r: intent/blank + na nb
+    intent/copy-n a r na
+    intent/steps :intent/copy-from reduce [ nb b r 0 na ] 0
+    r
+]
+;; the face just made with a look: radius, border width, font style; a
+;; button's or field's border width again on every resize
+intent/look-face: func [c] [
+    face: intent/face block-at c 0 block-at c 13
+    k: block-at face 0
+    st: block-at face 2
+    either either = k 1 [ 1 ] [ either = k 2 [ 1 ] [ either = k 3 [ 1 ] [ either = k 10 [ 1 ] [ = k 13 ] ] ] ] [
+        vid/look/apply st block-at face 6 block-at face 7
+    ] [ 0 ]
+    lk: block-at face 12
+    either either either = k 2 [ 1 ] [ = k 3 ] [ either = lk 4 [ 1 ] [ = lk 6 ] ] [ 0 ] [
+        bw: block-at block-at st either = k 3 [ 4 ] [ 6 ] 135
+        either = bw 1 [ 0 ] [
+            hook: either = k 3 [ func [nw nh] [ lay/button-size st nw nh  vid/look/size st nw nh ] ] [
+                func [nw nh] [ lay/field-size st nw nh  vid/look/size st nw nh ] ]
+            vid/set-block! face 12 7
+            vid/set-block! face 13 reduce [ block-at st 1 :hook ]
+        ]
+    ] [ 0 ]
+]
+;; the file after an icon word at i, or ""
+intent/icon-of: func [spec i] [
+    either either < + i 1 block-len spec [ = block-at spec i 'icon ] [ 0 ] [
+        either intent/str? spec + i 1 [ intent/str-at spec + i 1 ] [ raise create-sin 'intent 'icon-needs-a-file i ]
+    ] [ "" ]
+]
+;; an image node in the button's group: not pickable, so a press on it is the
+;; button's; placed again (with the caption) whenever the button is resized
+intent/icon-button: func [st file cap w h] [
+    node: view/next-id
+    view/create node block-at st 1 view/type-image 0 0 10 10 1 1 0 0
+    vid/fg-color block-at st 4 node 29
+    view/font node block-at block-at st 4 70
+    view/image node file
+    intent/icon-place st node cap w h
+    hook: func [nw nh] [ lay/button-size st nw nh  vid/look/size st nw nh  intent/icon-place st node cap nw nh ]
+    reduce [ 0 7 reduce [ block-at st 1 :hook ] 0 h -1 ]
+]
+intent/icon-place: func [st node cap w h] [
+    sz: intent/max-of 8 - h 10
+    either cap [
+        view/rect node 8 5 sz sz
+        f: + block-at block-at st 4 69 6
+        view/rect block-at st 3 + 12 sz / - h f 2 - w + 20 sz f
+    ] [ view/rect node / - w sz 2 5 sz sz ]
+]
+;; image "file" W H: a PNG or JPEG shown in W x H, scaled to fit with its
+;; aspect ratio kept; fixed unless stretch / fill-height follow.  A file
+;; that cannot be shown leaves a placeholder that says why
+intent/w-image: func [c spec i] [
+    either intent/str? spec i [ 0 ] [ raise create-sin 'intent 'image-needs-a-file i ]
+    file: intent/str-at spec i
+    i: + i intent/str-len spec i
+    either either intent/int? spec i [ intent/int? spec + i 1 ] [ 0 ] [ 0 ] [ raise create-sin 'intent 'image-needs-a-size i ]
+    w: block-at spec i
+    h: block-at spec + i 1
+    theme: block-at c 25
+    intent/place c w h
+    node: view/next-id
+    view/create node block-at c 1 view/type-image block-at c 11 block-at c 12 w h 1 1 0 0
+    vid/fg-color theme node 29
+    view/font node block-at theme 70
+    view/image node file
+    n: intent/add-face c 16 node 0 w h reduce [ 0 0 node 0 h -1 ]
+    vid/set-block! intent/face block-at c 0 n 19 file
+    + i 2
+]
+
+;; ---- themes (INTENT-4B-5A) --------------------------------------------------
+;; theme NAME, the first item of a layout or a panel / form block: light, dark,
+;; or a name given to intent/add-theme (a block in theme_lib.glon's slot map).  It is read
+;; before the container is made (intent/block-theme); here only checked
+intent/o-theme: func [spec i] [
+    either = i 1 [ 0 ] [ raise create-sin 'intent 'theme-must-come-first i ]
+    either < i block-len spec [ intent/resolve-theme block-at spec i ] [ raise create-sin 'intent 'theme-needs-a-name i ]
+    + i 1
+]
+intent/theme-len: 140
+;; the theme names a layout may use: [ count names themes ]; light and dark,
+;; and up to 6 an application adds (intent/add-theme), so a misspelt name is a
+;; clean error, never a lookup of an undefined word
+intent/themes: reduce [ 2 reduce [ 'light 'dark 0 0 0 0 0 0 ] reduce [ theme/light theme/dark 0 0 0 0 0 0 ] ]
+intent/add-theme: func [w t] [
+    either either = intent/tag t 6 [ >= block-len t intent/theme-len ] [ 0 ] [ 0 ] [ raise create-sin 'intent 'not-a-theme w ]
+    k: intent/index-of block-at intent/themes 1 w
+    n: block-at intent/themes 0
+    either < k 0 [
+        either < n 8 [ 0 ] [ raise create-sin 'intent 'too-many-themes w ]
+        vid/set-block! block-at intent/themes 1 n w
+        vid/set-block! block-at intent/themes 2 n t
+        vid/set-block! intent/themes 0 + n 1
+    ] [ vid/set-block! block-at intent/themes 2 k t ]
+    w
+]
+intent/resolve-theme: func [w] [
+    k: either = intent/tag w 2 [ intent/index-of block-at intent/themes 1 w ] [ -1 ]
+    either < k 0 [ raise create-sin 'intent 'unknown-theme w ] [ block-at block-at intent/themes 2 k ]
+]
+intent/block-theme: func [b default] [
+    either either > block-len b 1 [ = block-at b 0 'theme ] [ 0 ] [ intent/resolve-theme block-at b 1 ] [ default ]
+]
+;; the application's choice of theme (light, dark or a theme block) for lay;
+;; it wins over the layout's own.  A shown layout is rebuilt in it, its form
+;; values carried over (focus, carets and programmatic rows are not)
+intent/use-theme: func [lay t] [
+    vid/set-block! lay 21 either = intent/tag t 2 [ intent/resolve-theme t ] [ t ]
+    either = lay intent/primary [
+        rec: form/collect form/current
+        intent/show lay
+        form/load form/current rec
+    ] [ 0 ]
+    lay
+]
+;; a face's live height: its rule's box, or its preferred height
+intent/live-h: func [lay i] [
+    face: intent/face lay i
+    either < block-at face 9 0 [ block-at face 7 ] [ lay/box-h block-at face 9 ]
+]
+]
+
+;; an Intent application needs no handler of its own
+do-event: [
+    intent/event current-event current-value
+    widget/flush
+]
+]

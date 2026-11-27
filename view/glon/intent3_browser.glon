@@ -1,0 +1,37 @@
+;; view/glon/intent3_browser.glon -- the browser demo in INTENT-3: a real
+;; browser engine (webview: WebKitGTK) beside ordinary Glon controls, with
+;; no application functions.
+;;
+;;   make -C view browser3-demo
+;;
+;; command: what a button (or Enter in a field) tells another widget;
+;; follow: a widget showing another's value or event, one way.
+;; See INTENT-3-DESIGN.md.  (FOREIGN-2's version: intent_browser.glon.)
+[
+bdemo/home: "./glon/browser/demo.html"
+bdemo/form: layout [
+    across
+    panel [
+        text "Browser controls"
+        address: field 30 bdemo/home follow browser url
+            command browser "navigate" address
+        across
+        button "Go"     command browser "navigate" address
+        button "Back"   command browser "back"
+        button "Fwd"    command browser "forward"
+        return
+        button "Reload" command browser "reload"
+        button "Home"   command browser "navigate" bdemo/home
+        return
+        status: label 30 "Ready" follow browser status
+        return
+        title: label 30 "" follow browser title
+        return
+        note: field 30 "a Glon field"
+    ]
+    browser: webview 640 480 bdemo/home stretch
+    return
+    after: field 30 "a Glon field below the browser"
+]
+view bdemo/form
+]

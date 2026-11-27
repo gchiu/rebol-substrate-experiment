@@ -1,0 +1,47 @@
+;; view/glon/intent4_demo.glon -- INTENT-4B: machine VID widgets declared in
+;; Intent (check, heading, tabs, table, disabled / hidden), with no
+;; machine coordinates.
+;;
+;;   make -C view intent4-demo
+;;
+;; Try: click or Tab to a check and press Space; the status line follows.
+;; "Newsletter" starts disabled; "Enable newsletter", beside it, turns it on.  Click a
+;; tab, or focus one and use Left / Right.  On "Village", click a row or use
+;; Up / Down / Home / End: "village is" follows the selected row's code.
+[
+demo4/status-of: func [self event] [ face/set-text form/field form/current 'status "changed" ]
+demo4/enable: func [self event] [
+    face/set-enabled form/field form/current 'news 1
+    face/set-text form/field form/current 'status "newsletter enabled"
+]
+demo4/villages: reduce [
+    reduce [ "APW" "Apia" "Upolu" ]
+    reduce [ "SLL" "Salelologa" "Savai'i" ]
+    reduce [ "FGI" "Faleolo" "Upolu" ]
+    reduce [ "MNO" "Manono-uta" "Manono" ]
+    reduce [ "ASU" "Asau" "Savai'i" ]
+]
+demo4/form: layout [
+    heading "Membership"
+    pages: tabs [
+        "Member" [
+            name: field 24 "Ann"
+            agree: check "I agree to the rules" on-change demo4/status-of
+            across
+            news: check "Newsletter" disabled
+            enable-news: button "Enable newsletter" on-click demo4/enable
+        ]
+        "Notes" [ notes: field 30 "" stretch ]
+        "Village" [
+            village: table [ "Code" 5 "Village" 14 "Island" 10 ] 4 key 1 rows demo4/villages
+            across
+            label "village is" label 6 "" follow village value
+        ]
+    ] stretch
+    across
+    label "agree is" shown: label 4 "0" follow agree value
+    return
+    status: label 30 "Ready"
+]
+view demo4/form
+]

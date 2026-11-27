@@ -1,0 +1,107 @@
+;; view/glon/intent_instances_demo.glon -- GLON-INST-2: several layout
+;; instances in one window.
+;;
+;;   make -C view instances-demo
+;;
+;; Layout A (md/search) finds and selects a member.  "Open details" opens a
+;; NEW instance of layout B (md/details-spec) for that member: open two and
+;; each has its own fields, its own unsaved edits and its own state.  "Back
+;; to search" switches to A and keeps B as it was; selecting the same member
+;; again and opening details makes another instance.  Save writes the member
+;; back and updates A's table while A is hidden (explicit targeting); Close
+;; tears the instance down and shows the instance shown before it.
+;;
+;; Every handler is written once and finds its instance from its own widget
+;; (face/layout self), never from intent/current.  The members are synthetic.
+[
+md/members: list/from reduce [
+    reduce [ "M00001" "Kwok Alice" "Petone" ]
+    reduce [ "M00002" "Fong Susan" "Porirua" ]
+    reduce [ "M00003" "Ng Henry" "Porirua" ]
+    reduce [ "M00004" "Fong Helen" "Wainuiomata" ]
+    reduce [ "M00005" "Ng Helen" "Wainuiomata" ]
+    reduce [ "M00006" "Chan Peter" "Karori" ]
+    reduce [ "M00007" "Lee Grace" "Newtown" ]
+    reduce [ "M00008" "Wong David" "Johnsonville" ]
+]
+md/rows: list/to-block md/members
+;; the members whose name starts with the query (or all), as table rows
+md/matching: func [q] [
+    list/to-block list/filter md/members func [m] [ s/starts-with? s/lower block-at m 1 q ]
+]
+md/index-of: func [id] [ list/find md/members func [m] [ s/= block-at m 0 id ] ]
+
+;; ---- layout A: search and selection -----------------------------------------------
+md/search-spec: [
+    heading "Find a member"
+    across
+    label 8 "Search" right   search: field 20 on-change md/search-changed
+    return
+    members: table [ "ID" 7 "Name" 16 "Village" 12 ] 8 key 1 rows md/rows
+    return
+    open: button "Open details" on-click md/open-details
+    status: label 40 ""
+]
+md/search-changed: func [self event] [
+    f: face/form self
+    face/set-rows form/field f 'members md/matching s/lower face/value self
+]
+;; a new instance of layout B for the selected member
+md/open-details: func [self event] [
+    a: face/form self
+    id: face/value form/field a 'members
+    either = id none [ face/set-text form/field a 'status "Select a member first." ] [
+        d: intent/open md/details-spec
+        f: intent/root-form d
+        m: list/at md/members md/index-of id
+        form/load f reduce [ 'id block-at m 0 'name block-at m 1 'village block-at m 2 ]
+        face/set-enabled form/field f 'id 0
+        ;; this instance's own state: which member, whether edited, and the
+        ;; layout to go back to
+        form/set-data f reduce [ id 0 face/layout self ]
+        face/set-text form/field a 'status s/+ "Opened " id
+    ]
+]
+
+;; ---- layout B: details and editing (one definition, any number of instances) -----
+md/details-spec: [
+    heading "Member details"
+    across
+    label 8 "ID" right        id: field 10
+    return
+    label 8 "Name" right      name: field 24 on-change md/edited
+    return
+    label 8 "Village" right   village: field 16 on-change md/edited
+    return
+    back: button "Back to search" on-click md/back
+    save: button "Save" on-click md/save
+    close: button "Close" on-click md/close-details
+    return
+    note: label 40 ""
+]
+;; [ member-id edited? search-layout ], kept in the instance's root form
+md/state: func [self] [ form/data intent/root-form face/layout self ]
+md/set-state: func [self st] [ form/set-data intent/root-form face/layout self st ]
+md/edited: func [self event] [
+    st: md/state self
+    either = st none [ 0 ] [
+        md/set-state self reduce [ block-at st 0 1 block-at st 2 ]
+        face/set-text form/field face/form self 'note "Unsaved changes."
+    ]
+]
+md/back: func [self event] [ intent/show-instance block-at md/state self 2 ]
+md/save: func [self event] [
+    f: face/form self
+    st: md/state self
+    list/put md/members md/index-of block-at st 0 reduce [ block-at st 0 face/value form/field f 'name face/value form/field f 'village ]
+    md/set-state self reduce [ block-at st 0 0 block-at st 2 ]
+    face/set-text form/field f 'note s/+ "Saved " block-at st 0
+    ;; the search layout is hidden: it is updated through its own handle
+    a: intent/root-form block-at st 2
+    face/set-rows form/field a 'members md/matching s/lower face/value form/field a 'search
+]
+md/close-details: func [self event] [ intent/close face/layout self ]
+
+md/search: layout md/search-spec
+view md/search
+]
