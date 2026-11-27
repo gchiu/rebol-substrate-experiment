@@ -577,6 +577,11 @@ language facilities speculatively.** Full specification: `docs/glon-shop-product
 - `docs/design/GLON-MASM-VOCABULARY-ACCELERATION-3.md` — MASM-3 profile,
   `s/slice2` variable-length worker, allocation/GC findings and streaming
   benchmarks; implementation and tests in `experiments/masm3/`.
+- `GLON-VIEW-CORE-V3.md` — 2026-11-27: STOPPED at the code-space gate. With
+  the checked `block-set!` in View's `core_words.glon` (42-cell `managed-ref?`),
+  the full Intent stack leaves 10 code cells (< 20 required); View not
+  imported. Options (desktop `CODE_CAP`, `R0S1_DS_RESERVE`, library masm
+  reduction) await a decision.
 - `GLON-VIEW-CORE-V2.md` — 2026-11-27, `integration/c2-view`: C2's
   two-argument search is `s/index-of` (the shared `s/find s i p` unchanged);
   `modules/strings.glon` and `file-replace.glon` as `s` members
