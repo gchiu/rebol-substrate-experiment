@@ -21,6 +21,39 @@
 ;; nested installer contexts (each <= 16 bindings); the global context keeps
 ;; only the users db handle and the dispatcher.
 [
+;; W1: the whole-file convenience API is capped at 1,024 bytes; stream the
+;; NDJSON store through the existing file API instead.  These are top-level so
+;; the nested installer activation contexts stay within their 16 bindings.
+gw/read-store-loop: func [h acc max success failure] [
+    io/read h 400
+        func [chunk] [
+            either = 0 s/length chunk [
+                io/close h func [x] [ success acc ] :failure
+            ] [
+                either > + s/length acc s/length chunk max [
+                    io/close h func [x] [ failure create-sin 'app 413 "store too large" ] :failure
+                ] [
+                    gw/read-store-loop h s/+ acc chunk max :success :failure
+                ]
+            ]
+        ]
+        func [e] [ io/close h func [x] [ failure e ] :failure ]
+]
+gw/read-store: func [path max success failure] [
+    io/open path 'read
+        func [h] [ gw/read-store-loop h "" max :success :failure ]
+        :failure
+]
+gw/save-store: func [path text] [
+    io/open path 'write
+        func [h] [
+            stream/write-all h text
+                func [x] [ io/close h func [y] [ none ] func [e] [ none ] ]
+                func [e] [ io/close h func [y] [ none ] func [e] [ none ] ]
+        ]
+        func [e] [ none ]
+]
+
 gw/users-db: none
 handle: none
 
@@ -31,7 +64,7 @@ app/install: func [] [
         gw/group: "general"
         gw/demo-author: "Glon Demo"
         gw/max-text: 1024
-        gw/max-store: 1024
+        gw/max-store: 16384
         gw/port: 8443
         gw/messages: none
         gw/next-id: 1
@@ -188,7 +221,7 @@ app/install: func [] [
                             gw/next-id: + id 1
                             gw/store-text: s/+ gw/store-text line
                             gw/ok-json request 201 json/encode msg
-                            file/write gw/path gw/store-text func [x] [ none ] func [e] [ none ]
+                            gw/save-store gw/path gw/store-text
                         ]
                     ]
                 ]
@@ -354,7 +387,7 @@ app/install: func [] [
                 ]
 
                 gw/start: func [] [
-                    file/read gw/path
+                    gw/read-store gw/path gw/max-store
                         func [text] [
                             loaded: gw/load-lines text 0 none 0
                             gw/messages: block-at loaded 0

@@ -1120,6 +1120,12 @@ w0-routes-test:
 	python3 tests/glon-worlds-w0/routes_task.py
 .PHONY: w0-routes-test
 
+w1-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,task MEM_PROFILE=server-https
+	tests/https-g1/make-cert.sh
+	python3 tests/glon-worlds-w1/messaging.py
+.PHONY: w1-test
+
 # ---- JSON vocabulary tests (ordinary Glon; no OpenSSL) ---------------------
 # The general JSON module and its full focused suite exceed the constrained
 # profile's 14,800-cell loader heap, so this test build uses the documented

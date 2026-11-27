@@ -137,36 +137,112 @@ wp/form-scan: func [body key pos] [
     ]
 ]
 
-wp/html-special?: func [b] [
-    either = b 38 [ 1 ] [
-        either = b 60 [ 1 ] [
-            either = b 62 [ 1 ] [
-                either = b 34 [ 1 ] [ either = b 39 [ 1 ] [ 0 ] ]
-            ]
-        ]
-    ]
+;; GLON-WORLDS-W1: bounded-stack HTML escaping.  The old implementation
+;; recursed once per scanned byte (wp/find-html-special) and once per escaped
+;; byte (wp/escape-html-loop), so a long task-mode message could exhaust the
+;; return stack.  This uses the same logarithmic `do`-driver as JSON J2: the
+;; loop body runs 2^k times at nesting depth k, so n scanned bytes or escapes
+;; cost O(log n) return-stack levels, not O(n).
+;;
+;; Escaping is unchanged: & -> &amp;  < -> &lt;  > -> &gt;  " -> &quot;
+;; ' -> &#39;.  Every other byte, including UTF-8, is copied verbatim.
+;; Bytes that need no escaping.  s/scan-set returns the first byte NOT in a
+;; set, so this set finds the next HTML-special byte directly.  It is data, not
+;; code: 251 bytes in the loader, no extra RAW scanner code.
+wp/html-safe-set: mk-string reduce [
+    0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+    16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31
+    32 33 35 36 37 40 41 42 43 44 45 46 47 48 49 50
+    51 52 53 54 55 56 57 58 59 61 63 64 65 66 67 68
+    69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84
+    85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100
+    101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116
+    117 118 119 120 121 122 123 124 125 126 127 128 129 130 131 132
+    133 134 135 136 137 138 139 140 141 142 143 144 145 146 147 148
+    149 150 151 152 153 154 155 156 157 158 159 160 161 162 163 164
+    165 166 167 168 169 170 171 172 173 174 175 176 177 178 179 180
+    181 182 183 184 185 186 187 188 189 190 191 192 193 194 195 196
+    197 198 199 200 201 202 203 204 205 206 207 208 209 210 211 212
+    213 214 215 216 217 218 219 220 221 222 223 224 225 226 227 228
+    229 230 231 232 233 234 235 236 237 238 239 240 241 242 243 244
+    245 246 247 248 249 250 251 252 253 254 255
 ]
-wp/find-html-special: func [s i] [
-    either >= i s/length s [ i ] [
-        either wp/html-special? s/at s i [ i ] [
-            wp/find-html-special s + i 1
-        ]
-    ]
+
+;; Loop state is global, as in JSON J2: a `do`-driver block re-entered many
+;; times must see stable bindings.  HTTP handlers never yield inside escaping,
+;; so the worker is not re-entrant but cannot be interleaved by another task.
+wp/esc-s: ""
+wp/esc-out: ""
+wp/esc-buf: ""
+wp/esc-pending: ""
+wp/esc-i: 0
+wp/esc-done: 0
+wp/esc-k: 0
+wp/esc-level: 0
+wp/esc-j: 0
+wp/esc-b: none
+wp/esc-piece: ""
+wp/esc-append: [
+    wp/esc-buf: s/+ wp/esc-buf wp/esc-pending
+    either >= s/length wp/esc-buf 512 [
+        wp/esc-out: s/+ wp/esc-out wp/esc-buf
+        wp/esc-buf: ""
+    ] [ none ]
 ]
-wp/escape-html: func [s] [ wp/escape-html-loop s 0 "" ]
-wp/escape-html-loop: func [s i out] [
-    j: wp/find-html-special s i
-    out2: either > j i [ s/+ out s/span s i j ] [ out ]
-    b: s/at s j
-    either = b none [ out2 ] [
-        piece: either = b 38 [ "&amp;" ] [
-            either = b 60 [ "&lt;" ] [
-                either = b 62 [ "&gt;" ] [
-                    either = b 34 [ "&quot;" ] [ "&#39;" ]
+wp/esc-once: [
+    either >= wp/esc-i s/length wp/esc-s [
+        wp/esc-done: 1
+    ] [
+        wp/esc-j: s/scan-set wp/esc-s wp/esc-i wp/html-safe-set
+        either < wp/esc-j 0 [ wp/esc-j: s/length wp/esc-s ] [ none ]
+        wp/esc-pending: s/span wp/esc-s wp/esc-i wp/esc-j
+        do wp/esc-append
+        either >= wp/esc-j s/length wp/esc-s [
+            wp/esc-done: 1
+        ] [
+            wp/esc-b: s/at wp/esc-s wp/esc-j
+            wp/esc-piece: either = wp/esc-b 38 [ "&amp;" ] [
+                either = wp/esc-b 60 [ "&lt;" ] [
+                    either = wp/esc-b 62 [ "&gt;" ] [
+                        either = wp/esc-b 34 [ "&quot;" ] [ "&#39;" ]
+                    ]
                 ]
             ]
+            wp/esc-pending: wp/esc-piece
+            do wp/esc-append
+            wp/esc-i: + wp/esc-j 1
         ]
-        wp/escape-html-loop s + j 1 s/+ out2 piece
     ]
+]
+wp/esc-run: [
+    either = wp/esc-done 1 [ none ] [
+        either = wp/esc-k 0 [ do wp/esc-once ] [
+            wp/esc-k: - wp/esc-k 1
+            do wp/esc-run
+            do wp/esc-run
+            wp/esc-k: + wp/esc-k 1
+        ]
+    ]
+]
+wp/esc-drive: [
+    either = wp/esc-done 1 [ none ] [
+        wp/esc-k: wp/esc-level
+        do wp/esc-run
+        wp/esc-level: + wp/esc-level 1
+        do wp/esc-drive
+    ]
+]
+
+wp/escape-html: func [s] [
+    wp/esc-s: s
+    wp/esc-out: ""
+    wp/esc-buf: ""
+    wp/esc-pending: ""
+    wp/esc-i: 0
+    wp/esc-done: 0
+    wp/esc-k: 0
+    wp/esc-level: 0
+    do wp/esc-drive
+    either = 0 s/length wp/esc-buf [ wp/esc-out ] [ s/+ wp/esc-out wp/esc-buf ]
 ]
 ]

@@ -133,13 +133,33 @@ static void hs_uint(http_src *b, unsigned long v) {
 
 /* Emit one ordinary Glon managed string from raw host bytes.  This is the same
  * technique the optional file module uses for reply bytes. */
-static void hs_string(http_src *b, const unsigned char *bytes, size_t n) {
+/* Emit one mk-string block.  The Glon reader caps a block at 511 elements, so
+ * long bodies/query strings are split into <=200-byte chunks and joined with
+ * right-associative s/+ calls.  This keeps each generated block small without
+ * raising any parser or memory capacity. */
+static void hs_string_chunk(http_src *b, const unsigned char *bytes, size_t n) {
     hs_text(b, "mk-string [");
     for (size_t i = 0; i < n; i++) {
         hs_byte(b, ' ');
         hs_uint(b, (unsigned long)bytes[i]);
     }
     hs_text(b, " ]");
+}
+
+static void hs_string(http_src *b, const unsigned char *bytes, size_t n) {
+    enum { HS_CHUNK = 200 };
+    if (n <= HS_CHUNK) {
+        hs_string_chunk(b, bytes, n);
+        return;
+    }
+    size_t chunks = (n + HS_CHUNK - 1) / HS_CHUNK;
+    for (size_t c = 0; c + 1 < chunks; c++) {
+        hs_text(b, "s/+ ");
+        hs_string_chunk(b, bytes + c * HS_CHUNK, HS_CHUNK);
+        hs_byte(b, ' ');
+    }
+    size_t off = (chunks - 1) * HS_CHUNK;
+    hs_string_chunk(b, bytes + off, n - off);
 }
 
 /* ---- optional persistent activity log (G3G) -----------------------------
@@ -686,7 +706,7 @@ static int http_bridge_spawn_task(http_bridge_req *s, char *err, size_t errcap) 
     hs_text(&b, " ]");
     if (b.overflow || b.len + 1 >= b.cap) {
         snprintf(err, errcap, "task source is too large");
-        return -1;
+        return -2;
     }
     body[b.len] = 0;
     char src[GLON_HTTP_SRC_CAP + 16];
@@ -856,11 +876,29 @@ static void http_bridge_process_tasks(void) {
             s->state = BRIDGE_QUEUED;
             continue;
         }
-        if (sp != 0) {
+        if (sp == -2) {
+            /* The request was too large to express safely as parsed source.
+             * Answer this request with a controlled 413; the server and other
+             * requests continue. */
             fprintf(stderr, "glon: http: bridge spawn %lu: %s\n", s->id, err);
             http_log_emit("error spawn id=%lu: %s", (unsigned long)s->id, err);
             http.errors++;
-            http.fatal = 1;
+            memset(&s->resp, 0, sizeof s->resp);
+            s->resp.status = 413;
+            snprintf(s->resp.ctype, sizeof s->resp.ctype,
+                     "text/plain; charset=utf-8");
+            const char *msg = "request body too large";
+            s->resp.body_len = strlen(msg);
+            memcpy(s->resp.body, msg, s->resp.body_len);
+            s->state = BRIDGE_COMPLETED;
+            http.completed++;
+            pthread_cond_broadcast(&http_bridge_cond);
+        } else if (sp != 0) {
+            /* A malformed/unsupported spawn is a per-request failure, not a
+             * server-wide fail-stop.  The waiting worker returns 503. */
+            fprintf(stderr, "glon: http: bridge spawn %lu: %s\n", s->id, err);
+            http_log_emit("error spawn id=%lu: %s", (unsigned long)s->id, err);
+            http.errors++;
             s->state = BRIDGE_CANCELLED;
             pthread_cond_broadcast(&http_bridge_cond);
         }
