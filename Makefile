@@ -728,6 +728,14 @@ site-capacity-test:
 	@echo "site-capacity-test: PASS ($(words $(MEM_PROFILES)) profiles)"
 .PHONY: site-capacity-one site-capacity-test
 
+# GLON-VIEW-CORE-V1: the literal-block GC hazard (known, unresolved defect) as
+# an explicit regression test in the 64K, 1M and 4M profiles: the defect must
+# reproduce exactly; a change is reported (and fails) so the record is updated.
+LITERAL_GC_PROFILES ?= constrained desktop-1m desktop-4m
+literal-block-gc-check:
+	sh tests/core-v1/literal_block_gc.sh $(LITERAL_GC_PROFILES)
+.PHONY: literal-block-gc-check
+
 profile-common-test:
 	sh tests/core-c2/common_check.sh
 
