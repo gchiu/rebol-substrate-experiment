@@ -39,7 +39,11 @@
 ;; permission bits are copied from the source.
 [
 ;; In-memory first-occurrence replacement.
-s/replace-first: func [text old new] [
+;; GLON-VIEW-CORE-V2: s/replace-first is a member of the s vocabulary
+;; (reopened here), as GLON-VOCAB-1 requires; its public name and
+;; behaviour are unchanged.
+vocabulary s [
+replace-first: func [text old new] [
     either = 0 s/length old [
         raise create-sin 's 'empty-pattern old
     ] [
@@ -51,6 +55,7 @@ s/replace-first: func [text old new] [
             s/+ s/+ s/slice text 0 index new s/slice text tail-start - s/length text tail-start
         ]
     ]
+]
 ]
 
 ;; Close only the read handle; the caller still owns the temporary write

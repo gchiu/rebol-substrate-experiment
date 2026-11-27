@@ -793,6 +793,11 @@ s-find-check:
 	sh tests/core-v2/s_find_check.sh
 .PHONY: s-find-check
 
+# GLON-VIEW-CORE-V2: C2's modules as legitimate vocabulary members / loads.
+modules-check:
+	sh tests/core-v2/modules_check.sh
+.PHONY: modules-check
+
 profile-common-test:
 	sh tests/core-c2/common_check.sh
 

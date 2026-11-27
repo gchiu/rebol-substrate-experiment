@@ -19,11 +19,13 @@
 ;; workers use the safe scratch cells (A/B/C/F) only, never SCRATCH_D/E (live
 ;; output state), and loop in masm, so long strings cost no recursion depth.
 [
+vocabulary s [
+
 
 ;; s/raw-cat ( string! string! -> string! ): both inputs stay on the data stack
 ;; (GC roots) across the allocation and are re-read after it; the new string is
 ;; pushed at once (rooting it) and filled before it is returned.
-s/raw-cat: masm 2 [
+raw-cat: masm 2 [
     LIT SCRATCH_B ! LIT SCRATCH_A !
     LIT SCRATCH_A @ LIT SCRATCH_B @
     LIT SCRATCH_A @ LIT T_STRING SUB @ LIT SCRATCH_B @ LIT T_STRING SUB @ ADD LIT SCRATCH_F !
@@ -51,10 +53,10 @@ s/raw-cat: masm 2 [
 ]
 
 ;; s/raw-length ( string! -> integer! )
-s/raw-length: masm 1 [ LIT T_STRING SUB @ LIT 16 MUL ARITY 1 EXIT ]
+raw-length: masm 1 [ LIT T_STRING SUB @ LIT 16 MUL ARITY 1 EXIT ]
 
 ;; s/raw-print ( string! -> ): each stored byte, then a newline; no value
-s/raw-print: masm 1 [
+raw-print: masm 1 [
     LIT T_STRING SUB LIT SCRATCH_A !
     LIT SCRATCH_A @ @ LIT SCRATCH_C !
   s-print-loop:
@@ -68,20 +70,21 @@ s/raw-print: masm 1 [
     ARITY 0 EXIT
 ]
 
-s/+: func [a b] [
-    either s/raw-string? a [
-        either s/raw-string? b [ s/raw-cat a b ] [ raise create-sin 'type 's/+ b ]
++: func [a b] [
+    either raw-string? a [
+        either raw-string? b [ raw-cat a b ] [ raise create-sin 'type 's/+ b ]
     ] [ raise create-sin 'type 's/+ a ]
 ]
 
-s/=: :str-eq
+=: :str-eq
 
-s/length: func [a] [
-    either s/raw-string? a [ s/raw-length a ] [ raise create-sin 'type 's/length a ]
+length: func [a] [
+    either raw-string? a [ raw-length a ] [ raise create-sin 'type 's/length a ]
 ]
 
-s/print: func [a] [
-    either s/raw-string? a [ s/raw-print a ] [ raise create-sin 'type 's/print a ]
+print: func [a] [
+    either raw-string? a [ raw-print a ] [ raise create-sin 'type 's/print a ]
 ]
 
+]
 ]
