@@ -738,7 +738,7 @@ literal-block-gc-check:
 
 # GLON-VIEW-CORE-V1: differential checks of the runtime optimisations ported
 # from glon-gui-f2 (GLON-MEM-2/3 allocator hint, GLON-MEM-5 closure check,
-# INTENT-7 hashed set-word search), each against its switch that restores the
+# INTENT-7 hashed set-word search, -DR0S1_SET_LINEAR), each against its switch that restores the
 # old code, in the 64K, 256K, 1M and 4M profiles (tests/core-v1/mem_diff.sh).
 MEM_DIFF_PROFILES ?= constrained desktop-256k desktop-1m desktop-4m
 MEM_DIFF_DIR = build/core-v1
@@ -751,12 +751,21 @@ mem-diff-one: tests/core-v1/mem2_alloc_diff.c tests/core-v1/mem5_closure_diff.c 
 	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -DR0S1_GC_CLOSURE_WALK_ALWAYS -I. -o $(MEM_DIFF_DIR)/mem5-$(MEM_PROFILE)-walk tests/core-v1/mem5_closure_diff.c $(MEM_DIFF_RT) $(GLON_S1_SRC)
 	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o $(MEM_DIFF_DIR)/interior-$(MEM_PROFILE) tests/core-v1/gc_interior_main.c r0_s1_gc_interior_tests.c $(MEM_DIFF_RT) $(GLON_S1_SRC)
 	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -DR0S1_GC_CLOSURE_WALK_ALWAYS -I. -o $(MEM_DIFF_DIR)/interior-$(MEM_PROFILE)-walk tests/core-v1/gc_interior_main.c r0_s1_gc_interior_tests.c $(MEM_DIFF_RT) $(GLON_S1_SRC)
+	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -DR0S1_SET_LINEAR -I. -o $(MEM_DIFF_DIR)/mem2-$(MEM_PROFILE)-setlin tests/core-v1/mem2_alloc_diff.c $(MEM_DIFF_RT) $(GLON_S1_SRC)
+	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -DR0S1_SET_LINEAR -I. -o $(MEM_DIFF_DIR)/mem5-$(MEM_PROFILE)-setlin tests/core-v1/mem5_closure_diff.c $(MEM_DIFF_RT) $(GLON_S1_SRC)
 
 mem-diff-test:
 	@for p in $(MEM_DIFF_PROFILES); do \
 	  $(MAKE) --no-print-directory mem-diff-one MEM_PROFILE=$$p >/dev/null || exit 1; done
 	sh tests/core-v1/mem_diff.sh $(MEM_DIFF_DIR) $(MEM_DIFF_PROFILES)
 .PHONY: mem-diff-one mem-diff-test
+
+# GLON-VIEW-CORE-V1: INTENT-7's hashed set-word search on C2's fixed-radix
+# hash encoding, against the linear search, in the 64K, 1M and 4M profiles.
+INTENT7_PROFILES ?= constrained desktop-1m desktop-4m
+intent7-set-check:
+	sh tests/core-v1/intent7_set.sh $(INTENT7_PROFILES)
+.PHONY: intent7-set-check
 
 profile-common-test:
 	sh tests/core-c2/common_check.sh

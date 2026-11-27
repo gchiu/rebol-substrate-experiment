@@ -339,6 +339,10 @@ _Static_assert(GC_HEAP_LIMIT == R0S1_HEAP_BASE,
  * reset to it.  One unused cell of the RV block (no region moves).
  * -DR0S1_ALLOC_SCAN_FROM_BASE restores the old scan exactly. */
 #define GC_FREE_HINT    24632
+/* INTENT-7: LOOKUP's mode (0: the value; 1: FIND-ADDR, the value cell's
+ * address, for SET).  An unused cell of the runtime-variable block. */
+#define RV_FINDMODE     24633
+_Static_assert(RV_FINDMODE == RV_BASE + 38 && RV_FINDMODE < RV_RES_BUF, "RV_FINDMODE: an unused RV cell");
 _Static_assert(GC_FREE_HINT == RV_BASE + 37 && GC_FREE_HINT > RV_DSBASE && GC_FREE_HINT < RV_RES_BUF,
                "the free-block hint uses the unused RV cell between RV_DSBASE and RV_RES_BUF");
 

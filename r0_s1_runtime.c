@@ -1027,7 +1027,7 @@ static cell call_mark_frame(void) { cell c = emit_call_fwd(); fw_mark_frame[n_fw
  * in C while the code is emitted.  Reading asm_here() emits nothing: the
  * emitted code is identical to the normal build's.  view/tests/gcprof.h
  * samples the S1 IP (M[REG_IP]) against these ranges. */
-#define R0S1_GCPROF_MAX 32
+#define R0S1_GCPROF_MAX 64
 const char *r0s1_gcprof_name[R0S1_GCPROF_MAX];
 cell r0s1_gcprof_lo[R0S1_GCPROF_MAX], r0s1_gcprof_hi[R0S1_GCPROF_MAX];
 int r0s1_gcprof_n;
@@ -2152,6 +2152,9 @@ static void emit_gc(void) {
 
 static cell r_reduce, r_set, r_append, r_mkctx, r_mkclosure;
 static cell r_load_lex, r_hash_insert, r_build_hash;
+#ifndef R0S1_SET_LINEAR
+static cell r_find_addr;   /* INTENT-7: LOOKUP returning the binding's value-cell address */
+#endif
 static cell r_values, r_run_block, r_native, r_invoke_closure, r_return, r_invoke_raw, r_subexpr, r_block_eval;
 static cell r_reduce_block;
 static cell r_binding_ctx;
@@ -2187,8 +2190,35 @@ static void emit_reduce(void) {
 /* LOOKUP: (word -- value | -1 if unbound) via RV_CTX.
  * FIB-OPT-P5: when a context's binding count is below its cap, resolve via the
  * hash index (O(1) average); otherwise fall back to the ordered linear scan. */
+#ifndef R0S1_SET_LINEAR
+/* INTENT-7: at a binding found, LOOKUP fetches its value; FIND-ADDR (the same
+ * walk, entered with RV_FINDMODE = 1) leaves the value cell's address */
+static void emit_fetch_unless_find(void) {
+    e_cell(RV_FINDMODE);
+    cell j_value = asm_zbranch_fwd();            /* mode 0: the value */
+    cell j_addr = asm_branch_fwd();              /* mode 1: the address as it is */
+    asm_patch_here(j_value);
+    asm_fetch();
+    asm_patch_here(j_addr);
+}
+#define EMIT_LOOKUP_FETCH() emit_fetch_unless_find()
+#else
+#define EMIT_LOOKUP_FETCH() asm_fetch()
+#endif
 static void emit_lookup(void) {
+#ifndef R0S1_SET_LINEAR
+    /* FIND-ADDR: (word -- addr | -1 if unbound).  The same chain walk as
+     * LOOKUP -- the hash index for a hashed context, else the ordered linear
+     * scan -- leaving RV_T2 = the payload of the context it was found in */
+    r_find_addr = asm_here();
+    asm_lit(1); e_setc(RV_FINDMODE);
+    cell fw_body = asm_branch_fwd();
+#endif
     r_lookup = asm_here();
+#ifndef R0S1_SET_LINEAR
+    asm_lit(0); e_setc(RV_FINDMODE);
+    asm_patch_here(fw_body);
+#endif
 #ifdef R0_S1_PROFILE
     pf_incr(PF_LOOKUP);          /* one logical word lookup */
 #endif
@@ -2239,7 +2269,7 @@ static void emit_lookup(void) {
 #endif
     e_cell(RV_T2); asm_lit(CTX_DATA + 1); asm_host(HOST_ADD);
     e_cell(RV_T5); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);
-    asm_fetch();                                                                /* [ctx, value] */
+    EMIT_LOOKUP_FETCH();                                                        /* [ctx, value] */
     e_setc(RV_T5); asm_drop(); e_cell(RV_T5);                                   /* [value] */
     asm_exit();
     asm_patch_here(j_hcollide);
@@ -2283,7 +2313,7 @@ static void emit_lookup(void) {
     cell j_nomatch = asm_zbranch_fwd();
     e_cell(RV_T2); asm_lit(4); asm_host(HOST_ADD);
     e_cell(RV_T4); asm_lit(2); asm_host(HOST_MUL); asm_host(HOST_ADD);
-    asm_fetch();
+    EMIT_LOOKUP_FETCH();
     e_setc(RV_T5);
     asm_drop();
     e_cell(RV_T5);
@@ -2698,14 +2728,9 @@ static void emit_ctx_full_guard(void) {
     asm_patch_here(j_room);
 }
 
-static void emit_set(void) {
-    r_set = asm_here();
-    e_peek(); e_setc(RV_T6);
-    e_cell(RV_CTX);
-    cell outer = asm_here();
-    e_dup(); asm_lit(R0_NONE); asm_host(HOST_EQ);
-    cell j_continue = asm_zbranch_fwd();
-    asm_drop();
+/* the binding a set-word makes in RV_CTX when the word is bound nowhere in
+ * the chain (shared by both forms of SET below); the value is in RV_T6 */
+static void emit_set_append(void) {
     e_cell(RV_CTX); e_untag_ptr(); e_setc(RV_T2);
     e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T3);
     emit_ctx_full_guard();                   /* no room: fail-stop before writing */
@@ -2735,6 +2760,42 @@ static void emit_set(void) {
     asm_patch_here(j_done);
     asm_patch_here(j_nohash);
     asm_exit();
+}
+
+#ifndef R0S1_SET_LINEAR
+/* SET: ( value -- value )  assign RV_WORD.  INTENT-7: the binding is found
+ * by FIND-ADDR -- the same walk as LOOKUP, through each context's hash index
+ * when it has one -- instead of a linear scan of every context in the chain.
+ * A set-word for a new local in a function defined at top level used to scan
+ * the whole global context (940 bindings in the membership application, 51%
+ * of its S1 time).  Found anywhere: stored there (after the escape-law store
+ * check, RV_T2 = that context).  Bound nowhere: a new binding in RV_CTX, as
+ * before.  -DR0S1_SET_LINEAR restores the linear scan. */
+static void emit_set(void) {
+    r_set = asm_here();
+    e_cell(RV_WORD); asm_call(r_find_addr);  /* [value, addr | -1] */
+    asm_dup(); asm_lit(-1); asm_host(HOST_EQ);
+    cell j_found = asm_zbranch_fwd();
+    asm_drop();                              /* [value] */
+    e_peek(); e_setc(RV_T6);
+    emit_set_append();
+    asm_patch_here(j_found);
+    e_setc(RV_T4);                           /* [value]; RV_T4 = the value cell */
+    e_peek(); e_setc(RV_T6);
+    emit_esc_store_check();
+    e_cell(RV_T6); e_cell(RV_T4); asm_store();
+    asm_exit();
+}
+#else
+static void emit_set(void) {
+    r_set = asm_here();
+    e_peek(); e_setc(RV_T6);
+    e_cell(RV_CTX);
+    cell outer = asm_here();
+    e_dup(); asm_lit(R0_NONE); asm_host(HOST_EQ);
+    cell j_continue = asm_zbranch_fwd();
+    asm_drop();
+    emit_set_append();
     asm_patch_here(j_continue);
     e_dup(); e_untag_ptr(); e_setc(RV_T2);
     e_cell(RV_T2); asm_lit(1); asm_host(HOST_ADD); asm_fetch(); e_setc(RV_T3);
@@ -2762,6 +2823,8 @@ static void emit_set(void) {
     e_cell(RV_T4); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_T4);
     asm_branch(inner);
 }
+
+#endif
 
 /* APPEND: (value -- )  append (RV_WORD, value) to context RV_CHILD */
 static void emit_append(void) {
@@ -3923,27 +3986,27 @@ cell r0_s1_init(void) {
     asm_reset();
     code_begin = asm_here();
     emit_gc();                      /* M2: mark/sweep collector + allocator */
-    emit_error_core();              /* SIN!: mkerror, judge landing, raise-unwind */
-    emit_reduce();
-    emit_lookup();
-    emit_load_lex();
-    emit_hash_insert();
-    emit_build_hash();
-    emit_set();
-    emit_append();
-    emit_mkctx();
-    emit_mkclosure();
-    emit_binding_ctx();
-    emit_values();
-    emit_reduce_block();
-    emit_run_block();
-    emit_native();
-    emit_invoke_closure();
-    emit_return();
-    emit_invoke_raw();
-    emit_subexpr();
-    emit_block_eval();
-    emit_main();
+    GCPROF_EMIT("error_core", emit_error_core());
+    GCPROF_EMIT("reduce", emit_reduce());
+    GCPROF_EMIT("lookup", emit_lookup());
+    GCPROF_EMIT("load_lex", emit_load_lex());
+    GCPROF_EMIT("hash_insert", emit_hash_insert());
+    GCPROF_EMIT("build_hash", emit_build_hash());
+    GCPROF_EMIT("set", emit_set());
+    GCPROF_EMIT("append", emit_append());
+    GCPROF_EMIT("mkctx", emit_mkctx());
+    GCPROF_EMIT("mkclosure", emit_mkclosure());
+    GCPROF_EMIT("binding_ctx", emit_binding_ctx());
+    GCPROF_EMIT("values", emit_values());
+    GCPROF_EMIT("reduce_block", emit_reduce_block());
+    GCPROF_EMIT("run_block", emit_run_block());
+    GCPROF_EMIT("native", emit_native());
+    GCPROF_EMIT("invoke_closure", emit_invoke_closure());
+    GCPROF_EMIT("return", emit_return());
+    GCPROF_EMIT("invoke_raw", emit_invoke_raw());
+    GCPROF_EMIT("subexpr", emit_subexpr());
+    GCPROF_EMIT("block_eval", emit_block_eval());
+    GCPROF_EMIT("main", emit_main());
     emit_esc_any();
     emit_esc_transport();
     emit_esc_eq();

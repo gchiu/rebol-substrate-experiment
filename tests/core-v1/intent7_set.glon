@@ -1,0 +1,15 @@
+;; GLON-VIEW-CORE-V1 (INTENT-7 on C2): set-words find their binding through the
+;; context's hash index, which C2 encodes as word_id * R0S1_HASH_RADIX + slot
+;; (radix = the global capacity: 256, 4,096 or 16,384 by profile) in EVERY
+;; context, including the cap-16 activation contexts.  Each line exercises a
+;; set-word whose binding lies in a hashed context (4 or more bindings):
+;; its own activation, an enclosing captured context, or the global context.
+;; The semantics are the same before and after GLON-VOCAB-1.
+;; Expected: 22 15 2 106 21 -6
+total: 0
+six: func [a b c d e f] [ a: + a 1  f: + f 1  + + + a b c + + d e f ]
+counter: func [n] [ x1: 0  x2: 0  x3: 0  x4: 0  func [] [ n: + n 5  x4: + x4 1  + n x4 ] ]
+bump: counter 9
+deep: func [p] [ q1: 1 q2: 2 q3: 3 q4: 4 q5: 5  inner: func [] [ q3: + q3 1  q5: + q5 1  + q3 q5 ]  inner  inner  - q5 q3 ]
+addtotal: func [k] [ total: + total k  total ]
+values [ six 1 2 3 4 5 5  bump  deep 0  addtotal 106  bump  -  bump  bump ]
