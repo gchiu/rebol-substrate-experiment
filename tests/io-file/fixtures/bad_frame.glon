@@ -1,6 +1,5 @@
 [
-io/open "doc.txt" 'read
-    func [h] [ s/print "UNEXPECTED" ]
-    func [e] [ raise e ]
-io/pending-request: reduce [ 1 1 0 ]
+;; M3's file module replaces the single-request API.  Queue a request whose
+;; fields operand is not a BLOCK!; io/take-request must reject the field types.
+io/request 1 0 func [x] [ none ] func [e] [ raise e ] none
 ]

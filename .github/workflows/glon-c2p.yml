@@ -110,7 +110,7 @@ jobs:
           retention-days: 14
 
   windows-mingw:
-    name: Windows MinGW — builds, JSON smoke, optional-module compile
+    name: Windows MinGW — core, file and JSON smoke
     runs-on: windows-2025
     timeout-minutes: 60
     defaults:

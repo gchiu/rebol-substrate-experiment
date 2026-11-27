@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # scripts/ci/c2p-windows.sh - Windows MinGW-w64 (UCRT64) C2P checks.
 #
-# Runs the available executable smoke tests on Windows and separately records
-# compile-only builds of the optional file/HTTP/SQLite/task configuration.
-# The job timeout bounds the whole job; this script does not run `make test`
+# Runs the available executable smoke tests on Windows.  The optional HTTP /
+# task modules use POSIX condition variables and are not built on Windows in
+# this initial C2P configuration; Linux and WASM cover the server paths.  The
+# job timeout bounds the whole job; this script does not run `make test`
 # (its NaSch simulator is Linux-bounded in c2p-linux.sh).
 set -u
 
@@ -57,11 +58,6 @@ run_step m1-smoke execute make m1-smoke
 run_step m1-smoke-run execute "$(m1_bin)"
 run_step json-j1 execute make json-j1-test
 run_step io-file-windows execute make io-file-windows-test
-
-# Compile-only checks for the restored optional modules.  They are not started
-# as servers on Windows in this initial C2P configuration.
-run_step build-file-http-sqlite compile-only make glon MODULES=file,http,sqlite
-run_step build-task-server compile-only make glon MODULES=file,http,sqlite,task MEM_PROFILE=server-https
 
 cat "$SUMMARY"
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then

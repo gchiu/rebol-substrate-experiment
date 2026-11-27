@@ -34,6 +34,11 @@ run_step() {
 }
 
 run_step frozen bash check-frozen-s1.sh
+# Several generated WASM/HTML artifacts are committed (web/demo.js,
+# standalone/glon.wasm, demo/shop/app.html).  A fresh checkout gives every
+# file the same mtime, so make can treat a stale committed artifact as
+# up-to-date.  Remove them so the Node smoke tests exercise the current source.
+run_step clean-generated bash -c 'rm -f web/demo.js docs/r0-counter.html standalone/glon.wasm demo/shop/glon.wasm demo/shop/app.html primer.html'
 run_step wasm-core make wasm-test
 run_step wasm-standalone make wasm-standalone-test
 run_step wasm-g1a make wasm-g1a-test
