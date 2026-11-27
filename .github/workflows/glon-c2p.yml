@@ -1,0 +1,203 @@
+# C2P: cross-platform verification for the unified Glon C2 core and W0 server.
+#
+# This workflow is intentionally separate from the historical D1 native matrix.
+# It verifies the C2 profile generator/layout/hash invariants and the restored
+# JSON, HTTPS/H3E and G3H server without running the unbounded `make test`
+# (the NaSch simulator is bounded by scripts/ci/bounded-s1.sh).
+#
+# Compile-only and executable checks are labelled separately in each job.
+name: Glon C2P core and Worlds verification
+
+on:
+  push:
+    branches:
+      - integration/glon-worlds-c2p
+      - integration/glon-worlds-core-w0
+      - core/c2
+  pull_request:
+    branches:
+      - integration/glon-worlds-c2p
+      - core/c2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: glon-c2p-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  S1_FROZEN: f90496c26dc45c7a387d8fc8639cd2781507d3d2
+
+jobs:
+  linux-native:
+    name: Linux native — C2 + W0 regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libssl-dev libsqlite3-dev \
+            openssl python3 sqlite3
+
+      - name: Fetch and verify frozen-S1 tag
+        run: |
+          git fetch origin '+refs/tags/s1-frozen-v1:refs/tags/s1-frozen-v1'
+          test "$(git rev-parse 's1-frozen-v1^{commit}')" = "$S1_FROZEN"
+
+      - name: Run bounded Linux regression suite
+        env:
+          CI_LOG_DIR: ci-logs/c2p-linux
+          C2P_STEP_TIMEOUT: 900
+          BOUNDED_S1_SECONDS: 900
+        run: bash scripts/ci/c2p-linux.sh
+
+      - name: Upload Linux logs and summary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: c2p-linux-logs
+          path: ci-logs/c2p-linux/
+          if-no-files-found: warn
+          retention-days: 14
+
+  windows-msvc:
+    name: Windows MSVC — compile + minimal smoke
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Fetch and verify frozen-S1 tag
+        shell: bash
+        run: |
+          git fetch origin '+refs/tags/s1-frozen-v1:refs/tags/s1-frozen-v1'
+          test "$(git rev-parse 's1-frozen-v1^{commit}')" = "$S1_FROZEN"
+
+      - name: Compile and execute minimal MSVC build
+        shell: cmd
+        run: |
+          if not exist ci-logs mkdir ci-logs
+          call scripts\ci\c2p-msvc.bat > ci-logs\msvc.log 2>&1
+          set RC=%ERRORLEVEL%
+          type ci-logs\msvc.log
+          exit /b %RC%
+
+      - name: Upload MSVC logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: c2p-windows-msvc-logs
+          path: ci-logs/msvc.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  windows-mingw:
+    name: Windows MinGW — builds, JSON smoke, optional-module compile
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            make
+            diffutils
+            unzip
+            zip
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-sqlite3
+
+      - name: Prepare MSYS2 Python alias
+        run: |
+          mkdir -p /usr/local/bin
+          printf '#!/bin/sh\nexec /ucrt64/bin/python.exe "$@"\n' > /usr/local/bin/python3
+          chmod +x /usr/local/bin/python3
+          python3 --version
+
+      - name: Fetch and verify frozen-S1 tag
+        run: |
+          git fetch origin '+refs/tags/s1-frozen-v1:refs/tags/s1-frozen-v1'
+          test "$(git rev-parse 's1-frozen-v1^{commit}')" = "$S1_FROZEN"
+
+      - name: Run Windows MinGW checks
+        env:
+          CI_LOG_DIR: ci-logs/c2p-windows
+          CFLAGS: '-std=c17 -fwrapv -Wall -Wextra -O0 -g -Ddup=_dup -Ddup2=_dup2 -Dclose=_close -Dopen=_open'
+        run: bash scripts/ci/c2p-windows.sh
+
+      - name: Upload MinGW logs and summary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: c2p-windows-mingw-logs
+          path: ci-logs/c2p-windows/
+          if-no-files-found: warn
+          retention-days: 14
+
+  wasm-node:
+    name: WebAssembly — Emscripten build and Node smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 6.0.9
+
+      - name: Fetch and verify frozen-S1 tag
+        run: |
+          git fetch origin '+refs/tags/s1-frozen-v1:refs/tags/s1-frozen-v1'
+          test "$(git rev-parse 's1-frozen-v1^{commit}')" = "$S1_FROZEN"
+
+      - name: Run Emscripten and Node smoke tests
+        env:
+          CI_LOG_DIR: ci-logs/c2p-wasm
+          C2P_WASM_STEP_TIMEOUT: 900
+        run: bash scripts/ci/c2p-wasm.sh
+
+      - name: Upload WASM logs and summary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: c2p-wasm-logs
+          path: ci-logs/c2p-wasm/
+          if-no-files-found: warn
+          retention-days: 14
