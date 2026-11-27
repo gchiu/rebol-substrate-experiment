@@ -243,7 +243,7 @@ test-gui4: $(BUILD)/widget_gallery_shot
 test-gui4-scroll: $(BUILD)/widget_gallery_shot
 	./tests/test_gui4_scroll.sh
 
-test-gui-f1b:
+test-gui-f1b: $(BUILD)/widget_gallery_shot
 	./tests/test_gui_f1b.sh
 
 $(BUILD)/test_vid_load_64k: tests/test_vid_load_64k.c $(GV_GLON_SRC) $(MS1_CORE) $(MS1_CORE_DEPS) include/gv_glon_host.h include/gv_view.h include/gv_table.h include/gv_backend.h ../s1.h ../r0_s1.h | $(BUILD)
