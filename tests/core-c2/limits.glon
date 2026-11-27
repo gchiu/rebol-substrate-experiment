@@ -1,0 +1,11 @@
+;; tests/core-c2/limits.glon - GLON-CORE-C2: profiles change limits, not meaning.
+;;
+;; A 70-deep recursion needs about 6,700 main return-stack cells (one closure
+;; activation reserves at most 96).  Profiles with the reference 8,192-cell
+;; return stack print the sum; a profile with the 4,096-cell minimum
+;; (server-https) must stop with a clean machine fail-stop -- never a
+;; different or corrupted result.  `make profile-common-test` checks both.
+[
+lim/sum: func [n] [ either = n 0 [ 0 ] [ + n lim/sum - n 1 ] ]
+s/print s/+ "deep " s/from-int lim/sum 70
+]

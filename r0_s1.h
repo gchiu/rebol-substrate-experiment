@@ -242,8 +242,14 @@ enum {
 _Static_assert(GC_HEAP_LIMIT == R0S1_HEAP_BASE,
                "the managed heap must end exactly where the loader heap begins");
 
-/* standard S1 stack tops (also used to locate the scheduler/main world) */
+/* standard S1 stack tops (also used to locate the scheduler/main world).
+ * GLON-CORE-C2: R0S1_DS_INIT, the code / data-stack boundary, is a profile
+ * parameter (its generated S1 copy sets DS_INIT to the same value); the main
+ * return-stack top R0S1_RS_INIT is fixed by the frozen map.  r0_s1_layout.h
+ * enforces the code minimum (16384) and the return-stack minimum. */
+#ifndef R0S1_DS_INIT
 #define R0S1_DS_INIT   16384L
+#endif
 #define R0S1_RS_INIT   24576L
 /* Code-space bound for masm library code (2026-11-09). Emitted code grows up
  * from CODE_BASE towards the main data stack, which grows down from

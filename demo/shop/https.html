@@ -229,7 +229,7 @@ http/listen 8443 :home
 </div>
 <div>
 <h3>Build and run</h3>
-<pre><code>make glon MODULES=http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+<pre><code>make glon MODULES=http MEM_PROFILE=server
 ./glon --http-cert tests/https-g1/.cert/server.pem modules/json.glon 4-post-json.glon</code></pre>
 <h3>Curl test</h3>
 <pre><code>curl -k -X POST -H &#x27;Content-Type: application/json&#x27; --data &#x27;{&quot;name&quot;:&quot;Ada&quot;}&#x27; https://127.0.0.1:8443/
@@ -262,7 +262,7 @@ internet service in this release.</p>
 <li><a href="https-examples/g3a/json.glon" download>json.glon</a> — general JSON vocabulary</li>
 </ul>
 <h3>Launch (Linux)</h3>
-<pre><code>make glon MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+<pre><code>make glon MODULES=file,http MEM_PROFILE=server
 tests/https-g1/make-cert.sh
 ./glon --http-cert tests/https-g1/.cert/server.pem \
     --allow-file-read --allow-file-write --io-root . \

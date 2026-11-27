@@ -121,28 +121,39 @@ HTTPS host serialises request handlers; it does not run concurrent Glon tasks.
 ## Memory profiles
 
 Memory capacity is a deployment characteristic, not a language restriction.
-The build selects a profile:
+Every capacity is declared together in `profiles/<name>.profile`; the build
+generates `build/profile/<name>/` with `scripts/glon-profile.sh`. One-at-a-time
+`MEM_MANAGED_CELLS`/`MEM_LOADER_CELLS`/`MEM_GLOBAL_CAP`-style overrides are
+rejected. `make profile-list` lists the declared profiles.
 
 - **constrained** (default): frozen 64K map, 7,232-cell managed heap,
   14,800-cell loader, 3×3,400 M1 arenas.
-- **large**: generated S1 object with a larger `MEM_CELLS`; default 1,048,576
-  managed cells, 40,000 GC worklist entries, 500,000 loader cells, relocated M1
-  arenas. Build with:
+- **constrained-notask**: the same 64K map without M1 tasks; loader
+  `[40000,65536)`. Used by Kaka and by HTTP builds that create no tasks.
+- **large**: generated S1 object, 1,048,576 managed cells, 40,000 GC worklist
+  entries, 200,000 loader cells, relocated M1 arenas.
+- **server**: 1,048,576 managed cells, 40,000 worklist, 500,000 loader
+  (the G3A HTTPS configuration).
+- **desktop-256k**, **desktop-1m**, **desktop-4m**, **server-https**:
+  provisional profiles carried from the View/MS-1 and HTTPS records.
+
+Build with a named profile:
 
 ```sh
-make glon MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+make glon MODULES=file,http MEM_PROFILE=server
 ```
 
-`MEM_MANAGED_CELLS`, `MEM_WORKLIST_CELLS` and `MEM_LOADER_CELLS` are build
-options. The worklist must be at least managed/32. Memory is build-time, not
+`r0_s1_layout.h` rejects overlapping or unsafe layouts at compile time. The
+worklist must be at least managed/32. Memory is build-time, not
 runtime-selectable. The frozen 64K profile remains the conformance baseline.
+See `GLON-CORE-C2-RESULTS.md`.
 
 ## Optional capabilities and modules
 
 `MODULES=` builds the minimal CLI. `MODULES=file` adds host-mediated
 asynchronous file I/O and `file.glon`/`file-stream.glon`.
 `MODULES=http` adds CivetWeb HTTPS plus `http.glon`.
-`MODULES=file,http` adds both. The large profile is selected separately.
+`MODULES=file,http` adds both. The memory profile is selected separately.
 
 File access is denied unless the host grants it:
 

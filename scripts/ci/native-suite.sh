@@ -75,9 +75,9 @@ https_windows() {
     bash tests/https-g1/make-cert.sh
     python3 tests/https-g1/acceptance.py --glon "$(glon_bin)"
     python3 tests/https-g2/acceptance.py --glon "$(glon_bin)"
-    make glon MODULES=http GLON_HTTP_RECLAIM_M1=1
+    make glon MODULES=http MEM_PROFILE=constrained-notask
     python3 tests/https-g3/acceptance.py --glon "$(glon_bin)"
-    make glon MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+    make glon MODULES=file,http MEM_PROFILE=server
     python3 tests/https-g3a/acceptance.py --glon "$(glon_bin)"
 }
 
@@ -99,7 +99,7 @@ sizes() {
     record_size minimal MODULES=
     record_size file MODULES=file
     record_size combined MODULES=file,http
-    record_size large MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+    record_size large MODULES=file,http MEM_PROFILE=server
 }
 
 # ---- frozen substrate and the complete native regression -------------------

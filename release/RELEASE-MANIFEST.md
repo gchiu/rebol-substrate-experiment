@@ -41,6 +41,11 @@
 | Windows constrained HTTPS | MSVC C17, `/MT`, `GLON_MODULE_HTTP`, CivetWeb dynamic OpenSSL |
 | Windows large HTTPS+JSON | same with large-profile flags |
 
+> **C2 update (2026-11-27):** this D1 release record predates the single profile
+> generator. The current equivalent of the Linux "full" row is
+> `make glon MODULES=file,http MEM_PROFILE=server`; one-at-a-time `MEM_*`
+> capacities are rejected.
+
 Windows builds use CivetWeb's dynamic OpenSSL loading. The HTTPS packages
 include `libssl-3-x64.dll` and `libcrypto-3-x64.dll`. The executables use the
 static MSVC C runtime (`/MT`) and depend only on Windows system DLLs plus those

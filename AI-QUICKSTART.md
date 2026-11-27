@@ -37,8 +37,9 @@ make glon MODULES=http
 ```
 
 It has a 7,232-cell managed heap and a 14,800-cell loader. Use it for small
-applications and constrained-device experiments. The large profile is selected
-with `MEM_PROFILE=large`.
+applications and constrained-device experiments. A larger profile is selected
+with a declared name, for example `MEM_PROFILE=large` or `MEM_PROFILE=server`;
+capacities live together in `profiles/<name>.profile`.
 
 ## Verification checklist for an agent
 

@@ -48,6 +48,15 @@ io-file-c-test
 
 m1-large-test
 
+# Kaka native harness binaries
+kaka-test
+kaka-fighter-test
+kaka-render-test
+kaka-life-test
+kaka-damage-test
+kaka-terminal-test
+kaka-wave-test
+
 # generated memory-profile build artifacts
 build/
 

@@ -1063,15 +1063,16 @@ Repeatedly replacing a whole register string caused managed-heap fragmentation;
 the fixed block keeps the live state bounded. Capacity is three records
 (one seeded plus two additions); a further add is 422.
 
-**[DECISION, OPT-IN, REVIEW REQUIRED] G3 build reclaims the unused M1 arena
-for loader space.** The G3 source plus the transient dispatch expression
+**[DECISION, SUPERSEDED BY C2] G3 build reclaimed the unused M1 arena for
+loader space.** The G3 source plus the transient dispatch expression
 (especially request body/headers) exceeds the default 14,800-cell loader heap.
-The HTTP server creates no M1 tasks, so the documented `R0S1_HEAP_LIMIT`
-override is used only when `GLON_HTTP_RECLAIM_M1=1` is passed
-(`-DR0S1_HEAP_LIMIT=65000`). The default HTTP build keeps 54,800 and remains
-valid for G1/G2. This changes no frozen S1 file and does not enlarge the
-7,232-cell managed heap. It is opt-in and should be reviewed before becoming a
-general HTTP default.
+The HTTP server creates no M1 tasks, so this record used the
+`R0S1_HEAP_LIMIT` override when `GLON_HTTP_RECLAIM_M1=1` was passed
+(`-DR0S1_HEAP_LIMIT=65000`). C2 replaces that overlap with the declared
+`constrained-notask` profile (no task arena or table; loader
+`[40000,65536)`); `GLON_HTTP_RECLAIM_M1=1` remains only as a deprecated alias.
+This changes no frozen S1 file and does not enlarge the 7,232-cell managed
+heap.
 
 **[MEASURED]** Linux/WSL2 x86_64, GCC 11.4, OpenSSL 3.0.2 dynamic. Stripped
 executable: minimal 104,768 B; file 137,568 B; HTTP 264,512 B; file+http 297,312
@@ -1105,14 +1106,18 @@ semantics are unchanged, and `check-frozen-s1.sh` passes. `r0_s1.h` now makes
 profile-configurable; the runtime loader checks use the independent loader base.
 The M1 arena and task table are relocated above the loader, not removed.
 
-**[DECISION] Constrained profile remains the default and conformance target.**
-`MEM_PROFILE=constrained` uses the original 64K map and frozen `s1.c`.
-`MEM_PROFILE=large` defaults to a 1,048,576-cell managed heap, 40,000-entry GC
-worklist, 500,000-cell loader, and 3 × 3,400 M1 arenas. `MEM_MANAGED_CELLS`,
-`MEM_WORKLIST_CELLS` and `MEM_LOADER_CELLS` are build options; the worklist
-must be >= managed/32 (build-time assertion). `GLON_HTTP_RECLAIM_M1` is no
-longer needed for G3A. This is a build-time experimental configuration; a
-runtime-selectable heap was deliberately not introduced.
+**[DECISION, C2] Constrained profile remains the default and conformance
+target.** `MEM_PROFILE=constrained` uses the original 64K map and frozen
+`s1.c`. C2 declares every capacity together in `profiles/<name>.profile`;
+`MEM_PROFILE=server` is the G3A configuration (1,048,576-cell managed heap,
+40,000-entry GC worklist, 500,000-cell loader, 3 × 3,400 M1 arenas), while
+`MEM_PROFILE=large` keeps a 200,000-cell loader. `MEM_MANAGED_CELLS`,
+`MEM_WORKLIST_CELLS` and `MEM_LOADER_CELLS` are no longer one-at-a-time build
+options; the worklist must be >= managed/32 (build-time assertion).
+`GLON_HTTP_RECLAIM_M1` is superseded by `MEM_PROFILE=constrained-notask` for
+HTTP/G3 builds without tasks. This is a build-time configuration; a
+runtime-selectable heap was deliberately not introduced. See
+`GLON-CORE-C2-RESULTS.md`.
 
 **[MEASURED] Large-heap effect.** G3 acceptance on 7,232 cells: 327 requests,
 254 GC collections, 4,240 post-collection live cells. The same suite on

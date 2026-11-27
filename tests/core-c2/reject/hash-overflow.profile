@@ -1,0 +1,18 @@
+# EXPECT: overflow a 32-bit cell
+# (32768 x 65536 - 1 = 2^31 - 1 still fits a 32-bit cell exactly and is accepted;
+#  131072 symbols x radix 32768 - 1 = 2^32 - 1 does not.)
+NAME=reject
+STATUS=provisional
+MEM_CELLS=auto
+CODE_CAP=16384
+MANAGED_CELLS=262144
+WORKLIST=after-heap
+WORKLIST_CELLS=8192
+LOADER_CELLS=400000
+TAIL_CELLS=0
+TASKS=3
+TASK_CELLS=3400
+TASK_DS_OFF=400
+TASK_RS_OFF=3400
+GLOBAL_CAP=32768
+SYM_CAP=131072

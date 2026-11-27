@@ -26,7 +26,7 @@ mkdir -p "$OUT"
 # m1-smoke covers the verified M1 test body without repository source fixtures.
 make --no-print-directory glon MODULES= CC="$CC" CFLAGS="$CFLAGS_COMMON"
 cp glon "$OUT/glon-minimal"
-make --no-print-directory glon MODULES=file MEM_PROFILE=large MEM_LOADER_CELLS=500000 CC="$CC" CFLAGS="$CFLAGS_COMMON"
+make --no-print-directory glon MODULES=file MEM_PROFILE=server CC="$CC" CFLAGS="$CFLAGS_COMMON"
 cp glon "$OUT/glon"
 "$CC" $CFLAGS_COMMON -I. -o "$OUT/m1-smoke" tests/m1_smoke.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c s1.c -pthread
 

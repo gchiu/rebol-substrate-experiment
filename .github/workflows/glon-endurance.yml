@@ -42,7 +42,7 @@ jobs:
           bash check-frozen-s1.sh
 
       - name: Build the large file+HTTPS configuration
-        run: make glon MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+        run: make glon MODULES=file,http MEM_PROFILE=server
 
       - name: Generate the local TLS certificate
         run: tests/https-g1/make-cert.sh

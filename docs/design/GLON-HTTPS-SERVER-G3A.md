@@ -78,6 +78,11 @@ make glon MODULES=file,http MEM_PROFILE=large \
   MEM_MANAGED_CELLS=1048576 MEM_WORKLIST_CELLS=40000 MEM_LOADER_CELLS=500000
 ```
 
+**C2 update (2026-11-27).** This record predates the single profile generator.
+The equivalent current build is `make glon MODULES=file,http MEM_PROFILE=server`;
+one-at-a-time `MEM_*` capacities are rejected. The historical command and
+measurements above remain as recorded.
+
 `MEM_PROFILE=constrained` is the default and uses the original `s1.c` with no
 generated profile. The large profile can also be built for 65,536, 262,144 or
 other managed-cell counts by changing `MEM_MANAGED_CELLS` and
@@ -273,7 +278,8 @@ capacity claim.
 
 ## 8. Binary/source sizes and memory
 
-Current G3A build: `MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000`.
+Recorded G3A build: `MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000`
+(C2 equivalent: `MEM_PROFILE=server`).
 
 | Item | Size |
 |---|---:|

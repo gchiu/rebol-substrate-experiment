@@ -1,0 +1,45 @@
+;; tests/core-c2/common.glon - GLON-CORE-C2: one program, every profile.
+;;
+;; `make profile-common-test` runs this file with the glon CLI built for each
+;; memory profile and requires byte-identical output.  It stays within the
+;; smallest profile's limits (64K heap, 4,096-cell return stack) while using
+;; closures, recursion, strings, blocks, many global bindings, SIN!/judge and
+;; enough allocation to force collections in the 7,232-cell managed heap.
+[
+c2/adder: func [a] [ func [b] [ + a b ] ]
+c2/add5: c2/adder 5
+s/print s/+ "closure " s/from-int c2/add5 37
+
+c2/sum: func [n] [ either = n 0 [ 0 ] [ + n c2/sum - n 1 ] ]
+s/print s/+ "recursion " s/from-int c2/sum 30
+
+c2/fib: func [n] [ either < n 2 [ n ] [ + c2/fib - n 1 c2/fib - n 2 ] ]
+s/print s/+ "fib " s/from-int c2/fib 15
+
+;; allocation churn: 340 short-lived strings, forcing collections in 64K.
+;; The nesting is bounded so the whole file also fits server-https's
+;; 4,096-cell main return stack (the minimum any profile declares).
+c2/churn: func [n acc] [ either = n 0 [ acc ] [ c2/churn - n 1 + acc s/length s/+ "abcdefgh" s/from-int n ] ]
+s/print s/+ "churn " s/from-int c2/churn 25 0
+c2/churn-many: func [k t] [ either = k 0 [ t ] [ c2/churn-many - k 1 + t c2/churn 16 0 ] ]
+s/print s/+ "churn-many " s/from-int c2/churn-many 20 0
+
+;; blocks and reduce
+c2/b: reduce [ 1 + 1 1 * 3 3 "x" ]
+s/print s/+ "block " s/+ s/from-int block-len c2/b s/+ " " s/from-int block-at c2/b 1
+
+;; many global bindings (hash lookups in the global context)
+c2/g01: 1 c2/g02: 2 c2/g03: 3 c2/g04: 4 c2/g05: 5 c2/g06: 6 c2/g07: 7 c2/g08: 8
+c2/g09: 9 c2/g10: 10 c2/g11: 11 c2/g12: 12 c2/g13: 13 c2/g14: 14 c2/g15: 15 c2/g16: 16
+s/print s/+ "globals " s/from-int + + + c2/g01 c2/g08 c2/g12 c2/g16
+
+;; SIN! and judge
+c2/e: judge [ raise create-sin 'c2 'boom 7 ]
+s/print s/+ "sin " s/+ either sin? c2/e [ "caught " ] [ "missed " ] s/from-int sin-arg c2/e
+
+;; string building
+c2/rep: func [s n] [ either = n 0 [ "" ] [ s/+ s c2/rep s - n 1 ] ]
+c2/long: c2/rep "glon" 40
+s/print s/+ "string " s/+ s/from-int s/length c2/long s/+ " " s/from-int s/at c2/long 159
+s/print "done"
+]

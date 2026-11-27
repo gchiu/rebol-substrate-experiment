@@ -70,16 +70,16 @@ test: s1 gc-worklist-overflow-test global-ctx-hash-constrained
 # GLON-CORE-C1: global-context hash regression (see global_ctx_hash_test.c).
 # global-ctx-hash-constrained is the 64K reference build (256 globals, 512
 # symbols, radix 256, the original encoding checked cell by cell).
-# global-ctx-hash-test also builds the large profile at 512 / 1,024 and
-# 4,096 / 8,192 and runs the same checks there.  hash-capacity-check confirms
-# that unsafe capacity combinations are rejected at compile time.
+# global-ctx-hash-test also builds every declared profile (C2: capacities
+# 256 ... 16,384) and runs the same checks there.  hash-capacity-check
+# confirms that unsafe capacity combinations are rejected at compile time.
 global-ctx-hash-constrained: global_ctx_hash_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c s1.c r0_s1.h s1.h m1_layout.h
 	$(CC) $(CFLAGS) -I. -o $@ global_ctx_hash_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c s1.c
 
 global-ctx-hash-test: global-ctx-hash-constrained
 	./global-ctx-hash-constrained
-	$(MAKE) --no-print-directory global-ctx-hash-profile MEM_PROFILE=large MEM_GLOBAL_CAP=512 MEM_SYM_CAP=1024
-	$(MAKE) --no-print-directory global-ctx-hash-profile MEM_PROFILE=large MEM_GLOBAL_CAP=4096 MEM_SYM_CAP=8192
+	@for p in $(filter-out constrained,$(MEM_PROFILES)); do \
+	  $(MAKE) --no-print-directory global-ctx-hash-profile MEM_PROFILE=$$p || exit 1; done
 
 # Each unsafe combination must fail to compile with its own assertion; the
 # last, safe one must compile.
@@ -324,55 +324,79 @@ wasm-primer-test: demo/shop/glon.wasm primer.html
 # A thin host over the persistent session facade (r0_s1_session_run_block):
 # one runtime, the shipped core libraries, then every FILE in one session.
 # glon-lib/ is copied beside the executable; it is not compiled in.
-# ---- Configurable memory profile -------------------------------------------
-# constrained: the frozen 64K reference (MEM_CELLS 65536, 7,232-cell managed
-#              heap, loader and M1 task arena unchanged).  This is the default
-#              and the conformance profile.
-# large:       a generated S1 object with a larger MEM_CELLS, an enlarged
-#              managed heap, an independent GC worklist and loader heap, and
-#              the M1 arena/table relocated above them.  Frozen s1.c/s1.h are
-#              read only; the generated copies differ only in MEM_CELLS.
+# ---- Memory profiles (GLON-CORE-C2) -----------------------------------------
+# One mechanism: every profile is declared, all capacities together, in
+# profiles/<name>.profile, and scripts/glon-profile.sh generates
+# build/profile/<name>/ from it:
+#   glon_profile.h   every layout/capacity constant (force-included, -include)
+#   s1_profile.[ch]  the frozen S1 with only MEM_CELLS (and DS_INIT, when the
+#                    profile moves the code / data-stack boundary) replaced
+#   layout.txt       the region map
+# r0_s1_layout.h (included by the runtime) rejects any overlapping or unsafe
+# layout at compile time, however its constants were supplied.
+#
+#   constrained   the 64K reference: frozen s1.c and the header defaults,
+#                 nothing generated (the default and conformance profile)
+#   other names   profiles/*.profile; `make profile-list`
+#
+# Capacities are never overridden one at a time: MEM_MANAGED_CELLS,
+# MEM_LOADER_CELLS, MEM_GLOBAL_CAP, ... are rejected; add or edit a profile.
 MEM_PROFILE ?= constrained
-MEM_MANAGED_CELLS ?= 1048576
-MEM_WORKLIST_CELLS ?= 40000
-MEM_LOADER_CELLS ?= 200000
-MEM_M1_CELLS ?= 10200
-MEM_TOTAL ?= 65536
-# GLON-CORE-C1: global-context and symbol-table capacities (r0_s1.h
-# R0S1_GLOBAL_CAP / R0S1_SYM_CAP; the hash radix equals MEM_GLOBAL_CAP).  The
-# constrained profile is fixed at the 64K reference values 256 / 512; only an
-# expanded profile may change them.  r0_s1.h rejects unsafe combinations
-# (symbols < globals, a radix too small, entries overflowing a 32-bit cell, a
-# global context larger than the loader heap) at compile time.
-MEM_GLOBAL_CAP ?= 256
-MEM_SYM_CAP ?= 512
+MEM_PROFILES := $(sort $(basename $(notdir $(wildcard profiles/*.profile))))
+MEM_LEGACY_OVERRIDES := MEM_MANAGED_CELLS MEM_WORKLIST_CELLS MEM_LOADER_CELLS \
+    MEM_M1_CELLS MEM_TOTAL MEM_GLOBAL_CAP MEM_SYM_CAP MEM_CODE_CAP MEM_GLOBAL_CONTEXT_CAP
+$(foreach v,$(MEM_LEGACY_OVERRIDES),$(if $(filter command line environment,$(origin $(v))),$(error $(v) is no longer a build option: capacities are declared together in profiles/*.profile (MEM_PROFILE = $(MEM_PROFILES)))))
+# Deprecated spelling of the 64K no-task profile (D1: -DR0S1_HEAP_LIMIT=65000).
+GLON_HTTP_RECLAIM_M1 ?= 0
+ifeq ($(GLON_HTTP_RECLAIM_M1),1)
+  ifeq ($(origin MEM_PROFILE),command line)
+    $(error GLON_HTTP_RECLAIM_M1=1 and MEM_PROFILE are exclusive; use MEM_PROFILE=constrained-notask)
+  endif
+  override MEM_PROFILE := constrained-notask
+endif
 GLON_MEMORY_CFLAGS :=
 GLON_PROFILE_DEPS :=
 GLON_S1_SRC := s1.c
-ifeq ($(MEM_PROFILE),constrained)
-  ifneq ($(MEM_GLOBAL_CAP) $(MEM_SYM_CAP),256 512)
-    $(error the constrained profile is the 64K reference: MEM_GLOBAL_CAP=256 MEM_SYM_CAP=512 only (use MEM_PROFILE=large))
+ifneq ($(MEM_PROFILE),constrained)
+  ifeq ($(filter $(MEM_PROFILE),$(MEM_PROFILES)),)
+    $(error unknown MEM_PROFILE='$(MEM_PROFILE)'; supported values: $(MEM_PROFILES))
   endif
-else ifeq ($(MEM_PROFILE),large)
-  MEM_MANAGED_END := $(shell expr 32768 + $(MEM_MANAGED_CELLS))
-  MEM_LOAD_BASE := $(shell expr $(MEM_MANAGED_END) + $(MEM_WORKLIST_CELLS))
-  MEM_M1_BASE := $(shell expr $(MEM_LOAD_BASE) + $(MEM_LOADER_CELLS))
-  MEM_TASK_TABLE := $(shell expr $(MEM_M1_BASE) + $(MEM_M1_CELLS))
-  MEM_TOTAL := $(shell expr $(MEM_TASK_TABLE) + 536 + 1024)
-  GLON_MEMORY_CFLAGS := -DR0S1_HEAP_BASE=$(MEM_MANAGED_END) \
-      -DR0S1_LOAD_BASE=$(MEM_LOAD_BASE) \
-      -DR0S1_HEAP_LIMIT=$(MEM_M1_BASE) \
-      -DGC_WORKLIST=$(MEM_MANAGED_END) \
-      -DGC_WORKLIST_CAP=$(MEM_WORKLIST_CELLS) \
-      -DM1_ARENA_BASE=$(MEM_M1_BASE) \
-      -DM1_TASK_TABLE=$(MEM_TASK_TABLE) \
-      -DR0S1_GLOBAL_CAP=$(MEM_GLOBAL_CAP) \
-      -DR0S1_SYM_CAP=$(MEM_SYM_CAP)
-  GLON_S1_SRC := build/profile/s1_profile.c
-  GLON_PROFILE_DEPS := build/profile/s1_profile.c build/profile/s1_profile.h
-else
-  $(error unknown MEM_PROFILE='$(MEM_PROFILE)'; supported values: constrained, large)
+  MEM_PROFILE_DIR := build/profile/$(MEM_PROFILE)
+  GLON_MEMORY_CFLAGS := -include $(MEM_PROFILE_DIR)/glon_profile.h
+  GLON_S1_SRC := $(MEM_PROFILE_DIR)/s1_profile.c
+  GLON_PROFILE_DEPS := $(MEM_PROFILE_DIR)/glon_profile.h $(MEM_PROFILE_DIR)/s1_profile.c $(MEM_PROFILE_DIR)/s1_profile.h
 endif
+
+# One generation produces all three files of a profile directory; it reruns
+# only when the profile file, the generator or the frozen S1 sources change.
+build/profile/%/glon_profile.h build/profile/%/s1_profile.c build/profile/%/s1_profile.h: profiles/%.profile scripts/glon-profile.sh s1.c s1.h
+	sh scripts/glon-profile.sh $< build/profile/$*
+
+profile-list:
+	@for p in $(MEM_PROFILES); do printf '%-20s %s\n' "$$p" "$$(grep -m1 '^STATUS=' profiles/$$p.profile | cut -d= -f2)"; done
+.PHONY: profile-list
+
+# Headers every build of the runtime depends on (C2: r0_s1_layout.h is new;
+# m1_layout.h was missing from several rules).  Every target that compiles
+# r0_s1_runtime.c gets them here, so a layout or header change cannot leave a
+# stale runtime object or binary behind.
+R0S1_RUNTIME_HEADERS := r0_s1.h r0_s1_layout.h m1_layout.h s1.h
+R0S1_RUNTIME_TARGETS := r0_s1_runtime.o r0_s1_runtime_prof.o global-ctx-hash-constrained \
+    gc-worklist-overflow-test fib-p6b-bench fib-p10a-bench fib-p10b-bench web/demo.js \
+    standalone/glon.wasm demo/shop/glon.wasm demo/shop/glon-live.wasm m1-smoke desktop-test \
+    patrol-test demo/shop/glon-kaka.wasm kaka-test kaka-fighter-test kaka-render-test \
+    kaka-damage-test kaka-terminal-test kaka-wave-test kaka-life-test glon-live-native-test \
+    traffic-bench-o2 integrity/build/glon.wasm glon m1-large-test global-ctx-hash-profile
+$(R0S1_RUNTIME_TARGETS): $(R0S1_RUNTIME_HEADERS)
+
+# Kaka (game; native tests and WASM) runs no M1 tasks and needs 25,536
+# loader cells (kaka-fighter reaches 65,286): MEM_PROFILE constrained-notask.
+# Its harnesses compile the frozen s1.c directly (the profile keeps the 64K
+# S1 map) with the generated profile header force-included.
+KAKA_PROFILE_HEADER := build/profile/constrained-notask/glon_profile.h
+KAKA_TARGETS := demo/shop/glon-kaka.wasm kaka-test kaka-fighter-test kaka-render-test \
+    kaka-damage-test kaka-terminal-test kaka-wave-test kaka-life-test
+$(KAKA_TARGETS): $(KAKA_PROFILE_HEADER)
 
 GLON_SRCS = glon.c r0_s1_session.c r0_s1_show.c r0_s1_runtime.c $(GLON_S1_SRC)
 GLON_LIB_DIR = glon-lib
@@ -421,13 +445,9 @@ OPENSSL_LIBS ?= -lssl -lcrypto
 
 # The HTTP server does not create M1 tasks.  The G3 application plus the
 # transient per-request source expression outgrow the default 14,800-cell
-# loader heap, so the documented R0S1_HEAP_LIMIT override can reclaim the
-# otherwise-unused M1 task arena for this build.  This is opt-in and changes
-# no frozen S1 file; the minimal and file-only builds keep the default map.
-GLON_HTTP_RECLAIM_M1 ?= 0
-ifeq ($(GLON_HTTP_RECLAIM_M1),1)
-  GLON_MODULE_CFLAGS += -DR0S1_HEAP_LIMIT=65000
-endif
+# loader heap; those builds select MEM_PROFILE=constrained-notask (no task
+# arena or table, loader 25,536 cells).  GLON_HTTP_RECLAIM_M1=1 is a
+# deprecated alias for it (see the memory-profile section).
 
 ifneq ($(filter http,$(GLON_MODULE_LIST)),)
   GLON_MODULE_SRCS += glon_http.c
@@ -445,34 +465,45 @@ GLON_TARGET_LIBS = $(GLON_LIBS) $(GLON_MODULE_LIBS)
 # CivetWeb is compiled separately with its own production flags, so the
 # default -O0 -g CFLAGS and warnings used for Glon do not slow down or clutter
 # the networking library.  TLS comes from the system OpenSSL 3.
+CIVETWEB_FLAGS = -std=c17 -O2 -w -pthread -DOPENSSL_API_3_0 -DNO_CGI -DNO_CACHING \
+		-DNO_SSL_DL -Ithird_party/civetweb $(OPENSSL_CFLAGS)
+# (defined before the rule that lists it: prerequisites expand when read)
+CIVETWEB_STAMP = build/civetweb.flags
 third_party/civetweb/civetweb.o: third_party/civetweb/civetweb.c third_party/civetweb/civetweb.h \
-		$(wildcard third_party/civetweb/*.inl)
-	$(CC) -std=c17 -O2 -w -pthread -DOPENSSL_API_3_0 -DNO_CGI -DNO_CACHING \
-		-DNO_SSL_DL -Ithird_party/civetweb $(OPENSSL_CFLAGS) -c $< -o $@
+		$(wildcard third_party/civetweb/*.inl) $(CIVETWEB_STAMP)
+	$(CC) $(CIVETWEB_FLAGS) -c $< -o $@
 
-# Track the selected module configuration so `make glon` and
-# `make glon MODULES=...` relink when the selection changes.
+# ---- Build-configuration stamps (GLON-CORE-C2) -------------------------------
+# .glon-config records every value that changes the glon binary (modules,
+# memory profile, compiler, flags, OpenSSL/SQLite settings) and
+# build/civetweb.flags records CivetWeb's compile command.  Each is rewritten
+# only when its contents change (scripts/glon-stamp.sh), so a changed
+# configuration rebuilds exactly what it affects and an unchanged one rebuilds
+# nothing.  They are refreshed only when a goal that links glon is built
+# (GLON_LINK_GOALS; recursive `$(MAKE) glon` recipes count), so building
+# other targets cannot disturb them.  `glon` is a real file target (C2: it was
+# listed as .PHONY, which relinked it on every invocation).  Profile contents are tracked by real
+# file dependencies (build/profile/<name>/ on profiles/<name>.profile).
 GLON_CONFIG = .glon-config
-.PHONY: FORCE
-FORCE:
-$(GLON_CONFIG): FORCE
-	@printf '%s %s %s %s %s %s %s %s' '$(strip $(MODULES))' '$(GLON_HTTP_RECLAIM_M1)' \
-	    '$(MEM_PROFILE)' '$(MEM_MANAGED_CELLS)' '$(MEM_WORKLIST_CELLS)' '$(MEM_LOADER_CELLS)' \
-	    '$(MEM_GLOBAL_CAP)' '$(MEM_SYM_CAP)' > $@.tmp
-	@if ! cmp -s $@.tmp $@; then mv $@.tmp $@; else rm -f $@.tmp; fi
+GLON_LINK_GOALS := glon machine-integrity
+GLON_CONFIG_LINE := modules=$(strip $(MODULES)) profile=$(MEM_PROFILE) cc=$(CC) \
+    cflags=$(CFLAGS) module-cflags=$(GLON_MODULE_CFLAGS) ldlibs=$(GLON_MODULE_LDLIBS)
+ifneq ($(filter $(GLON_LINK_GOALS) third_party/civetweb/civetweb.o,$(MAKECMDGOALS)),)
+  $(shell sh scripts/glon-stamp.sh $(GLON_CONFIG) '$(GLON_CONFIG_LINE)')
+  $(shell sh scripts/glon-stamp.sh $(CIVETWEB_STAMP) '$(CC) $(CIVETWEB_FLAGS)')
+endif
+$(GLON_CONFIG):
+	@sh scripts/glon-stamp.sh $@ '$(GLON_CONFIG_LINE)'
+$(CIVETWEB_STAMP):
+	@sh scripts/glon-stamp.sh $@ '$(CC) $(CIVETWEB_FLAGS)'
 
-build/profile:
-	@mkdir -p $@
+# Headers of the CLI host and its modules (glon.c and module sources).
+GLON_HOST_HEADERS := $(wildcard glon_*.h) r0_s1_g1a.h
+ifneq ($(filter http,$(GLON_MODULE_LIST)),)
+  GLON_HOST_HEADERS += third_party/civetweb/civetweb.h
+endif
 
-build/profile/s1_profile.h: s1.h Makefile $(GLON_CONFIG) | build/profile
-	@sed 's/^#define MEM_CELLS 65536$$/#define MEM_CELLS $(MEM_TOTAL)/' $< > $@.tmp
-	@mv $@.tmp $@
-
-build/profile/s1_profile.c: s1.c Makefile $(GLON_CONFIG) | build/profile
-	@sed 's/^#include "s1.h"$$/#include "s1_profile.h"/' $< > $@.tmp
-	@mv $@.tmp $@
-
-glon: $(GLON_SRCS) $(GLON_MODULE_SRCS) $(GLON_MODULE_OBJS) $(GLON_PROFILE_DEPS) r0_s1.h s1.h m1_layout.h $(GLON_CONFIG) $(GLON_TARGET_LIBS)
+glon: $(GLON_SRCS) $(GLON_MODULE_SRCS) $(GLON_MODULE_OBJS) $(GLON_PROFILE_DEPS) $(R0S1_RUNTIME_HEADERS) $(GLON_HOST_HEADERS) $(GLON_CONFIG) $(GLON_TARGET_LIBS)
 	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) $(GLON_MODULE_CFLAGS) -I. -o $@ $(GLON_SRCS) $(GLON_MODULE_SRCS) $(GLON_MODULE_OBJS) $(GLON_MODULE_LDLIBS)
 
 $(GLON_LIB_DIR)/prelude.glon: jupyter/prelude.glon
@@ -600,34 +631,34 @@ https-g3-test:
 	tests/https-g1/make-cert.sh
 	python3 tests/https-g1/acceptance.py --glon ./glon
 	python3 tests/https-g2/acceptance.py --glon ./glon
-	$(MAKE) --no-print-directory glon MODULES=http GLON_HTTP_RECLAIM_M1=1
+	$(MAKE) --no-print-directory glon MODULES=http MEM_PROFILE=constrained-notask
 	python3 tests/https-g3/acceptance.py --glon ./glon
-	$(MAKE) --no-print-directory glon MODULES=file,http GLON_HTTP_RECLAIM_M1=1
+	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=constrained-notask
 	python3 tests/https-g1/acceptance.py --glon ./glon
 	python3 tests/https-g2/acceptance.py --glon ./glon
 	# G3 stays HTTP-only: the file module's Glon libraries consume enough of
 	# the 7,232-cell managed heap that the membership app is not reliable in
 	# the combined build.  G1/G2 still verify MODULES=file,http.
-	$(MAKE) --no-print-directory glon MODULES=http GLON_HTTP_RECLAIM_M1=1
+	$(MAKE) --no-print-directory glon MODULES=http MEM_PROFILE=constrained-notask
 
 # ---- G3A: grouped membership register with NDJSON persistence --------------
 # The app lives in examples/https-g3a and uses the large profile.  The caller
 # supplies the local OpenSSL C_INCLUDE_PATH/LIBRARY_PATH (see the build notes),
 # or installs libssl-dev.  The acceptance suite is local-only and bounded.
 https-g3a-test:
-	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=server
 	tests/https-g1/make-cert.sh
 	python3 tests/https-g3a/acceptance.py --glon $(CURDIR)/glon
 .PHONY: https-g3a-test
 
 https-g3a-scale:
-	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=server
 	tests/https-g1/make-cert.sh
 	python3 tests/https-g3a/scale.py --glon $(CURDIR)/glon --sizes 10,100,1000
 .PHONY: https-g3a-scale
 
 https-g3a-endurance:
-	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+	$(MAKE) --no-print-directory glon MODULES=file,http MEM_PROFILE=server
 	tests/https-g1/make-cert.sh
 	python3 tests/https-g3a/endurance.py --glon $(CURDIR)/glon --requests 1000 --workers 1
 .PHONY: https-g3a-endurance
@@ -639,7 +670,7 @@ m1-smoke: tests/m1_smoke.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c s1.c r0
 	$(CC) $(CFLAGS) -I. -o $@$(if $(filter Windows_NT,$(OS)),.exe,) tests/m1_smoke.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c s1.c
 
 m1-large-test: tests/m1_large_driver.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c $(GLON_PROFILE_DEPS)
-	@test "$(MEM_PROFILE)" = large || { echo "use MEM_PROFILE=large"; exit 2; }
+	@test "$(MEM_PROFILE)" != constrained || { echo "use a non-constrained MEM_PROFILE ($(MEM_PROFILES))"; exit 2; }
 	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o m1-large-test tests/m1_large_driver.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_show.c $(GLON_S1_SRC)
 	./m1-large-test
 .PHONY: m1-large-test
@@ -648,10 +679,47 @@ m1-large-test: tests/m1_large_driver.c r0_s1_m1_tests.c r0_s1_runtime.c r0_s1_sh
 # (driven by global-ctx-hash-test; defined after the profile block so that
 # GLON_PROFILE_DEPS is set when this rule is read).
 global-ctx-hash-profile: global_ctx_hash_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c r0_s1.h s1.h m1_layout.h $(GLON_PROFILE_DEPS)
-	@test "$(MEM_PROFILE)" = large || { echo "use MEM_PROFILE=large"; exit 2; }
-	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o $@-$(MEM_GLOBAL_CAP) global_ctx_hash_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c $(GLON_S1_SRC)
-	./$@-$(MEM_GLOBAL_CAP)
+	@test "$(MEM_PROFILE)" != constrained || { echo "use a non-constrained MEM_PROFILE ($(MEM_PROFILES))"; exit 2; }
+	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o $@-$(MEM_PROFILE) global_ctx_hash_test.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c $(GLON_S1_SRC)
+	./$@-$(MEM_PROFILE)
 
+
+# ---- GLON-CORE-C2 profile checks ---------------------------------------------
+# profile-check        generate and build every profile; the layout probe
+#                      checks that its S1 copy and header agree and that a
+#                      program runs; the constrained profile file must
+#                      reproduce the built-in defaults exactly.
+# profile-reject-check invalid or overlapping layouts are rejected.
+# profile-common-test  one program, identical output on every profile.
+# build-deps-check     stale-artifact regression (profiles, generator, layout
+#                      headers, CivetWeb flags, profile switching).
+profile-layout-one: tests/core-c2/profile_layout.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c $(R0S1_RUNTIME_HEADERS) $(GLON_PROFILE_DEPS)
+	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o build/profile-layout-$(MEM_PROFILE) tests/core-c2/profile_layout.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c $(GLON_S1_SRC)
+	./build/profile-layout-$(MEM_PROFILE)
+
+profile-check: build/profile/constrained/glon_profile.h
+	@mkdir -p build
+	@$(MAKE) --no-print-directory profile-layout-one MEM_PROFILE=constrained | tee build/profile-layout.default
+	$(CC) $(CFLAGS) -include build/profile/constrained/glon_profile.h -I. -o build/profile-layout-constrained-generated tests/core-c2/profile_layout.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c s1.c
+	./build/profile-layout-constrained-generated > build/profile-layout.generated
+	@grep '^LAYOUT ' build/profile-layout.default > build/profile-layout.default.line
+	@grep '^LAYOUT ' build/profile-layout.generated > build/profile-layout.generated.line
+	@cmp build/profile-layout.default.line build/profile-layout.generated.line \
+	  && echo "  ok: profiles/constrained.profile reproduces the built-in 64K defaults exactly" \
+	  || { echo "  FAIL: profiles/constrained.profile differs from the defaults"; exit 1; }
+	@for p in $(filter-out constrained,$(MEM_PROFILES)); do \
+	  $(MAKE) --no-print-directory profile-layout-one MEM_PROFILE=$$p || exit 1; done
+	@echo "profile-check: PASS ($(words $(MEM_PROFILES)) profiles)"
+
+profile-reject-check:
+	sh tests/core-c2/reject_check.sh
+
+profile-common-test:
+	sh tests/core-c2/common_check.sh
+
+build-deps-check:
+	sh tests/core-c2/build_deps_check.sh
+.PHONY: profile-layout-one profile-check profile-reject-check profile-common-test build-deps-check
 
 # ---- Desktop proof: native Glon application + browser/WASM Glon View --------
 # glon-desktop is the installed application host: it binds a localhost TCP
@@ -743,11 +811,12 @@ patrol-serve: demos/patrol/glon.wasm demos/patrol/prelude.glon demos/patrol/stri
 	sh demos/patrol/run.sh
 
 # ---- D12A: Attack of the Mutant Kaka rule tests (game asserts in Glon) -----
-# Kaka uses no M1 multitasking tasks, so its runtime reclaims the reserved M1
-# task arena as loader heap (R0S1_HEAP_LIMIT override). The shared shop WASM
-# keeps the default 14800-cell loader heap (Linda does use tasks).
-KAKA_HEAP_LIMIT = 65536
-KAKA_LIMIT_FLAG = -DR0S1_HEAP_LIMIT=$(KAKA_HEAP_LIMIT)
+# Kaka uses no M1 multitasking tasks, so it is built with the declared
+# constrained-notask profile (no task arena or table; loader [40000, 65536)),
+# replacing the D1 override -DR0S1_HEAP_LIMIT=65536, which let the loader
+# share the task table with the task records.  The shared shop WASM keeps the
+# default 14800-cell loader heap (Linda does use tasks).
+KAKA_LIMIT_FLAG = -include $(KAKA_PROFILE_HEADER)
 
 demo/shop/glon-kaka.wasm: standalone/glon.c r0_s1_g1a.c r0_s1_g1a.h s1.c s1.h r0_s1_runtime.c r0_s1_show.c r0_s1.h
 	$(EMCC) $(STANDALONE_FLAGS) $(KAKA_LIMIT_FLAG) standalone/glon.c r0_s1_g1a.c s1.c r0_s1_runtime.c r0_s1_show.c -o $@
@@ -884,7 +953,7 @@ traffic-bench-o0: r0_s1_traffic_bench.c r0_s1_runtime.o s1.o
 traffic-bench-o2: r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 	$(CC) -std=c17 -O2 -o $@ r0_s1_traffic_bench.c r0_s1_runtime.c s1.c
 
-.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon glon-lib glon-smoke io-file-c-test io-file-test io-file-stream-test io-file-stream-scale io-file-stream-4m io-file-inplace-test io-file-inplace-bench glon-kernel-host host-test kernel-test kernel-install kernelspec-test io-file-windows-test m1-smoke glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test kaka-wave-test kaka-serve wasm-kaka-test kaka-browser-regression kaka-refresh-regression
+.PHONY: all test clean wasm wasm-test wasm-standalone wasm-standalone-test wasm-g1a wasm-g1a-test traffic-bench traffic-bench-o0 traffic-bench-o2 wasm-traffic-test linda.html wasm-linda-test wasm-binding-test wasm-abi-test glon-live-native-test wasm-live-test primer.html wasm-primer-test glon-lib glon-smoke io-file-c-test io-file-test io-file-stream-test io-file-stream-scale io-file-stream-4m io-file-inplace-test io-file-inplace-bench glon-kernel-host host-test kernel-test kernel-install kernelspec-test io-file-windows-test m1-smoke glon-desktop desktop-test desktop-wasm desktop-live desktop-security-test desktop-app-test desktop-fetch-test desktop-d8-test desktop-d9-test desktop-usable-test patrol-test patrol-serve kaka-test kaka-render-test kaka-life-test kaka-damage-test kaka-terminal-test kaka-wave-test kaka-serve wasm-kaka-test kaka-browser-regression kaka-refresh-regression
 
 # ---- machine integrity (MACHINE-INTEGRITY-AUDIT.md) ------------------------
 # Machine-level invariants, separate from the functional suite (./s1): the

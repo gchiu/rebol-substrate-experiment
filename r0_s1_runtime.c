@@ -12,6 +12,7 @@
  */
 #include "r0_s1.h"
 #include "m1_layout.h"
+#include "r0_s1_layout.h"   /* GLON-CORE-C2: compile-time layout check */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

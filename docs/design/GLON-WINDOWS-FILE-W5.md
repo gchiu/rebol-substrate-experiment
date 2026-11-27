@@ -110,6 +110,11 @@ make glon MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
 make io-file-windows-test
 ```
 
+**C2 update (2026-11-27).** This historical W5 record predates the single
+profile generator. The current equivalent of its full build is
+`make glon MODULES=file,http MEM_PROFILE=server`; one-at-a-time `MEM_*`
+capacities are rejected.
+
 CI Windows uses MinGW-w64 GCC 16.2 with the MSYS2 OpenSSL development package.
 
 ## 6. Verification

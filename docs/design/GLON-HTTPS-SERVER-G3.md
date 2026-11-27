@@ -124,6 +124,11 @@ source (especially request bodies/headers) exhausts the default 14,800-cell
 loader heap. This was measured, not assumed. The setting should be reviewed
 before becoming a default HTTP configuration.
 
+**C2 update (2026-11-27).** This historical G3 record is superseded by the
+declared `constrained-notask` profile (no M1 task arena or table; loader
+`[40000,65536)`). `GLON_HTTP_RECLAIM_M1=1` remains only as a deprecated alias
+for `MEM_PROFILE=constrained-notask`.
+
 ### Application-level helpers
 
 `examples/https-g3/webparse.glon` contains run-based form/JSON helpers, HTML and

@@ -134,16 +134,16 @@ smoke_archive() {
 case "$PLATFORM" in
     linux)
         package_variant minimal MODULES=
-        package_variant full MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+        package_variant full MODULES=file,http MEM_PROFILE=server
         ;;
     macos)
         export CFLAGS="${CFLAGS:--std=c17 -Wall -Wextra -O0 -g} -Wl,-headerpad_max_install_names"
         package_variant minimal MODULES=
-        package_variant full MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+        package_variant full MODULES=file,http MEM_PROFILE=server
         ;;
     windows)
         package_variant minimal MODULES=
-        package_variant full MODULES=file,http MEM_PROFILE=large MEM_LOADER_CELLS=500000
+        package_variant full MODULES=file,http MEM_PROFILE=server
         ;;
     *) echo "unknown CI_PLATFORM=$PLATFORM" >&2; exit 2 ;;
 esac
