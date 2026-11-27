@@ -8,12 +8,12 @@ fail=0
 T=$(mktemp -d "${TMPDIR:-/tmp}/vocab1.XXXXXX")
 check() {   # name expected-file files...
     name=$1; exp=$2; shift 2
-    out=$("$G" "$@" 2>/dev/null | tail -1)
+    out=$("$G" "$@" 2>/dev/null | tr -d '\r' | tail -1)
     if [ "$out" = "$(cat "$exp")" ]; then echo "vocab1 $name: ok"; else echo "vocab1 $name: FAIL (got '$out', wanted '$(cat "$exp")')"; fail=1; fi
 }
 known() {   # name expected-file files... : a recorded defect; reported, never fails the run
     name=$1; exp=$2; shift 2
-    out=$("$G" "$@" 2>/dev/null | tail -1)
+    out=$("$G" "$@" 2>/dev/null | tr -d '\r' | tail -1)
     if [ "$out" = "$(cat "$exp")" ]; then echo "vocab1 known-$name: NOW PASSES (update GLON-VIEW-C1-CONTRACT.md and make it a check)";
     else echo "vocab1 known-$name: still the recorded defect, got '$out' (GLON-VIEW-C1-CONTRACT.md)"; fi
 }
@@ -40,11 +40,14 @@ check numbers-earlier-globals $D/n-post.expect $D/n-pre.glon demo/shop/numbers.g
 check locals $D/locals-app.expect $D/locals-lib.glon $D/locals-app.glon
 check nested-shadow $D/shadow.expect $D/shadow.glon
 check outer-levels $D/outer2.expect $D/outer2.glon
-known forward-relative $D/forward-relative.expect $D/forward-relative.glon
-known forward-qualified $D/forward-qualified.expect $D/forward-qualified.glon
-known adopt-deep $D/adopt-deep.expect $D/adopt-deep-1.glon $D/adopt-deep-2.glon $D/adopt-deep.glon
+check forward-relative $D/forward-relative.expect $D/forward-relative.glon
+check forward-qualified $D/forward-qualified.expect $D/forward-qualified.glon
+check forward-deep $D/forward-deep.expect $D/forward-deep.glon
+check member-shadow $D/member-shadow.expect $D/member-shadow.glon
+check adopt-deep $D/adopt-deep.expect $D/adopt-deep-1.glon $D/adopt-deep-2.glon $D/adopt-deep.glon
 # the literal-block GC hazard (GLON-LANG-1 2.4), unresolved, and its control
 check managed-block-gc $D/managed-block-gc.expect $D/managed-block-gc.glon
 known literal-block-gc $D/literal-block-gc.expect $D/literal-block-gc.glon
-for e in unknown define redefine dup global place setparam; do check_err "error-$e" $D/err-$e.experr $D/err-$e.glon; done
+for e in unknown define redefine dup global place setparam forward-member prefix-before; do check_err "error-$e" $D/err-$e.experr $D/err-$e.glon; done
+check_err error-adopt-unbound $D/err-adopt-unbound.experr $D/adopt-deep-1.glon $D/adopt-deep-2.glon $D/err-adopt-unbound.glon
 exit $fail

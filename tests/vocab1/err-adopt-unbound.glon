@@ -1,0 +1,3 @@
+;; GLON-VIEW-CORE-V5: the V3 fallback names only a BOUND flat global: a/b/zz is
+;; neither a nested vocabulary nor a global, and is still refused at load
+values [ a/b/zz ]

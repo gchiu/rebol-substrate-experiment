@@ -1,0 +1,12 @@
+;; GLON-VIEW-CORE-V5: the documented rule behind the global get / intent/get
+;; collision: inside a vocabulary body a member hides a global of the same
+;; name (natives are never hidden); global/NAME reaches the global.
+;; Expected: 101 2 2 3
+twice: func [x] [ * 2 x ]
+vocabulary w [
+    twice: func [x] [ + x 100 ]
+    a: func [] [ twice 1 ]
+    b: func [] [ global/twice 1 ]
+    c: func [] [ + 1 2 ]
+]
+values [ w/a w/b twice 1 w/c ]

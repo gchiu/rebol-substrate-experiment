@@ -385,6 +385,10 @@ static int prescan_func(scan_t *S, cell *out, int cap) {
  * nested vocabulary's name, reported through add(); `do [ ]` blocks are the
  * same top level */
 typedef void (*top_add_fn)(const char *name, int len, int nested);
+/* GLON-VIEW-CORE-V5: a nested vocabulary is pre-declared while its enclosing
+ * body is pre-scanned (defined further below) */
+static void top_add_member(const char *name, int len, int nested);
+static void lx_vocab_predeclare(scan_t *S, const char *name, int len);
 static void prescan_top(scan_t *S, int open, const char *prefix, top_add_fn add) {
     int d = open ? 1 : 0, st, ln, k, prev_do = 0;
     size_t pl = prefix ? strlen(prefix) : 0;
@@ -396,9 +400,17 @@ static void prescan_top(scan_t *S, int open, const char *prefix, top_add_fn add)
         if (tok_is(S->s, st, ln, "func")) { scan_skip_func(S); continue; }
         if (tok_is(S->s, st, ln, "masm") || tok_is(S->s, st, ln, "raw")) { scan_skip_masm(S); continue; }
         if (tok_is(S->s, st, ln, "vocabulary")) {
-            int nst, nln;
-            if (scan_next(S, &nst, &nln) == 'w') add(S->s + nst, nln, 1);
-            if (scan_peek(S) == '[') { scan_next(S, &nst, &nln); scan_skip_block(S); }
+            int nst, nln, named = 0;
+            if (scan_next(S, &nst, &nln) == 'w') { add(S->s + nst, nln, 1); named = 1; }
+            if (scan_peek(S) == '[') {
+                int bst, bln;
+                scan_next(S, &bst, &bln);
+                /* GLON-VIEW-CORE-V5: inside a vocabulary body, a nested
+                 * vocabulary and its members exist from the start of the body,
+                 * like its plain members (a forward qualified reference) */
+                if (named && add == top_add_member) lx_vocab_predeclare(S, S->s + nst, nln);
+                scan_skip_block(S);
+            }
             continue;
         }
         if (tok_plain_set(S->s, st, ln)) { add(S->s + st, ln - 1, 0); continue; }
@@ -490,6 +502,15 @@ static int lx_next_is_definition(parser_t *P) {
 }
 /* a qualified name: its full member name, checked; legacy (not a vocabulary)
  * names are left as they are.  kind 's' for a set-word. */
+/* 1 if NAME is bound in the global context (no symbol is interned) */
+static int lx_global_bound(const char *name) {
+    cell p = r0_untag(global_ctx);
+    for (cell k = 0; k < M[p + CTX_COUNT]; k++) {
+        const char *nm = syms[word_id(M[p + CTX_DATA + 2 * k])];
+        if (nm && strcmp(nm, name) == 0) return 1;
+    }
+    return 0;
+}
 static cell lx_qualified(parser_t *P, const char *buf, int kind) {
     const char *slash = strchr(buf, '/');
     char head[160];
@@ -526,7 +547,16 @@ static cell lx_qualified(parser_t *P, const char *buf, int kind) {
             char path[1024];
             lx_join(path, sizeof path, vocabs[base].path, seg);
             int nb = vocab_find(path);
-            if (nb < 0 || !vm_find(base, sid)) { lx_error("no such vocabulary", buf); return word_id_of(buf); }
+            if (nb < 0 || !vm_find(base, sid)) {
+                /* GLON-VIEW-CORE-V5 (GLON-VOCAB-1 defect V3): adoption is one
+                 * level deep, so a flat global a/b/c adopted with its group a
+                 * is no nested vocabulary a/b; the name still names that
+                 * global when exactly it is bound */
+                char flat[1024];
+                lx_join(flat, sizeof flat, vocabs[base].path, rest);
+                if (lx_global_bound(flat)) return word_id_of(flat);
+                lx_error("no such vocabulary", buf); return word_id_of(buf);
+            }
             base = nb; rest = nx + 1; continue;
         }
         vmember_t *m = vm_find(base, sid);
@@ -552,6 +582,26 @@ static cell lx_qualified(parser_t *P, const char *buf, int kind) {
 }
 /* declare (or reopen) the vocabulary NAME inside the current scope; its
  * members from the body; answers its index or -1 */
+/* create the vocabulary PATH (enclosing vocabulary PARENT, or -1), adopting
+ * the flat globals already defined under its prefix; answers its index or -1 */
+static int lx_vocab_create(const char *path, int parent) {
+    if (nvocabs >= MAX_VOCABS) { lx_error("too many vocabularies", path); return -1; }
+    if (strlen(path) >= sizeof vocabs[0].path) { lx_error("vocabulary path too long", path); return -1; }
+    int v = nvocabs++;
+    memcpy(vocabs[v].path, path, strlen(path) + 1);
+    vocabs[v].parent = parent;
+    /* adopt the flat globals already defined under its prefix */
+    size_t pl = strlen(path);
+    cell p = r0_untag(global_ctx);
+    for (cell k = 0; k < M[p + CTX_COUNT]; k++) {
+        const char *nm = syms[word_id(M[p + CTX_DATA + 2 * k])];
+        if (strncmp(nm, path, pl) == 0 && nm[pl] == '/' && nm[pl + 1] && !strchr(nm + pl + 1, '/')) {
+            vmember_t *m = vm_add(v, word_id_of(nm + pl + 1));
+            if (m) m->defined = 2;
+        }
+    }
+    return v;
+}
 static int lx_vocab_open(const char *name, const char *src, int body_pos) {
     char path[1024];
     if (vdepth > 0) lx_join(path, sizeof path, vocabs[vstack[vdepth - 1]].path, name);
@@ -559,21 +609,8 @@ static int lx_vocab_open(const char *name, const char *src, int body_pos) {
     if (strchr(name, '/') || strchr(name, ':') || name[0] == '\'' || name[0] == ':') { lx_error("a vocabulary name is a plain word", name); return -1; }
     int v = vocab_find(path);
     if (v < 0) {
-        if (nvocabs >= MAX_VOCABS) { lx_error("too many vocabularies", path); return -1; }
-        if (strlen(path) >= sizeof vocabs[0].path) { lx_error("vocabulary path too long", path); return -1; }
-        v = nvocabs++;
-        memcpy(vocabs[v].path, path, strlen(path) + 1);
-        vocabs[v].parent = vdepth > 0 ? vstack[vdepth - 1] : -1;
-        /* adopt the flat globals already defined under its prefix */
-        size_t pl = strlen(path);
-        cell p = r0_untag(global_ctx);
-        for (cell k = 0; k < M[p + CTX_COUNT]; k++) {
-            const char *nm = syms[word_id(M[p + CTX_DATA + 2 * k])];
-            if (strncmp(nm, path, pl) == 0 && nm[pl] == '/' && nm[pl + 1] && !strchr(nm + pl + 1, '/')) {
-                vmember_t *m = vm_add(v, word_id_of(nm + pl + 1));
-                if (m) m->defined = 2;
-            }
-        }
+        v = lx_vocab_create(path, vdepth > 0 ? vstack[vdepth - 1] : -1);
+        if (v < 0) return -1;
     }
     if (vdepth > 0) { vmember_t *m = vm_add(vstack[vdepth - 1], word_id_of(name)); if (m && m->defined < 2) m->defined = 3; }
     top_vocab = v; top_dup = 0;
@@ -582,6 +619,29 @@ static int lx_vocab_open(const char *name, const char *src, int body_pos) {
     snprintf(prefix, sizeof prefix, "%s/", path);
     prescan_top(&S, 1, prefix, top_add_member);
     return v;
+}
+/* GLON-VIEW-CORE-V5 (GLON-VOCAB-1 defects V1/V2): called while the body of
+ * vocabulary top_vocab is pre-scanned, at a nested `vocabulary NAME [` (S just
+ * after its '['): declare the nested vocabulary now and pre-scan its members,
+ * so a qualified reference earlier in the enclosing body (relative
+ * `point/sum` or full `geo/point/sum`) resolves to the member, as a plain
+ * member already does.  The real declaration later finds it registered.  A
+ * name that is not a plain word is left to that declaration to refuse. */
+static void lx_vocab_predeclare(scan_t *S, const char *name, int len) {
+    char nm[64], path[1024], prefix[1100];
+    if (len <= 0 || len > 63) return;
+    memcpy(nm, name, (size_t)len); nm[len] = 0;
+    if (strchr(nm, '/') || strchr(nm, ':') || nm[0] == '\'' || nm[0] == ':') return;
+    lx_join(path, sizeof path, vocabs[top_vocab].path, nm);
+    int v = vocab_find(path);
+    if (v < 0) v = lx_vocab_create(path, top_vocab);
+    if (v < 0) return;
+    int save_vocab = top_vocab, save_dup = top_dup;
+    top_vocab = v; top_dup = 0;
+    scan_t S2 = { S->s, S->pos };
+    snprintf(prefix, sizeof prefix, "%s/", path);
+    prescan_top(&S2, 1, prefix, top_add_member);
+    top_vocab = save_vocab; top_dup = save_dup;
 }
 /* the body is done: its members are defined */
 static void lx_vocab_close(int v) {

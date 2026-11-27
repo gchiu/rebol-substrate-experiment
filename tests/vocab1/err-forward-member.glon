@@ -1,0 +1,6 @@
+;; GLON-VIEW-CORE-V5: a forward reference to a member the nested vocabulary does
+;; not have is still refused at load
+vocabulary geo [
+    total: func [p] [ point/nosuch p ]
+    vocabulary point [ sum: func [p] [ 0 ] ]
+]

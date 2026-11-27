@@ -1,5 +1,6 @@
-;; KNOWN DEFECT (GLON-VIEW-PREP-1): the same forward reference written with the
-;; full name is refused at load ("no such vocabulary"). Expected once fixed: 7
+;; GLON-VOCAB-1 defect V2, CORRECTED in GLON-VIEW-CORE-V5: the same forward
+;; reference written with the full name resolves (it used to be refused at load:
+;; "no such vocabulary").
 vocabulary geo [
     total: func [p] [ geo/point/sum p ]
     vocabulary point [ sum: func [p] [ + block-at p 0 block-at p 1 ] ]

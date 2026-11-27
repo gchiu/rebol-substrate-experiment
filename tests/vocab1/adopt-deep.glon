@@ -1,5 +1,5 @@
-;; KNOWN DEFECT V3 (GLON-VIEW-PREP-1 2.3; GLON-VIEW-CORE-V4 6): adoption is one
-;; level deep.  adopt-deep-1 defines flat a/b and a/b/c, adopt-deep-2 declares
-;; vocabulary a (adopting them); this later source naming a/b/c is refused at
-;; load ("a/b/c: no such vocabulary").  Expected once fixed: 1 2 3.
+;; GLON-VOCAB-1 defect V3, CORRECTED in GLON-VIEW-CORE-V5: adoption is one level
+;; deep (a/b becomes a member of a; a/b/c is no nested vocabulary a/b), but a
+;; later source naming the adopted flat global a/b/c still reaches it (it used
+;; to be refused at load: "a/b/c: no such vocabulary").
 values [ a/b a/b/c a/d ]

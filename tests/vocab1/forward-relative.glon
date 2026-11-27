@@ -1,8 +1,7 @@
-;; KNOWN DEFECT (GLON-VIEW-PREP-1; GLON-VIEW-C1-CONTRACT.md): a relative
-;; qualified name whose head is a nested vocabulary declared LATER in the same
-;; body is not resolved; it loads and fail-stops when it runs. Plain members
-;; may be used before their definition (GLON-VOCAB-1 3), nested vocabularies
-;; may not. Expected once fixed: 7
+;; GLON-VOCAB-1 defect V1, CORRECTED in GLON-VIEW-CORE-V5: a relative qualified
+;; name whose head is a nested vocabulary declared LATER in the same body
+;; resolves to its member, as a plain member used before its definition does
+;; (it used to load and fail-stop when it ran).
 vocabulary geo [
     total: func [p] [ point/sum p ]
     vocabulary point [ sum: func [p] [ + block-at p 0 block-at p 1 ] ]

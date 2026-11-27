@@ -1,0 +1,8 @@
+;; GLON-VIEW-CORE-V5: the documented restriction V4, kept deliberately: within
+;; one source a vocabulary's members are defined in its body.  A prefixed flat
+;; definition earlier in the same source is not adopted (adoption is for flat
+;; globals already defined by earlier sources), so p/x is no member of p and
+;; naming it after the declaration is refused at load.
+p/x: func [] [ 1 ]
+vocabulary p [ y: func [] [ 2 ] ]
+values [ p/x p/y ]

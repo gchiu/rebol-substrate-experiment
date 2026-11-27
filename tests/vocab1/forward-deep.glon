@@ -1,0 +1,13 @@
+;; GLON-VIEW-CORE-V5: forward references two levels down and from a nested body:
+;; geo/shape/area is used in geo before shape (and shape/area before area's own
+;; nested vocabulary unit); expected 12 7 7
+vocabulary geo [
+    total: func [p] [ point/sum p ]
+    area: func [w h] [ shape/area w h ]
+    vocabulary shape [
+        area: func [w h] [ unit/scale * w h ]
+        vocabulary unit [ scale: func [x] [ x ] ]
+    ]
+    vocabulary point [ sum: func [p] [ + block-at p 0 block-at p 1 ] ]
+]
+values [ geo/area 3 4  geo/total reduce [ 3 4 ]  geo/point/sum reduce [ 3 4 ] ]
