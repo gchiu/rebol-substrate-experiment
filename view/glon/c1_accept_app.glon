@@ -1,0 +1,67 @@
+;; view/glon/c1_accept_app.glon -- GLON-VIEW-PREP-1: the test application of
+;; the C1 integration acceptance cases (view/tests/test_gui_p2.c, c1-*;
+;; make -C view test-c1-accept).  Not a demo.
+;;
+;; It puts together, in one session, what View needs from a combined core:
+;; - an application vocabulary, c1, with a nested vocabulary, c1/addr.  Dialect
+;;   blocks (layouts, component definitions) are data the loader does not
+;;   rewrite, so they name handlers and components by their full names;
+;; - one component definition, c1/addr/fields, placed twice in the main
+;;   layout and twice in every window opened;
+;; - native windows from the optional window library (intent/open-window-at),
+;;   when the session loads it;
+;; - explicit outer assignment: a member of the enclosing vocabulary
+;;   (c1/edits:) from a function of the nested one, and a global
+;;   (set 'c1-last) from inside a vocabulary.
+[
+vocabulary c1 [
+    edits: 0
+    opened: 0
+    vocabulary addr [
+        fields: [
+            across
+            label 8 "Street" right   street: field 24 on-change c1/addr/edited
+            return
+            label 8 "City" right     city: field 24 on-change c1/addr/edited
+            return
+            wipe: button "Clear" [ clear street clear city ]
+            count: label 16 ""
+        ]
+        ;; this instance's own count in its form/data; the shared total in the
+        ;; enclosing vocabulary's member; the last value typed in a global
+        edited: func [self event] [
+            f: face/form self
+            n: + either = form/data f none [ 0 ] [ form/data f ] 1
+            form/set-data f n
+            c1/edits: + edits 1
+            set 'c1-last face/value self
+            face/set-text form/field f 'count s/+ s/from-int n " edits"
+        ]
+    ]
+    window-spec: [
+        heading "C1 window"
+        one: form c1/addr/fields
+        two: form c1/addr/fields
+        close: button "Close" on-click c1/close-mine
+    ]
+    status: func [self s] [ face/set-text form/field intent/root-form c1/main 'status s ]
+    open-one: func [self event] [
+        r: judge [ intent/open-window-at window-spec 480 360 "C1 window" ]
+        either sin? r [ status self "refused" ] [
+            c1/opened: + opened 1
+            status self s/+ "opened " s/from-int opened
+        ]
+    ]
+    close-mine: func [self event] [ intent/close face/layout self ]
+    main: layout [
+        heading "C1 main"
+        home: form c1/addr/fields
+        work: form c1/addr/fields
+        across
+        open: button "Open window" on-click c1/open-one
+        status: label 30 ""
+    ]
+]
+c1-last: ""
+view c1/main
+]
