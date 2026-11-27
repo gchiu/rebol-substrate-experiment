@@ -12,7 +12,16 @@
 #include "s1.h"
 
 /* S1's flat memory (defined in s1.c) */
+/* GLON-VIEW-CORE-V3: a generated memory profile defines M in its S1 copy
+ * (build/profile/<p>/s1_profile.c) with the profile's MEM_CELLS; frozen s1.h's
+ * MEM_CELLS is the 64K reference's.  Declare the array with the size it is
+ * defined with, or an optimising build (View's -O2) sees every access above
+ * 65,536 as out of bounds (undefined behaviour; GCC warns). */
+#ifdef GLON_PROFILE_MEM_CELLS
+extern cell M[GLON_PROFILE_MEM_CELLS];
+#else
 extern cell M[MEM_CELLS];
+#endif
 
 /* --- R0 tags (low 4 bits; same scheme as the architecture) ------------- */
 enum {
