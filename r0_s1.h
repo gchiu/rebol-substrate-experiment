@@ -330,6 +330,17 @@ _Static_assert(GC_HEAP_LIMIT == R0S1_HEAP_BASE,
 #endif
 #define GC_A1           25313    /* alloc()'s persistent extent */
 #define GC_A2           25314    /* alloc()'s persistent kind */
+/* GLON-MEM-2: the allocator's free-block hint, a lower bound -- no free block
+ * lies in [GC_HEAP_BASE, GC_FREE_HINT) -- with GC_FREE_HINT <= REG_HP.  The
+ * sweep sets it to the first free block (REG_HP if none); r_alloc starts its
+ * first-fit scan there and keeps it a lower bound; every C-side frontier write
+ * (r0_s1_init, a non-persistent run's s1_reset / datatype seeding) resets it to
+ * the frontier; a hint above the frontier makes r_alloc bump and is then
+ * reset to it.  One unused cell of the RV block (no region moves).
+ * -DR0S1_ALLOC_SCAN_FROM_BASE restores the old scan exactly. */
+#define GC_FREE_HINT    24632
+_Static_assert(GC_FREE_HINT == RV_BASE + 37 && GC_FREE_HINT > RV_DSBASE && GC_FREE_HINT < RV_RES_BUF,
+               "the free-block hint uses the unused RV cell between RV_DSBASE and RV_RES_BUF");
 
 /* GC mark worklist capacity (GLON-ARCHITECTURE-MEMORY.md, "GC worklist").
  * The mark phase pushes each managed object at most once per collection (the

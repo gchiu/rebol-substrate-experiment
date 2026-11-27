@@ -103,6 +103,68 @@ int run_r0_s1_gc_interior_tests(void) {
     CHECK(N >= 1 && r0_s1_ran_cleanly() && got(N - 1) == 21,
           "5: six nested anonymous closures survive collections (1+2+...+6)");
 
+    /* GLON-MEM-5: the closure check skips, before the object-start walk, a
+     * candidate whose would-be flags already carry the mark bit.  These cases
+     * would catch the check accepting what it must reject (6) or rejecting
+     * what it must keep (7, 8).  Helpers: setb s i v writes byte i of s;
+     * cflags c is the header flags word of closure c (9 = allocated closure,
+     * unmarked); churn k allocates k throw-away 16-byte strings (48 cells, the
+     * size of a small closure's block; k is small, as each frame keeps its
+     * string live until it returns), so a closure freed by
+     * mistake would be overwritten before it is used; bat b i is element i of
+     * block b.  A word bound to a closure calls it, so closure values are
+     * passed as get-words (:inner). */
+    _Static_assert(T_CLOSURE == 8 && GC_HDR_STRIDE - GC_HDR_FLAGS == 15, "cflags below");
+    eval("[ setb: raw 3 [ LIT 16 DIV LIT SCRATCH_B ! LIT 16 DIV LIT SCRATCH_A ! "
+         "    LIT T_STRING SUB LIT 1 ADD LIT SCRATCH_A @ ADD LIT SCRATCH_C ! "
+         "    LIT SCRATCH_B @ LIT SCRATCH_C @ ! LIT 0 ARITY 1 EXIT ] "
+         "  cflags: raw 1 [ LIT 8 SUB LIT 15 SUB @ LIT 16 MUL ARITY 1 EXIT ] "   /* 8 = T_CLOSURE (not a masm name) */
+         "  churn: func [k] [ either = k 0 [ 0 ] [ nines 16  churn - k 1 ] ] "
+         "  bat: masm 2 [ LIT SCRATCH_B ! DUP LIT 16 MOD SUB LIT 2 ADD LIT SCRATCH_B @ LIT 16 DIV ADD @ ARITY 1 EXIT ] ]");
+    CHECK(N == 1 && r0_s1_ran_cleanly(), "6: helpers load (setb, cflags, churn, bat)");
+
+    /* 6. Fake candidates whose would-be flags read "closure, marked": byte 11
+     * (allocated + mark + closure kind) and byte 10 (mark + closure kind).
+     * They must not be accepted (nothing may be written into the string), and
+     * the collection must complete. */
+    eval("[ s6: nines 40  setb s6 0 11  setb s6 16 10 "
+         "  probe6: func [n m] [ gc 0  + byte s6 0 byte s6 16 ] "
+         "  probe6 + addr s6 1 + addr s6 17 ]");
+    CHECK(N >= 1 && r0_s1_ran_cleanly() && got(N - 1) == 21,
+          "6: fakes reading 'closure, marked' are rejected; the string is unchanged (11 + 10)");
+    eval("[ count6: func [a b] [ either = b + a 1 [ either = byte s6 a 9 [ 0 ] [ 1 ] ] [ "
+         "      + count6 a / + a b 2 count6 / + a b 2 b ] ] "
+         "  count6 0 40 ]");
+    CHECK(N >= 1 && got(N - 1) == 2, "6: only the two bytes set differ from 9 (no mark bit written)");
+
+    /* 7. Closures reachable only through a block, through another closure's
+     * captured context (nested), or through two references (shared), across
+     * three collections with churn between them: they must all survive, still
+     * read as allocated, unmarked closures, and still compute. */
+    eval("[ mkc: func [x] [ func [y] [ + x y ] ] "
+         "  wrap: func [g x] [ func [y] [ + invoke :g y x ] ] "
+         "  held: reduce [ mkc 1 mkc 2 mkc 3 ] "
+         "  inner: mkc 40 "
+         "  outer: wrap :inner 500 "
+         "  only: wrap mkc 7 1000 "
+         "  alias: held "
+         "  gc 0  churn 30  gc 0  churn 30  gc 0 "
+         "  + + + + invoke bat held 0 10  invoke bat alias 2 10  invoke :outer 1  invoke :only 1 "
+         "    cflags bat held 1 ]");
+    CHECK(N >= 1 && r0_s1_ran_cleanly() && got(N - 1) == 11 + 13 + 541 + 1008 + 9,
+          "7: block-held, nested, shared and captured closures survive three collections and compute (1582)");
+    eval("[ + + cflags :inner cflags :outer cflags :only ]");
+    CHECK(N == 1 && got(0) == 27, "7: their headers still read allocated + closure, mark clear (9 + 9 + 9)");
+
+    /* 8. One closure referenced from many places at once (most references
+     * then meet it already marked): it survives and computes. */
+    eval("[ many: reduce [ :inner :inner :inner :inner :inner :inner :inner :inner ] "
+         "  more: reduce [ many many :outer :outer ] "
+         "  gc 0  churn 30  gc 0 "
+         "  + invoke bat many 7 2  invoke bat more 3 1 ]");
+    CHECK(N >= 1 && r0_s1_ran_cleanly() && got(N - 1) == 42 + 541,
+          "8: a closure met already marked many times survives (42 + 541)");
+
     printf("  %d failure(s)\n", failures);
     return failures;
 }

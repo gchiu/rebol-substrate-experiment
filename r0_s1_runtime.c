@@ -1021,6 +1021,33 @@ static cell fw_mark_frame[32];  static int n_fw_mf;
 static cell call_mark_value(void) { cell c = emit_call_fwd(); fw_mark_value[n_fw_mv++] = c; return c; }
 static cell call_mark_frame(void) { cell c = emit_call_fwd(); fw_mark_frame[n_fw_mf++] = c; return c; }
 
+#ifdef R0S1_GC_PROF
+/* GLON-MEM-4 (diagnostic build only): the S1 address range of each collector
+ * routine, each inlined object-start walk and each collector phase, recorded
+ * in C while the code is emitted.  Reading asm_here() emits nothing: the
+ * emitted code is identical to the normal build's.  view/tests/gcprof.h
+ * samples the S1 IP (M[REG_IP]) against these ranges. */
+#define R0S1_GCPROF_MAX 32
+const char *r0s1_gcprof_name[R0S1_GCPROF_MAX];
+cell r0s1_gcprof_lo[R0S1_GCPROF_MAX], r0s1_gcprof_hi[R0S1_GCPROF_MAX];
+int r0s1_gcprof_n;
+/* the M1 layout this translation unit was compiled with (the 1M/4M runtime
+ * takes the root m1_layout.h, not experiments/ms1/include/m1_layout.h) */
+const cell r0s1_gcprof_m1_task_table = M1_TASK_TABLE, r0s1_gcprof_m1_arena_base = M1_ARENA_BASE;
+static void gcprof_add(const char *name, cell lo, cell hi) {
+    if (r0s1_gcprof_n < R0S1_GCPROF_MAX) {
+        r0s1_gcprof_name[r0s1_gcprof_n] = name;
+        r0s1_gcprof_lo[r0s1_gcprof_n] = lo; r0s1_gcprof_hi[r0s1_gcprof_n] = hi;
+        r0s1_gcprof_n++;
+    }
+}
+#define GCPROF_ADD(name, lo, hi) gcprof_add(name, lo, hi)
+#define GCPROF_EMIT(name, call) do { cell gcp_lo_ = asm_here(); call; gcprof_add(name, gcp_lo_, asm_here()); } while (0)
+#else
+#define GCPROF_ADD(name, lo, hi) ((void)0)
+#define GCPROF_EMIT(name, call) call
+#endif
+
 /* WORKLIST-FULL: the mark worklist has no room (GC_WORKLIST_CAP entries).
  * Unreachable with the 64K map (r0_s1.h proves the bound at build time); this
  * is defence in depth for any other heap size or for RAW code that allocates
@@ -1270,9 +1297,29 @@ static void emit_mark_closure_inline(void) {
     e_cell(GC_T1); asm_lit(16); asm_host(HOST_MOD); asm_lit(0); asm_host(HOST_EQ);
     cell j3 = asm_zbranch_fwd();                     /* misaligned -> skip */
     e_cell(GC_T1); asm_lit(GC_HDR_STRIDE - GC_HDR_FLAGS); asm_host(HOST_SUB); asm_fetch(); /* flags */
+#ifdef R0S1_GC_CLOSURE_WALK_ALWAYS
     asm_lit(4); asm_host(HOST_DIV); asm_lit(8); asm_host(HOST_MOD);                     /* kind */
     asm_lit(GC_KIND_CLOSURE); asm_host(HOST_EQ);
     cell j4 = asm_zbranch_fwd();                     /* not a closure -> skip */
+#else
+    /* GLON-MEM-5: the kind test also requires the mark bit clear: flags/2
+     * mod 16 is mark + 2*kind, so it equals 2*GC_KIND_CLOSURE only for "a
+     * closure, not marked" (mark is 0 or 1; a negative flags word never
+     * matches).  The same instructions, other literals: no extra code.
+     * A candidate whose would-be flags have the mark bit set is skipped
+     * before the object-start walk.  Its outcome is unchanged: a real
+     * closure is already marked (mark_push would return at once), and a
+     * non-object is rejected by the walk anyway.  So the walk is no longer
+     * paid for every reference to a marked closure (GLON-MEM-4: 99.86% of
+     * the walks).  Every candidate that is not skipped still takes the
+     * walk, so nothing bypasses the object-start check.
+     * -DR0S1_GC_CLOSURE_WALK_ALWAYS restores the kind-only test. */
+    _Static_assert(GC_FLAG_ALLOC == 1 && GC_FLAG_MARK == 2 && GC_KIND_BLOCK < 8,
+                   "flags = alloc | mark<<1 | kind<<2 with kind < 8 (the mark + kind test)");
+    asm_lit(2); asm_host(HOST_DIV); asm_lit(16); asm_host(HOST_MOD);                    /* mark + 2*kind */
+    asm_lit(2 * GC_KIND_CLOSURE); asm_host(HOST_EQ);
+    cell j4 = asm_zbranch_fwd();                     /* not an unmarked closure -> skip */
+#endif
     /* Object-start check (2026-11-09; r0_s1_gc_interior_tests.c). The kind
      * bits alone do not identify a closure: a STRING! holds one byte per cell,
      * so the inside of a string can carry "closure flags" (a byte 8-11) at
@@ -1293,6 +1340,7 @@ static void emit_mark_closure_inline(void) {
     cell j_wbad = asm_zbranch_fwd();                 /* size 0: give up */
     e_cell(GC_T2); e_cell(GC_T2); asm_fetch(); asm_host(HOST_ADD); e_setc(GC_T2);
     asm_branch(wl);
+    GCPROF_ADD("object-start walk", wl, asm_here());
     asm_patch_here(j_wdone);
     e_cell(GC_T2); e_cell(GC_T3); asm_host(HOST_EQ);
     cell j_wno = asm_zbranch_fwd();                  /* not an object start */
@@ -1600,6 +1648,7 @@ static void emit_collect(void) {
 
     /* drain the mark worklist */
     cell drain = asm_here();
+    GCPROF_ADD("collect: roots", r_collect, drain);
     e_cell(GC_WL_SP); asm_lit(0); asm_host(HOST_GT);
     cell j_drain_done = asm_zbranch_fwd();
     e_cell(GC_WL_SP); asm_lit(1); asm_host(HOST_SUB); e_setc(GC_WL_SP);
@@ -1630,8 +1679,15 @@ static void emit_collect(void) {
     asm_patch_here(j_drain_done);
 
     /* sweep [GC_HEAP_BASE, REG_HP) */
+    GCPROF_ADD("collect: drain loop", drain, asm_here());
+#ifdef R0S1_GC_PROF
+    cell gcp_sweep = asm_here();
+#endif
     asm_lit(GC_HEAP_BASE); e_setc(GC_T6);            /* addr */
     asm_lit(0); e_setc(GC_C6);                       /* prev_free */
+    /* GLON-MEM-2: the hint is replaced at the sweep's first free run (below);
+     * with no free run there is no free block at all, and the hint kept (at
+     * most the frontier) is still a lower bound */
     cell sloop = asm_here();
     e_cell(GC_T6); asm_lit(REG_HP); asm_fetch(); asm_host(HOST_LT);
     cell j_sdone = asm_zbranch_fwd();
@@ -1660,6 +1716,16 @@ static void emit_collect(void) {
     e_cell(GC_C6); asm_fetch(); e_cell(GC_T7); asm_host(HOST_ADD); e_cell(GC_C6); asm_store();
     cell fw_coal_next = asm_branch_fwd();
     asm_patch_here(j_new);
+#ifndef R0S1_ALLOC_SCAN_FROM_BASE
+    /* GLON-MEM-2: the sweep's first free run (none counted yet) is the
+     * lowest free block */
+    e_cell(GC_FREE_BLOCKS);
+    cell j_hfirst = asm_zbranch_fwd();               /* count 0 -> first run */
+    cell j_hnot = asm_branch_fwd();
+    asm_patch_here(j_hfirst);
+    e_cell(GC_T6); e_setc(GC_FREE_HINT);
+    asm_patch_here(j_hnot);
+#endif
     e_cell(GC_T6); e_setc(GC_C6);                    /* prev_free = addr */
     e_cell(GC_FREE_BLOCKS); asm_lit(1); asm_host(HOST_ADD); e_setc(GC_FREE_BLOCKS);
     asm_patch_here(fw_live_next);
@@ -1670,6 +1736,7 @@ static void emit_collect(void) {
 
     e_cell(GC_FREE_CELLS); e_setc(GC_LAST_RECLAM);
     asm_exit();
+    GCPROF_ADD("collect: sweep", gcp_sweep, asm_here());
 }
 
 /* ALLOC: ( n kind -- payload-addr ) first-fit + bump + collect.
@@ -1704,7 +1771,24 @@ static void emit_alloc(void) {
 
     asm_lit(0); e_setc(GC_T6);                       /* attempt = 0 */
     cell rtry = asm_here();
+#ifdef R0S1_ALLOC_SCAN_FROM_BASE
     asm_lit(GC_HEAP_BASE); e_setc(GC_T2);            /* addr */
+#else
+    /* GLON-MEM-2: start at the free-block hint (no free block lies below it).
+     * A hint at or above the frontier scans nothing and bumps, and the bump
+     * then sets it to the new frontier (below), so a hint left above a lowered
+     * frontier (only the D1 tooling's raw REG_HP writes; every C-side write
+     * resets it) never lands inside a block.  (A hint below GC_HEAP_BASE only
+     * arises with a frontier below it -- the 1M/4M non-persistent re-base --
+     * where neither scan finds a free block.) */
+#ifdef R0S1_ALLOC_HINT_MEM2
+    e_cell(GC_FREE_HINT); e_setc(GC_T2);             /* addr = hint (GLON-MEM-2 rule, for comparison) */
+#else
+    /* addr = hint; GLON-MEM-3: T8 = the hint (nonzero) until a free block
+     * is passed */
+    e_cell(GC_FREE_HINT); asm_dup(); e_setc(GC_T2); e_setc(GC_T8);
+#endif
+#endif
     cell rscan = asm_here();
     e_cell(GC_T2); asm_lit(REG_HP); asm_fetch(); asm_host(HOST_LT);
     cell j_noscan = asm_zbranch_fwd();
@@ -1716,6 +1800,9 @@ static void emit_alloc(void) {
     cell j_nb = asm_zbranch_fwd();
     cell fw_found = asm_branch_fwd();
     asm_patch_here(j_nb);
+#if !defined(R0S1_ALLOC_SCAN_FROM_BASE) && !defined(R0S1_ALLOC_HINT_MEM2)
+    asm_lit(0); e_setc(GC_T8);                       /* GLON-MEM-3: a free block passed */
+#endif
     asm_patch_here(j_nf);
     e_cell(GC_T2); e_cell(GC_T4); asm_host(HOST_ADD); e_setc(GC_T2);
     asm_branch(rscan);
@@ -1726,6 +1813,21 @@ static void emit_alloc(void) {
     cell j_nobump = asm_zbranch_fwd();
     asm_lit(REG_HP); asm_fetch(); e_setc(GC_T2);     /* addr = HP */
     asm_lit(REG_HP); asm_fetch(); e_cell(GC_A1); asm_host(HOST_ADD); asm_lit(REG_HP); asm_store();
+#ifndef R0S1_ALLOC_SCAN_FROM_BASE
+#ifdef R0S1_ALLOC_HINT_MEM2
+    /* no free block below the old frontier: none below the new one either
+     * (>=: a hint above the frontier is brought back to it) */
+    e_cell(GC_FREE_HINT); e_cell(GC_T2); asm_host(HOST_GE);
+#else
+    /* GLON-MEM-3: the scan passed no free block (everything from the hint
+     * to the old frontier is live, or the hint was at or above it): nothing
+     * free lies below the new frontier */
+    e_cell(GC_T8);
+#endif
+    cell j_hbump = asm_zbranch_fwd();
+    asm_lit(REG_HP); asm_fetch(); e_setc(GC_FREE_HINT);
+    asm_patch_here(j_hbump);
+#endif
     e_cell(GC_A1); e_cell(GC_T2); asm_store();       /* header size */
     e_cell(GC_A2); asm_lit(4); asm_host(HOST_MUL); asm_lit(GC_FLAG_ALLOC); asm_host(HOST_ADD);
     e_cell(GC_T2); asm_lit(GC_HDR_FLAGS); asm_host(HOST_ADD); asm_store(); /* flags */
@@ -1753,6 +1855,20 @@ static void emit_alloc(void) {
     asm_lit(0);
     e_cell(GC_T2); e_cell(GC_A1); asm_host(HOST_ADD); asm_lit(GC_HDR_FLAGS); asm_host(HOST_ADD); asm_store();
     asm_patch_here(j_nosplit);
+#ifndef R0S1_ALLOC_SCAN_FROM_BASE
+    /* GLON-MEM-3: no free block was passed on the way (everything from the
+     * hint to here is live): nothing free lies below the end of the block
+     * taken (a split's remainder starts there; its final size is at M[addr]).
+     * With a free block passed, the hint stays: still a bound */
+#ifdef R0S1_ALLOC_HINT_MEM2
+    e_cell(GC_T2); e_cell(GC_FREE_HINT); asm_host(HOST_EQ);   /* GLON-MEM-2: only a block at the hint */
+#else
+    e_cell(GC_T8);
+#endif
+    cell j_passed = asm_zbranch_fwd();               /* 0: a free block was passed */
+    e_cell(GC_T2); e_cell(GC_T2); asm_fetch(); asm_host(HOST_ADD); e_setc(GC_FREE_HINT);
+    asm_patch_here(j_passed);
+#endif
     /* commit: flags = ALLOC | kind<<2 */
     e_cell(GC_A2); asm_lit(4); asm_host(HOST_MUL); asm_lit(GC_FLAG_ALLOC); asm_host(HOST_ADD);
     e_cell(GC_T2); asm_lit(GC_HDR_FLAGS); asm_host(HOST_ADD); asm_store();
@@ -2016,18 +2132,18 @@ static void emit_ds_top_check(void) {
 static void ds_floor_update(void) { M[RV_DSLIM] = asm_here() + R0S1_DS_GUARD; }
 
 static void emit_gc(void) {
-    emit_mark_push();
-    emit_trace_ctx();
-    emit_trace_closure();
-    emit_trace_user();
-    emit_trace_string();
-    emit_trace_block();
-    emit_mark_frame();
-    emit_mark_value();
-    emit_scan_values();
-    emit_scan_closures();
-    emit_collect();
-    emit_alloc();
+    GCPROF_EMIT("mark_push", emit_mark_push());
+    GCPROF_EMIT("trace_ctx", emit_trace_ctx());
+    GCPROF_EMIT("trace_closure", emit_trace_closure());
+    GCPROF_EMIT("trace_user", emit_trace_user());
+    GCPROF_EMIT("trace_string", emit_trace_string());
+    GCPROF_EMIT("trace_block", emit_trace_block());
+    GCPROF_EMIT("mark_frame", emit_mark_frame());
+    GCPROF_EMIT("mark_value", emit_mark_value());
+    GCPROF_EMIT("scan_values", emit_scan_values());
+    GCPROF_EMIT("scan_closures", emit_scan_closures());
+    GCPROF_EMIT("collect", emit_collect());
+    GCPROF_EMIT("alloc", emit_alloc());
     for (int i = 0; i < n_fw_mv; i++) s1_set_mem(fw_mark_value[i], r_mark_value);
     for (int i = 0; i < n_fw_mf; i++) s1_set_mem(fw_mark_frame[i], r_mark_frame);
 }
@@ -3901,6 +4017,7 @@ cell r0_s1_init(void) {
      * r0_s1_run_persistent FIRST (bootstrap), which preserves REG_HP as-is; it
      * must therefore start at the empty-heap base, not an uninitialised cell. */
     M[REG_HP] = GC_HEAP_BASE;
+    M[GC_FREE_HINT] = GC_HEAP_BASE;     /* GLON-MEM-2: an empty heap */
 
     /* M3: the BUILTIN_TYPE table and GC_META cell are always scanned as roots.
      * Seed them NONE so non-M3 runs scan to nothing; r0_s1_seed_datatypes()
@@ -4138,6 +4255,9 @@ int r0_s1_run_ex(cell block, int preserve_hp) {
     s1_reset();
     if (preserve_hp) s1_set_mem(REG_HP, saved_hp);
     if (g_seed_datatypes) seed_datatype_heap();
+    /* GLON-MEM-2: a re-based (or seeded) frontier: everything below it is
+     * allocated; a preserved one keeps its hint */
+    if (!preserve_hp || g_seed_datatypes) M[GC_FREE_HINT] = M[REG_HP];
     ip_start = s1_mem(REG_IP);
     sp_start = s1_mem(REG_SP);
     rp_start = s1_mem(REG_RP);
@@ -4187,6 +4307,7 @@ int r0_s1_run_compiled(cell block, void (*run_fn)(cell *, cell)) {
 
     s1_reset();
     if (g_seed_datatypes) seed_datatype_heap();
+    M[GC_FREE_HINT] = M[REG_HP];        /* GLON-MEM-2: a re-based frontier */
     ip_start = s1_mem(REG_IP);
     sp_start = s1_mem(REG_SP);
     rp_start = s1_mem(REG_RP);
