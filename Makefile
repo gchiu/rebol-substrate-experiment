@@ -1153,6 +1153,14 @@ json-j2-test:
 	printf '%s\n' "$$out" | grep -v '^#\[func\]$$'; exit $$status
 .PHONY: json-j2-test
 
+# GLON-JSON-J2 in G3H's HTTP tasks: escape-heavy and malformed request bodies
+# on the expanded server profile with the existing 3 x 3,400-cell task stacks.
+json-j2-g3h-test:
+	$(MAKE) --no-print-directory glon MODULES=file,http,sqlite,sec,task MEM_PROFILE=large MEM_LOADER_CELLS=500000 MEM_CODE_CAP=20480 MEM_GLOBAL_CONTEXT_CAP=512 CODE_RESERVE=128 M1_TASKS=3 M1_TASK_CELLS=3400 M1_DS_OFF=400 M1_RS_OFF=3400 M1_WRAPPER_DELTA=256
+	tests/https-g1/make-cert.sh
+	python3 tests/json-j2/g3h_task.py
+.PHONY: json-j2-g3h-test
+
 # ---- Cross-platform CI probes (host portability, no language change) -------
 # arch-check prints the cell width, alignment, pointer width and the exact
 # boundary constants used by the frozen 64K map; the CI matrix requires a

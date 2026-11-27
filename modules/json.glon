@@ -319,65 +319,60 @@ j/parse-escape: func [out] [
 ;; has ended.  j/ps-drive runs levels 0, 1, 2, ... until the string ends, so a
 ;; string needing n iterations (n-1 escapes) nests about 2*log2(n) `do`
 ;; levels: one for a plain string, 28 for 10,000 escapes -- never one level
-;; per escape.  The state is global, like the decoder cursor: decode is not
-;; re-entrant and string scans never nest.
-;; Output: runs and decoded escapes are appended to a short chunk (j/ps-buf),
-;; which is moved into j/ps-out once it exceeds 512 bytes, so a long string
-;; with many escapes is not re-copied in full for every escape.
-j/ps-out: ""
-j/ps-buf: ""
-j/ps-done: 0
-j/ps-k: 0
-j/ps-level: 0
-j/ps-start: 0
-j/ps-at: 0
-j/ps-b: none
-j/ps-once: [
-    j/ps-start: j/pos
-    j/ps-at: j/raw-special-at j/src j/ps-start
-    j/ps-buf: either > j/ps-at j/ps-start [ s/+ j/ps-buf s/span j/src j/ps-start j/ps-at ] [ j/ps-buf ]
-    j/ps-b: s/at j/src j/ps-at
-    either = j/ps-b none [ j/error 'unterminated-string j/pos ] [
-        j/pos: j/ps-at
-        either = j/ps-b 34 [
-            j/pos: + j/pos 1
-            j/ps-done: 1
-        ] [
-            either = j/ps-b 92 [
-                j/ps-buf: j/parse-escape j/ps-buf
-                either > s/length j/ps-buf 512 [
-                    j/ps-out: s/+ j/ps-out j/ps-buf
-                    j/ps-buf: ""
-                ] [ none ]
-            ] [
-                j/error 'bad-token j/pos
-            ]
-        ]
-    ]
-]
-j/ps-run: [
-    either = j/ps-done 1 [ none ] [
-        either = j/ps-k 0 [ do j/ps-once ] [
-            j/ps-k: - j/ps-k 1
-            do j/ps-run
-            do j/ps-run
-            j/ps-k: + j/ps-k 1
-        ]
-    ]
-]
-j/ps-drive: [
-    either = j/ps-done 1 [ none ] [
-        j/ps-k: j/ps-level
-        do j/ps-run
-        j/ps-level: + j/ps-level 1
-        do j/ps-drive
-    ]
-]
+;; per escape.  Runs and decoded escapes are appended to a short chunk
+;; (j/ps-buf), moved into j/ps-out once it exceeds 512 bytes, so a long string
+;; with many escapes is not re-copied in full for every escape.  All state and
+;; the loop blocks are locals of the call (no global names are added).
 j/parse-string-loop: func [out] [
     j/ps-out: out
     j/ps-buf: ""
     j/ps-done: 0
+    j/ps-k: 0
     j/ps-level: 0
+    j/ps-start: 0
+    j/ps-at: 0
+    j/ps-b: none
+    j/ps-once: [
+        j/ps-start: j/pos
+        j/ps-at: j/raw-special-at j/src j/ps-start
+        j/ps-buf: either > j/ps-at j/ps-start [ s/+ j/ps-buf s/span j/src j/ps-start j/ps-at ] [ j/ps-buf ]
+        j/ps-b: s/at j/src j/ps-at
+        either = j/ps-b none [ j/error 'unterminated-string j/pos ] [
+            j/pos: j/ps-at
+            either = j/ps-b 34 [
+                j/pos: + j/pos 1
+                j/ps-done: 1
+            ] [
+                either = j/ps-b 92 [
+                    j/ps-buf: j/parse-escape j/ps-buf
+                    either > s/length j/ps-buf 512 [
+                        j/ps-out: s/+ j/ps-out j/ps-buf
+                        j/ps-buf: ""
+                    ] [ none ]
+                ] [
+                    j/error 'bad-token j/pos
+                ]
+            ]
+        ]
+    ]
+    j/ps-run: [
+        either = j/ps-done 1 [ none ] [
+            either = j/ps-k 0 [ do j/ps-once ] [
+                j/ps-k: - j/ps-k 1
+                do j/ps-run
+                do j/ps-run
+                j/ps-k: + j/ps-k 1
+            ]
+        ]
+    ]
+    j/ps-drive: [
+        either = j/ps-done 1 [ none ] [
+            j/ps-k: j/ps-level
+            do j/ps-run
+            j/ps-level: + j/ps-level 1
+            do j/ps-drive
+        ]
+    ]
     do j/ps-drive
     s/+ j/ps-out j/ps-buf
 ]
@@ -503,177 +498,331 @@ j/skip-ws: func [] [
     j/pos: s/scan-set j/src j/pos j/ws-set
 ]
 
-;; GLON-JSON-J2: arrays and objects are walked with a `do` block over the
-;; activation's own locals (j/ar-*, j/or-*, j/pk-*; no such globals exist), as
-;; the J1 encoder does: about 9 return-stack cells per element, bounded by
-;; json/max-items, instead of one closure activation (~112-128 cells) per
-;; element.  Each walk body is the old recursive body with the recursive call
-;; replaced by "continue"; checks, error ids, positions and order are unchanged.
-;; Elements are collected in reverse and the result list is rebuilt in source
-;; order afterwards.  For an object, the rebuild walks from the last pair to
-;; the first and checks each key against the pairs after it -- exactly the
-;; order in which the old code checked duplicates while unwinding -- so the
-;; same pair raises 'duplicate-key with the same key, and only after the whole
-;; object has parsed.
+;; GLON-JSON-J2: containers are parsed by a state machine with an explicit
+;; container stack (a cons list in the managed heap), not by recursion: the
+;; old design cost ~240 return-stack cells per nesting level (parse-value ->
+;; array-rest/object-rest) and ~112-128 per element, so in an M1 task (~3,000
+;; cells) the valid 17-byte document [[[[[[[[1]]]]]]]] fail-stopped the whole
+;; HTTPS server.  Each state is one branch of the old parse-value / array-rest
+;; / object-rest, with the same checks in the same order, error ids and
+;; positions; scalars still go through j/parse-string, j/parse-number and
+;; j/literal.  The machine runs under the same logarithmic `do`-block driver as
+;; the string scanner, so return-stack depth no longer grows with nesting depth
+;; or element count.
+;;
+;; Global-context economy: the 14 code blocks live in ONE global table, j/sm,
+;; indexed as below (phases 0-4 are their own indices).  They are top-level
+;; code, so their words are resolved when they run; the machine state words
+;; (j/sm-*) are locals of j/parse-value's activation, created there, and no
+;; global of those names exists.  The current container is j/sm-kind (1 array,
+;; 2 object, 0 none), j/sm-acc (its elements, reversed), j/sm-n (element
+;; count), j/sm-key (pending key), j/sm-d (its value depth); enclosing
+;; containers are saved on j/sm-stack.  Like the cursor, this is not re-entrant.
+;;
+;;   j/sm  0 value (old parse-value)        7 drive
+;;         1 array element or end           8 open array     9 open object
+;;         2 after an array element        10 pop           11 deliver j/sm-v
+;;         3 object pair up to its value   12 close array   13 close object
+;;         4 after an object value
+;;         5 step (dispatch on j/sm-ph)     6 run (2^k steps at depth k)
+
+;; ( pairs key -> 1 | 0 ): is key one of the keys of the pair list?
 j/pair-has-key?: func [pairs key] [
     j/pk-xs: pairs
+    j/pk-res: 0
+    j/pk-done: 0
+    j/pk-k: 0
+    j/pk-level: 0
     j/pk-step: [
-        either = j/pk-xs none [ 0 ] [
+        either = j/pk-xs none [ j/pk-done: 1 ] [
             either either j/block? j/pk-xs [ = block-len j/pk-xs 2 ] [ 0 ] [
-                j/pk-pair: block-at j/pk-xs 0
-                either either j/block? j/pk-pair [ = block-len j/pk-pair 2 ] [ 0 ] [
-                    either s/= block-at j/pk-pair 0 key [
-                        1
-                    ] [
-                        j/pk-xs: block-at j/pk-xs 1
-                        do j/pk-step
-                    ]
+                either either j/block? block-at j/pk-xs 0 [ = block-len block-at j/pk-xs 0 2 ] [ 0 ] [
+                    either s/= block-at block-at j/pk-xs 0 0 key [
+                        j/pk-res: 1
+                        j/pk-done: 1
+                    ] [ j/pk-xs: block-at j/pk-xs 1 ]
                 ] [ j/error 'bad-token j/pos ]
             ] [ j/error 'bad-token j/pos ]
         ]
     ]
-    do j/pk-step
+    j/pk-run: [
+        either = j/pk-done 1 [ none ] [
+            either = j/pk-k 0 [ do j/pk-step ] [
+                j/pk-k: - j/pk-k 1
+                do j/pk-run
+                do j/pk-run
+                j/pk-k: + j/pk-k 1
+            ]
+        ]
+    ]
+    j/pk-drive: [
+        either = j/pk-done 1 [ none ] [
+            j/pk-k: j/pk-level
+            do j/pk-run
+            j/pk-level: + j/pk-level 1
+            do j/pk-drive
+        ]
+    ]
+    do j/pk-drive
+    j/pk-res
 ]
 
 ;; ( reversed-list -> list ): the cons list in the other order
 j/reverse: func [xs] [
     j/rv-in: xs
     j/rv-out: none
+    j/rv-done: 0
+    j/rv-k: 0
+    j/rv-level: 0
     j/rv-step: [
-        either = j/rv-in none [ j/rv-out ] [
+        either = j/rv-in none [ j/rv-done: 1 ] [
             j/rv-out: reduce [ block-at j/rv-in 0 j/rv-out ]
             j/rv-in: block-at j/rv-in 1
-            do j/rv-step
         ]
     ]
-    do j/rv-step
+    j/rv-run: [
+        either = j/rv-done 1 [ none ] [
+            either = j/rv-k 0 [ do j/rv-step ] [
+                j/rv-k: - j/rv-k 1
+                do j/rv-run
+                do j/rv-run
+                j/rv-k: + j/rv-k 1
+            ]
+        ]
+    ]
+    j/rv-drive: [
+        either = j/rv-done 1 [ none ] [
+            j/rv-k: j/rv-level
+            do j/rv-run
+            j/rv-level: + j/rv-level 1
+            do j/rv-drive
+        ]
+    ]
+    do j/rv-drive
+    j/rv-out
 ]
 
-j/array-rest: func [depth count] [
-    j/ar-acc: none
-    j/ar-n: count
-    j/ar-step: [
-        j/skip-ws
-        j/ar-b: s/at j/src j/pos
-        either = j/ar-b none [ j/error 'bad-token j/pos ] [
-            either = j/ar-b 93 [
-                j/pos: + j/pos 1
-                j/ar-acc
+;; ( reversed-pairs -> pairs ): rebuild an object's pairs in source order, last
+;; pair first, checking each key against the pairs after it -- the order of the
+;; old unwinding -- so the same pair raises 'duplicate-key with the same key,
+;; and only after the whole object has parsed.
+j/obj-build: func [acc] [
+    j/ob-in: acc
+    j/ob-out: none
+    j/ob-done: 0
+    j/ob-k: 0
+    j/ob-level: 0
+    j/ob-step: [
+        either = j/ob-in none [ j/ob-done: 1 ] [
+            either j/pair-has-key? j/ob-out block-at block-at j/ob-in 0 0 [
+                j/error 'duplicate-key block-at block-at j/ob-in 0 0
             ] [
-                either >= j/ar-n json/max-items [ j/error 'too-many-items j/ar-n ] [
-                    j/ar-v: j/parse-value + depth 1
-                    j/skip-ws
-                    j/ar-d: s/at j/src j/pos
-                    either = j/ar-d 44 [
+                j/ob-out: reduce [ block-at j/ob-in 0 j/ob-out ]
+                j/ob-in: block-at j/ob-in 1
+            ]
+        ]
+    ]
+    j/ob-run: [
+        either = j/ob-done 1 [ none ] [
+            either = j/ob-k 0 [ do j/ob-step ] [
+                j/ob-k: - j/ob-k 1
+                do j/ob-run
+                do j/ob-run
+                j/ob-k: + j/ob-k 1
+            ]
+        ]
+    ]
+    j/ob-drive: [
+        either = j/ob-done 1 [ none ] [
+            j/ob-k: j/ob-level
+            do j/ob-run
+            j/ob-level: + j/ob-level 1
+            do j/ob-drive
+        ]
+    ]
+    do j/ob-drive
+    j/ob-out
+]
+
+j/sm: reduce [
+    [   ;; 0 value: the old parse-value
+        j/sm-b: s/at j/src j/pos
+        either = j/sm-b none [ j/error 'bad-token j/pos ] [
+            either = j/sm-b 34 [ j/sm-v: j/parse-string do block-at j/sm 11 ] [
+                either = j/sm-b 123 [
+                    either > j/sm-vd json/max-depth [ j/error 'too-deep j/sm-vd ] [
                         j/pos: + j/pos 1
-                        j/skip-ws
-                        either = s/at j/src j/pos 93 [ j/error 'bad-token j/pos ] [
-                            j/ar-acc: reduce [ j/ar-v j/ar-acc ]
-                            j/ar-n: + j/ar-n 1
-                            do j/ar-step
+                        do block-at j/sm 9
+                    ]
+                ] [
+                    either = j/sm-b 91 [
+                        either > j/sm-vd json/max-depth [ j/error 'too-deep j/sm-vd ] [
+                            j/pos: + j/pos 1
+                            do block-at j/sm 8
                         ]
                     ] [
-                        either = j/ar-d 93 [
-                            j/pos: + j/pos 1
-                            reduce [ j/ar-v j/ar-acc ]
-                        ] [ j/error 'bad-token j/pos ]
+                        either = j/sm-b 116 [ j/sm-v: j/literal "true" json/true do block-at j/sm 11 ] [
+                            either = j/sm-b 102 [ j/sm-v: j/literal "false" json/false do block-at j/sm 11 ] [
+                                either = j/sm-b 110 [ j/sm-v: j/literal "null" json/null do block-at j/sm 11 ] [
+                                    either j/number-start? j/sm-b [
+                                        j/sm-v: j/parse-number
+                                        do block-at j/sm 11
+                                    ] [ j/error 'bad-token j/pos ]
+                                ]
+                            ]
+                        ]
                     ]
                 ]
             ]
         ]
     ]
-    j/reverse do j/ar-step
-]
-
-j/object-rest: func [depth count] [
-    j/or-acc: none
-    j/or-n: count
-    j/or-step: [
+    [   ;; 1 array element or end: the start of the old array-rest
         j/skip-ws
-        j/or-b: s/at j/src j/pos
-        either = j/or-b none [ j/error 'bad-token j/pos ] [
-            either = j/or-b 125 [
-                j/pos: + j/pos 1
-                j/or-acc
-            ] [
-                either >= j/or-n json/max-items [ j/error 'too-many-items j/or-n ] [
-                    either = j/or-b 34 [
-                        j/or-key: j/parse-string
+        j/sm-b: s/at j/src j/pos
+        either = j/sm-b none [ j/error 'bad-token j/pos ] [
+            either = j/sm-b 93 [ do block-at j/sm 12 ] [
+                either >= j/sm-n json/max-items [ j/error 'too-many-items j/sm-n ] [
+                    j/sm-vd: + j/sm-d 1
+                    j/sm-ph: 0
+                ]
+            ]
+        ]
+    ]
+    [   ;; 2 after an array element: the rest of the old array-rest
+        j/skip-ws
+        j/sm-b: s/at j/src j/pos
+        either = j/sm-b 44 [
+            j/pos: + j/pos 1
+            j/skip-ws
+            either = s/at j/src j/pos 93 [ j/error 'bad-token j/pos ] [
+                j/sm-n: + j/sm-n 1
+                j/sm-ph: 1
+            ]
+        ] [
+            either = j/sm-b 93 [ do block-at j/sm 12 ] [ j/error 'bad-token j/pos ]
+        ]
+    ]
+    [   ;; 3 object pair up to its value: the start of the old object-rest
+        j/skip-ws
+        j/sm-b: s/at j/src j/pos
+        either = j/sm-b none [ j/error 'bad-token j/pos ] [
+            either = j/sm-b 125 [ do block-at j/sm 13 ] [
+                either >= j/sm-n json/max-items [ j/error 'too-many-items j/sm-n ] [
+                    either = j/sm-b 34 [
+                        j/sm-key: j/parse-string
                         j/skip-ws
                         either = s/at j/src j/pos 58 [
                             j/pos: + j/pos 1
                             j/skip-ws
-                            j/or-val: j/parse-value + depth 1
-                            j/skip-ws
-                            j/or-d: s/at j/src j/pos
-                            either = j/or-d 44 [
-                                j/pos: + j/pos 1
-                                j/skip-ws
-                                either = s/at j/src j/pos 125 [ j/error 'bad-token j/pos ] [
-                                    j/or-acc: reduce [ reduce [ j/or-key j/or-val ] j/or-acc ]
-                                    j/or-n: + j/or-n 1
-                                    do j/or-step
-                                ]
-                            ] [
-                                either = j/or-d 125 [
-                                    j/pos: + j/pos 1
-                                    reduce [ reduce [ j/or-key j/or-val ] j/or-acc ]
-                                ] [ j/error 'bad-token j/pos ]
-                            ]
+                            j/sm-vd: + j/sm-d 1
+                            j/sm-ph: 0
                         ] [ j/error 'bad-token j/pos ]
                     ] [ j/error 'bad-token j/pos ]
                 ]
             ]
         ]
     ]
-    ;; rebuild in source order, last pair first, checking each key against the
-    ;; pairs after it (the old unwinding order)
-    j/or-in: do j/or-step
-    j/or-out: none
-    j/or-build: [
-        either = j/or-in none [ j/or-out ] [
-            j/or-pair: block-at j/or-in 0
-            either j/pair-has-key? j/or-out block-at j/or-pair 0 [
-                j/error 'duplicate-key block-at j/or-pair 0
-            ] [
-                j/or-out: reduce [ j/or-pair j/or-out ]
-                j/or-in: block-at j/or-in 1
-                do j/or-build
+    [   ;; 4 after an object value: the rest of the old object-rest
+        j/skip-ws
+        j/sm-b: s/at j/src j/pos
+        either = j/sm-b 44 [
+            j/pos: + j/pos 1
+            j/skip-ws
+            either = s/at j/src j/pos 125 [ j/error 'bad-token j/pos ] [
+                j/sm-n: + j/sm-n 1
+                j/sm-ph: 3
+            ]
+        ] [
+            either = j/sm-b 125 [ do block-at j/sm 13 ] [ j/error 'bad-token j/pos ]
+        ]
+    ]
+    [   ;; 5 step
+        do block-at j/sm j/sm-ph
+    ]
+    [   ;; 6 run: up to 2^k steps at `do` depth k
+        either = j/sm-done 1 [ none ] [
+            either = j/sm-k 0 [ do block-at j/sm 5 ] [
+                j/sm-k: - j/sm-k 1
+                do block-at j/sm 6
+                do block-at j/sm 6
+                j/sm-k: + j/sm-k 1
             ]
         ]
     ]
-    do j/or-build
+    [   ;; 7 drive: levels 0, 1, 2, ... until the value is complete
+        either = j/sm-done 1 [ none ] [
+            j/sm-k: j/sm-level
+            do block-at j/sm 6
+            j/sm-level: + j/sm-level 1
+            do block-at j/sm 7
+        ]
+    ]
+    [   ;; 8 open an array at value depth j/sm-vd
+        j/sm-stack: reduce [ reduce [ j/sm-kind j/sm-acc j/sm-n j/sm-key j/sm-d ] j/sm-stack ]
+        j/sm-kind: 1 j/sm-acc: none j/sm-n: 0 j/sm-key: none j/sm-d: j/sm-vd
+        j/sm-ph: 1
+    ]
+    [   ;; 9 open an object at value depth j/sm-vd
+        j/sm-stack: reduce [ reduce [ j/sm-kind j/sm-acc j/sm-n j/sm-key j/sm-d ] j/sm-stack ]
+        j/sm-kind: 2 j/sm-acc: none j/sm-n: 0 j/sm-key: none j/sm-d: j/sm-vd
+        j/sm-ph: 3
+    ]
+    [   ;; 10 pop: return to the enclosing container
+        j/sm-kind: block-at block-at j/sm-stack 0 0
+        j/sm-acc: block-at block-at j/sm-stack 0 1
+        j/sm-n: block-at block-at j/sm-stack 0 2
+        j/sm-key: block-at block-at j/sm-stack 0 3
+        j/sm-d: block-at block-at j/sm-stack 0 4
+        j/sm-stack: block-at j/sm-stack 1
+    ]
+    [   ;; 11 deliver: the value j/sm-v is complete
+        either = j/sm-kind 0 [
+            j/sm-result: j/sm-v
+            j/sm-done: 1
+        ] [
+            either = j/sm-kind 1 [
+                j/sm-acc: reduce [ j/sm-v j/sm-acc ]
+                j/sm-ph: 2
+            ] [
+                j/sm-acc: reduce [ reduce [ j/sm-key j/sm-v ] j/sm-acc ]
+                j/sm-ph: 4
+            ]
+        ]
+    ]
+    [   ;; 12 close array
+        j/pos: + j/pos 1
+        j/sm-v: reduce [ 'json-array j/reverse j/sm-acc ]
+        do block-at j/sm 10
+        do block-at j/sm 11
+    ]
+    [   ;; 13 close object
+        j/pos: + j/pos 1
+        j/sm-v: reduce [ 'json-object j/obj-build j/sm-acc ]
+        do block-at j/sm 10
+        do block-at j/sm 11
+    ]
 ]
 
+;; ( depth -> value ): one JSON value at j/pos (same interface as before).
+;; Creates the machine's state as locals (15 bindings with the parameter;
+;; a call context holds 16).
 j/parse-value: func [depth] [
-    b: s/at j/src j/pos
-    either = b none [ j/error 'bad-token j/pos ] [
-        either = b 34 [ j/parse-string ] [
-            either = b 123 [
-                either > depth json/max-depth [ j/error 'too-deep depth ] [
-                    j/pos: + j/pos 1
-                    reduce [ 'json-object j/object-rest depth 0 ]
-                ]
-            ] [
-                either = b 91 [
-                    either > depth json/max-depth [ j/error 'too-deep depth ] [
-                        j/pos: + j/pos 1
-                        reduce [ 'json-array j/array-rest depth 0 ]
-                    ]
-                ] [
-                    either = b 116 [ j/literal "true" json/true ] [
-                        either = b 102 [ j/literal "false" json/false ] [
-                            either = b 110 [ j/literal "null" json/null ] [
-                                either j/number-start? b [
-                                    j/parse-number
-                                ] [ j/error 'bad-token j/pos ]
-                            ]
-                        ]
-                    ]
-                ]
-            ]
-        ]
-    ]
+    j/sm-stack: none
+    j/sm-kind: 0
+    j/sm-acc: none
+    j/sm-n: 0
+    j/sm-key: none
+    j/sm-d: 0
+    j/sm-vd: depth
+    j/sm-ph: 0
+    j/sm-v: none
+    j/sm-b: none
+    j/sm-result: none
+    j/sm-done: 0
+    j/sm-k: 0
+    j/sm-level: 0
+    do block-at j/sm 7
+    j/sm-result
 ]
 
 json/decode: func [text] [

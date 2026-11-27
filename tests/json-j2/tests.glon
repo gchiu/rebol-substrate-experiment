@@ -250,10 +250,35 @@ t2/same "G15 missing colon" s/+ "{" s/+ t2/js "a" " 1}"
 t2/same "G16 non-string key" "{1:2}"
 t2/same "G17 unterminated array" "[1,2"
 t2/same "G18 unterminated object" s/+ "{" s/+ t2/js "a" ":1"
-t2/same "G19 too deep" "[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]"
+t2/sin "G19 17 nested arrays -> too-deep 17 (the original needs ~4,700 cells here)"
+    judge [ json/decode "[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]" ] 'json 'too-deep 17
+json/max-depth: 4
+t2/same "G19b too deep at max-depth 4 (same as original)" "[[[[[1]]]]]"
+t2/true "G19c deepest at max-depth 4 (same as original)" t2/eq json/decode "[[[[1]]]]" jold2/top "[[[[1]]]]"
+json/max-depth: 16
 t2/deep16: "[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]"
-t2/true "G20 16 nested arrays (the deepest allowed) decode as the original"
-    t2/eq json/decode t2/deep16 jold2/top t2/deep16
+;; n nested one-element arrays around the integer 1?  (a do-loop: cheap enough
+;; for the expanded profile's stack, unlike recursive comparison)
+t2/nested?: func [v n] [
+    t2/nv: v
+    t2/nn: n
+    t2/nstep: [
+        either = t2/nn 0 [ = t2/nv 1 ] [
+            either either j/block? t2/nv [ = block-len t2/nv 2 ] [ 0 ] [
+                either = block-at t2/nv 0 'json-array [
+                    either either j/block? block-at t2/nv 1 [ = block-at block-at t2/nv 1 1 none ] [ 0 ] [
+                        t2/nv: block-at block-at t2/nv 1 0
+                        t2/nn: - t2/nn 1
+                        do t2/nstep
+                    ] [ 0 ]
+                ] [ 0 ]
+            ] [ 0 ]
+        ]
+    ]
+    do t2/nstep
+]
+t2/true "G20 16 nested arrays (the deepest allowed) decode to the expected value"
+    t2/nested? json/decode t2/deep16 16
 t2/sin "G20b ... which json/encode rejects (it allows half the depth; pre-existing)"
     judge [ json/encode json/decode t2/deep16 ] 'json 'too-deep 17
 t2/same "G21 escape error inside a nested value" s/+ "[1,{" s/+ t2/js "a" s/+ ":" s/+ t2/js t2/e "x" "}]"

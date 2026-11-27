@@ -441,6 +441,14 @@ experimental are different things:
   for a closure call, so it is the cheap iteration form. See
   `GLON-JSON-J1-RESULTS.md`.
 
+- **JSON-J2 (2026-11-27):** iteration without loops: a `do` block that, at
+  level k, re-enters level k-1 twice runs a body 2^k times at depth k; driving
+  levels 0, 1, 2, ... gives logarithmic stack for any loop. State belongs in
+  call locals (16 per call), not globals: about 60 new globals broke apps under
+  the 256-binding global context. Probes must build their input *outside*
+  the measured region, or they measure themselves. See
+  `GLON-JSON-J2-RESULTS.md`.
+
 ## 7. Roadmap
 
 ```text

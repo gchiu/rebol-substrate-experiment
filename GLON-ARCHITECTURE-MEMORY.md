@@ -1337,6 +1337,20 @@ escaped byte, exhausted at 64 quotes); G3H `{"messages":[msg]}` 2,868 -> 1,815.
 G3H task mode now serves all 9 routes with M1 3x3400. The decoder still
 recurses per escape (~112 cells each). See `GLON-JSON-J1-RESULTS.md`.
 
+### JSON-J2: bounded-stack JSON decoder (2026-11-27) — [FIXED, LOCAL]
+
+`json/decode` depth is logarithmic in escapes, elements and nesting: a
+logarithmic `do` driver (level k runs a body 2^k times at depth k) for the
+string scan, a container state machine with a heap-allocated stack for
+arrays/objects, and the same driver for object rebuild / duplicate check.
+Measured (main stack): 1,024 escapes exhausted -> 940 cells; 32 items 4,359
+-> 839; 16 nesting levels 4,487 -> 807. Demonstrated server halts fixed
+(17-byte 8-level body; 125-escape body). Loop state lives in call locals and
+the machine's code in one table `j/sm`: json.glon adds 73 global bindings
+(original 74). Open: web.glon's `wp/escape-html` recurses per character and
+halts task-mode G3H on message texts over a few dozen characters. See
+`GLON-JSON-J2-RESULTS.md`.
+
 ## 8. Why more memory is a separate scaling experiment
 
 **[DECISION]** A larger memory configuration is **a separate scaling
