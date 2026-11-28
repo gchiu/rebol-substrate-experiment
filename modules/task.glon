@@ -14,6 +14,8 @@
 ;;   spawn body            -> task handle (a generation-tagged integer; opaque)
 ;;   yield                 suspend the current task (voluntary)
 ;;   run-tasks             run runnable tasks round-robin until none remain
+;;                         (main world only: inside a task it raises SIN!
+;;                         [task nested-run-tasks] and changes nothing)
 ;;   self                  -> the current task's handle
 ;;   task-wait             suspend the current task until task-wake (async wait)
 ;;   task-wake handle      mark a waiting task runnable again (generation-checked)
@@ -154,7 +156,11 @@ task-wait: raw [
     LIT M1_SCHED_REC LIT 0 ADD @ LIT REG_IP !
 ]
 
-run-tasks: raw [
+;; tasks/run-loop: the round-robin scheduler loop (RAW).  It saves the
+;; caller's world in M1_SCHED_REC before dispatching, so it must only ever be
+;; entered from the main world: use run-tasks (below), which rejects a call
+;; from inside a task before this record is touched.
+tasks/run-loop: raw [
     LIT REG_IP @ LIT 11 ADD LIT M1_SCHED_REC LIT 0 ADD !
     LIT REG_SP @ LIT M1_SCHED_REC LIT 1 ADD !
     LIT REG_RP @ LIT M1_SCHED_REC LIT 2 ADD !
@@ -299,6 +305,23 @@ tasks/pending?: raw [
 
 spawn: func [body] [
     mnew-task body 'task-run 'task-finish
+]
+
+;; GLON-C3-2E: run-tasks is main-world only.  Called from inside a task, the
+;; scheduler loop would overwrite M1_SCHED_REC (the parked main world) with
+;; that task's state, and control would later return into a stale world
+;; (observed: execution ran away printing unrelated values).  Recursive
+;; scheduling is not supported: the call raises SIN! [task nested-run-tasks]
+;; before anything is written, so the calling task's judge (task-run) or an
+;; inner judge sees an ordinary error and the scheduler record is unchanged.
+;; tasks/in-task? is 1 when the data stack is in the M1 task arena (every
+;; profile places the arena above the main data stack), else 0.
+tasks/in-task?: raw [
+    LIT REG_SP @ LIT M1_ARENA_BASE GE LIT 16 MUL ARITY 1 EXIT
+]
+
+run-tasks: func [] [
+    either = 1 tasks/in-task? [ raise create-sin 'task 'nested-run-tasks none ] [ tasks/run-loop ]
 ]
 
 ;; H2D: per-task response value (a GC root while the task is RUNNABLE).

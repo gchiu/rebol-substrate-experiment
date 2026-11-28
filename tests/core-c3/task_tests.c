@@ -696,6 +696,49 @@ static void test_worst_case_and_gc(void) {
     CHECK(o4 == 1 && geti("r") == 55, "E4 reproducer: a task's collection while main is 10 deep keeps main's closures (55; W5.1 gave 54)");
 }
 
+/* ---------------------------------------------------------------- F ---- */
+/* GLON-C3-2E: run-tasks is main-world only.  From inside a task it raises
+ * SIN! [task nested-run-tasks] before the scheduler record is written (it
+ * used to overwrite the parked main world's record and run away). */
+static void test_nested_run_tasks(void) {
+    printf("F: nested run-tasks is rejected (C3-2E)\n");
+    /* sched-ck: a checksum of the scheduler record's 8 cells, read from
+     * inside the task before and after the rejected call */
+    const char *src =
+        "[ sched-at: raw 1 [ LIT 16 DIV LIT M1_SCHED_REC ADD @ LIT 16 MUL ARITY 1 EXIT ] "
+        "  sched-ck: func [] [ + sched-at 0 + * 2 sched-at 1 + * 3 sched-at 2 + * 4 sched-at 3 "
+        "                      + * 5 sched-at 4 + * 6 sched-at 5 + * 7 sched-at 6 * 8 sched-at 7 ] "
+        "  ck-before: 0  ck-after: 1  nerr: none  after: 0  other: 0 "
+        "  keep: func [base] [ "
+        "    a: func [] [ + base 1 ] "
+        "    h1: spawn [ set 'ck-before sched-ck  set 'nerr judge [ run-tasks ] "
+        "                set 'ck-after sched-ck  yield  set 'after 1 ] "
+        "    h2: spawn [ yield  set 'other 2 ] "
+        "    run-tasks "
+        "    a ] "
+        "  wrap: func [n] [ either > n 0 [ wrap - n 1 ] [ keep 7 ] ] "
+        "  r: wrap 5 ]";
+    if (fresh()) { CHECK(0, "F session"); return; }
+    int rc = run_src(src, "F1");
+    CHECK(rc == 0 && geti("r") == 8, "F1 main (5 deep, in a function with locals) completes after a task's nested run-tasks: 8");
+    CHECK(geti("either sin? nerr [ either = sin-id nerr 'nested-run-tasks [ either = sin-type nerr 'task [ 1 ] [ 0 ] ] [ 0 ] ] [ 0 ]") == 1,
+          "F1 the nested call raised SIN! [task nested-run-tasks], caught by the task's judge");
+    CHECK(geti("= ck-before ck-after") == 1 && geti("ck-before") != 0,
+          "F1 the scheduler record is unchanged by the rejected call");
+    CHECK(geti("after") == 1 && geti("other") == 2,
+          "F1 the rejecting task yields and finishes; the other task runs");
+    /* F2: unjudged in the task body: the task fails with that SIN! (left in
+     * tasks/error), the main world carries on, and a later run-tasks from
+     * the main world works (the slot is reused) */
+    if (fresh()) { CHECK(0, "F2 session"); return; }
+    rc = run_src("[ late: 0  t: spawn [ run-tasks  set 'late 1 ]  run-tasks  e: tasks/error "
+                 "  u: spawn [ set 'late 2 ]  run-tasks ]", "F2");
+    CHECK(rc == 0 && geti("either sin? e [ either = sin-id e 'nested-run-tasks [ 1 ] [ 0 ] ] [ 0 ]") == 1,
+          "F2 an unjudged nested run-tasks fails that task with SIN! [task nested-run-tasks] in tasks/error");
+    CHECK(geti("late") == 2 && geti("tasks/pending?") == 0,
+          "F2 nothing after the rejected call ran; main's next run-tasks runs a new task in the reused slot");
+}
+
 int main(int argc, char **argv) {
     if (argc > 1) root = argv[1];
     if (argc > 2 && strcmp(argv[2], "negctl") == 0) {
@@ -710,6 +753,7 @@ int main(int argc, char **argv) {
     test_resp();
     test_stacks();
     test_worst_case_and_gc();
+    test_nested_run_tasks();
     printf("TASK_RUNTIME %s: %d checks, %d failed\n", failures ? "FAIL" : "PASS", checks, failures);
     return failures ? 1 : 0;
 }
