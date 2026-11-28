@@ -199,16 +199,27 @@ static void test_N(void) {
 }
 
 /* N2: recursion that comfortably exceeds the OLD 800-cell task RS but stays
- * below the enlarged 3200-cell RS must succeed (P3 stack contexts). */
+ * below the enlarged task RS must succeed (P3 stack contexts).
+ *
+ * GLON-C3-2D re-pin: depth 28, was 30.  Each activation occupies at least 96
+ * return-stack cells, and since GLON-C3-2A every evaluation step requires
+ * R0S1_RS_GUARD (112) cells of room before it starts (the derived worst case
+ * between two steps is 99).  The 3,000-cell task return stack of the 64K
+ * reference therefore completes `deep` 28 here (measured: N2's shape 28, N5's
+ * 29).  Depth 30 passed before only because the old per-invocation check
+ * (RP - 96) let the last levels use room that was never checked -- the same
+ * unchecked room that let a task's return stack run into its data stack and
+ * execute a stack value (C3-2 defect).  28 levels still use 2,688 cells, far
+ * past the old 800-cell RS this test was written to exceed. */
 static void test_N2(void) {
     printf("m2: N2 task recursion below the enlarged RS limit succeeds\n");
     int N;
     m2_m1_run(" deep: func [n] [ either <= n 0 [ spin 1 ] [ deep - n 1 ] ] "
-              " task-a: spawn [ deep 30 ] "
-              " task-b: spawn [ deep 30 ] "
+              " task-a: spawn [ deep 28 ] "
+              " task-b: spawn [ deep 28 ] "
               " run-tasks  read-stress ", &N);
     int ok = (N == 1 && r0_s1_result(0, 1) == mk_int(2));
-    if (ok) printf("  ok: N2: two tasks recurse 30 deep (past the old 800-cell RS) and complete\n");
+    if (ok) printf("  ok: N2: two tasks recurse 28 deep (past the old 800-cell RS) and complete\n");
     else { printf("  FAIL: N2 (N=%d got %ld)\n", N, (long)(N == 1 ? r0_s1_result(0, 1) : -999)); failures++; }
 }
 
@@ -261,17 +272,18 @@ static void test_N4(void) {
                   (long)s1_mem(M1_TASK_TABLE + TREC_STATE), (long)b_sp, (long)b_rp); failures++; }
 }
 
-/* N5: suspending and resuming at substantial recursion depth stays correct. */
+/* N5: suspending and resuming at substantial recursion depth stays correct.
+ * GLON-C3-2D re-pin: depth 28, was 30 (see N2). */
 static void test_N5(void) {
     printf("m2: N5 suspend/resume at substantial recursion depth\n");
     int N;
     m2_m1_run(" deep: func [n] [ either <= n 0 [ spin 3 ] [ spin 1  deep - n 1 ] ] "
-              " task-a: spawn [ deep 30 ] "
+              " task-a: spawn [ deep 28 ] "
               " task-b: spawn [ spin 20 ] "
               " run-tasks  read-stress ", &N);
-    /* task-a yields once per level (30) + 3 at the base; task-b yields 20. */
-    int ok = (N == 1 && r0_s1_result(0, 1) == mk_int(53));
-    if (ok) printf("  ok: N5: 30-deep recursion suspends/resumes across switches (counter 53)\n");
+    /* task-a yields once per level (28) + 3 at the base; task-b yields 20. */
+    int ok = (N == 1 && r0_s1_result(0, 1) == mk_int(51));
+    if (ok) printf("  ok: N5: 28-deep recursion suspends/resumes across switches (counter 51)\n");
     else { printf("  FAIL: N5 (N=%d got %ld)\n", N, (long)(N == 1 ? r0_s1_result(0, 1) : -999)); failures++; }
 }
 

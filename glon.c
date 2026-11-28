@@ -154,10 +154,11 @@ static int load_default_libraries(void) {
         if (k == 1) { FILE *f = fopen(path, "r"); if (!f) continue; fclose(f); }
         if (load_library(path) != 0) return -1;
     }
-#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP)
+#if defined(GLON_MODULE_FILE) || defined(GLON_MODULE_HTTP) || defined(GLON_MODULE_TASK)
     /* strings-ext supplies s/from-int, used by the HTTP status JSON and by
      * file.glon's write loop.  It is staged for every build but loaded only
-     * when an optional module needs it. */
+     * when an optional module needs it (GLON-C3-2: the task module too, as in
+     * W5.1). */
     snprintf(path, sizeof path, "%s/glon-lib/strings-ext.glon", exe_dir);
     if (load_library(path) != 0) return -1;
 #endif
@@ -659,6 +660,71 @@ static int pump_file_io(void *user) {
 }
 #endif /* GLON_MODULE_FILE */
 
+#ifdef GLON_MODULE_TASK
+/* ---- optional cooperative-task module (GLON-C3-2) ------------------------ */
+/* task.glon is ordinary Glon over the RAW/S1 task records (the M2 loadable
+ * form of the M1 prototype, with M4 slot generations; ported from Glon Worlds
+ * Native W5.1).  The CLI loads it when a source names a task word, so a
+ * combined binary spends no global bindings on programs without tasks, and
+ * runs spawned tasks to completion after the files have loaded.
+ *
+ * Deviation from W5.1: the pump's two fixed expressions are parsed once, when
+ * the library loads, and re-run, instead of being parsed per turn through the
+ * file module's reclaiming run_expression.  Task bodies run inside the pump
+ * turn, so a loader reclaim after it could free loader objects a task created
+ * and still references; parsing once also keeps the loader from growing per
+ * turn.  Waking tasks from file/sec/SQLite replies (task-wait) arrives with
+ * those modules' C3 stages; here a waiting task is woken only by Glon code. */
+#if M1_MAX_TASKS > 16
+#error "task.glon handles carry the slot in 4 bits: M1_MAX_TASKS must be <= 16"
+#endif
+static int task_loaded;
+static cell task_run_prog, task_pending_prog;
+
+static int load_task_library(void) {
+    char path[4096];
+    snprintf(path, sizeof path, "%s/glon-lib/task.glon", exe_dir);
+    if (load_library(path) != 0) return -1;
+    int perr = 0;
+    task_run_prog = r0_s1_parse("[ run-tasks ]", &perr);
+    if (!perr) task_pending_prog = r0_s1_parse("[ tasks/pending? ]", &perr);
+    if (perr) {
+        fprintf(stderr, "glon: task: the scheduler expressions did not parse\n");
+        return -1;
+    }
+    task_loaded = 1;
+    return 0;
+}
+
+static int source_names_task_word(const char *src) {
+    /* W5.1's heuristic, unchanged */
+    return strstr(src, "spawn") || strstr(src, "run-tasks") ||
+           strstr(src, "task-wait") || strstr(src, "tasks/");
+}
+
+static int tasks_pending(void) {
+    r0_s1_outcome oc;
+    r0_s1_session_run_block(task_pending_prog, &oc);
+    if (oc.status != R0S1_OUT_OK || oc.count != 1) return 0;
+    cell v = r0_s1_result(0, oc.count);
+    return (r0_tag(v) == T_INT && int_val(v) != 0) ? 1 : 0;
+}
+
+/* Run the round-robin scheduler; run-tasks returns when no task is runnable
+ * and unblocked.  A task blocked on task-wait with no Glon waker stays
+ * pending (as in W5.1). */
+static int pump_tasks(char *err, size_t errcap) {
+    r0_s1_outcome oc;
+    r0_s1_session_run_block(task_run_prog, &oc);
+    if (oc.status == R0S1_OUT_OK) return 0;
+    if (oc.status == R0S1_OUT_HALT)
+        snprintf(err, errcap, "run-tasks halted (reason %d)", r0_s1_halt_reason());
+    else
+        snprintf(err, errcap, "run-tasks failed (status %d)", oc.status);
+    return -1;
+}
+#endif /* GLON_MODULE_TASK */
+
 /* ---- main ---------------------------------------------------------------- */
 
 int main(int argc, char **argv) {
@@ -689,8 +755,12 @@ int main(int argc, char **argv) {
     M[M1_MAIN_ENTRY_CELL] = main_entry;
     M[M1_CURSOR] = 0;
     M[M1_STRESS_CNT] = 0;
-    for (int i = 0; i < M1_MAX_TASKS; i++)
+    for (int i = 0; i < M1_MAX_TASKS; i++) {
         M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
+        M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_BLOCKED] = 0;   /* GLON-C3-2 */
+        M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_GEN] = 0;
+        M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_RESP] = R0_NONE;
+    }
 
     if (load_default_libraries() != 0) return 2;
 
@@ -714,6 +784,13 @@ int main(int argc, char **argv) {
         if (!src) { fprintf(stderr, "glon: %s: %s\n", argv[i], err); rc = 2; break; }
 
         strip_comments(src);
+#ifdef GLON_MODULE_TASK
+        if (!task_loaded && source_names_task_word(src) && load_task_library() != 0) {
+            free(src);
+            rc = 2;
+            break;
+        }
+#endif
         int perr = 0;
         cell prog = r0_s1_parse(src, &perr);
         free(src);
@@ -737,6 +814,17 @@ int main(int argc, char **argv) {
         /* minimal build: no file module, no request/reply driver */
 #endif
     }
+
+#ifdef GLON_MODULE_TASK
+    /* Run spawned cooperative tasks after every file has loaded. */
+    if (rc == 0 && task_loaded && tasks_pending()) {
+        char terr[512];
+        if (pump_tasks(terr, sizeof terr) != 0) {
+            fprintf(stderr, "glon: task: %s\n", terr);
+            rc = 1;
+        }
+    }
+#endif
 
 #ifdef GLON_MODULE_HTTP
     /* Start only after every source file has been loaded, and only if the

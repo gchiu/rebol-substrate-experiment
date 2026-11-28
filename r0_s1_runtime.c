@@ -207,7 +207,14 @@ enum { MODE_TOP = 0, MODE_FUNC = 1, MODE_DATA = 2 };
 #define MAX_MODE 256
 static int mode_stack[MAX_MODE];
 static int mode_depth;
-static int cur_mode(void) { return mode_depth > 0 ? mode_stack[mode_depth - 1] : MODE_TOP; }
+/* GLON-C3-2A: blocks nested deeper than MAX_MODE are not recorded (the push
+ * is bounded), so they take the deepest recorded mode; reading
+ * mode_stack[mode_depth - 1] past the array was an out-of-bounds read
+ * (UBSan, 800 nested blocks). */
+static int cur_mode(void) {
+    if (mode_depth <= 0) return MODE_TOP;
+    return mode_stack[(mode_depth < MAX_MODE ? mode_depth : MAX_MODE) - 1];
+}
 static int next_hint;            /* for the block about to be parsed: 1 code (do/reduce), 2 dialect data */
 static int in_spec;              /* parsing a func spec: names are parameters, never rewritten */
 static int file_block_pending;   /* the next block is the source's own outer block */
@@ -796,6 +803,13 @@ static const raw_sym_t raw_syms[] = {
     { "TREC_IP", TREC_IP }, { "TREC_SP", TREC_SP }, { "TREC_RP", TREC_RP },
     { "TREC_CUR", TREC_CUR }, { "TREC_END", TREC_END }, { "TREC_CTX", TREC_CTX },
     { "TREC_BLK", TREC_BLK }, { "TREC_FRAME", TREC_FRAME }, { "TREC_STATE", TREC_STATE },
+    /* GLON-C3-2: the loadable task vocabulary's fields and states (task.glon).
+     * Numeric layout constants only; scheduling policy stays in Glon. */
+    { "TREC_BLOCKED", TREC_BLOCKED }, { "TREC_GEN", TREC_GEN },
+    { "TREC_MINSP", TREC_MINSP }, { "TREC_MINRP", TREC_MINRP }, { "TREC_RESP", TREC_RESP },
+    { "M1_MAX_TASKS", M1_MAX_TASKS }, { "M1_STRESS_CNT", M1_STRESS_CNT },
+    { "TASK_RUNNABLE", TASK_RUNNABLE }, { "TASK_FINISHED", TASK_FINISHED },
+    { "TASK_EMPTY", TASK_EMPTY },
 };
 #define N_RAW_SYMS ((int)(sizeof raw_syms / sizeof raw_syms[0]))
 
@@ -1663,10 +1677,8 @@ static cell r_mark_value, r_mark_push, r_trace_ctx, r_trace_closure,
 
 /* forward-call patch lists for the mark/trace mutual recursion */
 static cell fw_mark_value[128]; static int n_fw_mv;
-static cell fw_mark_frame[32];  static int n_fw_mf;
 
 static cell call_mark_value(void) { cell c = emit_call_fwd(); fw_mark_value[n_fw_mv++] = c; return c; }
-static cell call_mark_frame(void) { cell c = emit_call_fwd(); fw_mark_frame[n_fw_mf++] = c; return c; }
 
 #ifdef R0S1_GC_PROF
 /* GLON-MEM-4 (diagnostic build only): the S1 address range of each collector
@@ -1913,19 +1925,30 @@ static void emit_trace_block(void) {
  * CUR/END are raw loader-block addresses, so they are never traced.
  *
  * This is the old trace_frame logic plus the old mark_frame's zero check; the
- * frame chain is walked directly instead of going through the mark worklist. */
+ * frame chain is walked directly instead of going through the mark worklist.
+ *
+ * GLON-C3-2D: the chain is walked ITERATIVELY (newest frame first).  The
+ * recursive walk used 2 return-stack cells per live frame (CALL + >R), so the
+ * collector's depth grew with the recursion depth of the world being marked
+ * (~182 cells at the 64K reference's deepest main recursion, run on whatever
+ * stack the collection happened on, including a task's).  Now one >R holds p
+ * across each MARK-VALUE call: constant depth.  The set of objects marked is
+ * the same (every frame's CTX, each marked object pushed once by its mark
+ * bit), and all roots are marked before the worklist drains, so the order
+ * changes neither reachability nor the worklist's peak. */
 static void emit_mark_frame(void) {
     r_mark_frame = asm_here();
     e_setc(GC_T1);                                   /* p */
+    cell loop = asm_here();
     e_cell(GC_T1); asm_lit(0); asm_host(HOST_EQ);
     cell j_zero = asm_zbranch_fwd();
-    asm_exit();                                      /* p == 0 */
+    asm_exit();                                      /* p == 0: end of chain */
     asm_patch_here(j_zero);
-    e_cell(GC_T1); asm_toR();                        /* save p across prev mark */
-    e_cell(GC_T1); asm_lit(FRAME_PREV); asm_host(HOST_ADD); asm_fetch(); call_mark_frame();
-    asm_fromR(); e_setc(GC_T1);                      /* restore p */
+    e_cell(GC_T1); asm_toR();                        /* save p across the ctx mark */
     e_cell(GC_T1); asm_lit(FRAME_CTX);  asm_host(HOST_ADD); asm_fetch(); call_mark_value();
-    asm_exit();
+    asm_fromR();                                     /* p */
+    asm_lit(FRAME_PREV); asm_host(HOST_ADD); asm_fetch(); e_setc(GC_T1);   /* p = p.prev */
+    asm_branch(loop);
 }
 
 /* mark a collected closure pointer (or skip if not in the collected heap);
@@ -2186,8 +2209,35 @@ static void emit_scan_closures(void) {
 /* COALESCE-FREE was inlined into the sweep (see emit_collect). */
 
 /* COLLECT: ( -- ) global stop-the-world mark/sweep. */
+/* Collector-entry return-stack guard (GLON-C3-2A, see R0S1_GC_RS_GUARD): a
+ * collection needs more return stack than an evaluation step (its marking
+ * calls), so it checks its own room on entry, against the floor of the world
+ * SP is in -- derived from SP here, because a task switch inside a step can
+ * start a collection before the next step entry updates RV_RSLIMIT.  Data
+ * stack only; balanced, so SP0/RP0 below are captured unchanged.  Exhaustion
+ * branches (patched after the error core is emitted) to STACK-EXHAUSTED. */
+static cell gc_exhausted_patch;
+static void emit_collect_rs_guard(void) {
+    asm_lit(REG_SP); asm_fetch(); asm_dup(); asm_lit(R0S1_DS_INIT); asm_host(HOST_GT);
+    cell j_main = asm_zbranch_fwd();
+    asm_lit(M1_ARENA_BASE); asm_host(HOST_SUB);
+    asm_lit(M1_TASK_CELLS); asm_host(HOST_DIV);
+    asm_lit(M1_TASK_CELLS); asm_host(HOST_MUL);
+    asm_lit(M1_ARENA_BASE + M1_DS_OFF); asm_host(HOST_ADD);      /* task RS floor */
+    cell j_cmp = asm_branch_fwd();
+    asm_patch_here(j_main);
+    asm_drop(); asm_lit(R0S1_DS_INIT);                           /* main RS floor */
+    asm_patch_here(j_cmp);
+    asm_lit(REG_RP); asm_fetch(); asm_lit(R0S1_GC_RS_GUARD); asm_host(HOST_SUB);
+    asm_host(HOST_GT);                                           /* floor > RP - guard ? */
+    cell j_ok = asm_zbranch_fwd();
+    asm_lit(R0S1_HALT_RS_EXHAUSTED); gc_exhausted_patch = asm_branch_fwd();
+    asm_patch_here(j_ok);
+}
+
 static void emit_collect(void) {
     r_collect = asm_here();
+    emit_collect_rs_guard();                         /* GLON-C3-2A */
     /* capture SP/RP before any temporary pushes */
     asm_lit(REG_SP); asm_fetch(); e_setc(GC_C1);     /* SP0 */
     asm_lit(REG_RP); asm_fetch(); e_setc(GC_C2);     /* RP0 */
@@ -2237,6 +2287,28 @@ static void emit_collect(void) {
     e_cell(GC_C2); e_cell(GC_C4); asm_lit(M1_RS_OFF); asm_host(HOST_ADD); asm_call(r_scan_closures);
     e_cell(M1_SCHED_REC + 1); asm_lit(R0S1_DS_INIT); asm_call(r_scan_values);
     e_cell(M1_SCHED_REC + 2); asm_lit(R0S1_RS_INIT); asm_call(r_scan_closures);
+    /* GLON-C3-2D: the parked main world's own roots.  Every scheduler
+     * (task.glon, the M1 test library, the shop demos) saves the whole
+     * record -- IP, SP, RP, CUR, END, CTX (+5), BLK, FRAME (+7) -- before it
+     * dispatches a task, and restores it only when control returns to main,
+     * so while a task runs +5/+7 are main's current context and frame chain.
+     * Main's locals live in its stack contexts, reached only through them;
+     * the two scans above see main's data stack and raw closure pointers on
+     * its return stack, not the tagged values in its contexts, so without
+     * these roots a collection inside a task freed objects main still used
+     * (inherited from W5.1).  Validity: the record must describe the MAIN
+     * world (saved SP at or below DS_INIT -- not a task's, as a run-tasks
+     * called inside a task would leave); otherwise fail-stop before anything
+     * is traversed.  Before the first run-tasks the record is the init seed
+     * (SP = DS_INIT, CTX = FRAME = 0: an integer and an empty chain).
+     * MARK-VALUE classifies the context (an out-of-range one fail-stops);
+     * MARK-FRAME's walk is iterative: constant depth on the task's stack. */
+    e_cell(M1_SCHED_REC + 1); asm_lit(R0S1_DS_INIT); asm_host(HOST_GT);
+    cell j_sched_main = asm_zbranch_fwd();
+    asm_host(HOST_DUMP); asm_halt();                            /* not a main-world record */
+    asm_patch_here(j_sched_main);
+    e_cell(M1_SCHED_REC + 5); asm_call(r_mark_value);
+    e_cell(M1_SCHED_REC + 7); asm_call(r_mark_frame);
     cell fw_active_done = asm_branch_fwd();
     asm_patch_here(j_main_world);
     /* main world: standard DS/RS */
@@ -2262,6 +2334,14 @@ static void emit_collect(void) {
     cell j_skip = asm_zbranch_fwd();
     e_cell(GC_C4); asm_lit(TREC_CTX); asm_host(HOST_ADD); asm_fetch(); asm_call(r_mark_value);
     e_cell(GC_C4); asm_lit(TREC_FRAME); asm_host(HOST_ADD); asm_fetch(); asm_call(r_mark_frame);
+    /* GLON-C3-2 (W5.1 H2D): a RUNNABLE task's response value is a root, marked
+     * by the same r_mark_value as TREC_CTX.  task.glon keeps the field none (an
+     * immediate) outside a task's life, so this marks nothing for records that
+     * never set it.  -DR0S1_NO_TASK_RESP_ROOT omits it: a test-only negative
+     * control (tests/core-c3/task_tests.c), never a supported build. */
+#ifndef R0S1_NO_TASK_RESP_ROOT
+    e_cell(GC_C4); asm_lit(TREC_RESP); asm_host(HOST_ADD); asm_fetch(); asm_call(r_mark_value);
+#endif
     e_cell(GC_C3); asm_lit(M1_TASK_CELLS); asm_host(HOST_MUL);
     asm_lit(M1_ARENA_BASE); asm_host(HOST_ADD); e_setc(GC_C5);       /* top base */
     /* task stack sentry: a RUNNABLE task's saved SP/RP must lie inside its
@@ -2590,6 +2670,10 @@ static void emit_mkerror(void) {
  * is what lets RAISE-UNWIND and RETURN recognise a judge frame by its IP. */
 static void emit_trap_landing(void) {
     r_trap_landing = asm_here();
+    /* GLON-C3-2A: a caught raise is not a fail-stop; drop a reason recorded
+     * by a task's stack guard (TASK-EXHAUSTED), so a later halt never reports
+     * it.  Nothing else records a reason before raising. */
+    asm_lit(R0S1_HALT_NONE); e_setc(RV_HALTWHY);
     e_cell(RV_ERRV); asm_lit(R0_NONE); asm_host(HOST_EQ);
     cell j_have = asm_zbranch_fwd();          /* RV_ERRV != none: a raised value */
     e_cell(RV_ERRT); e_cell(RV_ERRI); e_cell(RV_ERRA);
@@ -2657,6 +2741,29 @@ static void emit_raise_escape_routine(void) {
     asm_branch(r_raise_unwind);
 }
 
+/* STACK-EXHAUSTED (GLON-C3-2A): ( reason -- ) the stack guard found the
+ * current world's data or return stack exhausted (reason R0S1_HALT_DS_- or
+ * R0S1_HALT_RS_EXHAUSTED, recorded in RV_HALTWHY).  Main world: the fatal
+ * fail-stop it always was.  M1 task world (SP above DS_INIT): raise SIN!
+ * [machine stack-exhausted <reason>], so the task's judge (task-run) ends that
+ * task alone and the scheduler and every other task carry on.  The raise uses
+ * three data-stack cells (within the guard's headroom) and no return stack
+ * before RAISE-UNWIND discards both stacks down to the judge frame; the SIN!
+ * is allocated only at the landing, with the judge's stacks.  Uncaught (a task
+ * with no judge frame), RAISE-UNWIND halts with the reason still recorded. */
+static cell r_stack_exhausted;
+static void emit_stack_exhausted_routine(void) {
+    r_stack_exhausted = asm_here();
+    e_setc(RV_HALTWHY);
+    asm_lit(REG_SP); asm_fetch(); asm_lit(R0S1_DS_INIT); asm_host(HOST_GT);
+    cell j_main = asm_zbranch_fwd();
+    emit_word_lit("machine"); emit_word_lit("stack-exhausted");
+    e_cell(RV_HALTWHY); asm_lit(16); asm_host(HOST_MUL);   /* the reason, as a Glon integer */
+    asm_branch(r_raise3);
+    asm_patch_here(j_main);
+    asm_host(HOST_DUMP); asm_halt();
+}
+
 /* Emitted right after the collector (MKERROR needs r_alloc) and before every
  * routine that can raise, so their addresses are known to all raise sites.
  * JUDGE-LANDING must directly follow MKERROR's EXIT (see its comment). */
@@ -2666,29 +2773,7 @@ static void emit_error_core(void) {
     emit_raise_unwind();
     emit_raise3();
     emit_raise_escape_routine();
-}
-
-/* Return-stack headroom check (machine limit, stays a fatal fail-stop): the
- * same bound computation as INVOKE-CLOSURE's guard, for the main world or the
- * running M1 task. Uses RV_T5/RV_T6. */
-static void emit_rs_guard(cell margin) {
-    asm_lit(REG_SP); asm_fetch(); e_setc(RV_T5);
-    e_cell(RV_T5); asm_lit(R0S1_DS_INIT); asm_host(HOST_GT);
-    cell j_main = asm_zbranch_fwd();
-    e_cell(RV_T5); asm_lit(M1_ARENA_BASE); asm_host(HOST_SUB);
-    asm_lit(M1_TASK_CELLS); asm_host(HOST_DIV);
-    asm_lit(M1_TASK_CELLS); asm_host(HOST_MUL);
-    asm_lit(M1_ARENA_BASE); asm_host(HOST_ADD);
-    asm_lit(M1_DS_OFF); asm_host(HOST_ADD); e_setc(RV_T6);
-    cell j_g = asm_branch_fwd();
-    asm_patch_here(j_main);
-    asm_lit(R0S1_DS_INIT); e_setc(RV_T6);
-    asm_patch_here(j_g);
-    asm_lit(REG_RP); asm_fetch(); asm_lit(margin); asm_host(HOST_SUB);
-    e_cell(RV_T6); asm_host(HOST_LT);
-    cell j_room = asm_zbranch_fwd();
-    asm_host(HOST_DUMP); asm_halt();          /* return-stack exhaustion */
-    asm_patch_here(j_room);
+    emit_stack_exhausted_routine();
 }
 
 /* Data-stack bounds check (see R0S1_DS_GUARD), emitted at SUBEXPR entry.
@@ -2700,7 +2785,10 @@ static void emit_rs_guard(cell margin) {
  * guard's own scratch cell RV_DSBASE only (no call, nothing else live).
  * A violation is a fatal fail-stop, before the step pushes anything:
  * R0S1_HALT_DS_EXHAUSTED below the floor, R0S1_HALT_DS_UNDERFLOW above the
- * top. */
+ * top.  GLON-C3-2A: the same world test sets RV_RSLIMIT (the return stack's
+ * floor plus its guard) and the return stack is checked after the data
+ * stack; exhaustion of either goes to STACK-EXHAUSTED (fatal in the main
+ * world, a task failure in an M1 task). */
 static void emit_ds_guard(void) {
     asm_lit(REG_SP); asm_fetch();                         /* sp */
     asm_dup(); asm_lit(R0S1_DS_INIT); asm_host(HOST_GT);  /* sp (sp > DS_INIT) */
@@ -2716,6 +2804,8 @@ static void emit_ds_guard(void) {
     asm_lit(M1_TASK_CELLS); asm_host(HOST_DIV);
     asm_lit(M1_TASK_CELLS); asm_host(HOST_MUL);
     asm_lit(M1_ARENA_BASE); asm_host(HOST_ADD); e_setc(RV_DSBASE);  /* sp */
+    e_cell(RV_DSBASE); asm_lit(M1_DS_OFF + R0S1_RS_GUARD); asm_host(HOST_ADD);
+    e_setc(RV_RSLIMIT);                                   /* task RS floor + guard */
     asm_dup(); e_cell(RV_DSBASE); asm_lit(M1_DS_OFF); asm_host(HOST_ADD);
     asm_host(HOST_GT);                                    /* sp (sp > base + DS_OFF) */
     cell j_tasktop = asm_zbranch_fwd();
@@ -2724,18 +2814,23 @@ static void emit_ds_guard(void) {
     e_cell(RV_DSBASE); asm_lit(R0S1_DS_GUARD); asm_host(HOST_ADD); /* sp floor */
     cell j_cmp = asm_branch_fwd();
     asm_patch_here(j_main);
+    asm_lit(R0S1_DS_INIT + R0S1_RS_GUARD); e_setc(RV_RSLIMIT);   /* main RS floor + guard */
     e_cell(RV_DSLIM);                                     /* sp floor */
     asm_patch_here(j_cmp);
     asm_host(HOST_LT);
     cell j_ok = asm_zbranch_fwd();
-    asm_lit(R0S1_HALT_DS_EXHAUSTED); e_setc(RV_HALTWHY);
-    asm_host(HOST_DUMP); asm_halt();                      /* data-stack exhaustion */
+    asm_lit(R0S1_HALT_DS_EXHAUSTED); asm_branch(r_stack_exhausted);   /* data-stack exhaustion */
     asm_patch_here(j_under1);
     asm_patch_here(j_past);
     asm_patch_here(j_under2);
     asm_lit(R0S1_HALT_DS_UNDERFLOW); e_setc(RV_HALTWHY);
     asm_host(HOST_DUMP); asm_halt();                      /* data-stack underflow */
     asm_patch_here(j_ok);
+    /* GLON-C3-2A: the return stack, against the world's limit set above */
+    asm_lit(REG_RP); asm_fetch(); e_cell(RV_RSLIMIT); asm_host(HOST_LT);
+    cell j_rs = asm_zbranch_fwd();
+    asm_lit(R0S1_HALT_RS_EXHAUSTED); asm_branch(r_stack_exhausted);   /* return-stack exhaustion */
+    asm_patch_here(j_rs);
 }
 
 /* ( cell -- ) fail-stop as data-stack underflow unless `cell` is below the
@@ -2792,7 +2887,6 @@ static void emit_gc(void) {
     GCPROF_EMIT("collect", emit_collect());
     GCPROF_EMIT("alloc", emit_alloc());
     for (int i = 0; i < n_fw_mv; i++) s1_set_mem(fw_mark_value[i], r_mark_value);
-    for (int i = 0; i < n_fw_mf; i++) s1_set_mem(fw_mark_frame[i], r_mark_frame);
 }
 
 /* ========================== evaluator build ============================ */
@@ -3876,7 +3970,7 @@ static void emit_error_natives(void) {
      * fields plus FRAME_TRAPRET, 16-aligned below the caller's return address. */
     e_cell(RV_T1); asm_lit(16); asm_host(HOST_MOD); asm_lit(T_BLOCK); asm_host(HOST_EQ);
     cell j_trap_bad = asm_zbranch_fwd();
-    emit_rs_guard(32);
+    /* GLON-C3-2A: the return stack is checked at every SUBEXPR entry (R0S1_RS_GUARD) */
     asm_fetchR(); e_setc(RV_SIP);                                         /* caller return */
     asm_lit(REG_RP); asm_fetch(); asm_lit(1); asm_host(HOST_ADD); e_setc(RV_SRP);
     asm_lit(REG_RP); asm_fetch(); asm_lit(11); asm_host(HOST_SUB); asm_lit(16); asm_host(HOST_MOD); e_setc(RV_T5);
@@ -4102,34 +4196,9 @@ static void emit_invoke_closure(void) {
     e_cell(PF_DEPTH); e_setc(PF_MAXDEPTH);
     asm_patch_here(j_max);
 #endif
-    /* return-stack guard: one invocation reserves, below the guard-time RP R0,
-     * exactly  1 (mkctx CALL return address) + 64 (R0S1_CTX_CELLS context)
-     * + (R0-65) mod 16 (context 16-align padding, 0..15) + 16 (activation frame:
-     * 10 fields + 6 padding) = at most 96 cells. The frame base therefore lands
-     * at R0 - 96 in the worst case, so `RP - 96 < DS top` fail-stops (never
-     * corrupts) on deep recursion. DS_INIT is the main world's data-stack
-     * "empty" sentinel: push() pre-decrements, so the data stack never writes
-     * cell DS_INIT itself and the return stack may legally reach it (the sentry
-     * flags only rp < DS_INIT). For an M1 task the bottom is the task's
-     * data-stack top (arena base + DS_OFF), detected by SP > DS_INIT (the same
-     * probe the collector uses). */
-    asm_lit(REG_SP); asm_fetch(); e_setc(RV_T5);     /* SP0 */
-    e_cell(RV_T5); asm_lit(R0S1_DS_INIT); asm_host(HOST_GT);
-    cell j_main = asm_zbranch_fwd();                  /* task? fall through */
-    e_cell(RV_T5); asm_lit(M1_ARENA_BASE); asm_host(HOST_SUB);
-    asm_lit(M1_TASK_CELLS); asm_host(HOST_DIV);
-    asm_lit(M1_TASK_CELLS); asm_host(HOST_MUL);
-    asm_lit(M1_ARENA_BASE); asm_host(HOST_ADD);
-    asm_lit(M1_DS_OFF); asm_host(HOST_ADD); e_setc(RV_T6);   /* task DS top */
-    cell j_guard = asm_branch_fwd();
-    asm_patch_here(j_main);
-    asm_lit(R0S1_DS_INIT); e_setc(RV_T6);             /* main DS top */
-    asm_patch_here(j_guard);
-    asm_lit(REG_RP); asm_fetch(); asm_lit(96); asm_host(HOST_SUB);   /* RP-96 */
-    e_cell(RV_T6); asm_host(HOST_LT);                 /* RP-96 < DS top? */
-    cell j_room = asm_zbranch_fwd();
-    asm_host(HOST_DUMP); asm_halt();                 /* return-stack exhaustion */
-    asm_patch_here(j_room);
+    /* GLON-C3-2A: the invocation's return-stack room is checked at the
+     * SUBEXPR entry that leads here (R0S1_RS_GUARD covers the frame and the
+     * calls around it); the former RP - 96 check here is subsumed. */
     asm_lit(0); e_setc(RV_CHILD);                    /* M2: transient roots stay 0-or-live */
     /* instrumentation: track max return/data depth */
     asm_lit(REG_RP); asm_fetch();
@@ -4622,7 +4691,7 @@ cell r0_s1_init(void) {
     nvocabs = 0; vm_nlog = 0; memset(vm_used, 0, sizeof vm_used); native_bits_ready = 0;   /* GLON-VOCAB-1 */
     n_subexpr = 0; n_block_eval = 0;
     n_invoke = 0;
-    n_fw_mv = 0; n_fw_mf = 0;
+    n_fw_mv = 0;
     n_esc_refs = 0;
     n_word_refs = 0;
     next_site = 1;      /* func-site-ids start at 1; 0 = "no enclosing func" */
@@ -4635,6 +4704,7 @@ cell r0_s1_init(void) {
     code_begin = asm_here();
     emit_gc();                      /* M2: mark/sweep collector + allocator */
     GCPROF_EMIT("error_core", emit_error_core());
+    s1_set_mem(gc_exhausted_patch, r_stack_exhausted);   /* GLON-C3-2A: the collector guard's target */
     GCPROF_EMIT("reduce", emit_reduce());
     GCPROF_EMIT("lookup", emit_lookup());
     GCPROF_EMIT("load_lex", emit_load_lex());
@@ -4717,10 +4787,20 @@ cell r0_s1_init(void) {
      * unconditionally, so seed every slot EMPTY and the scheduler stacks empty
      * so plain (non-multitasking) runs scan to nothing. */
     M[GC_GLOBAL_CTX] = global_ctx;
-    for (int i = 0; i < M1_MAX_TASKS; i++)
+    for (int i = 0; i < M1_MAX_TASKS; i++) {
         M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_STATE] = TASK_EMPTY;
+        /* GLON-C3-2: not blocked, generation 0, no response (none, an immediate) */
+        M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_BLOCKED] = 0;
+        M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_GEN] = 0;
+        M[M1_TASK_TABLE + i * M1_TASK_REC_SIZE + TREC_RESP] = R0_NONE;
+    }
     M[M1_SCHED_REC + 1] = R0S1_DS_INIT;   /* scheduler DS: empty range */
     M[M1_SCHED_REC + 2] = R0S1_RS_INIT;   /* scheduler RS: empty range */
+    /* GLON-C3-2D: the parked main world's saved CTX/FRAME are collector
+     * roots while a task runs; until the first run-tasks saves them they
+     * hold 0 (an integer: no context, an empty frame chain), never a
+     * previous session's values. */
+    for (int i = 3; i <= 7; i++) M[M1_SCHED_REC + i] = 0;
     M[GC_COLLECT_CNT] = 0;
     M[GC_LAST_RECLAM] = 0;
     /* Seed the managed-heap frontier. The non-persistent r0_s1_run path resets

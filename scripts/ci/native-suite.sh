@@ -168,6 +168,9 @@ run_step harness-portability make harness-portability-check
 # ---- GLON-C3: Glon Worlds Native server stack -------------------------------
 # C3-1: the stack's OpenSSL/SQLite/pthread dependencies on this host.
 run_step server-deps make server-deps-check
+# C3-2: the task runtime (task.glon, TREC_RESP root with its negative
+# control, handle checks, task-stack exhaustion as a task failure).
+run_step task-runtime make task-runtime-test
 
 # ---- explicit build matrix and sizes --------------------------------------
 run_step sizes sizes

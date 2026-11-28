@@ -420,14 +420,16 @@ GLON_LIBS = $(GLON_LIB_DIR)/prelude.glon $(GLON_LIB_DIR)/binding.glon $(GLON_LIB
 #   MODULES=file        host-mediated async file module
 #   MODULES=http        optional CivetWeb HTTPS listener + ordinary http.glon
 #   MODULES=file,http   both optional modules
+#   MODULES=task        cooperative multitasking (task.glon) + host task pump
+#                       (GLON-C3-2; combinable with file and http)
 #
 # Unknown names fail at build time.  Modules are additive: a minimal build
 # never compiles or links any module object, source or Glon library.
 comma := ,
 GLON_MODULE_LIST := $(subst $(comma), ,$(strip $(MODULES)))
-GLON_MODULE_UNKNOWN := $(filter-out file http,$(GLON_MODULE_LIST))
+GLON_MODULE_UNKNOWN := $(filter-out file http task,$(GLON_MODULE_LIST))
 ifneq ($(strip $(GLON_MODULE_UNKNOWN)),)
-  $(error unknown MODULES='$(MODULES)'; supported values: file, http, file,http)
+  $(error unknown MODULES='$(MODULES)'; supported values: file, http, task and combinations)
 endif
 
 GLON_MODULE_SRCS :=
@@ -478,6 +480,15 @@ ifneq ($(filter http,$(GLON_MODULE_LIST)),)
   ifeq ($(OS),Windows_NT)
     GLON_MODULE_LDLIBS += -lws2_32
   endif
+endif
+
+# GLON-C3-2: cooperative multitasking is ordinary Glon policy (task.glon) over
+# the RAW/S1 task-record mechanism; the task capacity and stack layout come
+# from the memory profile.  No C source: the CLI loads task.glon when a source
+# names a task word and pumps runnable tasks after the files have loaded.
+ifneq ($(filter task,$(GLON_MODULE_LIST)),)
+  GLON_MODULE_CFLAGS += -DGLON_MODULE_TASK
+  GLON_MODULE_LIBS += $(GLON_LIB_DIR)/task.glon
 endif
 
 GLON_TARGET_LIBS = $(GLON_LIBS) $(GLON_MODULE_LIBS)
@@ -578,6 +589,10 @@ $(GLON_LIB_DIR)/file-stream.glon: modules/file-stream.glon
 	cp $< $@
 
 $(GLON_LIB_DIR)/http.glon: modules/http.glon
+	@mkdir -p $(GLON_LIB_DIR)
+	cp $< $@
+
+$(GLON_LIB_DIR)/task.glon: modules/task.glon
 	@mkdir -p $(GLON_LIB_DIR)
 	cp $< $@
 
@@ -894,6 +909,39 @@ server-deps-check:
 	    tests/core-c3/deps_probe.c $(SQLITE_LIBS) $(OPENSSL_LIBS) -pthread
 	./build/core-c3/deps_probe
 .PHONY: profile-layout-one profile-check profile-reject-check profile-common-test build-deps-check config-rebuild-check harness-portability-check server-deps-check
+
+# GLON-C3-2: the task runtime (modules/task.glon over the RAW/S1 task records,
+# the TREC_RESP root).  tests/core-c3/task_tests.c per profile that can hold
+# task.glon (code cap >= 17,408: the 16,384 profiles cannot, as with W5.1),
+# plus a negative control built with -DR0S1_NO_TASK_RESP_ROOT that must lose
+# the response -- proving the test detects a missing root.
+TASK_RT_PROFILES ?= server-https desktop-1m
+TASK_RT_SRCS = tests/core-c3/task_tests.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c
+task-runtime-one: $(TASK_RT_SRCS) modules/task.glon $(R0S1_RUNTIME_HEADERS) $(GLON_PROFILE_DEPS)
+	@mkdir -p build/core-c3
+	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o build/core-c3/task-$(MEM_PROFILE) $(TASK_RT_SRCS) $(GLON_S1_SRC) -lm
+	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -DR0S1_NO_TASK_RESP_ROOT -I. -o build/core-c3/task-$(MEM_PROFILE)-noroot $(TASK_RT_SRCS) $(GLON_S1_SRC) -lm
+task-runtime-test:
+	@set -e; for p in $(TASK_RT_PROFILES); do $(MAKE) --no-print-directory task-runtime-one MEM_PROFILE=$$p >/dev/null; \
+	  echo "== task runtime, profile $$p"; \
+	  sh scripts/run-with-limit.sh 900 ./build/core-c3/task-$$p . ; \
+	  out=$$(sh scripts/run-with-limit.sh 900 ./build/core-c3/task-$$p-noroot . negctl); echo "$$out"; \
+	  case "$$out" in *RESP_LOST*) echo "negative control $$p: without the TREC_RESP root the response is lost (detected)";; \
+	    *) echo "negative control $$p: FAIL -- the response survived without the root, so the test cannot detect a missing root"; exit 1;; esac; \
+	done
+# The same checks under AddressSanitizer/UndefinedBehaviorSanitizer (host C).
+# Leak detection is off: the harness re-initialises the runtime ~1,000 times
+# and the symbol table's interned names (intern/dup_str) are not freed by a
+# re-init -- a pre-existing, bounded-per-session allocation, not a memory
+# error (a CLI process runs one session).
+task-runtime-asan: $(TASK_RT_SRCS) modules/task.glon $(R0S1_RUNTIME_HEADERS)
+	$(MAKE) --no-print-directory build/profile/server-https/glon_profile.h MEM_PROFILE=server-https
+	@mkdir -p build/core-c3
+	$(CC) -std=c17 -fwrapv -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined \
+	    -include build/profile/server-https/glon_profile.h -I. -o build/core-c3/task-asan \
+	    $(TASK_RT_SRCS) build/profile/server-https/s1_profile.c -lm
+	ASAN_OPTIONS=detect_leaks=0 sh scripts/run-with-limit.sh 900 ./build/core-c3/task-asan .
+.PHONY: task-runtime-one task-runtime-test task-runtime-asan
 
 # ---- Desktop proof: native Glon application + browser/WASM Glon View --------
 # glon-desktop is the installed application host: it binds a localhost TCP

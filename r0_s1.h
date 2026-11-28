@@ -193,8 +193,16 @@ enum {
     R0S1_HALT_CONTEXT_FULL = 1,  /* a new binding would exceed the context's capacity */
     R0S1_HALT_GC_WORKLIST_FULL = 2, /* the collector's mark worklist is full (see GC_WORKLIST_CAP) */
     R0S1_HALT_DS_EXHAUSTED = 3,     /* the data stack reached its floor (see R0S1_DS_GUARD) */
-    R0S1_HALT_DS_UNDERFLOW = 4      /* SP above its data stack's top, or outside every data stack */
+    R0S1_HALT_DS_UNDERFLOW = 4,     /* SP above its data stack's top, or outside every data stack */
+    R0S1_HALT_RS_EXHAUSTED = 5      /* the return stack reached its floor (see R0S1_RS_GUARD) */
 };
+/* GLON-C3-2A: in an M1 task world, data- and return-stack exhaustion is a
+ * task failure, not a machine halt: the guard records the reason above in
+ * RV_HALTWHY and raises SIN! [machine stack-exhausted <reason>], which the
+ * task's judge (task-run) catches, so the task finishes with tasks/error set
+ * and the scheduler and every other task carry on.  Uncaught (a task world
+ * with no judge frame, as the M1 prototype's), the raise halts as before with
+ * the reason recorded.  The main world keeps the fatal fail-stop. */
 
 /* Generic scratch cells available to RAW fragments. They live in the free
  * region above the RV cells and (since M3C) above the return-stack top
@@ -284,6 +292,63 @@ _Static_assert(GC_HEAP_LIMIT == R0S1_HEAP_BASE,
  * Not covered: a masm word, which runs raw S1 instructions between steps and
  * can push without limit (frozen S1 executes pushes unchecked). */
 #define R0S1_DS_GUARD 64L
+/* Return-stack guards (GLON-C3-2A).
+ *
+ * Step guard.  The same SUBEXPR-entry check as the data stack's, for the
+ * return stack: it stops if RP - R0S1_RS_GUARD is below the current world's
+ * return-stack floor (main: R0S1_DS_INIT; task: its slot's base + M1_DS_OFF;
+ * RV_RSLIMIT holds floor + guard).  Every evaluator recursion passes SUBEXPR
+ * (block evaluation, argument evaluation, closure bodies), so the guard is the
+ * most the return stack may grow between two evaluation steps without a
+ * collection: an invocation frame or judge frame plus the calls around it.
+ *
+ * Bound (GLON-C3-2B static analysis, GLON-C3-2D verified).  Return-stack
+ * cells are written only by CALL and >R (one each) and by four direct RP
+ * adjustments: the child context (MKCTX: 64 cells plus 0..15 alignment
+ * padding plus the moved return address), the invocation frame (always 16:
+ * the context base is 16-aligned, so its padding is 6), the judge frame (11
+ * plus 0..15), and the RP restores of RETURN / RAISE-UNWIND (upward).  From a
+ * passed SUBEXPR entry at RP = e, the deepest path before the next SUBEXPR
+ * entry is native INVOKE -> INVOKE-CLOSURE: CALL (e-1), context (base >= e-81),
+ * frame (base-16), BLOCK-EVAL and SUBEXPR CALLs: 99 cells below e, 98 below
+ * the latest check (INVOKE's own closure-expression SUBEXPR at e-1).  A
+ * closure reached through a word: 98.  Judge 32, nested do/either 5 per
+ * level, argument evaluation 5.  An interpreter hook over every context
+ * padding phase (do-wrapped zero-arity recursion, 16 phases) measured the
+ * predicted 98 exactly.  Guard 112 = 99 + 13 cells of margin.  Each
+ * activation occupies >= 96 cells (16-aligned context bases at least 83
+ * apart).
+ *
+ * Collector guard.  A collection's marking calls need more (R0S1_GC_RS_GUARD,
+ * checked at the collector's entry, which is rare: no cost per step).  Since
+ * GLON-C3-2D the frame chain is walked iteratively (MARK-FRAME), so the
+ * collector's depth no longer grows with the number of live activations
+ * (recursively it was 2 cells per frame, ~182 at the 64K reference's deepest
+ * recursion).  What remains is constant plus ~5 cells per level of
+ * non-managed (stack or loader) context VALUES nested in context values,
+ * which only masm code can create (below).
+ *
+ * Measured 2026-11-28 (C3-2A) with an interpreter hook recording the lowest RP
+ * between consecutive SUBEXPR entries and below the collector's entry, over
+ * the core ./s1 suite (73 million steps) plus lib1, JSON, kaka,
+ * profile-common, INTENT-7, literal-store, View and G3A workloads: at most 98
+ * cells per step without a collection, at most 152 below the collector's
+ * entry (recursive frame marking).  Exhaustion: R0S1_HALT_RS_EXHAUSTED, fatal
+ * in the main world, a task failure in an M1 task (above).
+ *
+ * They replace the closure-invocation (RP - 96) and judge (RP - 32) checks,
+ * which they subsume: those covered the frame but not the calls that follow
+ * it, so whether an exhaustion was caught depended on where RP happened to
+ * fall (phase -- a task at ~27-40 levels, and the main world with 10-12
+ * levels of nested do, ran the return stack into the data stack and executed
+ * a stack value), and nested block evaluation was not checked at all.  The
+ * historical depths that relied on that unchecked room (main 83, task 30)
+ * were never guaranteed.  Not covered, as for the data stack: masm (RAW)
+ * code -- its own pushes and calls, and context values it may store in
+ * bindings (a context containing itself makes the collector's context
+ * tracing recurse without bound: masm-only, pre-existing). */
+#define R0S1_RS_GUARD 112L
+#define R0S1_GC_RS_GUARD 192L
 
 /* allocation header: 16-cell stride before each 16-aligned payload. */
 #define GC_HDR_SIZE     0
@@ -352,6 +417,11 @@ _Static_assert(GC_HEAP_LIMIT == R0S1_HEAP_BASE,
  * address, for SET).  An unused cell of the runtime-variable block. */
 #define RV_FINDMODE     24633
 _Static_assert(RV_FINDMODE == RV_BASE + 38 && RV_FINDMODE < RV_RES_BUF, "RV_FINDMODE: an unused RV cell");
+/* GLON-C3-2A: the stack guard's return-stack limit for the current world
+ * (floor + R0S1_RS_GUARD), set by the data-stack guard's world test at every
+ * SUBEXPR entry.  The last unused cell of the runtime-variable block. */
+#define RV_RSLIMIT      24634
+_Static_assert(RV_RSLIMIT == RV_BASE + 39 && RV_RSLIMIT < RV_RES_BUF, "RV_RSLIMIT: an unused RV cell");
 _Static_assert(GC_FREE_HINT == RV_BASE + 37 && GC_FREE_HINT > RV_DSBASE && GC_FREE_HINT < RV_RES_BUF,
                "the free-block hint uses the unused RV cell between RV_DSBASE and RV_RES_BUF");
 

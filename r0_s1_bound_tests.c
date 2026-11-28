@@ -120,18 +120,23 @@ int run_r0_s1_bound_tests(void) {
     CHECK(N == 1 && got(0) == 7 && r0_s1_ran_cleanly(),
           "14: closure control captures the outer activation (7) across same-site recursion");
 
-    /* ---- return-stack invocation boundary ---------------------------------
-     * One invocation reserves at most 96 cells (context 64 + frame 16 + mkctx
-     * call 1 + alignment padding <=15); the guard fail-stops cleanly rather than
-     * corrupting. countdown recurses ~96 cells/level, so depth 83 is the deepest
-     * clean level and 84 must fail-stop with the stack sentry NOT firing. */
-    eval("[ countdown: func [n] [ either < n 0 [ n ] [ countdown - n 1 ] ]  countdown 83 ]");
+    /* ---- return-stack boundary ---------------------------------------------
+     * GLON-C3-2D re-pin: 82 / 83, was 83 / 84.  countdown recurses 96 cells
+     * per level (an activation occupies >= 96: 16-aligned context bases).
+     * Every evaluation step requires R0S1_RS_GUARD (112) cells of room before
+     * it starts (the derived worst case between two steps is 99, r0_s1.h), so
+     * 82 is the deepest clean level of the 8,192-cell main return stack and 83
+     * must fail-stop at the guard with the stack sentry NOT firing.  Depth 83
+     * used to pass only because the old per-invocation check (RP - 96) left
+     * the calls after the frame unchecked: room that was never guaranteed and
+     * that let nested blocks run the return stack into the data stack. */
+    eval("[ countdown: func [n] [ either < n 0 [ n ] [ countdown - n 1 ] ]  countdown 82 ]");
     CHECK(r0_s1_ran_cleanly() && !r0_s1_stack_sentry_fired() &&
           r0_s1_rp_min() >= R0S1_DS_INIT,
-          "15: deepest clean recursion (83) returns correctly, RP stays >= DS_INIT");
-    eval("[ countdown: func [n] [ either < n 0 [ n ] [ countdown - n 1 ] ]  countdown 84 ]");
+          "15: deepest clean recursion (82) returns correctly, RP stays >= DS_INIT");
+    eval("[ countdown: func [n] [ either < n 0 [ n ] [ countdown - n 1 ] ]  countdown 83 ]");
     CHECK(!r0_s1_ran_cleanly() && !r0_s1_stack_sentry_fired(),
-          "16: one level deeper (84) fail-stops at the guard, not via the sentry");
+          "16: one level deeper (83) fail-stops at the guard, not via the sentry");
 
     if (failures == 0) printf("all bound-block safety tests passed\n");
     return failures;
