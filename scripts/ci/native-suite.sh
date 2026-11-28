@@ -171,6 +171,13 @@ run_step server-deps make server-deps-check
 # C3-2: the task runtime (task.glon, TREC_RESP root with its negative
 # control, handle checks, task-stack exhaustion as a task failure).
 run_step task-runtime make task-runtime-test
+# C3-2E: the same suite under AddressSanitizer + UBSan where the toolchain has
+# them (Linux gcc, macOS clang).  MinGW-w64 has no ASan; on Windows the
+# suite's poisoned-neighbour and stack-sentry checks are the memory-safety
+# evidence.
+if [ "$PLATFORM" != windows ]; then
+    run_step task-runtime-asan make task-runtime-asan
+fi
 
 # ---- explicit build matrix and sizes --------------------------------------
 run_step sizes sizes
