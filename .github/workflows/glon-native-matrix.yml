@@ -89,7 +89,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y libssl-dev openssl
+          sudo apt-get install -y libssl-dev openssl libsqlite3-dev
 
       - name: Install macOS OpenSSL 3
         if: matrix.platform == 'macos'
@@ -115,6 +115,7 @@ jobs:
             zip
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-sqlite3
             mingw-w64-ucrt-x86_64-python
             mingw-w64-ucrt-x86_64-zlib
 

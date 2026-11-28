@@ -455,6 +455,14 @@ endif
 OPENSSL_CFLAGS ?=
 OPENSSL_LIBS ?= -lssl -lcrypto
 
+# GLON-C3: SQLite 3 development files are the build dependency of the Glon
+# Worlds Native storage module (ported in a later C3 stage).  Linux:
+# `libsqlite3-dev`; macOS: the SDK's libsqlite3 (or Homebrew `sqlite`);
+# Windows MSYS2 UCRT64: `mingw-w64-ucrt-x86_64-sqlite3`.  SQLITE_CFLAGS/
+# SQLITE_LIBS point at a non-default installation, as OPENSSL_* do.
+SQLITE_CFLAGS ?=
+SQLITE_LIBS ?= -lsqlite3
+
 # The HTTP server does not create M1 tasks.  The G3 application plus the
 # transient per-request source expression outgrow the default 14,800-cell
 # loader heap; those builds select MEM_PROFILE=constrained-notask (no task
@@ -876,7 +884,16 @@ config-rebuild-check:
 # when the probe compile fails.  Needs the OpenSSL development files.
 harness-portability-check:
 	sh tests/core-c2/harness_portability_check.sh
-.PHONY: profile-layout-one profile-check profile-reject-check profile-common-test build-deps-check config-rebuild-check harness-portability-check
+
+# GLON-C3-1: the Glon Worlds Native server stack's third-party dependencies
+# (OpenSSL 3 scrypt/SHA-256/RAND/memcmp, SQLite 3, pthread mutex/cond and
+# clocks), exercised with the exact calls its modules make.  No Glon code.
+server-deps-check:
+	@mkdir -p build/core-c3
+	$(CC) -std=c17 -Wall -Wextra -O1 $(OPENSSL_CFLAGS) $(SQLITE_CFLAGS) -o build/core-c3/deps_probe \
+	    tests/core-c3/deps_probe.c $(SQLITE_LIBS) $(OPENSSL_LIBS) -pthread
+	./build/core-c3/deps_probe
+.PHONY: profile-layout-one profile-check profile-reject-check profile-common-test build-deps-check config-rebuild-check harness-portability-check server-deps-check
 
 # ---- Desktop proof: native Glon application + browser/WASM Glon View --------
 # glon-desktop is the installed application host: it binds a localhost TCP

@@ -165,6 +165,10 @@ run_step config-rebuild make config-rebuild-check
 # discard the host's OPENSSL_CFLAGS (both broke the CI-1B macOS runs).
 run_step harness-portability make harness-portability-check
 
+# ---- GLON-C3: Glon Worlds Native server stack -------------------------------
+# C3-1: the stack's OpenSSL/SQLite/pthread dependencies on this host.
+run_step server-deps make server-deps-check
+
 # ---- explicit build matrix and sizes --------------------------------------
 run_step sizes sizes
 
