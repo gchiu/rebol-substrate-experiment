@@ -917,10 +917,19 @@ server-deps-check:
 # the response -- proving the test detects a missing root.
 TASK_RT_PROFILES ?= server-https desktop-1m
 TASK_RT_SRCS = tests/core-c3/task_tests.c r0_s1_runtime.c r0_s1_session.c r0_s1_show.c
+# GLON-C3-2F: MinGW links a 2 MiB main-thread stack by default (Linux and
+# macOS give 8 MiB).  Test D4 parses 800 nested blocks, and the C parser
+# uses ~4-5 KiB of stack per level, so the Windows test executables
+# overflowed their stack before printing anything (CI exit 127).  Both
+# task-runtime test executables reserve 8 MiB on Windows; nothing else is
+# linked differently.
+ifeq ($(OS),Windows_NT)
+TASK_RT_LDSTACK = -Wl,--stack,8388608
+endif
 task-runtime-one: $(TASK_RT_SRCS) modules/task.glon $(R0S1_RUNTIME_HEADERS) $(GLON_PROFILE_DEPS)
 	@mkdir -p build/core-c3
-	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o build/core-c3/task-$(MEM_PROFILE) $(TASK_RT_SRCS) $(GLON_S1_SRC) -lm
-	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -DR0S1_NO_TASK_RESP_ROOT -I. -o build/core-c3/task-$(MEM_PROFILE)-noroot $(TASK_RT_SRCS) $(GLON_S1_SRC) -lm
+	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -I. -o build/core-c3/task-$(MEM_PROFILE) $(TASK_RT_SRCS) $(GLON_S1_SRC) -lm $(TASK_RT_LDSTACK)
+	$(CC) $(CFLAGS) $(GLON_MEMORY_CFLAGS) -DR0S1_NO_TASK_RESP_ROOT -I. -o build/core-c3/task-$(MEM_PROFILE)-noroot $(TASK_RT_SRCS) $(GLON_S1_SRC) -lm $(TASK_RT_LDSTACK)
 task-runtime-test:
 	@set -e; for p in $(TASK_RT_PROFILES); do $(MAKE) --no-print-directory task-runtime-one MEM_PROFILE=$$p >/dev/null; \
 	  echo "== task runtime, profile $$p"; \
