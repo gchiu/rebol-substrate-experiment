@@ -17,6 +17,9 @@ on:
       - main
       - 'release/**'
       - 'ci/**'
+      # TEMPORARY (GLON-C3-2F): Windows-only diagnosis runs on this branch
+      # (c3-2f-windows-diag.yml); remove this line to restore the matrix.
+      - '!ci/glon-c3-1'
       - 'distribution/**'
     tags:
       - 'v*'
